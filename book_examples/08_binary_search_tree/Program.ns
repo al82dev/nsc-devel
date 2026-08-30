@@ -1,0 +1,76 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.BinarySearchTree
+{
+    class Program
+    {
+        private static void PrintTreeFacts(BinarySearchTree tree)
+        {
+            raii string count = String.ToString(tree.Count);
+            raii string height = String.ToString(tree.Height());
+            Student minimum = tree.Minimum();
+            Student maximum = tree.Maximum();
+            raii string minId = String.ToString(minimum.Id);
+            raii string maxId = String.ToString(maximum.Id);
+            raii string l1 = String.Concat("node count: ", count);
+            raii string l2 = String.Concat("height: ", height);
+            raii string l3 = String.Concat("minimum id: ", minId);
+            raii string l4 = String.Concat("maximum id: ", maxId);
+            Console.WriteLine(l1);
+            Console.WriteLine(l2);
+            Console.WriteLine(l3);
+            Console.WriteLine(l4);
+        }
+
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 08 - Binary Search Tree");
+            Console.WriteLine("-------------------------------------------------");
+
+            raii BinarySearchTree tree = new BinarySearchTree();
+            StudentTreeFactory.Fill(tree);
+
+            Console.WriteLine("Tree shape (right subtree is printed above each node):");
+            tree.PrintSideways();
+            Console.WriteLine("");
+            PrintTreeFacts(tree);
+
+            Console.WriteLine("");
+            Console.WriteLine("In-order traversal (keys must appear sorted):");
+            tree.PrintInOrder();
+
+            Console.WriteLine("");
+            Console.WriteLine("Search for id 65:");
+            Student found = tree.Find(65);
+            if (found != null)
+            {
+                raii string line = String.Concat("found student: ", found.Name);
+                Console.WriteLine(line);
+            }
+
+            Console.WriteLine("");
+            Console.WriteLine("Deletion cases:");
+            Console.WriteLine("  remove leaf 40");
+            tree.Remove(40);
+            Console.WriteLine("  remove node 35 (now one child)");
+            tree.Remove(35);
+            Console.WriteLine("  remove root 50 (two children)");
+            tree.Remove(50);
+
+            Console.WriteLine("");
+            Console.WriteLine("Tree after deletions:");
+            tree.PrintSideways();
+            Console.WriteLine("");
+            PrintTreeFacts(tree);
+
+            Console.WriteLine("");
+            Console.WriteLine("Pre-order traversal:");
+            tree.PrintPreOrder();
+            Console.WriteLine("");
+            Console.WriteLine("Post-order traversal:");
+            tree.PrintPostOrder();
+
+            return 0;
+        }
+    }
+}

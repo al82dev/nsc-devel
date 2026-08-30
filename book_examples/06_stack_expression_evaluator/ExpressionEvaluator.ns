@@ -1,0 +1,223 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.StackEvaluator
+{
+    public class ExpressionEvaluator
+    {
+        private ArrayStack<int> values;
+        private ArrayStack<char> operators;
+        private int[] valueSlot;
+        private char[] operatorSlot;
+
+        public ExpressionEvaluator()
+        {
+            values = new ArrayStack<int>(8);
+            operators = new ArrayStack<char>(8);
+            valueSlot = new int[1];
+            operatorSlot = new char[1];
+        }
+
+        private static bool IsDigit(char value)
+        {
+            return value >= '0' && value <= '9';
+        }
+
+        private static int DigitValue(char value)
+        {
+            return (int)value - (int)'0';
+        }
+
+        private static bool IsOperator(char value)
+        {
+            return value == '+' || value == '-' || value == '*' || value == '/';
+        }
+
+        private static int Precedence(char value)
+        {
+            if (value == '*' || value == '/')
+            {
+                return 2;
+            }
+            if (value == '+' || value == '-')
+            {
+                return 1;
+            }
+            return 0;
+        }
+
+        private void Fail(string message)
+        {
+            ExpressionException problem = new ExpressionException();
+            problem.Message = String.Copy(message);
+            throw problem;
+        }
+
+        private void ApplyTopOperator()
+        {
+            operators.Pop(operatorSlot);
+            char operation = operatorSlot[0];
+
+            if (values.Count < 2)
+            {
+                Fail("Operator does not have two operands.");
+                return;
+            }
+
+            values.Pop(valueSlot);
+            int right = valueSlot[0];
+            values.Pop(valueSlot);
+            int left = valueSlot[0];
+            int result = 0;
+
+            if (operation == '+')
+            {
+                result = left + right;
+            }
+            else if (operation == '-')
+            {
+                result = left - right;
+            }
+            else if (operation == '*')
+            {
+                result = left * right;
+            }
+            else if (operation == '/')
+            {
+                if (right == 0)
+                {
+                    Fail("Division by zero in expression.");
+                    return;
+                }
+                result = left / right;
+            }
+            else
+            {
+                Fail("Unknown operator.");
+                return;
+            }
+
+            values.Push(result);
+        }
+
+        private void ReduceFor(char incoming)
+        {
+            bool reducing = true;
+            while (!operators.IsEmpty && reducing)
+            {
+                operators.Peek(operatorSlot);
+                char top = operatorSlot[0];
+                if (top == '(')
+                {
+                    reducing = false;
+                }
+                else if (Precedence(top) >= Precedence(incoming))
+                {
+                    ApplyTopOperator();
+                }
+                else
+                {
+                    reducing = false;
+                }
+            }
+        }
+
+        private void CloseParenthesis()
+        {
+            bool matched = false;
+            while (!operators.IsEmpty && !matched)
+            {
+                operators.Peek(operatorSlot);
+                if (operatorSlot[0] == '(')
+                {
+                    operators.Pop(operatorSlot);
+                    matched = true;
+                }
+                else
+                {
+                    ApplyTopOperator();
+                }
+            }
+
+            if (!matched)
+            {
+                Fail("Closing parenthesis has no matching opening parenthesis.");
+            }
+        }
+
+        public int Evaluate(string expression)
+        {
+            values.Clear();
+            operators.Clear();
+            int index = 0;
+
+            while (index < expression.Length)
+            {
+                char token = expression[index];
+
+                if (token == ' ' || token == '\t')
+                {
+                    index = index + 1;
+                }
+                else if (IsDigit(token))
+                {
+                    int number = 0;
+                    while (index < expression.Length && IsDigit(expression[index]))
+                    {
+                        number = number * 10 + DigitValue(expression[index]);
+                        index = index + 1;
+                    }
+                    values.Push(number);
+                }
+                else if (token == '(')
+                {
+                    operators.Push(token);
+                    index = index + 1;
+                }
+                else if (token == ')')
+                {
+                    CloseParenthesis();
+                    index = index + 1;
+                }
+                else if (IsOperator(token))
+                {
+                    ReduceFor(token);
+                    operators.Push(token);
+                    index = index + 1;
+                }
+                else
+                {
+                    Fail("Expression contains an unsupported character.");
+                    return 0;
+                }
+            }
+
+            while (!operators.IsEmpty)
+            {
+                operators.Peek(operatorSlot);
+                if (operatorSlot[0] == '(')
+                {
+                    Fail("Opening parenthesis has no matching closing parenthesis.");
+                    return 0;
+                }
+                ApplyTopOperator();
+            }
+
+            if (values.Count != 1)
+            {
+                Fail("Expression did not reduce to exactly one value.");
+                return 0;
+            }
+
+            values.Pop(valueSlot);
+            return valueSlot[0];
+        }
+
+        ~ExpressionEvaluator()
+        {
+            delete values;
+            delete operators;
+            delete[] valueSlot;
+            delete[] operatorSlot;
+        }
+    }
+}

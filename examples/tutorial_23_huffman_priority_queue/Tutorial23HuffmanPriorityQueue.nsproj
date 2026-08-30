@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>Tutorial23HuffmanPriorityQueue</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />
+  </ItemGroup>
+</Project>

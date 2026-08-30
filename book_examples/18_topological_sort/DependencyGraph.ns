@@ -1,0 +1,63 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.TopologicalSort
+{
+    public class DependencyGraph
+    {
+        private BuildTask[] tasks;
+        private int[] edges;
+        private int count;
+        private int capacity;
+        public DependencyGraph(int maxTasks)
+        {
+            capacity=maxTasks; tasks=new BuildTask[maxTasks]; edges=new int[maxTasks*maxTasks]; count=0;
+        }
+        private int Cell(int a,int b){return a*capacity+b;}
+        public int AddTask(string name){int id=count; tasks[id]=new BuildTask(id,name); count=count+1; return id;}
+        public void AddDependency(int prerequisite,int dependent){edges[Cell(prerequisite,dependent)]=1;}
+        public void TopologicalOrder()
+        {
+            int[] indegree=new int[count];
+            int a=0;
+            while(a<count)
+            {
+                int b=0;
+                while(b<count)
+                {
+                    if(edges[Cell(a,b)]!=0){indegree[b]=indegree[b]+1;}
+                    b=b+1;
+                }
+                a=a+1;
+            }
+            raii IntQueue ready=new IntQueue(count+1);
+            int i=0;
+            while(i<count){if(indegree[i]==0){ready.Enqueue(i);} i=i+1;}
+            int processed=0;
+            while(!ready.IsEmpty)
+            {
+                int task=ready.Dequeue();
+                raii string number=String.ToString(processed+1);
+                raii string x=String.Concat("  ",number);
+                raii string y=String.Concat(x,". ");
+                raii string line=String.Concat(y,tasks[task].Name);
+                Console.WriteLine(line);
+                processed=processed+1;
+                int next=0;
+                while(next<count)
+                {
+                    if(edges[Cell(task,next)]!=0)
+                    {
+                        indegree[next]=indegree[next]-1;
+                        if(indegree[next]==0){ready.Enqueue(next);}
+                    }
+                    next=next+1;
+                }
+            }
+            if(processed!=count)
+            {
+                Console.WriteLine("cycle detected: no complete topological order exists");
+            }
+            delete[] indegree;
+        }
+        ~DependencyGraph(){int i=0;while(i<count){delete tasks[i];i=i+1;}delete[] tasks;delete[] edges;}
+    }
+}

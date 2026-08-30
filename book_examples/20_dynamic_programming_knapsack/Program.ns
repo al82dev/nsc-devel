@@ -1,0 +1,22 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Knapsack
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 20 - 0/1 Knapsack Dynamic Programming");
+            Console.WriteLine("--------------------------------------------------------------");
+            Item[] items=new Item[6];
+            items[0]=new Item("medical kit",4,12);
+            items[1]=new Item("water",2,8);
+            items[2]=new Item("radio",3,10);
+            items[3]=new Item("rope",2,7);
+            items[4]=new Item("tool kit",5,14);
+            items[5]=new Item("flare",1,4);
+            KnapsackSolver.Solve(items,6,10);
+            int i=0;while(i<6){delete items[i];i=i+1;}delete[] items;
+            return 0;
+        }
+    }
+}

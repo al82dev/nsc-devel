@@ -1,0 +1,126 @@
+Stage 53.3 "Filesystem/Paths", ronda 1 -- archivos
+====================================================
+
+ARCHIVOS NUEVOS (biblioteca NativeSharp)
+------------------------------------------
+lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj
+    Proyecto satelite nuevo (mismo patron que NativeSharp.Core.Diagnostics de Stage 53.1):
+    referencia solo a NativeSharp.Core.nsproj.
+
+lib/NativeSharp.Core.IO/Path.ns
+    100% NativeSharp puro -- CERO operaciones nucleo nuevas, el compilador no la reconoce
+    por nombre en absoluto. Combine/GetFileName/GetDirectoryName/GetExtension/
+    GetFileNameWithoutExtension/DirectorySeparatorChar/AltDirectorySeparatorChar, todo
+    construido sobre String.Substring/Concat/EndsWith/LastIndexOf (ya existentes desde
+    Stage 51).
+
+lib/NativeSharp.Core.IO/File.ns
+    2 operaciones nucleo nuevas: Exists(string) -> bool, Delete(string) -> void.
+
+lib/NativeSharp.Core.IO/Directory.ns
+    2 operaciones nucleo nuevas: Exists(string) -> bool, CreateDirectory(string) -> void.
+
+ARCHIVOS NUEVOS (ejemplo empaquetado + test)
+-----------------------------------------------
+examples/project_stage53_3/Stage53_3FilesystemPaths.nsproj
+examples/project_stage53_3/Main.ns
+    Programa de verificacion empaquetado. 20 chequeos: 5 de Path.Combine, GetFileName/
+    GetDirectoryName (con y sin separador), GetExtension/GetFileNameWithoutExtension (con
+    y sin punto), DirectorySeparatorChar/AltDirectorySeparatorChar, y 6 chequeos de
+    File/Directory que tocan el sistema de archivos real.
+
+tests/unit/Stage53_3FilesystemPathsTests.cpp
+    Test dedicado. Fixture minimo de lowering (File.Exists/Delete, Directory.Exists/
+    CreateDirectory emiten la llamada exacta a su simbolo de runtime) + programa
+    empaquetado probado en -O0 Y -O2 (misma disciplina que 53.2b, estas 4 operaciones
+    reutilizan buildNullTerminatedCopy). PRIMERA VEZ en Stage 53 que un test corre Wine
+    con un directorio de trabajo DEDICADO (no el de ctest) -- necesario porque este round
+    es el primero cuyo programa toca el sistema de archivos real. Tambien confirma, desde
+    el lado Linux (std::filesystem), que los efectos en disco fueron reales.
+
+53_3_nativesharp_filesystem_paths.md
+    Documento conceptual ultra-verbose: por que Path es pura NativeSharp (primera clase de
+    Stage 53 sin operaciones nucleo), el mecanismo de GetFileAttributesA compartido entre
+    File.Exists/Directory.Exists, decisiones de diseno, y lo que queda deliberadamente
+    fuera de alcance (candidatas a 53.3b).
+
+53_3_nativesharp_filesystem_paths_implementacion_paso_a_paso.md
+    Documento paso a paso con comandos y salidas reales, incluyendo el probe manual bajo
+    Wine (Paso 10, con confirmacion de efectos reales en disco desde el lado Linux) y un
+    error de compilacion real detectado y corregido durante la edicion (Paso 7,
+    redeclaracion de "i1" en declareRuntime()).
+
+ARCHIVOS MODIFICADOS (compilador)
+------------------------------------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + enum MethodCoreOperationKind: FileExists, FileDelete, DirectoryExists,
+      DirectoryCreate.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    + bloque de reconocimiento nuevo (NativeSharp.Core.IO.File / NativeSharp.Core.IO.
+      Directory -- dos clases, un solo bloque con un flag isFile).
+    + 4 lineas en methodCoreOperationKindName().
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + enum ProjectOopHirNodeKind: CoreFileExists, CoreFileDelete, CoreDirectoryExists,
+      CoreDirectoryCreate.
+
+src/Frontend/ProjectOopHirModel.cpp
+    + toString().
+    + REUTILIZA (extendido, no duplicado) el bloque compartido de StringConcat/
+      StringEquals/StringSubstring/StringFromCharArray/EnvironmentGetVariable/
+      EnvironmentSetVariable para el manejo de operandos.
+    + REFACTOR: la ternaria anidada de calculo de operandos esperados se reescribio como
+      un if-chain plano (8 MethodCoreOperationKind distintos ya no entraban comodos en la
+      ternaria de 2 niveles).
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + enum ProjectOopMirNodeKind: 4 valores nuevos.
+
+src/Frontend/ProjectOopMirModel.cpp
+    + toString() + 4 casos de conversion HIR->MIR.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + 4 constantes de nombre de simbolo, 8 campos LLVMValueRef/LLVMTypeRef (function+type
+      x 4 operaciones), extension de declareRuntime() (Exists devuelve i1, Delete/
+      CreateDirectory devuelven void), 4 case de lowering.
+
+src/Runtime/WindowsRuntimeBuilder.cpp
+    + buildFileExists() / buildDirectoryExists() (GetFileAttributesA, un solo DWORD de
+      atributos, sin marshaling de structs -- mas simple que
+      buildEnvironmentGetVariable de 53.2b).
+    + buildFileDelete() / buildDirectoryCreate() (DeleteFileA / CreateDirectoryA, BOOL
+      descartado).
+    + Las 4 REUTILIZAN buildNullTerminatedCopy() (ya existente desde 53.2b) sin
+      modificarlo.
+    + declaracion de GetFileAttributesA/DeleteFileA/CreateDirectoryA (variantes ANSI).
+
+ARCHIVOS MODIFICADOS (whitelist de kernel32, patron ya establecido en 53.1/53.2/53.2b)
+--------------------------------------------------------------------------------------
+src/Linker/WindowsLibraryBuilder.cpp
+src/Linker/WindowsExecutableBuilder.cpp
+tests/unit/Stage48_3CHostIntegrationTests.cpp
+tests/unit/Stage47HostCAbiTests.cpp
+tests/unit/Stage48_4CppHostIntegrationTests.cpp
+    kernel32Symbols: 17 -> 20 entradas (agrega GetFileAttributesA, DeleteFileA,
+    CreateDirectoryA). Aplicado PROACTIVAMENTE antes del primer compile (leccion de
+    Stage 53.1).
+
+CMakeLists.txt
+    + target nsc_stage53_3_filesystem_paths_tests +
+      add_test(nsc.stage53-3.filesystem-paths).
+
+RESULTADO FINAL VERIFICADO
+-----------------------------
+nsc_stage53_3_filesystem_paths_tests: PASS, 47/47 chequeos (fixture de lowering + ejecucion
+real bajo Wine del programa empaquetado, en AMBOS -O0 y -O2, con confirmacion independiente
+desde el lado Linux de que los efectos en disco -- directorio creado, archivo borrado --
+fueron reales). Confirmado estable en dos corridas consecutivas.
+
+ctest completo: 100% tests passed, 0 tests failed out of 214 (213 previos + 1 nuevo),
+confirmado estable en dos corridas repetidas.
+
+Cero errores de compilador encontrados en esta ronda (a diferencia de 53.2b, que encontro
+el bug real de memcpy/ucrtbase). El fix de esa ronda anterior ya cubre a estas 4 operaciones
+nuevas, confirmado empiricamente (probe manual a -O2 sin errores, ver Paso 10 del documento
+paso a paso).

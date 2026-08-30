@@ -1,0 +1,4 @@
+int Score()
+{
+    return 23;
+}

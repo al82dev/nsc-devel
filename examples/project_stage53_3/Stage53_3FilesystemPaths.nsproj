@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>Stage53_3FilesystemPaths</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+  </ItemGroup>
+</Project>

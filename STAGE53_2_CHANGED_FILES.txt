@@ -1,0 +1,78 @@
+Stage 53.2 "Environment", ronda 1 (TickCount64/ProcessorCount/Exit) -- archivos
+==================================================================================
+
+ARCHIVOS NUEVOS
+----------------
+lib/NativeSharp.Core/Environment.ns
+    3 operaciones nucleo, expuestas directamente como API publica final (sin capa
+    "Raw" separada, a diferencia de NativeClock): TickCount64, ProcessorCount, Exit.
+
+examples/project_stage53_2/Stage53_2Environment.nsproj
+examples/project_stage53_2/Main.ns
+    Programa de verificacion empaquetado. 6 chequeos; el ultimo NO usa "return 0"
+    sino Environment.Exit(0) como el propio mecanismo de salida exitosa (con
+    "return 77" como red de seguridad si Exit no terminara el proceso).
+
+tests/unit/Stage53_2EnvironmentTests.cpp
+    Test dedicado: fixture de lowering + compilacion/link/ejecucion real bajo Wine
+    del programa de verificacion empaquetado.
+
+53_2_nativesharp_environment.md
+    Documento conceptual ultra-verbose: por que GetEnvironmentVariable/
+    GetCommandLineArgs quedan fuera de esta ronda (necesitan asignacion dinamica de
+    strings desde el runtime, un mecanismo nuevo), eleccion de GetActiveProcessorCount
+    sobre GetSystemInfo, reuso de ExitProcess, superficie completa, verificacion real.
+
+53_2_nativesharp_environment_implementacion_paso_a_paso.md
+    Documento paso a paso con comandos y salidas reales. Esta ronda no tuvo ningun
+    error real durante el desarrollo (a diferencia de Stage 53.1, que tuvo 5) --
+    documentado con la razon concreta de por que.
+
+ARCHIVOS MODIFICADOS
+----------------------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + enum MethodCoreOperationKind: EnvironmentTickCount64, EnvironmentProcessorCount,
+      EnvironmentExit.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    + bloque de reconocimiento de NativeSharp.Core.Environment.
+    + 3 lineas en methodCoreOperationKindName().
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + enum ProjectOopHirNodeKind: CoreEnvironmentTickCount64/ProcessorCount/Exit.
+
+src/Frontend/ProjectOopHirModel.cpp
+    + toString() + creacion de nodo (zero-arg long/int + un-arg void).
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + enum ProjectOopMirNodeKind: 3 valores nuevos.
+
+src/Frontend/ProjectOopMirModel.cpp
+    + toString() + 3 casos de conversion HIR->MIR.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + 3 constantes de nombre de simbolo, 6 campos LLVMValueRef/LLVMTypeRef,
+      extension de declareRuntime(), 3 case de lowering (primer caso i32 en vez de i64).
+
+src/Runtime/WindowsRuntimeBuilder.cpp
+    + buildEnvironmentTickCount64/buildEnvironmentProcessorCount/buildEnvironmentExit.
+    + declaracion de GetTickCount64/GetActiveProcessorCount (ExitProcess reutilizado,
+      ya estaba declarado desde antes de Stage 53).
+
+src/Linker/WindowsLibraryBuilder.cpp
+src/Linker/WindowsExecutableBuilder.cpp
+tests/unit/Stage48_3CHostIntegrationTests.cpp
+tests/unit/Stage47HostCAbiTests.cpp
+tests/unit/Stage48_4CppHostIntegrationTests.cpp
+    kernel32Symbols: 13 -> 15 entradas (agrega GetTickCount64, GetActiveProcessorCount).
+    Aplicado ANTES de la primera compilacion, aprendiendo de Stage 53.1 (donde el mismo
+    olvido causo 16 tests fallando con "undefined symbol").
+
+CMakeLists.txt
+    + target nsc_stage53_2_environment_tests + add_test(nsc.stage53-2.environment).
+
+RESULTADO FINAL VERIFICADO
+-----------------------------
+nsc_stage53_2_environment_tests: PASS, 23/23 chequeos (incluye ejecucion real bajo Wine).
+ctest completo: 100% tests passed, 0 tests failed out of 212 (211 previos + 1 nuevo).
+Cero errores encontrados durante el desarrollo de esta ronda (a diferencia de Stage 53.1).

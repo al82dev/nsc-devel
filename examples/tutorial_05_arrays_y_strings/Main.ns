@@ -1,0 +1,141 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 05 -- Arreglos y strings
+// Fuente de inspiracion: K&R cap. 5 "Pointers and Arrays" y cap. 1.6/1.9 (Arrays, Character
+// Arrays).
+// ============================================================================================
+//
+// Nota importante antes de empezar: el capitulo 5 de K&R es, en el fondo, sobre PUNTEROS -- en C,
+// un arreglo "decae" a un puntero a su primer elemento, y toda la aritmetica de direcciones
+// (p++, *p, p[i] como azucar de *(p+i)) es manipulacion directa de memoria sin red de seguridad.
+// NativeSharp NO tiene punteros crudos ni aritmetica de direcciones -- ese espacio lo ocupa el
+// modelo de ownership (raii/owned/borrowed/move, ver tutorial_12 y tutorial_13), que resuelve el
+// mismo problema de fondo (quien es dueno de la memoria, cuando se libera) sin exponer
+// direcciones. Este ejemplo cubre la parte de cap. 5 que SI aplica igual: arreglos con indice,
+// .Length en vez de tener que llevar la cuenta aparte (K&R necesita un tamano separado porque un
+// puntero no sabe cuantos elementos tiene detras), y cadenas de caracteres.
+namespace Tutorial.ArraysStrings
+{
+    class Program
+    {
+        // Arreglos (K&R S1.6): new T[n] reserva n elementos; a diferencia de C, el tamano queda
+        // pegado al arreglo (.Length) -- no hace falta pasarlo aparte a cada funcion que lo
+        // recibe, y el acceso indexado SI se valida en tiempo de ejecucion (a diferencia de C).
+        public static int SumArray(int[] values)
+        {
+            int total = 0;
+            for (int i = 0; i < values.Length; i = i + 1)
+            {
+                total = total + values[i];
+            }
+            return total;
+        }
+
+        public static int MaxArray(int[] values)
+        {
+            int max = values[0];
+            for (int i = 1; i < values.Length; i = i + 1)
+            {
+                if (values[i] > max)
+                {
+                    max = values[i];
+                }
+            }
+            return max;
+        }
+
+        // Reverse-in-place -- el ejemplo clasico de "recorrer con dos indices que se acercan",
+        // que en K&R normalmente se escribe con dos punteros; aqui son dos ints.
+        public static void ReverseInPlace(int[] values)
+        {
+            int left = 0;
+            int right = values.Length - 1;
+            while (left < right)
+            {
+                int temp = values[left];
+                values[left] = values[right];
+                values[right] = temp;
+                left = left + 1;
+                right = right - 1;
+            }
+        }
+
+        public static int Main()
+        {
+            // Los arreglos de tipos simples (T[]) NO son ownership-tracked como raii -- son
+            // memoria explicita que el propio caller reserva con new y libera con delete[]
+            // (Stage 41), igual de explicito que malloc/free en C pero sin necesitar el tamano en
+            // bytes: delete[] sabe cuantos elementos hay.
+            int[] numbers = new int[6];
+            numbers[0] = 4;
+            numbers[1] = 8;
+            numbers[2] = 15;
+            numbers[3] = 16;
+            numbers[4] = 23;
+            numbers[5] = 42;
+
+            int total = SumArray(numbers);   // 108
+            int max = MaxArray(numbers);     // 42
+            ReverseInPlace(numbers);         // ahora: 42, 23, 16, 15, 8, 4
+            int firstAfterReverse = numbers[0];
+
+            delete[] numbers;
+
+            // Character Arrays / strings (K&R S1.9 y cap. 5): en C, una "cadena" ES un char[]
+            // terminado en '\0' -- toda la logica de string.h se escribe a mano con punteros. En
+            // NativeSharp, string es un tipo nativo con longitud explicita (Stage 41/51) -- no
+            // hay terminador nulo que buscar y toda la logica de tutorial_05 de K&R (strlen,
+            // strcpy, strcat, strcmp) ya viene resuelta en NativeSharp.Core.String (ver
+            // tutorial_01 y tutorial_02 para Concat/ToString; aqui se usan un par mas).
+            raii string word = String.Copy("NativeSharp");
+            int wordLength = word.Length;         // 11
+            char firstChar = word[0];             // 'N' -- el string SI se indexa como arreglo
+            raii string upper = String.ToUpper(word);
+            raii string lower = String.ToLower(word);
+            bool startsWithNative = String.StartsWith(word, "Native");
+
+            // char[] <-> string: la conversion explicita que K&R hace con punteros y este
+            // compilador hace con dos funciones nombradas (Stage 51).
+            char[] letters = String.ToCharArray(word);
+            int consonantCount = 0;
+            for (int i = 0; i < letters.Length; i = i + 1)
+            {
+                char c = letters[i];
+                bool isVowel = c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U' ||
+                    c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u';
+                if (!isVowel)
+                {
+                    consonantCount = consonantCount + 1;
+                }
+            }
+            delete[] letters;
+
+            raii string totalLabel = String.Copy("suma/max/primero-tras-invertir = ");
+            raii string totalDigits = String.ToString(total);
+            raii string sep = String.Copy(" / ");
+            raii string maxDigits = String.ToString(max);
+            raii string firstDigits = String.ToString(firstAfterReverse);
+            raii string a1 = String.Concat(totalLabel, totalDigits);
+            raii string a2 = String.Concat(a1, sep);
+            raii string a3 = String.Concat(a2, maxDigits);
+            raii string a4 = String.Concat(a3, sep);
+            raii string arrayLine = String.Concat(a4, firstDigits);
+            Console.WriteLine(arrayLine);
+
+            raii string upperLine = String.Copy("upper/lower = ");
+            raii string b1 = String.Concat(upperLine, upper);
+            raii string bsep = String.Copy(" / ");
+            raii string b2 = String.Concat(b1, bsep);
+            raii string stringLine = String.Concat(b2, lower);
+            Console.WriteLine(stringLine);
+
+            // total==108, max==42, firstAfterReverse==42, wordLength==11, consonantCount==7
+            // (N,t,v,S,h,r,p), startsWithNative==true, firstChar=='N' (78 en ASCII)
+            int result = total + max + firstAfterReverse + wordLength + consonantCount;
+            if (startsWithNative) { result = result + 1; }
+            if (firstChar == 'N') { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

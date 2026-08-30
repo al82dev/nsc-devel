@@ -1,0 +1,39 @@
+Stage 54.1 "Threads" -- archivos modificados/nuevos en esta ronda
+(primera subronda de Stage 54, threading)
+
+MODIFICADOS:
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+  src/Runtime/WindowsRuntimeBuilder.cpp
+  src/Linker/WindowsExecutableBuilder.cpp
+  src/Linker/WindowsLibraryBuilder.cpp
+  tests/unit/Stage47HostCAbiTests.cpp
+  tests/unit/Stage48_3CHostIntegrationTests.cpp
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp
+  CMakeLists.txt
+
+NUEVOS:
+  lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj
+  lib/NativeSharp.Core.Threading/Thread.ns
+  examples/project_stage54_1/Stage54_1Threads.nsproj
+  examples/project_stage54_1/Main.ns
+  tests/unit/Stage54_1ThreadsTests.cpp
+  57_stage54_1_threads.md
+  57_stage54_1_threads_implementacion_paso_a_paso.md
+  STAGE54_1_CHANGED_FILES.txt (este archivo)
+
+Total: 14 modificados + 8 nuevos = 22 archivos.
+
+Verificacion: 66/66 checks en nsc_stage54_1_threads_tests (estable en multiples corridas; cada
+corrida del binario de test ya incluye 10 ejecuciones REALES bajo Wine -- 5 a O0 y 5 a O2, la
+regla de rigor extra de Stage 54 -- exigiendo exit code 0 y ausencia de crash en cada una,
+individualmente); suite completa 218/219 (unico fallo:
+nsc.stage52-4.owned-cleanup-runtime, hallazgo preexistente documentado desde Stage 53.5, no
+relacionado con esta ronda); control negativo manual confirmado (chequeo deliberadamente roto
+-> exit code 1 en las 10 corridas de Wine, restaurado despues); zip completo del compilador
+verificado configurando + compilando limpio desde una extraccion nueva.

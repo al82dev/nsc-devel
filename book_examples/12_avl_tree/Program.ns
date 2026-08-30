@@ -1,0 +1,54 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.AvlTree
+{
+    class Program
+    {
+        private static void Insert(AvlTree tree, int key, string name)
+        {
+            raii string k = String.ToString(key);
+            raii string line = String.Concat("insert ", k);
+            Console.WriteLine(line);
+            tree.Insert(new AvlRecord(key, name));
+        }
+
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 12 - AVL Tree");
+            Console.WriteLine("--------------------------------------");
+            raii AvlTree tree = new AvlTree();
+            Insert(tree, 30, "thirty");
+            Insert(tree, 20, "twenty");
+            Insert(tree, 10, "ten");
+            Insert(tree, 40, "forty");
+            Insert(tree, 50, "fifty");
+            Insert(tree, 25, "twenty-five");
+            Insert(tree, 27, "twenty-seven");
+            Insert(tree, 5, "five");
+            Insert(tree, 4, "four");
+            Insert(tree, 45, "forty-five");
+            Insert(tree, 47, "forty-seven");
+
+            Console.WriteLine("");
+            Console.WriteLine("Balanced AVL tree (right subtree above):");
+            tree.PrintSideways();
+            raii string balanced = String.Copy("NO");
+            if (tree.IsBalanced()) { raii string yesBalanced = String.Copy("yes"); balanced = move(yesBalanced); }
+            raii string h = String.ToString(tree.Height);
+            raii string a = String.Concat("balanced: ", balanced);
+            raii string b = String.Concat(a, ", height: ");
+            raii string facts = String.Concat(b, h);
+            Console.WriteLine(facts);
+
+            Console.WriteLine("");
+            Console.WriteLine("Delete 20 and 40; deletion also rebalances ancestors:");
+            tree.Remove(20);
+            tree.Remove(40);
+            tree.PrintSideways();
+            raii string after = String.Copy("NO");
+            if (tree.IsBalanced()) { raii string yesAfter = String.Copy("yes"); after = move(yesAfter); }
+            raii string afterLine = String.Concat("balanced after deletion: ", after);
+            Console.WriteLine(afterLine);
+            return 0;
+        }
+    }
+}

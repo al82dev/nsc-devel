@@ -1,0 +1,46 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    class Program
+    {
+        private static void RunAll(StudentComparer comparer)
+        {
+            raii SortStatistics statistics = new SortStatistics();
+            raii BubbleSorter bubble = new BubbleSorter();
+            raii SelectionSorter selection = new SelectionSorter();
+            raii InsertionSorter insertion = new InsertionSorter();
+            raii ShellSorter shell = new ShellSorter();
+            raii MergeSorter merge = new MergeSorter();
+            raii QuickSorter quick = new QuickSorter();
+            raii HeapSorter heap = new HeapSorter();
+
+            SortingReport.Run(bubble, comparer, statistics);
+            SortingReport.Run(selection, comparer, statistics);
+            SortingReport.Run(insertion, comparer, statistics);
+            SortingReport.Run(shell, comparer, statistics);
+            SortingReport.Run(merge, comparer, statistics);
+            SortingReport.Run(quick, comparer, statistics);
+            SortingReport.Run(heap, comparer, statistics);
+        }
+
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 04 - Sorting Laboratory");
+            Console.WriteLine("-------------------------------------------------");
+            Console.WriteLine("Every sort is implemented from scratch over raw NativeSharp arrays.");
+            Console.WriteLine("");
+
+            raii StudentIdComparer byId = new StudentIdComparer();
+            Console.WriteLine("Ordering twelve Student objects by id:");
+            RunAll(byId);
+
+            Console.WriteLine("");
+            raii StudentGradeComparer byGrade = new StudentGradeComparer();
+            Console.WriteLine("Same algorithms, different polymorphic comparison policy:");
+            RunAll(byGrade);
+
+            return 0;
+        }
+    }
+}

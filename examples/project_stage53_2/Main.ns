@@ -1,0 +1,62 @@
+using NativeSharp.Core;
+
+// Stage 53.2 "Environment" (ronda 1: TickCount64 / ProcessorCount / Exit) -- programa de
+// verificacion empaquetado. Sigue la misma convencion que examples/project_stage53_1/Main.ns:
+// cada chequeo que falla devuelve un codigo de salida distinto, salvo el ultimo, que en vez de
+// usar "return 0" prueba Environment.Exit(0) como EL mecanismo de salida exitosa -- si Exit no
+// terminara el proceso de verdad (cayera a la linea de despues), el codigo de salida seria 77,
+// inmediatamente distinguible de 0.
+class Program
+{
+    public static int Main()
+    {
+        // ---- TickCount64: monotonico, > 0 ------------------------------------------------
+
+        long tickFirst = Environment.TickCount64();
+        if (tickFirst <= 0)
+        {
+            return 1;
+        }
+        // Bucle chico solo para asegurar que pasa ALGO de tiempo real entre las dos lecturas --
+        // mismo proposito que el bucle equivalente en examples/project_stage53_1/Main.ns.
+        long spin = 0;
+        while (spin < 200000)
+        {
+            spin = spin + 1;
+        }
+        long tickSecond = Environment.TickCount64();
+        if (tickSecond < tickFirst)
+        {
+            return 2;
+        }
+
+        // ---- ProcessorCount: positivo, y con un techo de sanidad --------------------------
+        //
+        // El techo (4096) no es un limite real de Windows -- es una cota de sanidad para
+        // atrapar una lectura corrupta o no inicializada (por ejemplo, un puntero mal armado
+        // que termine leyendo memoria basura como si fuera el conteo). Ninguna maquina real
+        // tiene mas de unos pocos cientos de procesadores logicos hoy; 4096 deja margen de
+        // sobra sin dejar de servir como red de seguridad.
+
+        int cpus = Environment.ProcessorCount();
+        if (cpus <= 0)
+        {
+            return 3;
+        }
+        if (cpus > 4096)
+        {
+            return 4;
+        }
+
+        // ---- Exit: el chequeo final ES el mecanismo de salida -----------------------------
+        //
+        // Environment.Exit(0) tiene que terminar el proceso ya mismo, con codigo de salida 0.
+        // Si por algun motivo NO terminara el proceso (bug real: la llamada a ExitProcess no
+        // se emitio, o el "unreachable" de LLVM no impidio que el control siguiera), la
+        // ejecucion caeria a la linea de abajo y el codigo de salida observado seria 77 -- un
+        // valor elegido a proposito para no poder confundirse nunca con 0 (exito) ni con
+        // ningun otro codigo de chequeo fallido de este archivo (1-4).
+        Environment.Exit(0);
+        return 77;
+    }
+}

@@ -1,0 +1,18 @@
+class Resource
+{
+    public Resource() { }
+    public int Read() { return 1; }
+    ~Resource() { }
+}
+
+class Program
+{
+    public static void Consume(owned Resource value) { }
+
+    public static int Run()
+    {
+        raii Resource owner = new Resource();
+        Consume(move(owner));
+        return owner.Read();
+    }
+}

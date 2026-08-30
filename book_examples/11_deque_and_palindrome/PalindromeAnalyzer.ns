@@ -1,0 +1,55 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Deque
+{
+    public class PalindromeAnalyzer
+    {
+        private static bool IsLetterOrDigit(char c)
+        {
+            bool digit = c >= '0' && c <= '9';
+            bool lower = c >= 'a' && c <= 'z';
+            bool upper = c >= 'A' && c <= 'Z';
+            return digit || lower || upper;
+        }
+
+        private static char FoldAscii(char c)
+        {
+            if (c >= 'A' && c <= 'Z')
+            {
+                return (char)((int)c + 32);
+            }
+            return c;
+        }
+
+        public static bool IsPalindrome(string text)
+        {
+            raii ArrayDeque<char> deque = new ArrayDeque<char>(8);
+            int i = 0;
+            while (i < text.Length)
+            {
+                char c = text[i];
+                if (IsLetterOrDigit(c))
+                {
+                    deque.AddBack(FoldAscii(c));
+                }
+                i = i + 1;
+            }
+
+            char[] left = new char[1];
+            char[] right = new char[1];
+            while (deque.Count > 1)
+            {
+                deque.RemoveFront(left);
+                deque.RemoveBack(right);
+                if (left[0] != right[0])
+                {
+                    delete[] left;
+                    delete[] right;
+                    return false;
+                }
+            }
+            delete[] left;
+            delete[] right;
+            return true;
+        }
+    }
+}

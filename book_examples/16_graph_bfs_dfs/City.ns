@@ -1,0 +1,9 @@
+namespace NativeSharp.BookExamples.GraphTraversal
+{
+    public class City
+    {
+        public int Id;
+        public string Name;
+        public City(int id, string name) { Id = id; Name = name; }
+    }
+}

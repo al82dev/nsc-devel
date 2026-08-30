@@ -1,0 +1,120 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 14 -- Generics basicos
+// Fuente de inspiracion: Learn C# Programming chapter_06 (GenericDemo.cs, Pair.cs,
+// ConflictingGenerics.cs).
+// ============================================================================================
+//
+// Diferencia importante frente a C# real: NativeSharp NO tiene generic constraints ("where T :
+// algo") -- no hay token "where" en el lexer en absoluto. Los generics de NativeSharp son
+// completamente sin restriccion: T puede ser CUALQUIER tipo, y el compilador monomorphiza (genera
+// codigo especializado por cada T concreto usado, Stage 44) en vez de usar un solo cuerpo
+// generico compartido en runtime como el CLR real. La consecuencia practica, ya vista en
+// NativeSharp.Core.Collections.Generic/Dictionary.ns: como no hay "where T : IHashable" ni un
+// object.GetHashCode() universal del que colgarse, cualquier API generica que necesite hashear o
+// comparar recibe el delegado (HashFunc<T>, Comparison<T>) explicitamente -- ver tutorial_15.
+namespace Tutorial.GenericsBasicos
+{
+    // Struct generico -- T puede ser un tipo valor (int) sin ningun costo extra: monomorphizado,
+    // Box<int> es tan directo como si se hubiera escrito a mano para int.
+    public struct Box<T>
+    {
+        public T Value;
+
+        public T Get()
+        {
+            return Value;
+        }
+    }
+
+    // Dos parametros de tipo -- cada uno se monomorphiza independientemente.
+    public struct Pair<TLeft, TRight>
+    {
+        public TLeft Left;
+        public TRight Right;
+    }
+
+    // Clase generica -- misma idea que Box<T>, pero con semantica de referencia (tutorial_07).
+    public class Holder<T>
+    {
+        public T Value;
+
+        public Holder(T initialValue)
+        {
+            Value = initialValue;
+        }
+
+        public T Get()
+        {
+            return Value;
+        }
+    }
+
+    public class Algorithms
+    {
+        // Metodo generico. Nota real (confirmada al escribir este ejemplo, no asumida): a
+        // diferencia de C# real, NativeSharp NO infiere T desde los argumentos todavia --
+        // "Algorithms.Identity(true)" sin el <bool> explicito falla con "has no compatible
+        // member named 'Identity'". Hace falta escribir siempre el argumento de tipo, tipo
+        // "Identity<bool>(true)".
+        public static T Identity<T>(T value)
+        {
+            return value;
+        }
+
+        public static T First<T>(T[] values)
+        {
+            return values[0];
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            Box<int> intBox;
+            intBox.Value = 42;
+            int fromBox = intBox.Get(); // 42 -- T=int, monomorphizado
+
+            Pair<int, bool> flagged;
+            flagged.Left = 7;
+            flagged.Right = true;
+
+            raii Holder<int> holder = new Holder<int>(99);
+            int fromHolder = holder.Get(); // 99
+
+            int identityResult = Algorithms.Identity<int>(123); // T explicito
+            bool identityBool = Algorithms.Identity<bool>(true); // T explicito de nuevo -- ver nota abajo
+
+            int[] numbers = new int[3];
+            numbers[0] = 55;
+            numbers[1] = 66;
+            numbers[2] = 77;
+            int firstNumber = Algorithms.First<int>(numbers); // 55, T explicito de nuevo
+
+            delete[] numbers;
+
+            raii string label = String.Copy("box/holder/identity/first = ");
+            raii string d1 = String.ToString(fromBox);
+            raii string sep = String.Copy(" / ");
+            raii string d2 = String.ToString(fromHolder);
+            raii string d3 = String.ToString(identityResult);
+            raii string d4 = String.ToString(firstNumber);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string s5 = String.Concat(s4, d3);
+            raii string s6 = String.Concat(s5, sep);
+            raii string line = String.Concat(s6, d4);
+            Console.WriteLine(line);
+
+            // fromBox==42, flagged.Left==7, fromHolder==99, identityResult==123,
+            // identityBool==true, firstNumber==55
+            int result = fromBox + flagged.Left + fromHolder + identityResult + firstNumber;
+            if (identityBool) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

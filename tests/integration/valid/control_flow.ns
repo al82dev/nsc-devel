@@ -1,0 +1,22 @@
+int Sum(int limit)
+{
+    int sum = 0;
+    for (int i = 0; i < limit; i++)
+    {
+        if (i == 2)
+        {
+            continue;
+        }
+        if (i == 8)
+        {
+            break;
+        }
+        sum += i;
+    }
+    return sum;
+}
+
+int Main()
+{
+    return Sum(10);
+}

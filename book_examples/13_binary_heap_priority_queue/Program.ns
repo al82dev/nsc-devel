@@ -1,0 +1,27 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.BinaryHeap
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 13 - Binary Heap / Priority Queue");
+            Console.WriteLine("----------------------------------------------------------");
+            raii Scheduler scheduler = new Scheduler();
+            scheduler.Submit(100, "generate mipmaps", 2);
+            scheduler.Submit(101, "compile gameplay scripts", 4);
+            scheduler.Submit(102, "package audio", 1);
+            scheduler.Submit(103, "rebuild navigation mesh", 3);
+            scheduler.Submit(104, "crash report symbolization", 5);
+            scheduler.Submit(105, "urgent shader hot reload", 5);
+            scheduler.Submit(106, "thumbnail generation", 1);
+
+            Console.WriteLine("Internal max-heap array after submissions:");
+            scheduler.PrintHeap();
+            Console.WriteLine("");
+            Console.WriteLine("Execution order (higher priority first; FIFO on ties):");
+            scheduler.RunAll();
+            return 0;
+        }
+    }
+}

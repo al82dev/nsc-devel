@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>Stage48_3HostApi</Name>
+    <OutputType>StaticLibrary</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

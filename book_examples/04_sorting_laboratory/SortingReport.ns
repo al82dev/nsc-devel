@@ -1,0 +1,70 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class SortingReport
+    {
+        private static bool IsSorted(Student[] data, int count, StudentComparer comparer)
+        {
+            int i = 1;
+            while (i < count)
+            {
+                if (comparer.Compare(data[i - 1], data[i]) > 0)
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        private static void PrintSummary(
+            StudentSorter sorter,
+            StudentComparer comparer,
+            Student[] data,
+            int count,
+            SortStatistics statistics)
+        {
+            raii string algorithm = sorter.Name();
+            raii string comparerName = comparer.Name();
+            raii string comparisons = String.ToString(statistics.Comparisons);
+            raii string swaps = String.ToString(statistics.Swaps);
+            raii string moves = String.ToString(statistics.Moves);
+            raii string firstId = String.ToString(data[0].Id);
+            raii string lastId = String.ToString(data[count - 1].Id);
+
+            raii string s1 = String.Concat(algorithm, " | by ");
+            raii string s2 = String.Concat(s1, comparerName);
+            raii string s3 = String.Concat(s2, " | cmp=");
+            raii string s4 = String.Concat(s3, comparisons);
+            raii string s5 = String.Concat(s4, " swaps=");
+            raii string s6 = String.Concat(s5, swaps);
+            raii string s7 = String.Concat(s6, " moves=");
+            raii string s8 = String.Concat(s7, moves);
+            raii string s9 = String.Concat(s8, " | first/last id=");
+            raii string s10 = String.Concat(s9, firstId);
+            raii string s11 = String.Concat(s10, "/");
+            raii string line = String.Concat(s11, lastId);
+            Console.WriteLine(line);
+        }
+
+        public static void Run(StudentSorter sorter, StudentComparer comparer, SortStatistics statistics)
+        {
+            int count = StudentDataset.Count();
+            Student[] data = new Student[count];
+            StudentDataset.Fill(data);
+            sorter.Sort(data, count, comparer, statistics);
+
+            if (!IsSorted(data, count, comparer))
+            {
+                Console.WriteLine("ERROR: algorithm did not produce ordered data.");
+            }
+            else
+            {
+                PrintSummary(sorter, comparer, data, count, statistics);
+            }
+
+            StudentDataset.Destroy(data, count);
+        }
+    }
+}

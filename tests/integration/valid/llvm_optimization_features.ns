@@ -1,0 +1,9 @@
+int Square(int x)
+{
+    return x * x;
+}
+
+int Main()
+{
+    return Square(6) + Square(2);
+}

@@ -1,0 +1,78 @@
+Stage 52.x (foreach) -- archivos modificados/agregados respecto del cierre de Stage 52
+(nsc con Stage 52 + var keyword (52.2) ya cerrados, 206/206)
+
+Ver 52_x_nativesharp_foreach.md para la explicacion didactica completa (diseno, por que
+estructural y no IEnumerable<T>, dos bugs reales encontrados y corregidos, evidencia de
+ejecucion real bajo Wine, regresion completa).
+
+MODIFICADOS/AGREGADOS -- compilador:
+  include/nativesharp/Lexer/TokenKind.h
+  src/Lexer/TokenKind.cpp
+  src/Lexer/Lexer.cpp
+    - keywords nuevas: foreach, in
+
+  include/nativesharp/AST/AstNodeKind.h
+  src/AST/AstNodeKind.cpp
+    - nodo AST nuevo: ForeachStatement
+
+  include/nativesharp/Parser/Parser.h
+  src/Parser/Parser.cpp
+    - parseForeachStatement() + 9 funciones auxiliares de fabricacion de nodos AST
+    - despacho en parseStatement() para TokenKind::KwForeach
+    - desugaring completo a dos candidatos (modo arreglo / modo enumerador), ver seccion 3 del doc
+
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+    - MethodScopeKind::Foreach
+    - analyzeForeach() -- resuelve el tipo real de la coleccion y analiza SOLO el candidato
+      correspondiente
+    - despacho en analyzeStatement() para ast::AstNodeKind::ForeachStatement
+    - methodScopeKindName() actualizado (case Foreach)
+
+  src/Frontend/ProjectOopHirModel.cpp
+    - case ForeachStatement en lowerStatement() -- re-deriva la misma decision arreglo/enumerador
+      de forma independiente y delega en lowerStatement/lowerBlock ya existentes
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+    - FIX REAL DE COMPILADOR (no especifico de foreach, pero encontrado en vivo probando foreach
+      sobre List<int>): emitOwnedParameterDestroy trataba SIEMPRE la storage de un parametro
+      owned como puntero de 8 bytes, incluso para un owned de TIPO VALOR (owned int, etc.),
+      corrompiendo memoria de stack vecina cuando el metodo hacia una llamada anidada. Ya
+      identificado en WINE_EXECUTION_FINDINGS_STAGE52.md durante el cierre de Stage 52 pero nunca
+      corregido en codigo -- corregido ahora con una guardia de tipo-referencia (mismo patron
+      elementIsReferenceLike que MoveValue ya usaba). Ver seccion 6 del doc para el detalle
+      completo, el repro minimo, y el alcance NO resuelto (Stage52Collections.exe completo sigue
+      crasheando en otro punto, RunList()'s Sort()/Exists(), sin relacion a foreach).
+
+  NO SE TOCARON: MIR (ProjectOopMirModel.cpp) -- cero cambios, el mapeo 1:1 ya cubria
+  Block/LocalDeclaration/While/For. LLVM lowering de control de flujo -- cero cambios, lowerWhile/
+  lowerFor ya existian y ya eran correctos.
+
+AGREGADOS -- libreria:
+  lib/NativeSharp.Core.Collections.Generic/ListEnumerator.ns (nuevo)
+    - clase generica de nivel superior (NativeSharp no soporta clases anidadas), enumerador para
+      List<T>, borrows la lista (referencia no-owned) + cursor int
+  lib/NativeSharp.Core.Collections.Generic/List.ns
+    - GetEnumerator() agregado, declarado `owned ListEnumerator<T>` (requisito de raii var)
+
+  PENDIENTE (fuera de alcance de esta entrega, ver seccion 7 del doc): Dictionary, HashSet,
+  Queue, Stack, LinkedList, SortedList/SortedDictionary/SortedSet, PriorityQueue no tienen
+  GetEnumerator() propio todavia -- foreach sobre esas colecciones da un diagnostico claro, no
+  compila (no crashea).
+
+AGREGADOS -- tests/ejemplos:
+  examples/project_stage52x_foreach/ (nuevo)
+    - ejemplo consolidado: modo arreglo (suma, break, continue, arreglo vacio, foreach anidado),
+      modo enumerador sobre clase propia sin interfaz (break/continue), modo enumerador sobre
+      List<int> real. Verificado compilando Y ejecutando bajo Wine real, exit code 603 (mod 256
+      = 91) exacto.
+  examples/project_foreach_negative_test/ (nuevo)
+    - caso negativo intencional (foreach sobre tipo sin GetEnumerator/Length) -- documenta el
+      diagnostico esperado, NO registrado en CMake/CTest (no debe compilar)
+  tests/unit/Stage52_3ForeachTests.cpp (nuevo)
+  CMakeLists.txt
+    - registro del test nsc.stage52-3.foreach (mismo patron que
+      Stage52_1GenericCollectionsAdditionsTests.cpp: compila el ejemplo real hasta objeto COFF
+      verificado)
+
+REGRESION: ctest completo, 207/207 (206 preexistentes + 1 nuevo), 100% passed, 0 failed.

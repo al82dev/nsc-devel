@@ -1,0 +1,19 @@
+// Interop contract case 3 -- FUNCTION POINTER PARAMETER.
+//
+// A C function pointer travelling INTO NativeSharp code as an ordinary parameter, and being
+// called there. This is the shape every "register a callback" C API has (SetWindowLongPtr with a
+// WNDPROC, glfwSetKeyCallback, SDL_AddEventWatch, alcSetThreadContext's callbacks).
+namespace contract {
+    extern C delegate int Transform(int value);
+    class Case {
+        public static int Twice(int value) { return value * 2; }
+        // Takes a raw C function pointer and calls through it. Nothing here knows or cares where
+        // the pointer came from -- NativeSharp code, a DLL, or a host's own C function.
+        public static export extern C int ApplyTwice(Transform f, int value) { return f(f(value)); }
+        public static int Main() {
+            Transform t = Twice;
+            if (ApplyTwice(t, 5) != 20) { return 1; }
+            return 42;
+        }
+    }
+}

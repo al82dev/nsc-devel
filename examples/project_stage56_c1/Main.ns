@@ -1,0 +1,121 @@
+// Stage 56 / C1 "Interop completion" -- programa de verificacion empaquetado.
+//
+// Misma convencion que examples/project_stage55_1/Main.ns: cada chequeo que falla devuelve su
+// propio codigo de salida, y solo si TODOS pasan se llega al "return 0" final. Aqui no se
+// referencia ninguna libreria: la ronda C1 es puro lenguaje/ABI, sin superficie nueva de runtime.
+//
+// Lo que este programa demuestra, en el mismo orden que el roadmap (secciones 3.1 y 3.2):
+//
+//   1. Un metodo estatico convertido a un puntero a funcion C, llamado a traves de el.
+//   2. Ese puntero viajando como `nint` y volviendo (la forma de todo GetProcAddress).
+//   3. Ese puntero viajando como `void*` y volviendo (la grafia que usa un header C).
+//   4. Reinterpretacion explicita entre dos firmas externas (lo que un proc-address obliga).
+//   5. Un puntero a funcion como PARAMETRO y como RETORNO de funciones `export extern C`.
+//   6. Identidad de import: el mismo simbolo declarado desde dos clases distintas contra la
+//      MISMA libreria es UN solo import, no dos.
+//
+// El borde de excepciones (seccion 3.6) NO se demuestra aqui a proposito: su comportamiento
+// correcto es TERMINAR el proceso con codigo 141, lo cual es incompatible con un programa que
+// tiene que llegar a su "return 0". Ese caso vive en
+// tests/interop_contract/c1_14_callback_exception_boundary/, que se ejecuta esperando 141.
+
+extern C delegate int Adder(int a, int b);
+extern C delegate int AlsoTwoInts(int x, int y);
+
+// Dos clases envolviendo EXACTAMENTE el mismo import (misma libreria, mismo simbolo, misma
+// firma). El nombre de la DLL se escribe con distinta capitalizacion a proposito: las librerias
+// se comparan sin distinguir mayusculas, asi que esto sigue siendo UNA identidad.
+public class ProcessInfoA
+{
+    extern C from "kernel32.dll" { public uint GetCurrentProcessId(); }
+}
+
+public class ProcessInfoB
+{
+    extern C from "KERNEL32.DLL" { public uint GetCurrentProcessId(); }
+}
+
+class Program
+{
+    public static int AddImpl(int a, int b) { return a + b; }
+
+    // Un puntero a funcion como RETORNO de una funcion exportada a C.
+    public static export extern C Adder GetAdder() { return AddImpl; }
+
+    // Un puntero a funcion como PARAMETRO de una funcion exportada a C.
+    public static export extern C int ApplyAdder(Adder f, int a, int b) { return f(a, b); }
+
+    public static int Main()
+    {
+        // ---- 1: metodo estatico -> puntero a funcion C ----------------------------------
+
+        Adder direct = AddImpl;
+        if (direct(20, 22) != 42)
+        {
+            return 1;
+        }
+
+        // ---- 2: ida y vuelta por nint ---------------------------------------------------
+
+        nint raw = (nint)direct;
+        if (raw == 0)
+        {
+            return 2;
+        }
+
+        Adder viaNint = (Adder)raw;
+        if (viaNint(20, 22) != 42)
+        {
+            return 3;
+        }
+
+        // ---- 3: ida y vuelta por void* --------------------------------------------------
+
+        void* address = (void*)direct;
+        Adder viaPointer = (Adder)address;
+        if (viaPointer(20, 22) != 42)
+        {
+            return 4;
+        }
+
+        // ---- 4: reinterpretacion entre dos firmas externas -------------------------------
+        //
+        // Esto es exactamente lo que obliga un proc-address: la direccion llega sin tipo y quien
+        // la usa AFIRMA una firma. La afirmacion no se verifica -- por eso tiene que escribirse
+        // como cast y no ocurrir sola.
+
+        AlsoTwoInts reinterpreted = (AlsoTwoInts)direct;
+        if (reinterpreted(20, 22) != 42)
+        {
+            return 5;
+        }
+
+        // ---- 5: puntero a funcion como retorno y como parametro de `export extern C` -----
+
+        Adder returned = GetAdder();
+        if ((nint)returned != (nint)direct)
+        {
+            return 6;
+        }
+
+        if (ApplyAdder(returned, 20, 22) != 42)
+        {
+            return 7;
+        }
+
+        // ---- 6: identidad de import ------------------------------------------------------
+        //
+        // Dos declaraciones del mismo triple (libreria, simbolo, firma) son UN import. Si no lo
+        // fueran, el enlace habria fallado antes de llegar aqui con "undefined symbol:
+        // GetCurrentProcessId.1" -- que es literalmente lo que pasaba antes de esta ronda.
+
+        uint pidA = ProcessInfoA.GetCurrentProcessId();
+        uint pidB = ProcessInfoB.GetCurrentProcessId();
+        if (pidA == 0u || pidA != pidB)
+        {
+            return 8;
+        }
+
+        return 0;
+    }
+}

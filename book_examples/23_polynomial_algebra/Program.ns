@@ -1,0 +1,22 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Polynomial
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 23 - Polynomial Algebra");
+            Console.WriteLine("-----------------------------------------------");
+            Polynomial p=new Polynomial(3);p[0]=2.0;p[1]=-1.0;p[2]=0.0;p[3]=3.0;
+            Polynomial q=new Polynomial(2);q[0]=-4.0;q[1]=2.0;q[2]=1.0;
+            p.Print("P");q.Print("Q");
+            Polynomial sum=p+q;Polynomial difference=p-q;Polynomial product=p*q;Polynomial derivative=p.Derivative();
+            sum.Print("P+Q");difference.Print("P-Q");product.Print("P*Q");derivative.Print("P'");
+            double x=2.0;double value=product.Evaluate(x);
+            raii string xs=NumberText.Format(x);raii string vs=NumberText.Format(value);
+            raii string a=String.Concat("(P*Q)(",xs);raii string b=String.Concat(a,") = ");raii string line=String.Concat(b,vs);Console.WriteLine(line);
+            delete derivative;delete product;delete difference;delete sum;delete q;delete p;
+            return 0;
+        }
+    }
+}

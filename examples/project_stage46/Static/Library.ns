@@ -1,0 +1,15 @@
+namespace Stage46.StaticLibrary
+{
+    public class NativeMath
+    {
+        public static int Add(int left, int right)
+        {
+            return left + right;
+        }
+
+        public static int Multiply(int left, int right)
+        {
+            return left * right;
+        }
+    }
+}

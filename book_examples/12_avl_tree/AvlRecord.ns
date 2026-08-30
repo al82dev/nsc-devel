@@ -1,0 +1,14 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.AvlTree
+{
+    public class AvlRecord
+    {
+        public int Key;
+        public string Name;
+        public AvlRecord(int key, string name)
+        {
+            Key = key;
+            Name = name;
+        }
+    }
+}

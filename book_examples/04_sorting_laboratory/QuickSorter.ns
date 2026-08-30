@@ -1,0 +1,67 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class QuickSorter : StudentSorter
+    {
+        public override owned string Name() { return String.Copy("Quick Sort"); }
+
+        private int Partition(
+            Student[] data,
+            int low,
+            int high,
+            StudentComparer comparer,
+            SortStatistics statistics)
+        {
+            Student pivot = data[high];
+            int boundary = low - 1;
+            int scan = low;
+
+            while (scan < high)
+            {
+                if (Compare(data[scan], pivot, comparer, statistics) <= 0)
+                {
+                    boundary = boundary + 1;
+                    if (boundary != scan)
+                    {
+                        Swap(data, boundary, scan, statistics);
+                    }
+                }
+                scan = scan + 1;
+            }
+
+            int pivotIndex = boundary + 1;
+            if (pivotIndex != high)
+            {
+                Swap(data, pivotIndex, high, statistics);
+            }
+            return pivotIndex;
+        }
+
+        private void SortRange(
+            Student[] data,
+            int low,
+            int high,
+            StudentComparer comparer,
+            SortStatistics statistics)
+        {
+            if (low >= high)
+            {
+                return;
+            }
+
+            int pivot = Partition(data, low, high, comparer, statistics);
+            SortRange(data, low, pivot - 1, comparer, statistics);
+            SortRange(data, pivot + 1, high, comparer, statistics);
+        }
+
+        public override void Sort(Student[] data, int count, StudentComparer comparer, SortStatistics statistics)
+        {
+            statistics.Reset();
+            if (count > 1)
+            {
+                SortRange(data, 0, count - 1, comparer, statistics);
+            }
+        }
+    }
+}

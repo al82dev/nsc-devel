@@ -1,0 +1,170 @@
+Stage 56 / C1 "Interop completion" -- archivos modificados/nuevos en esta ronda
+(fase C1 del roadmap del compilador, 01_Compiler_Roadmap.md secciones 3.1 function-pointer round
+trip, 3.2 import identity, 3.6 callback exception boundary. Ver
+63_stage56_c1_interop_completion.md para el diseno tecnico completo y
+63_stage56_c1_interop_completion_implementacion_paso_a_paso.md para el registro mecanico.)
+
+
+MODIFICADOS
+-----------
+
+  include/nativesharp/Frontend/ProjectMemberModel.h
+      Campo nuevo `importRequiresRuntimeBinding` en ClassMemberSymbol (C1.2).
+
+  src/Frontend/ProjectMemberModel.cpp
+      - El rechazo de retornos delegate en la superficie C ABI se estrecho de "cualquier
+        delegate" a "delegate que NO sea extern C" (C1.1: un extern C delegate es un puntero a
+        funcion crudo y es tan retornable como void*).
+      - Pase nuevo de IDENTIDAD DE IMPORT (C1.2): agrupa por (upper(dll), simbolo), diagnostica
+        firmas conflictivas para un mismo par, diagnostica un simbolo de archive que comparte
+        nombre con una DLL, y marca importRequiresRuntimeBinding cuando un mismo nombre de
+        simbolo lo reclaman dos librerias.
+      - Helper nuevo `upperAsciiText` (comparacion de nombres de DLL sin distinguir mayusculas,
+        igual que el planificador de import libraries).
+
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+      C1.1: cuatro predicados nuevos de type key (isExternCDelegateTypeKey, isAnyDelegateTypeKey,
+      isRawPointerTypeKey, isPointerSizedIntegralTypeKey) y la clasificacion del cast en
+      CastExpression -- el round trip como conversion explicita de primera clase, y diagnostico
+      real (en vez de una muerte silenciosa en el backend) para todo cast que toque un delegate y
+      no sea parte del round trip.
+
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+      C1.2: el flag importRequiresRuntimeBinding viaja con el resto de los campos del import.
+
+  src/Frontend/ProjectOopHirModel.cpp
+      C1.2: helper nuevo `importIdentityInternalName(dll, symbol)` y la separacion explicita de
+      los dos nombres de un import -- cAbiName es SIEMPRE el simbolo externo, mangledName es el
+      nombre interno. Coinciden en el caso ordinario (por eso el enlace estatico por nombre no
+      cambia) y solo divergen cuando dos librerias reclaman el nombre.
+
+  src/Driver/Driver.cpp
+      C1.2, collectExternalImports: los imports ligados en runtime NO entran a la import library;
+      el simbolo que entra es cAbiName (nunca mangledName); y si hubo al menos uno, LoadLibraryA y
+      GetProcAddress se piden por la MISMA puerta que los imports del proyecto, para que la tabla
+      unica del runtime los fusione y deduplique.
+
+  include/nativesharp/LLVM/LlvmTrapReason.h
+      Dos razones nuevas: ImportBindingFailure = 12 (exit 140) y CallbackExceptionEscape = 13
+      (exit 141).
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      - C1.1: convert() gana las conversiones direccion<->entero (ptrtoint/inttoptr) y el no-op
+        entre dos extremos con forma de puntero. defineCAbiWrappers pierde el rechazo de retornos
+        extern C delegate.
+      - C1.2: cStringGlobal() (C strings NUL-terminados, cacheados) y defineRuntimeBoundImport()
+        (cache global + LoadLibraryA/GetProcAddress + trap si el binding falla + llamada de
+        reenvio con el prototipo verbatim, sret incluido). declareFunctions/defineFunctions
+        deduplican identidades identicas declaradas mas de una vez.
+      - C1.3: emitCallbackBoundaryHandler(), callbackGuardThunk() (cacheado por objetivo) y el
+        pase defineCallbackGuardThunks() en el pipeline; lowerDelegateCreate devuelve el thunk
+        para un extern C delegate; defineCAbiWrappers pasa de `call` a `invoke` + handler.
+
+  tests/unit/Stage47HostCAbiTests.cpp
+      El caso negativo `ExternDelegateReturn` era exactamente la regla que C1.1 cambia a
+      proposito. Reemplazado por `ManagedDelegateReturn` (delegate ORDINARIO), que es lo que sigue
+      rechazado, con el comentario explicando el cambio de contrato.
+
+  CMakeLists.txt
+      Registro del ejecutable nsc_stage56_c1_interop_completion_tests (con NSC_SOURCE_DIR, que
+      necesita para compilar las fixtures contractuales y el ejemplo desde el arbol de fuentes) y
+      del test nsc.stage56.c1-interop-completion.
+
+
+NUEVOS
+------
+
+  tests/unit/Stage56C1InteropCompletionTests.cpp
+      Suite de la ronda: 18 escenarios, 92 checks.
+
+  tests/interop_contract/README.md
+  tests/interop_contract/c1_03_function_pointer_parameter/{c1_03_function_pointer_parameter.nsproj, Main.ns}
+  tests/interop_contract/c1_04_function_pointer_return/{c1_04_function_pointer_return.nsproj, Main.ns}
+  tests/interop_contract/c1_05_raw_pointer_cast/{c1_05_raw_pointer_cast.nsproj, Main.ns}
+  tests/interop_contract/c1_13_two_libraries_same_symbol/{c1_13_two_libraries_same_symbol.nsproj, Main.ns}
+  tests/interop_contract/c1_14_callback_exception_boundary/{c1_14_callback_exception_boundary.nsproj, Main.ns}
+      La carpeta que pide la seccion 5 del roadmap: los casos contractuales como proyectos
+      NativeSharp reales (abribles, compilables a mano, diffeables), no como literales dentro de
+      un .cpp. El README lleva el estado de las 15 filas de la matriz. La suite los compila desde
+      el arbol de fuentes, asi que no pueden pudrirse en decoracion.
+
+  examples/project_stage56_c1/{Stage56C1InteropCompletion.nsproj, Main.ns}
+      Ejemplo empaquetado, misma convencion que examples/project_stage55_1: cada chequeo fallido
+      devuelve su propio codigo de salida, y solo si todos pasan se llega al `return 0`.
+
+  63_stage56_c1_interop_completion.md
+  63_stage56_c1_interop_completion_implementacion_paso_a_paso.md
+  STAGE56_C1_CHANGED_FILES.txt (este archivo)
+
+
+HALLAZGOS MEDIDOS EN ESTA RONDA (antes de arreglarlos)
+------------------------------------------------------
+
+  1. Todo cast que tocara un tipo delegate moria en el backend con el mismo mensaje sin contenido,
+     `nsc: error: Stage 34 local initialization failed`, porque NADA en el frontend clasificaba
+     ese cast: un delegate no es ni clase ni interfaz, asi que la rama de conversiones de
+     referencia de CastExpression ni lo miraba.
+
+  2. `a.dll!Init` + `b.dll!Init` en un mismo proyecto hacia que LLVM renombrara la segunda
+     declaracion a `Init.1` por su cuenta, y el enlace terminaba con
+     `lld-link: error: undefined symbol: Init.1`.
+
+  3. El mismo triple (libreria, simbolo, firma) declarado desde DOS clases producia el mismo
+     renombrado silencioso (`GetCurrentProcessId.1`). Este lo encontro la propia suite de esta
+     ronda, no una revision.
+
+
+NOTA SOBRE `IMPORT_NAME_EXPORTAS`
+---------------------------------
+
+Antes de darle cuerpo a los imports ambiguos se midieron y descartaron tres caminos de linker que
+prometian resolver la colision sin cuerpo:
+
+  - un `.def` con `alias == real` en `lld-link` genera un WEAK ALIAS, no un ExportAs: el enlace
+    sigue exigiendo el simbolo original y el conflicto vuelve;
+  - `EXPORTAS` como palabra clave no lo interpreta el parser de `.def` de esta version de LLVM
+    (queda como un simbolo mas, literalmente llamado `EXPORTAS`);
+  - un short import record escrito a mano con `NameType = IMPORT_NAME_EXPORTAS` SI enlaza, pero el
+    PE resultante importa por ordinal 0 con nombre vacio -- verificado con
+    `llvm-readobj --coff-imports` contra un control con `NameType = IMPORT_NAME`, que si imprime
+    `Symbol: Init (0)`.
+
+Por eso el import ambiguo se liga como liga Windows un nombre ambiguo: por handle de libreria, en
+tiempo de ejecucion. Y por eso SOLO los imports que colisionan pagan ese costo -- el camino
+estatico certificado queda intacto, con test de regresion dedicado.
+
+
+NOTA SOBRE WINE (limitacion de entorno de esta ronda)
+-----------------------------------------------------
+
+Este sandbox NO tiene Wine, a diferencia de todas las rondas anteriores de este proyecto. Por
+instruccion directa de Alberto no se invirtio tiempo en instalarlo. Consecuencia concreta: la
+mitad de EJECUCION REAL de la politica de testing queda como skip explicito en esta ronda -- cada
+escenario reporta literalmente "Wine unavailable -- execution skipped", nunca un rojo falso ni un
+pase silencioso. Lo que si se verifico de punta a punta aqui: forma de IR con asserts positivos y
+negativos, compilacion a -O0 y -O2 de cada escenario, ENLACE REAL de los casos que antes fallaban
+justamente en el enlace, y que el PE sigue importando user32.dll por nombre en el camino estatico.
+
+Para correr en Windows real (del lado de Alberto):
+
+  tests\interop_contract\c1_03_function_pointer_parameter   -> 42
+  tests\interop_contract\c1_04_function_pointer_return      -> 42
+  tests\interop_contract\c1_05_raw_pointer_cast             -> 42
+  tests\interop_contract\c1_14_callback_exception_boundary  -> 141   (NO 0)
+  examples\project_stage56_c1                               -> 0
+
+c1_13_two_libraries_same_symbol compila y enlaza a proposito contra a.dll/b.dll que no existen: el
+caso es que dos identidades que comparten nombre puedan coexistir, y el binding es perezoso.
+
+
+VERIFICACION
+------------
+
+  Build completo con -DNSC_WARNINGS_AS_ERRORS=ON : limpio (0 warnings, 0 errores)
+  ctest completo                                  : 233/233 (232 previas + la nueva)
+  Suite nueva                                     : 92 checks
+  Manifest regenerado y verificado dentro del ZIP extraido
+  Extraccion aislada: configure + build + ctest desde cero

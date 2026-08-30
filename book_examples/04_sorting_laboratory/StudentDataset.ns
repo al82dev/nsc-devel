@@ -1,0 +1,34 @@
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class StudentDataset
+    {
+        public static int Count() { return 12; }
+
+        public static void Fill(Student[] data)
+        {
+            data[0] = new Student(1042, "Alicia", 88);
+            data[1] = new Student(1007, "Bruno", 95);
+            data[2] = new Student(1120, "Carla", 74);
+            data[3] = new Student(1011, "Dario", 88);
+            data[4] = new Student(1099, "Elisa", 91);
+            data[5] = new Student(1033, "Fabian", 82);
+            data[6] = new Student(1201, "Gabriela", 97);
+            data[7] = new Student(1025, "Hector", 79);
+            data[8] = new Student(1150, "Irene", 91);
+            data[9] = new Student(1001, "Julia", 86);
+            data[10] = new Student(1105, "Kevin", 74);
+            data[11] = new Student(1055, "Laura", 93);
+        }
+
+        public static void Destroy(Student[] data, int count)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                delete data[i];
+                i = i + 1;
+            }
+            delete[] data;
+        }
+    }
+}

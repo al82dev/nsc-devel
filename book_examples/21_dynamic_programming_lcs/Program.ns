@@ -1,0 +1,21 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Lcs
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 21 - Longest Common Subsequence");
+            Console.WriteLine("---------------------------------------------------------");
+            raii string left=String.Copy("NATIVESHARP");
+            raii string right=String.Copy("NATIVEGRAPH");
+            raii string lcs=LcsSolver.Solve(left,right);
+            raii string a=String.Concat("left : ",left);Console.WriteLine(a);
+            raii string b=String.Concat("right: ",right);Console.WriteLine(b);
+            raii string c=String.Concat("LCS  : ",lcs);Console.WriteLine(c);
+            raii string len=String.ToString(lcs.Length);
+            raii string d=String.Concat("length: ",len);Console.WriteLine(d);
+            return 0;
+        }
+    }
+}

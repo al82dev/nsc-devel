@@ -1,0 +1,126 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 20 -- Mas patrones de recursion
+// Fuente de inspiracion: CSharp-DataStructures-Algorithms-Fundamentals, carpetas 04-Recursion a
+// 07-Recursion IV (Power, SumRange, Reverse, IsPalindrome, CollectOddValues). Continua
+// tutorial_04 (que ya cubrio factorial/fibonacci) con patrones DISTINTOS: recursion sobre
+// arreglos, sobre strings, y "recursion que construye un resultado" (acumular en vez de solo
+// calcular un numero).
+// ============================================================================================
+namespace Tutorial.RecursionClasica
+{
+    class Program
+    {
+        // Power(base, exp) recursivo -- caso base exp==0 (cualquier numero^0 == 1), caso
+        // recursivo multiplica base por Power(base, exp-1).
+        public static int Power(int baseValue, int exponent)
+        {
+            if (exponent == 0)
+            {
+                return 1;
+            }
+            return baseValue * Power(baseValue, exponent - 1);
+        }
+
+        // SumRange -- suma 1+2+...+n de forma recursiva (DSA RecursionII05).
+        public static int SumRange(int n)
+        {
+            if (n <= 0)
+            {
+                return 0;
+            }
+            return n + SumRange(n - 1);
+        }
+
+        // SumArray recursivo -- recursion sobre un arreglo, no solo sobre un entero. El "indice"
+        // hace de contador de recursion (equivalente al "n" de factorial), y el caso base es
+        // "me pase del final del arreglo".
+        public static int SumArray(int[] values, int index)
+        {
+            if (index >= values.Length)
+            {
+                return 0;
+            }
+            return values[index] + SumArray(values, index + 1);
+        }
+
+        // Reverse recursivo de un string (DSA RecursionIII01) -- caso base: string vacio o de un
+        // caracter se invierte a si mismo; caso recursivo: invertir el resto y pegar el primer
+        // caracter al final.
+        public static owned string ReverseString(string value)
+        {
+            if (value.Length <= 1)
+            {
+                return String.Copy(value);
+            }
+            raii string firstChar = String.Substring(value, 0, 1);
+            raii string rest = String.Substring(value, 1, value.Length - 1);
+            raii string reversedRest = ReverseString(rest);
+            return String.Concat(reversedRest, firstChar);
+        }
+
+        // IsPalindrome recursivo (DSA RecursionIII02) -- compara extremos y recorta hacia
+        // adentro; caso base: 0 o 1 caracter siempre es palindromo.
+        public static bool IsPalindrome(string value)
+        {
+            if (value.Length <= 1)
+            {
+                return true;
+            }
+            char first = value[0];
+            char last = value[value.Length - 1];
+            if (first != last)
+            {
+                return false;
+            }
+            raii string middle = String.Substring(value, 1, value.Length - 2);
+            return IsPalindrome(middle);
+        }
+
+        public static int Main()
+        {
+            int power2To10 = Power(2, 10);       // 1024
+            int sum1To100 = SumRange(100);        // 5050
+
+            int[] values = new int[5];
+            values[0] = 10;
+            values[1] = 20;
+            values[2] = 30;
+            values[3] = 40;
+            values[4] = 50;
+            int arraySum = SumArray(values, 0); // 150
+            delete[] values;
+
+            raii string original = String.Copy("NativeSharp");
+            raii string reversed = ReverseString(original); // "prahSevitaN"
+
+            bool racecarIsPalindrome = IsPalindrome("racecar");   // true
+            bool nativeIsPalindrome = IsPalindrome("NativeSharp"); // false
+
+            raii string label = String.Copy("power/sumRange/arraySum = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(power2To10);
+            raii string d2 = String.ToString(sum1To100);
+            raii string d3 = String.ToString(arraySum);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string line = String.Concat(s4, d3);
+            Console.WriteLine(line);
+
+            raii string reversedLabel = String.Copy("reversed = ");
+            raii string reversedLine = String.Concat(reversedLabel, reversed);
+            Console.WriteLine(reversedLine);
+
+            // power2To10==1024, sum1To100==5050, arraySum==150, reversed=="prahSevitaN",
+            // racecarIsPalindrome==true, nativeIsPalindrome==false
+            int result = (power2To10 + sum1To100 + arraySum) % 1000;
+            if (racecarIsPalindrome) { result = result + 1; }
+            if (!nativeIsPalindrome) { result = result + 1; }
+            if (reversed[0] == 'p') { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

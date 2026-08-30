@@ -1,0 +1,1722 @@
+namespace NativeSharp.Core
+{
+    public enum StringComparison
+    {
+        Ordinal = 0,
+        OrdinalIgnoreCase = 1
+    }
+
+    public enum StringSplitOptions
+    {
+        None = 0,
+        RemoveEmptyEntries = 1,
+        TrimEntries = 2,
+        RemoveEmptyEntriesAndTrimEntries = 3
+    }
+
+    // NativeSharp.Core.String -- Stage 51 "Complete String".
+    //
+    // Representacion fisica: string nativo con longitud explicita + bytes, sin CLR, sin GC,
+    // sin runtime administrado (Stage 41). El acceso es byte-oriented / ASCII para todo lo que
+    // aqui distingue mayusculas/minusculas o clasifica caracteres -- no se afirma soporte Unicode
+    // completo (normalizacion, culturas, folding fuera de ASCII).
+    //
+    // Los metodos marcados "core operation" tienen cuerpo placeholder porque el compilador los
+    // reconoce por MethodCoreOperationKind y los sustituye por lowering nativo directo a LLVM
+    // (ver ProjectOopLlvmLowerer.cpp). Todo lo demas en este archivo es NativeSharp real,
+    // compilado igual que codigo de usuario -- no hay mecanismo intrinseco adicional para ello.
+    //
+    // Disciplina de ownership usada en todo el archivo (verificada contra el compilador real,
+    // Stage 51 actual): un local que recibe un valor "owned" SIEMPRE se declara "raii", nunca
+    // "owned" a secas (el compilador rechaza "owned string x = ...;" como local). Un "raii"
+    // local se puede LEER como argumento normal (prestamo), pero para reasignarlo hay que pasar
+    // por un raii local nuevo y `existing = move(nuevo);`, y para devolverlo por nombre hace
+    // falta `return move(x);`. Devolver directamente una llamada fresca (sin nombrar el
+    // intermedio) no requiere move().
+    public class String
+    {
+        // ---- Core operations (compiler intrinsics, lowering nativo) ------------------------
+
+        public static owned string Concat(string left, string right)
+        {
+            return null;
+        }
+
+        public static bool Equals(string left, string right)
+        {
+            return false;
+        }
+
+        public static owned string Substring(string value, int startIndex, int length)
+        {
+            return null;
+        }
+
+        public static owned string FromCharArray(char[] value)
+        {
+            return null;
+        }
+
+        public static string ToString(string value)
+        {
+            return value;
+        }
+
+        public static owned string Copy(string value)
+        {
+            return Substring(value, 0, value.Length);
+        }
+
+        public static bool IsNullOrEmpty(string value)
+        {
+            return value == null || value.Length == 0;
+        }
+
+        // ---- Helpers privados de clasificacion/case ASCII ----------------------------------
+
+        private static bool IsAsciiUpperChar(char value)
+        {
+            return value >= 'A' && value <= 'Z';
+        }
+
+        private static bool IsAsciiLowerChar(char value)
+        {
+            return value >= 'a' && value <= 'z';
+        }
+
+        private static char ToAsciiLowerChar(char value)
+        {
+            if (IsAsciiUpperChar(value))
+            {
+                return (char)((int)value + 32);
+            }
+            return value;
+        }
+
+        private static char ToAsciiUpperChar(char value)
+        {
+            if (IsAsciiLowerChar(value))
+            {
+                return (char)((int)value - 32);
+            }
+            return value;
+        }
+
+        private static bool IsAsciiDigitChar(char value)
+        {
+            return value >= '0' && value <= '9';
+        }
+
+        private static bool IsAsciiLetterChar(char value)
+        {
+            return IsAsciiUpperChar(value) || IsAsciiLowerChar(value);
+        }
+
+        private static bool IsAsciiWhitespaceChar(char value)
+        {
+            return value == ' ' || value == '\t' || value == '\n' || value == '\r' ||
+                value == '\f' || value == '\v';
+        }
+
+        private static owned string OneChar(char value)
+        {
+            char[] buffer = new char[1];
+            buffer[0] = value;
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        private static owned string EmptyString()
+        {
+            char[] buffer = new char[0];
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        // ---- Igualdad / busqueda -------------------------------------------------------------
+
+        // Nota Stage 51.x: el overload con StringComparison real (abajo) ya es posible -- el
+        // acceso calificado a miembros de enum (Tipo.Miembro) dentro de un metodo de clase no
+        // resolvia en el snapshot original (resolveTypeIdentifier solo aceptaba Class/Struct
+        // como receptor de tipo) y el cast enum->int tampoco bajaba a LLVM. Ambos huecos se
+        // corrigieron end-to-end (ProjectMemberModel registra los miembros de enum como static
+        // const int reutilizando el mecanismo de campos constantes de Stage 37; resolveTypeIdentifier,
+        // el segundo gate de receptor en analyzeMember, y convert() en el lowerer aceptan Enum).
+        // Se conserva el overload bool ignoreCase -- es una API perfectamente valida en C# real
+        // (String.Equals tiene ambos) y ya tiene cobertura de tests -- y el nuevo overload
+        // StringComparison delega en el.
+        public static bool Equals(string left, string right, StringComparison comparison)
+        {
+            return Equals(left, right, comparison == StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool Equals(string left, string right, bool ignoreCase)
+        {
+            if (!ignoreCase)
+            {
+                return Equals(left, right);
+            }
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+            if (left.Length != right.Length)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < left.Length)
+            {
+                if (ToAsciiLowerChar(left[i]) != ToAsciiLowerChar(right[i]))
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool IsNullOrWhiteSpace(string value)
+        {
+            if (value == null)
+            {
+                return true;
+            }
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (!IsAsciiWhitespaceChar(value[i]))
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static int IndexOf(string value, string needle)
+        {
+            if (value == null || needle == null)
+            {
+                return -1;
+            }
+            if (needle.Length == 0)
+            {
+                return 0;
+            }
+            int limit = value.Length - needle.Length;
+            int i = 0;
+            while (i <= limit)
+            {
+                int j = 0;
+                bool match = true;
+                while (j < needle.Length)
+                {
+                    if (value[i + j] != needle[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                    j = j + 1;
+                }
+                if (match)
+                {
+                    return i;
+                }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        public static int IndexOf(string value, string needle, StringComparison comparison)
+        {
+            return IndexOf(value, needle, comparison == StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static int IndexOf(string value, string needle, bool ignoreCase)
+        {
+            if (!ignoreCase)
+            {
+                return IndexOf(value, needle);
+            }
+            if (value == null || needle == null)
+            {
+                return -1;
+            }
+            if (needle.Length == 0)
+            {
+                return 0;
+            }
+            int limit = value.Length - needle.Length;
+            int i = 0;
+            while (i <= limit)
+            {
+                int j = 0;
+                bool match = true;
+                while (j < needle.Length)
+                {
+                    if (ToAsciiLowerChar(value[i + j]) != ToAsciiLowerChar(needle[j]))
+                    {
+                        match = false;
+                        break;
+                    }
+                    j = j + 1;
+                }
+                if (match)
+                {
+                    return i;
+                }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        public static int LastIndexOf(string value, string needle)
+        {
+            if (value == null || needle == null)
+            {
+                return -1;
+            }
+            if (needle.Length == 0)
+            {
+                return value.Length;
+            }
+            int i = value.Length - needle.Length;
+            while (i >= 0)
+            {
+                int j = 0;
+                bool match = true;
+                while (j < needle.Length)
+                {
+                    if (value[i + j] != needle[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                    j = j + 1;
+                }
+                if (match)
+                {
+                    return i;
+                }
+                i = i - 1;
+            }
+            return -1;
+        }
+
+        public static int IndexOfAny(string value, char[] anyOf)
+        {
+            if (value == null || anyOf == null)
+            {
+                return -1;
+            }
+            int i = 0;
+            while (i < value.Length)
+            {
+                int j = 0;
+                while (j < anyOf.Length)
+                {
+                    if (value[i] == anyOf[j])
+                    {
+                        return i;
+                    }
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        public static int LastIndexOfAny(string value, char[] anyOf)
+        {
+            if (value == null || anyOf == null)
+            {
+                return -1;
+            }
+            int i = value.Length - 1;
+            while (i >= 0)
+            {
+                int j = 0;
+                while (j < anyOf.Length)
+                {
+                    if (value[i] == anyOf[j])
+                    {
+                        return i;
+                    }
+                    j = j + 1;
+                }
+                i = i - 1;
+            }
+            return -1;
+        }
+
+        public static bool Contains(string value, string needle)
+        {
+            return IndexOf(value, needle) >= 0;
+        }
+
+        public static bool Contains(string value, string needle, bool ignoreCase)
+        {
+            return IndexOf(value, needle, ignoreCase) >= 0;
+        }
+
+        public static bool Contains(string value, string needle, StringComparison comparison)
+        {
+            return Contains(value, needle, comparison == StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool StartsWith(string value, string prefix)
+        {
+            if (value == null || prefix == null || prefix.Length > value.Length)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < prefix.Length)
+            {
+                if (value[i] != prefix[i])
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool StartsWith(string value, string prefix, bool ignoreCase)
+        {
+            if (!ignoreCase)
+            {
+                return StartsWith(value, prefix);
+            }
+            if (value == null || prefix == null || prefix.Length > value.Length)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < prefix.Length)
+            {
+                if (ToAsciiLowerChar(value[i]) != ToAsciiLowerChar(prefix[i]))
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool StartsWith(string value, string prefix, StringComparison comparison)
+        {
+            return StartsWith(value, prefix, comparison == StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool EndsWith(string value, string suffix)
+        {
+            if (value == null || suffix == null || suffix.Length > value.Length)
+            {
+                return false;
+            }
+            int offset = value.Length - suffix.Length;
+            int i = 0;
+            while (i < suffix.Length)
+            {
+                if (value[offset + i] != suffix[i])
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool EndsWith(string value, string suffix, bool ignoreCase)
+        {
+            if (!ignoreCase)
+            {
+                return EndsWith(value, suffix);
+            }
+            if (value == null || suffix == null || suffix.Length > value.Length)
+            {
+                return false;
+            }
+            int offset = value.Length - suffix.Length;
+            int i = 0;
+            while (i < suffix.Length)
+            {
+                if (ToAsciiLowerChar(value[offset + i]) != ToAsciiLowerChar(suffix[i]))
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool EndsWith(string value, string suffix, StringComparison comparison)
+        {
+            return EndsWith(value, suffix, comparison == StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ---- Construccion / edicion ----------------------------------------------------------
+
+        public static owned string Insert(string value, int startIndex, string inserted)
+        {
+            raii string head = Substring(value, 0, startIndex);
+            raii string withInsert = Concat(head, inserted);
+            raii string tail = Substring(value, startIndex, value.Length - startIndex);
+            return Concat(withInsert, tail);
+        }
+
+        public static owned string Remove(string value, int startIndex)
+        {
+            return Substring(value, 0, startIndex);
+        }
+
+        public static owned string Remove(string value, int startIndex, int count)
+        {
+            raii string head = Substring(value, 0, startIndex);
+            raii string tail = Substring(value, startIndex + count, value.Length - startIndex - count);
+            return Concat(head, tail);
+        }
+
+        public static owned string Replace(string value, char oldChar, char newChar)
+        {
+            char[] buffer = new char[value.Length];
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (value[i] == oldChar)
+                {
+                    buffer[i] = newChar;
+                }
+                else
+                {
+                    buffer[i] = value[i];
+                }
+                i = i + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        public static owned string Replace(string value, string oldValue, string newValue)
+        {
+            if (oldValue == null || oldValue.Length == 0)
+            {
+                return Copy(value);
+            }
+            raii string accumulator = Substring(value, 0, 0);
+            int i = 0;
+            while (i < value.Length)
+            {
+                int limit = value.Length - oldValue.Length;
+                bool match = false;
+                if (i <= limit)
+                {
+                    int j = 0;
+                    match = true;
+                    while (j < oldValue.Length)
+                    {
+                        if (value[i + j] != oldValue[j])
+                        {
+                            match = false;
+                            break;
+                        }
+                        j = j + 1;
+                    }
+                }
+                if (match)
+                {
+                    raii string next = Concat(accumulator, newValue);
+                    accumulator = move(next);
+                    i = i + oldValue.Length;
+                }
+                else
+                {
+                    raii string oneChar = OneChar(value[i]);
+                    raii string next = Concat(accumulator, oneChar);
+                    accumulator = move(next);
+                    i = i + 1;
+                }
+            }
+            return move(accumulator);
+        }
+
+        // ---- Trim / Strip (C# y alias estilo Python) -----------------------------------------
+
+        public static owned string TrimStart(string value)
+        {
+            int i = 0;
+            while (i < value.Length && IsAsciiWhitespaceChar(value[i]))
+            {
+                i = i + 1;
+            }
+            return Substring(value, i, value.Length - i);
+        }
+
+        public static owned string TrimEnd(string value)
+        {
+            int end = value.Length;
+            while (end > 0 && IsAsciiWhitespaceChar(value[end - 1]))
+            {
+                end = end - 1;
+            }
+            return Substring(value, 0, end);
+        }
+
+        public static owned string Trim(string value)
+        {
+            int start = 0;
+            while (start < value.Length && IsAsciiWhitespaceChar(value[start]))
+            {
+                start = start + 1;
+            }
+            int end = value.Length;
+            while (end > start && IsAsciiWhitespaceChar(value[end - 1]))
+            {
+                end = end - 1;
+            }
+            return Substring(value, start, end - start);
+        }
+
+        public static owned string Strip(string value)
+        {
+            return Trim(value);
+        }
+
+        public static owned string LStrip(string value)
+        {
+            return TrimStart(value);
+        }
+
+        public static owned string RStrip(string value)
+        {
+            return TrimEnd(value);
+        }
+
+        // ---- Padding (C# y alias estilo Python) ----------------------------------------------
+
+        public static owned string PadLeft(string value, int totalWidth, char paddingChar)
+        {
+            if (value.Length >= totalWidth)
+            {
+                return Copy(value);
+            }
+            int padCount = totalWidth - value.Length;
+            char[] buffer = new char[totalWidth];
+            int i = 0;
+            while (i < padCount)
+            {
+                buffer[i] = paddingChar;
+                i = i + 1;
+            }
+            int j = 0;
+            while (j < value.Length)
+            {
+                buffer[padCount + j] = value[j];
+                j = j + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        public static owned string PadLeft(string value, int totalWidth)
+        {
+            return PadLeft(value, totalWidth, ' ');
+        }
+
+        public static owned string PadRight(string value, int totalWidth, char paddingChar)
+        {
+            if (value.Length >= totalWidth)
+            {
+                return Copy(value);
+            }
+            int padCount = totalWidth - value.Length;
+            char[] buffer = new char[totalWidth];
+            int i = 0;
+            while (i < value.Length)
+            {
+                buffer[i] = value[i];
+                i = i + 1;
+            }
+            int j = 0;
+            while (j < padCount)
+            {
+                buffer[value.Length + j] = paddingChar;
+                j = j + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        public static owned string PadRight(string value, int totalWidth)
+        {
+            return PadRight(value, totalWidth, ' ');
+        }
+
+        // Python: ljust pega el texto a la izquierda (rellena a la derecha) -- igual que PadRight.
+        public static owned string LJust(string value, int width)
+        {
+            return PadRight(value, width, ' ');
+        }
+
+        // Python: rjust pega el texto a la derecha (rellena a la izquierda) -- igual que PadLeft.
+        public static owned string RJust(string value, int width)
+        {
+            return PadLeft(value, width, ' ');
+        }
+
+        public static owned string Center(string value, int width)
+        {
+            if (value.Length >= width)
+            {
+                return Copy(value);
+            }
+            int totalPad = width - value.Length;
+            int leftPad = totalPad / 2;
+            int rightPad = totalPad - leftPad;
+            char[] buffer = new char[width];
+            int i = 0;
+            while (i < leftPad)
+            {
+                buffer[i] = ' ';
+                i = i + 1;
+            }
+            int j = 0;
+            while (j < value.Length)
+            {
+                buffer[leftPad + j] = value[j];
+                j = j + 1;
+            }
+            int k = 0;
+            while (k < rightPad)
+            {
+                buffer[leftPad + value.Length + k] = ' ';
+                k = k + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        // Python zfill: rellena con '0' a la izquierda preservando un signo inicial +/- si existe.
+        public static owned string ZFill(string value, int width)
+        {
+            if (value.Length >= width)
+            {
+                return Copy(value);
+            }
+            bool hasSign = value.Length > 0 && (value[0] == '+' || value[0] == '-');
+            if (!hasSign)
+            {
+                return PadLeft(value, width, '0');
+            }
+            raii string sign = OneChar(value[0]);
+            raii string rest = Substring(value, 1, value.Length - 1);
+            raii string paddedRest = PadLeft(rest, width - 1, '0');
+            return Concat(sign, paddedRest);
+        }
+
+        // ---- Casing (ASCII) -------------------------------------------------------------------
+
+        public static owned string ToLower(string value)
+        {
+            char[] buffer = new char[value.Length];
+            int i = 0;
+            while (i < value.Length)
+            {
+                buffer[i] = ToAsciiLowerChar(value[i]);
+                i = i + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        public static owned string ToUpper(string value)
+        {
+            char[] buffer = new char[value.Length];
+            int i = 0;
+            while (i < value.Length)
+            {
+                buffer[i] = ToAsciiUpperChar(value[i]);
+                i = i + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        // Alcance ASCII: no hay tabla de folding Unicode, asi que CaseFold equivale hoy a ToLower.
+        public static owned string CaseFold(string value)
+        {
+            return ToLower(value);
+        }
+
+        public static owned string SwapCase(string value)
+        {
+            char[] buffer = new char[value.Length];
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (IsAsciiUpperChar(value[i]))
+                {
+                    buffer[i] = ToAsciiLowerChar(value[i]);
+                }
+                else if (IsAsciiLowerChar(value[i]))
+                {
+                    buffer[i] = ToAsciiUpperChar(value[i]);
+                }
+                else
+                {
+                    buffer[i] = value[i];
+                }
+                i = i + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        public static owned string Capitalize(string value)
+        {
+            if (value.Length == 0)
+            {
+                return Copy(value);
+            }
+            char[] buffer = new char[value.Length];
+            buffer[0] = ToAsciiUpperChar(value[0]);
+            int i = 1;
+            while (i < value.Length)
+            {
+                buffer[i] = ToAsciiLowerChar(value[i]);
+                i = i + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        public static owned string Title(string value)
+        {
+            char[] buffer = new char[value.Length];
+            bool startOfWord = true;
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (IsAsciiLetterChar(value[i]))
+                {
+                    if (startOfWord)
+                    {
+                        buffer[i] = ToAsciiUpperChar(value[i]);
+                    }
+                    else
+                    {
+                        buffer[i] = ToAsciiLowerChar(value[i]);
+                    }
+                    startOfWord = false;
+                }
+                else
+                {
+                    buffer[i] = value[i];
+                    startOfWord = true;
+                }
+                i = i + 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        // ---- Predicados estilo Python (sobre la cadena completa) ------------------------------
+
+        public static bool IsAlpha(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (!IsAsciiLetterChar(value[i]))
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool IsDigit(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (!IsAsciiDigitChar(value[i]))
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool IsAlnum(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (!IsAsciiLetterChar(value[i]) && !IsAsciiDigitChar(value[i]))
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool IsAscii(string value)
+        {
+            if (value == null)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < value.Length)
+            {
+                if ((int)value[i] > 127)
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool IsWhiteSpace(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            return IsNullOrWhiteSpace(value);
+        }
+
+        public static bool IsUpper(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            bool sawCased = false;
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (IsAsciiLowerChar(value[i]))
+                {
+                    return false;
+                }
+                if (IsAsciiUpperChar(value[i]))
+                {
+                    sawCased = true;
+                }
+                i = i + 1;
+            }
+            return sawCased;
+        }
+
+        public static bool IsLower(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            bool sawCased = false;
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (IsAsciiUpperChar(value[i]))
+                {
+                    return false;
+                }
+                if (IsAsciiLowerChar(value[i]))
+                {
+                    sawCased = true;
+                }
+                i = i + 1;
+            }
+            return sawCased;
+        }
+
+        // ---- Hash / arreglos --------------------------------------------------------------
+
+        // FNV-1a de 32 bits sobre los bytes crudos. Determinista, sin dependencia externa,
+        // consistente con la representacion byte-oriented de string. No es criptografico.
+        public static int GetHashCode(string value)
+        {
+            if (value == null)
+            {
+                return 0;
+            }
+            uint hash = 2166136261;
+            int i = 0;
+            while (i < value.Length)
+            {
+                hash = hash ^ (uint)value[i];
+                hash = hash * 16777619;
+                i = i + 1;
+            }
+            return (int)hash;
+        }
+
+        // Sin calificador owned: char[] aqui es un arreglo simple (Stage 41), la vida util la
+        // administra quien lo recibe con delete[], igual que cualquier otro T[] nuevo.
+        public static char[] ToCharArray(string value)
+        {
+            char[] buffer = new char[value.Length];
+            int i = 0;
+            while (i < value.Length)
+            {
+                buffer[i] = value[i];
+                i = i + 1;
+            }
+            return buffer;
+        }
+
+        public static void CopyTo(string value, char[] destination, int destinationIndex)
+        {
+            int i = 0;
+            while (i < value.Length)
+            {
+                destination[destinationIndex + i] = value[i];
+                i = i + 1;
+            }
+        }
+
+        // Join lee un arreglo de string ya existente (prestamo de lectura) -- no necesita
+        // construir un arreglo owned, solo recorrer uno que el caller ya tiene.
+        public static owned string Join(string separator, string[] values)
+        {
+            if (values == null || values.Length == 0)
+            {
+                return EmptyString();
+            }
+            raii string accumulator = Copy(values[0]);
+            int i = 1;
+            while (i < values.Length)
+            {
+                raii string withSeparator = Concat(accumulator, separator);
+                raii string next = Concat(withSeparator, values[i]);
+                accumulator = move(next);
+                i = i + 1;
+            }
+            return move(accumulator);
+        }
+
+        // ---- Split / Partition / Count -------------------------------------------------------
+        //
+        // Nota de diseno (verificada contra el compilador, no supuesta): NO existe forma de
+        // construir un `owned string[]` cuyos elementos se llenan en varios pasos -- `raii` no
+        // acepta tipos de arreglo ("raii local requires a NativeSharp class/interface reference
+        // type or native string"), `move(...)` solo acepta locales raii o parametros owned (un
+        // local `owned string[]` tampoco califica), y no hay sintaxis de inicializador de arreglo
+        // (`new string[] { a, b }` no parsea). Confirmado con repros minimos antes de escribir
+        // este bloque. En vez de bloquear Split/RSplit/Partition/RPartition/SplitLines en ese
+        // hueco (que es una limitacion real y mas grande que agregar overloads), esta superficie
+        // usa el patron de "buffer provisto por el caller": el caller reserva el arreglo
+        // (`string[] destination`) y el metodo lo llena, devolviendo cuantos elementos escribio
+        // de verdad. Es ademas el patron correcto para un lenguaje sin GC: nadie mas que el
+        // caller decide donde vive la memoria del arreglo resultado. Se confirmo por separado
+        // que SI se puede asignar un valor owned (el resultado de una llamada owned-returning)
+        // directamente a un elemento de un arreglo prestado -- ese es el mecanismo que hace
+        // posible todo este bloque.
+        //
+        // Cuando el numero real de piezas excede destination.Length, el ultimo elemento escrito
+        // recibe el resto sin partir (igual que un "capacity-bounded split" en C/C++); Split
+        // parte de izquierda a derecha por lo que el resto queda al final, RSplit parte de
+        // derecha a izquierda por lo que el resto queda al inicio.
+
+        public static int Split(string value, char separator, string[] destination)
+        {
+            if (value == null || destination == null || destination.Length == 0)
+            {
+                return 0;
+            }
+            int count = 0;
+            int start = 0;
+            int i = 0;
+            while (i < value.Length && count < destination.Length - 1)
+            {
+                if (value[i] == separator)
+                {
+                    destination[count] = Substring(value, start, i - start);
+                    count = count + 1;
+                    start = i + 1;
+                }
+                i = i + 1;
+            }
+            destination[count] = Substring(value, start, value.Length - start);
+            count = count + 1;
+            return count;
+        }
+
+        public static int Split(string value, string separator, string[] destination)
+        {
+            if (value == null || destination == null || destination.Length == 0)
+            {
+                return 0;
+            }
+            if (separator == null || separator.Length == 0)
+            {
+                destination[0] = Copy(value);
+                return 1;
+            }
+            int count = 0;
+            int start = 0;
+            int i = 0;
+            int limit = value.Length - separator.Length;
+            while (i <= limit && count < destination.Length - 1)
+            {
+                int j = 0;
+                bool match = true;
+                while (j < separator.Length)
+                {
+                    if (value[i + j] != separator[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                    j = j + 1;
+                }
+                if (match)
+                {
+                    destination[count] = Substring(value, start, i - start);
+                    count = count + 1;
+                    start = i + separator.Length;
+                    i = i + separator.Length;
+                    limit = value.Length - separator.Length;
+                }
+                else
+                {
+                    i = i + 1;
+                }
+            }
+            destination[count] = Substring(value, start, value.Length - start);
+            count = count + 1;
+            return count;
+        }
+
+        // RSplit parte igual que Split pero, cuando destination no alcanza para todas las
+        // piezas, sacrifica las primeras (las de mas a la izquierda) en vez de las ultimas --
+        // dos pasadas: la primera solo cuenta separadores (no asigna nada), la segunda ignora
+        // los primeros `skipCount` separadores y parte normalmente con los que quedan. Evita
+        // por completo tener que mover valores owned ya escritos entre casillas del arreglo.
+        public static int RSplit(string value, char separator, string[] destination)
+        {
+            if (value == null || destination == null || destination.Length == 0)
+            {
+                return 0;
+            }
+            int totalSeparators = 0;
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (value[i] == separator)
+                {
+                    totalSeparators = totalSeparators + 1;
+                }
+                i = i + 1;
+            }
+            int splitsToTake = totalSeparators;
+            if (splitsToTake > destination.Length - 1)
+            {
+                splitsToTake = destination.Length - 1;
+            }
+            int skipCount = totalSeparators - splitsToTake;
+
+            int count = 0;
+            int start = 0;
+            int seen = 0;
+            i = 0;
+            while (i < value.Length && count < splitsToTake)
+            {
+                if (value[i] == separator)
+                {
+                    if (seen < skipCount)
+                    {
+                        seen = seen + 1;
+                    }
+                    else
+                    {
+                        destination[count] = Substring(value, start, i - start);
+                        count = count + 1;
+                        start = i + 1;
+                    }
+                }
+                i = i + 1;
+            }
+            destination[count] = Substring(value, start, value.Length - start);
+            count = count + 1;
+            return count;
+        }
+
+        // Universal newlines: "\r\n" cuenta como un solo separador; "\n" y "\r" sueltos tambien.
+        public static int SplitLines(string value, string[] destination)
+        {
+            if (value == null || destination == null || destination.Length == 0)
+            {
+                return 0;
+            }
+            int count = 0;
+            int start = 0;
+            int i = 0;
+            while (i < value.Length && count < destination.Length - 1)
+            {
+                if (value[i] == '\n')
+                {
+                    destination[count] = Substring(value, start, i - start);
+                    count = count + 1;
+                    i = i + 1;
+                    start = i;
+                }
+                else if (value[i] == '\r')
+                {
+                    destination[count] = Substring(value, start, i - start);
+                    count = count + 1;
+                    if (i + 1 < value.Length && value[i + 1] == '\n')
+                    {
+                        i = i + 2;
+                    }
+                    else
+                    {
+                        i = i + 1;
+                    }
+                    start = i;
+                }
+                else
+                {
+                    i = i + 1;
+                }
+            }
+            destination[count] = Substring(value, start, value.Length - start);
+            count = count + 1;
+            return count;
+        }
+
+        // Partition/RPartition siempre escriben exactamente 3 elementos (destination.Length debe
+        // ser >= 3): [antes, separador-o-vacio, despues]. Regresan false si el separador no
+        // aparece (estilo Python str.partition/str.rpartition, adaptado sin tuplas).
+        public static bool Partition(string value, string separator, string[] destination)
+        {
+            if (value == null || destination == null || destination.Length < 3 ||
+                separator == null || separator.Length == 0)
+            {
+                return false;
+            }
+            int index = IndexOf(value, separator);
+            if (index < 0)
+            {
+                destination[0] = Copy(value);
+                destination[1] = EmptyString();
+                destination[2] = EmptyString();
+                return false;
+            }
+            destination[0] = Substring(value, 0, index);
+            destination[1] = Copy(separator);
+            destination[2] = Substring(value, index + separator.Length, value.Length - index - separator.Length);
+            return true;
+        }
+
+        public static bool RPartition(string value, string separator, string[] destination)
+        {
+            if (value == null || destination == null || destination.Length < 3 ||
+                separator == null || separator.Length == 0)
+            {
+                return false;
+            }
+            int index = LastIndexOf(value, separator);
+            if (index < 0)
+            {
+                destination[0] = EmptyString();
+                destination[1] = EmptyString();
+                destination[2] = Copy(value);
+                return false;
+            }
+            destination[0] = Substring(value, 0, index);
+            destination[1] = Copy(separator);
+            destination[2] = Substring(value, index + separator.Length, value.Length - index - separator.Length);
+            return true;
+        }
+
+        // Ocurrencias no solapadas de needle dentro de value.
+        public static int Count(string value, string needle)
+        {
+            if (value == null || needle == null || needle.Length == 0)
+            {
+                return 0;
+            }
+            int count = 0;
+            int limit = value.Length - needle.Length;
+            int i = 0;
+            while (i <= limit)
+            {
+                int j = 0;
+                bool match = true;
+                while (j < needle.Length)
+                {
+                    if (value[i + j] != needle[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                    j = j + 1;
+                }
+                if (match)
+                {
+                    count = count + 1;
+                    i = i + needle.Length;
+                }
+                else
+                {
+                    i = i + 1;
+                }
+            }
+            return count;
+        }
+
+        // ---- Prefijos / sufijos / comparacion / clonacion -------------------------------------
+
+        public static owned string RemovePrefix(string value, string prefix)
+        {
+            if (StartsWith(value, prefix))
+            {
+                return Substring(value, prefix.Length, value.Length - prefix.Length);
+            }
+            return Copy(value);
+        }
+
+        public static owned string RemoveSuffix(string value, string suffix)
+        {
+            if (EndsWith(value, suffix))
+            {
+                return Substring(value, 0, value.Length - suffix.Length);
+            }
+            return Copy(value);
+        }
+
+        // Comparacion ordinal (byte a byte); -1/0/1, no la magnitud de la diferencia.
+        public static int Compare(string left, string right)
+        {
+            if (left == right)
+            {
+                return 0;
+            }
+            if (left == null)
+            {
+                return -1;
+            }
+            if (right == null)
+            {
+                return 1;
+            }
+            int shorter = left.Length;
+            if (right.Length < shorter)
+            {
+                shorter = right.Length;
+            }
+            int i = 0;
+            while (i < shorter)
+            {
+                if (left[i] != right[i])
+                {
+                    if (left[i] < right[i])
+                    {
+                        return -1;
+                    }
+                    return 1;
+                }
+                i = i + 1;
+            }
+            if (left.Length < right.Length)
+            {
+                return -1;
+            }
+            if (left.Length > right.Length)
+            {
+                return 1;
+            }
+            return 0;
+        }
+
+        // Alias -- este runtime solo conoce comparacion ordinal (no hay tablas de culture/ICU),
+        // asi que CompareOrdinal y Compare son la misma operacion. Se expone por compatibilidad
+        // de superficie con la API de C# real.
+        public static int CompareOrdinal(string left, string right)
+        {
+            return Compare(left, right);
+        }
+
+        // CompareTo (no CompareOrdinal) es el nombre que el facade de instancia expone como
+        // text.CompareTo(other) -- ver Stage 51 seccion 6 del capitulo conceptual.
+        public static int CompareTo(string left, string right)
+        {
+            return Compare(left, right);
+        }
+
+        public static owned string Clone(string value)
+        {
+            return Copy(value);
+        }
+
+        // Alias -- este runtime es ASCII-only (sin tablas de culture/ICU), asi que "invariant
+        // culture" y "current culture" son la misma operacion. Se expone por compatibilidad de
+        // superficie con la API de C# real.
+        public static owned string ToLowerInvariant(string value)
+        {
+            return ToLower(value);
+        }
+
+        public static owned string ToUpperInvariant(string value)
+        {
+            return ToUpper(value);
+        }
+
+        // ---- Formato posicional simple --------------------------------------------------------
+        //
+        // Format NO es printf/string.Format completo (sin especificadores de formato, sin
+        // alineacion, sin escape de llaves) -- es sustitucion posicional {0}, {1}, ... contra un
+        // arreglo de argumentos ya-string que el caller arma. No requiere variadics/params reales:
+        // solo un parametro de arreglo, igual que Join. printf-style real (con especificadores por
+        // tipo) queda fuera de este stage a proposito.
+        public static owned string Format(string template, string[] args)
+        {
+            if (template == null)
+            {
+                return EmptyString();
+            }
+            raii string accumulator = Substring(template, 0, 0);
+            int i = 0;
+            while (i < template.Length)
+            {
+                if (template[i] == '{' && i + 1 < template.Length && IsAsciiDigitChar(template[i + 1]))
+                {
+                    int j = i + 1;
+                    int index = 0;
+                    while (j < template.Length && IsAsciiDigitChar(template[j]))
+                    {
+                        index = index * 10 + (template[j] - '0');
+                        j = j + 1;
+                    }
+                    if (j < template.Length && template[j] == '}')
+                    {
+                        if (args != null && index < args.Length)
+                        {
+                            raii string withArgument = Concat(accumulator, args[index]);
+                            accumulator = move(withArgument);
+                        }
+                        i = j + 1;
+                        continue;
+                    }
+                }
+                raii string oneChar = OneChar(template[i]);
+                raii string withChar = Concat(accumulator, oneChar);
+                accumulator = move(withChar);
+                i = i + 1;
+            }
+            return move(accumulator);
+        }
+
+        // ---- Predicados adicionales estilo Python ---------------------------------------------
+
+        // ASCII-only: en este runtime (sin categorias Unicode) IsDecimal/IsNumeric coinciden
+        // exactamente con IsDigit -- no se finge una distincion que no existe todavia.
+        public static bool IsDecimal(string value)
+        {
+            return IsDigit(value);
+        }
+
+        public static bool IsNumeric(string value)
+        {
+            return IsDigit(value);
+        }
+
+        public static bool IsIdentifier(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            char first = value[0];
+            if (!IsAsciiLetterChar(first) && first != '_')
+            {
+                return false;
+            }
+            int i = 1;
+            while (i < value.Length)
+            {
+                char c = value[i];
+                if (!IsAsciiLetterChar(c) && !IsAsciiDigitChar(c) && c != '_')
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool IsPrintable(string value)
+        {
+            if (value == null)
+            {
+                return false;
+            }
+            int i = 0;
+            while (i < value.Length)
+            {
+                char c = value[i];
+                if (c < ' ' || c > '~')
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool IsTitle(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return false;
+            }
+            bool anyCased = false;
+            bool expectUpper = true;
+            int i = 0;
+            while (i < value.Length)
+            {
+                char c = value[i];
+                if (IsAsciiLetterChar(c))
+                {
+                    anyCased = true;
+                    if (expectUpper)
+                    {
+                        if (!IsAsciiUpperChar(c))
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (!IsAsciiLowerChar(c))
+                        {
+                            return false;
+                        }
+                    }
+                    expectUpper = false;
+                }
+                else
+                {
+                    expectUpper = true;
+                }
+                i = i + 1;
+            }
+            return anyCased;
+        }
+
+        // ---- Tabs / terminadores de linea ------------------------------------------------------
+
+        public static owned string ExpandTabs(string value)
+        {
+            return ExpandTabs(value, 8);
+        }
+
+        public static owned string ExpandTabs(string value, int tabSize)
+        {
+            if (value == null)
+            {
+                return EmptyString();
+            }
+            raii string accumulator = Substring(value, 0, 0);
+            int column = 0;
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (value[i] == '\t')
+                {
+                    int spaces = 1;
+                    if (tabSize > 0)
+                    {
+                        spaces = tabSize - (column % tabSize);
+                    }
+                    int k = 0;
+                    while (k < spaces)
+                    {
+                        raii string oneSpace = OneChar(' ');
+                        raii string withSpace = Concat(accumulator, oneSpace);
+                        accumulator = move(withSpace);
+                        column = column + 1;
+                        k = k + 1;
+                    }
+                }
+                else
+                {
+                    raii string oneChar = OneChar(value[i]);
+                    raii string withChar = Concat(accumulator, oneChar);
+                    accumulator = move(withChar);
+                    if (value[i] == '\n' || value[i] == '\r')
+                    {
+                        column = 0;
+                    }
+                    else
+                    {
+                        column = column + 1;
+                    }
+                }
+                i = i + 1;
+            }
+            return move(accumulator);
+        }
+
+        // Normaliza "\r\n" y "\r" sueltos a "\n".
+        public static owned string ReplaceLineEndings(string value)
+        {
+            if (value == null)
+            {
+                return EmptyString();
+            }
+            raii string accumulator = Substring(value, 0, 0);
+            int i = 0;
+            while (i < value.Length)
+            {
+                if (value[i] == '\r')
+                {
+                    raii string newline = OneChar('\n');
+                    raii string withNewline = Concat(accumulator, newline);
+                    accumulator = move(withNewline);
+                    if (i + 1 < value.Length && value[i + 1] == '\n')
+                    {
+                        i = i + 2;
+                    }
+                    else
+                    {
+                        i = i + 1;
+                    }
+                }
+                else if (value[i] == '\n')
+                {
+                    raii string newline = OneChar('\n');
+                    raii string withNewline = Concat(accumulator, newline);
+                    accumulator = move(withNewline);
+                    i = i + 1;
+                }
+                else
+                {
+                    raii string oneChar = OneChar(value[i]);
+                    raii string withChar = Concat(accumulator, oneChar);
+                    accumulator = move(withChar);
+                    i = i + 1;
+                }
+            }
+            return move(accumulator);
+        }
+
+        // ---- ToString() de primitivos ------------------------------------------------------
+        //
+        // Solo integrales/bool/char por ahora. float/double NO tienen overload aqui a proposito:
+        // formatear punto flotante a decimal correctamente (clase Grisu/Ryu) es un problema
+        // aparte y no existe infraestructura dtoa en el compilador todavia -- mejor dejarlo sin
+        // resolver de forma visible (no compila) que fingir una implementacion ingenua e
+        // incorrecta. Pendiente explicito para un stage futuro.
+
+        public static owned string ToString(bool value)
+        {
+            if (value)
+            {
+                return Copy("True");
+            }
+            return Copy("False");
+        }
+
+        public static owned string ToString(char value)
+        {
+            return OneChar(value);
+        }
+
+        private static owned string FormatUnsignedDigits(ulong magnitude)
+        {
+            if (magnitude == 0)
+            {
+                return OneChar('0');
+            }
+            int digitCount = 0;
+            ulong probe = magnitude;
+            while (probe > 0)
+            {
+                digitCount = digitCount + 1;
+                probe = probe / 10;
+            }
+            char[] buffer = new char[digitCount];
+            ulong remaining = magnitude;
+            int index = digitCount - 1;
+            while (index >= 0)
+            {
+                ulong digit = remaining % 10;
+                buffer[index] = (char)(digit + 48);
+                remaining = remaining / 10;
+                index = index - 1;
+            }
+            raii string result = FromCharArray(buffer);
+            delete[] buffer;
+            return move(result);
+        }
+
+        public static owned string ToString(ulong value)
+        {
+            return FormatUnsignedDigits(value);
+        }
+
+        public static owned string ToString(long value)
+        {
+            if (value == 0)
+            {
+                return OneChar('0');
+            }
+            bool negative = value < 0;
+            ulong magnitude;
+            if (negative)
+            {
+                magnitude = (ulong)(-(value + 1)) + 1;
+            }
+            else
+            {
+                magnitude = (ulong)value;
+            }
+            if (!negative)
+            {
+                return FormatUnsignedDigits(magnitude);
+            }
+            raii string sign = OneChar('-');
+            raii string digits = FormatUnsignedDigits(magnitude);
+            return Concat(sign, digits);
+        }
+
+        public static owned string ToString(int value)
+        {
+            return ToString((long)value);
+        }
+    }
+}

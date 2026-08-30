@@ -1,0 +1,33 @@
+namespace NativeSharp.BookExamples.Searching
+{
+    public class SearchStatistics
+    {
+        private int comparisons;
+        private int probes;
+
+        public SearchStatistics()
+        {
+            comparisons = 0;
+            probes = 0;
+        }
+
+        public int Comparisons { get { return comparisons; } }
+        public int Probes { get { return probes; } }
+
+        public void Reset()
+        {
+            comparisons = 0;
+            probes = 0;
+        }
+
+        public void Comparison()
+        {
+            comparisons = comparisons + 1;
+        }
+
+        public void Probe()
+        {
+            probes = probes + 1;
+        }
+    }
+}

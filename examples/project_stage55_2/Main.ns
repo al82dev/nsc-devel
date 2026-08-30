@@ -1,0 +1,91 @@
+using NativeSharp.Core.Diagnostics;
+
+// Stage 55.2 "Hardware / System Info" -- programa de verificacion empaquetado. Misma
+// convencion que el resto de Stage 53/54/55: cada chequeo que falla devuelve un codigo de
+// salida distinto, y solo si TODOS pasan se llega al "return 0" final.
+class Program
+{
+    public static int Main()
+    {
+        // ---- PageSize: valor positivo, con techo de sanidad (1 MB) -----------------------
+        //
+        // 4096 bytes es el valor real esperado en x86_64-pc-windows-msvc (el UNICO target de
+        // este compilador), pero no se compara contra ese numero exacto a proposito -- si
+        // Microsoft alguna vez cambiara el tamanio de pagina por defecto (no ha pasado nunca
+        // en la historia de Windows x64), este chequeo no rompe sin necesidad.
+
+        long pageSize = SystemInfo.PageSize();
+        if (pageSize <= 0)
+        {
+            return 1;
+        }
+        if (pageSize > 1048576)
+        {
+            return 2;
+        }
+
+        // ---- ProcessorArchitecture: 9 = PROCESSOR_ARCHITECTURE_AMD64 ---------------------
+        //
+        // A diferencia de PageSize()/AllocationGranularity(), aca SI se compara contra un
+        // valor exacto: este compilador tiene un UNICO target posible
+        // (x86_64-pc-windows-msvc, ver claude/04_restricciones_arquitectonicas.md), asi que
+        // cualquier otro valor indicaria un bug real de marshaling, no una variacion legitima
+        // de plataforma.
+
+        long architecture = SystemInfo.ProcessorArchitecture();
+        if (architecture != 9)
+        {
+            return 3;
+        }
+
+        // ---- AllocationGranularity: positiva, y al menos tan grande como PageSize --------
+
+        long granularity = SystemInfo.AllocationGranularity();
+        if (granularity <= 0)
+        {
+            return 4;
+        }
+        if (granularity < pageSize)
+        {
+            return 5;
+        }
+
+        // ---- TotalPhysicalMemoryBytes: positiva, con techo de sanidad (1 TB) -------------
+
+        long totalMemory = SystemInfo.TotalPhysicalMemoryBytes();
+        if (totalMemory <= 0)
+        {
+            return 6;
+        }
+        if (totalMemory > 1099511627776)
+        {
+            return 7;
+        }
+
+        // ---- AvailablePhysicalMemoryBytes: positiva, nunca mayor al total ----------------
+
+        long availableMemory = SystemInfo.AvailablePhysicalMemoryBytes();
+        if (availableMemory <= 0)
+        {
+            return 8;
+        }
+        if (availableMemory > totalMemory)
+        {
+            return 9;
+        }
+
+        // ---- MemoryLoadPercent: 0-100 ------------------------------------------------------
+
+        long memoryLoad = SystemInfo.MemoryLoadPercent();
+        if (memoryLoad < 0)
+        {
+            return 10;
+        }
+        if (memoryLoad > 100)
+        {
+            return 11;
+        }
+
+        return 0;
+    }
+}

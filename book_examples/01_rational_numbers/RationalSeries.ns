@@ -1,0 +1,50 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.RationalNumbers
+{
+    public class RationalSeries
+    {
+        public static Rational Harmonic(int terms)
+        {
+            Rational sum = new Rational(0);
+            int k = 1;
+
+            while (k <= terms)
+            {
+                Rational term = new Rational(1, k);
+                Rational next = sum + term;
+
+                delete sum;
+                delete term;
+                sum = next;
+
+                k = k + 1;
+            }
+
+            return sum;
+        }
+
+        public static Rational LeibnizPiQuarter(int terms)
+        {
+            Rational sum = new Rational(0);
+            int k = 0;
+            int sign = 1;
+
+            while (k < terms)
+            {
+                int denominator = 2 * k + 1;
+                Rational term = new Rational(sign, denominator);
+                Rational next = sum + term;
+
+                delete sum;
+                delete term;
+                sum = next;
+
+                sign = -sign;
+                k = k + 1;
+            }
+
+            return sum;
+        }
+    }
+}

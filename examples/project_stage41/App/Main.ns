@@ -1,0 +1,34 @@
+using NativeSharp.Core;
+
+namespace Stage41.Sample
+{
+    public struct Pair
+    {
+        public int A;
+        public int B;
+    }
+
+    public class Harness
+    {
+        public static int Run()
+        {
+            int[] values = new int[4];
+            values[0] = 7;
+            values[1] = 11;
+
+            Pair[] pairs = new Pair[2];
+            pairs[0].A = values[0];
+            pairs[0].B = values[1];
+
+            string message = "NativeSharp Stage 41";
+            int messageLength = message.Length;
+            char second = message[1];
+            Console.WriteLine(message);
+
+            int result = values.Length + pairs[0].A + pairs[0].B + messageLength + second;
+            delete[] pairs;
+            delete[] values;
+            return result;
+        }
+    }
+}

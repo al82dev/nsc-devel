@@ -1,0 +1,4 @@
+int Twice(int value)
+{
+    return value + value;
+}

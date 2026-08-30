@@ -1,0 +1,220 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 21 -- Busqueda y ordenamiento clasicos
+// Fuente de inspiracion: CSharp-DataStructures-Algorithms-Fundamentals, carpetas 08-Searching y
+// 09-Sorting (LinearSearch, BinarySearch, BubbleSort, SelectionSort, InsertionSort). Tambien
+// K&R 5.6 (busqueda binaria sobre arreglo, "binsearch"). A diferencia de tutorial_20, aca la
+// recursion no es el punto -- son algoritmos ITERATIVOS clasicos sobre arreglos, con swaps
+// in-place (no hay tuple-swap ni funciones "swap" con ref/out -- ver tutorial_03/04, NativeSharp
+// no tiene ref/out -- asi que el swap se hace con una variable temporal local dentro del mismo
+// metodo que tiene el arreglo).
+// ============================================================================================
+namespace Tutorial.BusquedaYOrdenamiento
+{
+    class Program
+    {
+        // Busqueda lineal -- recorre de principio a fin. O(n), funciona sobre arreglo
+        // desordenado. Devuelve el indice o -1 si no esta.
+        public static int LinearSearch(int[] values, int length, int target)
+        {
+            int i = 0;
+            while (i < length)
+            {
+                if (values[i] == target)
+                {
+                    return i;
+                }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        // Busqueda binaria iterativa (K&R 5.6 "binsearch", version iterativa) -- requiere que el
+        // arreglo ya este ORDENADO. Cada paso descarta la mitad del rango [low, high].
+        public static int BinarySearch(int[] sortedValues, int length, int target)
+        {
+            int low = 0;
+            int high = length - 1;
+            while (low <= high)
+            {
+                int mid = (low + high) / 2;
+                if (sortedValues[mid] == target)
+                {
+                    return mid;
+                }
+                if (sortedValues[mid] < target)
+                {
+                    low = mid + 1;
+                }
+                else
+                {
+                    high = mid - 1;
+                }
+            }
+            return -1;
+        }
+
+        // Bubble sort -- en cada pasada, compara pares vecinos y los intercambia si estan al
+        // reves; el mayor "burbujea" hacia el final. O(n^2), pero es el mas simple de leer.
+        public static void BubbleSort(int[] values, int length)
+        {
+            int i = 0;
+            while (i < length - 1)
+            {
+                int j = 0;
+                while (j < length - 1 - i)
+                {
+                    if (values[j] > values[j + 1])
+                    {
+                        int temp = values[j];
+                        values[j] = values[j + 1];
+                        values[j + 1] = temp;
+                    }
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+
+        // Selection sort -- en cada pasada busca el MINIMO del resto sin ordenar y lo coloca al
+        // frente. A diferencia de bubble sort, hace un solo swap por pasada (menos escrituras).
+        public static void SelectionSort(int[] values, int length)
+        {
+            int i = 0;
+            while (i < length - 1)
+            {
+                int minIndex = i;
+                int j = i + 1;
+                while (j < length)
+                {
+                    if (values[j] < values[minIndex])
+                    {
+                        minIndex = j;
+                    }
+                    j = j + 1;
+                }
+                if (minIndex != i)
+                {
+                    int temp = values[i];
+                    values[i] = values[minIndex];
+                    values[minIndex] = temp;
+                }
+                i = i + 1;
+            }
+        }
+
+        // Insertion sort -- construye la parte ordenada de izquierda a derecha, insertando cada
+        // elemento nuevo en su lugar dentro de lo ya ordenado (como ordenar cartas en la mano).
+        public static void InsertionSort(int[] values, int length)
+        {
+            int i = 1;
+            while (i < length)
+            {
+                int key = values[i];
+                int j = i - 1;
+                // Condicion compuesta con && en vez de 'break': desplaza mientras haya elementos
+                // a la izquierda Y sean mayores que 'key' (&&/|| SI funcionan en NativeSharp,
+                // ver tutorial_02; 'break'/'continue' se evitan por prudencia -- no estan
+                // ejercitados en ningun ejemplo existente del compilador).
+                while (j >= 0 && values[j] > key)
+                {
+                    values[j + 1] = values[j];
+                    j = j - 1;
+                }
+                values[j + 1] = key;
+                i = i + 1;
+            }
+        }
+
+        // Verifica que el arreglo quedo ordenado ascendente -- se usa despues de cada sort para
+        // no confiar "a ojo" en el resultado.
+        public static bool IsSortedAscending(int[] values, int length)
+        {
+            int i = 0;
+            while (i < length - 1)
+            {
+                if (values[i] > values[i + 1])
+                {
+                    return false;
+                }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static int Main()
+        {
+            // --- Busqueda lineal sobre arreglo desordenado ---
+            int[] unsorted = new int[7];
+            unsorted[0] = 42;
+            unsorted[1] = 17;
+            unsorted[2] = 99;
+            unsorted[3] = 3;
+            unsorted[4] = 58;
+            unsorted[5] = 71;
+            unsorted[6] = 8;
+
+            int foundAt58 = LinearSearch(unsorted, 7, 58);   // indice 4
+            int foundAtMissing = LinearSearch(unsorted, 7, 1000); // -1
+
+            // --- Bubble sort + busqueda binaria sobre el resultado ordenado ---
+            int[] forBubble = new int[7];
+            forBubble[0] = 42; forBubble[1] = 17; forBubble[2] = 99; forBubble[3] = 3;
+            forBubble[4] = 58; forBubble[5] = 71; forBubble[6] = 8;
+            BubbleSort(forBubble, 7);
+            bool bubbleSorted = IsSortedAscending(forBubble, 7); // true, esperado: 3 8 17 42 58 71 99
+            int binaryFoundAt71 = BinarySearch(forBubble, 7, 71); // indice 5
+            int binaryFoundMissing = BinarySearch(forBubble, 7, 1000); // -1
+
+            // --- Selection sort ---
+            int[] forSelection = new int[6];
+            forSelection[0] = 5; forSelection[1] = 2; forSelection[2] = 9;
+            forSelection[3] = 1; forSelection[4] = 7; forSelection[5] = 3;
+            SelectionSort(forSelection, 6);
+            bool selectionSorted = IsSortedAscending(forSelection, 6); // true: 1 2 3 5 7 9
+            int selectionFirst = forSelection[0]; // 1
+            int selectionLast = forSelection[5];  // 9
+
+            // --- Insertion sort ---
+            int[] forInsertion = new int[5];
+            forInsertion[0] = 40; forInsertion[1] = 10; forInsertion[2] = 30;
+            forInsertion[3] = 20; forInsertion[4] = 50;
+            InsertionSort(forInsertion, 5);
+            bool insertionSorted = IsSortedAscending(forInsertion, 5); // true: 10 20 30 40 50
+            int insertionFirst = forInsertion[0]; // 10
+
+            delete[] unsorted;
+            delete[] forBubble;
+            delete[] forSelection;
+            delete[] forInsertion;
+
+            raii string label = String.Copy("foundAt58/binaryFoundAt71/selectionFirst/insertionFirst = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(foundAt58);
+            raii string d2 = String.ToString(binaryFoundAt71);
+            raii string d3 = String.ToString(selectionFirst);
+            raii string d4 = String.ToString(insertionFirst);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string s5 = String.Concat(s4, d3);
+            raii string s6 = String.Concat(s5, sep);
+            raii string line = String.Concat(s6, d4);
+            Console.WriteLine(line);
+
+            // foundAt58==4, foundAtMissing==-1, bubbleSorted==true, binaryFoundAt71==5,
+            // binaryFoundMissing==-1, selectionSorted==true, selectionFirst==1, selectionLast==9,
+            // insertionSorted==true, insertionFirst==10
+            int result = foundAt58 + binaryFoundAt71 + selectionFirst + insertionFirst +
+                selectionLast;
+            if (foundAtMissing == -1) { result = result + 1; }
+            if (binaryFoundMissing == -1) { result = result + 1; }
+            if (bubbleSorted) { result = result + 1; }
+            if (selectionSorted) { result = result + 1; }
+            if (insertionSorted) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

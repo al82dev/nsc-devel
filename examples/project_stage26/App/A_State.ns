@@ -1,0 +1,11 @@
+namespace Demo;
+
+public partial class Counter
+{
+    private int Value;
+
+    public int Get()
+    {
+        return this.Value;
+    }
+}

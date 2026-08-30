@@ -1,0 +1,53 @@
+namespace NativeSharp.Stage48_1
+{
+    extern C delegate int IntCallback(int value);
+
+    public struct Pair
+    {
+        public int X;
+        public int Y;
+    }
+
+    public class Counter
+    {
+        public int Value;
+
+        public Counter(int value)
+        {
+            Value = value;
+        }
+    }
+
+    public class HostApi
+    {
+        public static export extern C int Add(int left, int right)
+        {
+            return left + right;
+        }
+
+        public static export extern C Pair EchoPair(Pair value)
+        {
+            return value;
+        }
+
+        public static export extern C int Invoke(IntCallback callback, int value)
+        {
+            return callback(value);
+        }
+
+        public static export extern C Counter CounterCreate(int value)
+        {
+            return new Counter(value);
+        }
+
+        public static export extern C int CounterGet(Counter counter)
+        {
+            return counter.Value;
+        }
+
+        public static export extern C void CounterDestroy(Counter counter)
+        {
+            delete counter;
+        }
+    }
+}

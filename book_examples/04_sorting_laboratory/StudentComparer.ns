@@ -1,0 +1,42 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public abstract class StudentComparer
+    {
+        public abstract int Compare(Student left, Student right);
+        public abstract owned string Name();
+    }
+
+    public class StudentIdComparer : StudentComparer
+    {
+        public override int Compare(Student left, Student right)
+        {
+            if (left.Id < right.Id) { return -1; }
+            if (left.Id > right.Id) { return 1; }
+            return 0;
+        }
+
+        public override owned string Name()
+        {
+            return String.Copy("student id");
+        }
+    }
+
+    public class StudentGradeComparer : StudentComparer
+    {
+        public override int Compare(Student left, Student right)
+        {
+            if (left.Grade < right.Grade) { return -1; }
+            if (left.Grade > right.Grade) { return 1; }
+            if (left.Id < right.Id) { return -1; }
+            if (left.Id > right.Id) { return 1; }
+            return 0;
+        }
+
+        public override owned string Name()
+        {
+            return String.Copy("grade, then id");
+        }
+    }
+}

@@ -1,0 +1,43 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class ShellSorter : StudentSorter
+    {
+        public override owned string Name() { return String.Copy("Shell Sort"); }
+
+        public override void Sort(Student[] data, int count, StudentComparer comparer, SortStatistics statistics)
+        {
+            statistics.Reset();
+            int gap = count / 2;
+            while (gap > 0)
+            {
+                int i = gap;
+                while (i < count)
+                {
+                    Student value = data[i];
+                    statistics.Move();
+                    int j = i;
+                    bool shifting = true;
+                    while (j >= gap && shifting)
+                    {
+                        if (Compare(data[j - gap], value, comparer, statistics) > 0)
+                        {
+                            data[j] = data[j - gap];
+                            statistics.Move();
+                            j = j - gap;
+                        }
+                        else
+                        {
+                            shifting = false;
+                        }
+                    }
+                    data[j] = value;
+                    statistics.Move();
+                    i = i + 1;
+                }
+                gap = gap / 2;
+            }
+        }
+    }
+}

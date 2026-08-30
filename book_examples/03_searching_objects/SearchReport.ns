@@ -1,0 +1,42 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Searching
+{
+    public class SearchReport
+    {
+        public static void Run(
+            StudentSearcher searcher,
+            Student[] data,
+            int count,
+            int targetId,
+            SearchStatistics statistics)
+        {
+            int index = searcher.Search(data, count, targetId, statistics);
+            raii string algorithm = searcher.Name();
+            raii string target = String.ToString(targetId);
+            raii string probes = String.ToString(statistics.Probes);
+            raii string comparisons = String.ToString(statistics.Comparisons);
+            raii string s1 = String.Concat(algorithm, " | target=");
+            raii string s2 = String.Concat(s1, target);
+
+            if (index >= 0)
+            {
+                raii string s3 = String.Concat(s2, " | found: ");
+                raii string s4 = String.Concat(s3, data[index].Name);
+                raii string s5 = String.Concat(s4, " | probes=");
+                raii string s6 = String.Concat(s5, probes);
+                raii string s7 = String.Concat(s6, " | comparisons=");
+                raii string line = String.Concat(s7, comparisons);
+                Console.WriteLine(line);
+            }
+            else
+            {
+                raii string s3 = String.Concat(s2, " | NOT FOUND | probes=");
+                raii string s4 = String.Concat(s3, probes);
+                raii string s5 = String.Concat(s4, " | comparisons=");
+                raii string line = String.Concat(s5, comparisons);
+                Console.WriteLine(line);
+            }
+        }
+    }
+}

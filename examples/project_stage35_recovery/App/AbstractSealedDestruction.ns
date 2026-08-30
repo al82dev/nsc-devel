@@ -1,0 +1,56 @@
+namespace Demo;
+
+public abstract class Device
+{
+    protected int Id;
+
+    public Device(int id)
+    {
+        Id = id;
+    }
+
+    public abstract int Read();
+
+    ~Device()
+    {
+        Id = 0;
+    }
+}
+
+public class Sensor : Device
+{
+    private int Value;
+
+    public Sensor(int id, int value) : base(id)
+    {
+        Value = value;
+    }
+
+    public sealed override int Read()
+    {
+        return Id + Value;
+    }
+
+    ~Sensor()
+    {
+        Value = 0;
+    }
+}
+
+public sealed class FixedSensor : Sensor
+{
+    public FixedSensor(int id, int value) : base(id, value)
+    {
+    }
+}
+
+public class Harness
+{
+    public static int Run()
+    {
+        Device device = new Sensor(7, 35);
+        int value = device.Read();
+        delete device;
+        return value;
+    }
+}

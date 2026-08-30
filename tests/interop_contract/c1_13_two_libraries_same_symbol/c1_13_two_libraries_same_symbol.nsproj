@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>c1_13_two_libraries_same_symbol</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>

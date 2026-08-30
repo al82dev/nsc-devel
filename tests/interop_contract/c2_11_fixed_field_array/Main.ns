@@ -1,0 +1,36 @@
+// Interop contract case 11 -- FIXED FIELD ARRAY.
+//
+// `float color[4]` inside a C struct. The layout is the point: four floats end to end, starting
+// where the field starts, with the next field after them -- not a pointer to a heap block. Vulkan
+// structs are full of this shape, and so is anything with an embedded name or UUID buffer.
+//
+// MEASURED before phase C2: the TYPE parsed and the layout was already correct, but indexing the
+// field was rejected -- "index expression requires an indexer reference or a pointer with one
+// integral index" -- so the shape was undeclarable in practice.
+namespace contract {
+    public struct Material {
+        public float[4] albedo;
+        public byte[16] uuid;
+        public int flags;
+    }
+
+    class Case {
+        public static int Main() {
+            Material m;
+            m.flags = 0;
+            m.albedo[0] = 20;
+            m.albedo[3] = 22;
+            m.uuid[0] = 1;
+            m.uuid[15] = 2;
+
+            if ((int)m.uuid[0] + (int)m.uuid[15] != 3) { return 1; }
+            if (m.flags != 0) { return 2; }
+
+            // The raw tier indexes a pointer with the same arithmetic and the same absence of a
+            // bounds check -- the tier C APIs are written in.
+            float* first = &m.albedo[0];
+            float* last = &m.albedo[3];
+            return (int)(first[0] + last[0]);
+        }
+    }
+}

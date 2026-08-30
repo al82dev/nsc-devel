@@ -1,0 +1,260 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+// ============================================================================================
+// Tutorial 23 -- Codificacion de Huffman con PriorityQueue<TElement,TPriority>
+// Fuente de inspiracion: AllFiles.zip (HuffmanCoding.h / HuffmanEncoder.cpp / HuffmanDecoder.cpp,
+// curso clasico de estructuras de datos en C++) y CSharp-DataStructures-Algorithms-Fundamentals.
+// Las frecuencias {a:45, b:13, c:12, d:16, e:9} son el ejemplo de libro de texto mas citado para
+// Huffman (el mismo que aparece en CLRS y en la mayoria de cursos de algoritmos) -- se usan aca
+// tal cual porque, al no tener empates entre frecuencias en ningun paso del algoritmo, el arbol
+// resultante (y por lo tanto el largo de cada codigo) es 100% predecible a mano, lo que permite
+// verificar el resultado con aritmetica simple en vez de "confiar" en el compilador.
+//
+// Este es el cierre natural del paquete: usa PriorityQueue<TElement,TPriority> (tutorial_15/
+// project_stage52) para construir un arbol binario self-referential (tutorial_22) mediante
+// recursion (tutorial_20) sobre arreglos y strings (tutorial_05/21).
+//
+// Nota de diseno de ownership: PriorityQueue<TElement,TPriority>.Enqueue exige un TElement
+// "owned" (ver PriorityQueue.ns) -- para un TElement de tipo CLASE eso obliga a la danza
+// raii+move() de project_stage52 (RunPriorityQueueAndComparers, "payloadQueue"). Para evitar esa
+// friccion (y el hueco documentado de ownership en campos self-referential, ver el comentario de
+// clase de LinkedListNode.ns), el arbol de Huffman NO guarda referencias de objeto entre nodos:
+// guarda INDICES (int) dentro de un arreglo "pool" de HuffmanNode. Un TElement de tipo int no
+// necesita raii/move en absoluto -- es exactamente el PriorityQueue<int,int> mas simple ya usado
+// en project_stage52 ("tasks"), solo que el int que viaja por la cola es un indice de nodo en vez
+// de un dato suelto.
+// ============================================================================================
+namespace Tutorial.HuffmanPriorityQueue
+{
+    // Un nodo del arbol de Huffman. Las hojas representan un simbolo real del alfabeto; los
+    // nodos internos combinan dos subarboles (identificados por su indice en el pool) y no
+    // representan ningun simbolo por si mismos.
+    public class HuffmanNode
+    {
+        public char Symbol;
+        public int Frequency;
+        public bool IsLeaf;
+        public int LeftIndex;
+        public int RightIndex;
+
+        // Constructor de hoja.
+        public HuffmanNode(char symbol, int frequency)
+        {
+            Symbol = symbol;
+            Frequency = frequency;
+            IsLeaf = true;
+            LeftIndex = -1;
+            RightIndex = -1;
+        }
+
+        // Constructor de nodo interno -- combina dos subarboles ya existentes en el pool.
+        public HuffmanNode(int leftIndex, int rightIndex, int frequency)
+        {
+            Symbol = '#'; // relleno -- IsLeaf==false, este valor nunca se lee
+            Frequency = frequency;
+            IsLeaf = false;
+            LeftIndex = leftIndex;
+            RightIndex = rightIndex;
+        }
+    }
+
+    class Program
+    {
+        // Construye el arbol de Huffman completo a partir de simbolos/frecuencias paralelos.
+        // 'pool' debe venir pre-dimensionado a (alphabetSize * 2 - 1): alphabetSize hojas mas
+        // (alphabetSize - 1) nodos internos -- la cantidad exacta que produce el algoritmo
+        // clasico de "combinar los dos de menor frecuencia" cuando el alfabeto tiene mas de un
+        // simbolo. Devuelve el indice de la raiz (siempre el ultimo nodo creado).
+        public static int BuildTree(HuffmanNode[] pool, char[] symbols, int[] frequencies,
+            int alphabetSize)
+        {
+            PriorityQueue<int, int> queue = new PriorityQueue<int, int>();
+            int nextIndex = 0;
+
+            // Paso 1: cada simbolo entra como una hoja propia, con prioridad = su frecuencia (el
+            // heap de PriorityQueue siempre entrega primero la MENOR prioridad -- exactamente lo
+            // que Huffman necesita: combinar siempre los dos menos frecuentes).
+            int i = 0;
+            while (i < alphabetSize)
+            {
+                pool[nextIndex] = new HuffmanNode(symbols[i], frequencies[i]);
+                queue.Enqueue(nextIndex, frequencies[i]);
+                nextIndex = nextIndex + 1;
+                i = i + 1;
+            }
+
+            // Paso 2: mientras quede mas de un arbol en la cola, sacar los dos de menor
+            // frecuencia y combinarlos en un nuevo nodo interno cuya frecuencia es la suma --
+            // ese nuevo nodo vuelve a entrar a la cola compitiendo con el resto.
+            while (queue.Count() > 1)
+            {
+                int leftIndex = queue.Dequeue();
+                int rightIndex = queue.Dequeue();
+                int combinedFrequency = pool[leftIndex].Frequency + pool[rightIndex].Frequency;
+                pool[nextIndex] = new HuffmanNode(leftIndex, rightIndex, combinedFrequency);
+                queue.Enqueue(nextIndex, combinedFrequency);
+                nextIndex = nextIndex + 1;
+            }
+
+            int rootIndex = queue.Dequeue(); // el ultimo sobreviviente es la raiz del arbol
+            delete queue;
+            return rootIndex;
+        }
+
+        // Recorre el arbol acumulando el prefijo de bits ('0' hacia la izquierda, '1' hacia la
+        // derecha) y, al llegar a una hoja, guarda el codigo completo en codeTable[nodeIndex] --
+        // como todas las hojas se crearon en BuildTree con el MISMO indice que su simbolo tiene
+        // en 'symbols'/'frequencies' (paso 1 de BuildTree corre en orden y no crea nada mas antes
+        // de terminar), codeTable queda indexado exactamente igual que el alfabeto original.
+        public static void CollectCodes(HuffmanNode[] pool, int nodeIndex, string prefix,
+            string[] codeTable)
+        {
+            HuffmanNode node = pool[nodeIndex];
+            if (node.IsLeaf)
+            {
+                codeTable[nodeIndex] = String.Copy(prefix);
+                return;
+            }
+            raii string leftPrefix = String.Concat(prefix, "0");
+            CollectCodes(pool, node.LeftIndex, leftPrefix, codeTable);
+            raii string rightPrefix = String.Concat(prefix, "1");
+            CollectCodes(pool, node.RightIndex, rightPrefix, codeTable);
+        }
+
+        // Busqueda lineal del simbolo dentro del alfabeto (mismo patron que tutorial_21) -- da la
+        // posicion que hay que usar para consultar codeTable.
+        public static int FindSymbolIndex(char[] symbols, int alphabetSize, char target)
+        {
+            int i = 0;
+            while (i < alphabetSize)
+            {
+                if (symbols[i] == target)
+                {
+                    return i;
+                }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        // Codifica 'message' concatenando el codigo de cada caracter, en orden.
+        public static owned string Encode(string message, char[] symbols, int alphabetSize,
+            string[] codeTable)
+        {
+            raii string encoded = String.Copy("");
+            int i = 0;
+            while (i < message.Length)
+            {
+                char c = message[i];
+                int symbolIndex = FindSymbolIndex(symbols, alphabetSize, c);
+                raii string next = String.Concat(encoded, codeTable[symbolIndex]);
+                encoded = move(next);
+                i = i + 1;
+            }
+            return move(encoded);
+        }
+
+        // Decodifica bit a bit: en cada '0'/'1' baja por el arbol; cada vez que aterriza en una
+        // hoja, agrega ese simbolo al resultado y vuelve a arrancar desde la raiz -- el mismo
+        // algoritmo que HuffmanDecoder.cpp en AllFiles.zip, sin punteros crudos.
+        public static owned string Decode(string encoded, HuffmanNode[] pool, int rootIndex)
+        {
+            raii string decoded = String.Copy("");
+            int currentIndex = rootIndex;
+            int i = 0;
+            while (i < encoded.Length)
+            {
+                char bit = encoded[i];
+                HuffmanNode current = pool[currentIndex];
+                if (bit == '0')
+                {
+                    currentIndex = current.LeftIndex;
+                }
+                else
+                {
+                    currentIndex = current.RightIndex;
+                }
+                HuffmanNode landed = pool[currentIndex];
+                if (landed.IsLeaf)
+                {
+                    raii string symbolStr = String.ToString(landed.Symbol);
+                    raii string next = String.Concat(decoded, symbolStr);
+                    decoded = move(next);
+                    currentIndex = rootIndex;
+                }
+                i = i + 1;
+            }
+            return move(decoded);
+        }
+
+        public static int Main()
+        {
+            char[] symbols = new char[5];
+            symbols[0] = 'a';
+            symbols[1] = 'b';
+            symbols[2] = 'c';
+            symbols[3] = 'd';
+            symbols[4] = 'e';
+
+            int[] frequencies = new int[5];
+            frequencies[0] = 45;
+            frequencies[1] = 13;
+            frequencies[2] = 12;
+            frequencies[3] = 16;
+            frequencies[4] = 9;
+            int alphabetSize = 5;
+
+            // Verificacion a mano del arbol que produce este alfabeto (sin empates en ningun
+            // paso, asi que el resultado es determinista):
+            //   e(9)+c(12) -> 21; b(13)+d(16) -> 29; 21+29 -> 50; a(45)+50 -> 95 (raiz)
+            // Profundidad de cada hoja: a=1, y b/c/d/e=3 -- 'a' es por lejos el simbolo mas
+            // frecuente y termina con el codigo mas corto posible (1 bit), tal como exige la
+            // propiedad de Huffman.
+            HuffmanNode[] pool = new HuffmanNode[alphabetSize * 2 - 1];
+            int rootIndex = BuildTree(pool, symbols, frequencies, alphabetSize);
+
+            string[] codeTable = new string[alphabetSize];
+            CollectCodes(pool, rootIndex, "", codeTable);
+
+            int codeLengthA = codeTable[0].Length; // 1
+            int codeLengthB = codeTable[1].Length; // 3
+            int codeLengthC = codeTable[2].Length; // 3
+            int codeLengthD = codeTable[3].Length; // 3
+            int codeLengthE = codeTable[4].Length; // 3
+
+            raii string message = String.Copy("aabacdaeb"); // a,a,b,a,c,d,a,e,b (4a+2b+1c+1d+1e)
+            raii string encoded = Encode(message, symbols, alphabetSize, codeTable);
+            // largo esperado en bits: 4*1 (a) + 2*3 (b) + 1*3 (c) + 1*3 (d) + 1*3 (e) = 19
+            raii string decoded = Decode(encoded, pool, rootIndex);
+            bool roundTripOk = String.Equals(decoded, message);
+
+            raii string label = String.Copy("message/encodedBits/decoded = ");
+            raii string sep = String.Copy(" / ");
+            raii string lenDigits = String.ToString(encoded.Length);
+            raii string s1 = String.Concat(label, message);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, lenDigits);
+            raii string s4 = String.Concat(s3, sep);
+            raii string line = String.Concat(s4, decoded);
+            Console.WriteLine(line);
+
+            int freeIndex = 0;
+            while (freeIndex < alphabetSize)
+            {
+                delete codeTable[freeIndex];
+                freeIndex = freeIndex + 1;
+            }
+            delete[] codeTable;
+            delete[] pool;
+            delete[] symbols;
+            delete[] frequencies;
+
+            // roundTripOk==true, codeLengthA==1, codeLengthB/C/D/E==3, encoded.Length==19
+            int result = codeLengthA * 10 + codeLengthB + codeLengthC + codeLengthD +
+                codeLengthE + encoded.Length;
+            if (roundTripOk) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

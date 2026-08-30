@@ -1,0 +1,85 @@
+Stage 53.1 "Time" -- archivos nuevos y modificados
+====================================================
+
+ARCHIVOS NUEVOS
+----------------
+lib/NativeSharp.Core/NativeClock.ns
+    3 operaciones nucleo: QueryCounterRaw, QueryFrequencyRaw, QuerySystemFileTimeRaw.
+    Unico archivo de esta ronda que toca Win32.
+
+lib/NativeSharp.Core/TimeSpan.ns
+    struct de 8 bytes, Ticks (100ns). Fabricas + conversion + aritmetica + comparacion.
+
+lib/NativeSharp.Core/DateTime.ns
+    struct de 8 bytes, Ticks (100ns desde 0001-01-01 UTC). Conversion FILETIME<->Ticks.
+
+lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj
+    Proyecto nuevo. Depende de NativeSharp.Core (una sola direccion).
+
+lib/NativeSharp.Core.Diagnostics/Stopwatch.ns
+    class (tipo referencia) cronometro de alta resolucion.
+
+examples/project_stage53_1/Stage53_1Time.nsproj
+examples/project_stage53_1/Main.ns
+    Programa de verificacion empaquetado. 25 chequeos, retorna el numero del primer
+    chequeo que falla, 0 si todos pasan.
+
+tests/unit/Stage53_1TimeTests.cpp
+    Test dedicado: fixture de lowering + compilacion/link/ejecucion real bajo Wine
+    del programa de verificacion empaquetado.
+
+53_1_nativesharp_time.md
+    Documento conceptual ultra-verbose (objetivo, arquitectura, decisiones de diseno,
+    derivacion de la constante de epoca, superficie completa, verificacion real).
+
+53_1_nativesharp_time_implementacion_paso_a_paso.md
+    Documento paso a paso con los comandos y salidas reales de la implementacion,
+    incluidos los 5 errores encontrados y corregidos.
+
+ARCHIVOS MODIFICADOS
+----------------------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + enum MethodCoreOperationKind: ClockQueryCounter, ClockQueryFrequency,
+      ClockQuerySystemFileTime.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    + bloque de reconocimiento de NativeSharp.Core.Diagnostics.NativeClock.
+    + 3 lineas en methodCoreOperationKindName().
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + enum ProjectOopHirNodeKind: CoreClockQueryCounter/Frequency/SystemFileTime.
+
+src/Frontend/ProjectOopHirModel.cpp
+    + toString() + creacion de nodo (sin hijos, builtin:long).
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + enum ProjectOopMirNodeKind: 3 valores nuevos.
+
+src/Frontend/ProjectOopMirModel.cpp
+    + toString() + 3 casos de conversion HIR->MIR.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + 3 constantes de nombre de simbolo, 6 campos LLVMValueRef/LLVMTypeRef,
+      extension de declareRuntime(), 3 case de lowering.
+
+src/Runtime/WindowsRuntimeBuilder.cpp
+    + buildOutParamI64Call() (helper compartido).
+    + buildClockQueryCounter/buildClockQueryFrequency/buildClockSystemFileTime.
+    + declaracion de los 3 imports crudos de Win32.
+
+src/Linker/WindowsLibraryBuilder.cpp
+src/Linker/WindowsExecutableBuilder.cpp
+tests/unit/Stage48_3CHostIntegrationTests.cpp
+tests/unit/Stage47HostCAbiTests.cpp
+tests/unit/Stage48_4CppHostIntegrationTests.cpp
+    kernel32Symbols: 10 -> 13 entradas (agrega QueryPerformanceCounter,
+    QueryPerformanceFrequency, GetSystemTimeAsFileTime). Bug real encontrado:
+    "undefined symbol" en link sin este fix (ver documento paso a paso, Paso 10).
+
+CMakeLists.txt
+    + target nsc_stage53_1_time_tests + add_test(nsc.stage53-1.time).
+
+RESULTADO FINAL VERIFICADO
+-----------------------------
+nsc_stage53_1_time_tests: PASS, 25/25 chequeos (incluye ejecucion real bajo Wine).
+ctest completo: 100% tests passed, 0 tests failed out of 211 (210 previos + 1 nuevo).

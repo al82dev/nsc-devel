@@ -1,0 +1,8 @@
+namespace NativeSharp.BookExamples.Searching
+{
+    public abstract class StudentSearcher
+    {
+        public abstract owned string Name();
+        public abstract int Search(Student[] data, int count, int targetId, SearchStatistics statistics);
+    }
+}

@@ -1,0 +1,114 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 06 -- Structs
+// Fuente de inspiracion: K&R cap. 6 "Structures" (S6.1-6.4), adaptado a la ABI de valor de
+// NativeSharp (Stage 40).
+// ============================================================================================
+//
+// K&R presenta struct como una forma de agrupar campos relacionados bajo un nombre, con
+// semantica de VALOR: asignar un struct a otro copia todos sus campos (S6.2, "Structures and
+// Functions" -- ahi K&R explica que un struct completo SI se puede copiar/pasar por valor, a
+// diferencia de un arreglo). NativeSharp hereda exactamente esa semantica de C# real: struct es
+// tipo VALOR (se copia al asignar), class es tipo REFERENCIA (se comparte al asignar) -- ver
+// tutorial_07 para el contraste directo con class.
+//
+// Restriccion propia de este compilador, NO presente en C real ni en C# real: la ABI de valor de
+// Windows x64 (Stage 40) solo soporta agregados de 1, 2, 4 u 8 bytes como valor de primera clase
+// -- un struct mas grande (o con una combinacion de campos que no sume esos tamanos exactos) no
+// se puede materializar hoy como local/parametro/retorno directo. Point de abajo (2 int = 8
+// bytes) esta deliberadamente al limite permitido.
+namespace Tutorial.Structs
+{
+    // struct de 8 bytes exactos (2 x int32) -- cabe en el limite de la ABI de valor.
+    public struct Point
+    {
+        public int X;
+        public int Y;
+
+        // Los structs SI pueden tener metodos (K&R no tiene equivalente -- en C uno escribiria
+        // una funcion suelta que recibe "struct point p" por valor).
+        public int ManhattanDistanceFromOrigin()
+        {
+            int absX = X;
+            if (absX < 0) { absX = -absX; }
+            int absY = Y;
+            if (absY < 0) { absY = -absY; }
+            return absX + absY;
+        }
+
+        public static Point Add(Point a, Point b)
+        {
+            Point result;
+            result.X = a.X + b.X;
+            result.Y = a.Y + b.Y;
+            return result;
+        }
+    }
+
+    class Program
+    {
+        // Structs y funciones (K&R S6.2): pasar por valor significa que la funcion recibe una
+        // COPIA -- mutarla adentro no afecta al struct original del caller.
+        public static void TryToMutate(Point p)
+        {
+            p.X = 999;
+            p.Y = 999;
+        }
+
+        public static int Main()
+        {
+            Point origin;
+            origin.X = 0;
+            origin.Y = 0;
+
+            Point a;
+            a.X = 3;
+            a.Y = 4;
+            int distanceA = a.ManhattanDistanceFromOrigin(); // 7
+
+            // Semantica de VALOR (K&R S6.1-6.2): esto COPIA los campos de "a" hacia "b". A partir
+            // de aca, a y b son independientes.
+            Point b = a;
+            b.X = 100;
+            // a.X sigue siendo 3 -- b es una copia, no un alias.
+
+            TryToMutate(a);
+            // a.X sigue siendo 3 despues de esto tambien -- paso por valor real.
+
+            Point sum = Point.Add(a, b); // (3+100, 4+4) = (103, 8)
+
+            // Arreglos de structs (Stage 40/41): cada elemento es un Point de verdad, no un
+            // puntero a Point -- acceso directo con .campo encadenado al indice.
+            Point[] points = new Point[3];
+            points[0].X = 1;
+            points[0].Y = 1;
+            points[1].X = 2;
+            points[1].Y = 2;
+            points[2].X = 3;
+            points[2].Y = 3;
+            int totalX = 0;
+            for (int i = 0; i < points.Length; i = i + 1)
+            {
+                totalX = totalX + points[i].X;
+            }
+            delete[] points;
+
+            raii string line1 = String.Copy("distanceA/a.X/b.X = ");
+            raii string d1 = String.ToString(distanceA);
+            raii string sep = String.Copy(" / ");
+            raii string d2 = String.ToString(a.X);
+            raii string d3 = String.ToString(b.X);
+            raii string s1 = String.Concat(line1, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string valueLine = String.Concat(s4, d3);
+            Console.WriteLine(valueLine);
+
+            // distanceA==7, a.X==3 (nunca cambio), b.X==100, sum.X==103, sum.Y==8, totalX==6
+            int result = distanceA + a.X + b.X + sum.X + sum.Y + totalX;
+            return result % 250;
+        }
+    }
+}

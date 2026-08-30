@@ -1,0 +1,8 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.StackEvaluator
+{
+    public class ExpressionException : Exception
+    {
+    }
+}

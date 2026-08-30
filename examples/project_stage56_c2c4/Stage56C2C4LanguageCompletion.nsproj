@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup><Name>Stage56C2C4LanguageCompletion</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

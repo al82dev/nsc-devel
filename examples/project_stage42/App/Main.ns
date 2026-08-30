@@ -1,0 +1,52 @@
+namespace Stage42.Sample
+{
+    public delegate int Transform(int value);
+    public delegate void Changed(int value);
+
+    public class Listener
+    {
+        public int Last;
+
+        public void OnChanged(int value)
+        {
+            Last = value;
+        }
+
+        public int Double(int value)
+        {
+            return value + value;
+        }
+    }
+
+    public class Publisher
+    {
+        public event Changed ChangedEvent;
+
+        public void Raise(int value)
+        {
+            ChangedEvent(value);
+        }
+    }
+
+    public class Harness
+    {
+        public static int Increment(int value)
+        {
+            return value + 1;
+        }
+
+        public static int Run()
+        {
+            Listener listener = new Listener();
+            Publisher publisher = new Publisher();
+            Transform first = Increment;
+            Transform second = listener.Double;
+            int a = first(10);
+            int b = second(20);
+            publisher.ChangedEvent += listener.OnChanged;
+            publisher.Raise(77);
+            publisher.ChangedEvent -= listener.OnChanged;
+            return a + b + listener.Last;
+        }
+    }
+}

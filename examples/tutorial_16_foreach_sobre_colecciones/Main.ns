@@ -1,0 +1,134 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+// ============================================================================================
+// Tutorial 16 -- foreach sobre arreglos y colecciones
+// Fuente de inspiracion: cualquier libro de C# usa foreach constantemente; el detalle tecnico
+// de COMO NativeSharp lo implementa esta en 52_x_nativesharp_foreach.md y
+// 52_x_2_foreach_revision_tecnica_paso_a_paso.md -- este tutorial es el uso practico.
+// ============================================================================================
+//
+// foreach en NativeSharp NO depende de IEnumerable<T> (este compilador no tiene esa interface,
+// ni ninguna del framework) -- reconoce estructuralmente dos formas:
+//   1) "modo arreglo": cualquier T[] (usa .Length + indexado, desazucarado a un for comun).
+//   2) "modo enumerador": cualquier tipo con un GetEnumerator() accesible que a su vez tenga
+//      MoveNext() y una propiedad Current -- sin necesidad de declarar ninguna interface.
+// Dictionary/SortedDictionary/SortedList NO tienen GetEnumerator() (decision documentada: el
+// struct KeyValuePair<TKey,TValue> no siempre cabe en la ABI de valor de 1/2/4/8 bytes) -- para
+// esos tres se recorre Keys()/Values(), que YA son T[] normales.
+namespace Tutorial.ForeachSobreColecciones
+{
+    class Program
+    {
+        public static int HashInt(int value)
+        {
+            return Hashing.Int32(value);
+        }
+
+        public static int Main()
+        {
+            int arraySum = 0;
+            int[] numbers = new int[4];
+            numbers[0] = 1;
+            numbers[1] = 2;
+            numbers[2] = 3;
+            numbers[3] = 4;
+            // Modo arreglo.
+            foreach (int n in numbers)
+            {
+                arraySum = arraySum + n;
+            }
+            delete[] numbers;
+
+            int listSum = 0;
+            // Nota real (confirmada al escribir este ejemplo): "raii List<int> list" seguido de
+            // "foreach (int n in list)" falla con "RAII owner 'list' cannot be copied into a
+            // non-owning local" -- el analisis de ownership de foreach (que decide si la fuente
+            // necesita convertirse en raii, ver 52_x_2_foreach_revision_tecnica_paso_a_paso.md
+            // Paso 2) solo reconoce llamadas owned-returning como fuente, no un identificador que
+            // YA es un raii local existente. Por eso, igual que en el ejemplo original de
+            // compilador para esta feature (examples/project_stage52x_foreach/Main.ns), la lista
+            // se declara SIN raii aqui y se libera con delete explicito al final.
+            List<int> list = new List<int>();
+            list.Add(10);
+            list.Add(20);
+            list.Add(30);
+            // Modo enumerador -- List<T>.GetEnumerator()/ListEnumerator<T>.
+            foreach (int n in list)
+            {
+                listSum = listSum + n;
+            }
+            delete list;
+
+            // Queue<T>/Stack<T> -- foreach respeta el orden logico de cada uno: FIFO para Queue,
+            // tope-a-fondo para Stack (P1.2 de la revision tecnica de foreach).
+            Queue<int> queue = new Queue<int>();
+            queue.Enqueue(1);
+            queue.Enqueue(2);
+            queue.Enqueue(3);
+            raii string queueOrder = String.Copy("");
+            foreach (int n in queue)
+            {
+                raii string digit = String.ToString(n);
+                raii string next = String.Concat(queueOrder, digit);
+                queueOrder = move(next);
+            }
+            delete queue;
+            // queueOrder == "123" -- orden de insercion (FIFO)
+
+            Stack<int> stack = new Stack<int>();
+            stack.Push(1);
+            stack.Push(2);
+            stack.Push(3);
+            raii string stackOrder = String.Copy("");
+            foreach (int n in stack)
+            {
+                raii string digit = String.ToString(n);
+                raii string next = String.Concat(stackOrder, digit);
+                stackOrder = move(next);
+            }
+            delete stack;
+            // stackOrder == "321" -- tope primero (LIFO)
+
+            // Dictionary NO tiene GetEnumerator() -- se recorre Keys()/Values(), que ya son T[].
+            HashFunc<int> intHash = HashInt;
+            Dictionary<int, int> squares = new Dictionary<int, int>(intHash);
+            squares.Add(2, 4);
+            squares.Add(3, 9);
+            squares.Add(4, 16);
+            int[] keys = squares.Keys();
+            int keySum = 0;
+            foreach (int key in keys)
+            {
+                keySum = keySum + key;
+            }
+            delete[] keys;
+            int[] values = squares.Values();
+            int valueSum = 0;
+            foreach (int value in values)
+            {
+                valueSum = valueSum + value;
+            }
+            delete[] values;
+            delete squares;
+
+            raii string label = String.Copy("arraySum/listSum/queueOrder/stackOrder = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(arraySum);
+            raii string d2 = String.ToString(listSum);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string s5 = String.Concat(s4, queueOrder);
+            raii string s6 = String.Concat(s5, sep);
+            raii string line = String.Concat(s6, stackOrder);
+            Console.WriteLine(line);
+
+            // arraySum=10, listSum=60, queueOrder="123", stackOrder="321", keySum=9 (2+3+4),
+            // valueSum=29 (4+9+16)
+            int result = arraySum + listSum + keySum + valueSum;
+            return result % 250;
+        }
+    }
+}

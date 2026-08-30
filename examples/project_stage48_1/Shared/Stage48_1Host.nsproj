@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>Stage48_1Host</Name>
+    <OutputType>SharedLibrary</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

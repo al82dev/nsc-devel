@@ -1,0 +1,117 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 18 -- Eventos (patron publisher/subscriber)
+// Fuente de inspiracion: project_stage42/App/Main.ns de este mismo repo (el ejemplo original de
+// compilador para delegates/events).
+// ============================================================================================
+//
+// Un event es un delegate con una restriccion adicional: desde AFUERA de la clase que lo declara
+// solo se puede suscribir (+=) o desuscribir (-=) -- no se puede invocar directamente ni
+// reasignar por completo, a diferencia de un delegate normal. Es el mecanismo estandar de C#
+// para "avisar a quien le interese" sin que el publicador conozca de antemano quienes son sus
+// suscriptores.
+namespace Tutorial.Eventos
+{
+    public delegate void PriceChanged(int newPrice);
+
+    // El "publicador" -- dispara el evento cuando su estado cambia, sin saber nada de quien
+    // esta escuchando.
+    public class Stock
+    {
+        private int price;
+        public event PriceChanged Changed;
+
+        public Stock(int initialPrice)
+        {
+            price = initialPrice;
+        }
+
+        public void SetPrice(int newPrice)
+        {
+            price = newPrice;
+            Changed(newPrice); // dispara el evento -- notifica a TODOS los suscriptores actuales
+        }
+    }
+
+    // Un "suscriptor" con estado propio -- reacciona a las notificaciones actualizando sus
+    // propios campos.
+    public class PriceLogger
+    {
+        public int LastSeenPrice;
+        public int NotificationCount;
+
+        public void OnPriceChanged(int newPrice)
+        {
+            LastSeenPrice = newPrice;
+            NotificationCount = NotificationCount + 1;
+        }
+    }
+
+    // Segundo suscriptor con estado propio -- usado en vez de mutar un local capturado desde una
+    // lambda. Nota real (confirmada al escribir este ejemplo): una lambda SI puede capturar y
+    // LEER un local externo (ver tutorial_17), pero mutarlo ("lambdaNotifications = ... + 1;"
+    // dentro del cuerpo) falla con "left side of assignment is not assignable" -- la captura es
+    // de solo lectura. Mutar un CAMPO a traves de un objeto (como aca, o como Bias en
+    // project_stage43/App/Main.ns) si funciona -- el campo se alcanza via el objeto, no via una
+    // variable local capturada por valor.
+    public class CountingSubscriber
+    {
+        public int NotificationCount;
+
+        public void OnPriceChanged(int newPrice)
+        {
+            NotificationCount = NotificationCount + 1;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            raii Stock stock = new Stock(100);
+            raii PriceLogger logger = new PriceLogger();
+
+            // Suscripcion -- desde este punto, logger.OnPriceChanged se llama cada vez que el
+            // evento se dispara.
+            stock.Changed += logger.OnPriceChanged;
+
+            stock.SetPrice(110);
+            stock.SetPrice(120);
+            int countAfterTwo = logger.NotificationCount; // 2
+            int priceAfterTwo = logger.LastSeenPrice;      // 120
+
+            // Un segundo suscriptor -- el evento no tiene idea de cuantos oyentes tiene, cada
+            // SetPrice() los notifica a todos por igual.
+            raii CountingSubscriber lambdaStyleSubscriber = new CountingSubscriber();
+            stock.Changed += lambdaStyleSubscriber.OnPriceChanged;
+
+            stock.SetPrice(130);
+            // Ahora AMBOS suscriptores reaccionan a la misma notificacion.
+            int countAfterThree = logger.NotificationCount; // 3
+            int lambdaCountAfterOne = lambdaStyleSubscriber.NotificationCount; // 1
+
+            // Desuscripcion -- a partir de aca, logger ya no recibe mas notificaciones.
+            stock.Changed -= logger.OnPriceChanged;
+            stock.SetPrice(140);
+            int countAfterUnsubscribe = logger.NotificationCount; // sigue en 3, no crecio
+            int lambdaCountAfterTwo = lambdaStyleSubscriber.NotificationCount; // 2 -- este sigue activo
+
+            raii string label = String.Copy("notificaciones logger/lambda = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(countAfterUnsubscribe);
+            raii string d2 = String.ToString(lambdaCountAfterTwo);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string line = String.Concat(s2, d2);
+            Console.WriteLine(line);
+
+            // countAfterTwo==2, priceAfterTwo==120, countAfterThree==3, lambdaCountAfterOne==1,
+            // countAfterUnsubscribe==3 (no crecio), lambdaCountAfterTwo==2
+            int result = countAfterTwo + countAfterThree + lambdaCountAfterOne +
+                countAfterUnsubscribe + lambdaCountAfterTwo;
+            if (priceAfterTwo == 120) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

@@ -1,0 +1,270 @@
+using NativeSharp.Core.Threading;
+
+// Stage 54.4 "Condition Variables" -- programa de verificacion empaquetado.
+//
+// Misma convencion de exit codes que cada ronda de Stage 53/54: cada chequeo que falla devuelve
+// un codigo de salida DISTINTO, y el ultimo chequeo exitoso termina en "return 0".
+//
+// DISCIPLINA EXTRA DE ESTA RONDA (la misma regla de rigor de Stage 54, ver
+// claude/05_metodo_de_trabajo_y_archivo_historico.md): ademas de la exclusion mutua basica
+// (Seccion 1, mismo patron que Mutex ya establecio), este programa ejercita explicitamente los
+// corner cases propios de una condition variable real -- un Wait(timeout) que expira DE VERDAD
+// sin que nadie lo despierte (Seccion 2), Pulse()/PulseAll() como no-ops seguros cuando nadie
+// esta esperando (Seccion 3), un DESPERTAR CRUZADO-DE-HILO real y determinista via Wait(-1)
+// (Seccion 4), y -- el mas importante -- que PulseAll() despierta a TODOS los hilos bloqueados en
+// ese momento, no solo a uno (Seccion 5, con una barrera que GARANTIZA que los N hilos ya estan
+// dormidos en Wait() antes de que el unico PulseAll() se dispare; si PulseAll() se comportara como
+// un Pulse() simple, N-1 hilos se quedarian dormidos para siempre y el programa colgaria -- ver el
+// wrapper "timeout 20" en el test dedicado para por que un cuelgue aca falla de forma RUIDOSA en
+// vez de trabar la suite completa). La Seccion 6 es una cola productor/consumidor real con
+// backpressure en ambos sentidos (bloquea productores cuando esta "llena", bloquea consumidores
+// cuando esta "vacia") -- el patron de uso mas comun de una condition variable real. Ningun
+// chequeo usa Sleep() como sustituto de sincronizacion.
+class Mutual
+{
+    public static int Counter = 0;
+    public static Monitor Lock1 = new Monitor();
+
+    // Campo que NINGUN codigo de este programa toca jamas -- control negativo de la Seccion 7.
+    public static int NeverTouched = 0;
+}
+
+class CrossWake
+{
+    public static bool Ready = false;
+    public static Monitor Lock1 = new Monitor();
+}
+
+class Barrier
+{
+    // Cuantos de los N hilos trabajadores ya llegaron a su propio Wait() (o estan a punto de
+    // llegar) -- Main usa esto para saber con certeza que TODOS ya estan dormidos antes de
+    // disparar el UNICO PulseAll() de la Seccion 5.
+    public static int ThreadsStarted = 0;
+    public static bool Go = false;
+    public static Monitor Lock1 = new Monitor();
+    public static AtomicInt32 Completed = new AtomicInt32(0);
+}
+
+class Queue
+{
+    // Sin buffer real -- solo dos contadores protegidos por el mismo Monitor. Suficiente para
+    // probar la mecanica real de bloqueo/despertar en ambos sentidos (productor bloquea si
+    // "llena", consumidor bloquea si "vacia") sin depender de un tipo de arreglo estatico que
+    // ninguna ronda anterior de este compilador probo como campo de clase.
+    public static int Produced = 0;
+    public static int Consumed = 0;
+    public static Monitor Lock1 = new Monitor();
+    public static AtomicInt32 TotalConsumedByAll = new AtomicInt32(0);
+}
+
+class Program
+{
+    // ==== Trabajador de la Seccion 1: exclusion mutua basica, contador NO-atomico =============
+    // 4 hilos x 2500 incrementos = 10000 exactos, si Enter()/Exit() realmente proveen exclusion
+    // mutua -- mismo patron y mismo numero que Stage 54.3's Mutex.
+    private static void MutualWorker()
+    {
+        int i = 0;
+        while (i < 2500)
+        {
+            Mutual.Lock1.Enter();
+            Mutual.Counter = Mutual.Counter + 1;
+            Mutual.Lock1.Exit();
+            i = i + 1;
+        }
+    }
+
+    // ==== Trabajador de la Seccion 4: espera cruzada-de-hilo real, un solo Wait(-1) ===========
+    // Bloquea en Wait(-1) hasta que Main ponga Ready=true y llame Pulse() -- si Main ya lo hizo
+    // antes de que este hilo llegue aca, el while ni siquiera entra a Wait() (ambos ordenes son
+    // seguros, el patron re-chequea la condicion bajo el lock antes de decidir dormir).
+    private static void CrossWakeWorker()
+    {
+        CrossWake.Lock1.Enter();
+        while (!CrossWake.Ready)
+        {
+            CrossWake.Lock1.Wait(-1);
+        }
+        CrossWake.Lock1.Exit();
+    }
+
+    // ==== Trabajador de la Seccion 5: barrera + espera-hasta-PulseAll ==========================
+    private static void BarrierWorker()
+    {
+        Barrier.Lock1.Enter();
+        Barrier.ThreadsStarted = Barrier.ThreadsStarted + 1;
+        // Le avisa a Main (que puede estar dormido en su propio Wait(-1) esperando a que los N
+        // hilos lleguen aca) que uno mas ya esta a punto de dormir en su propio Wait().
+        Barrier.Lock1.PulseAll();
+        while (!Barrier.Go)
+        {
+            Barrier.Lock1.Wait(-1);
+        }
+        Barrier.Lock1.Exit();
+        Barrier.Completed.Increment();
+    }
+
+    // ==== Trabajadores de la Seccion 6: cola productor/consumidor con backpressure real ========
+    // Capacidad simulada de 8 -- un productor que la llenaria bloquea hasta que un consumidor
+    // libere espacio; un consumidor sobre una cola vacia bloquea hasta que un productor agregue.
+    private static void Producer()
+    {
+        int i = 0;
+        while (i < 1000)
+        {
+            Queue.Lock1.Enter();
+            while (Queue.Produced - Queue.Consumed >= 8)
+            {
+                Queue.Lock1.Wait(-1);
+            }
+            Queue.Produced = Queue.Produced + 1;
+            Queue.Lock1.PulseAll();
+            Queue.Lock1.Exit();
+            i = i + 1;
+        }
+    }
+
+    private static void Consumer()
+    {
+        int myCount = 0;
+        while (true)
+        {
+            Queue.Lock1.Enter();
+            while (Queue.Consumed >= Queue.Produced && Queue.Consumed < 4000)
+            {
+                Queue.Lock1.Wait(-1);
+            }
+            bool finished = Queue.Consumed >= 4000;
+            if (!finished)
+            {
+                Queue.Consumed = Queue.Consumed + 1;
+                Queue.Lock1.PulseAll();
+            }
+            Queue.Lock1.Exit();
+            if (finished) { break; }
+            myCount = myCount + 1;
+        }
+        Queue.TotalConsumedByAll.Add(myCount);
+    }
+
+    public static int Main()
+    {
+        // ==== Seccion 1: exclusion mutua real -- 4 hilos, contador NO-atomico ==================
+
+        ThreadStart mutualStart = MutualWorker;
+        raii Thread mt1 = new Thread(mutualStart);
+        raii Thread mt2 = new Thread(mutualStart);
+        raii Thread mt3 = new Thread(mutualStart);
+        raii Thread mt4 = new Thread(mutualStart);
+        mt1.Join();
+        mt2.Join();
+        mt3.Join();
+        mt4.Join();
+        if (Mutual.Counter != 10000) { return 1; }
+
+        // ==== Seccion 2: Wait(timeout) que expira DE VERDAD -- un solo hilo, nadie despierta ===
+        // Nadie mas toca este Monitor concurrentemente: un timeout corto sobre una condicion que
+        // nunca se vuelve verdadera SIEMPRE debe expirar (false), nunca bloquear para siempre.
+
+        Monitor soloMonitor = new Monitor();
+        soloMonitor.Enter();
+        bool waited = soloMonitor.Wait(50);
+        soloMonitor.Exit();
+        if (waited) { return 2; }
+        // Confirma que el lock sigue usable normalmente despues de que el timeout expiro -- Win32
+        // garantiza que Wait() siempre re-adquiere el lock antes de retornar, exito o timeout.
+        soloMonitor.Enter();
+        soloMonitor.Exit();
+
+        // ==== Seccion 3: Pulse()/PulseAll() son no-ops seguros si nadie esta esperando =========
+
+        Monitor idleMonitor = new Monitor();
+        idleMonitor.Enter();
+        idleMonitor.Pulse();
+        idleMonitor.PulseAll();
+        idleMonitor.Exit();
+        // El monitor sigue perfectamente usable despues de los dos no-ops.
+        idleMonitor.Enter();
+        idleMonitor.Exit();
+
+        // ==== Seccion 4: despertar cruzado-de-hilo real, un solo Wait(-1)/Pulse() ===============
+        // Si Join() retorna, el hilo escapo de su bucle Wait(-1) -- solo puede pasar si Main
+        // realmente puso Ready=true y llamo Pulse() (o si el hilo vio Ready=true directamente,
+        // ambos ordenes validos y ambos probados por corridas repetidas bajo Wine).
+
+        ThreadStart crossWakeStart = CrossWakeWorker;
+        raii Thread cw = new Thread(crossWakeStart);
+        CrossWake.Lock1.Enter();
+        CrossWake.Ready = true;
+        CrossWake.Lock1.Pulse();
+        CrossWake.Lock1.Exit();
+        cw.Join();
+
+        // ==== Seccion 5: PulseAll() despierta a TODOS los hilos bloqueados, no solo a uno ======
+        // 6 hilos trabajadores. Main duerme en su PROPIO Wait(-1) hasta que los 6 ya incrementaron
+        // ThreadsStarted (barrera real, sin Sleep()) -- solo entonces dispara el UNICO PulseAll()
+        // de esta seccion. Si PulseAll() se comportara como Pulse() (despierta uno solo), 5 de los
+        // 6 hilos se quedarian dormidos para siempre y Join() nunca retornaria -- el wrapper
+        // "timeout 20" del test dedicado convierte ese cuelgue hipotetico en un fallo ruidoso, no
+        // en una suite trabada.
+
+        ThreadStart barrierStart = BarrierWorker;
+        raii Thread bt1 = new Thread(barrierStart);
+        raii Thread bt2 = new Thread(barrierStart);
+        raii Thread bt3 = new Thread(barrierStart);
+        raii Thread bt4 = new Thread(barrierStart);
+        raii Thread bt5 = new Thread(barrierStart);
+        raii Thread bt6 = new Thread(barrierStart);
+
+        Barrier.Lock1.Enter();
+        while (Barrier.ThreadsStarted < 6)
+        {
+            Barrier.Lock1.Wait(-1);
+        }
+        Barrier.Go = true;
+        Barrier.Lock1.PulseAll();
+        Barrier.Lock1.Exit();
+
+        bt1.Join();
+        bt2.Join();
+        bt3.Join();
+        bt4.Join();
+        bt5.Join();
+        bt6.Join();
+        if (Barrier.Completed.Value != 6) { return 3; }
+
+        // ==== Seccion 6: cola productor/consumidor real, backpressure en ambos sentidos ========
+        // 4 productores x 1000 = 4000 items producidos; 4 consumidores compartiendo el trabajo de
+        // consumir exactamente 4000 -- si algun item se perdiera o se contara dos veces, la suma
+        // agregada de lo que cada consumidor conto individualmente no daria exactamente 4000.
+
+        ThreadStart producerStart = Producer;
+        ThreadStart consumerStart = Consumer;
+        raii Thread p1 = new Thread(producerStart);
+        raii Thread p2 = new Thread(producerStart);
+        raii Thread p3 = new Thread(producerStart);
+        raii Thread p4 = new Thread(producerStart);
+        raii Thread c1 = new Thread(consumerStart);
+        raii Thread c2 = new Thread(consumerStart);
+        raii Thread c3 = new Thread(consumerStart);
+        raii Thread c4 = new Thread(consumerStart);
+        p1.Join();
+        p2.Join();
+        p3.Join();
+        p4.Join();
+        c1.Join();
+        c2.Join();
+        c3.Join();
+        c4.Join();
+        if (Queue.Produced != 4000) { return 4; }
+        if (Queue.Consumed != 4000) { return 5; }
+        if (Queue.TotalConsumedByAll.Value != 4000) { return 6; }
+
+        // ==== Seccion 7: control negativo -- un campo que NINGUN codigo toco sigue en 0 ========
+
+        if (Mutual.NeverTouched != 0) { return 7; }
+
+        return 0;
+    }
+}

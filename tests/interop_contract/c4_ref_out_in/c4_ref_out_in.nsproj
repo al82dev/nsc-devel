@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>c4_ref_out_in</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>

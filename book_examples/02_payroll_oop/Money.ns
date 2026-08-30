@@ -1,0 +1,85 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    public class Money
+    {
+        private int cents;
+
+        public Money(int initialCents)
+        {
+            cents = initialCents;
+        }
+
+        public int Cents
+        {
+            get { return cents; }
+        }
+
+        public owned string ToText()
+        {
+            int absolute = cents;
+            bool negative = false;
+            if (absolute < 0)
+            {
+                negative = true;
+                absolute = -absolute;
+            }
+
+            int dollars = absolute / 100;
+            int remainder = absolute % 100;
+            raii string dollarText = String.ToString(dollars);
+            raii string centText = String.ToString(remainder);
+            raii string prefix = String.Copy("$");
+            raii string dot = String.Copy(".");
+            raii string zero = String.Copy("0");
+            raii string body1 = String.Concat(prefix, dollarText);
+            raii string body2 = String.Concat(body1, dot);
+            raii string body3 = String.Copy(body2);
+            if (remainder < 10)
+            {
+                raii string padded = String.Concat(body2, zero);
+                body3 = move(padded);
+            }
+            raii string body4 = String.Concat(body3, centText);
+
+            if (negative)
+            {
+                raii string minus = String.Copy("-");
+                return String.Concat(minus, body4);
+            }
+
+            return String.Copy(body4);
+        }
+
+        public static Money operator +(Money left, Money right)
+        {
+            return new Money(left.cents + right.cents);
+        }
+
+        public static Money operator -(Money left, Money right)
+        {
+            return new Money(left.cents - right.cents);
+        }
+
+        public static bool operator <(Money left, Money right)
+        {
+            return left.cents < right.cents;
+        }
+
+        public static bool operator >(Money left, Money right)
+        {
+            return left.cents > right.cents;
+        }
+
+        public static bool operator ==(Money left, Money right)
+        {
+            return left.cents == right.cents;
+        }
+
+        public static bool operator !=(Money left, Money right)
+        {
+            return !(left == right);
+        }
+    }
+}

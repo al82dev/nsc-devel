@@ -1,0 +1,9 @@
+namespace NativeSharp.BookExamples.TopologicalSort
+{
+    public class BuildTask
+    {
+        public int Id;
+        public string Name;
+        public BuildTask(int id,string name) { Id=id; Name=name; }
+    }
+}

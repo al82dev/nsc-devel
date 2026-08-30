@@ -1,0 +1,238 @@
+#include "nativesharp/Linker/WindowsRuntimeImports.h"
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <map>
+
+namespace nativesharp::linker
+{
+namespace
+{
+std::string upperAscii(std::string_view text)
+{
+    std::string result(text);
+    std::transform(result.begin(), result.end(), result.begin(),
+        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    return result;
+}
+}
+
+bool createWindowsImportLibraries(
+    const LldLinker& linker,
+    const std::filesystem::path& directory,
+    std::string_view combinedIrText,
+    std::span<const ExternalImportModule> externalImports,
+    std::vector<std::filesystem::path>& libraries,
+    std::string& error)
+{
+    libraries.clear();
+
+    // The canonical runtime tables. The KERNEL32 list's per-stage comments are the project's
+    // import history and moved here verbatim from the (formerly duplicated) builder copies.
+    const std::array<std::string_view, 62> kernel32Symbols = {
+        "ExitProcess",
+        "GetProcessHeap",
+        "HeapAlloc",
+        "HeapFree",
+        "GetStdHandle",
+        "WriteFile",
+        "TlsAlloc",
+        "TlsGetValue",
+        "TlsSetValue",
+        "RaiseException",
+        // Stage 53.1 "Time" -- NativeClock's three raw wrappers (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        "QueryPerformanceCounter",
+        "QueryPerformanceFrequency",
+        "GetSystemTimeAsFileTime",
+        // Stage 53.2 "Environment" -- Environment.TickCount64/ProcessorCount (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        "GetTickCount64",
+        "GetActiveProcessorCount",
+        // Stage 53.2b "Environment (variables)" -- Environment.GetEnvironmentVariable/
+        // SetEnvironmentVariable (see src/Runtime/WindowsRuntimeBuilder.cpp) import these
+        // directly from KERNEL32.dll.
+        "GetEnvironmentVariableA",
+        "SetEnvironmentVariableA",
+        // Stage 53.3 "Filesystem/Paths" -- File.Exists/File.Delete/Directory.Exists/
+        // Directory.CreateDirectory (see src/Runtime/WindowsRuntimeBuilder.cpp) import these
+        // directly from KERNEL32.dll.
+        "GetFileAttributesA",
+        "DeleteFileA",
+        "CreateDirectoryA",
+        // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- File.ReadAllText/
+        // WriteAllText/AppendAllText (see src/Runtime/WindowsRuntimeBuilder.cpp) import these
+        // directly from KERNEL32.dll.
+        "CreateFileA",
+        "GetFileSizeEx",
+        "ReadFile",
+        "CloseHandle",
+        "SetFilePointer",
+        // Stage 53.4 "Filesystem/Paths (cierre)" -- Directory.Delete/Path.GetFullPath (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        "RemoveDirectoryA",
+        "GetFullPathNameA",
+        // Stage 53.5 "Command-line arguments" -- Environment.GetCommandLineArgCount/
+        // GetCommandLineArgs (see src/Runtime/WindowsRuntimeBuilder.cpp) import these directly
+        // from KERNEL32.dll. CommandLineToArgvW itself lives in SHELL32.dll, not here -- see the
+        // separate shell32Library block below.
+        "GetCommandLineW",
+        "WideCharToMultiByte",
+        "LocalFree",
+        // Stage 53.6 "Enumeracion de directorios" -- Directory.GetFileCount/GetFiles/
+        // GetDirectoryCount/GetDirectories (see src/Runtime/WindowsRuntimeBuilder.cpp) import
+        // these directly from KERNEL32.dll.
+        "FindFirstFileA",
+        "FindNextFileA",
+        "FindClose",
+        // Stage 54.1 "Threads" -- Thread's ThreadCreate/ThreadJoin/ThreadDetach (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        "CreateThread",
+        "WaitForSingleObject",
+        // Stage 54.3 "Mutex" -- Mutex's MutexCreate/MutexUnlock (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        // MutexLock/MutexClose reuse WaitForSingleObject/CloseHandle above, no new import needed.
+        "CreateMutexA",
+        "ReleaseMutex",
+        // Stage 54.3 "Mutex" (fix) -- the type-initializer ("cctor") guard's same-thread-
+        // recursion check (see ProjectOopLlvmLowerer.cpp's defineTypeInitializers) imports this
+        // directly, independent of Mutex itself.
+        "GetCurrentThreadId",
+        // Stage 54.4 "Condition Variables" -- Monitor's Enter/Exit/Wait/Pulse/PulseAll (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        "AcquireSRWLockExclusive",
+        "ReleaseSRWLockExclusive",
+        "WakeConditionVariable",
+        "WakeAllConditionVariable",
+        "SleepConditionVariableSRW",
+        // Stage 54.5 "Otras primitivas de sincronizacion" -- Semaphore's SemaphoreCreate/Release
+        // and Event's EventCreate/Set/Reset (see src/Runtime/WindowsRuntimeBuilder.cpp) import
+        // these directly from KERNEL32.dll. SemaphoreWait/EventWait reuse WaitForSingleObject
+        // above (via the shared __nativesharp_wait_for_handle_timeout wrapper), and
+        // SemaphoreClose/EventClose reuse CloseHandle above -- no new import needed for those.
+        "CreateSemaphoreA",
+        "ReleaseSemaphore",
+        "CreateEventA",
+        "SetEvent",
+        "ResetEvent",
+        // Stage 55.1 "Process" -- Process's five Raw getters/setter (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        // K32GetProcessMemoryInfo is the kernel32.dll-exported alias for psapi.lib's
+        // GetProcessMemoryInfo (no separate psapi import library needed).
+        "GetCurrentProcessId",
+        "GetCurrentProcess",
+        "K32GetProcessMemoryInfo",
+        "GetProcessTimes",
+        "GetPriorityClass",
+        "SetPriorityClass",
+        // Stage 55.2 "Hardware / System Info" -- SystemInfo's six Raw getters (see
+        // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
+        "GetSystemInfo",
+        "GlobalMemoryStatusEx",
+        // Stage 55.3 "Diagnostics" -- Debug's IsDebuggerPresentRaw/CaptureStackFrameCountRaw/
+        // OutputStringRaw (see src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from
+        // KERNEL32.dll. RtlCaptureStackBackTrace is the kernel32.dll export the Windows SDK's
+        // CaptureStackBackTrace macro resolves to.
+        "OutputDebugStringA",
+        "IsDebuggerPresent",
+        "RtlCaptureStackBackTrace",
+        // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29) -- Thread.SleepRaw and
+        // File.CopyRaw/MoveRaw/Directory.MoveRaw (see src/Runtime/WindowsRuntimeBuilder.cpp)
+        // import these directly from KERNEL32.dll. MoveFileA is shared by BOTH File.MoveRaw and
+        // Directory.MoveRaw (one Win32 call, two NativeSharp-level operations).
+        "Sleep",
+        "CopyFileA",
+        "MoveFileA"};
+    const std::array<std::string_view, 1> kernelbaseSymbols = {"__chkstk"};
+    // Stage 53.5 "Command-line arguments" -- CommandLineToArgvW is the one Win32 symbol the
+    // runtime imports from SHELL32.dll rather than KERNEL32/KERNELBASE.
+    const std::array<std::string_view, 1> shell32Symbols = {"CommandLineToArgvW"};
+
+    // Compiler-support imports from ucrtbase.dll, driven by what the IR actually references:
+    // LLVM passes can materialize @llvm.memcpy/memset/memmove (LoopIdiomRecognize rewriting a
+    // hand-rolled copy loop) or reference the SEH personality in either module, so the caller
+    // hands in BOTH modules' IR text concatenated and the scan decides.
+    std::vector<std::string_view> ucrtSymbols = {"strlen"};
+    if (combinedIrText.find("@__C_specific_handler") != std::string_view::npos)
+    {
+        ucrtSymbols.push_back("__C_specific_handler");
+    }
+    if (combinedIrText.find("@llvm.memset") != std::string_view::npos)
+    {
+        ucrtSymbols.push_back("memset");
+    }
+    if (combinedIrText.find("@llvm.memcpy") != std::string_view::npos)
+    {
+        ucrtSymbols.push_back("memcpy");
+    }
+    if (combinedIrText.find("@llvm.memmove") != std::string_view::npos)
+    {
+        ucrtSymbols.push_back("memmove");
+    }
+
+    // Merge: runtime tables first, then the project's external imports. A DLL is matched
+    // case-insensitively ("user32.dll" == "USER32.DLL"); symbols are deduplicated so a project
+    // may freely re-declare something the runtime already imports (GetTickCount64, say) without
+    // producing a duplicate .def entry. New DLLs keep the canonical spelling the project wrote.
+    struct PlannedLibrary final
+    {
+        std::string canonicalDll;
+        std::vector<std::string> symbols;
+    };
+    std::vector<PlannedLibrary> planned;
+    std::map<std::string, std::size_t> byUpperName;
+    const auto addSymbols = [&](std::string_view dll, auto&& symbolRange)
+    {
+        const std::string upper = upperAscii(dll);
+        const auto found = byUpperName.find(upper);
+        std::size_t index;
+        if (found == byUpperName.end())
+        {
+            index = planned.size();
+            planned.push_back(PlannedLibrary{std::string(dll), {}});
+            byUpperName.emplace(upper, index);
+        }
+        else
+        {
+            index = found->second;
+        }
+        for (const auto& symbol : symbolRange)
+        {
+            const std::string name(symbol);
+            auto& list = planned[index].symbols;
+            if (std::find(list.begin(), list.end(), name) == list.end())
+            {
+                list.push_back(name);
+            }
+        }
+    };
+    addSymbols("KERNEL32.dll", kernel32Symbols);
+    addSymbols("KERNELBASE.dll", kernelbaseSymbols);
+    addSymbols("SHELL32.dll", shell32Symbols);
+    addSymbols("ucrtbase.dll", ucrtSymbols);
+    for (const ExternalImportModule& module : externalImports)
+    {
+        if (module.dllName.empty() || module.symbols.empty()) continue;
+        addSymbols(module.dllName, module.symbols);
+    }
+
+    for (const PlannedLibrary& library : planned)
+    {
+        std::filesystem::path stem = upperAscii(library.canonicalDll);
+        stem.replace_extension();
+        const std::filesystem::path output =
+            directory / (stem.string() + ".import.lib");
+        std::vector<std::string_view> views;
+        views.reserve(library.symbols.size());
+        for (const std::string& symbol : library.symbols) views.push_back(symbol);
+        if (!linker.createImportLibrary(library.canonicalDll, views, output, error))
+        {
+            error = library.canonicalDll + " import-library generation failed: " + error;
+            return false;
+        }
+        libraries.push_back(output);
+    }
+    return true;
+}
+}

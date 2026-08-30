@@ -1,0 +1,31 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.LinkedList
+{
+    public class IntListPrinter
+    {
+        public static void Print(string caption, SinglyLinkedList<int> list)
+        {
+            raii string line = String.Copy(caption);
+            int i = 0;
+            while (i < list.Count)
+            {
+                raii string value = String.ToString(list.GetAt(i));
+                raii string separator = String.Copy(" -> ");
+                if (i == 0)
+                {
+                    raii string first = String.Concat(line, value);
+                    line = move(first);
+                }
+                else
+                {
+                    raii string withSeparator = String.Concat(line, separator);
+                    raii string withValue = String.Concat(withSeparator, value);
+                    line = move(withValue);
+                }
+                i = i + 1;
+            }
+            Console.WriteLine(line);
+        }
+    }
+}

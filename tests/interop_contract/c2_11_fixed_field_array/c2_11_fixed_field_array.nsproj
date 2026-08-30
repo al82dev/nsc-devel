@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>c2_11_fixed_field_array</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>

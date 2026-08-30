@@ -1,0 +1,42 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.LinearAlgebra
+{
+    public class Matrix3
+    {
+        private double[] m;
+        public Matrix3(){m=new double[9];}
+        private int Cell(int r,int c){return r*3+c;}
+        public double Get(int r,int c){return m[Cell(r,c)];}
+        public void Set(int r,int c,double value){m[Cell(r,c)]=value;}
+        public static Matrix3 Identity()
+        {
+            Matrix3 r=new Matrix3();r.Set(0,0,1.0);r.Set(1,1,1.0);r.Set(2,2,1.0);return r;
+        }
+        public static Matrix3 operator +(Matrix3 a,Matrix3 b)
+        {
+            Matrix3 r=new Matrix3();int row=0;while(row<3){int col=0;while(col<3){r.Set(row,col,a.Get(row,col)+b.Get(row,col));col=col+1;}row=row+1;}return r;
+        }
+        public static Matrix3 operator *(Matrix3 a,Matrix3 b)
+        {
+            Matrix3 r=new Matrix3();int row=0;
+            while(row<3){int col=0;while(col<3){double sum=0.0;int k=0;while(k<3){sum=sum+a.Get(row,k)*b.Get(k,col);k=k+1;}r.Set(row,col,sum);col=col+1;}row=row+1;}return r;
+        }
+        public Vector3 Transform(Vector3 v)
+        {
+            return new Vector3(
+                Get(0,0)*v.X+Get(0,1)*v.Y+Get(0,2)*v.Z,
+                Get(1,0)*v.X+Get(1,1)*v.Y+Get(1,2)*v.Z,
+                Get(2,0)*v.X+Get(2,1)*v.Y+Get(2,2)*v.Z);
+        }
+        public void Print(string label)
+        {
+            Console.WriteLine(label);int row=0;
+            while(row<3)
+            {
+                raii string a=NumberText.Format(Get(row,0));raii string b=NumberText.Format(Get(row,1));raii string c=NumberText.Format(Get(row,2));
+                raii string x=String.Concat("  [ ",a);raii string y=String.Concat(x,", ");raii string z=String.Concat(y,b);raii string q=String.Concat(z,", ");raii string w=String.Concat(q,c);raii string line=String.Concat(w," ]");Console.WriteLine(line);row=row+1;
+            }
+        }
+        ~Matrix3(){delete[] m;}
+    }
+}

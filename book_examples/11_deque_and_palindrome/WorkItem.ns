@@ -1,0 +1,15 @@
+namespace NativeSharp.BookExamples.Deque
+{
+    public class WorkItem
+    {
+        public int Id;
+        public string Name;
+        public bool Urgent;
+        public WorkItem(int id, string name, bool urgent)
+        {
+            Id = id;
+            Name = name;
+            Urgent = urgent;
+        }
+    }
+}

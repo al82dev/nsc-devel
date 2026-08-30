@@ -1,0 +1,196 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Mirrors System.Collections.Generic.Stack<T> -- a LIFO, backed by a single owned T[] array
+    // exactly like List<T> (the top of the stack is always the last occupied slot, index
+    // count - 1). See List.ns's class comment for the general ownership design this whole
+    // package follows.
+    public class Stack<T>
+    {
+        private owned T[] items;
+        private int count;
+
+        public Stack()
+        {
+            items = new T[4];
+            count = 0;
+        }
+
+        public Stack(int capacity)
+        {
+            int actual = capacity;
+            if (actual < 1) { actual = 1; }
+            items = new T[actual];
+            count = 0;
+        }
+
+        public int Count()
+        {
+            return count;
+        }
+
+        public int Capacity()
+        {
+            return items.Length;
+        }
+
+        // Public so callers can pre-size before a known-size batch of Push()es. Returns the
+        // resulting capacity, mirroring List<T>.EnsureCapacity.
+        public int EnsureCapacity(int capacity)
+        {
+            if (items.Length >= capacity) { return items.Length; }
+            int newCapacity = items.Length * 2;
+            if (newCapacity < capacity) { newCapacity = capacity; }
+            const T[] grown = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                grown[i] = move(items[i]);
+                i = i + 1;
+            }
+            delete[] items;
+            items = grown;
+            return items.Length;
+        }
+
+        // Mirrors Stack<T>.TrimExcess -- same 90% threshold as List<T>.TrimExcess.
+        public void TrimExcess()
+        {
+            int threshold = (items.Length * 9) / 10;
+            if (count >= threshold) { return; }
+            int newCapacity = count;
+            if (newCapacity < 1) { newCapacity = 1; }
+            if (newCapacity == items.Length) { return; }
+            const T[] shrunk = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                shrunk[i] = move(items[i]);
+                i = i + 1;
+            }
+            delete[] items;
+            items = shrunk;
+        }
+
+        public void Push(owned T value)
+        {
+            EnsureCapacity(count + 1);
+            // move(value): see List.ns's Add() for the full explanation -- without it the owned
+            // parameter's own end-of-scope cleanup double-frees the object just pushed.
+            items[count] = move(value);
+            count = count + 1;
+        }
+
+        // Real C#'s Stack<T>.Pop() throws InvalidOperationException on an empty stack.
+        public owned T Pop()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            int index = count - 1;
+            count = index;
+            return move(items[index]);
+        }
+
+        public T Peek()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            return items[count - 1];
+        }
+
+        // Mirrors `bool TryPop(out T result)` -- see Dictionary.ns's TryGetValue comment for why
+        // NativeSharp expresses `out` as a caller-supplied single-element array. Ownership of the
+        // popped element transfers into `result[0]` exactly like Pop()'s own return.
+        public bool TryPop(T[] result)
+        {
+            if (count == 0) { return false; }
+            result[0] = Pop();
+            return true;
+        }
+
+        // Mirrors `bool TryPeek(out T result)`. No ownership transfer: `result[0]` aliases the
+        // still-stacked element, same as Peek()'s own return.
+        public bool TryPeek(T[] result)
+        {
+            if (count == 0) { return false; }
+            result[0] = items[count - 1];
+            return true;
+        }
+
+        public bool Contains(T value)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (items[i] == value) { return true; }
+                i = i + 1;
+            }
+            return false;
+        }
+
+        // Get-only indexer over LOGICAL position, TOP-to-bottom order (0 = most-recently-pushed
+        // element) -- same order as ToArray()/CopyTo(). Added so StackEnumerator<T> can borrow a
+        // live reference to this Stack<T> and read elements back through a public accessor,
+        // exactly the same design ListEnumerator<T>/QueueEnumerator<T> already use (P1.2 of
+        // STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md).
+        public T this[int index]
+        {
+            get { return items[count - 1 - index]; }
+        }
+
+        public void Clear()
+        {
+            int i = 0;
+            while (i < count)
+            {
+                delete items[i];
+                i = i + 1;
+            }
+            count = 0;
+        }
+
+        // Mirrors real C#'s Stack<T>.ToArray(): element order is top-to-bottom (index 0 is the
+        // most-recently-pushed element).
+        public T[] ToArray()
+        {
+            const T[] result = new T[count];
+            int i = 0;
+            while (i < count)
+            {
+                result[i] = items[count - 1 - i];
+                i = i + 1;
+            }
+            return result;
+        }
+
+        // Mirrors Stack<T>.CopyTo: top-to-bottom order, same as ToArray().
+        public void CopyTo(T[] destination, int destinationIndex)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                destination[destinationIndex + i] = items[count - 1 - i];
+                i = i + 1;
+            }
+        }
+
+        // P1.2 -- see Queue<T>.GetEnumerator()'s comment for the general rationale (`owned` is
+        // load-bearing: foreach's enumerator-mode desugaring requires an owned-returning
+        // initializer for its `raii var` local).
+        public owned StackEnumerator<T> GetEnumerator()
+        {
+            return new StackEnumerator<T>(this);
+        }
+
+        ~Stack()
+        {
+            Clear();
+            delete[] items;
+        }
+    }
+}

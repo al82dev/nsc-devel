@@ -1,0 +1,657 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+namespace nativesharp::llvm_api
+{
+extern "C"
+{
+struct LLVMOpaqueContext;
+struct LLVMOpaqueModule;
+struct LLVMOpaqueType;
+struct LLVMOpaqueValue;
+struct LLVMOpaqueBasicBlock;
+struct LLVMOpaqueBuilder;
+struct LLVMOpaqueTarget;
+struct LLVMOpaqueTargetMachine;
+struct LLVMOpaqueTargetData;
+struct LLVMOpaqueError;
+struct LLVMOpaquePassBuilderOptions;
+struct LLVMOpaqueOperandBundle;
+
+using LLVMContextRef = LLVMOpaqueContext*;
+using LLVMModuleRef = LLVMOpaqueModule*;
+using LLVMTypeRef = LLVMOpaqueType*;
+using LLVMValueRef = LLVMOpaqueValue*;
+using LLVMBasicBlockRef = LLVMOpaqueBasicBlock*;
+using LLVMBuilderRef = LLVMOpaqueBuilder*;
+using LLVMTargetRef = LLVMOpaqueTarget*;
+using LLVMTargetMachineRef = LLVMOpaqueTargetMachine*;
+using LLVMTargetDataRef = LLVMOpaqueTargetData*;
+using LLVMErrorRef = LLVMOpaqueError*;
+using LLVMPassBuilderOptionsRef = LLVMOpaquePassBuilderOptions*;
+using LLVMOperandBundleRef = LLVMOpaqueOperandBundle*;
+using LLVMBool = int;
+
+// Values are fixed by llvm-c/Core.h and llvm-c/Analysis.h.
+enum LLVMIntPredicate
+{
+    LLVMIntEQ = 32,
+    LLVMIntNE = 33,
+    LLVMIntUGT = 34,
+    LLVMIntUGE = 35,
+    LLVMIntULT = 36,
+    LLVMIntULE = 37,
+    LLVMIntSGT = 38,
+    LLVMIntSGE = 39,
+    LLVMIntSLT = 40,
+    LLVMIntSLE = 41
+};
+
+enum LLVMRealPredicate
+{
+    LLVMRealPredicateFalse = 0,
+    LLVMRealOEQ = 1,
+    LLVMRealOGT = 2,
+    LLVMRealOGE = 3,
+    LLVMRealOLT = 4,
+    LLVMRealOLE = 5,
+    LLVMRealONE = 6,
+    LLVMRealORD = 7,
+    LLVMRealUNO = 8,
+    LLVMRealUEQ = 9,
+    LLVMRealUGT = 10,
+    LLVMRealUGE = 11,
+    LLVMRealULT = 12,
+    LLVMRealULE = 13,
+    LLVMRealUNE = 14,
+    LLVMRealPredicateTrue = 15
+};
+
+// Stage 54.2 "Atomics" -- values fixed by llvm-c/Core.h, same "hand-maintained subset, exact
+// upstream numeric values" discipline as LLVMIntPredicate/LLVMRealPredicate above. Only the
+// members this compiler actually emits are listed (LLVMAtomicRMWBinOpXchg for Interlocked.
+// Exchange, LLVMAtomicRMWBinOpAdd for Interlocked.Increment/Decrement/Add -- Decrement is
+// implemented as Add with a negated operand, no separate Sub variant needed) -- omitting the
+// rest (And/Or/Xor/Max/Min/floating-point variants/UIncWrap/UUSubCond/etc.) does not change
+// their real enumerator values, since C enums are numbered in declaration order starting at 0
+// and every earlier member is still present here in the same order.
+enum LLVMAtomicRMWBinOp
+{
+    LLVMAtomicRMWBinOpXchg = 0,
+    LLVMAtomicRMWBinOpAdd = 1
+};
+
+// Stage 54.2 "Atomics" -- values fixed by llvm-c/Core.h. Only SequentiallyConsistent is used
+// (the strongest, simplest-to-reason-about ordering -- C#'s System.Threading.Interlocked
+// documented contract is itself full sequential consistency, so this is not a place to economize
+// with a weaker ordering), but every earlier enumerator is listed in its real declared order so
+// the numeric value fixed below (7) is correct.
+enum LLVMAtomicOrdering
+{
+    LLVMAtomicOrderingNotAtomic = 0,
+    LLVMAtomicOrderingUnordered = 1,
+    LLVMAtomicOrderingMonotonic = 2,
+    LLVMAtomicOrderingAcquire = 4,
+    LLVMAtomicOrderingRelease = 5,
+    LLVMAtomicOrderingAcquireRelease = 6,
+    LLVMAtomicOrderingSequentiallyConsistent = 7
+};
+
+enum LLVMCodeGenOptLevel
+{
+    LLVMCodeGenLevelNone = 0,
+    LLVMCodeGenLevelLess = 1,
+    LLVMCodeGenLevelDefault = 2,
+    LLVMCodeGenLevelAggressive = 3
+};
+
+enum LLVMRelocMode
+{
+    LLVMRelocDefault = 0,
+    LLVMRelocStatic = 1,
+    LLVMRelocPIC = 2,
+    LLVMRelocDynamicNoPic = 3,
+    LLVMRelocROPI = 4,
+    LLVMRelocRWPI = 5,
+    LLVMRelocROPI_RWPI = 6
+};
+
+enum LLVMCodeModel
+{
+    LLVMCodeModelDefault = 0,
+    LLVMCodeModelJITDefault = 1,
+    LLVMCodeModelTiny = 2,
+    LLVMCodeModelSmall = 3,
+    LLVMCodeModelKernel = 4,
+    LLVMCodeModelMedium = 5,
+    LLVMCodeModelLarge = 6
+};
+
+enum LLVMCodeGenFileType
+{
+    LLVMAssemblyFile = 0,
+    LLVMObjectFile = 1
+};
+
+enum LLVMVerifierFailureAction
+{
+    LLVMAbortProcessAction = 0,
+    LLVMPrintMessageAction = 1,
+    LLVMReturnStatusAction = 2
+};
+
+LLVMContextRef LLVMContextCreate();
+void LLVMContextDispose(LLVMContextRef context);
+LLVMModuleRef LLVMModuleCreateWithNameInContext(const char* moduleId, LLVMContextRef context);
+void LLVMDisposeModule(LLVMModuleRef module);
+void LLVMSetTarget(LLVMModuleRef module, const char* triple);
+void LLVMSetDataLayout(LLVMModuleRef module, const char* dataLayout);
+char* LLVMPrintModuleToString(LLVMModuleRef module);
+void LLVMDisposeMessage(char* message);
+LLVMBool LLVMVerifyModule(
+    LLVMModuleRef module,
+    LLVMVerifierFailureAction action,
+    char** outMessage);
+
+void LLVMInitializeX86TargetInfo();
+void LLVMInitializeX86Target();
+void LLVMInitializeX86TargetMC();
+void LLVMInitializeX86AsmPrinter();
+LLVMBool LLVMGetTargetFromTriple(const char* triple, LLVMTargetRef* target, char** errorMessage);
+LLVMTargetMachineRef LLVMCreateTargetMachine(
+    LLVMTargetRef target,
+    const char* triple,
+    const char* cpu,
+    const char* features,
+    LLVMCodeGenOptLevel level,
+    LLVMRelocMode reloc,
+    LLVMCodeModel codeModel);
+void LLVMDisposeTargetMachine(LLVMTargetMachineRef targetMachine);
+LLVMTargetDataRef LLVMCreateTargetDataLayout(LLVMTargetMachineRef targetMachine);
+char* LLVMCopyStringRepOfTargetData(LLVMTargetDataRef targetData);
+void LLVMDisposeTargetData(LLVMTargetDataRef targetData);
+void LLVMSetModuleDataLayout(LLVMModuleRef module, LLVMTargetDataRef targetData);
+LLVMBool LLVMTargetMachineEmitToFile(
+    LLVMTargetMachineRef targetMachine,
+    LLVMModuleRef module,
+    char* filename,
+    LLVMCodeGenFileType fileType,
+    char** errorMessage);
+
+LLVMPassBuilderOptionsRef LLVMCreatePassBuilderOptions();
+void LLVMPassBuilderOptionsSetVerifyEach(LLVMPassBuilderOptionsRef options, LLVMBool verifyEach);
+void LLVMDisposePassBuilderOptions(LLVMPassBuilderOptionsRef options);
+LLVMErrorRef LLVMRunPasses(
+    LLVMModuleRef module,
+    const char* passes,
+    LLVMTargetMachineRef targetMachine,
+    LLVMPassBuilderOptionsRef options);
+// Bug B-001 (EH+RAII reuse-after-catch crash, see BUGS_ENCONTRADOS/
+// bug_try_catch_reuso_objeto_tras_catch.md and 30_..._eh_raii_mem2reg_fix.md) fix support --
+// LLVMRunPassesOnFunction runs a textual pass pipeline against ONE function instead of the
+// whole module, letting LlvmOptimizer::optimize scope the "mem2reg" legalization pass to only
+// the functions that actually declare a Windows SEH personality (LLVMHasPersonalityFn), instead
+// of promoting every -O0 local in the whole program -- see that function's own header comment
+// for why a module-wide mem2reg-at-O0 would be the wrong fix.
+LLVMErrorRef LLVMRunPassesOnFunction(
+    LLVMValueRef function,
+    const char* passes,
+    LLVMTargetMachineRef targetMachine,
+    LLVMPassBuilderOptionsRef options);
+char* LLVMGetErrorMessage(LLVMErrorRef error);
+void LLVMDisposeErrorMessage(char* errorMessage);
+LLVMValueRef LLVMGetFirstFunction(LLVMModuleRef module);
+LLVMValueRef LLVMGetNextFunction(LLVMValueRef function);
+LLVMBool LLVMIsDeclaration(LLVMValueRef global);
+LLVMBool LLVMHasPersonalityFn(LLVMValueRef function);
+
+LLVMTypeRef LLVMVoidTypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMInt1TypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMInt8TypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMInt16TypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMInt32TypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMInt64TypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMFloatTypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMDoubleTypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMPointerTypeInContext(LLVMContextRef context, unsigned addressSpace);
+LLVMTypeRef LLVMArrayType2(LLVMTypeRef elementType, std::uint64_t elementCount);
+LLVMTypeRef LLVMStructCreateNamed(LLVMContextRef context, const char* name);
+void LLVMStructSetBody(
+    LLVMTypeRef structType,
+    LLVMTypeRef* elementTypes,
+    unsigned elementCount,
+    LLVMBool packed);
+LLVMTypeRef LLVMFunctionType(
+    LLVMTypeRef returnType,
+    LLVMTypeRef* parameterTypes,
+    unsigned parameterCount,
+    LLVMBool variadic);
+
+LLVMValueRef LLVMConstInt(LLVMTypeRef integerType, unsigned long long value, LLVMBool signExtend);
+LLVMValueRef LLVMConstReal(LLVMTypeRef realType, double value);
+LLVMValueRef LLVMConstNull(LLVMTypeRef type);
+LLVMValueRef LLVMConstArray2(
+    LLVMTypeRef elementType,
+    LLVMValueRef* constantValues,
+    std::uint64_t length);
+LLVMValueRef LLVMConstNamedStruct(
+    LLVMTypeRef structType,
+    LLVMValueRef* constantValues,
+    unsigned count);
+LLVMValueRef LLVMConstStringInContext2(
+    LLVMContextRef context,
+    const char* value,
+    std::size_t length,
+    LLVMBool dontNullTerminate);
+LLVMValueRef LLVMConstInBoundsGEP2(
+    LLVMTypeRef type,
+    LLVMValueRef constantValue,
+    LLVMValueRef* constantIndices,
+    unsigned indexCount);
+LLVMValueRef LLVMGetUndef(LLVMTypeRef type);
+
+LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* name);
+void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
+void LLVMSetGlobalConstant(LLVMValueRef global, LLVMBool isConstant);
+LLVMValueRef LLVMAddFunction(LLVMModuleRef module, const char* name, LLVMTypeRef functionType);
+LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);
+void LLVMSetValueName2(LLVMValueRef value, const char* name, std::size_t nameLength);
+void LLVMSetPersonalityFn(LLVMValueRef function, LLVMValueRef personality);
+
+// Function-attribute API (llvm-c/Core.h) -- used to mark every emitted function `uwtable`, the
+// way every real front end (clang included) does for any Windows x64 target. See
+// BUGS_ENCONTRADOS/bug_try_catch_reuso_objeto_tras_catch.md: without it, a function with more
+// than one exception-handling region (more than one catchswitch/cleanuppad reachable from a
+// shared, outer RAII cleanup) can crash at runtime even along a path that touches neither region,
+// because the backend is not told it must always materialize a complete unwind table for the
+// whole function.
+struct LLVMOpaqueAttributeRef;
+using LLVMAttributeRef = LLVMOpaqueAttributeRef*;
+using LLVMAttributeIndex = unsigned;
+unsigned LLVMGetEnumAttributeKindForName(const char* name, std::size_t sLen);
+LLVMAttributeRef LLVMCreateEnumAttribute(LLVMContextRef context, unsigned kindId, std::uint64_t value);
+void LLVMAddAttributeAtIndex(LLVMValueRef function, LLVMAttributeIndex index, LLVMAttributeRef attribute);
+
+// Stage 56-prep (Win64 aggregate ABI): indirect struct returns are expressed exactly the way
+// clang expresses them for x86_64-pc-windows-msvc -- a leading pointer parameter carrying
+// `sret(<type>) noalias align <n>`. `sret` is a TYPE attribute (it names the pointee), so the
+// enum-only constructor above cannot build it; this is llvm-c/Core.h's dedicated constructor.
+// LLVMAddCallSiteAttribute is the call-site twin of LLVMAddAttributeAtIndex: the ABI contract
+// must be stated on BOTH the definition and every call, matching what clang emits.
+LLVMAttributeRef LLVMCreateTypeAttribute(LLVMContextRef context, unsigned kindId, LLVMTypeRef typeRef);
+void LLVMAddCallSiteAttribute(LLVMValueRef call, LLVMAttributeIndex index, LLVMAttributeRef attribute);
+
+// Win64 aggregate ABI support machinery:
+//  - LLVMSetAlignment: an alloca of the `[N x i8]` struct carrier defaults to align 1, but every
+//    member access through it does naturally-aligned typed loads/stores -- the slot itself must
+//    carry the struct layout's real alignment.
+//  - entry-block navigation: caller-side argument copies and sret result slots are materialized
+//    as allocas HOISTED into the function's entry block (the way clang does), because an alloca
+//    emitted at the call site would re-allocate on every loop iteration and grow the stack
+//    without bound.
+void LLVMSetAlignment(LLVMValueRef value, unsigned bytes);
+LLVMBasicBlockRef LLVMGetEntryBasicBlock(LLVMValueRef function);
+LLVMValueRef LLVMGetFirstInstruction(LLVMBasicBlockRef block);
+void LLVMPositionBuilderBefore(LLVMBuilderRef builder, LLVMValueRef instruction);
+
+LLVMBasicBlockRef LLVMAppendBasicBlockInContext(
+    LLVMContextRef context,
+    LLVMValueRef function,
+    const char* name);
+LLVMBuilderRef LLVMCreateBuilderInContext(LLVMContextRef context);
+void LLVMDisposeBuilder(LLVMBuilderRef builder);
+void LLVMPositionBuilderAtEnd(LLVMBuilderRef builder, LLVMBasicBlockRef block);
+LLVMBasicBlockRef LLVMGetInsertBlock(LLVMBuilderRef builder);
+LLVMValueRef LLVMGetBasicBlockTerminator(LLVMBasicBlockRef block);
+
+LLVMValueRef LLVMBuildAlloca(
+    LLVMBuilderRef builder,
+    LLVMTypeRef type,
+    const char* name);
+LLVMValueRef LLVMBuildArrayAlloca(
+    LLVMBuilderRef builder,
+    LLVMTypeRef type,
+    LLVMValueRef count,
+    const char* name);
+LLVMValueRef LLVMBuildLoad2(
+    LLVMBuilderRef builder,
+    LLVMTypeRef type,
+    LLVMValueRef pointer,
+    const char* name);
+LLVMValueRef LLVMBuildStore(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMValueRef pointer);
+
+LLVMValueRef LLVMBuildNeg(LLVMBuilderRef builder, LLVMValueRef value, const char* name);
+LLVMValueRef LLVMBuildFNeg(LLVMBuilderRef builder, LLVMValueRef value, const char* name);
+LLVMValueRef LLVMBuildNot(LLVMBuilderRef builder, LLVMValueRef value, const char* name);
+LLVMValueRef LLVMBuildAdd(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildSub(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildMul(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildSDiv(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildUDiv(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildSRem(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildURem(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildAnd(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildOr(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildXor(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildShl(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildLShr(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildAShr(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildFAdd(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildFSub(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildFMul(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildFDiv(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildFRem(
+    LLVMBuilderRef builder,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+
+LLVMValueRef LLVMBuildICmp(
+    LLVMBuilderRef builder,
+    LLVMIntPredicate predicate,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildFCmp(
+    LLVMBuilderRef builder,
+    LLVMRealPredicate predicate,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+
+LLVMValueRef LLVMBuildTrunc(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildSExt(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildZExt(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildFPTrunc(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildFPExt(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildFPToSI(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildFPToUI(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildSIToFP(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildUIToFP(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildPtrToInt(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildIntToPtr(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildPointerCast(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+
+LLVMValueRef LLVMBuildGEP2(
+    LLVMBuilderRef builder,
+    LLVMTypeRef elementType,
+    LLVMValueRef pointer,
+    LLVMValueRef* indices,
+    unsigned indexCount,
+    const char* name);
+LLVMValueRef LLVMBuildStructGEP2(
+    LLVMBuilderRef builder,
+    LLVMTypeRef structType,
+    LLVMValueRef pointer,
+    unsigned fieldIndex,
+    const char* name);
+LLVMValueRef LLVMBuildPtrDiff2(
+    LLVMBuilderRef builder,
+    LLVMTypeRef elementType,
+    LLVMValueRef left,
+    LLVMValueRef right,
+    const char* name);
+LLVMValueRef LLVMBuildExtractValue(
+    LLVMBuilderRef builder,
+    LLVMValueRef aggregate,
+    unsigned index,
+    const char* name);
+
+// Stage 54.2 "Atomics". LLVMBuildAtomicRMW emits a real hardware atomic read-modify-write
+// instruction (lowers to `lock xadd`/`lock xchg` on x86-64) -- used for Interlocked.Increment/
+// Decrement/Add/Exchange. LLVMBuildAtomicCmpXchg emits a real hardware compare-and-swap (lowers
+// to `lock cmpxchg`) -- used for Interlocked.CompareExchange; its result is a `{T, i1}` aggregate
+// (the loaded old value, plus whether the swap happened), so the runtime wrapper extracts index 0
+// via LLVMBuildExtractValue above to get the old-value result C#'s CompareExchange contract wants
+// (NativeSharp's Interlocked.CompareExchange never needs the success flag -- callers compare the
+// returned old value against their own comparand exactly the way C#'s does).
+LLVMValueRef LLVMBuildAtomicRMW(
+    LLVMBuilderRef builder,
+    LLVMAtomicRMWBinOp op,
+    LLVMValueRef pointer,
+    LLVMValueRef value,
+    LLVMAtomicOrdering ordering,
+    LLVMBool singleThread);
+LLVMValueRef LLVMBuildAtomicCmpXchg(
+    LLVMBuilderRef builder,
+    LLVMValueRef pointer,
+    LLVMValueRef compare,
+    LLVMValueRef newValue,
+    LLVMAtomicOrdering successOrdering,
+    LLVMAtomicOrdering failureOrdering,
+    LLVMBool singleThread);
+// Stage 54.3 "Mutex" -- LLVMSetOrdering upgrades an ordinary (non-atomic) LLVMBuildLoad2/
+// LLVMBuildStore instruction into an atomic one with the given memory ordering, WITHOUT using
+// LLVMBuildAtomicRMW/LLVMBuildAtomicCmpXchg (there is no "plain atomic load"/"plain atomic store"
+// builder in the LLVM C API -- an ordinary load/store instruction IS the atomic load/store, once
+// its ordering is set to something other than LLVMAtomicOrderingNotAtomic). Used by
+// ProjectOopLlvmLowerer.cpp's type-initializer ("cctor") guard, fixing a genuine data race: the
+// guard used to be a plain non-atomic load-compare-branch-store, letting two threads that reach a
+// class's very first static-field access at the same time BOTH observe "not yet initialized" and
+// BOTH run the initializer concurrently. See defineTypeInitializers's own comment for the full
+// double-checked-locking fix this enables.
+void LLVMSetOrdering(LLVMValueRef memoryAccessInstruction, LLVMAtomicOrdering ordering);
+
+
+LLVMValueRef LLVMBuildMalloc(
+    LLVMBuilderRef builder,
+    LLVMTypeRef type,
+    const char* name);
+LLVMValueRef LLVMBuildArrayMalloc(
+    LLVMBuilderRef builder,
+    LLVMTypeRef type,
+    LLVMValueRef count,
+    const char* name);
+LLVMValueRef LLVMBuildFree(LLVMBuilderRef builder, LLVMValueRef pointer);
+LLVMValueRef LLVMBuildGlobalStringPtr(
+    LLVMBuilderRef builder,
+    const char* value,
+    const char* name);
+
+LLVMValueRef LLVMBuildCall2(
+    LLVMBuilderRef builder,
+    LLVMTypeRef functionType,
+    LLVMValueRef function,
+    LLVMValueRef* arguments,
+    unsigned argumentCount,
+    const char* name);
+LLVMOperandBundleRef LLVMCreateOperandBundle(
+    const char* tag,
+    std::size_t tagLength,
+    LLVMValueRef* arguments,
+    unsigned argumentCount);
+void LLVMDisposeOperandBundle(LLVMOperandBundleRef bundle);
+LLVMValueRef LLVMBuildCallWithOperandBundles(
+    LLVMBuilderRef builder,
+    LLVMTypeRef functionType,
+    LLVMValueRef function,
+    LLVMValueRef* arguments,
+    unsigned argumentCount,
+    LLVMOperandBundleRef* bundles,
+    unsigned bundleCount,
+    const char* name);
+LLVMValueRef LLVMBuildInvoke2(
+    LLVMBuilderRef builder,
+    LLVMTypeRef functionType,
+    LLVMValueRef function,
+    LLVMValueRef* arguments,
+    unsigned argumentCount,
+    LLVMBasicBlockRef normalBlock,
+    LLVMBasicBlockRef unwindBlock,
+    const char* name);
+LLVMValueRef LLVMBuildInvokeWithOperandBundles(
+    LLVMBuilderRef builder,
+    LLVMTypeRef functionType,
+    LLVMValueRef function,
+    LLVMValueRef* arguments,
+    unsigned argumentCount,
+    LLVMBasicBlockRef normalBlock,
+    LLVMBasicBlockRef unwindBlock,
+    LLVMOperandBundleRef* bundles,
+    unsigned bundleCount,
+    const char* name);
+LLVMValueRef LLVMBuildCatchSwitch(
+    LLVMBuilderRef builder,
+    LLVMValueRef parentPad,
+    LLVMBasicBlockRef unwindBlock,
+    unsigned handlerCount,
+    const char* name);
+void LLVMAddHandler(LLVMValueRef catchSwitch, LLVMBasicBlockRef handlerBlock);
+LLVMValueRef LLVMBuildCatchPad(
+    LLVMBuilderRef builder,
+    LLVMValueRef catchSwitch,
+    LLVMValueRef* arguments,
+    unsigned argumentCount,
+    const char* name);
+LLVMValueRef LLVMBuildCatchRet(
+    LLVMBuilderRef builder,
+    LLVMValueRef catchPad,
+    LLVMBasicBlockRef targetBlock);
+LLVMValueRef LLVMBuildCleanupPad(
+    LLVMBuilderRef builder,
+    LLVMValueRef parentPad,
+    LLVMValueRef* arguments,
+    unsigned argumentCount,
+    const char* name);
+LLVMValueRef LLVMBuildCleanupRet(
+    LLVMBuilderRef builder,
+    LLVMValueRef cleanupPad,
+    LLVMBasicBlockRef unwindBlock);
+LLVMValueRef LLVMBuildPhi(LLVMBuilderRef builder, LLVMTypeRef type, const char* name);
+void LLVMAddIncoming(
+    LLVMValueRef phi,
+    LLVMValueRef* incomingValues,
+    LLVMBasicBlockRef* incomingBlocks,
+    unsigned incomingCount);
+LLVMValueRef LLVMBuildBr(LLVMBuilderRef builder, LLVMBasicBlockRef target);
+LLVMValueRef LLVMBuildCondBr(
+    LLVMBuilderRef builder,
+    LLVMValueRef condition,
+    LLVMBasicBlockRef trueBlock,
+    LLVMBasicBlockRef falseBlock);
+LLVMValueRef LLVMBuildRet(LLVMBuilderRef builder, LLVMValueRef value);
+LLVMValueRef LLVMBuildRetVoid(LLVMBuilderRef builder);
+LLVMValueRef LLVMBuildUnreachable(LLVMBuilderRef builder);
+}
+}

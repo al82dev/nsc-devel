@@ -1,0 +1,114 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Dijkstra
+{
+    public class DijkstraSolver
+    {
+        private static int SelectMinimum(int[] distances, bool[] visited, int count)
+        {
+            int best = -1;
+            int bestDistance = 2147483647;
+            int i = 0;
+            while (i < count)
+            {
+                if (!visited[i] && distances[i] < bestDistance)
+                {
+                    bestDistance = distances[i];
+                    best = i;
+                }
+                i = i + 1;
+            }
+            return best;
+        }
+
+        public static void SolveAndPrint(WeightedGraph graph, int start, int goal)
+        {
+            int n = graph.Count;
+            int[] distances = new int[n];
+            int[] previous = new int[n];
+            bool[] visited = new bool[n];
+            int i = 0;
+            while (i < n)
+            {
+                distances[i] = 2147483647;
+                previous[i] = -1;
+                visited[i] = false;
+                i = i + 1;
+            }
+            distances[start] = 0;
+
+            int iteration = 0;
+            while (iteration < n)
+            {
+                int current = SelectMinimum(distances, visited, n);
+                if (current < 0) { break; }
+                visited[current] = true;
+
+                raii string d = String.ToString(distances[current]);
+                raii string a = String.Concat("settle ", graph.City(current).Name);
+                raii string b = String.Concat(a, " at distance ");
+                raii string line = String.Concat(b, d);
+                Console.WriteLine(line);
+
+                if (current == goal) { break; }
+
+                int neighbor = 0;
+                while (neighbor < n)
+                {
+                    int weight = graph.Weight(current, neighbor);
+                    if (weight > 0 && !visited[neighbor] && distances[current] != 2147483647)
+                    {
+                        int candidate = distances[current] + weight;
+                        if (candidate < distances[neighbor])
+                        {
+                            distances[neighbor] = candidate;
+                            previous[neighbor] = current;
+                        }
+                    }
+                    neighbor = neighbor + 1;
+                }
+                iteration = iteration + 1;
+            }
+
+            Console.WriteLine("");
+            if (distances[goal] == 2147483647)
+            {
+                Console.WriteLine("destination unreachable");
+            }
+            else
+            {
+                int[] reversed = new int[n];
+                int length = 0;
+                int current = goal;
+                while (current != -1)
+                {
+                    reversed[length] = current;
+                    length = length + 1;
+                    current = previous[current];
+                }
+                raii string path = String.Copy("");
+                int p = length - 1;
+                while (p >= 0)
+                {
+                    raii string withName = String.Concat(path, graph.City(reversed[p]).Name);
+                    path = move(withName);
+                    if (p > 0)
+                    {
+                        raii string withArrow = String.Concat(path, " -> ");
+                        path = move(withArrow);
+                    }
+                    p = p - 1;
+                }
+                raii string total = String.ToString(distances[goal]);
+                raii string a = String.Concat("shortest path: ", path);
+                raii string b = String.Concat(a, "  total distance=");
+                raii string line = String.Concat(b, total);
+                Console.WriteLine(line);
+                delete[] reversed;
+            }
+
+            delete[] distances;
+            delete[] previous;
+            delete[] visited;
+        }
+    }
+}

@@ -1,0 +1,15 @@
+namespace NativeSharp.BookExamples.CircularJosephus
+{
+    public class CircleNode
+    {
+        public int Value;
+        public CircleNode Next;
+        public CircleNode Previous;
+        public CircleNode(int value)
+        {
+            Value = value;
+            Next = null;
+            Previous = null;
+        }
+    }
+}

@@ -1,0 +1,61 @@
+Stage 54.2 "Atomics" -- archivos modificados/nuevos en esta ronda
+(segunda subronda de Stage 54, threading)
+
+MODIFICADOS:
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+  src/LLVM/LlvmCApi.h
+  src/Runtime/WindowsRuntimeBuilder.cpp
+  CMakeLists.txt
+
+NOTA IMPORTANTE (a diferencia de CADA ronda anterior desde que existe la disciplina de
+sincronizar `kernel32Symbols`): esta ronda NO agrego ningun import nuevo de Win32 -- las diez
+operaciones atomicas bajan a instrucciones de hardware reales (LLVMBuildAtomicRMW/
+LLVMBuildAtomicCmpXchg), no a llamadas de kernel32.dll (ver 58_stage54_2_atomics.md, seccion
+"Segundo obstaculo", para el porque). Por lo tanto NINGUNA de las cinco ubicaciones que
+normalmente se sincronizan (WindowsExecutableBuilder.cpp, WindowsLibraryBuilder.cpp, y las tres
+copias locales de kernel32Symbols en los tests de host-integration) se toco en esta ronda -- una
+primera, no un olvido.
+
+include/nativesharp/Frontend/ProjectOopMirModel.h y src/Frontend/ProjectOopMirModel.cpp tampoco
+se tocaron en esta ronda: los diez ProjectOopMirNodeKind::CoreInterlocked* y su conversion
+HIR->MIR ya existian desde el intento de diseño anterior (el de Interlocked.ns con punteros
+crudos, descartado) y siguieron siendo validos sin cambios bajo el diseño nuevo de
+AtomicInt32/AtomicInt64. Lo mismo aplica a src/LLVM/ProjectOopLlvmLowerer.cpp: sus diez bloques
+de lowering ya llamaban lowerExpression sobre el primer hijo del nodo para obtener la direccion,
+mecanismo que automaticamente reusa el caso FieldAddress preexistente sin saber que ese nodo, en
+esta ronda, fue sintetizado a mano en vez de venir de un acceso a campo real escrito por el
+usuario.
+
+NUEVOS:
+  lib/NativeSharp.Core.Threading/Atomics.ns
+  examples/project_stage54_2/Stage54_2Atomics.nsproj
+  examples/project_stage54_2/Main.ns
+  tests/unit/Stage54_2AtomicsTests.cpp
+  58_stage54_2_atomics.md
+  58_stage54_2_atomics_implementacion_paso_a_paso.md
+  STAGE54_2_CHANGED_FILES.txt (este archivo)
+
+CREADO Y LUEGO DESCARTADO DURANTE EL PIVOT DE DISEÑO (para transparencia total, no se omite):
+  lib/NativeSharp.Core.Threading/Interlocked.ns -- version original de esta biblioteca, con una
+  clase estatica "Interlocked" y punteros crudos (`Interlocked.Increment(&contador)`). Se borro al
+  confirmar que la tuberia OOP moderna del compilador no baja los operadores &/* en absoluto (ver
+  58_stage54_2_atomics.md, seccion "Primer obstaculo"). Reemplazado por Atomics.ns.
+
+Total: 7 modificados + 7 nuevos = 14 archivos (mas 1 archivo creado y descartado durante el pivot,
+sin rastro final en el repositorio).
+
+Verificacion: 81/81 checks en nsc_stage54_2_atomics_tests (estable en tres corridas consecutivas
+del binario de test completo; cada corrida del binario ya incluye 10 ejecuciones REALES bajo
+Wine -- 5 a O0 y 5 a O2, la regla de rigor extra de Stage 54 -- exigiendo exit code 0 y ausencia
+de crash en cada una, individualmente, sobre 27 chequeos numerados del ejemplo empaquetado); suite
+completa 219/220 (unico fallo: nsc.stage52-4.owned-cleanup-runtime, hallazgo preexistente
+documentado desde Stage 53.5, no relacionado con esta ronda); control negativo manual confirmado
+(chequeo deliberadamente roto -> exit code 25 en las 10 corridas de Wine, restaurado despues,
+confirmado con diff); fixture dedicada del modulo de runtime confirma la ausencia total de
+llamadas a InterlockedIncrement/InterlockedExchangeAdd/InterlockedExchange/
+InterlockedCompareExchange de kernel32.dll en el modulo generado, probando que el segundo pivot de
+diseño de esta ronda se implemento de verdad; zip completo del compilador verificado configurando
++ compilando limpio desde una extraccion nueva.

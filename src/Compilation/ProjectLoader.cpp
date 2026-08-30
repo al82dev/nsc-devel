@@ -1,0 +1,553 @@
+#include "nativesharp/Compilation/ProjectLoader.h"
+
+#include "nativesharp/Compilation/GlobPattern.h"
+#include "nativesharp/Compilation/SimpleXmlParser.h"
+
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <iterator>
+#include <optional>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <vector>
+
+namespace nativesharp::compilation
+{
+namespace
+{
+struct SourceIncludeRule final
+{
+    GlobPattern include;
+    std::vector<GlobPattern> excludes;
+};
+
+struct ProjectDescriptor final
+{
+    std::optional<std::string> name;
+    std::optional<ProjectOutputKind> outputKind;
+    std::vector<SourceIncludeRule> includes;
+    std::vector<GlobPattern> removes;
+    std::vector<std::string> projectReferences;
+};
+
+std::string trim(std::string_view value)
+{
+    std::size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin])) != 0)
+    {
+        ++begin;
+    }
+    std::size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0)
+    {
+        --end;
+    }
+    return std::string(value.substr(begin, end - begin));
+}
+
+const std::string* attribute(const SimpleXmlElement& element, std::string_view name)
+{
+    const auto found = std::find_if(
+        element.attributes.begin(),
+        element.attributes.end(),
+        [name](const auto& item)
+        {
+            return item.first == name;
+        });
+    return found == element.attributes.end() ? nullptr : &found->second;
+}
+
+bool hasOnlyAttributes(
+    const SimpleXmlElement& element,
+    std::initializer_list<std::string_view> allowed,
+    std::string& error)
+{
+    for (const auto& [name, value] : element.attributes)
+    {
+        static_cast<void>(value);
+        if (std::find(allowed.begin(), allowed.end(), name) == allowed.end())
+        {
+            error = "element '" + element.name + "' has unsupported attribute '" + name + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isIdentifier(std::string_view value)
+{
+    if (value.empty())
+    {
+        return false;
+    }
+    const auto isStart = [](unsigned char character)
+    {
+        return std::isalpha(character) != 0 || character == '_';
+    };
+    if (!isStart(static_cast<unsigned char>(value.front())))
+    {
+        return false;
+    }
+    for (const char character : value.substr(1))
+    {
+        const unsigned char current = static_cast<unsigned char>(character);
+        if (!isStart(current) && std::isdigit(current) == 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool equalsFolded(std::string_view left, std::string_view right)
+{
+    if (left.size() != right.size())
+    {
+        return false;
+    }
+    for (std::size_t index = 0; index < left.size(); ++index)
+    {
+        const unsigned char leftValue = static_cast<unsigned char>(left[index]);
+        const unsigned char rightValue = static_cast<unsigned char>(right[index]);
+        if (std::tolower(leftValue) != std::tolower(rightValue))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string pathKey(const std::filesystem::path& path)
+{
+    std::string key = path.generic_string();
+    std::transform(
+        key.begin(),
+        key.end(),
+        key.begin(),
+        [](unsigned char value)
+        {
+            return static_cast<char>(std::tolower(value));
+        });
+    return key;
+}
+
+bool parsePatterns(std::string_view text, std::vector<GlobPattern>& patterns, std::string& error)
+{
+    std::size_t begin = 0;
+    while (begin <= text.size())
+    {
+        const std::size_t end = text.find(';', begin);
+        const std::size_t count = end == std::string_view::npos ? text.size() - begin : end - begin;
+        const std::string item = trim(text.substr(begin, count));
+        if (item.empty())
+        {
+            error = "glob list contains an empty pattern";
+            return false;
+        }
+        GlobPattern pattern(item);
+        if (!pattern.isValid())
+        {
+            error = "invalid glob pattern '" + item + "': " + pattern.validationError();
+            return false;
+        }
+        patterns.push_back(std::move(pattern));
+        if (end == std::string_view::npos)
+        {
+            break;
+        }
+        begin = end + 1;
+    }
+    return true;
+}
+
+bool validateEmptyBody(const SimpleXmlElement& element, std::string& error)
+{
+    if (!element.children.empty() || !trim(element.text).empty())
+    {
+        error = "element '" + element.name + "' must be empty";
+        return false;
+    }
+    return true;
+}
+
+bool parsePropertyGroup(
+    const SimpleXmlElement& group,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (!group.attributes.empty() || !trim(group.text).empty())
+    {
+        error = "PropertyGroup does not accept attributes or text";
+        return false;
+    }
+    for (const SimpleXmlElement& property : group.children)
+    {
+        if (!property.attributes.empty() || !property.children.empty())
+        {
+            error = "project property '" + property.name + "' must contain only text";
+            return false;
+        }
+        const std::string value = trim(property.text);
+        if (value.empty())
+        {
+            error = "project property '" + property.name + "' cannot be empty";
+            return false;
+        }
+        if (property.name == "Name")
+        {
+            if (descriptor.name.has_value())
+            {
+                error = "project property 'Name' is declared more than once";
+                return false;
+            }
+            descriptor.name = value;
+        }
+        else if (property.name == "OutputType")
+        {
+            if (descriptor.outputKind.has_value())
+            {
+                error = "project property 'OutputType' is declared more than once";
+                return false;
+            }
+            if (equalsFolded(value, "Exe"))
+            {
+                descriptor.outputKind = ProjectOutputKind::Executable;
+            }
+            else if (equalsFolded(value, "Library") || equalsFolded(value, "StaticLibrary"))
+            {
+                descriptor.outputKind = ProjectOutputKind::Library;
+            }
+            else if (equalsFolded(value, "SharedLibrary"))
+            {
+                descriptor.outputKind = ProjectOutputKind::SharedLibrary;
+            }
+            else
+            {
+                error = "OutputType must be 'Exe', 'Library', 'StaticLibrary', or 'SharedLibrary'";
+                return false;
+            }
+        }
+        else
+        {
+            error = "unsupported project property '" + property.name + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parseCompileItem(
+    const SimpleXmlElement& item,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (!validateEmptyBody(item, error) ||
+        !hasOnlyAttributes(item, {"Include", "Exclude", "Remove"}, error))
+    {
+        return false;
+    }
+    const std::string* include = attribute(item, "Include");
+    const std::string* exclude = attribute(item, "Exclude");
+    const std::string* remove = attribute(item, "Remove");
+    if ((include == nullptr) == (remove == nullptr))
+    {
+        error = "Compile requires exactly one of Include or Remove";
+        return false;
+    }
+    if (remove != nullptr)
+    {
+        if (exclude != nullptr)
+        {
+            error = "Compile Remove cannot be combined with Exclude";
+            return false;
+        }
+        return parsePatterns(*remove, descriptor.removes, error);
+    }
+
+    std::vector<GlobPattern> includes;
+    if (!parsePatterns(*include, includes, error))
+    {
+        return false;
+    }
+    std::vector<GlobPattern> excludes;
+    if (exclude != nullptr && !parsePatterns(*exclude, excludes, error))
+    {
+        return false;
+    }
+    for (GlobPattern& pattern : includes)
+    {
+        descriptor.includes.push_back(SourceIncludeRule{std::move(pattern), excludes});
+    }
+    return true;
+}
+
+bool parseItemGroup(
+    const SimpleXmlElement& group,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (!group.attributes.empty() || !trim(group.text).empty())
+    {
+        error = "ItemGroup does not accept attributes or text";
+        return false;
+    }
+    for (const SimpleXmlElement& item : group.children)
+    {
+        if (item.name == "Compile")
+        {
+            if (!parseCompileItem(item, descriptor, error))
+            {
+                return false;
+            }
+        }
+        else if (item.name == "ProjectReference")
+        {
+            if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
+            {
+                return false;
+            }
+            const std::string* include = attribute(item, "Include");
+            if (include == nullptr || trim(*include).empty())
+            {
+                error = "ProjectReference requires a non-empty Include attribute";
+                return false;
+            }
+            if (include->find(';') != std::string::npos)
+            {
+                error = "ProjectReference Include accepts one project path per item";
+                return false;
+            }
+            descriptor.projectReferences.push_back(trim(*include));
+        }
+        else
+        {
+            error = "unsupported project item '" + item.name + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parseDescriptor(const SimpleXmlElement& root, ProjectDescriptor& descriptor, std::string& error)
+{
+    if (root.name != "Project")
+    {
+        error = "project root element must be 'Project'";
+        return false;
+    }
+    if (!root.attributes.empty() || !trim(root.text).empty())
+    {
+        error = "Project does not accept attributes or text";
+        return false;
+    }
+    for (const SimpleXmlElement& child : root.children)
+    {
+        if (child.name == "PropertyGroup")
+        {
+            if (!parsePropertyGroup(child, descriptor, error))
+            {
+                return false;
+            }
+        }
+        else if (child.name == "ItemGroup")
+        {
+            if (!parseItemGroup(child, descriptor, error))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            error = "unsupported Project child element '" + child.name + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isReservedDirectory(const std::filesystem::path& path)
+{
+    const std::string name = path.filename().string();
+    return equalsFolded(name, "bin") || equalsFolded(name, "obj") ||
+        equalsFolded(name, ".git") || equalsFolded(name, ".nsc");
+}
+
+bool matchesAny(const std::vector<GlobPattern>& patterns, const std::filesystem::path& path)
+{
+    return std::any_of(
+        patterns.begin(),
+        patterns.end(),
+        [&path](const GlobPattern& pattern)
+        {
+            return pattern.matches(path);
+        });
+}
+}
+
+std::optional<Project> ProjectLoader::load(
+    const std::filesystem::path& projectFile,
+    std::string& error) const
+{
+    error.clear();
+    std::error_code filesystemError;
+    const std::filesystem::path canonicalProject =
+        std::filesystem::weakly_canonical(projectFile, filesystemError);
+    if (filesystemError || !std::filesystem::is_regular_file(canonicalProject))
+    {
+        error = "project file does not exist or is not a regular file: '" + projectFile.string() + "'";
+        return std::nullopt;
+    }
+    if (canonicalProject.extension() != ".nsproj")
+    {
+        error = "NativeSharp project file must use the canonical .nsproj extension";
+        return std::nullopt;
+    }
+
+    std::ifstream stream(canonicalProject, std::ios::binary);
+    if (!stream)
+    {
+        error = "cannot open project file '" + canonicalProject.string() + "'";
+        return std::nullopt;
+    }
+    const std::string source{
+        std::istreambuf_iterator<char>(stream),
+        std::istreambuf_iterator<char>()};
+    if (!stream.good() && !stream.eof())
+    {
+        error = "cannot read project file '" + canonicalProject.string() + "'";
+        return std::nullopt;
+    }
+
+    SimpleXmlElement root;
+    SimpleXmlParser parser;
+    if (!parser.parse(source, root, error))
+    {
+        error = canonicalProject.string() + ": " + error;
+        return std::nullopt;
+    }
+
+    ProjectDescriptor descriptor;
+    if (!parseDescriptor(root, descriptor, error))
+    {
+        error = canonicalProject.string() + ": " + error;
+        return std::nullopt;
+    }
+
+    const std::string moduleName = descriptor.name.value_or(canonicalProject.stem().string());
+    if (!isIdentifier(moduleName))
+    {
+        error = "project Name '" + moduleName + "' is not a valid NativeSharp identifier";
+        return std::nullopt;
+    }
+    if (descriptor.includes.empty())
+    {
+        descriptor.includes.push_back(SourceIncludeRule{GlobPattern("**/*.ns"), {}});
+    }
+
+    const std::filesystem::path projectDirectory = canonicalProject.parent_path();
+    ProjectSourceSet sourceSet(projectDirectory);
+    std::vector<std::filesystem::path> candidates;
+    std::vector<std::string> candidateKeys;
+
+    std::filesystem::recursive_directory_iterator iterator(
+        projectDirectory,
+        std::filesystem::directory_options::skip_permission_denied,
+        filesystemError);
+    const std::filesystem::recursive_directory_iterator end;
+    while (!filesystemError && iterator != end)
+    {
+        const std::filesystem::directory_entry entry = *iterator;
+        if (entry.is_directory(filesystemError) && isReservedDirectory(entry.path()))
+        {
+            iterator.disable_recursion_pending();
+        }
+        else if (!filesystemError && entry.is_regular_file(filesystemError) && entry.path().extension() == ".ns")
+        {
+            const std::filesystem::path relative =
+                std::filesystem::relative(entry.path(), projectDirectory, filesystemError).lexically_normal();
+            if (!filesystemError)
+            {
+                bool included = false;
+                for (const SourceIncludeRule& rule : descriptor.includes)
+                {
+                    if (rule.include.matches(relative) && !matchesAny(rule.excludes, relative))
+                    {
+                        included = true;
+                        break;
+                    }
+                }
+                if (included && !matchesAny(descriptor.removes, relative))
+                {
+                    const std::string key = pathKey(relative);
+                    if (std::find(candidateKeys.begin(), candidateKeys.end(), key) == candidateKeys.end())
+                    {
+                        candidates.push_back(entry.path());
+                        candidateKeys.push_back(key);
+                    }
+                }
+            }
+        }
+        iterator.increment(filesystemError);
+    }
+    if (filesystemError)
+    {
+        error = "cannot enumerate project sources: " + filesystemError.message();
+        return std::nullopt;
+    }
+
+    for (const std::filesystem::path& sourcePath : candidates)
+    {
+        if (!sourceSet.add(sourcePath, error))
+        {
+            return std::nullopt;
+        }
+    }
+    if (!sourceSet.finalize(error))
+    {
+        return std::nullopt;
+    }
+
+    std::vector<std::filesystem::path> projectReferences;
+    std::vector<std::string> referenceKeys;
+    for (const std::string& referenceText : descriptor.projectReferences)
+    {
+        const std::filesystem::path unresolved = projectDirectory / referenceText;
+        const std::filesystem::path reference =
+            std::filesystem::weakly_canonical(unresolved, filesystemError);
+        if (filesystemError || !std::filesystem::is_regular_file(reference))
+        {
+            error = "referenced project does not exist: '" + unresolved.string() + "'";
+            return std::nullopt;
+        }
+        if (reference.extension() != ".nsproj")
+        {
+            error = "ProjectReference must refer to a .nsproj file: '" + reference.string() + "'";
+            return std::nullopt;
+        }
+        const std::string key = pathKey(reference);
+        if (std::find(referenceKeys.begin(), referenceKeys.end(), key) != referenceKeys.end())
+        {
+            error = "duplicate ProjectReference: '" + reference.string() + "'";
+            return std::nullopt;
+        }
+        referenceKeys.push_back(key);
+        projectReferences.push_back(reference);
+    }
+    std::sort(
+        projectReferences.begin(),
+        projectReferences.end(),
+        [](const std::filesystem::path& left, const std::filesystem::path& right)
+        {
+            return pathKey(left) < pathKey(right);
+        });
+
+    return Project(
+        canonicalProject,
+        moduleName,
+        descriptor.outputKind.value_or(ProjectOutputKind::Executable),
+        std::move(sourceSet),
+        std::move(projectReferences));
+}
+}

@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>Stage34App</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>

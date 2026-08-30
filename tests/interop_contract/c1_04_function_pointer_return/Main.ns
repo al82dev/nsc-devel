@@ -1,0 +1,24 @@
+// Interop contract case 4 -- FUNCTION POINTER RETURN.
+//
+// A function pointer travelling OUT: returned by an imported C function (the proc-address shape),
+// and returned by an exported NativeSharp function (the "give the host our callback" shape).
+// Before C1 both were rejected outright -- "Stage 47 C ABI does not return delegate values" --
+// which forced every binding to declare `nint` and blind-cast at each call site.
+namespace contract {
+    extern C delegate int GlSlot(int slot);
+    public class Gl {
+        // The wglGetProcAddress/SDL_GL_GetProcAddress shape, with its REAL return type.
+        extern C from "opengl32.dll" {
+            public GlSlot wglGetProcAddress(byte* name);
+        }
+    }
+    class Case {
+        public static int Identity(int slot) { return slot; }
+        public static export extern C GlSlot GetIdentity() { return Identity; }
+        public static int Main() {
+            GlSlot f = GetIdentity();
+            if (f(42) != 42) { return 1; }
+            return 42;
+        }
+    }
+}

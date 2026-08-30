@@ -1,0 +1,40 @@
+namespace Stage43.Sample
+{
+    public delegate int Transform(int value);
+    public delegate void Changed(int value);
+
+    public class Harness
+    {
+        public int Bias;
+        public event Changed ChangedEvent;
+        public static Transform Identity = x => x;
+
+        public static int Apply(Transform transform, int value)
+        {
+            return transform(value);
+        }
+
+        public Transform Make(int seed)
+        {
+            return x => x + seed;
+        }
+
+        public int Run(int seed)
+        {
+            int local = 3;
+            Transform noncapturing = x => x + 1;
+            Transform captureLocal = x => x + local;
+            Transform captureBoth = x => x + local + seed;
+            Transform captureThis = x => x + Bias;
+            Transform block = x => { int y = x + 2; return y; };
+            Transform assigned = null;
+            assigned = x => x + 4;
+            int viaCall = Apply(x => x + 5, 10);
+            ChangedEvent += x => { Bias = x; };
+            int result = noncapturing(10) + captureLocal(10) + captureBoth(10) +
+                captureThis(10) + block(10) + assigned(10) + viaCall;
+            ChangedEvent(7);
+            return result + Bias;
+        }
+    }
+}

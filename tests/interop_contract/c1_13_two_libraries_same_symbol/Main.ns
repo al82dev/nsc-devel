@@ -1,0 +1,17 @@
+// Interop contract case 13 -- TWO LIBRARIES WITH THE SAME SYMBOL.
+//
+// An import's identity is the triple (library, external symbol, signature), never the symbol name
+// alone. MEASURED before C1: this exact program made LLVM rename the second declaration to
+// `Init.1` behind the compiler's back and the link ended with "undefined symbol: Init.1".
+//
+// The two fixture DLLs deliberately do not exist -- the case is about COMPILING AND LINKING two
+// identities that share a name. Binding is lazy (LoadLibrary/GetProcAddress at first call), so
+// this project links cleanly and would only fail when actually calling, on a machine without the
+// libraries, which is the trade this design makes on purpose.
+namespace contract {
+    public class LibraryA { extern C from "a.dll" { public int Init(); } }
+    public class LibraryB { extern C from "b.dll" { public int Init(); } }
+    class Case {
+        public static int Main() { return LibraryA.Init() + LibraryB.Init(); }
+    }
+}

@@ -1,0 +1,70 @@
+Stage 55 "Process / Hardware / Diagnostics" -- archivos modificados/nuevos en esta ronda
+(las tres subetapas -- 55.1 Process, 55.2 Hardware/System Info, 55.3 Diagnostics -- implementadas
+EN LA MISMA PASADA por instruccion explicita de Alberto ("agregalo de una vez"), mismo patron que
+Stage 54.4+54.5. Ver 62_stage55_process_hardware_diagnostics.md para el diseño tecnico completo.)
+
+MODIFICADOS (tocados una sola vez para las 15 core operations combinadas -- 6 de Process + 6 de
+SystemInfo + 3 de Debug):
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+  src/Runtime/WindowsRuntimeBuilder.cpp
+  src/Linker/WindowsExecutableBuilder.cpp
+  src/Linker/WindowsLibraryBuilder.cpp
+  tests/unit/Stage47HostCAbiTests.cpp
+  tests/unit/Stage48_3CHostIntegrationTests.cpp
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp
+  CMakeLists.txt
+
+NUEVOS:
+  lib/NativeSharp.Core.Diagnostics/Process.ns
+  lib/NativeSharp.Core.Diagnostics/SystemInfo.ns
+  lib/NativeSharp.Core.Diagnostics/Debug.ns
+  examples/project_stage55_1/Stage55_1Process.nsproj
+  examples/project_stage55_1/Main.ns
+  examples/project_stage55_2/Stage55_2Hardware.nsproj
+  examples/project_stage55_2/Main.ns
+  examples/project_stage55_3/Stage55_3Diagnostics.nsproj
+  examples/project_stage55_3/Main.ns
+  tests/unit/Stage55_1ProcessTests.cpp
+  tests/unit/Stage55_2HardwareTests.cpp
+  tests/unit/Stage55_3DiagnosticsTests.cpp
+  62_stage55_process_hardware_diagnostics.md
+  62_stage55_process_hardware_diagnostics_implementacion_paso_a_paso.md
+  STAGE55_CHANGED_FILES.txt (este archivo)
+
+ADEMAS (fuera del alcance tecnico de Stage 55, resuelto en la misma sesion de trabajo):
+  tools/build_project.cmd -- fix solicitado por Alberto para emitir el .obj ademas del .exe en el
+  pipeline de build centralizado de sus ejemplos/tutoriales reales (no relacionado con las core
+  operations de esta ronda).
+
+NOTA sobre el mecanismo de compilador: CERO extensiones nuevas a `MethodCoreBinding`/
+`ProjectOopHirNode`/`ProjectOopMirNode` -- las 15 core operations de esta ronda son, sin
+excepcion, del tipo mas simple que este compilador ya sabe manejar (cero argumentos ->
+builtin:long, o un argumento simple -> void, sin receptor ni HANDLE de ida y vuelta) -- ver
+62_stage55_process_hardware_diagnostics.md, seccion "Por que las tres subetapas reusan
+integramente el mecanismo existente".
+
+NOTA sobre `kernel32Symbols`: los 11 imports Win32 de esta ronda (GetCurrentProcessId,
+GetCurrentProcess, K32GetProcessMemoryInfo, GetProcessTimes, GetPriorityClass, SetPriorityClass,
+GetSystemInfo, GlobalMemoryStatusEx, OutputDebugStringA, IsDebuggerPresent,
+RtlCaptureStackBackTrace) se sincronizaron en las cinco ubicaciones de siempre (48 -> 59 entradas
+en cada una), verificados con un script Python que cuenta las entradas reales del array
+(ignorando lineas de comentario) contra su tamaño declarado.
+
+NOTA sobre `K32GetProcessMemoryInfo`: es el alias que KERNEL32.dll exporta directamente (desde
+Windows Vista) para lo que de otro modo requeriria enlazar `psapi.lib` -- confirmado via
+investigacion antes de disenar esta ronda, evitando agregar una biblioteca de importacion nueva
+solo para esta unica funcion (mismo criterio que ya goberno la eleccion de SHELL32.dll para
+CommandLineToArgvW en Stage 53.5).
+
+VERIFICACION: build completo con `-DNSC_WARNINGS_AS_ERRORS=ON` limpio (0 warnings, 0 errors).
+Los tres suites nuevos corridos individualmente con ejecucion REAL bajo Wine (disponible en este
+entorno, no saltada): nsc_stage55_1_process_tests (27/27), nsc_stage55_2_hardware_tests (27/27),
+nsc_stage55_3_diagnostics_tests (24/24) -- las tres confirmando el marshaling real de
+PROCESS_MEMORY_COUNTERS/SYSTEM_INFO/MEMORYSTATUSEX contra Windows real (via Wine). `ctest`
+completo: 226/226 exitosos (223 previos + 3 nuevos), sin regresiones.

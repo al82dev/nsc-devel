@@ -1,0 +1,47 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.GraphTraversal
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 16 - Graph, BFS and DFS");
+            Console.WriteLine("------------------------------------------------");
+            raii Graph graph = new Graph(10);
+            int harbor = graph.AddCity("Harbor");
+            int oldTown = graph.AddCity("OldTown");
+            int market = graph.AddCity("Market");
+            int university = graph.AddCity("University");
+            int stadium = graph.AddCity("Stadium");
+            int airport = graph.AddCity("Airport");
+            int industrial = graph.AddCity("Industrial");
+            int hills = graph.AddCity("Hills");
+
+            graph.AddUndirectedEdge(harbor, oldTown);
+            graph.AddUndirectedEdge(harbor, industrial);
+            graph.AddUndirectedEdge(oldTown, market);
+            graph.AddUndirectedEdge(market, university);
+            graph.AddUndirectedEdge(market, stadium);
+            graph.AddUndirectedEdge(university, hills);
+            graph.AddUndirectedEdge(stadium, airport);
+            graph.AddUndirectedEdge(industrial, airport);
+            graph.AddUndirectedEdge(airport, hills);
+
+            Console.WriteLine("Adjacency list rendered from our adjacency matrix:");
+            graph.PrintAdjacency();
+            Console.WriteLine("");
+            Console.WriteLine("Breadth-first traversal from Harbor:");
+            graph.BreadthFirst(harbor);
+            Console.WriteLine("");
+            Console.WriteLine("Depth-first traversal, iterative stack:");
+            graph.DepthFirstIterative(harbor);
+            Console.WriteLine("");
+            Console.WriteLine("Depth-first traversal, recursive:");
+            graph.DepthFirstRecursive(harbor);
+            Console.WriteLine("");
+            Console.WriteLine("Shortest unweighted path Harbor -> Hills, reconstructed from BFS parents:");
+            graph.ShortestUnweightedPath(harbor, hills);
+            return 0;
+        }
+    }
+}

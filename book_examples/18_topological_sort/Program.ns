@@ -1,0 +1,35 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.TopologicalSort
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 18 - Topological Sort");
+            Console.WriteLine("----------------------------------------------");
+            Console.WriteLine("Build pipeline modeled as a DAG:");
+            raii DependencyGraph graph=new DependencyGraph(10);
+            int scan=graph.AddTask("scan source files");
+            int lex=graph.AddTask("lex tokens");
+            int parse=graph.AddTask("parse syntax tree");
+            int sema=graph.AddTask("semantic analysis");
+            int hir=graph.AddTask("lower to HIR");
+            int mir=graph.AddTask("lower to MIR");
+            int optimize=graph.AddTask("optimize MIR");
+            int llvm=graph.AddTask("emit LLVM IR");
+            int obj=graph.AddTask("emit COFF object");
+            int link=graph.AddTask("link executable");
+            graph.AddDependency(scan,lex);
+            graph.AddDependency(lex,parse);
+            graph.AddDependency(parse,sema);
+            graph.AddDependency(sema,hir);
+            graph.AddDependency(hir,mir);
+            graph.AddDependency(mir,optimize);
+            graph.AddDependency(optimize,llvm);
+            graph.AddDependency(llvm,obj);
+            graph.AddDependency(obj,link);
+            graph.TopologicalOrder();
+            return 0;
+        }
+    }
+}

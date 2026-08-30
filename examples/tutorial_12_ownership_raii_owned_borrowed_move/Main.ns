@@ -1,0 +1,135 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 12 -- El modelo de ownership: raii, move, destructores
+// No hay capitulo equivalente en K&R ni en los repos de C# -- esto es lo mas distintivo que
+// tiene NativeSharp frente a AMBOS mundos que inspiran el resto de este tutorial.
+// ============================================================================================
+//
+// C real (K&R) resuelve "quien libera esta memoria" con malloc()/free() manuales: el programador
+// lleva la cuenta a mano, y un free() olvidado (leak) o duplicado (double-free) es un bug de
+// runtime silencioso. C# real resuelve el mismo problema con un garbage collector: nadie decide
+// cuando se libera, un proceso en segundo plano lo hace cuando le parece.
+//
+// NativeSharp no tiene GC (ver claude/04_restricciones_arquitectonicas.md: nada de runtime tipo
+// CLR) y no quiere que el programador escriba free() a mano tampoco. La solucion es un tercer
+// camino, tomado de Rust/C++ (RAII = "Resource Acquisition Is Initialization"): el COMPILADOR
+// inserta la destruccion automaticamente en cada punto de salida de un scope (fin de bloque,
+// return, break, excepcion) -- sin GC en runtime, sin free() manual, decidido 100% en tiempo de
+// compilacion.
+namespace Tutorial.OwnershipModel
+{
+    public class TrackedResource
+    {
+        // Contadores static para OBSERVAR el ciclo de vida desde afuera -- no son parte del
+        // modelo de ownership en si, son instrumentacion para que este ejemplo pueda verificarse.
+        private static int liveCount = 0;
+        private static int destroyedCount = 0;
+        private int value;
+
+        public TrackedResource(int initialValue)
+        {
+            value = initialValue;
+            liveCount = liveCount + 1;
+        }
+
+        public int Read()
+        {
+            return value;
+        }
+
+        public static int LiveCount() { return liveCount; }
+        public static int DestroyedCount() { return destroyedCount; }
+
+        // El destructor -- se ejecuta automaticamente cuando el compilador determina que este
+        // objeto llego al final de su vida (scope que termina, move() lo vacio del origen, etc).
+        // NUNCA se llama a mano.
+        ~TrackedResource()
+        {
+            liveCount = liveCount - 1;
+            destroyedCount = destroyedCount + 1;
+        }
+    }
+
+    class Program
+    {
+        // raii + scope anidado: "nested" se destruye automaticamente al llegar a la llave de
+        // cierre de SU bloque -- antes de que "outer" se destruya, y sin ninguna instruccion
+        // explicita de liberacion.
+        public static int ScopeCleanup()
+        {
+            raii TrackedResource outer = new TrackedResource(1);
+            int liveWithOuterOnly = TrackedResource.LiveCount(); // 1
+            {
+                raii TrackedResource nested = new TrackedResource(2);
+                int liveWithBoth = TrackedResource.LiveCount(); // 2
+                if (liveWithBoth != 2) { return -1; }
+            }
+            // "nested" ya se destruyo aca -- aunque el bloque no tuvo return, break, ni nada
+            // especial, simplemente termino.
+            int liveAfterInnerScope = TrackedResource.LiveCount(); // 1 otra vez
+            if (liveWithOuterOnly != 1 || liveAfterInnerScope != 1) { return -2; }
+            return 0;
+        }
+
+        // move(): transferir la propiedad de un objeto de un local raii a otro. Despues del
+        // move, el ORIGEN queda vacio (null) -- ya no es dueno de nada, y el compilador lo
+        // rechaza si se intenta usar de nuevo sin volver a asignarlo (ver
+        // examples/project_stage50/negative/UseAfterMove.ns en este mismo repo para el caso que
+        // el compilador SI detecta y rechaza).
+        public static int MoveTransfersOwnership()
+        {
+            raii TrackedResource first = new TrackedResource(42);
+            raii TrackedResource second = move(first);
+            // "first" ya no es dueno de nada aca -- el objeto ahora vive en "second".
+            int valueViaSecond = second.Read(); // 42
+            return valueViaSecond;
+        }
+
+        // Cleanup ante excepcion (K&R/C no tienen excepciones; en C# real el GC eventualmente
+        // limpia igual, con o sin excepcion, pero SIN garantia de CUANDO). Aca la garantia es
+        // inmediata y determinista: el destructor corre en cuanto la excepcion desenrolla la
+        // pila mas alla del scope de "protectedResource", sin importar por donde salga el
+        // control.
+        public static int CleanupOnException()
+        {
+            try
+            {
+                raii TrackedResource protectedResource = new TrackedResource(99);
+                throw new Exception();
+            }
+            catch (Exception ex)
+            {
+                return TrackedResource.LiveCount(); // 0 -- ya se destruyo, aunque la excepcion
+                                                      // interrumpio el flujo normal
+            }
+        }
+
+        public static int Main()
+        {
+            if (TrackedResource.LiveCount() != 0) { return 1; }
+
+            int scopeResult = ScopeCleanup();
+            if (scopeResult != 0) { return 2; }
+            if (TrackedResource.LiveCount() != 0) { return 3; } // outer tambien se destruyo ya
+
+            int movedValue = MoveTransfersOwnership();
+            if (movedValue != 42) { return 4; }
+
+            int liveDuringException = CleanupOnException();
+            if (liveDuringException != 0) { return 5; }
+
+            int totalDestroyed = TrackedResource.DestroyedCount(); // 4 objetos en total:
+                                                                     // outer, nested, second
+                                                                     // (via first->second),
+                                                                     // protectedResource
+
+            raii string label = String.Copy("objetos destruidos automaticamente = ");
+            raii string digits = String.ToString(totalDestroyed);
+            raii string line = String.Concat(label, digits);
+            Console.WriteLine(line);
+
+            return totalDestroyed; // 4
+        }
+    }
+}

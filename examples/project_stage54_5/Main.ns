@@ -1,0 +1,193 @@
+using NativeSharp.Core.Threading;
+
+// Stage 54.5 "Otras primitivas de sincronizacion" -- programa de verificacion empaquetado.
+//
+// Misma convencion de exit codes que cada ronda de Stage 53/54: cada chequeo que falla devuelve
+// un codigo de salida DISTINTO, y el ultimo chequeo exitoso termina en "return 0".
+//
+// DISCIPLINA EXTRA DE ESTA RONDA (la misma regla de rigor de Stage 54): cubre Semaphore Y Event
+// por separado, cada una con su propio corner case de lifecycle/timeout real, MAS un chequeo de
+// carrera deliberado y detectable para Semaphore (Seccion 4 -- un limite de concurrencia real
+// verificado con un contador atomico "en vuelo", exactamente el mismo espiritu que el contador
+// NO-atomico de Mutex/Monitor, pero aca la propiedad que se rompe si Semaphore fallara es "nunca
+// mas de 3 en vuelo simultaneamente", no "nunca se pierde un incremento"). Las Secciones 5-6
+// prueban la diferencia de comportamiento real entre Event manual-reset (se queda señalado,
+// TODOS los que esperan se despiertan) y auto-reset (SOLO uno se despierta por Set(), y el evento
+// se vuelve a poner en no-señalado automaticamente -- verificado con un segundo Wait(timeout)
+// corto que debe expirar). Ningun chequeo usa Sleep() como sustituto de sincronizacion.
+class SemBasic
+{
+    public static Semaphore Sem = new Semaphore(1, 1);
+    public static int Value = 0;
+
+    // Campo que NINGUN codigo de este programa toca jamas -- control negativo de la Seccion 8.
+    public static int NeverTouched = 0;
+}
+
+class SemBound
+{
+    // Limite real de 3 -- si Semaphore.Wait()/Release() no proveyeran el limite de concurrencia
+    // que Win32 promete, mas de 3 hilos podrian estar "en vuelo" (entre un Wait() exitoso y el
+    // Release() correspondiente) al mismo tiempo, y Violations terminaria en un valor > 0.
+    public static Semaphore Sem = new Semaphore(3, 3);
+    public static AtomicInt32 Active = new AtomicInt32(0);
+    public static AtomicInt32 Violations = new AtomicInt32(0);
+    public static AtomicInt32 Completed = new AtomicInt32(0);
+}
+
+class EventManual
+{
+    // manualReset=true, initialState=false -- ver el comentario de cabecera de Event.ns.
+    public static Event Ev = new Event(true, false);
+    public static AtomicInt32 Completed = new AtomicInt32(0);
+}
+
+class EventAuto
+{
+    // manualReset=false, initialState=false.
+    public static Event Ev = new Event(false, false);
+    public static AtomicInt32 WokeCount = new AtomicInt32(0);
+}
+
+class Program
+{
+    // ==== Trabajador de la Seccion 4: limite de concurrencia REAL, verificado con un atomico ===
+    private static void SemBoundWorker()
+    {
+        SemBound.Sem.Wait(-1);
+        int active = SemBound.Active.Increment();
+        if (active > 3) { SemBound.Violations.Increment(); }
+        // Trabajo ficticio (sin Sleep()) para ensanchar la ventana de una violacion hipotetica --
+        // si el semaforo NO limitara la concurrencia, mantener el permiso "ocupado" mas tiempo
+        // hace mas probable que un quinto/sexto/etc. hilo tambien entre y se detecte la violacion.
+        int busy = 0;
+        while (busy < 20000) { busy = busy + 1; }
+        SemBound.Active.Decrement();
+        SemBound.Sem.Release();
+        SemBound.Completed.Increment();
+    }
+
+    // ==== Trabajador de la Seccion 5: Event manual-reset -- se queda señalado ==================
+    private static void EventManualWorker()
+    {
+        bool signaled = EventManual.Ev.Wait(-1);
+        if (signaled) { EventManual.Completed.Increment(); }
+    }
+
+    // ==== Trabajador de la Seccion 6: Event auto-reset -- solo uno se despierta ================
+    private static void EventAutoWorker()
+    {
+        bool signaled = EventAuto.Ev.Wait(-1);
+        if (signaled) { EventAuto.WokeCount.Increment(); }
+    }
+
+    public static int Main()
+    {
+        // ==== Seccion 1: Semaphore(1,1) basico, un solo hilo, actua como un lock binario =======
+
+        SemBasic.Sem.Wait(-1);
+        SemBasic.Value = SemBasic.Value + 1;
+        SemBasic.Sem.Release();
+        if (SemBasic.Value != 1) { return 1; }
+
+        // ==== Seccion 2: Semaphore.Wait(timeout) que expira DE VERDAD ==========================
+        // Semaforo con contador inicial 0 -- nadie lo va a liberar, un timeout corto SIEMPRE debe
+        // expirar (false), nunca bloquear para siempre.
+
+        Semaphore neverSignaled = new Semaphore(0, 1);
+        bool acquired = neverSignaled.Wait(50);
+        if (acquired) { return 2; }
+
+        // ==== Seccion 3: agotamiento modesto de recursos -- crear y destruir muchos semaforos ==
+
+        int created = 0;
+        while (created < 200)
+        {
+            raii Semaphore temp = new Semaphore(1, 1);
+            temp.Wait(1000);
+            temp.Release();
+            created = created + 1;
+        }
+        if (created != 200) { return 3; }
+
+        // ==== Seccion 4: 10 hilos compitiendo por Semaphore(3,3) -- limite de concurrencia real
+        // verificado con un contador atomico "en vuelo" (Active) y un contador de violaciones ===
+
+        ThreadStart semBoundStart = SemBoundWorker;
+        raii Thread s1 = new Thread(semBoundStart);
+        raii Thread s2 = new Thread(semBoundStart);
+        raii Thread s3 = new Thread(semBoundStart);
+        raii Thread s4 = new Thread(semBoundStart);
+        raii Thread s5 = new Thread(semBoundStart);
+        raii Thread s6 = new Thread(semBoundStart);
+        raii Thread s7 = new Thread(semBoundStart);
+        raii Thread s8 = new Thread(semBoundStart);
+        raii Thread s9 = new Thread(semBoundStart);
+        raii Thread s10 = new Thread(semBoundStart);
+        s1.Join();
+        s2.Join();
+        s3.Join();
+        s4.Join();
+        s5.Join();
+        s6.Join();
+        s7.Join();
+        s8.Join();
+        s9.Join();
+        s10.Join();
+        if (SemBound.Completed.Value != 10) { return 4; }
+        if (SemBound.Violations.Value != 0) { return 5; }
+        // Todos los permisos deben haber vuelto al semaforo: un ultimo Wait(0-timeout-corto) mas
+        // tres Release() adicionales confirmarian sobre-liberacion si Active quedara mal contado;
+        // el chequeo mas directo y ya suficiente es que Active volvio exactamente a 0.
+        if (SemBound.Active.Value != 0) { return 6; }
+
+        // ==== Seccion 5: Event manual-reset -- se queda señalado, TODOS los 5 hilos despiertan =
+        // Main llama Set() sin coordinar con los hilos (sin barrera): un evento manual-reset se
+        // queda señalado indefinidamente, asi que no importa si un hilo llama Wait() antes o
+        // despues del Set() -- todos deben terminar viendolo señalado.
+
+        ThreadStart eventManualStart = EventManualWorker;
+        raii Thread em1 = new Thread(eventManualStart);
+        raii Thread em2 = new Thread(eventManualStart);
+        raii Thread em3 = new Thread(eventManualStart);
+        raii Thread em4 = new Thread(eventManualStart);
+        raii Thread em5 = new Thread(eventManualStart);
+        EventManual.Ev.Set();
+        em1.Join();
+        em2.Join();
+        em3.Join();
+        em4.Join();
+        em5.Join();
+        if (EventManual.Completed.Value != 5) { return 7; }
+
+        // ==== Seccion 6: Event auto-reset -- UN SOLO hilo consume la señal, despues se resetea =
+        // Un solo hilo esperando: sin importar el orden entre Wait() y Set(), un evento auto-
+        // reset SIEMPRE se consume por exactamente un waiter y vuelve a no-señalado de inmediato
+        // -- verificado con un segundo Wait(timeout) corto que debe expirar (nadie vuelve a
+        // señalarlo).
+
+        ThreadStart eventAutoStart = EventAutoWorker;
+        raii Thread ea1 = new Thread(eventAutoStart);
+        EventAuto.Ev.Set();
+        ea1.Join();
+        if (EventAuto.WokeCount.Value != 1) { return 8; }
+        bool stillSignaled = EventAuto.Ev.Wait(50);
+        if (stillSignaled) { return 9; }
+
+        // ==== Seccion 7: Event.Reset() explicito sobre un evento manual-reset ==================
+
+        Event resetTarget = new Event(true, false);
+        resetTarget.Set();
+        bool firstWait = resetTarget.Wait(-1);
+        if (!firstWait) { return 10; }
+        resetTarget.Reset();
+        bool afterReset = resetTarget.Wait(50);
+        if (afterReset) { return 11; }
+
+        // ==== Seccion 8: control negativo -- un campo que NINGUN codigo toco sigue en 0 ========
+
+        if (SemBasic.NeverTouched != 0) { return 12; }
+
+        return 0;
+    }
+}

@@ -1,0 +1,209 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.GraphTraversal
+{
+    public class Graph
+    {
+        private City[] vertices;
+        private int[] adjacency;
+        private int vertexCount;
+        private int capacity;
+
+        public Graph(int maxVertices)
+        {
+            capacity = maxVertices;
+            vertices = new City[maxVertices];
+            adjacency = new int[maxVertices * maxVertices];
+            vertexCount = 0;
+        }
+        public int VertexCount { get { return vertexCount; } }
+
+        private int Cell(int from, int to) { return from * capacity + to; }
+
+        public int AddCity(string name)
+        {
+            if (vertexCount == capacity) { throw new InvalidOperationException(); }
+            int id = vertexCount;
+            vertices[id] = new City(id, name);
+            vertexCount = vertexCount + 1;
+            return id;
+        }
+
+        public void AddUndirectedEdge(int a, int b)
+        {
+            adjacency[Cell(a, b)] = 1;
+            adjacency[Cell(b, a)] = 1;
+        }
+
+        public City GetCity(int id) { return vertices[id]; }
+        public bool Connected(int a, int b) { return adjacency[Cell(a, b)] != 0; }
+
+        private void PrintVisit(string label, int id)
+        {
+            raii string a = String.Concat(label, vertices[id].Name);
+            Console.WriteLine(a);
+        }
+
+        public void BreadthFirst(int start)
+        {
+            bool[] visited = new bool[vertexCount];
+            raii IntQueue queue = new IntQueue(4);
+            visited[start] = true;
+            queue.Enqueue(start);
+            while (!queue.IsEmpty)
+            {
+                int v = queue.Dequeue();
+                PrintVisit("  visit: ", v);
+                int n = 0;
+                while (n < vertexCount)
+                {
+                    if (Connected(v, n) && !visited[n])
+                    {
+                        visited[n] = true;
+                        queue.Enqueue(n);
+                    }
+                    n = n + 1;
+                }
+            }
+            delete[] visited;
+        }
+
+        public void DepthFirstIterative(int start)
+        {
+            bool[] visited = new bool[vertexCount];
+            raii IntStack stack = new IntStack(4);
+            stack.Push(start);
+            while (!stack.IsEmpty)
+            {
+                int v = stack.Pop();
+                if (!visited[v])
+                {
+                    visited[v] = true;
+                    PrintVisit("  visit: ", v);
+                    int n = vertexCount - 1;
+                    while (n >= 0)
+                    {
+                        if (Connected(v, n) && !visited[n]) { stack.Push(n); }
+                        n = n - 1;
+                    }
+                }
+            }
+            delete[] visited;
+        }
+
+        private void DepthFirstNode(int v, bool[] visited)
+        {
+            visited[v] = true;
+            PrintVisit("  visit: ", v);
+            int n = 0;
+            while (n < vertexCount)
+            {
+                if (Connected(v, n) && !visited[n]) { DepthFirstNode(n, visited); }
+                n = n + 1;
+            }
+        }
+
+        public void DepthFirstRecursive(int start)
+        {
+            bool[] visited = new bool[vertexCount];
+            DepthFirstNode(start, visited);
+            delete[] visited;
+        }
+
+        public void ShortestUnweightedPath(int start, int goal)
+        {
+            bool[] visited = new bool[vertexCount];
+            int[] previous = new int[vertexCount];
+            int i = 0;
+            while (i < vertexCount) { previous[i] = -1; i = i + 1; }
+            raii IntQueue queue = new IntQueue(4);
+            visited[start] = true;
+            queue.Enqueue(start);
+            while (!queue.IsEmpty)
+            {
+                int v = queue.Dequeue();
+                if (v == goal) { break; }
+                int n = 0;
+                while (n < vertexCount)
+                {
+                    if (Connected(v, n) && !visited[n])
+                    {
+                        visited[n] = true;
+                        previous[n] = v;
+                        queue.Enqueue(n);
+                    }
+                    n = n + 1;
+                }
+            }
+
+            if (!visited[goal])
+            {
+                Console.WriteLine("  no path");
+            }
+            else
+            {
+                int[] reversePath = new int[vertexCount];
+                int length = 0;
+                int current = goal;
+                while (current != -1)
+                {
+                    reversePath[length] = current;
+                    length = length + 1;
+                    current = previous[current];
+                }
+                raii string line = String.Copy("");
+                int p = length - 1;
+                while (p >= 0)
+                {
+                    raii string withName = String.Concat(line, vertices[reversePath[p]].Name);
+                    line = move(withName);
+                    if (p > 0)
+                    {
+                        raii string withArrow = String.Concat(line, " -> ");
+                        line = move(withArrow);
+                    }
+                    p = p - 1;
+                }
+                Console.WriteLine(line);
+                delete[] reversePath;
+            }
+            delete[] visited;
+            delete[] previous;
+        }
+
+        public void PrintAdjacency()
+        {
+            int v = 0;
+            while (v < vertexCount)
+            {
+                raii string line = String.Concat(vertices[v].Name, ": ");
+                int n = 0;
+                bool first = true;
+                while (n < vertexCount)
+                {
+                    if (Connected(v, n))
+                    {
+                        if (!first)
+                        {
+                            raii string withComma = String.Concat(line, ", ");
+                            line = move(withComma);
+                        }
+                        raii string withName = String.Concat(line, vertices[n].Name);
+                        line = move(withName);
+                        first = false;
+                    }
+                    n = n + 1;
+                }
+                Console.WriteLine(line);
+                v = v + 1;
+            }
+        }
+
+        ~Graph()
+        {
+            int i = 0;
+            while (i < vertexCount) { delete vertices[i]; i = i + 1; }
+            delete[] vertices;
+            delete[] adjacency;
+        }
+    }
+}

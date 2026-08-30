@@ -1,0 +1,47 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 02 - Polymorphic Payroll");
+            Console.WriteLine("-------------------------------------------------");
+
+            Employee[] employees = new Employee[4];
+            employees[0] = new SalariedEmployee(1001, "Ana Torres", 185000);
+            employees[1] = new HourlyEmployee(1002, "Luis Medina", 3250, 46);
+            employees[2] = new CommissionEmployee(1003, "Marta Silva", 1250000, 8);
+            employees[3] = new BasePlusCommissionEmployee(1004, "Diego Rios", 980000, 7, 45000);
+
+            raii Money total = PayrollReport.Print(employees, 4);
+            raii string totalText = total.ToText();
+            raii string totalLine = String.Concat("TOTAL PAYROLL: ", totalText);
+            Console.WriteLine("-------------------------------------------------");
+            Console.WriteLine(totalLine);
+
+            raii Money budget = new Money(600000);
+            if (total < budget)
+            {
+                raii string remainingText = String.ToString(budget.Cents - total.Cents);
+                raii string message = String.Concat("Payroll is under budget. Remaining cents: ", remainingText);
+                Console.WriteLine(message);
+            }
+            else
+            {
+                Console.WriteLine("Payroll exceeds the weekly budget.");
+            }
+
+            int i = 0;
+            while (i < 4)
+            {
+                delete employees[i];
+                i = i + 1;
+            }
+            delete[] employees;
+
+            return 0;
+        }
+    }
+}

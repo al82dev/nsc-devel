@@ -1,0 +1,25 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.CircularJosephus
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 10 - Circular List / Josephus");
+            Console.WriteLine("---------------------------------------------------------");
+            int people = 12;
+            int step = 5;
+            raii string p = String.ToString(people);
+            raii string s = String.ToString(step);
+            raii string a = String.Concat("people = ", p);
+            raii string b = String.Concat(", step = ", s);
+            raii string intro = String.Concat(a, b);
+            Console.WriteLine(intro);
+            int survivor = JosephusSolver.Solve(people, step);
+            raii string result = String.ToString(survivor);
+            raii string line = String.Concat("survivor: ", result);
+            Console.WriteLine(line);
+            return 0;
+        }
+    }
+}

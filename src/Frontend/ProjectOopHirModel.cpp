@@ -1,0 +1,3457 @@
+#include "nativesharp/Frontend/ProjectOopHirModel.h"
+
+#include "nativesharp/Frontend/ProjectConversionClassifier.h"
+
+#include "nativesharp/AST/AstNodeKind.h"
+#include "nativesharp/Lexer/TokenKind.h"
+
+#include <algorithm>
+#include <cctype>
+#include <iterator>
+#include <sstream>
+#include <utility>
+
+namespace nativesharp::frontend
+{
+namespace
+{
+std::string sanitize(std::string value)
+{
+    for (char& ch : value)
+    {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c) == 0 && ch != '_')
+        {
+            ch = '_';
+        }
+    }
+    return value;
+}
+
+// C1.2 "import identity": the INTERNAL name of an import whose C symbol name is shared by two
+// libraries. It encodes the identity's library and symbol so the two never collide again, and it
+// is never seen by the linker as an external symbol -- the backend gives this name a real body
+// that binds the external symbol at first call. The `__nsc_` prefix is already reserved (see
+// isReservedStage47CAbiExportName), so no user declaration can land on it.
+std::string importIdentityInternalName(std::string_view dllName, std::string_view symbolName)
+{
+    return "__nsc_import_" + sanitize(std::string(dllName)) + "__" + sanitize(std::string(symbolName));
+}
+
+bool isComparison(lexer::TokenKind kind) noexcept
+{
+    return kind == lexer::TokenKind::EqualEqual || kind == lexer::TokenKind::BangEqual ||
+        kind == lexer::TokenKind::Less || kind == lexer::TokenKind::LessEqual ||
+        kind == lexer::TokenKind::Greater || kind == lexer::TokenKind::GreaterEqual;
+}
+
+std::string typeSuffix(const ClassMemberSymbol& member)
+{
+    std::string result;
+    for (const MethodParameterSymbol& parameter : member.parameters)
+    {
+        // C4 "language references": `F(int* p)` and `F(ref int p)` are different members of the
+        // language that lower to the same machine signature, so the mangled name has to keep them
+        // apart or the two would become one LLVM function.
+        if (parameter.passKind != ParameterPassKind::Value)
+        {
+            result += "__";
+            result += parameterPassKindKeyword(parameter.passKind);
+        }
+        result += "__" + sanitize(parameter.typeKey);
+    }
+    return result;
+}
+
+std::unique_ptr<ProjectOopHirNode> makeNode(
+    ProjectOopHirNodeKind kind,
+    const ast::AstNode* syntax,
+    std::string typeKey = {})
+{
+    auto node = std::make_unique<ProjectOopHirNode>();
+    node->kind = kind;
+    node->syntax = syntax;
+    node->typeKey = std::move(typeKey);
+    return node;
+}
+}
+
+const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
+{
+    switch (kind)
+    {
+        case ProjectOopHirNodeKind::Block: return "block";
+        case ProjectOopHirNodeKind::LocalDeclaration: return "local-declaration";
+        case ProjectOopHirNodeKind::ExpressionStatement: return "expression-statement";
+        case ProjectOopHirNodeKind::If: return "if";
+        case ProjectOopHirNodeKind::While: return "while";
+        case ProjectOopHirNodeKind::For: return "for";
+        case ProjectOopHirNodeKind::Break: return "break";
+        case ProjectOopHirNodeKind::Continue: return "continue";
+        case ProjectOopHirNodeKind::Return: return "return";
+        case ProjectOopHirNodeKind::TryRegion: return "try-region";
+        case ProjectOopHirNodeKind::CatchRegion: return "catch-region";
+        case ProjectOopHirNodeKind::FinallyRegion: return "finally-region";
+        case ProjectOopHirNodeKind::UsingRegion: return "using-region";
+        case ProjectOopHirNodeKind::Throw: return "throw";
+        case ProjectOopHirNodeKind::Rethrow: return "rethrow";
+        case ProjectOopHirNodeKind::CleanupContinuation: return "cleanup-continuation";
+        case ProjectOopHirNodeKind::OwnedParameterCleanup: return "owned-parameter-cleanup";
+        case ProjectOopHirNodeKind::MoveValue: return "move-value";
+        case ProjectOopHirNodeKind::MoveArrayElement: return "move-array-element";
+        case ProjectOopHirNodeKind::MoveOwnedField: return "move-owned-field";
+        case ProjectOopHirNodeKind::PointerLoad: return "pointer-load";
+        case ProjectOopHirNodeKind::RawElementAddress: return "raw-element-address";
+        case ProjectOopHirNodeKind::AddressValue: return "address-value";
+        case ProjectOopHirNodeKind::BorrowValue: return "borrow-value";
+        case ProjectOopHirNodeKind::ThisValue: return "this";
+        case ProjectOopHirNodeKind::ParameterValue: return "parameter-value";
+        case ProjectOopHirNodeKind::LocalValue: return "local-value";
+        case ProjectOopHirNodeKind::FieldValue: return "field-value";
+        case ProjectOopHirNodeKind::StaticFieldValue: return "static-field-value";
+        case ProjectOopHirNodeKind::ParameterAddress: return "parameter-address";
+        case ProjectOopHirNodeKind::LocalAddress: return "local-address";
+        case ProjectOopHirNodeKind::FieldAddress: return "field-address";
+        case ProjectOopHirNodeKind::StaticFieldAddress: return "static-field-address";
+        case ProjectOopHirNodeKind::IntegerConstant: return "integer-constant";
+        case ProjectOopHirNodeKind::FloatingConstant: return "floating-constant";
+        case ProjectOopHirNodeKind::BooleanConstant: return "boolean-constant";
+        case ProjectOopHirNodeKind::NullConstant: return "null-constant";
+        case ProjectOopHirNodeKind::DefaultValue: return "default-value";
+        case ProjectOopHirNodeKind::StringLiteral: return "string-literal";
+        case ProjectOopHirNodeKind::ArrayAllocation: return "array-allocation";
+        case ProjectOopHirNodeKind::ArrayLength: return "array-length";
+        case ProjectOopHirNodeKind::ArrayElementValue: return "array-element-value";
+        case ProjectOopHirNodeKind::ArrayElementAddress: return "array-element-address";
+        case ProjectOopHirNodeKind::StringLength: return "string-length";
+        case ProjectOopHirNodeKind::StringElementValue: return "string-element-value";
+        case ProjectOopHirNodeKind::StringConcat: return "string-concat";
+        case ProjectOopHirNodeKind::StringEquals: return "string-equals";
+        case ProjectOopHirNodeKind::StringSubstring: return "string-substring";
+        case ProjectOopHirNodeKind::StringFromCharArray: return "string-from-char-array";
+        case ProjectOopHirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
+        case ProjectOopHirNodeKind::CoreClockQueryCounter: return "core-clock-query-counter";
+        case ProjectOopHirNodeKind::CoreClockQueryFrequency: return "core-clock-query-frequency";
+        case ProjectOopHirNodeKind::CoreClockQuerySystemFileTime: return "core-clock-query-system-filetime";
+        case ProjectOopHirNodeKind::CoreEnvironmentTickCount64: return "core-environment-tick-count64";
+        case ProjectOopHirNodeKind::CoreEnvironmentProcessorCount: return "core-environment-processor-count";
+        case ProjectOopHirNodeKind::CoreEnvironmentExit: return "core-environment-exit";
+        case ProjectOopHirNodeKind::CoreEnvironmentGetVariable: return "core-environment-get-variable";
+        case ProjectOopHirNodeKind::CoreEnvironmentSetVariable: return "core-environment-set-variable";
+        case ProjectOopHirNodeKind::CoreFileExists: return "core-file-exists";
+        case ProjectOopHirNodeKind::CoreFileDelete: return "core-file-delete";
+        case ProjectOopHirNodeKind::CoreDirectoryExists: return "core-directory-exists";
+        case ProjectOopHirNodeKind::CoreDirectoryCreate: return "core-directory-create";
+        case ProjectOopHirNodeKind::CoreFileReadAllText: return "core-file-read-all-text";
+        case ProjectOopHirNodeKind::CoreFileWriteAllText: return "core-file-write-all-text";
+        case ProjectOopHirNodeKind::CoreFileAppendAllText: return "core-file-append-all-text";
+        case ProjectOopHirNodeKind::CoreDirectoryDelete: return "core-directory-delete";
+        case ProjectOopHirNodeKind::CorePathGetFullPath: return "core-path-get-full-path";
+        case ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgCount: return "core-environment-get-command-line-arg-count";
+        case ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgs: return "core-environment-get-command-line-args";
+        case ProjectOopHirNodeKind::CoreDirectoryGetFileCount: return "core-directory-get-file-count";
+        case ProjectOopHirNodeKind::CoreDirectoryGetFiles: return "core-directory-get-files";
+        case ProjectOopHirNodeKind::CoreDirectoryGetDirectoryCount: return "core-directory-get-directory-count";
+        case ProjectOopHirNodeKind::CoreDirectoryGetDirectories: return "core-directory-get-directories";
+        case ProjectOopHirNodeKind::CoreThreadCreate: return "core-thread-create";
+        case ProjectOopHirNodeKind::CoreThreadJoin: return "core-thread-join";
+        case ProjectOopHirNodeKind::CoreThreadDetach: return "core-thread-detach";
+        case ProjectOopHirNodeKind::CoreInterlockedIncrementInt32: return "core-interlocked-increment-int32";
+        case ProjectOopHirNodeKind::CoreInterlockedDecrementInt32: return "core-interlocked-decrement-int32";
+        case ProjectOopHirNodeKind::CoreInterlockedAddInt32: return "core-interlocked-add-int32";
+        case ProjectOopHirNodeKind::CoreInterlockedExchangeInt32: return "core-interlocked-exchange-int32";
+        case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt32: return "core-interlocked-compare-exchange-int32";
+        case ProjectOopHirNodeKind::CoreInterlockedIncrementInt64: return "core-interlocked-increment-int64";
+        case ProjectOopHirNodeKind::CoreInterlockedDecrementInt64: return "core-interlocked-decrement-int64";
+        case ProjectOopHirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
+        case ProjectOopHirNodeKind::CoreInterlockedExchangeInt64: return "core-interlocked-exchange-int64";
+        case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64: return "core-interlocked-compare-exchange-int64";
+        case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
+        case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
+        case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
+        case ProjectOopHirNodeKind::CoreMutexClose: return "core-mutex-close";
+        case ProjectOopHirNodeKind::CoreMonitorEnter: return "core-monitor-enter";
+        case ProjectOopHirNodeKind::CoreMonitorExit: return "core-monitor-exit";
+        case ProjectOopHirNodeKind::CoreMonitorWait: return "core-monitor-wait";
+        case ProjectOopHirNodeKind::CoreMonitorPulse: return "core-monitor-pulse";
+        case ProjectOopHirNodeKind::CoreMonitorPulseAll: return "core-monitor-pulse-all";
+        case ProjectOopHirNodeKind::CoreSemaphoreCreate: return "core-semaphore-create";
+        case ProjectOopHirNodeKind::CoreSemaphoreWait: return "core-semaphore-wait";
+        case ProjectOopHirNodeKind::CoreSemaphoreRelease: return "core-semaphore-release";
+        case ProjectOopHirNodeKind::CoreSemaphoreClose: return "core-semaphore-close";
+        case ProjectOopHirNodeKind::CoreEventCreate: return "core-event-create";
+        case ProjectOopHirNodeKind::CoreEventSet: return "core-event-set";
+        case ProjectOopHirNodeKind::CoreEventReset: return "core-event-reset";
+        case ProjectOopHirNodeKind::CoreEventWait: return "core-event-wait";
+        case ProjectOopHirNodeKind::CoreEventClose: return "core-event-close";
+        case ProjectOopHirNodeKind::CoreProcessGetCurrentProcessId: return "core-process-get-current-process-id";
+        case ProjectOopHirNodeKind::CoreProcessGetWorkingSetSize: return "core-process-get-working-set-size";
+        case ProjectOopHirNodeKind::CoreProcessGetKernelTime: return "core-process-get-kernel-time";
+        case ProjectOopHirNodeKind::CoreProcessGetUserTime: return "core-process-get-user-time";
+        case ProjectOopHirNodeKind::CoreProcessGetPriorityClass: return "core-process-get-priority-class";
+        case ProjectOopHirNodeKind::CoreProcessSetPriorityClass: return "core-process-set-priority-class";
+        case ProjectOopHirNodeKind::CoreSystemInfoGetPageSize: return "core-system-info-get-page-size";
+        case ProjectOopHirNodeKind::CoreSystemInfoGetProcessorArchitecture: return "core-system-info-get-processor-architecture";
+        case ProjectOopHirNodeKind::CoreSystemInfoGetAllocationGranularity: return "core-system-info-get-allocation-granularity";
+        case ProjectOopHirNodeKind::CoreSystemInfoGetTotalPhysicalMemoryBytes: return "core-system-info-get-total-physical-memory-bytes";
+        case ProjectOopHirNodeKind::CoreSystemInfoGetAvailablePhysicalMemoryBytes: return "core-system-info-get-available-physical-memory-bytes";
+        case ProjectOopHirNodeKind::CoreSystemInfoGetMemoryLoadPercent: return "core-system-info-get-memory-load-percent";
+        case ProjectOopHirNodeKind::CoreDebugIsDebuggerPresent: return "core-debug-is-debugger-present";
+        case ProjectOopHirNodeKind::CoreDebugCaptureStackFrameCount: return "core-debug-capture-stack-frame-count";
+        case ProjectOopHirNodeKind::CoreDebugOutputString: return "core-debug-output-string";
+        case ProjectOopHirNodeKind::CoreThreadSleep: return "core-thread-sleep";
+        case ProjectOopHirNodeKind::CoreFileCopy: return "core-file-copy";
+        case ProjectOopHirNodeKind::CoreFileMove: return "core-file-move";
+        case ProjectOopHirNodeKind::CoreDirectoryMove: return "core-directory-move";
+        case ProjectOopHirNodeKind::DelegateCreate: return "delegate-create";
+        case ProjectOopHirNodeKind::LambdaCreate: return "lambda-create";
+        case ProjectOopHirNodeKind::ClosureCaptureValue: return "closure-capture-value";
+        case ProjectOopHirNodeKind::DelegateInvoke: return "delegate-invoke";
+        case ProjectOopHirNodeKind::EventAdd: return "event-add";
+        case ProjectOopHirNodeKind::EventRemove: return "event-remove";
+        case ProjectOopHirNodeKind::EventInvoke: return "event-invoke";
+        case ProjectOopHirNodeKind::Unary: return "unary";
+        case ProjectOopHirNodeKind::Binary: return "binary";
+        case ProjectOopHirNodeKind::Assignment: return "assignment";
+        case ProjectOopHirNodeKind::Conversion: return "conversion";
+        case ProjectOopHirNodeKind::RuntimeTypeTest: return "runtime-type-test";
+        case ProjectOopHirNodeKind::SafeReferenceCast: return "safe-reference-cast";
+        case ProjectOopHirNodeKind::CheckedReferenceCast: return "checked-reference-cast";
+        case ProjectOopHirNodeKind::InstanceCall: return "instance-call";
+        case ProjectOopHirNodeKind::StaticCall: return "static-call";
+        case ProjectOopHirNodeKind::ConstructorInitializerCall: return "constructor-initializer-call";
+        case ProjectOopHirNodeKind::ObjectConstruction: return "object-construction";
+        case ProjectOopHirNodeKind::Deallocation: return "deallocation";
+    }
+    return "unknown";
+}
+
+std::string ProjectOopHirModel::mangleCallable(
+    const NamedTypeDeclaration& type,
+    const ClassMemberSymbol& member)
+{
+    const std::string prefix = member.kind == ClassMemberKind::Constructor
+        ? "__nsc_ctor_"
+        : member.kind == ClassMemberKind::Destructor
+            ? "__nsc_dtor_body_"
+            : "__nsc_method_";
+    return prefix + sanitize(type.identity.key()) + "__" + sanitize(member.name) + typeSuffix(member);
+}
+
+bool ProjectOopHirModel::build(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectInheritanceModel& inheritanceModel,
+    const ProjectInterfaceModel& interfaceModel,
+    const ProjectMethodBodyModel& methodBodyModel,
+    const ProjectConstructionModel& constructionModel,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    std::string& error)
+{
+    error.clear();
+    if (built_)
+    {
+        error = "ProjectOopHirModel instances are single-use";
+        return false;
+    }
+    if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !inheritanceModel.isBuilt() || !interfaceModel.isBuilt() ||
+        !methodBodyModel.isBuilt() ||
+        !constructionModel.isBuilt() || !objectLayoutModel.isBuilt())
+    {
+        error = "Stage 34 OOP HIR requires completed Stage 24-29 project models";
+        return false;
+    }
+
+    nameLookup_ = &nameLookup;
+    memberModel_ = &memberModel;
+    inheritanceModel_ = &inheritanceModel;
+    interfaceModel_ = &interfaceModel;
+    methodBodyModel_ = &methodBodyModel;
+    constructionModel_ = &constructionModel;
+    objectLayoutModel_ = &objectLayoutModel;
+
+    for (const MethodNameBinding& binding : methodBodyModel.nameBindings())
+    {
+        nameBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodExpressionTypeBinding& binding : methodBodyModel.expressionTypes())
+    {
+        expressionTypeBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodCallBinding& binding : methodBodyModel.calls())
+    {
+        callBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodRuntimeTypeBinding& binding : methodBodyModel.runtimeTypeBindings())
+    {
+        runtimeTypeBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodDelegateBinding& binding : methodBodyModel.delegateBindings())
+    {
+        delegateBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodLambdaBinding& binding : methodBodyModel.lambdaBindings())
+    {
+        lambdaBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodLambdaValueBinding& binding : methodBodyModel.lambdaValueBindings())
+    {
+        lambdaValueBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodEventBinding& binding : methodBodyModel.eventBindings())
+    {
+        eventBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodCoreBinding& binding : methodBodyModel.coreBindings())
+    {
+        coreBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodExceptionBinding& binding : methodBodyModel.exceptionBindings())
+    {
+        exceptionBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodCleanupRegion& region : methodBodyModel.cleanupRegions())
+    {
+        cleanupRegionBySyntax_[region.syntax] = &region;
+    }
+    for (const MethodUsingBinding& binding : methodBodyModel.usingBindings())
+    {
+        usingBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodMoveBinding& binding : methodBodyModel.moveBindings())
+    {
+        moveBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodBorrowBinding& binding : methodBodyModel.borrowBindings())
+    {
+        borrowBindingBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodStructuredExitBinding& binding : methodBodyModel.structuredExits())
+    {
+        structuredExitBySyntax_[binding.syntax] = &binding;
+    }
+    for (const ObjectConstructionBinding& binding : constructionModel.constructions())
+    {
+        constructionBySyntax_[binding.syntax] = &binding;
+    }
+    for (const MethodLocalSymbol& local : methodBodyModel.locals())
+    {
+        localBySyntax_[local.syntax] = &local;
+    }
+
+    functionByMember_.resize(memberModel.members().size());
+    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+    {
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
+            member.kind != ClassMemberKind::Destructor)
+        {
+            continue;
+        }
+        if (member.isAbstract)
+        {
+            continue;
+        }
+        if (member.isImportedC)
+        {
+            // Interop Foundation: an imported C function is a DECLARATION by definition -- the
+            // body lives in the named DLL. Record the function (C symbol as its mangled name, no
+            // body) so ordinary call resolution and the backend's declaration pass see it, and
+            // move on before the body requirement below.
+            ProjectOopHirFunction imported;
+            imported.memberOrdinal = memberOrdinal;
+            imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
+            imported.isStatic = true;
+            imported.isImportedC = true;
+            imported.importDllName = member.importDllName;
+            imported.importRequiresRuntimeBinding = member.importRequiresRuntimeBinding;
+            imported.cAbiName = member.name;
+            // C1.2 "import identity": `cAbiName` is always the EXTERNAL symbol (what the DLL or
+            // the archive exports); `mangledName` is the INTERNAL name the module and every call
+            // site use. In the ordinary case the two coincide, which is exactly what makes the
+            // link resolve the import statically by name -- unchanged, and what the certified
+            // user32/kernel32 scenarios exercise. When one symbol name is claimed by two
+            // libraries the two MUST diverge: a single LLVM module cannot hold two functions
+            // called `Init`, and asking for it silently produced `Init.1`, which the linker then
+            // could not resolve (measured). The internal name is derived from the whole identity,
+            // so `a.dll!Init` and `b.dll!Init` are two distinct functions from here on.
+            imported.mangledName = member.importRequiresRuntimeBinding
+                ? importIdentityInternalName(member.importDllName, member.name)
+                : member.name;
+            imported.returnTypeKey = member.declaredTypeKey;
+            imported.returnOwnership = sema::OwnershipKind::None;
+            for (const MethodParameterSymbol& parameter : member.parameters)
+            {
+                imported.parameterTypeKeys.push_back(parameter.typeKey);
+                imported.parameterOwnerships.push_back(parameter.ownership);
+            }
+            functionByMember_[memberOrdinal] = functions_.size();
+            functions_.push_back(std::move(imported));
+            continue;
+        }
+        if (member.syntax == nullptr || member.syntax->first() == nullptr)
+        {
+            error = "Stage 35 concrete OOP callable has no body: " + member.signatureKey;
+            return false;
+        }
+        if (member.declaringTypeOrdinal >= nameLookup.namedTypes().size())
+        {
+            error = "Stage 34 OOP callable refers to invalid declaring type ordinal";
+            return false;
+        }
+
+        ProjectOopHirFunction function;
+        function.memberOrdinal = memberOrdinal;
+        function.declaringTypeOrdinal = member.declaringTypeOrdinal;
+        function.constructor = member.kind == ClassMemberKind::Constructor;
+        function.destructor = member.kind == ClassMemberKind::Destructor;
+        function.isStatic = member.isStatic;
+        function.isExportedC = member.isExportedC;
+        function.cAbiName = member.cAbiName;
+        constexpr std::string_view kSpecializationPrefix = "stage44-specialization:";
+        if (member.syntax != nullptr && member.syntax->auxiliaryText().starts_with(kSpecializationPrefix))
+        {
+            function.genericSpecializationKey = member.syntax->auxiliaryText().substr(kSpecializationPrefix.size());
+        }
+        else
+        {
+            const ast::AstNode* declaringSyntax = nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax;
+            if (declaringSyntax != nullptr && declaringSyntax->auxiliaryText().starts_with(kSpecializationPrefix))
+                function.genericSpecializationKey = declaringSyntax->auxiliaryText().substr(kSpecializationPrefix.size());
+        }
+        function.mangledName = mangleCallable(nameLookup.namedTypes()[member.declaringTypeOrdinal], member);
+        function.returnTypeKey = (function.constructor || function.destructor)
+            ? "builtin:void"
+            : member.declaredTypeKey;
+        function.returnOwnership = (function.constructor || function.destructor)
+            ? sema::OwnershipKind::None
+            : member.declaredOwnership;
+        for (const MethodParameterSymbol& parameter : member.parameters)
+        {
+            function.parameterTypeKeys.push_back(parameter.typeKey);
+            function.parameterOwnerships.push_back(parameter.ownership);
+        }
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel.locals().size(); ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel.locals()[localOrdinal];
+            if (local.methodMemberOrdinal == memberOrdinal && !local.lambdaOrdinal.has_value())
+            {
+                function.localOrdinals.push_back(localOrdinal);
+            }
+        }
+        activeHirCleanupRegions_.clear();
+        std::vector<std::unique_ptr<ProjectOopHirNode>> ownedParameterCleanupNodes;
+        for (std::size_t cleanupOrdinal = 0; cleanupOrdinal < methodBodyModel.cleanupRegions().size(); ++cleanupOrdinal)
+        {
+            const MethodCleanupRegion& region = methodBodyModel.cleanupRegions()[cleanupOrdinal];
+            if (region.methodMemberOrdinal != memberOrdinal ||
+                region.kind != MethodCleanupRegionKind::OwnedParameterDestroy ||
+                !region.resourceParameterOrdinal.has_value())
+            {
+                continue;
+            }
+            const std::size_t parameterOrdinal = *region.resourceParameterOrdinal;
+            if (parameterOrdinal >= member.parameters.size())
+            {
+                error = "Stage 50.8 owned-parameter cleanup has an invalid parameter ordinal";
+                return false;
+            }
+            activeHirCleanupRegions_.push_back(cleanupOrdinal);
+            auto cleanup = makeNode(
+                ProjectOopHirNodeKind::OwnedParameterCleanup,
+                member.syntax,
+                member.parameters[parameterOrdinal].typeKey);
+            cleanup->parameterOrdinal = parameterOrdinal;
+            cleanup->cleanupRegionOrdinal = cleanupOrdinal;
+            ownedParameterCleanupNodes.push_back(std::move(cleanup));
+        }
+
+        function.body = lowerBlock(member.syntax->first(), memberOrdinal, error);
+        activeHirCleanupRegions_.clear();
+        if (function.body == nullptr)
+        {
+            return false;
+        }
+        if (!ownedParameterCleanupNodes.empty())
+        {
+            function.body->children.insert(
+                function.body->children.begin(),
+                std::make_move_iterator(ownedParameterCleanupNodes.begin()),
+                std::make_move_iterator(ownedParameterCleanupNodes.end()));
+        }
+        if (function.constructor)
+        {
+            std::vector<std::unique_ptr<ProjectOopHirNode>> prefix;
+            const ConstructorInitializerBinding* initializerBinding =
+                constructionModel.constructorInitializerBindingForMember(memberOrdinal);
+            if (initializerBinding != nullptr &&
+                (initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit ||
+                 initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedImplicitDefault) &&
+                initializerBinding->selectedEntryConstructorMemberOrdinal.has_value() &&
+                initializerBinding->targetTypeOrdinal.has_value())
+            {
+                auto initializerCall = makeNode(
+                    ProjectOopHirNodeKind::ConstructorInitializerCall,
+                    initializerBinding->initializerSyntax,
+                    "builtin:void");
+                initializerCall->memberOrdinal = initializerBinding->selectedEntryConstructorMemberOrdinal;
+                initializerCall->baseReceiver =
+                    initializerBinding->kind != ConstructorInitializerKind::ExplicitThis;
+                initializerCall->children.push_back(makeNode(
+                    ProjectOopHirNodeKind::ThisValue,
+                    initializerBinding->initializerSyntax,
+                    inheritanceModel.typeKeyForOrdinal(*initializerBinding->targetTypeOrdinal)));
+                if (initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit &&
+                    initializerBinding->initializerSyntax != nullptr)
+                {
+                    for (std::size_t index = 0; index < initializerBinding->initializerSyntax->children().size(); ++index)
+                    {
+                        const ast::AstNode* argumentSyntax = initializerBinding->initializerSyntax->children()[index];
+                        auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
+                        if (argument == nullptr)
+                        {
+                            return false;
+                        }
+                        if (index < initializerBinding->selectedConversions.size() &&
+                            initializerBinding->selectedConversions[index].kind != ProjectConversionKind::Identity)
+                        {
+                            argument = wrapImplicitConversion(
+                                std::move(argument), initializerBinding->selectedConversions[index], argumentSyntax);
+                        }
+                        initializerCall->children.push_back(std::move(argument));
+                    }
+                }
+                prefix.push_back(std::move(initializerCall));
+            }
+
+            // A this(...) delegating constructor must not execute this type's field initializers:
+            // the terminal constructor in the delegation chain executes them exactly once.
+            const bool delegatesToThis = initializerBinding != nullptr &&
+                initializerBinding->kind == ConstructorInitializerKind::ExplicitThis;
+            if (!delegatesToThis)
+            {
+                // When the immediate base has only an implicit constructor, Macro A can elide the
+                // physical callable and jump to the nearest explicit ancestor.  Stage 37 must still
+                // execute field initializers for every skipped implicit base, in base-to-derived order.
+                if (initializerBinding != nullptr &&
+                    initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedImplicitDefault &&
+                    initializerBinding->targetTypeOrdinal.has_value())
+                {
+                    for (const std::size_t typeOrdinal : implicitInitializerTypes(
+                             *initializerBinding->targetTypeOrdinal,
+                             initializerBinding->selectedEntryConstructorMemberOrdinal))
+                    {
+                        appendInstanceFieldInitializers(typeOrdinal, prefix, error);
+                        if (!error.empty())
+                        {
+                            return false;
+                        }
+                    }
+                }
+                appendInstanceFieldInitializers(member.declaringTypeOrdinal, prefix, error);
+                if (!error.empty())
+                {
+                    return false;
+                }
+            }
+
+            function.body->children.insert(
+                function.body->children.begin(),
+                std::make_move_iterator(prefix.begin()),
+                std::make_move_iterator(prefix.end()));
+        }
+        functionByMember_[memberOrdinal] = functions_.size();
+        functions_.push_back(std::move(function));
+    }
+
+    // Stage 43 lowers every target-typed lambda as a synthetic native callable.  Capturing
+    // lambdas use the Stage 42 receiver slot as a closure-environment pointer; non-capturing
+    // lambdas remain ordinary static callables with a null delegate receiver.
+    for (const MethodLambdaBinding& lambda : methodBodyModel.lambdaBindings())
+    {
+        if (lambda.ownerMemberOrdinal >= memberModel.members().size())
+        {
+            error = "Stage 43 lambda owner member ordinal is invalid";
+            return false;
+        }
+        const ClassMemberSymbol& owner = memberModel.members()[lambda.ownerMemberOrdinal];
+        ProjectOopHirFunction function;
+        function.memberOrdinal = lambda.ownerMemberOrdinal;
+        function.declaringTypeOrdinal = owner.declaringTypeOrdinal;
+        function.isLambda = true;
+        function.lambdaOrdinal = lambda.lambdaOrdinal;
+        function.hasClosureEnvironment = !lambda.captures.empty();
+        function.isStatic = !function.hasClosureEnvironment;
+        function.mangledName = lambda.generatedName;
+        function.returnTypeKey = lambda.returnTypeKey;
+        function.parameterTypeKeys = lambda.parameterTypeKeys;
+        for (const MethodLambdaCapture& capture : lambda.captures)
+            function.captureTypeKeys.push_back(capture.typeKey);
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel.locals().size(); ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel.locals()[localOrdinal];
+            if (local.lambdaOrdinal == lambda.lambdaOrdinal && !local.lambdaParameterOrdinal.has_value())
+                function.localOrdinals.push_back(localOrdinal);
+        }
+
+        currentLambda_ = &lambda;
+        if (lambda.blockBody)
+        {
+            function.body = lowerBlock(lambda.syntax->first(), lambda.ownerMemberOrdinal, error);
+        }
+        else
+        {
+            auto block = makeNode(ProjectOopHirNodeKind::Block, lambda.syntax, "builtin:void");
+            auto value = lowerExpression(lambda.syntax->first(), lambda.ownerMemberOrdinal, false, error);
+            if (value != nullptr)
+            {
+                const MethodExpressionTypeBinding* sourceType = expressionType(lambda.syntax->first());
+                if (lambda.returnTypeKey == "builtin:void")
+                {
+                    auto statement = makeNode(ProjectOopHirNodeKind::ExpressionStatement, lambda.syntax->first(), "builtin:void");
+                    statement->children.push_back(std::move(value));
+                    block->children.push_back(std::move(statement));
+                }
+                else
+                {
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        value->typeKey, lambda.returnTypeKey,
+                        sourceType != nullptr ? sourceType->integerConstant : std::nullopt);
+                    if (!conversion.exists())
+                    {
+                        error = "Stage 43 lambda body lost its validated return conversion";
+                    }
+                    else
+                    {
+                        if (conversion.kind != ProjectConversionKind::Identity)
+                            value = wrapImplicitConversion(std::move(value), conversion, lambda.syntax->first());
+                        auto statement = makeNode(ProjectOopHirNodeKind::Return, lambda.syntax->first(), "builtin:void");
+                        statement->children.push_back(std::move(value));
+                        block->children.push_back(std::move(statement));
+                    }
+                }
+            }
+            function.body = std::move(block);
+        }
+        currentLambda_ = nullptr;
+        if (function.body == nullptr || !error.empty()) return false;
+        functions_.push_back(std::move(function));
+    }
+
+    // Keep a canonical lowered form for every explicit field initializer.  Static initializers are
+    // consumed by the Stage 37 native type-initialization routine; instance initializers are also
+    // useful to dumps/tests even though constructor lowering injects per-construction copies.
+    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+    {
+        const ClassMemberSymbol& field = memberModel.members()[memberOrdinal];
+        if (field.kind != ClassMemberKind::Field)
+        {
+            continue;
+        }
+        // Stage 51.x: an enum constant has no real initializer expression to lower for the
+        // (common) auto-increment case -- its value was already computed by
+        // ProjectMemberModel::collectEnumMembers. Synthesize the same IntegerConstant HIR node
+        // `lowerExpression` would have produced for a literal, so every downstream consumer
+        // (Stage 37 const-field materialization in the MIR builder, then LLVM constant-global
+        // lowering) sees an ordinary `static const int` field and needs no enum-specific code.
+        if (field.isEnumConstant)
+        {
+            auto literal = makeNode(ProjectOopHirNodeKind::IntegerConstant, field.syntax, "builtin:int");
+            literal->integerValue = static_cast<std::uint64_t>(field.enumConstantValue);
+            fieldInitializers_.push_back(ProjectOopHirFieldInitializer{
+                memberOrdinal, field.declaringTypeOrdinal, field.isStatic, field.isConst, std::move(literal)});
+            continue;
+        }
+        if (field.syntax == nullptr || field.syntax->first() == nullptr)
+        {
+            continue;
+        }
+        auto value = lowerExpression(field.syntax->first(), memberOrdinal, false, error);
+        if (value == nullptr)
+        {
+            return false;
+        }
+        const MethodExpressionTypeBinding* sourceType = expressionType(field.syntax->first());
+        const ProjectImplicitConversion conversion = classifyImplicit(
+            value->typeKey, field.declaredTypeKey,
+            sourceType != nullptr ? sourceType->integerConstant : std::nullopt);
+        if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+        {
+            value = wrapImplicitConversion(std::move(value), conversion, field.syntax->first());
+        }
+        fieldInitializers_.push_back(ProjectOopHirFieldInitializer{
+            memberOrdinal, field.declaringTypeOrdinal, field.isStatic, field.isConst, std::move(value)});
+    }
+
+    built_ = true;
+    return true;
+}
+
+std::span<const ProjectOopHirFunction> ProjectOopHirModel::functions() const noexcept
+{
+    return functions_;
+}
+
+std::span<const ProjectOopHirFieldInitializer> ProjectOopHirModel::fieldInitializers() const noexcept
+{
+    return fieldInitializers_;
+}
+
+const ProjectOopHirFunction* ProjectOopHirModel::functionForMember(std::size_t memberOrdinal) const noexcept
+{
+    if (memberOrdinal >= functionByMember_.size() || !functionByMember_[memberOrdinal].has_value())
+    {
+        return nullptr;
+    }
+    return &functions_[*functionByMember_[memberOrdinal]];
+}
+
+bool ProjectOopHirModel::isBuilt() const noexcept
+{
+    return built_;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBlock(
+    const ast::AstNode* block,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    if (block == nullptr || block->kind() != ast::AstNodeKind::BlockStatement)
+    {
+        error = "Stage 34 OOP HIR requires block statement body";
+        return nullptr;
+    }
+    auto result = makeNode(ProjectOopHirNodeKind::Block, block, "builtin:void");
+    const std::size_t cleanupDepthAtEntry = activeHirCleanupRegions_.size();
+    for (const ast::AstNode* statement : block->children())
+    {
+        std::unique_ptr<ProjectOopHirNode> lowered = lowerStatement(statement, memberOrdinal, error);
+        if (lowered == nullptr)
+        {
+            activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+            return nullptr;
+        }
+        if (lowered->kind == ProjectOopHirNodeKind::LocalDeclaration &&
+            lowered->cleanupRegionOrdinal.has_value())
+        {
+            activeHirCleanupRegions_.push_back(*lowered->cleanupRegionOrdinal);
+        }
+        result->children.push_back(std::move(lowered));
+    }
+    activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+    return result;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    if (statement == nullptr)
+    {
+        error = "null statement reached Stage 34 OOP HIR";
+        return nullptr;
+    }
+
+    const auto cleanupOrdinalFor = [&](const MethodCleanupRegion* region) -> std::optional<std::size_t>
+    {
+        if (region == nullptr || methodBodyModel_ == nullptr) return std::nullopt;
+        const auto regions = methodBodyModel_->cleanupRegions();
+        if (regions.empty() || region < regions.data() || region >= regions.data() + regions.size())
+            return std::nullopt;
+        return static_cast<std::size_t>(region - regions.data());
+    };
+
+    const auto attachStructuredExit = [&](ProjectOopHirNode& node)
+    {
+        const MethodStructuredExitBinding* binding = structuredExitBinding(statement);
+        if (binding == nullptr) return;
+        node.cleanupRegionOrdinals = binding->cleanupRegionOrdinals;
+        node.targetScopeOrdinal = binding->targetScopeOrdinal;
+        switch (binding->kind)
+        {
+            case MethodStructuredExitKind::Return:
+                node.cleanupContinuationKind = MethodCleanupContinuationKind::Return;
+                break;
+            case MethodStructuredExitKind::Break:
+                node.cleanupContinuationKind = MethodCleanupContinuationKind::Break;
+                break;
+            case MethodStructuredExitKind::Continue:
+                node.cleanupContinuationKind = MethodCleanupContinuationKind::Continue;
+                break;
+        }
+    };
+
+    switch (statement->kind())
+    {
+        case ast::AstNodeKind::BlockStatement:
+            return lowerBlock(statement, memberOrdinal, error);
+
+        case ast::AstNodeKind::VariableDeclarationStatement:
+        {
+            const MethodLocalSymbol* local = localSymbol(statement);
+            if (local == nullptr)
+            {
+                error = "Stage 34 cannot map local declaration to Stage 27 local symbol";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
+            const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());
+            node->localOrdinal = localIndex;
+            if (local->isRaii)
+            {
+                const MethodCleanupRegion* region = cleanupRegion(statement);
+                if (region == nullptr)
+                {
+                    error = "Stage 49 RAII local is missing its lexical cleanup region";
+                    return nullptr;
+                }
+                node->cleanupRegionOrdinal = cleanupOrdinalFor(region);
+                if (!node->cleanupRegionOrdinal.has_value())
+                {
+                    error = "Stage 49 RAII cleanup region has no stable ordinal";
+                    return nullptr;
+                }
+            }
+            if (statement->first() != nullptr)
+            {
+                std::unique_ptr<ProjectOopHirNode> initializer = lowerExpression(
+                    statement->first(), memberOrdinal, false, error);
+                if (initializer == nullptr)
+                {
+                    return nullptr;
+                }
+                const ProjectImplicitConversion conversion = classifyImplicit(
+                    initializer->typeKey,
+                    local->typeKey,
+                    expressionType(statement->first()) != nullptr
+                        ? expressionType(statement->first())->integerConstant
+                        : std::nullopt);
+                if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+                {
+                    initializer = wrapImplicitConversion(std::move(initializer), conversion, statement->first());
+                }
+                if (local->ownership == sema::OwnershipKind::Borrowed &&
+                    local->localBorrowBindingOrdinal.has_value() &&
+                    *local->localBorrowBindingOrdinal < methodBodyModel_->localBorrowBindings().size())
+                {
+                    const MethodLocalBorrowBinding& borrow =
+                        methodBodyModel_->localBorrowBindings()[*local->localBorrowBindingOrdinal];
+                    auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, statement->first(), local->typeKey);
+                    borrowed->localBorrowSourceKind = borrow.sourceKind;
+                    borrowed->localOrdinal = borrow.sourceLocalOrdinal;
+                    borrowed->parameterOrdinal = borrow.sourceParameterOrdinal;
+                    borrowed->children.push_back(std::move(initializer));
+                    initializer = std::move(borrowed);
+                }
+                node->children.push_back(std::move(initializer));
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::ExpressionStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::ExpressionStatement, statement, "builtin:void");
+            std::unique_ptr<ProjectOopHirNode> expression = lowerExpression(
+                statement->first(), memberOrdinal, false, error);
+            if (expression == nullptr)
+            {
+                return nullptr;
+            }
+            node->children.push_back(std::move(expression));
+            return node;
+        }
+
+        case ast::AstNodeKind::IfStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::If, statement, "builtin:void");
+            auto condition = lowerExpression(statement->first(), memberOrdinal, false, error);
+            auto thenBlock = lowerBlock(statement->second(), memberOrdinal, error);
+            if (condition == nullptr || thenBlock == nullptr)
+            {
+                return nullptr;
+            }
+            node->children.push_back(std::move(condition));
+            node->children.push_back(std::move(thenBlock));
+            if (statement->third() != nullptr)
+            {
+                std::unique_ptr<ProjectOopHirNode> elseNode = statement->third()->kind() == ast::AstNodeKind::BlockStatement
+                    ? lowerBlock(statement->third(), memberOrdinal, error)
+                    : lowerStatement(statement->third(), memberOrdinal, error);
+                if (elseNode == nullptr)
+                {
+                    return nullptr;
+                }
+                node->children.push_back(std::move(elseNode));
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::WhileStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::While, statement, "builtin:void");
+            auto condition = lowerExpression(statement->first(), memberOrdinal, false, error);
+            auto body = lowerBlock(statement->second(), memberOrdinal, error);
+            if (condition == nullptr || body == nullptr)
+            {
+                return nullptr;
+            }
+            node->children.push_back(std::move(condition));
+            node->children.push_back(std::move(body));
+            return node;
+        }
+
+        case ast::AstNodeKind::ForStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::For, statement, "builtin:void");
+            const std::size_t cleanupDepthAtEntry = activeHirCleanupRegions_.size();
+            if (statement->first() != nullptr)
+            {
+                std::unique_ptr<ProjectOopHirNode> init = statement->first()->kind() == ast::AstNodeKind::VariableDeclarationStatement
+                    ? lowerStatement(statement->first(), memberOrdinal, error)
+                    : lowerExpression(statement->first(), memberOrdinal, false, error);
+                if (init == nullptr)
+                {
+                    activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+                    return nullptr;
+                }
+                if (init->kind == ProjectOopHirNodeKind::LocalDeclaration &&
+                    init->cleanupRegionOrdinal.has_value())
+                {
+                    activeHirCleanupRegions_.push_back(*init->cleanupRegionOrdinal);
+                }
+                node->children.push_back(std::move(init));
+            }
+            else
+            {
+                node->children.push_back(nullptr);
+            }
+            if (statement->second() != nullptr)
+            {
+                auto condition = lowerExpression(statement->second(), memberOrdinal, false, error);
+                if (condition == nullptr)
+                {
+                    activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+                    return nullptr;
+                }
+                node->children.push_back(std::move(condition));
+            }
+            else
+            {
+                node->children.push_back(nullptr);
+            }
+            if (statement->third() != nullptr)
+            {
+                auto increment = lowerExpression(statement->third(), memberOrdinal, false, error);
+                if (increment == nullptr)
+                {
+                    activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+                    return nullptr;
+                }
+                node->children.push_back(std::move(increment));
+            }
+            else
+            {
+                node->children.push_back(nullptr);
+            }
+            if (statement->children().empty())
+            {
+                error = "Stage 34 for statement is missing a body";
+                activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+                return nullptr;
+            }
+            auto body = lowerBlock(statement->children().front(), memberOrdinal, error);
+            if (body == nullptr)
+            {
+                activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+                return nullptr;
+            }
+            node->children.push_back(std::move(body));
+            activeHirCleanupRegions_.resize(cleanupDepthAtEntry);
+            return node;
+        }
+
+        case ast::AstNodeKind::ForeachStatement:
+        {
+            // Foreach was desugared at parse time into two unconditionally-built candidate loops
+            // (see the design comment atop Parser::parseForeachStatement and
+            // ProjectMethodBodyModel::analyzeForeach). ProjectMethodBodyModel::analyzeForeach
+            // already picked the "real" candidate and ran ordinary semantic analysis on ONLY it --
+            // but the raw AST this function walks still carries the original ForeachStatement
+            // node, with BOTH candidate subtrees still attached, as the statement in the enclosing
+            // block. There is no side-channel recording which candidate Stage 27 chose, so HIR
+            // lowering re-derives the SAME array-vs-enumerator decision independently, the same
+            // way: resolve __foreach_source's already-analyzed typeKey via localSymbol() (populated
+            // from MethodLocalSymbol::syntax, see localBySyntax_) and check for the "[]" array
+            // suffix (see ProjectGenericModel::canonicalTypeKey for that representation). Both
+            // passes read the identical resolved type, so they always agree.
+            //
+            // No new HIR node kind is introduced: __foreach_source's declaration lowers through
+            // the ordinary VariableDeclarationStatement case above, and the chosen candidate --
+            // itself just a BlockStatement holding an index/enumerator VariableDeclarationStatement
+            // plus a WhileStatement -- lowers through the ordinary lowerBlock/WhileStatement paths.
+            // The two are wrapped in one outer Block so the foreach statement lowers to exactly one
+            // HIR node, mirroring the single Foreach semantic scope analyzeForeach created.
+            const MethodLocalSymbol* sourceLocal = localSymbol(statement->first());
+            if (sourceLocal == nullptr)
+            {
+                error = "Stage 34 foreach source local is missing its Stage 27 semantic binding";
+                return nullptr;
+            }
+            const bool isArray = sourceLocal->typeKey.size() > 2 &&
+                sourceLocal->typeKey.compare(sourceLocal->typeKey.size() - 2, 2, "[]") == 0;
+            const ast::AstNode* chosenCandidate = isArray ? statement->second() : statement->third();
+
+            auto node = makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
+            std::unique_ptr<ProjectOopHirNode> sourceDeclHir =
+                lowerStatement(statement->first(), memberOrdinal, error);
+            if (sourceDeclHir == nullptr)
+            {
+                return nullptr;
+            }
+            node->children.push_back(std::move(sourceDeclHir));
+
+            std::unique_ptr<ProjectOopHirNode> candidateHir = lowerBlock(chosenCandidate, memberOrdinal, error);
+            if (candidateHir == nullptr)
+            {
+                return nullptr;
+            }
+            node->children.push_back(std::move(candidateHir));
+            return node;
+        }
+
+        case ast::AstNodeKind::BreakStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::Break, statement, "builtin:void");
+            attachStructuredExit(*node);
+            return node;
+        }
+        case ast::AstNodeKind::ContinueStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::Continue, statement, "builtin:void");
+            attachStructuredExit(*node);
+            return node;
+        }
+
+        case ast::AstNodeKind::ReturnStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::Return, statement, "builtin:void");
+            attachStructuredExit(*node);
+            if (statement->first() != nullptr)
+            {
+                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
+                if (value == nullptr)
+                {
+                    return nullptr;
+                }
+                if (memberModel_ == nullptr || memberOrdinal >= memberModel_->members().size())
+                {
+                    error = "Stage 34 return refers to invalid callable member";
+                    return nullptr;
+                }
+                const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                if (member.kind == ClassMemberKind::Method && member.declaredTypeKey != "builtin:void")
+                {
+                    const MethodExpressionTypeBinding* type = expressionType(statement->first());
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        value->typeKey,
+                        member.declaredTypeKey,
+                        type != nullptr ? type->integerConstant : std::nullopt);
+                    if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+                    {
+                        value = wrapImplicitConversion(std::move(value), conversion, statement->first());
+                    }
+                    if (member.declaredOwnership == sema::OwnershipKind::Borrowed)
+                    {
+                        const MethodBorrowBinding* borrow = borrowBinding(statement->first());
+                        if (borrow == nullptr)
+                        {
+                            error = "Stage 50.8 borrowed return has no frozen borrow binding";
+                            return nullptr;
+                        }
+                        auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, statement->first(), member.declaredTypeKey);
+                        borrowed->borrowKind = borrow->kind;
+                        borrowed->localOrdinal = borrow->sourceLocalOrdinal;
+                        borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
+                        borrowed->children.push_back(std::move(value));
+                        value = std::move(borrowed);
+                    }
+                }
+                node->children.push_back(std::move(value));
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::ThrowStatement:
+        {
+            const MethodExceptionBinding* binding = exceptionBinding(statement);
+            if (binding == nullptr)
+            {
+                error = "Stage 45.6 throw statement has no Stage 45.2 exception binding";
+                return nullptr;
+            }
+            auto node = makeNode(
+                binding->kind == MethodExceptionOperationKind::Rethrow
+                    ? ProjectOopHirNodeKind::Rethrow
+                    : ProjectOopHirNodeKind::Throw,
+                statement, "builtin:void");
+            node->typeKey = binding->exceptionTypeKey.empty() ? "builtin:void" : binding->exceptionTypeKey;
+            node->exceptionTypeOrdinal = binding->exceptionTypeOrdinal;
+            node->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+
+            const std::size_t retainedDepth = activeHirExceptionHandlers_.empty()
+                ? 0
+                : activeHirExceptionHandlers_.back().retainedCleanupDepth;
+            for (std::size_t index = activeHirCleanupRegions_.size(); index > retainedDepth; --index)
+                node->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1]);
+            if (!activeHirExceptionHandlers_.empty())
+                node->exceptionTargetRegionOrdinal = activeHirExceptionHandlers_.back().hirRegionOrdinal;
+
+            if (statement->first() != nullptr)
+            {
+                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+                node->children.push_back(std::move(value));
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::UsingStatement:
+        {
+            const MethodUsingBinding* binding = usingBinding(statement);
+            const MethodCleanupRegion* region = cleanupRegion(statement);
+            const std::optional<std::size_t> cleanupOrdinal = cleanupOrdinalFor(region);
+            if (binding == nullptr || !cleanupOrdinal.has_value())
+            {
+                error = "Stage 45.6 using statement has no frozen using/cleanup binding";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::UsingRegion, statement, "builtin:void");
+            node->localOrdinal = binding->resourceLocalOrdinal;
+            node->elementTypeKey = binding->resourceTypeKey;
+            node->cleanupRegionOrdinal = cleanupOrdinal;
+            node->disposeContractMemberOrdinal = binding->disposeContractMemberOrdinal;
+            node->disposeImplementationMemberOrdinal = binding->disposeImplementationMemberOrdinal;
+            node->interfaceCleanupDispatch = binding->interfaceDispatch;
+
+            auto initializer = lowerExpression(statement->first(), memberOrdinal, false, error);
+            if (initializer == nullptr) return nullptr;
+            const MethodExpressionTypeBinding* sourceType = expressionType(statement->first());
+            const ProjectImplicitConversion conversion = classifyImplicit(
+                initializer->typeKey, binding->resourceTypeKey,
+                sourceType != nullptr ? sourceType->integerConstant : std::nullopt);
+            if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+                initializer = wrapImplicitConversion(std::move(initializer), conversion, statement->first());
+            node->children.push_back(std::move(initializer));
+
+            activeHirCleanupRegions_.push_back(*cleanupOrdinal);
+            auto body = lowerBlock(statement->second(), memberOrdinal, error);
+            activeHirCleanupRegions_.pop_back();
+            if (body == nullptr) return nullptr;
+            node->children.push_back(std::move(body));
+
+            auto continuation = makeNode(ProjectOopHirNodeKind::CleanupContinuation, statement, "builtin:void");
+            continuation->cleanupRegionOrdinal = cleanupOrdinal;
+            continuation->cleanupContinuationKind = MethodCleanupContinuationKind::Normal;
+            node->children.push_back(std::move(continuation));
+            return node;
+        }
+
+        case ast::AstNodeKind::TryStatement:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::TryRegion, statement, "builtin:void");
+            node->hirRegionOrdinal = nextHirRegionOrdinal_++;
+            const MethodCleanupRegion* region = cleanupRegion(statement);
+            const std::optional<std::size_t> cleanupOrdinal = cleanupOrdinalFor(region);
+            if (cleanupOrdinal.has_value())
+            {
+                node->cleanupRegionOrdinal = cleanupOrdinal;
+                activeHirCleanupRegions_.push_back(*cleanupOrdinal);
+            }
+
+            const bool hasCatches = !statement->children().empty();
+            if (hasCatches)
+            {
+                activeHirExceptionHandlers_.push_back(HirExceptionHandlerContext{
+                    *node->hirRegionOrdinal, activeHirCleanupRegions_.size()});
+            }
+            auto protectedBlock = lowerBlock(statement->first(), memberOrdinal, error);
+            if (hasCatches) activeHirExceptionHandlers_.pop_back();
+            if (protectedBlock == nullptr)
+            {
+                if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
+                return nullptr;
+            }
+            node->children.push_back(std::move(protectedBlock));
+
+            for (const ast::AstNode* catchClause : statement->children())
+            {
+                const MethodExceptionBinding* catchBinding = exceptionBinding(catchClause);
+                if (catchBinding == nullptr || catchBinding->kind != MethodExceptionOperationKind::Catch)
+                {
+                    if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
+                    error = "Stage 45.6 catch clause has no Stage 45.2 catch binding";
+                    return nullptr;
+                }
+                auto catchNode = makeNode(ProjectOopHirNodeKind::CatchRegion, catchClause, "builtin:void");
+                catchNode->elementTypeKey = catchBinding->exceptionTypeKey;
+                catchNode->exceptionTypeOrdinal = catchBinding->exceptionTypeOrdinal;
+                catchNode->catchAll = catchBinding->catchAll;
+                if (const MethodLocalSymbol* local = localSymbol(catchClause); local != nullptr)
+                {
+                    catchNode->localOrdinal = static_cast<std::size_t>(
+                        local - methodBodyModel_->locals().data());
+                }
+                auto catchBody = lowerBlock(catchClause->first(), memberOrdinal, error);
+                if (catchBody == nullptr)
+                {
+                    if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
+                    return nullptr;
+                }
+                catchNode->children.push_back(std::move(catchBody));
+                node->children.push_back(std::move(catchNode));
+            }
+
+            if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
+
+            if (statement->second() != nullptr)
+            {
+                if (!cleanupOrdinal.has_value())
+                {
+                    error = "Stage 45.6 finally block has no cleanup region";
+                    return nullptr;
+                }
+                auto finallyNode = makeNode(ProjectOopHirNodeKind::FinallyRegion, statement->second(), "builtin:void");
+                finallyNode->cleanupRegionOrdinal = cleanupOrdinal;
+                auto finallyBody = lowerBlock(statement->second(), memberOrdinal, error);
+                if (finallyBody == nullptr) return nullptr;
+                finallyNode->children.push_back(std::move(finallyBody));
+                auto continuation = makeNode(ProjectOopHirNodeKind::CleanupContinuation, statement, "builtin:void");
+                continuation->cleanupRegionOrdinal = cleanupOrdinal;
+                continuation->cleanupContinuationKind = MethodCleanupContinuationKind::Normal;
+                finallyNode->children.push_back(std::move(continuation));
+                node->children.push_back(std::move(finallyNode));
+            }
+            return node;
+        }
+
+        default:
+            error = "unsupported Stage 34 OOP statement kind: " +
+                std::string(ast::astNodeKindName(statement->kind()));
+            return nullptr;
+    }
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error)
+{
+    if (expression == nullptr)
+    {
+        error = "null expression reached Stage 34 OOP HIR";
+        return nullptr;
+    }
+    const MethodLambdaBinding* stage43Lambda = lambdaBinding(expression);
+    if (stage43Lambda != nullptr && expression->kind() == ast::AstNodeKind::LambdaExpression)
+    {
+        auto node = makeNode(ProjectOopHirNodeKind::LambdaCreate, expression, stage43Lambda->delegateTypeKey);
+        node->elementTypeKey = stage43Lambda->delegateTypeKey;
+        node->stringValue = stage43Lambda->generatedName;
+        node->integerValue = stage43Lambda->lambdaOrdinal;
+        for (const MethodLambdaCapture& capture : stage43Lambda->captures)
+        {
+            if (isStructValueType(capture.typeKey) && inheritanceModel_ != nullptr && objectLayoutModel_ != nullptr)
+            {
+                const std::optional<std::size_t> typeOrdinal =
+                    inheritanceModel_->typeOrdinalForTypeKey(capture.typeKey);
+                const StructValueLayout* layout = typeOrdinal.has_value()
+                    ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
+                if (layout == nullptr || layout->size > 8)
+                {
+                    error = "Stage 43 closure capture supports struct values only when their native size is at most 8 bytes";
+                    return nullptr;
+                }
+            }
+            const bool dynamicArrayReference = capture.typeKey.size() >= 2 &&
+                capture.typeKey.ends_with("[]");
+            if (!dynamicArrayReference && capture.typeKey.find('[') != std::string::npos)
+            {
+                error = "Stage 43 closure capture of fixed inline arrays is deferred; capture a native array reference instead";
+                return nullptr;
+            }
+            std::unique_ptr<ProjectOopHirNode> value;
+            if (capture.kind == MethodLambdaCaptureKind::Local && capture.localOrdinal.has_value())
+            {
+                value = makeNode(ProjectOopHirNodeKind::LocalValue, expression, capture.typeKey);
+                value->localOrdinal = capture.localOrdinal;
+            }
+            else if (capture.kind == MethodLambdaCaptureKind::Parameter && capture.parameterOrdinal.has_value())
+            {
+                value = makeNode(ProjectOopHirNodeKind::ParameterValue, expression, capture.typeKey);
+                value->parameterOrdinal = capture.parameterOrdinal;
+            }
+            else if (capture.kind == MethodLambdaCaptureKind::ThisReference)
+            {
+                value = makeNode(ProjectOopHirNodeKind::ThisValue, expression, capture.typeKey);
+            }
+            if (value == nullptr)
+            {
+                error = "Stage 43 lambda capture source is unavailable";
+                return nullptr;
+            }
+            node->children.push_back(std::move(value));
+        }
+        return node;
+    }
+
+    const MethodDelegateBinding* stage42Delegate = delegateBinding(expression);
+    if (stage42Delegate != nullptr && stage42Delegate->kind == MethodDelegateOperationKind::Create)
+    {
+        if (!stage42Delegate->selectedMemberOrdinal.has_value() || memberModel_ == nullptr ||
+            *stage42Delegate->selectedMemberOrdinal >= memberModel_->members().size())
+        {
+            error = "Stage 42 delegate creation has no selected callable";
+            return nullptr;
+        }
+        auto node = makeNode(ProjectOopHirNodeKind::DelegateCreate, expression, stage42Delegate->delegateTypeKey);
+        node->elementTypeKey = stage42Delegate->delegateTypeKey;
+        node->memberOrdinal = stage42Delegate->selectedMemberOrdinal;
+        if (!stage42Delegate->staticTarget)
+        {
+            auto receiver = lowerReceiver(
+                stage42Delegate->receiverSyntax, stage42Delegate->receiverTypeKey, memberOrdinal, error);
+            if (receiver == nullptr) return nullptr;
+            node->children.push_back(std::move(receiver));
+        }
+        return node;
+    }
+
+    const MethodExpressionTypeBinding* typeBinding = expressionType(expression);
+    const std::string resultType = typeBinding != nullptr ? typeBinding->typeKey :
+        stage42Delegate != nullptr ? stage42Delegate->resultTypeKey : "<error>";
+
+    const auto lowerResolvedCall = [&](
+        const MethodCallBinding* binding,
+        const std::vector<const ast::AstNode*>& argumentSyntaxes)
+        -> std::unique_ptr<ProjectOopHirNode>
+    {
+        if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
+            !binding->selectedMemberOrdinal.has_value())
+        {
+            error = "Stage 38 requires a resolved synthetic call binding";
+            return nullptr;
+        }
+        auto node = makeNode(
+            binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
+            expression,
+            binding->resultTypeKey);
+        node->memberOrdinal = binding->selectedMemberOrdinal;
+        node->baseReceiver = binding->baseReceiver;
+        node->interfaceDispatch = binding->interfaceCall;
+        if (binding->interfaceCall) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
+        if (!binding->staticCall)
+        {
+            auto receiver = lowerReceiver(
+                binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
+            if (receiver == nullptr) return nullptr;
+            node->children.push_back(std::move(receiver));
+        }
+        for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
+        {
+            const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
+            auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
+            if (argument == nullptr) return nullptr;
+            if (index < binding->selectedConversions.size() &&
+                binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
+            {
+                argument = wrapImplicitConversion(
+                    std::move(argument), binding->selectedConversions[index], argumentSyntax);
+            }
+            if (const MethodBorrowBinding* borrow = borrowBinding(argumentSyntax);
+                borrow != nullptr && borrow->targetMemberOrdinal == binding->selectedMemberOrdinal &&
+                borrow->targetParameterOrdinal == index)
+            {
+                auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, argumentSyntax, argument->typeKey);
+                borrowed->borrowKind = borrow->kind;
+                borrowed->localOrdinal = borrow->sourceLocalOrdinal;
+                borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
+                borrowed->children.push_back(std::move(argument));
+                argument = std::move(borrowed);
+            }
+            node->children.push_back(std::move(argument));
+        }
+        return node;
+    };
+
+    const auto lowerEventBacking = [&](
+        const MethodEventBinding* binding,
+        bool address) -> std::unique_ptr<ProjectOopHirNode>
+    {
+        if (binding == nullptr || memberModel_ == nullptr ||
+            binding->backingMemberOrdinal >= memberModel_->members().size())
+        {
+            error = "Stage 42 event binding has invalid backing member";
+            return nullptr;
+        }
+        const ClassMemberSymbol& backing = memberModel_->members()[binding->backingMemberOrdinal];
+        auto node = makeNode(
+            binding->staticEvent
+                ? (address ? ProjectOopHirNodeKind::StaticFieldAddress : ProjectOopHirNodeKind::StaticFieldValue)
+                : (address ? ProjectOopHirNodeKind::FieldAddress : ProjectOopHirNodeKind::FieldValue),
+            expression, backing.declaredTypeKey);
+        node->memberOrdinal = binding->backingMemberOrdinal;
+        if (!binding->staticEvent)
+        {
+            auto receiver = lowerReceiver(
+                binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
+            if (receiver == nullptr) return nullptr;
+            node->children.push_back(std::move(receiver));
+        }
+        return node;
+    };
+
+    switch (expression->kind())
+    {
+        case ast::AstNodeKind::ThisExpression:
+        {
+            if (currentLambda_ != nullptr)
+            {
+                const std::optional<std::size_t> capture = currentLambdaThisCapture();
+                if (!capture.has_value())
+                {
+                    error = "Stage 43 lambda this-reference has no captured receiver";
+                    return nullptr;
+                }
+                auto node = makeNode(ProjectOopHirNodeKind::ClosureCaptureValue, expression, resultType);
+                node->integerValue = *capture;
+                return node;
+            }
+            return makeNode(ProjectOopHirNodeKind::ThisValue, expression, resultType);
+        }
+
+        case ast::AstNodeKind::IdentifierExpression:
+        case ast::AstNodeKind::MemberExpression:
+        {
+            const MethodCoreBinding* core = coreBinding(expression);
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ArrayLength ||
+                 core->kind == MethodCoreOperationKind::StringLength))
+            {
+                if (addressContext)
+                {
+                    error = "Stage 41 Length is an intrinsic value and is not addressable";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                auto node = makeNode(
+                    core->kind == MethodCoreOperationKind::ArrayLength
+                        ? ProjectOopHirNodeKind::ArrayLength
+                        : ProjectOopHirNodeKind::StringLength,
+                    expression,
+                    core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                node->children.push_back(std::move(receiver));
+                return node;
+            }
+            const MethodCallBinding* accessorCall = callBinding(expression);
+            if (accessorCall != nullptr && accessorCall->resolution == MethodCallResolutionKind::Resolved &&
+                accessorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *accessorCall->selectedMemberOrdinal < memberModel_->members().size())
+            {
+                const ClassMemberSymbol& selected = memberModel_->members()[*accessorCall->selectedMemberOrdinal];
+                if (selected.isPropertyAccessor && selected.isGetter)
+                {
+                    if (addressContext)
+                    {
+                        error = "Stage 38 properties are semantic accessor calls and are not addressable";
+                        return nullptr;
+                    }
+                    return lowerResolvedCall(accessorCall, {});
+                }
+            }
+            if (currentLambda_ != nullptr)
+            {
+                const MethodLambdaValueBinding* lambdaValue = lambdaValueBinding(expression);
+                if (lambdaValue != nullptr && lambdaValue->lambdaOrdinal == currentLambda_->lambdaOrdinal)
+                {
+                    if (lambdaValue->lambdaParameter)
+                    {
+                        auto node = makeNode(
+                            addressContext ? ProjectOopHirNodeKind::ParameterAddress : ProjectOopHirNodeKind::ParameterValue,
+                            expression, lambdaValue->typeKey);
+                        node->parameterOrdinal = lambdaValue->valueOrdinal;
+                        return node;
+                    }
+                    if (addressContext)
+                    {
+                        error = "Stage 43 captures outer locals/parameters by value and does not expose capture addresses";
+                        return nullptr;
+                    }
+                    auto node = makeNode(ProjectOopHirNodeKind::ClosureCaptureValue, expression, lambdaValue->typeKey);
+                    node->integerValue = lambdaValue->valueOrdinal;
+                    return node;
+                }
+            }
+            const MethodNameBinding* binding = nameBinding(expression);
+            if (binding == nullptr)
+            {
+                error = "Stage 34 cannot map identifier/member expression to Stage 27 binding";
+                return nullptr;
+            }
+            if (binding->kind == MethodNameBindingKind::Parameter)
+            {
+                // C4 "language references": a by-reference parameter physically receives an
+                // ADDRESS, and every use of it means the value on the other side. So the
+                // parameter slot itself is the pointer:
+                //
+                //   value context   -> load the pointer, then load through it (PointerLoad)
+                //   address context -> the pointer IS the address; hand it over untouched
+                //
+                // which is exactly how `*p` already behaves for an explicit pointer parameter.
+                // Nothing new reaches MIR or the backend: `ref`/`out`/`in` are rules on top of
+                // machinery C1 already certified, not a second calling convention.
+                const ClassMemberSymbol* owner =
+                    memberModel_ != nullptr && binding->methodMemberOrdinal < memberModel_->members().size()
+                        ? &memberModel_->members()[binding->methodMemberOrdinal]
+                        : nullptr;
+                const bool byReference = owner != nullptr && binding->parameterOrdinal.has_value() &&
+                    *binding->parameterOrdinal < owner->parameters.size() &&
+                    owner->parameters[*binding->parameterOrdinal].passKind != ParameterPassKind::Value;
+                if (byReference)
+                {
+                    const MethodParameterSymbol& parameter = owner->parameters[*binding->parameterOrdinal];
+                    auto pointer = makeNode(
+                        ProjectOopHirNodeKind::ParameterValue, expression, parameter.typeKey);
+                    pointer->parameterOrdinal = binding->parameterOrdinal;
+                    if (addressContext) return pointer;
+                    auto value = makeNode(
+                        ProjectOopHirNodeKind::PointerLoad, expression, parameter.pointeeTypeKey);
+                    value->children.push_back(std::move(pointer));
+                    return value;
+                }
+                auto node = makeNode(
+                    addressContext ? ProjectOopHirNodeKind::ParameterAddress : ProjectOopHirNodeKind::ParameterValue,
+                    expression,
+                    binding->typeKey);
+                node->parameterOrdinal = binding->parameterOrdinal;
+                return node;
+            }
+            if (binding->kind == MethodNameBindingKind::Local)
+            {
+                auto node = makeNode(
+                    addressContext ? ProjectOopHirNodeKind::LocalAddress : ProjectOopHirNodeKind::LocalValue,
+                    expression,
+                    binding->typeKey);
+                node->localOrdinal = binding->localOrdinal;
+                return node;
+            }
+            if (binding->kind == MethodNameBindingKind::ImplicitField ||
+                binding->kind == MethodNameBindingKind::ExplicitThisField ||
+                binding->kind == MethodNameBindingKind::ExplicitObjectField ||
+                binding->kind == MethodNameBindingKind::ExplicitBaseField)
+            {
+                if (binding->candidateMemberOrdinals.empty())
+                {
+                    error = "Macro A field binding has no candidate member";
+                    return nullptr;
+                }
+                auto receiver = lowerReceiver(
+                    binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
+                if (receiver == nullptr)
+                {
+                    return nullptr;
+                }
+                auto node = makeNode(
+                    addressContext ? ProjectOopHirNodeKind::FieldAddress : ProjectOopHirNodeKind::FieldValue,
+                    expression,
+                    binding->typeKey);
+                node->memberOrdinal = binding->candidateMemberOrdinals.front();
+                node->baseReceiver = binding->baseReceiver;
+                node->children.push_back(std::move(receiver));
+                return node;
+            }
+            if (binding->kind == MethodNameBindingKind::StaticField)
+            {
+                if (binding->candidateMemberOrdinals.empty())
+                {
+                    error = "Stage 37 static-field binding has no candidate member";
+                    return nullptr;
+                }
+                auto node = makeNode(
+                    addressContext ? ProjectOopHirNodeKind::StaticFieldAddress
+                                   : ProjectOopHirNodeKind::StaticFieldValue,
+                    expression,
+                    binding->typeKey);
+                node->memberOrdinal = binding->candidateMemberOrdinals.front();
+                return node;
+            }
+            if (binding->kind == MethodNameBindingKind::TypeReference)
+            {
+                error = "Stage 37 type reference may only appear as the receiver of a static member access";
+                return nullptr;
+            }
+            error = "Stage 34 method-group expression can only appear as call target";
+            return nullptr;
+        }
+
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, resultType);
+            node->integerValue = expression->integerValue();
+            return node;
+        }
+
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::FloatingConstant, expression, resultType);
+            node->floatingValue = expression->floatingValue();
+            return node;
+        }
+
+        case ast::AstNodeKind::StringLiteralExpression:
+        {
+            if (addressContext)
+            {
+                error = "Stage 41 string literals are immutable references and are not addressable values";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "string-literal");
+            node->stringValue = expression->text();
+            return node;
+        }
+
+        case ast::AstNodeKind::BooleanLiteralExpression:
+        {
+            auto node = makeNode(ProjectOopHirNodeKind::BooleanConstant, expression, "builtin:bool");
+            node->booleanValue = expression->tokenKind() == lexer::TokenKind::KwTrue;
+            return node;
+        }
+
+        case ast::AstNodeKind::NullLiteralExpression:
+            return makeNode(ProjectOopHirNodeKind::NullConstant, expression, "builtin:null");
+
+        case ast::AstNodeKind::DefaultValueExpression:
+        {
+            // Stage 52: default(T) -- the resolved concrete type (already monomorphized, if T
+            // was a generic parameter -- see ProjectMethodBodyModel's DefaultValueExpression
+            // case) was recorded during semantic analysis; LLVM lowering builds the all-zero-bits
+            // value of that EXACT type (see the DefaultValue case in ProjectOopLlvmLowerer.cpp),
+            // which is uniformly correct for every T: 0/false/'\0' for a numeric primitive, a
+            // null pointer for a reference type or string, an all-zero-fields instance for a
+            // value-typed struct.
+            if (addressContext)
+            {
+                error = "Stage 52 default(T) value is not addressable";
+                return nullptr;
+            }
+            const MethodExpressionTypeBinding* type = expressionType(expression);
+            if (type == nullptr)
+            {
+                error = "Stage 52 default(T) expression has no resolved semantic type";
+                return nullptr;
+            }
+            return makeNode(ProjectOopHirNodeKind::DefaultValue, expression, type->typeKey);
+        }
+
+        case ast::AstNodeKind::UnaryExpression:
+        case ast::AstNodeKind::PostfixExpression:
+        {
+            const MethodCallBinding* operatorCall = callBinding(expression);
+            if (operatorCall != nullptr && operatorCall->resolution == MethodCallResolutionKind::Resolved &&
+                operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *operatorCall->selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*operatorCall->selectedMemberOrdinal].isUserOperator)
+            {
+                return lowerResolvedCall(operatorCall, {expression->first()});
+            }
+            if (expression->tokenKind() == lexer::TokenKind::PlusPlus ||
+                expression->tokenKind() == lexer::TokenKind::MinusMinus)
+            {
+                error = "Stage 34 OOP lowering does not yet lower ++/--; use explicit assignment in OOP codegen tests";
+                return nullptr;
+            }
+            // Interop Foundation: `&lvalue` and `*pointer` are now first-class in the OOP
+            // pipeline. HISTORY: both used to be walled off ("keeps raw pointer
+            // address/dereference in the procedural backend boundary"), which made every
+            // out-parameter Win32 API unusable -- `GetMessage(&msg)` could not produce a MSG*
+            // from a local at all. Since Stage 40.2 every local is memory-homed (an alloca,
+            // with indirect structs carried as [N x i8]), so an address-of is LITERALLY the
+            // operand lowered in address context -- no new machinery, just returning what the
+            // assignment path always computed for its own targets.
+            //
+            // These are the language's RAW tier -- same third reference category the Bloque 1
+            // docs pin for plain aliases: no lifetime tracking, dangles if it outlives its
+            // target, by design. C APIs are expressed through exactly this shape.
+            if (expression->tokenKind() == lexer::TokenKind::Amp)
+            {
+                if (addressContext)
+                {
+                    error = "Stage 34 address-of result is not itself addressable";
+                    return nullptr;
+                }
+                auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+                if (address == nullptr) return nullptr;
+                // WRAPPED, never mutated: overwriting the operand node's typeKey was measured
+                // to miscompile -- a ParameterValue whose typeKey was rewritten to the pointee
+                // struct loaded the [N x i8] aggregate where the pointer belonged ("GEP base
+                // pointer is not a vector..."). The wrapper carries the expression's type (T*)
+                // for consumers that derive ABI decisions from operand typeKeys (call-site
+                // indirect-argument wrapping reads exactly that), while the operand keeps its
+                // own meaning.
+                auto node = makeNode(ProjectOopHirNodeKind::AddressValue, expression, resultType);
+                node->children.push_back(std::move(address));
+                return node;
+            }
+            if (expression->tokenKind() == lexer::TokenKind::Star)
+            {
+                if (addressContext)
+                {
+                    // The ADDRESS of `*p` is p's own value: `(*m).field = x` GEPs off it, and
+                    // `*p = v` stores straight through it.
+                    auto pointer = lowerExpression(expression->first(), memberOrdinal, false, error);
+                    if (pointer == nullptr) return nullptr;
+                    // Returned AS-IS: the pointer's value IS the address, and its own typeKey
+                    // (T*) is already the honest description of an address-of-T.
+                    return pointer;
+                }
+                auto pointer = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (pointer == nullptr) return nullptr;
+                auto node = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, resultType);
+                node->children.push_back(std::move(pointer));
+                return node;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::Unary, expression, resultType);
+            node->operation = expression->tokenKind();
+            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (operand == nullptr)
+            {
+                return nullptr;
+            }
+            node->children.push_back(std::move(operand));
+            return node;
+        }
+
+        case ast::AstNodeKind::BinaryExpression:
+        {
+            const MethodCoreBinding* stringCore = coreBinding(expression);
+            if (stringCore != nullptr &&
+                (stringCore->kind == MethodCoreOperationKind::StringConcat ||
+                 stringCore->kind == MethodCoreOperationKind::StringEquals))
+            {
+                if (addressContext)
+                {
+                    error = "Stage 51 string operation result is not addressable";
+                    return nullptr;
+                }
+                auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
+                auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (left == nullptr || right == nullptr) return nullptr;
+                auto node = makeNode(
+                    stringCore->kind == MethodCoreOperationKind::StringConcat
+                        ? ProjectOopHirNodeKind::StringConcat
+                        : ProjectOopHirNodeKind::StringEquals,
+                    expression,
+                    stringCore->resultTypeKey);
+                node->operation = expression->tokenKind();
+                node->children.push_back(std::move(left));
+                node->children.push_back(std::move(right));
+                return node;
+            }
+
+            const MethodCallBinding* operatorCall = callBinding(expression);
+            if (operatorCall != nullptr && operatorCall->resolution == MethodCallResolutionKind::Resolved &&
+                operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *operatorCall->selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*operatorCall->selectedMemberOrdinal].isUserOperator)
+            {
+                return lowerResolvedCall(operatorCall, {expression->first(), expression->second()});
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::Binary, expression, resultType);
+            node->operation = expression->tokenKind();
+            auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
+            auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
+            if (left == nullptr || right == nullptr)
+            {
+                return nullptr;
+            }
+            std::optional<std::string> numericOperandType;
+            if (ProjectTypeConversion::isNumeric(resultType))
+            {
+                numericOperandType = resultType;
+            }
+            else if (isComparison(expression->tokenKind()) &&
+                ProjectTypeConversion::isNumeric(left->typeKey) &&
+                ProjectTypeConversion::isNumeric(right->typeKey))
+            {
+                const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
+                const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
+                numericOperandType = ProjectTypeConversion::commonNumericType(
+                    left->typeKey,
+                    right->typeKey,
+                    leftType != nullptr ? leftType->integerConstant : std::nullopt,
+                    rightType != nullptr ? rightType->integerConstant : std::nullopt);
+            }
+            if (numericOperandType.has_value())
+            {
+                const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
+                const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
+                const ProjectImplicitConversion leftConversion = ProjectTypeConversion::classifyImplicit(
+                    left->typeKey,
+                    *numericOperandType,
+                    leftType != nullptr ? leftType->integerConstant : std::nullopt);
+                const ProjectImplicitConversion rightConversion = ProjectTypeConversion::classifyImplicit(
+                    right->typeKey,
+                    *numericOperandType,
+                    rightType != nullptr ? rightType->integerConstant : std::nullopt);
+                if (leftConversion.exists() && leftConversion.kind != ProjectConversionKind::Identity)
+                {
+                    left = wrapImplicitConversion(std::move(left), leftConversion, expression->first());
+                }
+                if (rightConversion.exists() && rightConversion.kind != ProjectConversionKind::Identity)
+                {
+                    right = wrapImplicitConversion(std::move(right), rightConversion, expression->second());
+                }
+            }
+            node->children.push_back(std::move(left));
+            node->children.push_back(std::move(right));
+            return node;
+        }
+
+        case ast::AstNodeKind::IndexExpression:
+        {
+            const MethodCoreBinding* core = coreBinding(expression);
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ArrayElement ||
+                 core->kind == MethodCoreOperationKind::StringElement))
+            {
+                if (core->kind == MethodCoreOperationKind::StringElement && addressContext)
+                {
+                    error = "Stage 41 strings are immutable; string elements are not assignable";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                const ast::AstNode* indexSyntax = !expression->children().empty()
+                    ? expression->children().front() : expression->second();
+                auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
+                if (index == nullptr) return nullptr;
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringElementValue;
+                if (core->kind == MethodCoreOperationKind::ArrayElement)
+                {
+                    kind = addressContext
+                        ? ProjectOopHirNodeKind::ArrayElementAddress
+                        : ProjectOopHirNodeKind::ArrayElementValue;
+                }
+                auto node = makeNode(kind, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                node->children.push_back(std::move(receiver));
+                node->children.push_back(std::move(index));
+                return node;
+            }
+            // C2.1 "fixed arrays": inline, unmanaged element access -- `fixedArrayField[i]` and
+            // `rawPointer[i]`. The only difference between the two is how the BASE ADDRESS is
+            // obtained, and it is a real difference: a fixed array IS its storage, so its address
+            // comes from lowering the base in address context; a pointer HOLDS an address, so its
+            // address comes from lowering the base as an ordinary value. Everything after that --
+            // the scaled GEP, the load, the store -- is identical, which is why one node covers
+            // both.
+            if (core != nullptr && core->kind == MethodCoreOperationKind::RawElement)
+            {
+                const ast::AstNode* baseSyntax = expression->first();
+                const MethodExpressionTypeBinding* baseType = expressionType(baseSyntax);
+                const bool baseIsFixedArray = baseType != nullptr &&
+                    ProjectMemberModel::fixedArrayElementTypeKey(baseType->typeKey).has_value();
+                auto base = lowerExpression(baseSyntax, memberOrdinal, baseIsFixedArray, error);
+                if (base == nullptr) return nullptr;
+                const ast::AstNode* indexSyntax = !expression->children().empty()
+                    ? expression->children().front() : expression->second();
+                auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
+                if (index == nullptr) return nullptr;
+                auto address = makeNode(
+                    ProjectOopHirNodeKind::RawElementAddress, expression, core->elementTypeKey);
+                address->elementTypeKey = core->elementTypeKey;
+                address->children.push_back(std::move(base));
+                address->children.push_back(std::move(index));
+                if (addressContext) return address;
+                auto value = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, core->resultTypeKey);
+                value->children.push_back(std::move(address));
+                return value;
+            }
+
+            const MethodCallBinding* indexerCall = callBinding(expression);
+            if (indexerCall != nullptr && indexerCall->resolution == MethodCallResolutionKind::Resolved &&
+                indexerCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *indexerCall->selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*indexerCall->selectedMemberOrdinal].isIndexerAccessor &&
+                memberModel_->members()[*indexerCall->selectedMemberOrdinal].isGetter)
+            {
+                if (addressContext)
+                {
+                    error = "Stage 38 indexers are semantic accessor calls and are not directly addressable";
+                    return nullptr;
+                }
+                std::vector<const ast::AstNode*> arguments;
+                if (!expression->children().empty())
+                {
+                    arguments.insert(arguments.end(), expression->children().begin(), expression->children().end());
+                }
+                else if (expression->second() != nullptr)
+                {
+                    arguments.push_back(expression->second());
+                }
+                return lowerResolvedCall(indexerCall, arguments);
+            }
+            error = "Stage 38 OOP lowering requires class/interface index expressions to resolve to an indexer accessor";
+            return nullptr;
+        }
+
+        case ast::AstNodeKind::AssignmentExpression:
+        {
+            const MethodEventBinding* stage42Event = eventBinding(expression);
+            if (stage42Event != nullptr &&
+                (stage42Event->kind == MethodEventOperationKind::Add ||
+                 stage42Event->kind == MethodEventOperationKind::Remove))
+            {
+                if (addressContext)
+                {
+                    error = "Stage 42 event subscription expression is not addressable";
+                    return nullptr;
+                }
+                auto backingAddress = lowerEventBacking(stage42Event, true);
+                auto handler = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (backingAddress == nullptr || handler == nullptr) return nullptr;
+                if (!stage42Event->argumentConversions.empty() &&
+                    stage42Event->argumentConversions.front().kind != ProjectConversionKind::Identity)
+                {
+                    handler = wrapImplicitConversion(
+                        std::move(handler), stage42Event->argumentConversions.front(), expression->second());
+                }
+                auto node = makeNode(
+                    stage42Event->kind == MethodEventOperationKind::Add
+                        ? ProjectOopHirNodeKind::EventAdd : ProjectOopHirNodeKind::EventRemove,
+                    expression, "builtin:void");
+                node->elementTypeKey = stage42Event->delegateTypeKey;
+                node->memberOrdinal = stage42Event->backingMemberOrdinal;
+                node->children.push_back(std::move(backingAddress));
+                node->children.push_back(std::move(handler));
+                return node;
+            }
+
+            const MethodCallBinding* setterCall = callBinding(expression);
+            if (setterCall != nullptr && setterCall->resolution == MethodCallResolutionKind::Resolved &&
+                setterCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *setterCall->selectedMemberOrdinal < memberModel_->members().size())
+            {
+                const ClassMemberSymbol& setter = memberModel_->members()[*setterCall->selectedMemberOrdinal];
+                if ((setter.isPropertyAccessor || setter.isIndexerAccessor) && setter.isSetter)
+                {
+                    std::vector<const ast::AstNode*> arguments;
+                    if (setter.isIndexerAccessor && expression->first() != nullptr &&
+                        expression->first()->kind() == ast::AstNodeKind::IndexExpression)
+                    {
+                        const ast::AstNode* indexExpression = expression->first();
+                        if (!indexExpression->children().empty())
+                        {
+                            arguments.insert(
+                                arguments.end(), indexExpression->children().begin(), indexExpression->children().end());
+                        }
+                        else if (indexExpression->second() != nullptr)
+                        {
+                            arguments.push_back(indexExpression->second());
+                        }
+                    }
+                    arguments.push_back(expression->second());
+                    return lowerResolvedCall(setterCall, arguments);
+                }
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::Assignment, expression, resultType);
+            node->operation = expression->tokenKind();
+            if (expression->first() != nullptr && expression->second() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                expression->second()->kind() == ast::AstNodeKind::MoveExpression)
+            {
+                const MethodNameBinding* targetBinding = nameBinding(expression->first());
+                if (targetBinding != nullptr && targetBinding->localOrdinal.has_value() &&
+                    *targetBinding->localOrdinal < methodBodyModel_->locals().size() &&
+                    methodBodyModel_->locals()[*targetBinding->localOrdinal].isRaii)
+                {
+                    node->booleanValue = true;
+                    node->localOrdinal = *targetBinding->localOrdinal;
+                }
+            }
+            // Bloque 1 item 1 (owning field storage) -- the same obligation, for a field that owns.
+            // A write into a field that ALREADY owns something has to release the displaced value
+            // first, or the overwrite silently leaks it. That is not a new rule invented here: it is
+            // exactly what the `raii` local case above has always done, verified by execution in
+            // Stage50_11OwnershipExecutionTests (MoveAssignmentOverLiveOwner).
+            //
+            // Marked WITHOUT a localOrdinal, which is how the backend tells the two apart: a local
+            // destroy resolves through that local's cleanup region, while a field destroy works
+            // straight off the store address (see the Store case in ProjectOopLlvmLowerer).
+            //
+            // HISTORY -- this flag used to ALSO require the RHS to be textually a MoveExpression,
+            // and that was a measured leak, flagged by the Bloque 1 audit: on a live owned field,
+            // `h.slot = null` reported 0 destructions, `h.slot = new Res(2)` reported 1 where 2 is
+            // correct, and `h.slot = ownedReturningCall()` likewise leaked the displaced value.
+            // Ownership is a property of the STORAGE, not of the syntax that produced the
+            // right-hand side -- semantic analysis separately guarantees every RHS reaching an
+            // owning field is an ownership-transfer expression (move / new / null / an
+            // owned-returning call: the same set owned returns and owned-local initialization
+            // accept), so the release fires on every store, not just the move-spelled ones. The
+            // property/indexer path never had this hole, precisely because its generated setter
+            // body always spells the store as `backing = move(value)`; the direct field store was
+            // the one that let the RHS's accidental shape leak into the lowering decision.
+            //
+            // Type-agnostic on purpose: a generic `owned T` field closed over a value type flags
+            // here too, and the backend's requiresOwnedDestruction(node->typeKey) gate makes the
+            // release a no-op there -- the same division of labor every other owner cleanup uses.
+            if (!node->booleanValue && expression->first() != nullptr &&
+                expression->second() != nullptr &&
+                memberModel_ != nullptr)
+            {
+                const MethodNameBinding* fieldBinding = nameBinding(expression->first());
+                const bool bindsAField = fieldBinding != nullptr &&
+                    (fieldBinding->kind == MethodNameBindingKind::ImplicitField ||
+                     fieldBinding->kind == MethodNameBindingKind::ExplicitThisField ||
+                     fieldBinding->kind == MethodNameBindingKind::ExplicitObjectField ||
+                     fieldBinding->kind == MethodNameBindingKind::ExplicitBaseField);
+                if (bindsAField && fieldBinding->candidateMemberOrdinals.size() == 1 &&
+                    fieldBinding->candidateMemberOrdinals.front() < memberModel_->members().size())
+                {
+                    const ClassMemberSymbol& targetMember =
+                        memberModel_->members()[fieldBinding->candidateMemberOrdinals.front()];
+                    node->booleanValue = targetMember.kind == ClassMemberKind::Field &&
+                        !targetMember.isStatic &&
+                        targetMember.declaredOwnership == sema::OwnershipKind::Owned;
+                }
+            }
+            if (node->operation != lexer::TokenKind::Equal)
+            {
+                error = "Stage 34 OOP lowering currently requires simple '=' assignment; compound assignment remains in procedural HIR";
+                return nullptr;
+            }
+            auto target = lowerExpression(expression->first(), memberOrdinal, true, error);
+            auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+            if (target == nullptr || value == nullptr)
+            {
+                return nullptr;
+            }
+            const MethodExpressionTypeBinding* rhsType = expressionType(expression->second());
+            const ProjectImplicitConversion conversion = classifyImplicit(
+                value->typeKey,
+                target->typeKey,
+                rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+            if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+            {
+                value = wrapImplicitConversion(std::move(value), conversion, expression->second());
+            }
+            node->children.push_back(std::move(target));
+            node->children.push_back(std::move(value));
+            return node;
+        }
+
+        case ast::AstNodeKind::MoveExpression:
+        {
+            if (addressContext)
+            {
+                error = "Stage 49 move value is not addressable";
+                return nullptr;
+            }
+            const MethodMoveBinding* move = moveBinding(expression);
+            if (move == nullptr)
+            {
+                error = "Stage 49 move expression has no semantic move binding";
+                return nullptr;
+            }
+            if (move->sourceIsArrayElement)
+            {
+                // Stage 52: move(items[i]) extracts an owned element out of native-array
+                // backing storage (needed by Queue<T>.Dequeue()/Stack<T>.Pop()). Reuse the
+                // existing IndexExpression address-lowering path (ArrayElementAddress) to
+                // compute the slot's address, then wrap it in a dedicated node so LLVM
+                // lowering can load the value and, only for reference-like elements,
+                // null out the slot to prevent a later double-free/double-use. Value-typed
+                // elements (int, bool, a plain struct, ...) have no ownership to transfer,
+                // so the load degrades to a harmless plain read with no null-store.
+                auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+                if (address == nullptr) return nullptr;
+                auto node = makeNode(ProjectOopHirNodeKind::MoveArrayElement, expression, move->typeKey);
+                node->booleanValue = move->elementIsReferenceLike;
+                node->children.push_back(std::move(address));
+                return node;
+            }
+            if (move->sourceIsOwnedField)
+            {
+                // Bloque 1: move(holder.slot) / move(slot) -- take the owner OUT of an `owned`
+                // field. Same address-shaped contract as the array-element case above: compute
+                // the slot's address here, load-and-null in the backend. The null-store is what
+                // makes the container's own discharge (destruction entry, overwrite release) see
+                // an empty slot instead of double-freeing the value that just left.
+                auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+                if (address == nullptr) return nullptr;
+                auto node = makeNode(ProjectOopHirNodeKind::MoveOwnedField, expression, move->typeKey);
+                node->booleanValue = move->elementIsReferenceLike;
+                node->children.push_back(std::move(address));
+                return node;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::MoveValue, expression, move->typeKey);
+            node->localOrdinal = move->sourceLocalOrdinal;
+            node->parameterOrdinal = move->sourceParameterOrdinal;
+            // Stage 52: whether the source is actually reference-like (needs the load+null-store
+            // treatment) or a plain value type closed over a generic T -- see
+            // MethodMoveBinding::elementIsReferenceLike's comment and the MoveValue LLVM
+            // lowering case for the bug this fixes.
+            node->booleanValue = move->elementIsReferenceLike;
+            if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
+            {
+                error = "Stage 50.8 move value must identify exactly one owner source";
+                return nullptr;
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::CallExpression:
+        {
+            const MethodEventBinding* stage42Event = eventBinding(expression);
+            if (stage42Event != nullptr && stage42Event->kind == MethodEventOperationKind::Invoke)
+            {
+                if (addressContext)
+                {
+                    error = "Stage 42 event invocation is not addressable";
+                    return nullptr;
+                }
+                auto head = lowerEventBacking(stage42Event, false);
+                if (head == nullptr) return nullptr;
+                auto node = makeNode(ProjectOopHirNodeKind::EventInvoke, expression, stage42Event->resultTypeKey);
+                node->elementTypeKey = stage42Event->delegateTypeKey;
+                node->memberOrdinal = stage42Event->backingMemberOrdinal;
+                node->children.push_back(std::move(head));
+                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                {
+                    const ast::AstNode* argumentSyntax = expression->children()[index];
+                    auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
+                    if (argument == nullptr) return nullptr;
+                    if (index < stage42Event->argumentConversions.size())
+                    {
+                        const ProjectImplicitConversion& conversion = stage42Event->argumentConversions[index];
+                        node->argumentTypeKeys.push_back(conversion.targetTypeKey);
+                        if (conversion.kind != ProjectConversionKind::Identity)
+                        {
+                            argument = wrapImplicitConversion(std::move(argument), conversion, argumentSyntax);
+                        }
+                    }
+                    node->children.push_back(std::move(argument));
+                }
+                node->argumentCount = expression->children().size();
+                return node;
+            }
+
+            const MethodDelegateBinding* invoke = delegateBinding(expression);
+            if (invoke != nullptr && invoke->kind == MethodDelegateOperationKind::Invoke)
+            {
+                if (addressContext)
+                {
+                    error = "Stage 42 delegate invocation is not addressable";
+                    return nullptr;
+                }
+                auto callee = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (callee == nullptr) return nullptr;
+                auto node = makeNode(ProjectOopHirNodeKind::DelegateInvoke, expression, invoke->resultTypeKey);
+                node->elementTypeKey = invoke->delegateTypeKey;
+                node->children.push_back(std::move(callee));
+                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                {
+                    const ast::AstNode* argumentSyntax = expression->children()[index];
+                    auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
+                    if (argument == nullptr) return nullptr;
+                    if (index < invoke->argumentConversions.size())
+                    {
+                        const ProjectImplicitConversion& conversion = invoke->argumentConversions[index];
+                        node->argumentTypeKeys.push_back(conversion.targetTypeKey);
+                        if (conversion.kind != ProjectConversionKind::Identity)
+                        {
+                            argument = wrapImplicitConversion(std::move(argument), conversion, argumentSyntax);
+                        }
+                    }
+                    node->children.push_back(std::move(argument));
+                }
+                node->argumentCount = expression->children().size();
+                return node;
+            }
+
+            const MethodCoreBinding* core = coreBinding(expression);
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::StringConcat ||
+                 core->kind == MethodCoreOperationKind::StringEquals ||
+                 core->kind == MethodCoreOperationKind::StringSubstring ||
+                 core->kind == MethodCoreOperationKind::StringFromCharArray ||
+                 // Stage 53.2b "Environment (variables)": GetEnvironmentVariable/
+                 // SetEnvironmentVariable are string intrinsics in every way this block cares
+                 // about (operand count, operand lowering with implicit conversions, no
+                 // receiver) -- they only differ in which runtime hook the LLVM lowerer calls,
+                 // so they slot into this exact shared block rather than duplicating it.
+                 core->kind == MethodCoreOperationKind::EnvironmentGetVariable ||
+                 core->kind == MethodCoreOperationKind::EnvironmentSetVariable ||
+                 // Stage 53.3 "Filesystem/Paths": File.Exists/File.Delete/Directory.Exists/
+                 // Directory.CreateDirectory -- same story, one string operand, a different
+                 // runtime hook.
+                 core->kind == MethodCoreOperationKind::FileExists ||
+                 core->kind == MethodCoreOperationKind::FileDelete ||
+                 core->kind == MethodCoreOperationKind::DirectoryExists ||
+                 core->kind == MethodCoreOperationKind::DirectoryCreate ||
+                 // Stage 53.3b "Filesystem/Paths (contenido de archivo)": ReadAllText/
+                 // WriteAllText/AppendAllText -- same story again, still no receiver, still just
+                 // string operands (1 for ReadAllText, 2 for WriteAllText/AppendAllText).
+                 core->kind == MethodCoreOperationKind::FileReadAllText ||
+                 core->kind == MethodCoreOperationKind::FileWriteAllText ||
+                 core->kind == MethodCoreOperationKind::FileAppendAllText ||
+                 // Stage 53.4 "Filesystem/Paths (cierre)": Directory.Delete/Path.GetFullPath --
+                 // same story again, one string operand, a different runtime hook.
+                 core->kind == MethodCoreOperationKind::DirectoryDelete ||
+                 core->kind == MethodCoreOperationKind::PathGetFullPath ||
+                 // Stage 53.5 "Command-line arguments": GetCommandLineArgs -- one operand again,
+                 // but this time a builtin:string[] instead of a builtin:string. This block
+                 // never actually required its operand to BE a string -- it just lowers whatever
+                 // expression is there via lowerExpression, which already handles array-typed
+                 // expressions elsewhere in the compiler -- so an array operand slots in without
+                 // any change to the mechanism itself.
+                 core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgs ||
+                 // Stage 53.6 "Enumeracion de directorios": GetFileCount/GetDirectoryCount are
+                 // "one string in (the path), an int out" -- one operand, same bucket as
+                 // Directory.Delete/Path.GetFullPath. GetFiles/GetDirectories are "one string in
+                 // (path) + one array in (the caller-provided buffer), an int out" -- two
+                 // operands, the same default `expected = 2U` bucket EnvironmentSetVariable/
+                 // WriteAllText/AppendAllText already use, so no explicit listing is needed for
+                 // those two below.
+                 core->kind == MethodCoreOperationKind::DirectoryGetFileCount ||
+                 core->kind == MethodCoreOperationKind::DirectoryGetFiles ||
+                 core->kind == MethodCoreOperationKind::DirectoryGetDirectoryCount ||
+                 core->kind == MethodCoreOperationKind::DirectoryGetDirectories ||
+                 // Stage 54.1 "Threads": ThreadCreate/ThreadJoin/ThreadDetach are all one operand
+                 // (ThreadCreate's is a ThreadStart delegate value; ThreadJoin/ThreadDetach's is a
+                 // builtin:nint HANDLE) -- same shared "no receiver, operands lowered via
+                 // lowerExpression" shape as every other core operation here.
+                 core->kind == MethodCoreOperationKind::ThreadCreate ||
+                 core->kind == MethodCoreOperationKind::ThreadJoin ||
+                 core->kind == MethodCoreOperationKind::ThreadDetach ||
+                 // Stage 54.3 "Mutex": MutexCreate (zero operands -- the first core operation in
+                 // the project with none at all), MutexLock/MutexUnlock/MutexClose (one
+                 // builtin:nint operand, the saved HANDLE) -- exact same shape as
+                 // ThreadJoin/ThreadDetach above, no receiver, same shared machinery.
+                 core->kind == MethodCoreOperationKind::MutexCreate ||
+                 core->kind == MethodCoreOperationKind::MutexLock ||
+                 core->kind == MethodCoreOperationKind::MutexUnlock ||
+                 core->kind == MethodCoreOperationKind::MutexClose ||
+                 // Stage 54.5 "Otras primitivas de sincronizacion": Semaphore/Event, EXACTO mismo
+                 // shape que Mutex arriba (sin receptor, HANDLE builtin:nint de ida y vuelta) --
+                 // SemaphoreCreate/EventCreate son de DOS operandos (bucket "expected=2U" por
+                 // defecto, ver mas abajo), SemaphoreWait/EventWait tambien DOS (HANDLE + timeout),
+                 // SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose de UNO (el
+                 // HANDLE) -- mismo bucket "expected=1U" que MutexLock/MutexUnlock/MutexClose.
+                 core->kind == MethodCoreOperationKind::SemaphoreCreate ||
+                 core->kind == MethodCoreOperationKind::SemaphoreWait ||
+                 core->kind == MethodCoreOperationKind::SemaphoreRelease ||
+                 core->kind == MethodCoreOperationKind::SemaphoreClose ||
+                 core->kind == MethodCoreOperationKind::EventCreate ||
+                 core->kind == MethodCoreOperationKind::EventSet ||
+                 core->kind == MethodCoreOperationKind::EventReset ||
+                 core->kind == MethodCoreOperationKind::EventWait ||
+                 core->kind == MethodCoreOperationKind::EventClose ||
+                 // Stage 55.1/55.3: Process.SetPriorityClassRaw (one builtin:int operand) and
+                 // Debug.OutputStringRaw (one builtin:string operand) -- exact same "no receiver,
+                 // one operand lowered via lowerExpression, void result" shape as
+                 // MutexLock/FileDelete above; this bucket never required a particular operand
+                 // type (ThreadJoin's builtin:nint operand already proved that).
+                 core->kind == MethodCoreOperationKind::ProcessSetPriorityClassRaw ||
+                 core->kind == MethodCoreOperationKind::DebugOutputStringRaw ||
+                 // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29): ThreadSleepRaw
+                 // (one builtin:int operand, void out -- same shape as ProcessSetPriorityClassRaw
+                 // above), FileCopyRaw (three operands -- joins StringSubstring in the
+                 // expected=3U bucket below), FileMoveRaw/DirectoryMoveRaw (two operands each,
+                 // fall through to the default expected=2U bucket). THIS gate is the actual
+                 // switch that routes a recognized core-operation call into the shared "no
+                 // receiver, operands straight from the AST" HIR block below -- missing an entry
+                 // here means the call site is left as an ordinary static-call, and the core
+                 // operation silently never lowers to its LLVM runtime hook at all.
+                 core->kind == MethodCoreOperationKind::ThreadSleepRaw ||
+                 core->kind == MethodCoreOperationKind::FileCopyRaw ||
+                 core->kind == MethodCoreOperationKind::FileMoveRaw ||
+                 core->kind == MethodCoreOperationKind::DirectoryMoveRaw))
+            {
+                if (addressContext)
+                {
+                    error = "Stage 51 NativeSharp.Core.String result is not addressable";
+                    return nullptr;
+                }
+                const MethodCallBinding* stringCall = callBinding(expression);
+                if (stringCall == nullptr || !stringCall->selectedMemberOrdinal.has_value())
+                {
+                    error = "Stage 51 string intrinsic requires a resolved Core.String call";
+                    return nullptr;
+                }
+                std::vector<const ast::AstNode*> operands;
+                if (stringCall->forwardedReceiver)
+                {
+                    if (stringCall->receiverSyntax == nullptr)
+                    {
+                        error = "Stage 51 forwarded string call has no receiver";
+                        return nullptr;
+                    }
+                    operands.push_back(stringCall->receiverSyntax);
+                }
+                operands.insert(operands.end(), expression->children().begin(), expression->children().end());
+                // Stage 53.3: this used to be a nested ternary (readable enough for 4 kinds, not
+                // for 8) -- rewritten as a plain if-chain now that File/Directory's four
+                // one-operand operations join StringFromCharArray/EnvironmentGetVariable in that
+                // bucket. Same three buckets as before: 3 operands (Substring only), 1 operand
+                // (every "one string in, one thing out" operation), 2 operands (everything else:
+                // Concat/Equals/SetEnvironmentVariable).
+                std::size_t expected = 2U;
+                if (core->kind == MethodCoreOperationKind::StringSubstring ||
+                    // Pre-Stage-56 "utilidades basicas" -- File.CopyRaw(source, dest, overwrite).
+                    core->kind == MethodCoreOperationKind::FileCopyRaw)
+                {
+                    expected = 3U;
+                }
+                else if (core->kind == MethodCoreOperationKind::MutexCreate)
+                {
+                    // Stage 54.3: the first (and so far only) zero-operand core operation in the
+                    // project -- MutexCreate takes no explicit arguments at all, it just returns
+                    // a fresh HANDLE. The `operands` vector is empty here (no receiver, no AST
+                    // arguments), so `operands.size() != expected` below correctly requires 0.
+                    expected = 0U;
+                }
+                else if (core->kind == MethodCoreOperationKind::StringFromCharArray ||
+                    core->kind == MethodCoreOperationKind::EnvironmentGetVariable ||
+                    core->kind == MethodCoreOperationKind::FileExists ||
+                    core->kind == MethodCoreOperationKind::FileDelete ||
+                    core->kind == MethodCoreOperationKind::DirectoryExists ||
+                    core->kind == MethodCoreOperationKind::DirectoryCreate ||
+                    // Stage 53.3b: ReadAllText is "one string in, a string out" -- same bucket.
+                    // WriteAllText/AppendAllText are NOT here on purpose: they take two string
+                    // operands (path, content), so they fall through to the default `expected =
+                    // 2U` above, the same bucket EnvironmentSetVariable already uses.
+                    core->kind == MethodCoreOperationKind::FileReadAllText ||
+                    // Stage 53.4: Directory.Delete (one string in, void out) and
+                    // Path.GetFullPath (one string in, a string out) are both one-operand too.
+                    core->kind == MethodCoreOperationKind::DirectoryDelete ||
+                    core->kind == MethodCoreOperationKind::PathGetFullPath ||
+                    // Stage 53.5: GetCommandLineArgs is "one array in (the caller-provided
+                    // buffer), an int out" -- also one operand.
+                    core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgs ||
+                    // Stage 53.6: GetFileCount/GetDirectoryCount are "one string in (path), an
+                    // int out" -- one operand too. GetFiles/GetDirectories are NOT here on
+                    // purpose: they take two operands (path, destination buffer), so they fall
+                    // through to the default `expected = 2U` above, the same bucket
+                    // EnvironmentSetVariable/WriteAllText/AppendAllText already use.
+                    core->kind == MethodCoreOperationKind::DirectoryGetFileCount ||
+                    core->kind == MethodCoreOperationKind::DirectoryGetDirectoryCount ||
+                    // Stage 54.1: ThreadCreate (one delegate operand), ThreadJoin/ThreadDetach
+                    // (one nint operand) -- all three are one-operand too.
+                    core->kind == MethodCoreOperationKind::ThreadCreate ||
+                    core->kind == MethodCoreOperationKind::ThreadJoin ||
+                    core->kind == MethodCoreOperationKind::ThreadDetach ||
+                    // Stage 54.3: MutexLock/MutexUnlock/MutexClose (one builtin:nint HANDLE
+                    // operand each). MutexCreate is NOT here on purpose -- see the `expected = 0U`
+                    // branch above.
+                    core->kind == MethodCoreOperationKind::MutexLock ||
+                    core->kind == MethodCoreOperationKind::MutexUnlock ||
+                    core->kind == MethodCoreOperationKind::MutexClose ||
+                    // Stage 54.5: SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose
+                    // (one builtin:nint HANDLE operand each). SemaphoreCreate/EventCreate (two
+                    // operands) and SemaphoreWait/EventWait (HANDLE + timeout, two operands) are
+                    // NOT here on purpose -- they fall through to the default `expected = 2U`
+                    // above, the same bucket EnvironmentSetVariable/WriteAllText/etc. already use.
+                    core->kind == MethodCoreOperationKind::SemaphoreRelease ||
+                    core->kind == MethodCoreOperationKind::SemaphoreClose ||
+                    core->kind == MethodCoreOperationKind::EventSet ||
+                    core->kind == MethodCoreOperationKind::EventReset ||
+                    core->kind == MethodCoreOperationKind::EventClose ||
+                    // Stage 55.1/55.3: Process.SetPriorityClassRaw/Debug.OutputStringRaw -- one
+                    // operand each, see the top-of-block comment above.
+                    core->kind == MethodCoreOperationKind::ProcessSetPriorityClassRaw ||
+                    core->kind == MethodCoreOperationKind::DebugOutputStringRaw ||
+                    // Pre-Stage-56 "utilidades basicas" -- Thread.SleepRaw (one builtin:int
+                    // operand, void out). FileMoveRaw/DirectoryMoveRaw are NOT here on purpose:
+                    // they take two operands (source, dest), so they fall through to the default
+                    // expected=2U bucket above.
+                    core->kind == MethodCoreOperationKind::ThreadSleepRaw)
+                {
+                    expected = 1U;
+                }
+                if (operands.size() != expected)
+                {
+                    error = "Stage 51 string intrinsic received an invalid operand count";
+                    return nullptr;
+                }
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringConcat;
+                if (core->kind == MethodCoreOperationKind::StringEquals) kind = ProjectOopHirNodeKind::StringEquals;
+                else if (core->kind == MethodCoreOperationKind::StringSubstring) kind = ProjectOopHirNodeKind::StringSubstring;
+                else if (core->kind == MethodCoreOperationKind::StringFromCharArray) kind = ProjectOopHirNodeKind::StringFromCharArray;
+                else if (core->kind == MethodCoreOperationKind::EnvironmentGetVariable) kind = ProjectOopHirNodeKind::CoreEnvironmentGetVariable;
+                else if (core->kind == MethodCoreOperationKind::EnvironmentSetVariable) kind = ProjectOopHirNodeKind::CoreEnvironmentSetVariable;
+                else if (core->kind == MethodCoreOperationKind::FileExists) kind = ProjectOopHirNodeKind::CoreFileExists;
+                else if (core->kind == MethodCoreOperationKind::FileDelete) kind = ProjectOopHirNodeKind::CoreFileDelete;
+                else if (core->kind == MethodCoreOperationKind::DirectoryExists) kind = ProjectOopHirNodeKind::CoreDirectoryExists;
+                else if (core->kind == MethodCoreOperationKind::DirectoryCreate) kind = ProjectOopHirNodeKind::CoreDirectoryCreate;
+                else if (core->kind == MethodCoreOperationKind::FileReadAllText) kind = ProjectOopHirNodeKind::CoreFileReadAllText;
+                else if (core->kind == MethodCoreOperationKind::FileWriteAllText) kind = ProjectOopHirNodeKind::CoreFileWriteAllText;
+                else if (core->kind == MethodCoreOperationKind::FileAppendAllText) kind = ProjectOopHirNodeKind::CoreFileAppendAllText;
+                else if (core->kind == MethodCoreOperationKind::DirectoryDelete) kind = ProjectOopHirNodeKind::CoreDirectoryDelete;
+                else if (core->kind == MethodCoreOperationKind::PathGetFullPath) kind = ProjectOopHirNodeKind::CorePathGetFullPath;
+                else if (core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgs) kind = ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgs;
+                else if (core->kind == MethodCoreOperationKind::DirectoryGetFileCount) kind = ProjectOopHirNodeKind::CoreDirectoryGetFileCount;
+                else if (core->kind == MethodCoreOperationKind::DirectoryGetFiles) kind = ProjectOopHirNodeKind::CoreDirectoryGetFiles;
+                else if (core->kind == MethodCoreOperationKind::DirectoryGetDirectoryCount) kind = ProjectOopHirNodeKind::CoreDirectoryGetDirectoryCount;
+                else if (core->kind == MethodCoreOperationKind::DirectoryGetDirectories) kind = ProjectOopHirNodeKind::CoreDirectoryGetDirectories;
+                else if (core->kind == MethodCoreOperationKind::ThreadCreate) kind = ProjectOopHirNodeKind::CoreThreadCreate;
+                else if (core->kind == MethodCoreOperationKind::ThreadJoin) kind = ProjectOopHirNodeKind::CoreThreadJoin;
+                else if (core->kind == MethodCoreOperationKind::ThreadDetach) kind = ProjectOopHirNodeKind::CoreThreadDetach;
+                else if (core->kind == MethodCoreOperationKind::MutexCreate) kind = ProjectOopHirNodeKind::CoreMutexCreate;
+                else if (core->kind == MethodCoreOperationKind::MutexLock) kind = ProjectOopHirNodeKind::CoreMutexLock;
+                else if (core->kind == MethodCoreOperationKind::MutexUnlock) kind = ProjectOopHirNodeKind::CoreMutexUnlock;
+                else if (core->kind == MethodCoreOperationKind::MutexClose) kind = ProjectOopHirNodeKind::CoreMutexClose;
+                else if (core->kind == MethodCoreOperationKind::SemaphoreCreate) kind = ProjectOopHirNodeKind::CoreSemaphoreCreate;
+                else if (core->kind == MethodCoreOperationKind::SemaphoreWait) kind = ProjectOopHirNodeKind::CoreSemaphoreWait;
+                else if (core->kind == MethodCoreOperationKind::SemaphoreRelease) kind = ProjectOopHirNodeKind::CoreSemaphoreRelease;
+                else if (core->kind == MethodCoreOperationKind::SemaphoreClose) kind = ProjectOopHirNodeKind::CoreSemaphoreClose;
+                else if (core->kind == MethodCoreOperationKind::EventCreate) kind = ProjectOopHirNodeKind::CoreEventCreate;
+                else if (core->kind == MethodCoreOperationKind::EventSet) kind = ProjectOopHirNodeKind::CoreEventSet;
+                else if (core->kind == MethodCoreOperationKind::EventReset) kind = ProjectOopHirNodeKind::CoreEventReset;
+                else if (core->kind == MethodCoreOperationKind::EventWait) kind = ProjectOopHirNodeKind::CoreEventWait;
+                else if (core->kind == MethodCoreOperationKind::EventClose) kind = ProjectOopHirNodeKind::CoreEventClose;
+                else if (core->kind == MethodCoreOperationKind::ProcessSetPriorityClassRaw) kind = ProjectOopHirNodeKind::CoreProcessSetPriorityClass;
+                else if (core->kind == MethodCoreOperationKind::DebugOutputStringRaw) kind = ProjectOopHirNodeKind::CoreDebugOutputString;
+                else if (core->kind == MethodCoreOperationKind::ThreadSleepRaw) kind = ProjectOopHirNodeKind::CoreThreadSleep;
+                else if (core->kind == MethodCoreOperationKind::FileCopyRaw) kind = ProjectOopHirNodeKind::CoreFileCopy;
+                else if (core->kind == MethodCoreOperationKind::FileMoveRaw) kind = ProjectOopHirNodeKind::CoreFileMove;
+                else if (core->kind == MethodCoreOperationKind::DirectoryMoveRaw) kind = ProjectOopHirNodeKind::CoreDirectoryMove;
+                auto node = makeNode(kind, expression, core->resultTypeKey);
+                for (std::size_t index = 0; index < operands.size(); ++index)
+                {
+                    const ast::AstNode* operandSyntax = operands[index];
+                    auto operand = lowerExpression(operandSyntax, memberOrdinal, false, error);
+                    if (operand == nullptr) return nullptr;
+                    if (index < stringCall->selectedConversions.size() &&
+                        stringCall->selectedConversions[index].kind != ProjectConversionKind::Identity)
+                    {
+                        operand = wrapImplicitConversion(
+                            std::move(operand), stringCall->selectedConversions[index], operandSyntax);
+                    }
+                    node->children.push_back(std::move(operand));
+                }
+                return node;
+            }
+            // Stage 54.2 "Atomics" -- AtomicInt32/AtomicInt64's Increment/Decrement/Add/Exchange/
+            // CompareExchange. Deliberately NOT part of the shared "String core operation" block
+            // just above: that block's shape is "no receiver, every operand comes straight from
+            // the call's own AST argument list" -- these ten operations have a REAL receiver
+            // (the AtomicInt32/AtomicInt64 instance the method was called on, e.g. `contador` in
+            // `contador.Increment()`) and their FIRST logical operand (the atomic location) is
+            // never written by the caller at all -- it is the address of the receiver's own
+            // private `value_` field, synthesized here as a ProjectOopHirNodeKind::FieldAddress
+            // node built by hand (see MethodCoreBinding::implicitFieldMemberOrdinal in
+            // ProjectMethodBodyModel.h for the full rationale: NativeSharp's OOP pipeline has no
+            // support for the `&` operator at all, so no NativeSharp source expression could ever
+            // produce this operand even if the API wanted the caller to write it).
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::InterlockedIncrementInt32 ||
+                 core->kind == MethodCoreOperationKind::InterlockedDecrementInt32 ||
+                 core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
+                 core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
+                 core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32 ||
+                 core->kind == MethodCoreOperationKind::InterlockedIncrementInt64 ||
+                 core->kind == MethodCoreOperationKind::InterlockedDecrementInt64 ||
+                 core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
+                 core->kind == MethodCoreOperationKind::InterlockedExchangeInt64 ||
+                 core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64))
+            {
+                if (addressContext)
+                {
+                    error = "Stage 54.2 Atomic operation result is not addressable";
+                    return nullptr;
+                }
+                if (!core->implicitFieldMemberOrdinal.has_value())
+                {
+                    error = "Stage 54.2 Atomic core operation is missing its implicit field member ordinal";
+                    return nullptr;
+                }
+                const MethodCallBinding* call = callBinding(expression);
+                if (call == nullptr || call->receiverSyntax == nullptr)
+                {
+                    error = "Stage 54.2 Atomic core operation requires a resolved receiver";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+
+                // The synthetic "&this.value_" stand-in -- same FieldAddress node kind, same
+                // memberOrdinal + one-receiver-child shape as an ordinary field access lowered in
+                // address context (see lowerEventBacking above for the closest existing
+                // precedent). HIR->MIR conversion and LLVM lowering handle it with zero extra
+                // code: to those later stages this is indistinguishable from a real one.
+                auto location = makeNode(ProjectOopHirNodeKind::FieldAddress, expression, core->elementTypeKey);
+                location->memberOrdinal = *core->implicitFieldMemberOrdinal;
+                location->children.push_back(std::move(receiver));
+
+                std::size_t expectedExplicitArguments = 0U;
+                if (core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
+                    core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
+                    core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
+                    core->kind == MethodCoreOperationKind::InterlockedExchangeInt64)
+                {
+                    expectedExplicitArguments = 1U;
+                }
+                else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32 ||
+                    core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64)
+                {
+                    expectedExplicitArguments = 2U;
+                }
+                if (expression->children().size() != expectedExplicitArguments)
+                {
+                    error = "Stage 54.2 Atomic core operation received an invalid explicit argument count";
+                    return nullptr;
+                }
+
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt32;
+                if (core->kind == MethodCoreOperationKind::InterlockedIncrementInt32) kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt32;
+                else if (core->kind == MethodCoreOperationKind::InterlockedDecrementInt32) kind = ProjectOopHirNodeKind::CoreInterlockedDecrementInt32;
+                else if (core->kind == MethodCoreOperationKind::InterlockedAddInt32) kind = ProjectOopHirNodeKind::CoreInterlockedAddInt32;
+                else if (core->kind == MethodCoreOperationKind::InterlockedExchangeInt32) kind = ProjectOopHirNodeKind::CoreInterlockedExchangeInt32;
+                else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt32;
+                else if (core->kind == MethodCoreOperationKind::InterlockedIncrementInt64) kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt64;
+                else if (core->kind == MethodCoreOperationKind::InterlockedDecrementInt64) kind = ProjectOopHirNodeKind::CoreInterlockedDecrementInt64;
+                else if (core->kind == MethodCoreOperationKind::InterlockedAddInt64) kind = ProjectOopHirNodeKind::CoreInterlockedAddInt64;
+                else if (core->kind == MethodCoreOperationKind::InterlockedExchangeInt64) kind = ProjectOopHirNodeKind::CoreInterlockedExchangeInt64;
+                else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64;
+
+                auto node = makeNode(kind, expression, core->resultTypeKey);
+                node->children.push_back(std::move(location));
+                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                {
+                    const ast::AstNode* argumentSyntax = expression->children()[index];
+                    auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
+                    if (argument == nullptr) return nullptr;
+                    if (index < call->selectedConversions.size() &&
+                        call->selectedConversions[index].kind != ProjectConversionKind::Identity)
+                    {
+                        argument = wrapImplicitConversion(std::move(argument), call->selectedConversions[index], argumentSyntax);
+                    }
+                    node->children.push_back(std::move(argument));
+                }
+                return node;
+            }
+            // Stage 54.4 "Condition Variables" -- NativeSharp.Core.Threading.Monitor's five
+            // instance methods. Enter/Exit/Pulse/PulseAll rejoin the EXACT same "one implicit
+            // FieldAddress child, built by hand from the receiver + a single resolved ordinal"
+            // shape the Atomics block right above already established -- see that block's own
+            // header comment for the full rationale (no `&`/`*` operator support in this
+            // pipeline). Wait is handled separately below (it is NOT part of this if): it needs
+            // TWO field addresses on the SAME receiver rather than one, which this shared shape
+            // cannot express without lowering the receiver expression twice (see
+            // MethodCoreOperationKind::MonitorWait's comment in ProjectMethodBodyModel.h).
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::MonitorEnter ||
+                 core->kind == MethodCoreOperationKind::MonitorExit ||
+                 core->kind == MethodCoreOperationKind::MonitorPulse ||
+                 core->kind == MethodCoreOperationKind::MonitorPulseAll))
+            {
+                if (addressContext)
+                {
+                    error = "Stage 54.4 Monitor operation result is not addressable";
+                    return nullptr;
+                }
+                if (!core->implicitFieldMemberOrdinal.has_value())
+                {
+                    error = "Stage 54.4 Monitor core operation is missing its implicit field member ordinal";
+                    return nullptr;
+                }
+                const MethodCallBinding* call = callBinding(expression);
+                if (call == nullptr || call->receiverSyntax == nullptr)
+                {
+                    error = "Stage 54.4 Monitor core operation requires a resolved receiver";
+                    return nullptr;
+                }
+                if (!expression->children().empty())
+                {
+                    error = "Stage 54.4 Monitor.Enter/Exit/Pulse/PulseAll take no explicit arguments";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+
+                auto location = makeNode(ProjectOopHirNodeKind::FieldAddress, expression, core->elementTypeKey);
+                location->memberOrdinal = *core->implicitFieldMemberOrdinal;
+                location->children.push_back(std::move(receiver));
+
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreMonitorEnter;
+                if (core->kind == MethodCoreOperationKind::MonitorEnter) kind = ProjectOopHirNodeKind::CoreMonitorEnter;
+                else if (core->kind == MethodCoreOperationKind::MonitorExit) kind = ProjectOopHirNodeKind::CoreMonitorExit;
+                else if (core->kind == MethodCoreOperationKind::MonitorPulse) kind = ProjectOopHirNodeKind::CoreMonitorPulse;
+                else if (core->kind == MethodCoreOperationKind::MonitorPulseAll) kind = ProjectOopHirNodeKind::CoreMonitorPulseAll;
+
+                auto node = makeNode(kind, expression, core->resultTypeKey);
+                node->children.push_back(std::move(location));
+                return node;
+            }
+            // Stage 54.4: Monitor.Wait(int millisecondsTimeout) -- the one core operation in this
+            // round that needs the addresses of TWO different fields (`cv_`, `lock_`) on the SAME
+            // receiver for a single runtime call (SleepConditionVariableSRW). Deliberately built as
+            // a single custom node whose ONLY child is the receiver expression lowered EXACTLY
+            // ONCE (never wrapped in a FieldAddress node here) plus the explicit timeout argument,
+            // with BOTH field ordinals carried as node metadata (memberOrdinal = cv_,
+            // secondaryMemberOrdinal = lock_) for ProjectOopMirModel.cpp to resolve into byte
+            // offsets and ProjectOopLlvmLowerer.cpp to turn into two GEPs off that single lowered
+            // receiver value -- see MethodCoreOperationKind::MonitorWait's comment in
+            // ProjectMethodBodyModel.h for why re-lowering the receiver a second time (the way
+            // Enter/Exit/Pulse/PulseAll each lower their own single implicit field, above) would be
+            // a real correctness bug for a non-trivial receiver expression.
+            if (core != nullptr && core->kind == MethodCoreOperationKind::MonitorWait)
+            {
+                if (addressContext)
+                {
+                    error = "Stage 54.4 Monitor.Wait result is not addressable";
+                    return nullptr;
+                }
+                if (!core->implicitFieldMemberOrdinal.has_value() ||
+                    !core->secondaryImplicitFieldMemberOrdinal.has_value())
+                {
+                    error = "Stage 54.4 Monitor.Wait is missing one of its two implicit field member ordinals";
+                    return nullptr;
+                }
+                const MethodCallBinding* call = callBinding(expression);
+                if (call == nullptr || call->receiverSyntax == nullptr)
+                {
+                    error = "Stage 54.4 Monitor.Wait requires a resolved receiver";
+                    return nullptr;
+                }
+                if (expression->children().size() != 1)
+                {
+                    error = "Stage 54.4 Monitor.Wait takes exactly one explicit millisecondsTimeout argument";
+                    return nullptr;
+                }
+                auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+
+                auto timeout = lowerExpression(expression->children().front(), memberOrdinal, false, error);
+                if (timeout == nullptr) return nullptr;
+                if (!call->selectedConversions.empty() &&
+                    call->selectedConversions.front().kind != ProjectConversionKind::Identity)
+                {
+                    timeout = wrapImplicitConversion(
+                        std::move(timeout), call->selectedConversions.front(), expression->children().front());
+                }
+
+                auto node = makeNode(ProjectOopHirNodeKind::CoreMonitorWait, expression, core->resultTypeKey);
+                node->memberOrdinal = *core->implicitFieldMemberOrdinal;
+                node->secondaryMemberOrdinal = *core->secondaryImplicitFieldMemberOrdinal;
+                node->children.push_back(std::move(receiver));
+                node->children.push_back(std::move(timeout));
+                return node;
+            }
+            if (core != nullptr && core->kind == MethodCoreOperationKind::ConsoleWriteLine)
+            {
+                if (addressContext || expression->children().size() != 1)
+                {
+                    error = "Stage 41 NativeSharp.Core.Console.WriteLine requires one value argument";
+                    return nullptr;
+                }
+                const MethodCallBinding* call = callBinding(expression);
+                auto argument = lowerExpression(expression->children().front(), memberOrdinal, false, error);
+                if (argument == nullptr) return nullptr;
+                if (call != nullptr && !call->selectedConversions.empty() &&
+                    call->selectedConversions.front().kind != ProjectConversionKind::Identity)
+                {
+                    argument = wrapImplicitConversion(
+                        std::move(argument), call->selectedConversions.front(), expression->children().front());
+                }
+                auto node = makeNode(ProjectOopHirNodeKind::CoreConsoleWriteLine, expression, "builtin:void");
+                node->children.push_back(std::move(argument));
+                return node;
+            }
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ClockQueryCounter ||
+                 core->kind == MethodCoreOperationKind::ClockQueryFrequency ||
+                 core->kind == MethodCoreOperationKind::ClockQuerySystemFileTime))
+            {
+                // Stage 53.1 "Time": all three NativeClock raw wrappers take zero arguments and
+                // return a plain builtin:long -- no operand lowering, no implicit conversion to
+                // wrap, unlike every String core operation above. This is the simplest possible
+                // core-operation shape in the whole compiler.
+                if (addressContext || expression->children().size() != 0)
+                {
+                    error = "Stage 53.1 NativeSharp.Core.Diagnostics.NativeClock raw operation takes no arguments";
+                    return nullptr;
+                }
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreClockQueryCounter;
+                if (core->kind == MethodCoreOperationKind::ClockQueryFrequency)
+                {
+                    kind = ProjectOopHirNodeKind::CoreClockQueryFrequency;
+                }
+                else if (core->kind == MethodCoreOperationKind::ClockQuerySystemFileTime)
+                {
+                    kind = ProjectOopHirNodeKind::CoreClockQuerySystemFileTime;
+                }
+                return makeNode(kind, expression, "builtin:long");
+            }
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::EnvironmentTickCount64 ||
+                 core->kind == MethodCoreOperationKind::EnvironmentProcessorCount ||
+                 // Stage 53.5 "Command-line arguments": GetCommandLineArgCount joins this same
+                 // zero-argument bucket -- it takes no operands either, just like TickCount64/
+                 // ProcessorCount, and returns builtin:int like ProcessorCount does.
+                 core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount))
+            {
+                // Stage 53.2 "Environment": same zero-argument shape as the NativeClock trio
+                // just above -- the only difference is the result type, "builtin:long" for
+                // TickCount64 and "builtin:int" for ProcessorCount (GetActiveProcessorCount
+                // returns a 32-bit DWORD in real Win32, so int is the honest NativeSharp type
+                // here, not long). Stage 53.5 added a third result type: still builtin:int, so
+                // this is a plain if-chain now rather than the original two-way ternary.
+                if (addressContext || expression->children().size() != 0)
+                {
+                    error = "Stage 53.2 NativeSharp.Core.Environment raw operation takes no arguments";
+                    return nullptr;
+                }
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreEnvironmentProcessorCount;
+                std::string resultTypeKey = "builtin:int";
+                if (core->kind == MethodCoreOperationKind::EnvironmentTickCount64)
+                {
+                    kind = ProjectOopHirNodeKind::CoreEnvironmentTickCount64;
+                    resultTypeKey = "builtin:long";
+                }
+                else if (core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount)
+                {
+                    kind = ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgCount;
+                }
+                return makeNode(kind, expression, resultTypeKey);
+            }
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ProcessGetCurrentProcessIdRaw ||
+                 core->kind == MethodCoreOperationKind::ProcessGetWorkingSetSizeRaw ||
+                 core->kind == MethodCoreOperationKind::ProcessGetKernelTimeRaw ||
+                 core->kind == MethodCoreOperationKind::ProcessGetUserTimeRaw ||
+                 core->kind == MethodCoreOperationKind::ProcessGetPriorityClassRaw))
+            {
+                // Stage 55.1 "Process": same zero-argument shape as the NativeClock trio above --
+                // all five results are builtin:long. The Win32 process HANDLE is obtained inside
+                // the runtime wrapper (GetCurrentProcess()), never passed from here.
+                if (addressContext || expression->children().size() != 0)
+                {
+                    error = "Stage 55.1 NativeSharp.Core.Diagnostics.Process raw operation takes no arguments";
+                    return nullptr;
+                }
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreProcessGetCurrentProcessId;
+                if (core->kind == MethodCoreOperationKind::ProcessGetWorkingSetSizeRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreProcessGetWorkingSetSize;
+                }
+                else if (core->kind == MethodCoreOperationKind::ProcessGetKernelTimeRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreProcessGetKernelTime;
+                }
+                else if (core->kind == MethodCoreOperationKind::ProcessGetUserTimeRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreProcessGetUserTime;
+                }
+                else if (core->kind == MethodCoreOperationKind::ProcessGetPriorityClassRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreProcessGetPriorityClass;
+                }
+                return makeNode(kind, expression, "builtin:long");
+            }
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::SystemInfoGetPageSizeRaw ||
+                 core->kind == MethodCoreOperationKind::SystemInfoGetProcessorArchitectureRaw ||
+                 core->kind == MethodCoreOperationKind::SystemInfoGetAllocationGranularityRaw ||
+                 core->kind == MethodCoreOperationKind::SystemInfoGetTotalPhysicalMemoryBytesRaw ||
+                 core->kind == MethodCoreOperationKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw ||
+                 core->kind == MethodCoreOperationKind::SystemInfoGetMemoryLoadPercentRaw))
+            {
+                // Stage 55.2 "Hardware / System Info": same zero-argument shape, all six results
+                // are builtin:long. Both GetSystemInfo and GlobalMemoryStatusEx fill an in-memory
+                // Win32 struct entirely inside the runtime wrapper -- no struct type is ever
+                // visible up here.
+                if (addressContext || expression->children().size() != 0)
+                {
+                    error = "Stage 55.2 NativeSharp.Core.Diagnostics.SystemInfo raw operation takes no arguments";
+                    return nullptr;
+                }
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreSystemInfoGetPageSize;
+                if (core->kind == MethodCoreOperationKind::SystemInfoGetProcessorArchitectureRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreSystemInfoGetProcessorArchitecture;
+                }
+                else if (core->kind == MethodCoreOperationKind::SystemInfoGetAllocationGranularityRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreSystemInfoGetAllocationGranularity;
+                }
+                else if (core->kind == MethodCoreOperationKind::SystemInfoGetTotalPhysicalMemoryBytesRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreSystemInfoGetTotalPhysicalMemoryBytes;
+                }
+                else if (core->kind == MethodCoreOperationKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreSystemInfoGetAvailablePhysicalMemoryBytes;
+                }
+                else if (core->kind == MethodCoreOperationKind::SystemInfoGetMemoryLoadPercentRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreSystemInfoGetMemoryLoadPercent;
+                }
+                return makeNode(kind, expression, "builtin:long");
+            }
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::DebugIsDebuggerPresentRaw ||
+                 core->kind == MethodCoreOperationKind::DebugCaptureStackFrameCountRaw))
+            {
+                // Stage 55.3 "Diagnostics": same zero-argument shape, both results are
+                // builtin:long (IsDebuggerPresentRaw's Win32 0/1 becomes a real bool in Debug.ns).
+                if (addressContext || expression->children().size() != 0)
+                {
+                    error = "Stage 55.3 NativeSharp.Core.Diagnostics.Debug raw operation takes no arguments";
+                    return nullptr;
+                }
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreDebugIsDebuggerPresent;
+                if (core->kind == MethodCoreOperationKind::DebugCaptureStackFrameCountRaw)
+                {
+                    kind = ProjectOopHirNodeKind::CoreDebugCaptureStackFrameCount;
+                }
+                return makeNode(kind, expression, "builtin:long");
+            }
+            if (core != nullptr && core->kind == MethodCoreOperationKind::EnvironmentExit)
+            {
+                // Stage 53.2 "Environment": same one-argument/void shape as
+                // Console.WriteLine above, just with a builtin:int argument instead of a
+                // builtin:string one -- no string layout involved, the argument travels as a
+                // plain i32 value all the way down to ExitProcess's own exit-code parameter.
+                if (addressContext || expression->children().size() != 1)
+                {
+                    error = "Stage 53.2 NativeSharp.Core.Environment.Exit requires one int argument";
+                    return nullptr;
+                }
+                const MethodCallBinding* call = callBinding(expression);
+                auto argument = lowerExpression(expression->children().front(), memberOrdinal, false, error);
+                if (argument == nullptr) return nullptr;
+                if (call != nullptr && !call->selectedConversions.empty() &&
+                    call->selectedConversions.front().kind != ProjectConversionKind::Identity)
+                {
+                    argument = wrapImplicitConversion(
+                        std::move(argument), call->selectedConversions.front(), expression->children().front());
+                }
+                auto node = makeNode(ProjectOopHirNodeKind::CoreEnvironmentExit, expression, "builtin:void");
+                node->children.push_back(std::move(argument));
+                return node;
+            }
+            if (addressContext)
+            {
+                error = "Stage 40 struct instance receiver must be an addressable local, parameter or field; temporary struct values are not addressable in Stage 40";
+                return nullptr;
+            }
+            const MethodCallBinding* binding = callBinding(expression);
+            if (binding == nullptr || !binding->selectedMemberOrdinal.has_value())
+            {
+                error = "Stage 34 requires a resolved Stage 27 method call";
+                return nullptr;
+            }
+            auto node = makeNode(
+                binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
+                expression,
+                binding->resultTypeKey);
+            node->memberOrdinal = binding->selectedMemberOrdinal;
+            node->baseReceiver = binding->baseReceiver;
+            node->interfaceDispatch = binding->interfaceCall;
+            if (binding->interfaceCall)
+            {
+                node->targetTypeOrdinal = binding->receiverTypeOrdinal;
+            }
+            std::size_t conversionOffset = 0;
+            if (binding->forwardedReceiver)
+            {
+                auto receiver = lowerExpression(binding->receiverSyntax, memberOrdinal, false, error);
+                if (receiver == nullptr) return nullptr;
+                if (!binding->selectedConversions.empty() &&
+                    binding->selectedConversions.front().kind != ProjectConversionKind::Identity)
+                {
+                    receiver = wrapImplicitConversion(
+                        std::move(receiver), binding->selectedConversions.front(), binding->receiverSyntax);
+                }
+                node->children.push_back(std::move(receiver));
+                conversionOffset = 1;
+            }
+            else if (!binding->staticCall)
+            {
+                auto receiver = lowerReceiver(
+                    binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
+                if (receiver == nullptr)
+                {
+                    return nullptr;
+                }
+                node->children.push_back(std::move(receiver));
+            }
+            for (std::size_t index = 0; index < expression->children().size(); ++index)
+            {
+                auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);
+                if (argument == nullptr)
+                {
+                    return nullptr;
+                }
+                const std::size_t parameterIndex = index + conversionOffset;
+                if (parameterIndex < binding->selectedConversions.size() &&
+                    binding->selectedConversions[parameterIndex].kind != ProjectConversionKind::Identity)
+                {
+                    argument = wrapImplicitConversion(
+                        std::move(argument), binding->selectedConversions[parameterIndex], expression->children()[index]);
+                }
+                const ast::AstNode* argumentSyntax = expression->children()[index];
+                if (const MethodBorrowBinding* borrow = borrowBinding(argumentSyntax);
+                    borrow != nullptr && borrow->targetMemberOrdinal == binding->selectedMemberOrdinal &&
+                    borrow->targetParameterOrdinal == parameterIndex)
+                {
+                    auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, argumentSyntax, argument->typeKey);
+                    borrowed->borrowKind = borrow->kind;
+                    borrowed->localOrdinal = borrow->sourceLocalOrdinal;
+                    borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
+                    borrowed->children.push_back(std::move(argument));
+                    argument = std::move(borrowed);
+                }
+                node->children.push_back(std::move(argument));
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::NewExpression:
+        {
+            const MethodCoreBinding* core = coreBinding(expression);
+            if (core == nullptr || core->kind != MethodCoreOperationKind::ArrayAllocation)
+            {
+                error = "Stage 41 OOP HIR only owns dynamic new T[count]; raw new remains outside this pipeline";
+                return nullptr;
+            }
+            if (addressContext)
+            {
+                error = "Stage 41 array allocation result is a reference value, not addressable storage";
+                return nullptr;
+            }
+            auto count = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (count == nullptr) return nullptr;
+            auto node = makeNode(ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
+            node->elementTypeKey = core->elementTypeKey;
+            node->children.push_back(std::move(count));
+            return node;
+        }
+
+        case ast::AstNodeKind::ObjectCreationExpression:
+        {
+            const ObjectConstructionBinding* binding = constructionBinding(expression);
+            if (binding == nullptr ||
+                (binding->resolution != ConstructionResolutionKind::ResolvedExplicit &&
+                 binding->resolution != ConstructionResolutionKind::ResolvedImplicitDefault))
+            {
+                error = "Stage 34 requires a resolved Stage 28 object construction";
+                return nullptr;
+            }
+            const auto ordinal = static_cast<std::size_t>(
+                binding - constructionModel_->constructions().data());
+            auto node = makeNode(ProjectOopHirNodeKind::ObjectConstruction, expression, binding->targetTypeKey);
+            node->constructionOrdinal = ordinal;
+            node->targetTypeOrdinal = binding->targetTypeOrdinal;
+            node->memberOrdinal = binding->selectedConstructorMemberOrdinal;
+            node->argumentCount = expression->children().size();
+            for (std::size_t index = 0; index < expression->children().size(); ++index)
+            {
+                auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);
+                if (argument == nullptr)
+                {
+                    return nullptr;
+                }
+                if (index < binding->selectedConversions.size() &&
+                    binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
+                {
+                    argument = wrapImplicitConversion(
+                        std::move(argument), binding->selectedConversions[index], expression->children()[index]);
+                }
+                node->children.push_back(std::move(argument));
+            }
+            if (binding->selectedImplicitDefault)
+            {
+                for (const std::size_t typeOrdinal : implicitInitializerTypes(
+                         binding->targetTypeOrdinal,
+                         binding->implicitDefaultBaseConstructorMemberOrdinal))
+                {
+                    std::vector<std::unique_ptr<ProjectOopHirNode>> initializers;
+                    appendInstanceFieldInitializers(typeOrdinal, initializers, error);
+                    if (!error.empty())
+                    {
+                        return nullptr;
+                    }
+                    for (auto& initializer : initializers)
+                    {
+                        node->children.push_back(std::move(initializer));
+                    }
+                }
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::DeleteExpression:
+        {
+            const MethodExpressionTypeBinding* operandType = expressionType(expression->first());
+            if (operandType == nullptr)
+            {
+                error = "Stage 41 cannot determine delete operand type";
+                return nullptr;
+            }
+            if (expression->flag())
+            {
+                if (!ProjectTypeConversion::isNativeArray(operandType->typeKey))
+                {
+                    error = "Stage 41 delete[] requires a native dynamic array reference";
+                    return nullptr;
+                }
+                auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (operand == nullptr) return nullptr;
+                auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");
+                node->dynamicDestruction = false;
+                node->children.push_back(std::move(operand));
+                return node;
+            }
+            const bool rawPointer = operandType->typeKey.ends_with("*");
+            const bool nativeString = operandType->typeKey == "builtin:string";
+            const bool deletable = operandType->typeKey == "builtin:null" ||
+                isReferenceType(operandType->typeKey) || rawPointer || nativeString;
+            // Stage 52 generic collections: a container's cleanup code (e.g. List<T>.Clear())
+            // must delete each stored element uniformly, but T may monomorphize to a plain
+            // value type (int, bool, a struct, ...) that never owned heap memory in the first
+            // place. Rather than forbid `delete` on such values -- which would make it
+            // impossible to write ONE generic Clear()/destructor body that works for every T --
+            // treat `delete <value-typed expression>;` as a legal no-op: the operand is still
+            // evaluated (so e.g. an array-index bounds check still fires), but no runtime
+            // deallocation call is emitted. This mirrors how `delete[] arr;` already tolerates
+            // arrays of any element type. `delete` on a genuinely non-deletable receiver
+            // (unknown/void expression, etc.) is caught earlier by expressionType() returning a
+            // real value type here -- there is no way to reach this branch with something that
+            // isn't a fully-typed value expression.
+            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (operand == nullptr)
+            {
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");
+            node->dynamicDestruction = isReferenceType(operandType->typeKey) && !nativeString;
+            node->valueTypeNoOpDeletion = !deletable;
+            node->children.push_back(std::move(operand));
+            return node;
+        }
+
+        case ast::AstNodeKind::TypeTestExpression:
+        case ast::AstNodeKind::SafeCastExpression:
+        {
+            const MethodRuntimeTypeBinding* binding = runtimeTypeBinding(expression);
+            if (binding == nullptr)
+            {
+                error = "Stage 39 runtime type operation lost its semantic binding";
+                return nullptr;
+            }
+            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (operand == nullptr)
+            {
+                return nullptr;
+            }
+            auto node = makeNode(
+                binding->kind == MethodRuntimeTypeOperationKind::TypeTest
+                    ? ProjectOopHirNodeKind::RuntimeTypeTest
+                    : ProjectOopHirNodeKind::SafeReferenceCast,
+                expression,
+                resultType);
+            node->targetTypeOrdinal = binding->targetTypeOrdinal;
+            node->targetIsInterface = binding->targetIsInterface;
+            node->children.push_back(std::move(operand));
+            return node;
+        }
+
+        case ast::AstNodeKind::CastExpression:
+        {
+            const MethodRuntimeTypeBinding* runtimeBinding = runtimeTypeBinding(expression);
+            if (runtimeBinding != nullptr &&
+                runtimeBinding->kind == MethodRuntimeTypeOperationKind::CheckedCast)
+            {
+                auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (operand == nullptr)
+                {
+                    return nullptr;
+                }
+                auto node = makeNode(ProjectOopHirNodeKind::CheckedReferenceCast, expression, resultType);
+                node->targetTypeOrdinal = runtimeBinding->targetTypeOrdinal;
+                node->targetIsInterface = runtimeBinding->targetIsInterface;
+                node->children.push_back(std::move(operand));
+                return node;
+            }
+            const MethodCallBinding* conversionCall = callBinding(expression);
+            if (conversionCall != nullptr && conversionCall->resolution == MethodCallResolutionKind::Resolved &&
+                conversionCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *conversionCall->selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*conversionCall->selectedMemberOrdinal].isUserConversion)
+            {
+                return lowerResolvedCall(conversionCall, {expression->first()});
+            }
+            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (operand == nullptr)
+            {
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::Conversion, expression, resultType);
+            node->children.push_back(std::move(operand));
+            return node;
+        }
+
+        default:
+            error = "unsupported Stage 34 OOP expression kind: " +
+                std::string(ast::astNodeKindName(expression->kind()));
+            return nullptr;
+    }
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
+    const ast::AstNode* receiverSyntax,
+    std::string_view receiverTypeKey,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    if (receiverTypeKey.empty())
+    {
+        error = "Stage 40 receiver has no semantic class/interface/struct type";
+        return nullptr;
+    }
+    if (receiverSyntax == nullptr || receiverSyntax->kind() == ast::AstNodeKind::BaseExpression)
+    {
+        if (currentLambda_ != nullptr)
+        {
+            const std::optional<std::size_t> capture = currentLambdaThisCapture();
+            if (!capture.has_value())
+            {
+                error = "Stage 43 implicit instance receiver has no captured this";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::ClosureCaptureValue, receiverSyntax, std::string(receiverTypeKey));
+            node->integerValue = *capture;
+            return node;
+        }
+        return makeNode(ProjectOopHirNodeKind::ThisValue, receiverSyntax, std::string(receiverTypeKey));
+    }
+    // Struct instance methods receive the address of existing value storage.  Unlike a class
+    // receiver, lowering a struct receiver as a value here would copy it and mutations of `this`
+    // would be lost.  Stage 40 therefore requires an addressable receiver and preserves that
+    // address explicitly into MIR/LLVM.
+    return lowerExpression(receiverSyntax, memberOrdinal, isStructValueType(receiverTypeKey), error);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
+    std::unique_ptr<ProjectOopHirNode> value,
+    const ProjectImplicitConversion& conversion,
+    const ast::AstNode* syntax)
+{
+    if ((conversion.kind == ProjectConversionKind::UserDefinedImplicit ||
+         conversion.kind == ProjectConversionKind::UserDefinedExplicit) &&
+        conversion.userDefinedMemberOrdinal.has_value())
+    {
+        auto node = makeNode(ProjectOopHirNodeKind::StaticCall, syntax, conversion.targetTypeKey);
+        node->memberOrdinal = conversion.userDefinedMemberOrdinal;
+        node->children.push_back(std::move(value));
+        return node;
+    }
+    auto node = makeNode(ProjectOopHirNodeKind::Conversion, syntax, conversion.targetTypeKey);
+    node->conversion = conversion;
+    node->children.push_back(std::move(value));
+    return node;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitialization(
+    std::size_t fieldMemberOrdinal,
+    std::string& error)
+{
+    if (memberModel_ == nullptr || inheritanceModel_ == nullptr ||
+        fieldMemberOrdinal >= memberModel_->members().size())
+    {
+        error = "Stage 37 cannot lower an invalid instance field initializer";
+        return nullptr;
+    }
+    const ClassMemberSymbol& field = memberModel_->members()[fieldMemberOrdinal];
+    if (field.kind != ClassMemberKind::Field || field.isStatic || field.syntax == nullptr ||
+        field.syntax->first() == nullptr)
+    {
+        error = "Stage 37 instance initializer helper received a non-instance field";
+        return nullptr;
+    }
+
+    auto target = makeNode(ProjectOopHirNodeKind::FieldAddress, field.syntax, field.declaredTypeKey);
+    target->memberOrdinal = fieldMemberOrdinal;
+    target->children.push_back(makeNode(
+        ProjectOopHirNodeKind::ThisValue,
+        field.syntax,
+        inheritanceModel_->typeKeyForOrdinal(field.declaringTypeOrdinal)));
+
+    auto value = lowerExpression(field.syntax->first(), fieldMemberOrdinal, false, error);
+    if (value == nullptr)
+    {
+        return nullptr;
+    }
+    const MethodExpressionTypeBinding* sourceType = expressionType(field.syntax->first());
+    const ProjectImplicitConversion conversion = classifyImplicit(
+        value->typeKey,
+        field.declaredTypeKey,
+        sourceType != nullptr ? sourceType->integerConstant : std::nullopt);
+    if (!conversion.exists())
+    {
+        error = "Stage 37 field initializer lost its validated implicit conversion";
+        return nullptr;
+    }
+    if (conversion.kind != ProjectConversionKind::Identity)
+    {
+        value = wrapImplicitConversion(std::move(value), conversion, field.syntax->first());
+    }
+
+    auto assignment = makeNode(ProjectOopHirNodeKind::Assignment, field.syntax, field.declaredTypeKey);
+    assignment->operation = lexer::TokenKind::Equal;
+    assignment->children.push_back(std::move(target));
+    assignment->children.push_back(std::move(value));
+    return assignment;
+}
+
+void ProjectOopHirModel::appendInstanceFieldInitializers(
+    std::size_t typeOrdinal,
+    std::vector<std::unique_ptr<ProjectOopHirNode>>& output,
+    std::string& error)
+{
+    if (memberModel_ == nullptr)
+    {
+        error = "Stage 37 instance initializer lowering has no member model";
+        return;
+    }
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+    {
+        if (memberOrdinal >= memberModel_->members().size())
+        {
+            continue;
+        }
+        const ClassMemberSymbol& field = memberModel_->members()[memberOrdinal];
+        if (field.kind != ClassMemberKind::Field || field.isStatic || field.syntax == nullptr ||
+            field.syntax->first() == nullptr)
+        {
+            continue;
+        }
+        auto initializer = lowerInstanceFieldInitialization(memberOrdinal, error);
+        if (initializer == nullptr)
+        {
+            return;
+        }
+        output.push_back(std::move(initializer));
+    }
+}
+
+std::vector<std::size_t> ProjectOopHirModel::implicitInitializerTypes(
+    std::size_t targetTypeOrdinal,
+    std::optional<std::size_t> entryConstructorMemberOrdinal) const
+{
+    std::vector<std::size_t> reversePath;
+    if (inheritanceModel_ == nullptr || memberModel_ == nullptr)
+    {
+        return reversePath;
+    }
+
+    std::optional<std::size_t> stopType;
+    if (entryConstructorMemberOrdinal.has_value() &&
+        *entryConstructorMemberOrdinal < memberModel_->members().size())
+    {
+        stopType = memberModel_->members()[*entryConstructorMemberOrdinal].declaringTypeOrdinal;
+    }
+
+    std::optional<std::size_t> current = targetTypeOrdinal;
+    while (current.has_value() && (!stopType.has_value() || *current != *stopType))
+    {
+        reversePath.push_back(*current);
+        current = inheritanceModel_->baseTypeOrdinal(*current);
+    }
+    std::reverse(reversePath.begin(), reversePath.end());
+    return reversePath;
+}
+
+const MethodNameBinding* ProjectOopHirModel::nameBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = nameBindingBySyntax_.find(syntax);
+    return found == nameBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodExpressionTypeBinding* ProjectOopHirModel::expressionType(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = expressionTypeBySyntax_.find(syntax);
+    return found == expressionTypeBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodCallBinding* ProjectOopHirModel::callBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = callBySyntax_.find(syntax);
+    return found == callBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodRuntimeTypeBinding* ProjectOopHirModel::runtimeTypeBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = runtimeTypeBindingBySyntax_.find(syntax);
+    return found == runtimeTypeBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodLambdaBinding* ProjectOopHirModel::lambdaBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = lambdaBindingBySyntax_.find(syntax);
+    return found == lambdaBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodLambdaValueBinding* ProjectOopHirModel::lambdaValueBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = lambdaValueBindingBySyntax_.find(syntax);
+    return found == lambdaValueBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+std::optional<std::size_t> ProjectOopHirModel::currentLambdaThisCapture() const noexcept
+{
+    if (currentLambda_ == nullptr) return std::nullopt;
+    for (std::size_t index = 0; index < currentLambda_->captures.size(); ++index)
+    {
+        if (currentLambda_->captures[index].kind == MethodLambdaCaptureKind::ThisReference)
+            return index;
+    }
+    return std::nullopt;
+}
+
+const MethodDelegateBinding* ProjectOopHirModel::delegateBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = delegateBindingBySyntax_.find(syntax);
+    return found == delegateBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodEventBinding* ProjectOopHirModel::eventBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = eventBindingBySyntax_.find(syntax);
+    return found == eventBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodCoreBinding* ProjectOopHirModel::coreBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = coreBindingBySyntax_.find(syntax);
+    return found == coreBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodExceptionBinding* ProjectOopHirModel::exceptionBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = exceptionBindingBySyntax_.find(syntax);
+    return found == exceptionBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodCleanupRegion* ProjectOopHirModel::cleanupRegion(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = cleanupRegionBySyntax_.find(syntax);
+    return found == cleanupRegionBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodUsingBinding* ProjectOopHirModel::usingBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = usingBindingBySyntax_.find(syntax);
+    return found == usingBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodMoveBinding* ProjectOopHirModel::moveBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = moveBindingBySyntax_.find(syntax);
+    return found == moveBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodBorrowBinding* ProjectOopHirModel::borrowBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = borrowBindingBySyntax_.find(syntax);
+    return found == borrowBindingBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodStructuredExitBinding* ProjectOopHirModel::structuredExitBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = structuredExitBySyntax_.find(syntax);
+    return found == structuredExitBySyntax_.end() ? nullptr : found->second;
+}
+
+const ObjectConstructionBinding* ProjectOopHirModel::constructionBinding(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = constructionBySyntax_.find(syntax);
+    return found == constructionBySyntax_.end() ? nullptr : found->second;
+}
+
+const MethodLocalSymbol* ProjectOopHirModel::localSymbol(const ast::AstNode* syntax) const noexcept
+{
+    const auto found = localBySyntax_.find(syntax);
+    return found == localBySyntax_.end() ? nullptr : found->second;
+}
+
+ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
+    std::string_view sourceTypeKey,
+    std::string_view targetTypeKey,
+    std::optional<ProjectIntegerConstant> integerConstant) const
+{
+    if (inheritanceModel_ != nullptr)
+    {
+        return ProjectConversionClassifier(*inheritanceModel_, interfaceModel_, memberModel_).classifyImplicit(
+            sourceTypeKey, targetTypeKey, integerConstant);
+    }
+    return ProjectTypeConversion::classifyImplicit(
+        sourceTypeKey, targetTypeKey, integerConstant, isReferenceType(targetTypeKey));
+}
+
+bool ProjectOopHirModel::isStructValueType(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::string_view key = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() == key) return type.kind == NamedTypeDeclarationKind::Struct;
+    }
+    return false;
+}
+
+bool ProjectOopHirModel::isClassReferenceType(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:"))
+    {
+        return false;
+    }
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() == identity)
+        {
+            return type.kind == NamedTypeDeclarationKind::Class;
+        }
+    }
+    return false;
+}
+
+bool ProjectOopHirModel::isReferenceType(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:"))
+    {
+        return false;
+    }
+    const std::string_view identity = typeKey.substr(5);
+    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    {
+        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[ordinal];
+        if (type.identity.key() == identity)
+        {
+            return type.kind == NamedTypeDeclarationKind::Class ||
+                type.kind == NamedTypeDeclarationKind::Interface ||
+                type.kind == NamedTypeDeclarationKind::Delegate;
+        }
+    }
+    return false;
+}
+}

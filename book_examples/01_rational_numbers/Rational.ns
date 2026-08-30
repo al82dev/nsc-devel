@@ -1,0 +1,182 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.RationalNumbers
+{
+    public class ZeroDenominatorException : Exception
+    {
+    }
+
+    public class Rational
+    {
+        private int numerator;
+        private int denominator;
+
+        public Rational(int value)
+        {
+            numerator = value;
+            denominator = 1;
+        }
+
+        public Rational(int initialNumerator, int initialDenominator)
+        {
+            if (initialDenominator == 0)
+            {
+                ZeroDenominatorException problem = new ZeroDenominatorException();
+                problem.Message = String.Copy("A rational number cannot have denominator zero.");
+                throw problem;
+            }
+
+            numerator = initialNumerator;
+            denominator = initialDenominator;
+            Normalize();
+        }
+
+        public int Numerator
+        {
+            get { return numerator; }
+        }
+
+        public int Denominator
+        {
+            get { return denominator; }
+        }
+
+        private static int Abs(int value)
+        {
+            if (value < 0)
+            {
+                return -value;
+            }
+            return value;
+        }
+
+        private static int GreatestCommonDivisor(int a, int b)
+        {
+            int left = Abs(a);
+            int right = Abs(b);
+
+            if (left == 0)
+            {
+                if (right == 0) { return 1; }
+                return right;
+            }
+
+            while (right != 0)
+            {
+                int remainder = left % right;
+                left = right;
+                right = remainder;
+            }
+
+            return left;
+        }
+
+        private void Normalize()
+        {
+            if (denominator < 0)
+            {
+                numerator = -numerator;
+                denominator = -denominator;
+            }
+
+            if (numerator == 0)
+            {
+                denominator = 1;
+                return;
+            }
+
+            int divisor = GreatestCommonDivisor(numerator, denominator);
+            numerator = numerator / divisor;
+            denominator = denominator / divisor;
+        }
+
+        public owned string ToText()
+        {
+            raii string n = String.ToString(numerator);
+            if (denominator == 1)
+            {
+                return String.Copy(n);
+            }
+
+            raii string slash = String.Copy("/");
+            raii string d = String.ToString(denominator);
+            raii string left = String.Concat(n, slash);
+            return String.Concat(left, d);
+        }
+
+        public double ToDouble()
+        {
+            return (double)numerator / (double)denominator;
+        }
+
+        public static Rational operator +(Rational left, Rational right)
+        {
+            int n = left.numerator * right.denominator + right.numerator * left.denominator;
+            int d = left.denominator * right.denominator;
+            return new Rational(n, d);
+        }
+
+        public static Rational operator -(Rational left, Rational right)
+        {
+            int n = left.numerator * right.denominator - right.numerator * left.denominator;
+            int d = left.denominator * right.denominator;
+            return new Rational(n, d);
+        }
+
+        public static Rational operator -(Rational value)
+        {
+            return new Rational(-value.numerator, value.denominator);
+        }
+
+        public static Rational operator *(Rational left, Rational right)
+        {
+            return new Rational(
+                left.numerator * right.numerator,
+                left.denominator * right.denominator);
+        }
+
+        public static Rational operator /(Rational left, Rational right)
+        {
+            if (right.numerator == 0)
+            {
+                ZeroDenominatorException problem = new ZeroDenominatorException();
+                problem.Message = String.Copy("Division by the rational value zero is undefined.");
+                throw problem;
+            }
+
+            return new Rational(
+                left.numerator * right.denominator,
+                left.denominator * right.numerator);
+        }
+
+        public static bool operator ==(Rational left, Rational right)
+        {
+            return left.numerator == right.numerator && left.denominator == right.denominator;
+        }
+
+        public static bool operator !=(Rational left, Rational right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator <(Rational left, Rational right)
+        {
+            return left.numerator * right.denominator < right.numerator * left.denominator;
+        }
+
+        public static bool operator >(Rational left, Rational right)
+        {
+            return right < left;
+        }
+
+        public static bool operator <=(Rational left, Rational right)
+        {
+            return !(left > right);
+        }
+
+        public static bool operator >=(Rational left, Rational right)
+        {
+            return !(left < right);
+        }
+    }
+}

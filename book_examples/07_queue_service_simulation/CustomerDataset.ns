@@ -1,0 +1,34 @@
+namespace NativeSharp.BookExamples.QueueSimulation
+{
+    public class CustomerDataset
+    {
+        public static int Count() { return 12; }
+
+        public static void Fill(Customer[] customers)
+        {
+            customers[0] = new Customer(1, 0, 3);
+            customers[1] = new Customer(2, 1, 5);
+            customers[2] = new Customer(3, 2, 2);
+            customers[3] = new Customer(4, 4, 4);
+            customers[4] = new Customer(5, 4, 1);
+            customers[5] = new Customer(6, 7, 3);
+            customers[6] = new Customer(7, 8, 6);
+            customers[7] = new Customer(8, 9, 2);
+            customers[8] = new Customer(9, 12, 4);
+            customers[9] = new Customer(10, 13, 2);
+            customers[10] = new Customer(11, 15, 3);
+            customers[11] = new Customer(12, 18, 1);
+        }
+
+        public static void Destroy(Customer[] customers, int count)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                delete customers[i];
+                i = i + 1;
+            }
+            delete[] customers;
+        }
+    }
+}

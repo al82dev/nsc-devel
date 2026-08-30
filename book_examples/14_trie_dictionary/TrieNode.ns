@@ -1,0 +1,16 @@
+namespace NativeSharp.BookExamples.Trie
+{
+    public class TrieNode
+    {
+        public TrieNode[] Children;
+        public bool Terminal;
+        public int PrefixCount;
+        public TrieNode()
+        {
+            Children = new TrieNode[26];
+            Terminal = false;
+            PrefixCount = 0;
+        }
+        ~TrieNode() { delete[] Children; }
+    }
+}

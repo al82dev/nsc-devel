@@ -1,0 +1,81 @@
+using NativeSharp.Core;
+
+// Stage 53.2b "Environment (variables)" -- programa de verificacion empaquetado. Misma
+// convencion que examples/project_stage53_2/Main.ns: cada chequeo que falla devuelve un codigo
+// de salida distinto, y el ULTIMO chequeo es Environment.Exit(0) mismo (no "return 0") -- si
+// Exit no terminara el proceso de verdad, el codigo de salida seria 77, no 0.
+class Program
+{
+    public static int Main()
+    {
+        // ---- Variable inexistente: tiene que devolver "" (string vacio), no un crash --------
+
+        string missing = Environment.GetEnvironmentVariable("NS_STAGE53_2B_DOES_NOT_EXIST");
+        if (missing.Length != 0)
+        {
+            return 1;
+        }
+
+        // ---- Ida y vuelta basica: Set seguido de Get tiene que devolver EXACTAMENTE lo que
+        //      se guardo, byte por byte -- no solo la longitud, tambien el contenido -----------
+
+        Environment.SetEnvironmentVariable("NS_STAGE53_2B_VAR", "hola_nativesharp");
+        string first = Environment.GetEnvironmentVariable("NS_STAGE53_2B_VAR");
+        if (first.Length != 16)
+        {
+            return 2;
+        }
+        if (!first.Equals("hola_nativesharp"))
+        {
+            return 3;
+        }
+
+        // ---- Sobreescribir con un valor MAS LARGO: confirma que la segunda llamada a
+        //      GetEnvironmentVariableA vuelve a consultar el tamanio real, no reusa el de la
+        //      lectura anterior (un bug tipico de cachear el tamanio incorrectamente) -----------
+
+        Environment.SetEnvironmentVariable("NS_STAGE53_2B_VAR", "un_valor_bastante_mas_largo_que_el_anterior");
+        string longer = Environment.GetEnvironmentVariable("NS_STAGE53_2B_VAR");
+        if (longer.Length != 43)
+        {
+            return 4;
+        }
+        if (!longer.Equals("un_valor_bastante_mas_largo_que_el_anterior"))
+        {
+            return 5;
+        }
+
+        // ---- Sobreescribir con un valor MAS CORTO: confirma que no queda basura del valor
+        //      largo anterior colgando al final (cada Get aloca un string nuevo del tamanio
+        //      exacto reportado por Win32, asi que esto deberia ser imposible por construccion,
+        //      pero se verifica en tiempo de ejecucion igual, no solo por argumento) ------------
+
+        Environment.SetEnvironmentVariable("NS_STAGE53_2B_VAR", "x");
+        string shorter = Environment.GetEnvironmentVariable("NS_STAGE53_2B_VAR");
+        if (shorter.Length != 1)
+        {
+            return 6;
+        }
+        if (!shorter.Equals("x"))
+        {
+            return 7;
+        }
+
+        // ---- El nombre de la variable tambien pasa por el mismo mecanismo de copia
+        //      null-terminada -- probarlo con un nombre largo, no solo con valores largos -------
+
+        string longName = "NS_STAGE53_2B_UN_NOMBRE_DE_VARIABLE_BASTANTE_LARGO";
+        Environment.SetEnvironmentVariable(longName, "ok");
+        string viaLongName = Environment.GetEnvironmentVariable(longName);
+        if (!viaLongName.Equals("ok"))
+        {
+            return 8;
+        }
+
+        // ---- Exit: el chequeo final ES el mecanismo de salida (misma convencion que
+        //      examples/project_stage53_2/Main.ns) --------------------------------------------
+
+        Environment.Exit(0);
+        return 77;
+    }
+}

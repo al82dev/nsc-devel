@@ -1,0 +1,15 @@
+class Resource
+{
+    public Resource() { }
+    ~Resource() { }
+}
+
+class Program
+{
+    public static borrowed Resource Leak()
+    {
+        raii Resource owner = new Resource();
+        borrowed Resource view = owner;
+        return view;
+    }
+}

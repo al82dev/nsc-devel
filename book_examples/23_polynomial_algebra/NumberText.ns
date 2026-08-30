@@ -1,0 +1,35 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Polynomial
+{
+    public class NumberText
+    {
+        public static owned string Format(double value)
+        {
+            bool negative = value < 0.0;
+            if (negative) { value = -value; }
+            int scaled = (int)(value * 100.0 + 0.5);
+            int whole = scaled / 100;
+            int fraction = scaled % 100;
+            raii string wholeText = String.ToString(whole);
+            raii string fractionText = String.ToString(fraction);
+            raii string result = String.Copy("");
+            if (negative)
+            {
+                raii string sign = String.Concat(result, "-");
+                result = move(sign);
+            }
+            raii string withWhole = String.Concat(result, wholeText);
+            result = move(withWhole);
+            raii string dot = String.Concat(result, ".");
+            result = move(dot);
+            if (fraction < 10)
+            {
+                raii string zero = String.Concat(result, "0");
+                result = move(zero);
+            }
+            raii string complete = String.Concat(result, fractionText);
+            result = move(complete);
+            return move(result);
+        }
+    }
+}

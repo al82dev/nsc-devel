@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>Book17DijkstraShortestPaths</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

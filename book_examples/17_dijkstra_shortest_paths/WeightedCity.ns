@@ -1,0 +1,9 @@
+namespace NativeSharp.BookExamples.Dijkstra
+{
+    public class WeightedCity
+    {
+        public int Id;
+        public string Name;
+        public WeightedCity(int id, string name) { Id = id; Name = name; }
+    }
+}

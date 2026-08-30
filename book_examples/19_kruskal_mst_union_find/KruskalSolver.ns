@@ -1,0 +1,48 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Kruskal
+{
+    public class KruskalSolver
+    {
+        private static void SortByWeight(Edge[] edges,int count)
+        {
+            int i=1;
+            while(i<count)
+            {
+                Edge current=edges[i];
+                int j=i-1;
+                while(j>=0 && edges[j].Weight>current.Weight)
+                {
+                    edges[j+1]=edges[j];
+                    j=j-1;
+                }
+                edges[j+1]=current;
+                i=i+1;
+            }
+        }
+        public static void Solve(string[] names,int vertexCount,Edge[] edges,int edgeCount)
+        {
+            SortByWeight(edges,edgeCount);
+            raii DisjointSet sets=new DisjointSet(vertexCount);
+            int selected=0;int total=0;int i=0;
+            while(i<edgeCount && selected<vertexCount-1)
+            {
+                Edge edge=edges[i];
+                if(sets.Union(edge.From,edge.To))
+                {
+                    selected=selected+1;total=total+edge.Weight;
+                    raii string w=String.ToString(edge.Weight);
+                    raii string a=String.Concat("  ",names[edge.From]);
+                    raii string b=String.Concat(a," -- ");
+                    raii string c=String.Concat(b,names[edge.To]);
+                    raii string d=String.Concat(c,"  weight=");
+                    raii string line=String.Concat(d,w);
+                    Console.WriteLine(line);
+                }
+                i=i+1;
+            }
+            raii string t=String.ToString(total);
+            raii string line=String.Concat("MST total weight: ",t);
+            Console.WriteLine(line);
+        }
+    }
+}

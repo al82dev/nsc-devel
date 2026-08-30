@@ -1,0 +1,143 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 09 -- Interfaces
+// Fuente de inspiracion: Systems Programming with C# and .NET, cap. 1 (IAdder/IDivider/
+// IMultiplier/ISubtractor + implementaciones, MathFunctions/Simple).
+// ============================================================================================
+//
+// Una interface declara UNICAMENTE la forma (que metodos existen, con que firma) sin
+// implementacion -- cualquier clase que la implemente debe dar cuerpo a todos sus miembros.
+// A diferencia de la herencia de clases (tutorial_08, una sola clase base), una clase SI puede
+// implementar VARIAS interfaces a la vez -- ver IAdvanced mas abajo. NativeSharp no tiene
+// IEnumerable<T> ni ninguna interface del framework: el catalogo de interfaces es 100% el que
+// el propio programa declara.
+namespace Tutorial.Interfaces
+{
+    public interface IOperation
+    {
+        int Apply(int left, int right);
+    }
+
+    public class Adder : IOperation
+    {
+        public int Apply(int left, int right)
+        {
+            return left + right;
+        }
+    }
+
+    public class Multiplier : IOperation
+    {
+        public int Apply(int left, int right)
+        {
+            return left * right;
+        }
+    }
+
+    public class Subtractor : IOperation
+    {
+        public int Apply(int left, int right)
+        {
+            return left - right;
+        }
+    }
+
+    // Herencia de interfaces (multiple): IAdvanced hereda TODOS los miembros de IReadable e
+    // IStatus, ademas de agregar Scale() propio -- una clase que implemente IAdvanced debe dar
+    // cuerpo a los tres metodos.
+    public interface IReadable
+    {
+        int Read();
+    }
+
+    public interface IStatus
+    {
+        int Status();
+    }
+
+    public interface IAdvanced : IReadable, IStatus
+    {
+        int Scale(int factor);
+    }
+
+    public class Sensor : IAdvanced
+    {
+        private int value;
+        private int status;
+
+        public Sensor(int initialValue)
+        {
+            value = initialValue;
+            status = 1;
+        }
+
+        public int Read()
+        {
+            return value;
+        }
+
+        public int Status()
+        {
+            return status;
+        }
+
+        public int Scale(int factor)
+        {
+            value = value * factor;
+            return value;
+        }
+    }
+
+    class Program
+    {
+        // Esta funcion no sabe (ni necesita saber) si recibe un Adder, un Multiplier o un
+        // Subtractor -- solo le importa que el objeto prestado implemente IOperation. Es
+        // polimorfismo basado en CONTRATO (interface), en vez de en JERARQUIA (herencia de
+        // clases, tutorial_08) -- dos caminos distintos al mismo resultado.
+        public static int RunOperation(borrowed IOperation operation, int a, int b)
+        {
+            return operation.Apply(a, b);
+        }
+
+        public static int Main()
+        {
+            raii Adder adder = new Adder();
+            raii Multiplier multiplier = new Multiplier();
+            raii Subtractor subtractor = new Subtractor();
+
+            int sum = RunOperation(adder, 7, 3);        // 10
+            int product = RunOperation(multiplier, 7, 3); // 21
+            int difference = RunOperation(subtractor, 7, 3); // 4
+
+            raii Sensor sensor = new Sensor(5);
+            int beforeScale = sensor.Read();  // 5
+            int afterScale = sensor.Scale(4); // 20
+            int status = sensor.Status();      // 1
+
+            raii string opsLabel = String.Copy("suma/producto/resta = ");
+            raii string d1 = String.ToString(sum);
+            raii string sep = String.Copy(" / ");
+            raii string d2 = String.ToString(product);
+            raii string d3 = String.ToString(difference);
+            raii string s1 = String.Concat(opsLabel, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string opsLine = String.Concat(s4, d3);
+            Console.WriteLine(opsLine);
+
+            raii string sensorLabel = String.Copy("sensor antes/despues de escalar = ");
+            raii string e1 = String.ToString(beforeScale);
+            raii string e2 = String.ToString(afterScale);
+            raii string t1 = String.Concat(sensorLabel, e1);
+            raii string t2 = String.Concat(t1, sep);
+            raii string sensorLine = String.Concat(t2, e2);
+            Console.WriteLine(sensorLine);
+
+            // sum==10, product==21, difference==4, beforeScale==5, afterScale==20, status==1
+            int result = sum + product + difference + beforeScale + afterScale + status;
+            return result % 250;
+        }
+    }
+}

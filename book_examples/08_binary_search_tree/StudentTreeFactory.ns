@@ -1,0 +1,22 @@
+namespace NativeSharp.BookExamples.BinarySearchTree
+{
+    public class StudentTreeFactory
+    {
+        public static void Fill(BinarySearchTree tree)
+        {
+            tree.Insert(new Student(50, "Ana", 90));
+            tree.Insert(new Student(25, "Bruno", 82));
+            tree.Insert(new Student(80, "Carla", 94));
+            tree.Insert(new Student(10, "Diego", 76));
+            tree.Insert(new Student(35, "Elena", 88));
+            tree.Insert(new Student(65, "Fabian", 91));
+            tree.Insert(new Student(95, "Gabriela", 85));
+            tree.Insert(new Student(30, "Hector", 79));
+            tree.Insert(new Student(40, "Irene", 93));
+            tree.Insert(new Student(60, "Julia", 87));
+            tree.Insert(new Student(70, "Kevin", 89));
+            tree.Insert(new Student(90, "Laura", 96));
+            tree.Insert(new Student(100, "Mateo", 81));
+        }
+    }
+}

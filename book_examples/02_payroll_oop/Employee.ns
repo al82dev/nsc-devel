@@ -1,0 +1,38 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    public abstract class Employee
+    {
+        private int employeeId;
+        protected string name;
+
+        public Employee(int id, string employeeName)
+        {
+            employeeId = id;
+            name = String.Copy(employeeName);
+        }
+
+        public int Id
+        {
+            get { return employeeId; }
+        }
+
+        public string Name
+        {
+            get { return name; }
+        }
+
+        public abstract owned Money CalculateWeeklyPay();
+
+        public virtual owned string Classification()
+        {
+            return String.Copy("Employee");
+        }
+
+        ~Employee()
+        {
+            delete name;
+        }
+    }
+}

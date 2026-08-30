@@ -1,0 +1,23 @@
+namespace Demo;
+
+public class Entity
+{
+    protected int Id;
+}
+
+public class Animal : Entity
+{
+    protected int Age;
+}
+
+public class Dog : Animal
+{
+    public int ReadId(Dog other)
+    {
+        return other.Id;
+    }
+}
+
+public class Cat : Animal
+{
+}

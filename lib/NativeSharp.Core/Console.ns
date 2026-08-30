@@ -1,0 +1,9 @@
+namespace NativeSharp.Core
+{
+    public class Console
+    {
+        public static void WriteLine(string value)
+        {
+        }
+    }
+}

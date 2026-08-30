@@ -1,0 +1,168 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+// Stage 52.x -- foreach conformance/demonstration example.
+//
+// Exercises BOTH candidates foreach can desugar into (see
+// claude/../52_x_nativesharp_foreach.md and the design comment atop
+// Parser::parseForeachStatement for the full rationale):
+//   1) array mode        -- index/`.Length` iteration, e.g. over `int[]`.
+//   2) enumerator mode    -- structural `GetEnumerator()`/`MoveNext()`/`Current` (a property, not
+//                            a method -- see P1.1 in STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md),
+//                            both for a hand-written user class (no interface involved at all --
+//                            this compiler has no IEnumerable<T>) and for the real
+//                            NativeSharp.Core.Collections.Generic.List<T> via its new
+//                            GetEnumerator()/ListEnumerator<T>.
+// Also exercises break/continue, an empty collection, and nested foreach -- each a real place
+// this feature could plausibly have a bug (continue in particular: see the class comment on
+// CountUpTo below and the design note in the parser for the specific bug this caught during
+// development).
+
+// A minimal structural foreach-source: implements NO interface at all (NativeSharp has none to
+// implement here -- see the design note), just an accessible `GetEnumerator()`. This is exactly
+// how real C# resolves foreach too; IEnumerable<T> is a convenience, never a requirement.
+class CountUpTo
+{
+    private int limit;
+
+    public CountUpTo(int limitValue)
+    {
+        limit = limitValue;
+    }
+
+    // `owned` is load-bearing here, not decorative: foreach's desugaring binds this call's
+    // result to a `raii var` local so the enumerator is destroyed automatically on every exit
+    // path, and a `raii` destination requires an owned-returning initializer.
+    public owned CountUpToEnumerator GetEnumerator()
+    {
+        return new CountUpToEnumerator(limit);
+    }
+}
+
+class CountUpToEnumerator
+{
+    private int limit;
+    private int current;
+
+    public CountUpToEnumerator(int limitValue)
+    {
+        limit = limitValue;
+        current = -1;
+    }
+
+    public bool MoveNext()
+    {
+        current = current + 1;
+        return current < limit;
+    }
+
+    // Get-only property (P1.1 of STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md): foreach's
+    // enumerator-mode desugaring now reads `Current` as a plain member access, no call
+    // parentheses -- matching real C#'s IEnumerator<T>.Current, which is a property too.
+    public int Current
+    {
+        get { return current; }
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        // --- 1) array mode -----------------------------------------------------------------
+        int[] numbers = new int[6];
+        numbers[0] = 1;
+        numbers[1] = 2;
+        numbers[2] = 3;
+        numbers[3] = 4;
+        numbers[4] = 5;
+        numbers[5] = 6;
+
+        int arraySum = 0;
+        foreach (var n in numbers)
+        {
+            arraySum = arraySum + n;
+        }
+        // 1+2+3+4+5+6 = 21
+
+        int arraySumBeforeBreak = 0;
+        foreach (var n in numbers)
+        {
+            if (n == 4) { break; }
+            arraySumBeforeBreak = arraySumBeforeBreak + n;
+        }
+        // 1+2+3 = 6
+
+        // `continue` in array mode must still run the index increment (it is desugared to a
+        // real ForStatement specifically so `continue` reaches the increment clause, not a
+        // trailing statement it would otherwise skip -- see the parser's design comment for the
+        // infinite-loop bug this fixed).
+        int arraySumOdd = 0;
+        foreach (var n in numbers)
+        {
+            if (n % 2 == 0) { continue; }
+            arraySumOdd = arraySumOdd + n;
+        }
+        // 1+3+5 = 9
+
+        int[] empty = new int[0];
+        int emptySum = 0;
+        foreach (var n in empty)
+        {
+            emptySum = emptySum + 1000;
+        }
+        // must stay 0 -- the loop body never runs
+
+        int nestedProductSum = 0;
+        foreach (var a in numbers)
+        {
+            foreach (var b in numbers)
+            {
+                nestedProductSum = nestedProductSum + a * b;
+            }
+        }
+        // (1+2+3+4+5+6)^2 = 21^2 = 441
+
+        // --- 2) enumerator mode, user class -------------------------------------------------
+        CountUpTo source = new CountUpTo(8);
+
+        int patternSumOdd = 0;
+        foreach (var value in source)
+        {
+            if (value % 2 == 0) { continue; }
+            patternSumOdd = patternSumOdd + value;
+        }
+        // 1+3+5+7 = 16
+
+        int patternSumBeforeBreak = 0;
+        foreach (var value in source)
+        {
+            if (value == 5) { break; }
+            patternSumBeforeBreak = patternSumBeforeBreak + value;
+        }
+        // 0+1+2+3+4 = 10
+
+        delete source;
+
+        // --- 3) enumerator mode, real generic collection ------------------------------------
+        List<int> listNumbers = new List<int>();
+        listNumbers.Add(10);
+        listNumbers.Add(20);
+        listNumbers.Add(30);
+        listNumbers.Add(40);
+
+        int listSum = 0;
+        foreach (var n in listNumbers)
+        {
+            listSum = listSum + n;
+        }
+        // 10+20+30+40 = 100
+
+        delete listNumbers;
+
+        // --- totals --------------------------------------------------------------------------
+        // 21 + 6 + 9 + 0 + 441 + 16 + 10 + 100 == 603
+        return arraySum + arraySumBeforeBreak + arraySumOdd + emptySum + nestedProductSum +
+            patternSumOdd + patternSumBeforeBreak + listSum;
+    }
+}

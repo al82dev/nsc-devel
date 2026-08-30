@@ -1,0 +1,144 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.HashTable
+{
+    public class SymbolTable
+    {
+        private BucketNode[] buckets;
+        private int count;
+        private int collisions;
+
+        public SymbolTable(int bucketCount)
+        {
+            if (bucketCount < 3) { bucketCount = 3; }
+            buckets = new BucketNode[bucketCount];
+            count = 0;
+            collisions = 0;
+        }
+        public int Count { get { return count; } }
+        public int Collisions { get { return collisions; } }
+        public int BucketCount { get { return buckets.Length; } }
+
+        public int Hash(string key)
+        {
+            long hash = 5381;
+            int i = 0;
+            while (i < key.Length)
+            {
+                hash = ((hash * 33) + (int)key[i]) % 2147483647;
+                i = i + 1;
+            }
+            if (hash < 0) { hash = -hash; }
+            return (int)(hash % buckets.Length);
+        }
+
+        public bool Add(Symbol symbol)
+        {
+            int index = Hash(symbol.Name);
+            BucketNode current = buckets[index];
+            if (current != null) { collisions = collisions + 1; }
+            while (current != null)
+            {
+                if (String.Equals(current.Value.Name, symbol.Name))
+                {
+                    delete symbol;
+                    return false;
+                }
+                current = current.Next;
+            }
+            BucketNode node = new BucketNode(symbol);
+            node.Next = buckets[index];
+            buckets[index] = node;
+            count = count + 1;
+            return true;
+        }
+
+        public Symbol Find(string name)
+        {
+            int index = Hash(name);
+            BucketNode current = buckets[index];
+            while (current != null)
+            {
+                if (String.Equals(current.Value.Name, name)) { return current.Value; }
+                current = current.Next;
+            }
+            return null;
+        }
+
+        public bool Remove(string name)
+        {
+            int index = Hash(name);
+            BucketNode previous = null;
+            BucketNode current = buckets[index];
+            while (current != null)
+            {
+                if (String.Equals(current.Value.Name, name))
+                {
+                    if (previous == null) { buckets[index] = current.Next; }
+                    else { previous.Next = current.Next; }
+                    current.Next = null;
+                    delete current.Value;
+                    delete current;
+                    count = count - 1;
+                    return true;
+                }
+                previous = current;
+                current = current.Next;
+            }
+            return false;
+        }
+
+        public void PrintBuckets()
+        {
+            int i = 0;
+            while (i < buckets.Length)
+            {
+                raii string index = String.ToString(i);
+                raii string prefix = String.Concat("bucket ", index);
+                raii string line = String.Concat(prefix, ": ");
+                BucketNode current = buckets[i];
+                if (current == null)
+                {
+                    raii string emptyLine = String.Concat(line, "<empty>");
+                    line = move(emptyLine);
+                }
+                else
+                {
+                    while (current != null)
+                    {
+                        raii string withName = String.Concat(line, current.Value.Name);
+                        line = move(withName);
+                        current = current.Next;
+                        if (current != null)
+                        {
+                            raii string withArrow = String.Concat(line, " -> ");
+                            line = move(withArrow);
+                        }
+                    }
+                }
+                Console.WriteLine(line);
+                i = i + 1;
+            }
+        }
+
+        private void ClearBucket(int index)
+        {
+            BucketNode current = buckets[index];
+            while (current != null)
+            {
+                BucketNode next = current.Next;
+                current.Next = null;
+                delete current.Value;
+                delete current;
+                current = next;
+            }
+            buckets[index] = null;
+        }
+
+        ~SymbolTable()
+        {
+            int i = 0;
+            while (i < buckets.Length) { ClearBucket(i); i = i + 1; }
+            delete[] buckets;
+        }
+    }
+}

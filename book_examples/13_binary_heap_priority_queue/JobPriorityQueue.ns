@@ -1,0 +1,124 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.BinaryHeap
+{
+    public class JobPriorityQueue
+    {
+        private Job[] heap;
+        private int count;
+
+        public JobPriorityQueue(int capacity)
+        {
+            if (capacity < 2) { capacity = 2; }
+            heap = new Job[capacity];
+            count = 0;
+        }
+        public int Count { get { return count; } }
+        public bool IsEmpty { get { return count == 0; } }
+
+        private void Grow()
+        {
+            Job[] grown = new Job[heap.Length * 2];
+            int i = 0;
+            while (i < count) { grown[i] = heap[i]; i = i + 1; }
+            delete[] heap;
+            heap = grown;
+        }
+
+        private void Swap(int a, int b)
+        {
+            Job temporary = heap[a];
+            heap[a] = heap[b];
+            heap[b] = temporary;
+        }
+
+        private void SiftUp(int index)
+        {
+            int child = index;
+            while (child > 0)
+            {
+                int parent = (child - 1) / 2;
+                if (!(heap[child] > heap[parent])) { return; }
+                Swap(child, parent);
+                child = parent;
+            }
+        }
+
+        private void SiftDown(int index)
+        {
+            int parent = index;
+            bool done = false;
+            while (!done)
+            {
+                int left = parent * 2 + 1;
+                int right = left + 1;
+                int best = parent;
+                if (left < count && heap[left] > heap[best]) { best = left; }
+                if (right < count && heap[right] > heap[best]) { best = right; }
+                if (best == parent) { done = true; }
+                else { Swap(parent, best); parent = best; }
+            }
+        }
+
+        public void Enqueue(Job job)
+        {
+            if (count == heap.Length) { Grow(); }
+            heap[count] = job;
+            SiftUp(count);
+            count = count + 1;
+        }
+
+        public Job Peek()
+        {
+            if (count == 0) { throw new InvalidOperationException(); }
+            return heap[0];
+        }
+
+        public Job Dequeue()
+        {
+            if (count == 0) { throw new InvalidOperationException(); }
+            Job result = heap[0];
+            count = count - 1;
+            if (count > 0)
+            {
+                heap[0] = heap[count];
+                heap[count] = null;
+                SiftDown(0);
+            }
+            else
+            {
+                heap[0] = null;
+            }
+            return result;
+        }
+
+        public void PrintHeapArray()
+        {
+            int i = 0;
+            while (i < count)
+            {
+                Job job = heap[i];
+                raii string index = String.ToString(i);
+                raii string id = String.ToString(job.Id);
+                raii string p = String.ToString(job.Priority);
+                raii string a = String.Concat("  heap[", index);
+                raii string b = String.Concat(a, "] job#");
+                raii string c = String.Concat(b, id);
+                raii string d = String.Concat(c, " priority=");
+                raii string line = String.Concat(d, p);
+                Console.WriteLine(line);
+                i = i + 1;
+            }
+        }
+
+        ~JobPriorityQueue()
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (heap[i] != null) { delete heap[i]; }
+                i = i + 1;
+            }
+            delete[] heap;
+        }
+    }
+}

@@ -1,0 +1,25 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    public class SalariedEmployee : Employee
+    {
+        private int weeklySalaryCents;
+
+        public SalariedEmployee(int id, string employeeName, int weeklySalary)
+            : base(id, employeeName)
+        {
+            weeklySalaryCents = weeklySalary;
+        }
+
+        public override owned Money CalculateWeeklyPay()
+        {
+            return new Money(weeklySalaryCents);
+        }
+
+        public override owned string Classification()
+        {
+            return String.Copy("Salaried");
+        }
+    }
+}

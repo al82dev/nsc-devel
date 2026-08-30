@@ -1,0 +1,56 @@
+namespace NativeSharp.BookExamples.Searching
+{
+    public class StudentDataset
+    {
+        public static void FillSorted(Student[] data)
+        {
+            data[0] = new Student(1005, "Mia", 84);
+            data[1] = new Student(1012, "Noah", 91);
+            data[2] = new Student(1021, "Sofia", 88);
+            data[3] = new Student(1037, "Leo", 79);
+            data[4] = new Student(1050, "Emma", 95);
+            data[5] = new Student(1064, "Mateo", 82);
+            data[6] = new Student(1079, "Valeria", 90);
+            data[7] = new Student(1091, "Daniel", 76);
+            data[8] = new Student(1110, "Camila", 93);
+            data[9] = new Student(1142, "Nicolas", 87);
+            data[10] = new Student(1180, "Lucia", 89);
+            data[11] = new Student(1205, "Samuel", 85);
+            data[12] = new Student(1240, "Elena", 97);
+            data[13] = new Student(1301, "Marco", 81);
+            data[14] = new Student(1350, "Isabel", 92);
+            data[15] = new Student(1408, "Tomas", 80);
+        }
+
+        public static void FillUnsorted(Student[] data)
+        {
+            data[0] = new Student(1110, "Camila", 93);
+            data[1] = new Student(1005, "Mia", 84);
+            data[2] = new Student(1350, "Isabel", 92);
+            data[3] = new Student(1037, "Leo", 79);
+            data[4] = new Student(1205, "Samuel", 85);
+            data[5] = new Student(1012, "Noah", 91);
+            data[6] = new Student(1408, "Tomas", 80);
+            data[7] = new Student(1079, "Valeria", 90);
+            data[8] = new Student(1240, "Elena", 97);
+            data[9] = new Student(1050, "Emma", 95);
+            data[10] = new Student(1142, "Nicolas", 87);
+            data[11] = new Student(1021, "Sofia", 88);
+            data[12] = new Student(1301, "Marco", 81);
+            data[13] = new Student(1091, "Daniel", 76);
+            data[14] = new Student(1180, "Lucia", 89);
+            data[15] = new Student(1064, "Mateo", 82);
+        }
+
+        public static void Destroy(Student[] data, int count)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                delete data[i];
+                i = i + 1;
+            }
+            delete[] data;
+        }
+    }
+}

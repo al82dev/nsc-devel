@@ -1,0 +1,30 @@
+namespace Demo;
+
+public struct Pair
+{
+    short A;
+    int B;
+}
+
+public class Empty
+{
+}
+
+public partial class Payload
+{
+    byte Tag;
+    int Count;
+    Pair PairValue;
+    Empty Child;
+    int[3] Samples;
+
+    public Payload()
+    {
+        this.Count = 0;
+    }
+
+    public Payload Make()
+    {
+        return new Payload();
+    }
+}

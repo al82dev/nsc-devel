@@ -1,0 +1,48 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Searching
+{
+    public class RecursiveBinarySearcher : StudentSearcher
+    {
+        public override owned string Name()
+        {
+            return String.Copy("Recursive Binary Search");
+        }
+
+        private int SearchRange(
+            Student[] data,
+            int targetId,
+            int low,
+            int high,
+            SearchStatistics statistics)
+        {
+            if (low > high)
+            {
+                return -1;
+            }
+
+            int middle = low + (high - low) / 2;
+            statistics.Probe();
+            statistics.Comparison();
+
+            if (data[middle].Id == targetId)
+            {
+                return middle;
+            }
+
+            statistics.Comparison();
+            if (targetId < data[middle].Id)
+            {
+                return SearchRange(data, targetId, low, middle - 1, statistics);
+            }
+
+            return SearchRange(data, targetId, middle + 1, high, statistics);
+        }
+
+        public override int Search(Student[] data, int count, int targetId, SearchStatistics statistics)
+        {
+            statistics.Reset();
+            return SearchRange(data, targetId, 0, count - 1, statistics);
+        }
+    }
+}

@@ -1,0 +1,97 @@
+Stage 53.2b "Environment (variables)" -- archivos
+====================================================
+
+ARCHIVOS NUEVOS
+----------------
+lib/NativeSharp.Core/Environment.ns (MODIFICADO, no nuevo -- se agregaron 2 metodos)
+    + GetEnvironmentVariable(string) -> string, SetEnvironmentVariable(string, string) -> void.
+
+examples/project_stage53_2b/Stage53_2bEnvironmentVariables.nsproj
+examples/project_stage53_2b/Main.ns
+    Programa de verificacion empaquetado. 8 chequeos; el ultimo es Environment.Exit(0) como
+    mecanismo de salida (misma convencion que project_stage53_2).
+
+tests/unit/Stage53_2bEnvironmentVariablesTests.cpp
+    Test dedicado. PRIMERA VEZ en Stage 53 que se prueban DOS niveles de optimizacion
+    (-O0 y -O2) en el mismo archivo -- el bug de esta ronda (ver mas abajo) solo se
+    manifestaba en uno de los dos.
+
+53_2b_nativesharp_environment_variables.md
+    Documento conceptual ultra-verbose: el mecanismo de asignacion dinamica de strings
+    desde el runtime, el bug real de memcpy/ucrtbase encontrado y corregido, decisiones
+    de diseno (empty-string vs null, sin soporte de borrado de variables).
+
+53_2b_nativesharp_environment_variables_implementacion_paso_a_paso.md
+    Documento paso a paso con comandos y salidas reales, incluida la investigacion
+    completa del bug de memcpy (Pasos 6-9) y dos errores de conteo de caracteres
+    propios encontrados y corregidos (Pasos 10-11).
+
+ARCHIVOS MODIFICADOS (compilador)
+------------------------------------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + enum MethodCoreOperationKind: EnvironmentGetVariable, EnvironmentSetVariable.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    + bloque de reconocimiento (GetEnvironmentVariable/SetEnvironmentVariable).
+    + 2 lineas en methodCoreOperationKindName().
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + enum ProjectOopHirNodeKind: CoreEnvironmentGetVariable, CoreEnvironmentSetVariable.
+
+src/Frontend/ProjectOopHirModel.cpp
+    + toString().
+    + REUTILIZA el bloque compartido de StringConcat/StringEquals/StringSubstring/
+      StringFromCharArray (extendido, no duplicado) para el manejo de operandos.
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + enum ProjectOopMirNodeKind: 2 valores nuevos.
+
+src/Frontend/ProjectOopMirModel.cpp
+    + toString() + 2 casos de conversion HIR->MIR.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + 2 constantes de nombre de simbolo, 4 campos LLVMValueRef/LLVMTypeRef,
+      extension de declareRuntime(), 2 case de lowering (reutilizan lowerExpression()
+      generico sobre los hijos, sin logica especial de ownership en esta capa).
+
+src/Runtime/WindowsRuntimeBuilder.cpp
+    + buildNullTerminatedCopy() (helper compartido: NativeSharp string -> LPCSTR en el
+      stack, via un bucle de copia manual en LLVM IR).
+    + buildEnvironmentGetVariable() (2 llamadas a GetEnvironmentVariableA siguiendo el
+      patron documentado de Win32 -- primera para el tamanio, segunda para llenar un
+      String recien alocado).
+    + buildEnvironmentSetVariable().
+    + declaracion de GetEnvironmentVariableA/SetEnvironmentVariableA (variantes ANSI).
+
+ARCHIVOS MODIFICADOS (FIX DE BUG REAL -- ver documento conceptual seccion 5)
+--------------------------------------------------------------------------------
+src/Linker/WindowsExecutableBuilder.cpp
+    FIX: el escaneo de simbolos ucrtbase (memcpy/memset/memmove) solo miraba el texto
+    del modulo de PROGRAMA, nunca el del modulo de RUNTIME -- causaba "undefined
+    symbol: memcpy" en CUALQUIER ejecutable compilado a -O1/-O2 o superior (no solo
+    los que usan Environment), porque el runtime se construye completo siempre.
+    Corregido: se escanea la concatenacion de ambos modulos.
+
+src/Linker/WindowsLibraryBuilder.cpp
+    MISMO FIX, misma causa raiz, en la ruta de construccion de DLLs (buildDynamic()).
+
+ARCHIVOS MODIFICADOS (whitelist de kernel32, patron ya establecido en 53.1/53.2)
+--------------------------------------------------------------------------------
+src/Linker/WindowsLibraryBuilder.cpp (mismo archivo que el fix de arriba)
+src/Linker/WindowsExecutableBuilder.cpp (mismo archivo que el fix de arriba)
+tests/unit/Stage48_3CHostIntegrationTests.cpp
+tests/unit/Stage47HostCAbiTests.cpp
+tests/unit/Stage48_4CppHostIntegrationTests.cpp
+    kernel32Symbols: 15 -> 17 entradas (agrega GetEnvironmentVariableA,
+    SetEnvironmentVariableA).
+
+CMakeLists.txt
+    + target nsc_stage53_2b_environment_variables_tests +
+      add_test(nsc.stage53-2b.environment-variables).
+
+RESULTADO FINAL VERIFICADO
+-----------------------------
+nsc_stage53_2b_environment_variables_tests: PASS, 41/41 chequeos (incluye ejecucion real
+bajo Wine EN AMBOS -O0 y -O2).
+ctest completo: 100% tests passed, 0 tests failed out of 213 (212 previos + 1 nuevo),
+confirmado estable en corridas repetidas.

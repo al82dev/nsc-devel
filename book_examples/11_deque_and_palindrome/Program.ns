@@ -1,0 +1,56 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Deque
+{
+    class Program
+    {
+        private static void Check(string text)
+        {
+            bool palindrome = PalindromeAnalyzer.IsPalindrome(text);
+            raii string state = String.Copy("not a palindrome");
+            if (palindrome)
+            {
+                raii string yesState = String.Copy("palindrome");
+                state = move(yesState);
+            }
+            raii string a = String.Concat("  ", text);
+            raii string b = String.Concat(a, " -> ");
+            raii string line = String.Concat(b, state);
+            Console.WriteLine(line);
+        }
+
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 11 - Deque");
+            Console.WriteLine("-----------------------------------");
+            Console.WriteLine("Palindrome checker: same deque removes from both ends.");
+            Check("radar");
+            Check("Never odd or even");
+            Check("NativeSharp");
+            Check("A man a plan a canal Panama");
+
+            Console.WriteLine("");
+            Console.WriteLine("Work scheduling: urgent items enter at the front.");
+            raii ArrayDeque<WorkItem> work = new ArrayDeque<WorkItem>(3);
+            work.AddBack(new WorkItem(101, "texture import", false));
+            work.AddBack(new WorkItem(102, "mesh conversion", false));
+            work.AddFront(new WorkItem(900, "shader compile failure", true));
+            work.AddBack(new WorkItem(103, "audio bank build", false));
+            work.AddFront(new WorkItem(901, "missing game executable", true));
+
+            WorkItem[] slot = new WorkItem[1];
+            while (!work.IsEmpty)
+            {
+                work.RemoveFront(slot);
+                WorkItem item = slot[0];
+                raii string id = String.ToString(item.Id);
+                raii string a = String.Concat("  process #", id);
+                raii string b = String.Concat(a, " - ");
+                raii string line = String.Concat(b, item.Name);
+                Console.WriteLine(line);
+                delete item;
+            }
+            delete[] slot;
+            return 0;
+        }
+    }
+}

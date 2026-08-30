@@ -1,0 +1,31 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    public class CommissionEmployee : Employee
+    {
+        private int weeklySalesCents;
+        private int commissionPercent;
+
+        public CommissionEmployee(
+            int id,
+            string employeeName,
+            int weeklySales,
+            int percentage)
+            : base(id, employeeName)
+        {
+            weeklySalesCents = weeklySales;
+            commissionPercent = percentage;
+        }
+
+        public override owned Money CalculateWeeklyPay()
+        {
+            return new Money(weeklySalesCents * commissionPercent / 100);
+        }
+
+        public override owned string Classification()
+        {
+            return String.Copy("Commission");
+        }
+    }
+}

@@ -1,0 +1,115 @@
+using NativeSharp.Core;
+
+// Stage 53.5 "Command-line arguments" -- programa de verificacion empaquetado.
+// Misma convencion que todo Stage 53: cada chequeo que falla devuelve un codigo de salida
+// distinto, y el ultimo chequeo exitoso termina en "return 0".
+//
+// NOTA DE INVOCACION: este programa asume que quien lo ejecuta (ver
+// tests/unit/Stage53_5CommandLineArgsTests.cpp) le pasa EXACTAMENTE seis argumentos, en este
+// orden y con estos bytes literales -- una matriz deliberadamente exhaustiva de los casos de
+// quoting/escaping de Win32 que justificaron toda esta ronda (ver Environment.ns y
+// `55_stage53_5_command_line_args.md` para el porque de cada caso):
+//   arg[1] = hello                (simple, sin espacios ni comillas)
+//   arg[2] = hello world          (espacio embebido -- CommandLineToArgvW debe mantenerlo junto)
+//   arg[3] = "" (vacio)           (un argumento vacio real, no la ausencia de argumento)
+//   arg[4] = say "hi"             (comillas dobles embebidas)
+//   arg[5] = C:\path\             (barra invertida final, justo antes de donde iria un cierre de
+//                                  comillas -- el caso clasico de escaping de Windows)
+//   arg[6] = a\b                  (barra invertida NO seguida de comilla -- pasa sin
+//                                  interpretacion especial)
+// arg[0] (el nombre/path del ejecutable) solo se chequea por longitud, no por contenido exacto
+// -- depende del entorno (Wine, en este proyecto) y no es parte de lo que esta ronda verifica.
+class Program
+{
+    public static int Main()
+    {
+        int argCount = Environment.GetCommandLineArgCount();
+        if (argCount != 7)
+        {
+            return 1;
+        }
+
+        string[] args = new string[argCount];
+        int written = Environment.GetCommandLineArgs(args);
+        if (written != argCount)
+        {
+            return 2;
+        }
+
+        if (args[0].Length == 0)
+        {
+            return 3;
+        }
+
+        if (!args[1].Equals("hello"))
+        {
+            return 4;
+        }
+
+        if (!args[2].Equals("hello world"))
+        {
+            return 5;
+        }
+
+        if (args[3].Length != 0)
+        {
+            return 6;
+        }
+
+        if (!args[4].Equals("say \"hi\""))
+        {
+            return 7;
+        }
+
+        if (!args[5].Equals("C:\\path\\"))
+        {
+            return 8;
+        }
+
+        if (!args[6].Equals("a\\b"))
+        {
+            return 9;
+        }
+
+        // ---- GetCommandLineArgCount llamado de nuevo: debe seguir devolviendo el mismo numero
+        //      (idempotente -- no consume ni muta ningun estado global) --------------------
+
+        int argCountAgain = Environment.GetCommandLineArgCount();
+        if (argCountAgain != argCount)
+        {
+            return 10;
+        }
+
+        // ---- Buffer MAS CHICO que argc: los elementos que no entran se descartan en silencio,
+        //      sin excepcion -- comportamiento documentado en Environment.ns, distinto del
+        //      truncado-en-el-ultimo-elemento que usa String.Split. ------------------------
+
+        string[] smallBuffer = new string[3];
+        int smallWritten = Environment.GetCommandLineArgs(smallBuffer);
+        if (smallWritten != 3)
+        {
+            return 11;
+        }
+        if (!smallBuffer[1].Equals("hello"))
+        {
+            return 12;
+        }
+        if (!smallBuffer[2].Equals("hello world"))
+        {
+            return 13;
+        }
+        for (int i = 0; i < 3; i = i + 1)
+        {
+            delete smallBuffer[i];
+        }
+        delete[] smallBuffer;
+
+        for (int j = 0; j < argCount; j = j + 1)
+        {
+            delete args[j];
+        }
+        delete[] args;
+
+        return 0;
+    }
+}

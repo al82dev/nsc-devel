@@ -1,0 +1,54 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.EditDistance
+{
+    public class EditDistanceSolver
+    {
+        private static int Cell(int r,int c,int width){return r*width+c;}
+        private static int Min3(int a,int b,int c){int m=a;if(b<m){m=b;}if(c<m){m=c;}return m;}
+        public static int Solve(string source,string target)
+        {
+            int rows=source.Length+1;int cols=target.Length+1;
+            int[] dp=new int[rows*cols];
+            int r=0;while(r<rows){dp[Cell(r,0,cols)]=r;r=r+1;}
+            int c=0;while(c<cols){dp[Cell(0,c,cols)]=c;c=c+1;}
+            r=1;
+            while(r<rows)
+            {
+                c=1;
+                while(c<cols)
+                {
+                    int cost=1;if(source[r-1]==target[c-1]){cost=0;}
+                    int deletion=dp[Cell(r-1,c,cols)]+1;
+                    int insertion=dp[Cell(r,c-1,cols)]+1;
+                    int replacement=dp[Cell(r-1,c-1,cols)]+cost;
+                    dp[Cell(r,c,cols)]=Min3(deletion,insertion,replacement);
+                    c=c+1;
+                }
+                r=r+1;
+            }
+            int result=dp[Cell(source.Length,target.Length,cols)];
+            Console.WriteLine("one optimal edit script, reconstructed backward:");
+            r=source.Length;c=target.Length;
+            while(r>0 || c>0)
+            {
+                if(r>0 && c>0 && source[r-1]==target[c-1]){r=r-1;c=c-1;}
+                else if(r>0 && c>0 && dp[Cell(r,c,cols)]==dp[Cell(r-1,c-1,cols)]+1)
+                {
+                    raii string s=String.ToString(source[r-1]);raii string t=String.ToString(target[c-1]);
+                    raii string a=String.Concat("  replace '",s);raii string b=String.Concat(a,"' with '");
+                    raii string d=String.Concat(b,t);raii string line=String.Concat(d,"'");Console.WriteLine(line);
+                    r=r-1;c=c-1;
+                }
+                else if(r>0 && dp[Cell(r,c,cols)]==dp[Cell(r-1,c,cols)]+1)
+                {
+                    raii string s=String.ToString(source[r-1]);raii string a=String.Concat("  delete '",s);raii string line=String.Concat(a,"'");Console.WriteLine(line);r=r-1;
+                }
+                else
+                {
+                    raii string t=String.ToString(target[c-1]);raii string a=String.Concat("  insert '",t);raii string line=String.Concat(a,"'");Console.WriteLine(line);c=c-1;
+                }
+            }
+            delete[] dp;return result;
+        }
+    }
+}

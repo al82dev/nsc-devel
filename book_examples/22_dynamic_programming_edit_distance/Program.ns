@@ -1,0 +1,16 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.EditDistance
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 22 - Levenshtein Edit Distance");
+            Console.WriteLine("-----------------------------------------------------");
+            raii string source=String.Copy("kitten");raii string target=String.Copy("sitting");
+            int distance=EditDistanceSolver.Solve(source,target);
+            raii string d=String.ToString(distance);raii string line=String.Concat("edit distance: ",d);Console.WriteLine(line);
+            return 0;
+        }
+    }
+}

@@ -1,0 +1,111 @@
+Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- archivos
+====================================================================
+
+ARCHIVOS NUEVOS (ejemplo empaquetado + test)
+-----------------------------------------------
+examples/project_stage53_3b/Stage53_3bFilesystemPathsContent.nsproj
+examples/project_stage53_3b/Main.ns
+    Programa de verificacion empaquetado. 12 chequeos: ReadAllText de archivo inexistente,
+    round trip WriteAllText+ReadAllText, sobreescritura mas larga/mas corta, contenido
+    vacio, AppendAllText sobre archivo inexistente y existente (el chequeo mas importante:
+    agrega, no reemplaza), y un round trip usando un path armado con Path.Combine. Incluye
+    comentario de cabecera documentando los DOS errores de ownership encontrados y
+    corregidos al escribirlo (ReadAllText NO es owned, Path.Combine SI lo es).
+
+tests/unit/Stage53_3bFilesystemPathsContentTests.cpp
+    Test dedicado. Fixture minimo de lowering (ReadAllText/WriteAllText/AppendAllText
+    emiten la llamada exacta a su simbolo de runtime) + programa empaquetado probado en
+    -O0 Y -O2, con directorio de trabajo dedicado (mismo patron que Stage 53.3). Confirma
+    ademas, desde el lado Linux, que AppendAllText realmente agrego contenido (no lo
+    reemplazo).
+
+53_3b_nativesharp_filesystem_paths_contenido.md
+    Documento conceptual ultra-verbose: la secuencia de 4-5 llamadas Win32 (vs. 1 de toda
+    operacion nucleo anterior), por que el argumento CONTENT nunca necesita
+    buildNullTerminatedCopy (a diferencia del argumento PATH), el patron de comparacion de
+    INVALID_HANDLE_VALUE via PtrToInt, y las decisiones de diseno de la superficie.
+
+53_3b_nativesharp_filesystem_paths_contenido_implementacion_paso_a_paso.md
+    Documento paso a paso con comandos y salidas reales, incluyendo los dos errores de
+    ownership del compilador encontrados en vivo (Paso 3, en direcciones opuestas) y un
+    falso positivo de estado no limpiado entre corridas manuales del probe (Paso 5).
+
+ARCHIVOS MODIFICADOS (biblioteca NativeSharp)
+------------------------------------------------
+lib/NativeSharp.Core.IO/File.ns
+    + ReadAllText(string) -> string, WriteAllText(string, string) -> void,
+      AppendAllText(string, string) -> void. Comentario de cabecera extendido.
+
+ARCHIVOS MODIFICADOS (compilador)
+------------------------------------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + enum MethodCoreOperationKind: FileReadAllText, FileWriteAllText, FileAppendAllText.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    + 3 bloques else-if agregados al if existente de NativeSharp.Core.IO.File/Directory
+      (usa el flag isFile ya presente desde 53.3).
+    + 3 lineas en methodCoreOperationKindName().
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + enum ProjectOopHirNodeKind: CoreFileReadAllText, CoreFileWriteAllText,
+      CoreFileAppendAllText.
+
+src/Frontend/ProjectOopHirModel.cpp
+    + toString().
+    + REUTILIZA (extendido, no duplicado) el bloque compartido de string intrinsics.
+      ReadAllText se agrega a la lista de "expected = 1U"; WriteAllText/AppendAllText NO
+      se agregan a ninguna lista -- caen en el valor por defecto expected = 2U,
+      documentado explicitamente con un comentario para que no se lea como un olvido.
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + enum ProjectOopMirNodeKind: 3 valores nuevos.
+
+src/Frontend/ProjectOopMirModel.cpp
+    + toString() + 3 casos de conversion HIR->MIR.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + 3 constantes de nombre de simbolo, 6 campos LLVMValueRef/LLVMTypeRef, extension de
+      declareRuntime() (ReadAllText: ptr(ptr); WriteAllText/AppendAllText: void(ptr,ptr)),
+      3 case de lowering.
+
+src/Runtime/WindowsRuntimeBuilder.cpp
+    + buildFileReadAllText() (CreateFileA + GetFileSizeEx + ReadFile + CloseHandle, con
+      rama de fallo a string vacio via INVALID_HANDLE_VALUE).
+    + buildFileWriteAllText() (CreateFileA CREATE_ALWAYS + WriteFile + CloseHandle).
+    + buildFileAppendAllText() (CreateFileA OPEN_ALWAYS + SetFilePointer FILE_END +
+      WriteFile + CloseHandle).
+    + Las 3 REUTILIZAN buildNullTerminatedCopy() para el argumento PATH unicamente -- el
+      argumento CONTENT se pasa directo a WriteFile sin copia (WriteFile toma un contador
+      explicito de bytes, no espera terminador nulo).
+    + declaracion de CreateFileA/GetFileSizeEx/ReadFile/CloseHandle/SetFilePointer.
+      WriteFile REUTILIZADO sin cambios (ya declarado desde Stage 41 para Console.WriteLine
+      con la firma real exacta que esta ronda necesita).
+
+ARCHIVOS MODIFICADOS (whitelist de kernel32, patron ya establecido desde 53.1)
+--------------------------------------------------------------------------------
+src/Linker/WindowsLibraryBuilder.cpp
+src/Linker/WindowsExecutableBuilder.cpp
+tests/unit/Stage48_3CHostIntegrationTests.cpp
+tests/unit/Stage47HostCAbiTests.cpp
+tests/unit/Stage48_4CppHostIntegrationTests.cpp
+    kernel32Symbols: 20 -> 25 entradas (agrega CreateFileA, GetFileSizeEx, ReadFile,
+    CloseHandle, SetFilePointer). Aplicado proactivamente antes del primer compile.
+
+CMakeLists.txt
+    + target nsc_stage53_3b_filesystem_paths_content_tests +
+      add_test(nsc.stage53-3b.filesystem-paths-content).
+
+RESULTADO FINAL VERIFICADO
+-----------------------------
+nsc_stage53_3b_filesystem_paths_content_tests: PASS, 44/44 chequeos (fixture de lowering +
+ejecucion real bajo Wine del programa empaquetado, en AMBOS -O0 y -O2, con confirmacion
+independiente desde el lado Linux de que AppendAllText realmente agrego contenido en disco).
+Confirmado estable en dos corridas consecutivas.
+
+ctest completo: 100% tests passed, 0 tests failed out of 215 (214 previos + 1 nuevo),
+confirmado estable en dos corridas repetidas.
+
+Cero errores de compilador encontrados en esta ronda. Dos errores de ownership del propio
+analizador de este compilador se dispararon (y se corrigieron) al escribir el ejemplo
+empaquetado -- ambos el comportamiento CORRECTO y esperado del compilador, no bugs (ver
+Paso 3 del documento paso a paso).

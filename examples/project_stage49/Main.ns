@@ -1,0 +1,82 @@
+namespace NativeSharp.Core
+{
+    public class Exception { }
+}
+using NativeSharp.Core;
+
+class Stage49Problem : Exception { }
+
+class TrackedResource
+{
+    private static int liveCount = 0;
+    private int value;
+
+    public TrackedResource(int initialValue)
+    {
+        value = initialValue;
+        liveCount = liveCount + 1;
+    }
+
+    public int Read()
+    {
+        return value;
+    }
+
+    public static int LiveCount()
+    {
+        return liveCount;
+    }
+
+    ~TrackedResource()
+    {
+        liveCount = liveCount - 1;
+    }
+}
+
+class Program
+{
+    public static int MoveAndScope()
+    {
+        raii TrackedResource first = new TrackedResource(42);
+        {
+            raii TrackedResource nested = new TrackedResource(7);
+            int nestedValue = nested.Read();
+        }
+
+        raii TrackedResource second = move(first);
+        raii TrackedResource destination = null;
+        destination = move(second);
+        return destination.Read();
+    }
+
+    public static int ExceptionalCleanup()
+    {
+        try
+        {
+            raii TrackedResource protectedOwner = new TrackedResource(99);
+            throw new Stage49Problem();
+        }
+        catch (Stage49Problem problem)
+        {
+            return TrackedResource.LiveCount();
+        }
+    }
+
+    public static int Main()
+    {
+        int value = MoveAndScope();
+        if (value != 42)
+        {
+            return 1;
+        }
+        if (TrackedResource.LiveCount() != 0)
+        {
+            return 2;
+        }
+        if (ExceptionalCleanup() != 0)
+        {
+            return 3;
+        }
+        return 0;
+    }
+}

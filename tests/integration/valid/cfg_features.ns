@@ -1,0 +1,29 @@
+int Select(bool outer, bool inner)
+{
+    int value = 0;
+
+    while (outer)
+    {
+        if (inner)
+        {
+            break;
+        }
+
+        value++;
+        continue;
+    }
+
+    if (outer && inner)
+    {
+        return value;
+    }
+
+    return 0;
+
+    value = 99;
+}
+
+int Main()
+{
+    return Select(true, false);
+}

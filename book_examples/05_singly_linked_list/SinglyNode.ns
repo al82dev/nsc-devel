@@ -1,0 +1,14 @@
+namespace NativeSharp.BookExamples.LinkedList
+{
+    public class SinglyNode<T>
+    {
+        public T Value;
+        public SinglyNode<T> Next;
+
+        public SinglyNode(T value)
+        {
+            Value = value;
+            Next = null;
+        }
+    }
+}

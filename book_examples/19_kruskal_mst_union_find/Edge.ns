@@ -1,0 +1,8 @@
+namespace NativeSharp.BookExamples.Kruskal
+{
+    public class Edge
+    {
+        public int From; public int To; public int Weight;
+        public Edge(int from,int to,int weight){From=from;To=to;Weight=weight;}
+    }
+}

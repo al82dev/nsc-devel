@@ -1,0 +1,26 @@
+using NativeSharp.Core;
+
+// NEGATIVE case (Stage 52.x foreach, see 52_x_nativesharp_foreach.md section 8): this project is
+// INTENTIONALLY invalid and must NOT compile. `NotIterable` has neither `.Length` nor an
+// accessible `GetEnumerator()`, so `foreach` below is expected to fail with a clear diagnostic
+// ("no compatible member named 'GetEnumerator'") rather than crash or hang -- run
+// `nsc --dump-project-oop-hir ForeachNegativeTest.nsproj` to see it. Not wired into CMake/CTest on
+// purpose (a project meant to fail to build has no place in a "does it compile" regression gate).
+class NotIterable
+{
+    public int value;
+}
+
+class P
+{
+    public static int Main()
+    {
+        NotIterable x = new NotIterable();
+        int sum = 0;
+        foreach (var item in x)
+        {
+            sum = sum + 1;
+        }
+        return sum;
+    }
+}

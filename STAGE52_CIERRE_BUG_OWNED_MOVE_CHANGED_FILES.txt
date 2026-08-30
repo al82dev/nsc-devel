@@ -1,0 +1,88 @@
+Stage 52 -- cierre real: bug de `owned` guardado sin move() -- archivos modificados/agregados
+respecto de la entrega anterior (foreach 52.x, ver STAGE52X_FOREACH_CHANGED_FILES.txt)
+
+Ver 52_x_stage52_cierre_bug_owned_move.md para la explicacion didactica completa (biseccion de
+12 pasos, causa raiz, tabla de los 14 sitios corregidos, re-validacion con Wine real).
+
+MODIFICADOS -- compilador:
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+    - requiresOwnedDestruction(typeKey) -- helper centralizado (closure checklist P1 #6):
+      unifica la clasificacion "este tipo cerrado requiere destruccion real" que antes vivia
+      duplicada en emitOwnedParameterDestroy y (de forma incompleta) en emitRaiiDestroy.
+    - emitOwnedParameterDestroy / emitRaiiDestroy: usan el helper en vez de condiciones propias;
+      emitRaiiDestroy gana una guardia defensiva que antes no tenia (P1 #5, defensa en
+      profundidad -- hoy no explotable porque `raii` ya esta restringido a tipos referencia en
+      analisis semantico, pero ya no asume esa invariante silenciosamente en esta capa tambien).
+
+MODIFICADOS -- libreria (lib/NativeSharp.Core.Collections.Generic/), el fix real:
+  List.ns            -- Add/SetAt/Insert: items[..] = value; -> items[..] = move(value);
+  Queue.ns            -- Enqueue: idem
+  Stack.ns            -- Push: idem
+  Dictionary.ns       -- InsertNew/AddOrUpdate/SetValue: idem (key y value)
+  SortedList.ns       -- InsertAt/AddOrUpdate/SetValue: idem (key y value)
+  PriorityQueue.ns    -- Enqueue: idem (element y priority)
+  LinkedListNode.ns   -- SetValue/SetNext: idem
+
+  Causa raiz: un parametro `owned T value` guardado con asignacion PLANA (no move()) en un slot
+  de arreglo/campo deja el storage propio del parametro sin anular; el cleanup automatico de
+  owned-parameter al retornar del metodo destruye el mismo objeto que el arreglo acaba de
+  guardar -- doble-free real, cuyo sintoma (page fault) aparece varios pasos despues del sitio
+  real del bug. move(value) anula el storage del parametro como parte de la transferencia, asi
+  que el cleanup automatico ve null y no hace nada -- exactamente un dueno en todo momento.
+
+  NO afectados (verificado leyendo cada uno): HashSet.ns, SortedSet.ns, SortedDictionary.ns (ya
+  usaban move() correctamente al delegar), y los swaps internos de List.ns/PriorityQueue.ns
+  (relocacion dentro del MISMO arreglo entre variables locales const, no parametros -- patron ya
+  documentado como seguro).
+
+AGREGADOS -- tests:
+  tests/unit/Stage52_4OwnedCleanupRuntimeTests.cpp (nuevo)
+    - PRIMER test de esta suite que emite un .exe real de Windows x64 (via el Driver real) Y LO
+      EJECUTA bajo Wine (quan disponible; se degrada a solo-estructural sin fallar si no lo
+      esta) -- todo el resto de la suite de Stage 52 verifica solo hasta COFF/PE estructural,
+      nunca ejecuta el binario resultante, que es precisamente como ambos bugs reales de esta
+      ronda pasaron desapercibidos.
+    - Caso 1: repro exacto del closure checklist P0 #3 (owned int + llamada anidada), sema + IR
+      shape (sin destruccion dinamica sobre el entero) + COFF + ejecucion real -> 16.
+    - Caso 2 (negativo intencional): owned referencia guardado SIN move() -- debe compilar pero
+      DEBE crashear al ejecutarse (confirma que el peligro es real, no teorico).
+    - Caso 3 (el fix): la misma forma CON move() -- compila, IR nulea el slot del parametro,
+      ejecucion real -> 30.
+  CMakeLists.txt
+    - registro de nsc.stage52-4.owned-cleanup-runtime
+
+MODIFICADOS -- documentacion:
+  52_x_nativesharp_foreach.md
+    - seccion "Alcance NO resuelto" corregida: especulaba (incorrectamente) que el crash
+      restante estaba en List<T>.Sort()/Exists(); la causa real era el bug de arriba.
+  52_x_stage52_cierre_bug_owned_move.md (nuevo)
+    - documento principal de esta ronda: biseccion completa de 12 pasos, causa raiz, tabla de
+      los 14 sitios corregidos, re-validacion de los 4 binarios del checklist bajo Wine real,
+      auditoria P1 #5/#6, estado frente al criterio de CLOSED del checklist.
+  STAGE52_CHECKPOINT.md
+    - status line y seccion "Ejecucion en Windows" actualizadas -- ya no se contradice a si
+      mismo sobre disponibilidad de Wine, y documenta el estado real (ambos bugs corregidos,
+      Stage52Collections.exe corre limpio, 208/208 CTest).
+  TEST_MATRIX_52.md
+    - nueva fila "runtime execution gate" (closure checklist P1 #11): nsc.stage52-4.owned-
+      cleanup-runtime, 24/24 PASS, con tabla de sub-casos.
+
+REGRESION: ctest completo, 208/208 (207 previos + 1 nuevo), 100% passed, 0 failed. Re-verificado
+tras el refactor del helper centralizado (mismo resultado). Los 4 binarios del closure checklist
+re-verificados bajo Wine 9.0 real, deterministas en 3 corridas cada uno:
+  repro_1_minimal.exe                 -> 42, sin crash
+  repro_2_owned_no_nested_call.exe    -> 5, sin crash
+  repro_3_owned_nested_call.exe       -> 1, sin crash
+  Stage52Collections.exe              -> 149, sin crash (ver nota sobre "exit code 0" en
+                                          52_x_stage52_cierre_bug_owned_move.md seccion 3)
+  Stage52xForeach.exe (entrega previa)-> 91, sin crash (sin regresion)
+
+PENDIENTE (honestamente no completado en esta ronda, ver 52_x_stage52_cierre_bug_owned_move.md
+seccion 7 y claude/10_estado_stage52_cierre_bug_owned_move.md):
+  - P1 #7-10: reescritura completa de 52_nativesharp_generic_collections.md,
+    52_nativesharp_generic_collections_implementacion_paso_a_paso.md,
+    PART5_CONFORMANCE_STAGE52.md, y el handover hacia Stage 53 (distinguir structural vs
+    runtime execution conformance en todo el texto).
+  - P2 #15: trazas didacticas compiler->library completas para default(T), move(owned T),
+    Dictionary<int,Payload>, PriorityQueue<TElement,TPriority>.
+  - Windows real (no solo Wine) sigue pendiente, prioridad #1 declarada por el propio checklist.

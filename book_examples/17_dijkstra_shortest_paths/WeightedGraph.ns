@@ -1,0 +1,49 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Dijkstra
+{
+    public class WeightedGraph
+    {
+        private WeightedCity[] cities;
+        private int[] weights;
+        private int count;
+        private int capacity;
+
+        public WeightedGraph(int maxCities)
+        {
+            capacity = maxCities;
+            cities = new WeightedCity[maxCities];
+            weights = new int[maxCities * maxCities];
+            count = 0;
+        }
+
+        public int Count { get { return count; } }
+        private int Cell(int a, int b) { return a * capacity + b; }
+
+        public int AddCity(string name)
+        {
+            if (count == capacity) { throw new InvalidOperationException(); }
+            int id = count;
+            cities[id] = new WeightedCity(id, name);
+            count = count + 1;
+            return id;
+        }
+
+        public void AddUndirectedEdge(int a, int b, int weight)
+        {
+            if (weight <= 0) { throw new ArgumentOutOfRangeException(); }
+            weights[Cell(a,b)] = weight;
+            weights[Cell(b,a)] = weight;
+        }
+
+        public int Weight(int a, int b) { return weights[Cell(a,b)]; }
+        public WeightedCity City(int id) { return cities[id]; }
+
+        ~WeightedGraph()
+        {
+            int i = 0;
+            while (i < count) { delete cities[i]; i = i + 1; }
+            delete[] cities;
+            delete[] weights;
+        }
+    }
+}

@@ -1,0 +1,33 @@
+namespace NativeSharp.BookExamples.QueueSimulation
+{
+    public class Customer
+    {
+        private int id;
+        private int arrivalTime;
+        private int serviceDuration;
+        private int serviceStart;
+        private int serviceFinish;
+
+        public Customer(int customerId, int arrival, int duration)
+        {
+            id = customerId;
+            arrivalTime = arrival;
+            serviceDuration = duration;
+            serviceStart = -1;
+            serviceFinish = -1;
+        }
+
+        public int Id { get { return id; } }
+        public int ArrivalTime { get { return arrivalTime; } }
+        public int ServiceDuration { get { return serviceDuration; } }
+        public int ServiceStart { get { return serviceStart; } }
+        public int ServiceFinish { get { return serviceFinish; } }
+        public int WaitingTime { get { return serviceStart - arrivalTime; } }
+
+        public void StartAt(int time)
+        {
+            serviceStart = time;
+            serviceFinish = time + serviceDuration;
+        }
+    }
+}

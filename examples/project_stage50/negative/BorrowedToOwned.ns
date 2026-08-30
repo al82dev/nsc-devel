@@ -1,0 +1,17 @@
+class Resource
+{
+    public Resource() { }
+    ~Resource() { }
+}
+
+class Program
+{
+    public static void Consume(owned Resource value) { }
+
+    public static void Run()
+    {
+        raii Resource owner = new Resource();
+        borrowed Resource view = owner;
+        Consume(move(view));
+    }
+}

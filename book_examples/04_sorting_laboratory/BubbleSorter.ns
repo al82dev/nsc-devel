@@ -1,0 +1,31 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class BubbleSorter : StudentSorter
+    {
+        public override owned string Name() { return String.Copy("Bubble Sort"); }
+
+        public override void Sort(Student[] data, int count, StudentComparer comparer, SortStatistics statistics)
+        {
+            statistics.Reset();
+            int end = count - 1;
+            bool changed = true;
+            while (end > 0 && changed)
+            {
+                changed = false;
+                int i = 0;
+                while (i < end)
+                {
+                    if (Compare(data[i], data[i + 1], comparer, statistics) > 0)
+                    {
+                        Swap(data, i, i + 1, statistics);
+                        changed = true;
+                    }
+                    i = i + 1;
+                }
+                end = end - 1;
+            }
+        }
+    }
+}

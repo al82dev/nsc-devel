@@ -1,0 +1,186 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+// Stage 53.6 "Enumeracion de directorios" -- programa de verificacion empaquetado.
+// Misma convencion que todo Stage 53: cada chequeo que falla devuelve un codigo de salida
+// distinto, y el ultimo chequeo exitoso termina en "return 0".
+//
+// NOTA DE ORDEN: Win32 NO garantiza ningun orden particular para FindFirstFileA/FindNextFileA
+// (en la practica suele ser alfabetico en NTFS, pero este programa NO depende de eso a
+// proposito -- ver ContainsName mas abajo). Cada comprobacion de contenido busca el nombre
+// esperado en TODO el arreglo devuelto, sin asumir en que posicion aparece.
+//
+// NOTA DE ESTADO: igual que cada ronda de Stage 53 que toca el filesystem, este programa crea
+// y borra su propio directorio/archivos de prueba -- el harness de C++ que lo corre (ver
+// tests/unit/Stage53_6DirectoryEnumerationTests.cpp) lo hace con un directorio de trabajo
+// DEDICADO y VACIO, no el directorio de ctest.
+class Program
+{
+    private static bool ContainsName(string[] names, int count, string expected)
+    {
+        for (int i = 0; i < count; i = i + 1)
+        {
+            if (names[i].Equals(expected))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static int Main()
+    {
+        // ---- Poblar un directorio de prueba con tres archivos y dos subdirectorios ------------
+
+        string dir = "nativesharp_stage53_6_dir";
+        Directory.CreateDirectory(dir);
+
+        raii string fileA = Path.Combine(dir, "nativesharp_a.txt");
+        raii string fileB = Path.Combine(dir, "nativesharp_b.txt");
+        raii string fileC = Path.Combine(dir, "nativesharp_c.txt");
+        File.WriteAllText(fileA, "x");
+        File.WriteAllText(fileB, "x");
+        File.WriteAllText(fileC, "x");
+
+        raii string subOne = Path.Combine(dir, "nativesharp_sub_one");
+        raii string subTwo = Path.Combine(dir, "nativesharp_sub_two");
+        Directory.CreateDirectory(subOne);
+        Directory.CreateDirectory(subTwo);
+
+        // ---- GetFileCount/GetDirectoryCount sobre el directorio recien poblado ---------------
+
+        int fileCount = Directory.GetFileCount(dir);
+        if (fileCount != 3)
+        {
+            return 1;
+        }
+        int directoryCount = Directory.GetDirectoryCount(dir);
+        if (directoryCount != 2)
+        {
+            return 2;
+        }
+
+        // ---- GetFiles con buffer exacto: tres nombres, sin asumir orden ----------------------
+
+        string[] files = new string[fileCount];
+        int filesWritten = Directory.GetFiles(dir, files);
+        if (filesWritten != 3)
+        {
+            return 3;
+        }
+        if (!ContainsName(files, filesWritten, "nativesharp_a.txt"))
+        {
+            return 4;
+        }
+        if (!ContainsName(files, filesWritten, "nativesharp_b.txt"))
+        {
+            return 5;
+        }
+        if (!ContainsName(files, filesWritten, "nativesharp_c.txt"))
+        {
+            return 6;
+        }
+        // Ningun subdirectorio debe aparecer en GetFiles.
+        if (ContainsName(files, filesWritten, "nativesharp_sub_one"))
+        {
+            return 7;
+        }
+
+        // ---- GetDirectories con buffer exacto: dos nombres, "." y ".." excluidos -------------
+
+        string[] directories = new string[directoryCount];
+        int directoriesWritten = Directory.GetDirectories(dir, directories);
+        if (directoriesWritten != 2)
+        {
+            return 8;
+        }
+        if (!ContainsName(directories, directoriesWritten, "nativesharp_sub_one"))
+        {
+            return 9;
+        }
+        if (!ContainsName(directories, directoriesWritten, "nativesharp_sub_two"))
+        {
+            return 10;
+        }
+        if (ContainsName(directories, directoriesWritten, "."))
+        {
+            return 11;
+        }
+        if (ContainsName(directories, directoriesWritten, ".."))
+        {
+            return 12;
+        }
+        // Ningun archivo debe aparecer en GetDirectories.
+        if (ContainsName(directories, directoriesWritten, "nativesharp_a.txt"))
+        {
+            return 13;
+        }
+
+        // ---- Buffer MAS CHICO que la cantidad real: el elemento que entra debe ser uno de los
+        //      nombres reales -- los que sobran se descartan en silencio, sin excepcion --------
+
+        string[] smallFiles = new string[1];
+        int smallFilesWritten = Directory.GetFiles(dir, smallFiles);
+        if (smallFilesWritten != 1)
+        {
+            return 14;
+        }
+        bool smallIsKnown = smallFiles[0].Equals("nativesharp_a.txt") ||
+            smallFiles[0].Equals("nativesharp_b.txt") || smallFiles[0].Equals("nativesharp_c.txt");
+        if (!smallIsKnown)
+        {
+            return 15;
+        }
+        delete smallFiles[0];
+        delete[] smallFiles;
+
+        // ---- Directorio inexistente: colapsa a 0 en las cuatro operaciones, sin crashear -----
+
+        string missing = "nativesharp_stage53_6_missing_dir";
+        if (Directory.GetFileCount(missing) != 0)
+        {
+            return 16;
+        }
+        if (Directory.GetDirectoryCount(missing) != 0)
+        {
+            return 17;
+        }
+        string[] missingBuffer = new string[1];
+        if (Directory.GetFiles(missing, missingBuffer) != 0)
+        {
+            return 18;
+        }
+        if (Directory.GetDirectories(missing, missingBuffer) != 0)
+        {
+            return 19;
+        }
+        delete[] missingBuffer;
+
+        // ---- Limpieza: dejar el directorio de trabajo vacio, misma disciplina que 53.3/53.4 --
+
+        for (int i = 0; i < filesWritten; i = i + 1)
+        {
+            delete files[i];
+        }
+        delete[] files;
+        for (int j = 0; j < directoriesWritten; j = j + 1)
+        {
+            delete directories[j];
+        }
+        delete[] directories;
+
+        File.Delete(fileA);
+        File.Delete(fileB);
+        File.Delete(fileC);
+        Directory.Delete(subOne);
+        Directory.Delete(subTwo);
+        Directory.Delete(dir);
+
+        if (Directory.Exists(dir))
+        {
+            return 20;
+        }
+
+        return 0;
+    }
+}

@@ -1,0 +1,272 @@
+#include "nativesharp/Compilation/GlobPattern.h"
+#include "nativesharp/Compilation/ProjectDumper.h"
+#include "nativesharp/Compilation/ProjectLoader.h"
+#include "nativesharp/Compilation/SimpleXmlParser.h"
+
+#include "../support/TestContext.h"
+
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+
+namespace
+{
+using nativesharp::compilation::GlobPattern;
+using nativesharp::compilation::ProjectDumper;
+using nativesharp::compilation::ProjectLoader;
+using nativesharp::compilation::ProjectOutputKind;
+using nativesharp::compilation::SimpleXmlElement;
+using nativesharp::compilation::SimpleXmlParser;
+using nativesharp::tests::TestContext;
+
+void writeFile(const std::filesystem::path& path, std::string_view text)
+{
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream stream(path, std::ios::binary);
+    stream << text;
+}
+
+void testGlobPattern(TestContext& tests)
+{
+    const GlobPattern recursive("**/*.ns");
+    tests.expect(recursive.isValid(), "recursive NativeSharp glob is valid");
+    tests.expect(recursive.matches("Main.ns"), "recursive glob matches root source");
+    tests.expect(recursive.matches("Models/Player.ns"), "recursive glob matches nested source");
+    tests.expect(recursive.matches("models/player.NS"), "glob path matching is case-insensitive");
+
+    const GlobPattern oneDirectory("src/*.ns");
+    tests.expect(oneDirectory.matches("src/Main.ns"), "single star matches within one path segment");
+    tests.expect(!oneDirectory.matches("src/Models/Player.ns"), "single star does not cross path segments");
+
+    const GlobPattern question("Models/Player?.ns");
+    tests.expect(question.matches("Models/Player1.ns"), "question mark matches one character");
+    tests.expect(!question.matches("Models/Player10.ns"), "question mark does not match two characters");
+
+    tests.expect(!GlobPattern("../Shared/*.ns").isValid(), "parent traversal glob is invalid");
+    tests.expect(!GlobPattern("C:/Project/*.ns").isValid(), "absolute drive glob is invalid");
+    tests.expect(!GlobPattern("Models/**Player.ns").isValid(), "double star must occupy a segment");
+}
+
+void testSimpleXml(TestContext& tests)
+{
+    SimpleXmlParser parser;
+    SimpleXmlElement root;
+    std::string error;
+    const std::string valid =
+        "<?xml version=\"1.0\"?>\n"
+        "<!-- project -->\n"
+        "<Project Label=\"A&amp;B\"><Property>Value</Property></Project>";
+    tests.expect(parser.parse(valid, root, error), "minimal XML parser accepts declaration and comment");
+    tests.expect(root.name == "Project", "XML parser returns root name");
+    tests.expect(
+        root.attributes.size() == 1 && root.attributes[0].second == "A&B",
+        "XML parser decodes predefined entities");
+    tests.expect(
+        root.children.size() == 1 && root.children[0].text == "Value",
+        "XML parser preserves property text");
+
+    tests.expect(!parser.parse("<Project></Wrong>", root, error), "mismatched XML close is rejected");
+    tests.expect(
+        error.find("does not match") != std::string::npos,
+        "mismatched XML close has deterministic diagnostic");
+    tests.expect(!parser.parse("<Project A=\"1\" A=\"2\"/>", root, error), "duplicate XML attribute is rejected");
+    tests.expect(!parser.parse("<Project>&unknown;</Project>", root, error), "unknown XML entity is rejected");
+}
+
+void testDefaultProject(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path projectDirectory = root / "Game";
+    writeFile(projectDirectory / "Main.ns", "int main() { return 0; }\n");
+    writeFile(projectDirectory / "Models" / "Player.ns", "// future partial class\n");
+    writeFile(projectDirectory / "bin" / "Generated.ns", "// ignored\n");
+    writeFile(projectDirectory / "obj" / "Temporary.ns", "// ignored\n");
+    writeFile(projectDirectory / "notes.txt", "ignored\n");
+    writeFile(
+        projectDirectory / "Game.nsproj",
+        "<?xml version=\"1.0\"?>\n"
+        "<Project>\n"
+        "  <PropertyGroup>\n"
+        "    <Name>Game</Name>\n"
+        "    <OutputType>Library</OutputType>\n"
+        "  </PropertyGroup>\n"
+        "</Project>\n");
+
+    ProjectLoader loader;
+    std::string error;
+    const auto project = loader.load(projectDirectory / "Game.nsproj", error);
+    tests.expect(project.has_value(), "default project loads");
+    if (!project.has_value())
+    {
+        return;
+    }
+    tests.expect(project->moduleName() == "Game", "project Name becomes module identity");
+    tests.expect(project->outputKind() == ProjectOutputKind::Library, "Library output kind is parsed");
+    tests.expect(project->sourceSet().isFinalized(), "loaded project source set is frozen");
+    tests.expect(project->sourceSet().sources().size() == 2, "default glob discovers two user sources");
+    tests.expect(
+        project->sourceSet().sources()[0].projectRelativePath.generic_string() == "Main.ns",
+        "default discovery is canonically sorted");
+    tests.expect(
+        project->sourceSet().sources()[1].projectRelativePath.generic_string() == "Models/Player.ns",
+        "default discovery includes nested source");
+
+    std::ostringstream dump;
+    ProjectDumper().dump(*project, dump);
+    tests.expect(dump.str().find("project Game\n") == 0, "project dump begins with module name");
+    tests.expect(dump.str().find("output: static-library") != std::string::npos, "project dump contains output kind");
+    tests.expect(dump.str().find("[1] Models/Player.ns") != std::string::npos, "project dump lists ordinals");
+}
+
+void testItemsAndReferences(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path core = root / "Core";
+    writeFile(core / "Core.ns", "int GetValue() { return 42; }\n");
+    writeFile(core / "Core.nsproj", "<Project><PropertyGroup><Name>Core</Name></PropertyGroup></Project>\n");
+
+    const std::filesystem::path app = root / "Filtered";
+    writeFile(app / "Main.ns", "int main() { return 0; }\n");
+    writeFile(app / "Models" / "Player.ns", "// player\n");
+    writeFile(app / "Models" / "Ignored.ns", "// ignored\n");
+    writeFile(app / "Other.ns", "// excluded by include\n");
+    writeFile(
+        app / "Filtered.nsproj",
+        "<Project>\n"
+        "  <PropertyGroup><Name>Filtered</Name><OutputType>Exe</OutputType></PropertyGroup>\n"
+        "  <ItemGroup>\n"
+        "    <Compile Include=\"Models/**/*.ns;Main.ns\" Exclude=\"**/Ignored.ns\" />\n"
+        "    <Compile Include=\"Main.ns\" />\n"
+        "    <Compile Remove=\"Main.ns\" />\n"
+        "    <ProjectReference Include=\"../Core/Core.nsproj\" />\n"
+        "  </ItemGroup>\n"
+        "</Project>\n");
+
+    ProjectLoader loader;
+    std::string error;
+    const auto project = loader.load(app / "Filtered.nsproj", error);
+    tests.expect(project.has_value(), "filtered project with reference loads");
+    if (!project.has_value())
+    {
+        return;
+    }
+    tests.expect(project->outputKind() == ProjectOutputKind::Executable, "Exe output kind is parsed");
+    tests.expect(project->sourceSet().sources().size() == 1, "include, exclude, and remove compose");
+    tests.expect(
+        project->sourceSet().sources()[0].projectRelativePath.generic_string() == "Models/Player.ns",
+        "filtered source is the expected file");
+    tests.expect(project->projectReferences().size() == 1, "project reference is preserved");
+    tests.expect(
+        project->projectReferences()[0].filename() == "Core.nsproj",
+        "project reference is canonicalized");
+}
+
+void expectLoadFailure(
+    TestContext& tests,
+    const std::filesystem::path& project,
+    std::string_view expectedText,
+    std::string_view message)
+{
+    ProjectLoader loader;
+    std::string error;
+    const auto result = loader.load(project, error);
+    tests.expect(!result.has_value(), message);
+    tests.expect(
+        error.find(expectedText) != std::string::npos,
+        std::string(message) + " has deterministic diagnostic");
+}
+
+void testInvalidProjects(TestContext& tests, const std::filesystem::path& root)
+{
+    expectLoadFailure(tests, root / "Missing.nsproj", "does not exist", "missing project is rejected");
+
+    const std::filesystem::path invalid = root / "Invalid";
+    writeFile(invalid / "Main.ns", "int main() { return 0; }\n");
+
+    writeFile(invalid / "Wrong.txt", "<Project/>\n");
+    expectLoadFailure(tests, invalid / "Wrong.txt", ".nsproj extension", "wrong project extension is rejected");
+
+    writeFile(invalid / "Malformed.nsproj", "<Project>\n");
+    expectLoadFailure(tests, invalid / "Malformed.nsproj", "not closed", "malformed XML is rejected");
+
+    writeFile(invalid / "Root.nsproj", "<Solution/>\n");
+    expectLoadFailure(tests, invalid / "Root.nsproj", "root element", "wrong XML root is rejected");
+
+    writeFile(invalid / "Property.nsproj", "<Project><PropertyGroup><Unknown>x</Unknown></PropertyGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "Property.nsproj",
+        "unsupported project property",
+        "unknown property is rejected");
+
+    writeFile(invalid / "Name.nsproj", "<Project><PropertyGroup><Name>bad-name</Name></PropertyGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "Name.nsproj",
+        "valid NativeSharp identifier",
+        "invalid module name is rejected");
+
+    writeFile(
+        invalid / "Output.nsproj",
+        "<Project><PropertyGroup><OutputType>Plugin</OutputType></PropertyGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "Output.nsproj",
+        "Exe', 'Library', 'StaticLibrary', or 'SharedLibrary",
+        "invalid output kind is rejected");
+
+    writeFile(invalid / "Glob.nsproj", "<Project><ItemGroup><Compile Include=\"../*.ns\"/></ItemGroup></Project>\n");
+    expectLoadFailure(tests, invalid / "Glob.nsproj", "invalid glob pattern", "escaping glob is rejected");
+
+    writeFile(invalid / "Compile.nsproj", "<Project><ItemGroup><Compile/></ItemGroup></Project>\n");
+    expectLoadFailure(tests, invalid / "Compile.nsproj", "exactly one", "empty Compile item is rejected");
+
+    writeFile(
+        invalid / "Empty.nsproj",
+        "<Project><ItemGroup><Compile Remove=\"**/*.ns\"/></ItemGroup></Project>\n");
+    expectLoadFailure(tests, invalid / "Empty.nsproj", "at least one", "project with no selected source is rejected");
+
+    writeFile(
+        invalid / "Reference.nsproj",
+        "<Project><ItemGroup><ProjectReference Include=\"Missing.nsproj\"/></ItemGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "Reference.nsproj",
+        "referenced project does not exist",
+        "missing reference is rejected");
+
+    const std::filesystem::path reference = root / "ReferenceTarget";
+    writeFile(reference / "Target.ns", "// target\n");
+    writeFile(reference / "Target.nsproj", "<Project/>\n");
+    writeFile(
+        invalid / "DuplicateReference.nsproj",
+        "<Project><ItemGroup>\n"
+        "<ProjectReference Include=\"../ReferenceTarget/Target.nsproj\"/>\n"
+        "<ProjectReference Include=\"../ReferenceTarget/Target.nsproj\"/>\n"
+        "</ItemGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "DuplicateReference.nsproj",
+        "duplicate ProjectReference",
+        "duplicate reference is rejected");
+}
+}
+
+int main()
+{
+    TestContext tests;
+    testGlobPattern(tests);
+    testSimpleXml(tests);
+
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / "nativesharp_stage22_project_loader";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root, error);
+
+    testDefaultProject(tests, root);
+    testItemsAndReferences(tests, root);
+    testInvalidProjects(tests, root);
+
+    std::filesystem::remove_all(root, error);
+    return tests.result();
+}

@@ -1,0 +1,306 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.BinarySearchTree
+{
+    public class BinarySearchTree
+    {
+        private StudentNode root;
+        private int count;
+
+        public BinarySearchTree()
+        {
+            root = null;
+            count = 0;
+        }
+
+        public int Count { get { return count; } }
+        public bool IsEmpty { get { return root == null; } }
+
+        public void Insert(Student value)
+        {
+            StudentNode node = new StudentNode(value);
+            if (root == null)
+            {
+                root = node;
+                count = 1;
+                return;
+            }
+
+            StudentNode current = root;
+            bool inserted = false;
+            while (!inserted)
+            {
+                if (value.Id < current.Value.Id)
+                {
+                    if (current.Left == null)
+                    {
+                        current.Left = node;
+                        inserted = true;
+                    }
+                    else
+                    {
+                        current = current.Left;
+                    }
+                }
+                else if (value.Id > current.Value.Id)
+                {
+                    if (current.Right == null)
+                    {
+                        current.Right = node;
+                        inserted = true;
+                    }
+                    else
+                    {
+                        current = current.Right;
+                    }
+                }
+                else
+                {
+                    delete node;
+                    delete value;
+                    throw new ArgumentException();
+                }
+            }
+
+            count = count + 1;
+        }
+
+        public Student Find(int id)
+        {
+            StudentNode current = root;
+            while (current != null)
+            {
+                if (id == current.Value.Id)
+                {
+                    return current.Value;
+                }
+                if (id < current.Value.Id)
+                {
+                    current = current.Left;
+                }
+                else
+                {
+                    current = current.Right;
+                }
+            }
+            return null;
+        }
+
+        public Student Minimum()
+        {
+            if (root == null) { return null; }
+            StudentNode current = root;
+            while (current.Left != null)
+            {
+                current = current.Left;
+            }
+            return current.Value;
+        }
+
+        public Student Maximum()
+        {
+            if (root == null) { return null; }
+            StudentNode current = root;
+            while (current.Right != null)
+            {
+                current = current.Right;
+            }
+            return current.Value;
+        }
+
+        private int HeightOf(StudentNode node)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int leftHeight = HeightOf(node.Left);
+            int rightHeight = HeightOf(node.Right);
+            if (leftHeight > rightHeight)
+            {
+                return leftHeight + 1;
+            }
+            return rightHeight + 1;
+        }
+
+        public int Height()
+        {
+            return HeightOf(root);
+        }
+
+        private StudentNode DeleteNode(StudentNode node, int id, bool[] removed)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            if (id < node.Value.Id)
+            {
+                node.Left = DeleteNode(node.Left, id, removed);
+                return node;
+            }
+
+            if (id > node.Value.Id)
+            {
+                node.Right = DeleteNode(node.Right, id, removed);
+                return node;
+            }
+
+            removed[0] = true;
+
+            if (node.Left == null && node.Right == null)
+            {
+                delete node.Value;
+                delete node;
+                return null;
+            }
+
+            if (node.Left == null)
+            {
+                StudentNode child = node.Right;
+                node.Right = null;
+                delete node.Value;
+                delete node;
+                return child;
+            }
+
+            if (node.Right == null)
+            {
+                StudentNode child = node.Left;
+                node.Left = null;
+                delete node.Value;
+                delete node;
+                return child;
+            }
+
+            StudentNode successor = node.Right;
+            while (successor.Left != null)
+            {
+                successor = successor.Left;
+            }
+
+            Student temporaryValue = node.Value;
+            node.Value = successor.Value;
+            successor.Value = temporaryValue;
+
+            bool[] successorRemoved = new bool[1];
+            successorRemoved[0] = false;
+            node.Right = DeleteNode(node.Right, id, successorRemoved);
+            delete[] successorRemoved;
+            return node;
+        }
+
+        public bool Remove(int id)
+        {
+            bool[] removed = new bool[1];
+            removed[0] = false;
+            root = DeleteNode(root, id, removed);
+            bool result = removed[0];
+            if (result)
+            {
+                count = count - 1;
+            }
+            delete[] removed;
+            return result;
+        }
+
+        private void PrintStudent(Student value)
+        {
+            raii string id = String.ToString(value.Id);
+            raii string grade = String.ToString(value.Grade);
+            raii string s1 = String.Concat(id, "  ");
+            raii string s2 = String.Concat(s1, value.Name);
+            raii string s3 = String.Concat(s2, "  grade=");
+            raii string line = String.Concat(s3, grade);
+            Console.WriteLine(line);
+        }
+
+        private void InOrderNode(StudentNode node)
+        {
+            if (node == null) { return; }
+            InOrderNode(node.Left);
+            PrintStudent(node.Value);
+            InOrderNode(node.Right);
+        }
+
+        private void PreOrderNode(StudentNode node)
+        {
+            if (node == null) { return; }
+            PrintStudent(node.Value);
+            PreOrderNode(node.Left);
+            PreOrderNode(node.Right);
+        }
+
+        private void PostOrderNode(StudentNode node)
+        {
+            if (node == null) { return; }
+            PostOrderNode(node.Left);
+            PostOrderNode(node.Right);
+            PrintStudent(node.Value);
+        }
+
+        public void PrintInOrder()
+        {
+            InOrderNode(root);
+        }
+
+        public void PrintPreOrder()
+        {
+            PreOrderNode(root);
+        }
+
+        public void PrintPostOrder()
+        {
+            PostOrderNode(root);
+        }
+
+        private void PrintSidewaysNode(StudentNode node, int depth)
+        {
+            if (node == null) { return; }
+            PrintSidewaysNode(node.Right, depth + 1);
+
+            raii string indent = String.Copy("");
+            int i = 0;
+            while (i < depth)
+            {
+                raii string nextIndent = String.Concat(indent, "    ");
+                indent = move(nextIndent);
+                i = i + 1;
+            }
+            raii string id = String.ToString(node.Value.Id);
+            raii string line = String.Concat(indent, id);
+            Console.WriteLine(line);
+
+            PrintSidewaysNode(node.Left, depth + 1);
+        }
+
+        public void PrintSideways()
+        {
+            PrintSidewaysNode(root, 0);
+        }
+
+        private void ClearNode(StudentNode node)
+        {
+            if (node == null) { return; }
+            ClearNode(node.Left);
+            ClearNode(node.Right);
+            node.Left = null;
+            node.Right = null;
+            delete node.Value;
+            delete node;
+        }
+
+        public void Clear()
+        {
+            ClearNode(root);
+            root = null;
+            count = 0;
+        }
+
+        ~BinarySearchTree()
+        {
+            Clear();
+        }
+    }
+}

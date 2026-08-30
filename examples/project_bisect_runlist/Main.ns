@@ -1,0 +1,19 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+class Payload
+{
+    public int Value;
+}
+
+class Program
+{
+    public static int Main()
+    {
+        raii List<Payload> people = new List<Payload>();
+        raii Payload alice = new Payload();
+        alice.Value = 30;
+        people.Add(move(alice));
+        return 9;
+    }
+}

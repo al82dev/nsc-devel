@@ -1,0 +1,254 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 22 -- Lista enlazada, pila y cola construidas a mano
+// Fuente de inspiracion: K&R 6.5 "Self-referential structures" (struct con un puntero a si mismo,
+// la base clasica de listas enlazadas en C) y CSharp-DataStructures-Algorithms-Fundamentals
+// carpetas 10-12 (LinkedList/Stack/Queue implementadas desde cero, no con las del framework).
+// AllFiles.zip (genDLList.h/genListStack.h/genQueue.h) aporta la misma idea en C++ con templates.
+//
+// tutorial_15/16 ya mostraron List<T>/Stack<T>/Queue<T>/LinkedList<T> de
+// NativeSharp.Core.Collections.Generic -- ese es el camino recomendado en codigo real. ESTE
+// tutorial es el "como estan hechas por dentro": en K&R eso se logra con "struct Node { int val;
+// struct Node *next; };" (un puntero a si mismo). NativeSharp no tiene punteros crudos, pero una
+// class SI puede tener un campo de su propio tipo, porque class es tipo REFERENCIA (tutorial_07)
+// -- un campo "Node Next;" es, en espiritu, el mismo patron self-referential de K&R, solo que
+// con una referencia administrada en vez de un puntero manual.
+// ============================================================================================
+namespace Tutorial.ListaPilaColaManual
+{
+    // El nodo self-referential: cada Node conoce su valor y una referencia al siguiente Node (o
+    // null si es el ultimo). Equivalente directo del "struct Node { int val; struct Node *next; }"
+    // de K&R 6.5.
+    public class Node
+    {
+        public int Value;
+        public Node Next;
+
+        public Node(int value)
+        {
+            Value = value;
+            Next = null;
+        }
+    }
+
+    // Lista enlazada simple armada a mano sobre Node -- solo insercion al frente y recorridos de
+    // lectura, para mantener el ejemplo enfocado en la ESTRUCTURA, no en cubrir cada operacion.
+    public class ManualLinkedList
+    {
+        private Node head;
+        private int count;
+
+        public ManualLinkedList()
+        {
+            head = null;
+            count = 0;
+        }
+
+        // Insertar al frente es O(1): el nuevo nodo apunta a lo que antes era la cabeza, y pasa a
+        // ser la cabeza el mismo.
+        public void PushFront(int value)
+        {
+            Node node = new Node(value);
+            node.Next = head;
+            head = node;
+            count = count + 1;
+        }
+
+        public int Count()
+        {
+            return count;
+        }
+
+        // Recorrido clasico "cursor = head; while (cursor != null) { ...; cursor = cursor.Next; }"
+        // -- el mismo patron que en K&R se escribe con un puntero cursor en vez de una referencia.
+        public int Sum()
+        {
+            int total = 0;
+            Node cursor = head;
+            while (cursor != null)
+            {
+                total = total + cursor.Value;
+                cursor = cursor.Next;
+            }
+            return total;
+        }
+
+        public bool Contains(int target)
+        {
+            Node cursor = head;
+            while (cursor != null)
+            {
+                if (cursor.Value == target)
+                {
+                    return true;
+                }
+                cursor = cursor.Next;
+            }
+            return false;
+        }
+    }
+
+    // Pila (LIFO) construida sobre la misma idea de nodos encadenados -- Push/Pop en la cabeza,
+    // ambos O(1). Equivalente de DSA-Fundamentals 11-Stack, pero sin usar Stack<T> del framework.
+    public class ManualStack
+    {
+        private Node top;
+        private int count;
+
+        public ManualStack()
+        {
+            top = null;
+            count = 0;
+        }
+
+        public void Push(int value)
+        {
+            Node node = new Node(value);
+            node.Next = top;
+            top = node;
+            count = count + 1;
+        }
+
+        public int Pop()
+        {
+            int value = top.Value;
+            top = top.Next;
+            count = count - 1;
+            return value;
+        }
+
+        public bool IsEmpty()
+        {
+            return count == 0;
+        }
+
+        public int Count()
+        {
+            return count;
+        }
+    }
+
+    // Cola (FIFO) construida a mano -- a diferencia de la pila, necesita DOS referencias (head
+    // para sacar, tail para meter) porque insertar y sacar ocurren en extremos distintos.
+    // Equivalente de DSA-Fundamentals 12-Queue / AllFiles.zip genQueue.h, sin usar Queue<T>.
+    public class ManualQueue
+    {
+        private Node head;
+        private Node tail;
+        private int count;
+
+        public ManualQueue()
+        {
+            head = null;
+            tail = null;
+            count = 0;
+        }
+
+        public void Enqueue(int value)
+        {
+            Node node = new Node(value);
+            if (head == null)
+            {
+                head = node;
+                tail = node;
+            }
+            else
+            {
+                tail.Next = node;
+                tail = node;
+            }
+            count = count + 1;
+        }
+
+        public int Dequeue()
+        {
+            int value = head.Value;
+            head = head.Next;
+            if (head == null)
+            {
+                tail = null;
+            }
+            count = count - 1;
+            return value;
+        }
+
+        public bool IsEmpty()
+        {
+            return count == 0;
+        }
+
+        public int Count()
+        {
+            return count;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // --- Lista enlazada manual ---
+            ManualLinkedList list = new ManualLinkedList();
+            list.PushFront(30);
+            list.PushFront(20);
+            list.PushFront(10);
+            // Orden resultante (por insercion al frente): 10 -> 20 -> 30
+            int listCount = list.Count();      // 3
+            int listSum = list.Sum();          // 60
+            bool listHas20 = list.Contains(20); // true
+            bool listHas99 = list.Contains(99); // false
+
+            // --- Pila manual (LIFO): el ultimo en entrar es el primero en salir) ---
+            ManualStack stack = new ManualStack();
+            stack.Push(1);
+            stack.Push(2);
+            stack.Push(3);
+            int stackFirstPop = stack.Pop();  // 3 (el ultimo push)
+            int stackSecondPop = stack.Pop(); // 2
+            int stackRemaining = stack.Count(); // 1 (queda el "1")
+
+            // --- Cola manual (FIFO): el primero en entrar es el primero en salir ---
+            ManualQueue queue = new ManualQueue();
+            queue.Enqueue(100);
+            queue.Enqueue(200);
+            queue.Enqueue(300);
+            int queueFirstOut = queue.Dequeue();  // 100 (el primero en entrar)
+            int queueSecondOut = queue.Dequeue(); // 200
+            int queueRemaining = queue.Count();   // 1 (queda el "300")
+            bool queueEmptyBeforeLast = queue.IsEmpty(); // false
+            int queueLastOut = queue.Dequeue();          // 300
+            bool queueEmptyAfterLast = queue.IsEmpty();  // true
+
+            raii string label = String.Copy("listSum/stackFirstPop/queueFirstOut/queueSecondOut = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(listSum);
+            raii string d2 = String.ToString(stackFirstPop);
+            raii string d3 = String.ToString(queueFirstOut);
+            raii string d4 = String.ToString(queueSecondOut);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string s5 = String.Concat(s4, d3);
+            raii string s6 = String.Concat(s5, sep);
+            raii string line = String.Concat(s6, d4);
+            Console.WriteLine(line);
+
+            // listCount==3, listSum==60, listHas20==true, listHas99==false, stackFirstPop==3,
+            // stackSecondPop==2, stackRemaining==1, queueFirstOut==100, queueSecondOut==200,
+            // queueRemaining==1, queueEmptyBeforeLast==false, queueLastOut==300,
+            // queueEmptyAfterLast==true
+            int result = listCount + listSum + stackFirstPop + stackSecondPop + stackRemaining +
+                queueRemaining;
+            if (listHas20) { result = result + 1; }
+            if (!listHas99) { result = result + 1; }
+            if (!queueEmptyBeforeLast) { result = result + 1; }
+            if (queueEmptyAfterLast) { result = result + 1; }
+            if (queueFirstOut == 100) { result = result + 1; }
+            if (queueSecondOut == 200) { result = result + 1; }
+            if (queueLastOut == 300) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

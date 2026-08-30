@@ -1,0 +1,444 @@
+#include "nativesharp/Basic/ExitCode.h"
+#include "nativesharp/Basic/Version.h"
+#include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
+
+#include "../support/TestContext.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace
+{
+using nativesharp::ExitCode;
+using nativesharp::driver::Driver;
+using nativesharp::interop::LibraryMetadata;
+using nativesharp::interop::LibraryMetadataCodec;
+using nativesharp::interop::LibraryMetadataType;
+using nativesharp::interop::LibraryMetadataTypeKind;
+using nativesharp::tests::TestContext;
+
+void writeFile(const std::filesystem::path& path, std::string_view text)
+{
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    stream << text;
+}
+
+std::vector<std::uint8_t> readBytes(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary);
+    return std::vector<std::uint8_t>(
+        std::istreambuf_iterator<char>(stream),
+        std::istreambuf_iterator<char>());
+}
+
+void writeBytes(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes)
+{
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+void writeProject(
+    const std::filesystem::path& directory,
+    std::string_view name,
+    std::string_view outputType,
+    std::string_view source)
+{
+    writeFile(
+        directory / (std::string(name) + ".nsproj"),
+        "<Project><PropertyGroup><Name>" + std::string(name) +
+            "</Name><OutputType>" + std::string(outputType) +
+            "</OutputType></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
+            "</ItemGroup></Project>");
+    writeFile(directory / "Api.ns", source);
+}
+
+ExitCode runDriver(
+    std::span<const std::string_view> args,
+    std::string& output,
+    std::string& error)
+{
+    Driver driver;
+    std::ostringstream out;
+    std::ostringstream err;
+    const ExitCode code = driver.run(args, out, err);
+    output = out.str();
+    error = err.str();
+    return code;
+}
+
+ExitCode emitMetadata(
+    const std::filesystem::path& project,
+    const std::filesystem::path& destination,
+    std::string& output,
+    std::string& error)
+{
+    const std::string projectText = project.string();
+    const std::string destinationText = destination.string();
+    const std::array<std::string_view, 4> args = {
+        "--emit-project-library-metadata", projectText, "-o", destinationText};
+    return runDriver(args, output, error);
+}
+
+ExitCode verifyMetadata(
+    const std::filesystem::path& source,
+    std::string& output,
+    std::string& error)
+{
+    const std::string sourceText = source.string();
+    const std::array<std::string_view, 2> args = {"--verify-library-metadata", sourceText};
+    return runDriver(args, output, error);
+}
+
+ExitCode emitProduct(
+    std::string_view action,
+    const std::filesystem::path& project,
+    const std::filesystem::path& destination,
+    std::string& output,
+    std::string& error)
+{
+    const std::string projectText = project.string();
+    const std::string destinationText = destination.string();
+    const std::array<std::string_view, 5> args = {"-O2", action, projectText, "-o", destinationText};
+    return runDriver(args, output, error);
+}
+
+const LibraryMetadataType* findType(const LibraryMetadata& metadata, std::string_view suffix)
+{
+    const auto found = std::find_if(metadata.types.begin(), metadata.types.end(), [suffix](const auto& type) {
+        return type.identityKey.size() >= suffix.size() && type.identityKey.ends_with(suffix);
+    });
+    return found == metadata.types.end() ? nullptr : &*found;
+}
+
+const char* richSource()
+{
+    return R"NS(
+namespace Meta
+{
+    public interface IValue
+    {
+        int Get();
+    }
+
+    public class Base
+    {
+        public int Seed;
+        public virtual int Get() { return Seed; }
+    }
+
+    public class Derived : Base, IValue
+    {
+        public int Extra;
+        public override int Get() { return Seed + Extra; }
+    }
+
+    public struct Pair
+    {
+        public int X;
+        public short Y;
+    }
+
+    public enum Mode
+    {
+        First = 1,
+        Second = 2
+    }
+
+    extern C delegate int Transform(int value);
+
+    public class Api
+    {
+        public const int Answer = 42;
+        public static export extern C int Add(int left, int right) { return left + right; }
+        public static export extern C Pair Echo(Pair value) { return value; }
+        public static export extern C int Invoke(Transform callback, int value) { return callback(value); }
+        public static int Internal(int value) { return value + Answer; }
+    }
+}
+)NS";
+}
+
+void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "RoundTrip";
+    writeProject(directory, "MetaLib", "SharedLibrary", richSource());
+    const auto metadataPath = directory / "generated" / "MetaLib.nsmeta";
+    std::string output;
+    std::string error;
+    tests.expect(emitMetadata(directory / "MetaLib.nsproj", metadataPath, output, error) == ExitCode::Success,
+        "Stage 48.2 emits .nsmeta explicitly without linking the binary product");
+    tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
+        "explicit metadata generation creates parent directories and keeps stderr empty");
+    tests.expect(output.find("format: NSMETA 1.1") != std::string::npos &&
+            output.find("abi-fingerprint:") != std::string::npos,
+        "explicit metadata emission reports format and ABI fingerprint");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    tests.expect(codec.read(metadataPath, metadata, error), "generated metadata round-trips through the Stage 48.2 reader");
+    tests.expect(error.empty() && codec.verifyCurrentCompiler(metadata, error),
+        "round-tripped metadata is compatible with the current compiler/target");
+    tests.expect(metadata.producerVersion == nativesharp::kCompilerVersion && metadata.moduleName == "MetaLib",
+        "metadata persists exact producer and module identity");
+    tests.expect(metadata.targetTriple == "x86_64-pc-windows-msvc" && metadata.pointerSize == 8 && metadata.pointerAlignment == 8,
+        "metadata freezes the NativeSharp 0.1 Windows x64 target contract");
+    tests.expect(metadata.types.size() == 7, "all root-module named types are persisted as compiler metadata");
+    tests.expect(metadata.exports.size() == 3, "three explicit Stage47 C ABI exports are persisted");
+    tests.expect(LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint).size() == 64,
+        "ABI fingerprint is a full 256-bit SHA-256 value");
+
+    const LibraryMetadataType* pair = findType(metadata, "::Meta.Pair");
+    tests.expect(pair != nullptr && pair->kind == LibraryMetadataTypeKind::Struct,
+        "struct type identity survives metadata serialization");
+    tests.expect(pair != nullptr && pair->size == 8 && pair->alignment == 4 && pair->fields.size() == 2,
+        "struct physical layout survives metadata serialization");
+    tests.expect(pair != nullptr && pair->fields[0].name == "X" && pair->fields[0].offset == 0 &&
+            pair->fields[1].name == "Y" && pair->fields[1].offset == 4,
+        "field names and exact offsets are preserved for compile-time layout semantics");
+
+    const LibraryMetadataType* derived = findType(metadata, "::Meta.Derived");
+    tests.expect(derived != nullptr && derived->kind == LibraryMetadataTypeKind::Class &&
+            derived->baseTypeKey.find("Meta.Base") != std::string::npos,
+        "class base identity is persisted");
+    tests.expect(derived != nullptr && !derived->interfaceTypeKeys.empty() &&
+            derived->interfaceTypeKeys.front().find("Meta.IValue") != std::string::npos,
+        "class interface contracts are persisted");
+    tests.expect(derived != nullptr && derived->size != 0 && derived->referenceSize == 8,
+        "class object layout and reference ABI are both persisted without exposing them as C structs");
+
+    tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
+        return member.name == "Answer" && member.constantKind == 1 && member.constantBits == 42;
+    }), "compile-time integral const values survive precompiled metadata");
+    tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
+        return member.name == "Add" && !member.mangledName.empty() && member.cAbiName == "Add";
+    }), "metadata records both NativeSharp binary symbol identity and stable C ABI name");
+    tests.expect(std::ranges::any_of(metadata.dispatchTables, [](const auto& dispatch) {
+        return dispatch.typeKey.find("Meta.Derived") != std::string::npos && !dispatch.slotSignatures.empty();
+    }), "virtual dispatch slot metadata is persisted for NativeSharp compiler consumption");
+}
+
+void testDeterminismAndAbiSensitivity(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "Determinism";
+    writeProject(directory, "Stable", "StaticLibrary", richSource());
+    std::string output;
+    std::string error;
+    const auto first = directory / "first.nsmeta";
+    const auto second = directory / "second.nsmeta";
+    tests.expect(emitMetadata(directory / "Stable.nsproj", first, output, error) == ExitCode::Success,
+        "first deterministic metadata emission succeeds");
+    output.clear(); error.clear();
+    tests.expect(emitMetadata(directory / "Stable.nsproj", second, output, error) == ExitCode::Success,
+        "second deterministic metadata emission succeeds");
+    tests.expect(readBytes(first) == readBytes(second), "same semantic input produces byte-for-byte identical .nsmeta");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata a;
+    LibraryMetadata b;
+    tests.expect(codec.read(first, a, error) && codec.read(second, b, error) && a.abiFingerprint == b.abiFingerprint,
+        "same semantic input produces the same ABI fingerprint");
+
+    const auto changed = root / "AbiChanged";
+    writeProject(changed, "Stable", "StaticLibrary", R"NS(
+public class Api
+{
+    public static export extern C long Add(long left, long right) { return left + right; }
+}
+)NS");
+    const auto changedMetadata = changed / "changed.nsmeta";
+    output.clear(); error.clear();
+    tests.expect(emitMetadata(changed / "Stable.nsproj", changedMetadata, output, error) == ExitCode::Success,
+        "ABI-changed comparison metadata emits successfully");
+    LibraryMetadata c;
+    tests.expect(codec.read(changedMetadata, c, error) && c.abiFingerprint != a.abiFingerprint,
+        "changing an exported ABI signature changes the metadata ABI fingerprint");
+}
+
+void testAutomaticProducts(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto shared = root / "Shared";
+    writeProject(shared, "SharedMeta", "SharedLibrary", richSource());
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-dll", shared / "SharedMeta.nsproj", shared / "SharedMeta.dll", output, error) == ExitCode::Success,
+        "SharedLibrary product now composes DLL, import LIB, generated header and metadata");
+    tests.expect(std::filesystem::is_regular_file(shared / "SharedMeta.dll") &&
+            std::filesystem::is_regular_file(shared / "SharedMeta.lib") &&
+            std::filesystem::is_regular_file(shared / "SharedMeta.h") &&
+            std::filesystem::is_regular_file(shared / "SharedMeta.nsmeta"),
+        "all four SharedLibrary artifacts exist after one product command");
+    tests.expect(output.find("library-metadata:") != std::string::npos,
+        "DLL product reports its metadata sidecar");
+
+    const auto statik = root / "Static";
+    writeProject(statik, "StaticMeta", "StaticLibrary", R"NS(
+public struct Vec2 { public float X; public float Y; }
+public class Math { public static int Internal(int value) { return value; } }
+)NS");
+    output.clear(); error.clear();
+    tests.expect(emitProduct("--emit-project-oop-lib", statik / "StaticMeta.nsproj", statik / "StaticMeta.lib", output, error) == ExitCode::Success,
+        "NativeSharp-only static libraries receive metadata even with no C exports");
+    tests.expect(std::filesystem::is_regular_file(statik / "StaticMeta.lib") &&
+            std::filesystem::is_regular_file(statik / "StaticMeta.h") &&
+            std::filesystem::is_regular_file(statik / "StaticMeta.nsmeta"),
+        "static library product composes archive, empty/usable host header and NativeSharp metadata");
+}
+
+void testGenericCompilerMetadata(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "Generics";
+    writeProject(directory, "GenericMeta", "StaticLibrary", R"NS(
+namespace GenericMeta
+{
+    public struct Box<T> { public T Value; }
+    public class Algorithms
+    {
+        public static T Identity<T>(T value) { return value; }
+        public static int Run()
+        {
+            Box<int> box;
+            box.Value = Identity<int>(42);
+            return box.Value;
+        }
+    }
+}
+)NS");
+    std::string output;
+    std::string error;
+    const auto metadataPath = directory / "GenericMeta.nsmeta";
+    tests.expect(emitMetadata(directory / "GenericMeta.nsproj", metadataPath, output, error) == ExitCode::Success,
+        "metadata can be emitted after generic AOT monomorphization");
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    tests.expect(codec.read(metadataPath, metadata, error), "generic metadata reads successfully");
+    tests.expect(metadata.genericTemplates.size() == 2,
+        "generic class/struct and generic method template identities are persisted");
+    tests.expect(metadata.genericSpecializations.size() == 2,
+        "concrete Box<int> and Identity<int> specialization identities are persisted");
+    tests.expect(std::ranges::any_of(metadata.genericSpecializations, [](const auto& item) {
+        return item.specializationKey.find("Box`1<int>") != std::string::npos;
+    }), "generic type specialization key survives metadata");
+    tests.expect(std::ranges::any_of(metadata.genericSpecializations, [](const auto& item) {
+        return item.specializationKey.find("Identity``1<int>") != std::string::npos;
+    }), "generic method specialization key survives metadata");
+}
+
+void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "Integrity";
+    writeProject(directory, "Integrity", "StaticLibrary", richSource());
+    const auto validPath = directory / "valid.nsmeta";
+    std::string output;
+    std::string error;
+    tests.expect(emitMetadata(directory / "Integrity.nsproj", validPath, output, error) == ExitCode::Success,
+        "integrity fixture metadata emits successfully");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    tests.expect(codec.read(validPath, metadata, error), "valid integrity fixture passes payload and ABI checks");
+
+    std::vector<std::uint8_t> corrupted = readBytes(validPath);
+    corrupted.back() ^= 0x5aU;
+    const auto corruptedPath = directory / "corrupted.nsmeta";
+    writeBytes(corruptedPath, corrupted);
+    LibraryMetadata ignored;
+    error.clear();
+    tests.expect(!codec.read(corruptedPath, ignored, error) && error.find("checksum mismatch") != std::string::npos,
+        "single-byte payload corruption is detected before metadata is accepted");
+
+    std::vector<std::uint8_t> versionMismatch = readBytes(validPath);
+    versionMismatch[8] = 2;
+    versionMismatch[9] = 0;
+    const auto versionPath = directory / "version.nsmeta";
+    writeBytes(versionPath, versionMismatch);
+    error.clear();
+    tests.expect(!codec.read(versionPath, ignored, error) && error.find("unsupported") != std::string::npos,
+        "unsupported metadata major version is rejected explicitly");
+
+    std::vector<std::uint8_t> badMagic = readBytes(validPath);
+    badMagic[0] = 'X';
+    const auto magicPath = directory / "magic.nsmeta";
+    writeBytes(magicPath, badMagic);
+    error.clear();
+    tests.expect(!codec.read(magicPath, ignored, error) && error.find("magic") != std::string::npos,
+        "wrong NSMETA magic is rejected explicitly");
+
+    const auto truncatedPath = directory / "truncated.nsmeta";
+    writeBytes(truncatedPath, std::vector<std::uint8_t>(20, 0));
+    error.clear();
+    tests.expect(!codec.read(truncatedPath, ignored, error) && error.find("truncated") != std::string::npos,
+        "truncated fixed header is rejected safely");
+
+    LibraryMetadata incompatible = metadata;
+    incompatible.producerVersion = "0.2.0-dev-old";
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("producer version") != std::string::npos,
+        "compiler-version compatibility gate rejects metadata produced by a different compiler identity");
+    incompatible = metadata;
+    incompatible.pointerSize = 4;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("target ABI") != std::string::npos,
+        "target ABI compatibility gate rejects non-Windows-x64 pointer contracts");
+
+    output.clear(); error.clear();
+    tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
+            output.find("NativeSharp library metadata: valid") != std::string::npos,
+        "driver exposes a successful standalone metadata verification command");
+    output.clear(); error.clear();
+    tests.expect(verifyMetadata(corruptedPath, output, error) == ExitCode::CompilationError &&
+            error.find("checksum mismatch") != std::string::npos,
+        "driver verification command rejects corrupted metadata with a useful diagnostic");
+}
+
+void testScopeAndFailureBehavior(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto executable = root / "Executable";
+    writeProject(executable, "App", "Exe", "public class Program { public static int Main() { return 0; } }");
+    std::string output;
+    std::string error;
+    const auto metadataPath = executable / "App.nsmeta";
+    tests.expect(emitMetadata(executable / "App.nsproj", metadataPath, output, error) == ExitCode::CompilationError,
+        "explicit .nsmeta emission rejects executable projects");
+    tests.expect(!std::filesystem::exists(metadataPath),
+        "failed explicit metadata emission leaves no partial destination");
+
+    const auto invalid = root / "Invalid";
+    writeProject(invalid, "Bad", "StaticLibrary", "public class Bad { public int F() { return Missing; } }");
+    output.clear(); error.clear();
+    const auto invalidMetadata = invalid / "Bad.nsmeta";
+    tests.expect(emitMetadata(invalid / "Bad.nsproj", invalidMetadata, output, error) == ExitCode::CompilationError,
+        "metadata emission preserves normal semantic compilation failures");
+    tests.expect(!std::filesystem::exists(invalidMetadata),
+        "semantic failure cannot leave a stale or partial .nsmeta artifact");
+}
+}
+
+int main()
+{
+    TestContext tests;
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / "nativesharp_stage48_2_library_metadata_tests";
+    std::error_code cleanupError;
+    std::filesystem::remove_all(root, cleanupError);
+    std::filesystem::create_directories(root);
+
+    testExplicitRoundTrip(tests, root);
+    testDeterminismAndAbiSensitivity(tests, root);
+    testAutomaticProducts(tests, root);
+    testGenericCompilerMetadata(tests, root);
+    testIntegrityAndCompatibility(tests, root);
+    testScopeAndFailureBehavior(tests, root);
+
+    std::filesystem::remove_all(root, cleanupError);
+    return tests.result();
+}

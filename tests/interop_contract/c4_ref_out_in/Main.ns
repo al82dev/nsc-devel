@@ -1,0 +1,48 @@
+// Interop contract case (phase C4) -- REF / OUT / IN.
+//
+// By-reference parameters are rules on top of the pointer machinery phase C1 certified, not a
+// second calling convention: each one physically receives an address, and the difference between
+// the three is entirely what the frontend allows.
+//
+//   ref -- the argument already holds a value; the callee may read and write it.
+//   out -- the callee MUST assign it; the caller need not initialize it first.
+//   in  -- passed by reference for cost, read-only at the callee.
+//
+// The keyword is required at the call site as well, so a reader of the call can see that the
+// argument may change without going to read the signature.
+namespace contract {
+    public struct Rect {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    class Case {
+        public static void Bump(ref int value) { value = value + 1; }
+
+        // The GetMessage/GetClientRect shape: the callee fills a record the caller owns.
+        public static void GetRect(out Rect rect) {
+            rect.left = 0;
+            rect.top = 0;
+            rect.right = 20;
+            rect.bottom = 21;
+        }
+
+        public static int Area(in Rect rect) {
+            return (rect.right - rect.left) + (rect.bottom - rect.top);
+        }
+
+        public static int Main() {
+            int counter = 0;
+            Bump(ref counter);
+            if (counter != 1) { return 1; }
+
+            Rect rect;
+            GetRect(out rect);
+            if (rect.right != 20) { return 2; }
+
+            return Area(in rect) + counter;
+        }
+    }
+}

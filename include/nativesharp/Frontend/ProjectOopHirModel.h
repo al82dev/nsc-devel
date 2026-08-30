@@ -1,0 +1,458 @@
+#pragma once
+
+#include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Frontend/ProjectConstructionModel.h"
+#include "nativesharp/Frontend/ProjectInheritanceModel.h"
+#include "nativesharp/Frontend/ProjectInterfaceModel.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace nativesharp::frontend
+{
+enum class ProjectOopHirNodeKind
+{
+    Block,
+    LocalDeclaration,
+    ExpressionStatement,
+    If,
+    While,
+    For,
+    Break,
+    Continue,
+    Return,
+    TryRegion,
+    CatchRegion,
+    FinallyRegion,
+    UsingRegion,
+    Throw,
+    Rethrow,
+    CleanupContinuation,
+    OwnedParameterCleanup,
+    MoveValue,
+    MoveArrayElement,
+    // Bloque 1: move(holder.slot) / move(slot) -- extract the owner out of an `owned` field,
+    // nulling the vacated slot. Address-shaped exactly like MoveArrayElement; kept as its own
+    // kind so IR dumps say what the source actually was.
+    MoveOwnedField,
+    // Interop Foundation: `*pointer` as a VALUE -- load of the pointee type through a raw
+    // pointer. (`&lvalue` and `*p` as an assignment target need no node of their own: they are
+    // the operand's address / the pointer's value, respectively.)
+    PointerLoad,
+    // C2.1 "fixed arrays": the ADDRESS of one element of inline, unmanaged storage --
+    // `fixedArrayField[i]` or `rawPointer[i]`. children = [base address, index]; elementTypeKey
+    // is the element type, and the MIR pass attaches its size. A read wraps this in PointerLoad;
+    // a write stores straight through it.
+    RawElementAddress,
+    // `&lvalue` as a value: wraps the operand's ADDRESS node, carrying the pointer type
+    // (T*) as this expression's type without mutating the operand.
+    AddressValue,
+    BorrowValue,
+    ThisValue,
+    ParameterValue,
+    LocalValue,
+    FieldValue,
+    StaticFieldValue,
+    ParameterAddress,
+    LocalAddress,
+    FieldAddress,
+    StaticFieldAddress,
+    IntegerConstant,
+    FloatingConstant,
+    BooleanConstant,
+    NullConstant,
+    DefaultValue,
+    StringLiteral,
+    ArrayAllocation,
+    ArrayLength,
+    ArrayElementValue,
+    ArrayElementAddress,
+    StringLength,
+    StringElementValue,
+    StringConcat,
+    StringEquals,
+    StringSubstring,
+    StringFromCharArray,
+    CoreConsoleWriteLine,
+    // Stage 53.1 "Time" -- see MethodCoreOperationKind::ClockQuery* in ProjectMethodBodyModel.h.
+    CoreClockQueryCounter,
+    CoreClockQueryFrequency,
+    CoreClockQuerySystemFileTime,
+    // Stage 53.2 "Environment" -- see MethodCoreOperationKind::Environment* in
+    // ProjectMethodBodyModel.h.
+    CoreEnvironmentTickCount64,
+    CoreEnvironmentProcessorCount,
+    CoreEnvironmentExit,
+    // Stage 53.2b "Environment (variables)" -- see MethodCoreOperationKind::EnvironmentGet/
+    // SetVariable in ProjectMethodBodyModel.h. Lowered through the same operand-loop machinery
+    // as StringConcat/StringEquals, not a bespoke shape.
+    CoreEnvironmentGetVariable,
+    CoreEnvironmentSetVariable,
+    // Stage 53.3 "Filesystem/Paths" -- see MethodCoreOperationKind::FileExists/FileDelete/
+    // DirectoryExists/DirectoryCreate in ProjectMethodBodyModel.h. Same shared operand-loop
+    // machinery as the Environment (variables) pair above: one string operand in, a runtime
+    // hook call out.
+    CoreFileExists,
+    CoreFileDelete,
+    CoreDirectoryExists,
+    CoreDirectoryCreate,
+    // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- see
+    // MethodCoreOperationKind::FileReadAllText/FileWriteAllText/FileAppendAllText above.
+    CoreFileReadAllText,
+    CoreFileWriteAllText,
+    CoreFileAppendAllText,
+    // Stage 53.4 "Filesystem/Paths (cierre)" -- see MethodCoreOperationKind::DirectoryDelete/
+    // PathGetFullPath in ProjectMethodBodyModel.h. Same shared operand-loop machinery again.
+    CoreDirectoryDelete,
+    CorePathGetFullPath,
+    // Stage 53.5 "Command-line arguments" -- see
+    // MethodCoreOperationKind::EnvironmentGetCommandLineArgCount/EnvironmentGetCommandLineArgs
+    // in ProjectMethodBodyModel.h. GetCommandLineArgCount joins the zero-argument bucket
+    // (CoreEnvironmentTickCount64/ProcessorCount); GetCommandLineArgs joins the shared
+    // operand-loop machinery, its one operand being a builtin:string[] instead of a string.
+    CoreEnvironmentGetCommandLineArgCount,
+    CoreEnvironmentGetCommandLineArgs,
+    // Stage 53.6 "Enumeracion de directorios" -- see MethodCoreOperationKind::
+    // DirectoryGetFileCount/GetFiles/GetDirectoryCount/GetDirectories in
+    // ProjectMethodBodyModel.h. GetFileCount/GetDirectoryCount are one-operand (a
+    // builtin:string path, builtin:int result); GetFiles/GetDirectories are two-operand (path +
+    // a builtin:string[] buffer -- the same caller-provided-buffer pattern
+    // CoreEnvironmentGetCommandLineArgs already established). All four join the exact same
+    // shared operand-loop machinery as every other core operation.
+    CoreDirectoryGetFileCount,
+    CoreDirectoryGetFiles,
+    CoreDirectoryGetDirectoryCount,
+    CoreDirectoryGetDirectories,
+    // Stage 54.1 "Threads" -- see MethodCoreOperationKind::ThreadCreate/ThreadJoin/ThreadDetach
+    // in ProjectMethodBodyModel.h. All three are one-operand: ThreadCreate's single operand is a
+    // ThreadStart delegate value (a genuinely new operand TYPE for this shared machinery, but not
+    // a new SHAPE -- still exactly one operand, lowered the same way via lowerExpression);
+    // ThreadJoin/ThreadDetach's single operand is a builtin:nint (the saved HANDLE). All three
+    // join the exact same shared operand-loop machinery as every other core operation.
+    CoreThreadCreate,
+    CoreThreadJoin,
+    CoreThreadDetach,
+    // Stage 54.2 "Atomics" -- see MethodCoreOperationKind::InterlockedIncrementInt32/.../
+    // InterlockedCompareExchangeInt64 in ProjectMethodBodyModel.h. NOT part of the shared
+    // operand-loop bucket above (unlike CoreThreadCreate/Join/Detach) -- these ten have a real
+    // receiver (the AtomicInt32/AtomicInt64 instance) and their first logical operand (the
+    // atomic location) is never written by the caller, only synthesized by the compiler as a
+    // FieldAddress node over the receiver's own `value_` field. See the dedicated block in
+    // ProjectOopHirModel.cpp (right before the ConsoleWriteLine block) for the full mechanism.
+    CoreInterlockedIncrementInt32,
+    CoreInterlockedDecrementInt32,
+    CoreInterlockedAddInt32,
+    CoreInterlockedExchangeInt32,
+    CoreInterlockedCompareExchangeInt32,
+    CoreInterlockedIncrementInt64,
+    CoreInterlockedDecrementInt64,
+    CoreInterlockedAddInt64,
+    CoreInterlockedExchangeInt64,
+    CoreInterlockedCompareExchangeInt64,
+    // Stage 54.3 "Mutex" -- see MethodCoreOperationKind::MutexCreate/MutexLock/MutexUnlock/
+    // MutexClose in ProjectMethodBodyModel.h. Exact same shape as CoreThreadCreate/Join/Detach
+    // above (a builtin:nint HANDLE round-tripped between separate NativeSharp calls), so these
+    // four rejoin the shared operand-loop bucket directly -- MutexCreate is zero-operand (the
+    // first core operation in the project with none at all), MutexLock/Unlock/Close are
+    // one-operand (the saved HANDLE), same as ThreadJoin/ThreadDetach.
+    CoreMutexCreate,
+    CoreMutexLock,
+    CoreMutexUnlock,
+    CoreMutexClose,
+    // Stage 54.4 "Condition Variables" -- NativeSharp.Core.Threading.Monitor. Enter/Exit/Pulse/
+    // PulseAll rejoin the SAME "one FieldAddress child, one runtime hook" shape
+    // CoreInterlockedIncrementInt32 already established (Stage 54.2) -- see the dedicated Monitor
+    // HIR block in ProjectOopHirModel.cpp for how each resolves its own single implicit field.
+    // CoreMonitorWait is the ONE genuinely new shape: its sole child is the receiver expression
+    // lowered ONCE (never a FieldAddress node), with memberOrdinal/secondaryMemberOrdinal on the
+    // node itself carrying the cv_/lock_ field ordinals for MIR/LLVM to resolve into two real
+    // pointers from that single lowered receiver -- see ProjectOopHirNode::secondaryMemberOrdinal
+    // below for the full rationale.
+    CoreMonitorEnter,
+    CoreMonitorExit,
+    CoreMonitorWait,
+    CoreMonitorPulse,
+    CoreMonitorPulseAll,
+    // Stage 54.5 "Otras primitivas de sincronizacion" -- NativeSharp.Core.Threading.Semaphore y
+    // NativeSharp.Core.Threading.Event. Mismo shape "sin receptor, operandos por la lista de
+    // argumentos AST" que Mutex/Thread arriba -- cero mecanismo de FieldAddress.
+    CoreSemaphoreCreate,
+    CoreSemaphoreWait,
+    CoreSemaphoreRelease,
+    CoreSemaphoreClose,
+    CoreEventCreate,
+    CoreEventSet,
+    CoreEventReset,
+    CoreEventWait,
+    CoreEventClose,
+    // Stage 55.1/55.2/55.3 -- Process/SystemInfo/Debug. All zero-argument (result carried purely
+    // by `kind` + `typeKey`, no children) except CoreProcessSetPriorityClass and
+    // CoreDebugOutputString, which each take exactly one child (the argument expression) --
+    // same shape CoreEnvironmentExit/CoreFileDelete already established.
+    CoreProcessGetCurrentProcessId,
+    CoreProcessGetWorkingSetSize,
+    CoreProcessGetKernelTime,
+    CoreProcessGetUserTime,
+    CoreProcessGetPriorityClass,
+    CoreProcessSetPriorityClass,
+    CoreSystemInfoGetPageSize,
+    CoreSystemInfoGetProcessorArchitecture,
+    CoreSystemInfoGetAllocationGranularity,
+    CoreSystemInfoGetTotalPhysicalMemoryBytes,
+    CoreSystemInfoGetAvailablePhysicalMemoryBytes,
+    CoreSystemInfoGetMemoryLoadPercent,
+    CoreDebugIsDebuggerPresent,
+    CoreDebugCaptureStackFrameCount,
+    CoreDebugOutputString,
+    // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29).
+    CoreThreadSleep,
+    CoreFileCopy,
+    CoreFileMove,
+    CoreDirectoryMove,
+    DelegateCreate,
+    LambdaCreate,
+    ClosureCaptureValue,
+    DelegateInvoke,
+    EventAdd,
+    EventRemove,
+    EventInvoke,
+    Unary,
+    Binary,
+    Assignment,
+    Conversion,
+    RuntimeTypeTest,
+    SafeReferenceCast,
+    CheckedReferenceCast,
+    InstanceCall,
+    StaticCall,
+    ConstructorInitializerCall,
+    ObjectConstruction,
+    Deallocation
+};
+
+struct ProjectOopHirNode final
+{
+    ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::Block;
+    const ast::AstNode* syntax = nullptr;
+    std::string typeKey;
+    std::string elementTypeKey;
+    std::string stringValue;
+    lexer::TokenKind operation = lexer::TokenKind::Invalid;
+    std::optional<std::size_t> memberOrdinal;
+    // Stage 54.4 "Condition Variables" -- set ONLY on a CoreMonitorWait node, alongside
+    // memberOrdinal above (which, for THIS node kind only, holds the `cv_` field's ordinal rather
+    // than an ordinary field access's own ordinal). Holds the `lock_` field's ordinal. Default-
+    // constructed to nullopt for every other node kind -- adding this field required no update to
+    // any existing construction site in this codebase, since ProjectOopHirNode is always built via
+    // makeNode()+field assignment, never positional aggregate initialization (see the fresh
+    // Stage 54.3 lesson about MethodCoreBinding, which WAS positionally aggregate-initialized and
+    // needed all 16 call sites patched for exactly this reason -- this struct has no such risk).
+    std::optional<std::size_t> secondaryMemberOrdinal;
+    std::optional<std::size_t> localOrdinal;
+    std::optional<std::size_t> parameterOrdinal;
+    std::optional<std::size_t> constructionOrdinal;
+    std::optional<std::size_t> targetTypeOrdinal;
+    std::optional<std::size_t> exceptionTypeOrdinal;
+    std::optional<std::size_t> cleanupRegionOrdinal;
+    std::optional<std::size_t> hirRegionOrdinal;
+    std::optional<std::size_t> exceptionTargetRegionOrdinal;
+    std::optional<std::size_t> targetScopeOrdinal;
+    std::optional<std::size_t> disposeContractMemberOrdinal;
+    std::optional<std::size_t> disposeImplementationMemberOrdinal;
+    std::vector<std::size_t> cleanupRegionOrdinals;
+    std::optional<MethodCleanupContinuationKind> cleanupContinuationKind;
+    std::optional<MethodBorrowKind> borrowKind;
+    std::optional<MethodLocalBorrowSourceKind> localBorrowSourceKind;
+    std::optional<ProjectImplicitConversion> conversion;
+    std::uint64_t integerValue = 0;
+    double floatingValue = 0.0;
+    bool booleanValue = false;
+    bool baseReceiver = false;
+    bool interfaceDispatch = false;
+    bool targetIsInterface = false;
+    bool dynamicDestruction = false;
+    bool valueTypeNoOpDeletion = false;
+    bool catchAll = false;
+    bool interfaceCleanupDispatch = false;
+    std::size_t argumentCount = 0;
+    std::vector<std::string> argumentTypeKeys;
+    std::vector<std::unique_ptr<ProjectOopHirNode>> children;
+};
+
+struct ProjectOopHirFieldInitializer final
+{
+    std::size_t memberOrdinal = 0;
+    std::size_t declaringTypeOrdinal = 0;
+    bool isStatic = false;
+    bool isConst = false;
+    std::unique_ptr<ProjectOopHirNode> value;
+};
+
+struct ProjectOopHirFunction final
+{
+    std::size_t memberOrdinal = 0;
+    std::size_t declaringTypeOrdinal = 0;
+    bool constructor = false;
+    bool destructor = false;
+    bool isStatic = false;
+    bool isExportedC = false;
+    // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body
+    // anywhere in the project -- mangledName is the C symbol verbatim, the backend emits only a
+    // declaration (with the same Win64 ABI mapping every definition gets), and (importDllName,
+    // mangledName) flows to the linker so the import library materializes.
+    bool isImportedC = false;
+    std::string importDllName;
+    // C1.2 "import identity": this import's C symbol name is claimed by more than one library, so
+    // it cannot be resolved statically by name -- mangledName is a unique internal name and the
+    // backend emits a body that binds through LoadLibrary/GetProcAddress at first call.
+    bool importRequiresRuntimeBinding = false;
+    std::string cAbiName;
+    bool isLambda = false;
+    std::optional<std::size_t> lambdaOrdinal;
+    bool hasClosureEnvironment = false;
+    std::vector<std::string> captureTypeKeys;
+    std::string genericSpecializationKey;
+    std::string mangledName;
+    std::string returnTypeKey;
+    sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
+    std::vector<std::string> parameterTypeKeys;
+    std::vector<sema::OwnershipKind> parameterOwnerships;
+    std::vector<std::size_t> localOrdinals;
+    std::unique_ptr<ProjectOopHirNode> body;
+};
+
+class ProjectOopHirModel final
+{
+public:
+    bool build(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectConstructionModel& constructionModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        std::string& error);
+
+    std::span<const ProjectOopHirFunction> functions() const noexcept;
+    std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
+    const ProjectOopHirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
+    bool isBuilt() const noexcept;
+
+    static std::string mangleCallable(
+        const NamedTypeDeclaration& type,
+        const ClassMemberSymbol& member);
+
+private:
+    std::unique_ptr<ProjectOopHirNode> lowerBlock(
+        const ast::AstNode* block,
+        std::size_t memberOrdinal,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerStatement(
+        const ast::AstNode* statement,
+        std::size_t memberOrdinal,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerReceiver(
+        const ast::AstNode* receiverSyntax,
+        std::string_view receiverTypeKey,
+        std::size_t memberOrdinal,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> wrapImplicitConversion(
+        std::unique_ptr<ProjectOopHirNode> value,
+        const ProjectImplicitConversion& conversion,
+        const ast::AstNode* syntax);
+    std::unique_ptr<ProjectOopHirNode> lowerInstanceFieldInitialization(
+        std::size_t fieldMemberOrdinal,
+        std::string& error);
+    void appendInstanceFieldInitializers(
+        std::size_t typeOrdinal,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& output,
+        std::string& error);
+    std::vector<std::size_t> implicitInitializerTypes(
+        std::size_t targetTypeOrdinal,
+        std::optional<std::size_t> entryConstructorMemberOrdinal) const;
+
+    const MethodNameBinding* nameBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodExpressionTypeBinding* expressionType(const ast::AstNode* syntax) const noexcept;
+    const MethodCallBinding* callBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodRuntimeTypeBinding* runtimeTypeBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodDelegateBinding* delegateBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodLambdaBinding* lambdaBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodLambdaValueBinding* lambdaValueBinding(const ast::AstNode* syntax) const noexcept;
+    std::optional<std::size_t> currentLambdaThisCapture() const noexcept;
+    const MethodEventBinding* eventBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodCoreBinding* coreBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodExceptionBinding* exceptionBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodCleanupRegion* cleanupRegion(const ast::AstNode* syntax) const noexcept;
+    const MethodUsingBinding* usingBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodMoveBinding* moveBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodBorrowBinding* borrowBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodStructuredExitBinding* structuredExitBinding(const ast::AstNode* syntax) const noexcept;
+    const ObjectConstructionBinding* constructionBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodLocalSymbol* localSymbol(const ast::AstNode* syntax) const noexcept;
+    ProjectImplicitConversion classifyImplicit(
+        std::string_view sourceTypeKey,
+        std::string_view targetTypeKey,
+        std::optional<ProjectIntegerConstant> integerConstant = std::nullopt) const;
+    bool isStructValueType(std::string_view typeKey) const noexcept;
+    bool isClassReferenceType(std::string_view typeKey) const noexcept;
+    bool isReferenceType(std::string_view typeKey) const noexcept;
+
+    const ProjectNameLookup* nameLookup_ = nullptr;
+    const ProjectMemberModel* memberModel_ = nullptr;
+    const ProjectInheritanceModel* inheritanceModel_ = nullptr;
+    const ProjectInterfaceModel* interfaceModel_ = nullptr;
+    const ProjectMethodBodyModel* methodBodyModel_ = nullptr;
+    const ProjectConstructionModel* constructionModel_ = nullptr;
+    const ProjectObjectLayoutModel* objectLayoutModel_ = nullptr;
+    std::vector<ProjectOopHirFunction> functions_;
+    std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
+    std::vector<std::optional<std::size_t>> functionByMember_;
+    std::unordered_map<const ast::AstNode*, const MethodNameBinding*> nameBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodExpressionTypeBinding*> expressionTypeBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodCallBinding*> callBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodRuntimeTypeBinding*> runtimeTypeBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodDelegateBinding*> delegateBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> lambdaBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> lambdaValueBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodEventBinding*> eventBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodCoreBinding*> coreBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodExceptionBinding*> exceptionBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodCleanupRegion*> cleanupRegionBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodUsingBinding*> usingBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodMoveBinding*> moveBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodBorrowBinding*> borrowBindingBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodStructuredExitBinding*> structuredExitBySyntax_;
+    std::unordered_map<const ast::AstNode*, const ObjectConstructionBinding*> constructionBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> localBySyntax_;
+    struct HirExceptionHandlerContext final
+    {
+        std::size_t hirRegionOrdinal = 0;
+        std::size_t retainedCleanupDepth = 0;
+    };
+
+    const MethodLambdaBinding* currentLambda_ = nullptr;
+    std::vector<std::size_t> activeHirCleanupRegions_;
+    std::vector<HirExceptionHandlerContext> activeHirExceptionHandlers_;
+    std::size_t nextHirRegionOrdinal_ = 0;
+    bool built_ = false;
+};
+
+const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept;
+}

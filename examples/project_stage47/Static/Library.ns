@@ -1,0 +1,65 @@
+namespace Stage47.Sample
+{
+    extern C delegate int HostTransform(int value);
+
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+    }
+
+    public class Counter
+    {
+        public int Value;
+
+        public Counter(int value)
+        {
+            Value = value;
+        }
+    }
+
+    public class HostApi
+    {
+        private static HostTransform Transform;
+
+        public static export extern C int NS_Add(int left, int right)
+        {
+            return left + right;
+        }
+
+        public static export extern C void NS_SetTransform(HostTransform callback)
+        {
+            Transform = callback;
+        }
+
+        public static export extern C int NS_ApplyTransform(int value)
+        {
+            return Transform(value);
+        }
+
+        public static export extern C Pair NS_EchoPair(Pair value)
+        {
+            return value;
+        }
+
+        public static export extern C Counter NS_Counter_Create(int initialValue)
+        {
+            return new Counter(initialValue);
+        }
+
+        public static export extern C int NS_Counter_Get(Counter counter)
+        {
+            return counter.Value;
+        }
+
+        public static export extern C void NS_Counter_Destroy(Counter counter)
+        {
+            delete counter;
+        }
+
+        public static int InternalOnly(int value)
+        {
+            return value + 1;
+        }
+    }
+}

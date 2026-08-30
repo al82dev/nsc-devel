@@ -1,0 +1,35 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Dijkstra
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 17 - Dijkstra Shortest Paths");
+            Console.WriteLine("-----------------------------------------------------");
+            raii WeightedGraph graph = new WeightedGraph(8);
+            int a = graph.AddCity("Aster");
+            int b = graph.AddCity("Beryl");
+            int c = graph.AddCity("Cobalt");
+            int d = graph.AddCity("Dune");
+            int e = graph.AddCity("Elm");
+            int f = graph.AddCity("Fjord");
+            int g = graph.AddCity("Grove");
+            int h = graph.AddCity("Harbor");
+            graph.AddUndirectedEdge(a,b,4);
+            graph.AddUndirectedEdge(a,c,2);
+            graph.AddUndirectedEdge(b,c,1);
+            graph.AddUndirectedEdge(b,d,5);
+            graph.AddUndirectedEdge(c,d,8);
+            graph.AddUndirectedEdge(c,e,10);
+            graph.AddUndirectedEdge(d,e,2);
+            graph.AddUndirectedEdge(d,f,6);
+            graph.AddUndirectedEdge(e,f,3);
+            graph.AddUndirectedEdge(e,g,5);
+            graph.AddUndirectedEdge(f,h,4);
+            graph.AddUndirectedEdge(g,h,2);
+            DijkstraSolver.SolveAndPrint(graph, a, h);
+            return 0;
+        }
+    }
+}

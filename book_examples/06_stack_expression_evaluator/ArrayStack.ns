@@ -1,0 +1,79 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.StackEvaluator
+{
+    public class ArrayStack<T>
+    {
+        private T[] items;
+        private int count;
+        private int capacity;
+
+        public ArrayStack(int initialCapacity)
+        {
+            capacity = initialCapacity;
+            if (capacity < 2)
+            {
+                capacity = 2;
+            }
+            items = new T[capacity];
+            count = 0;
+        }
+
+        public int Count { get { return count; } }
+        public bool IsEmpty { get { return count == 0; } }
+
+        private void Grow()
+        {
+            int newCapacity = capacity * 2;
+            const T[] grown = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                grown[i] = items[i];
+                i = i + 1;
+            }
+            delete[] items;
+            items = grown;
+            capacity = newCapacity;
+        }
+
+        public void Push(T value)
+        {
+            if (count == capacity)
+            {
+                Grow();
+            }
+            items[count] = value;
+            count = count + 1;
+        }
+
+        public void Peek(T[] result)
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            result[0] = items[count - 1];
+        }
+
+        public void Pop(T[] result)
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            count = count - 1;
+            result[0] = items[count];
+        }
+
+        public void Clear()
+        {
+            count = 0;
+        }
+
+        ~ArrayStack()
+        {
+            delete[] items;
+        }
+    }
+}

@@ -1,0 +1,58 @@
+// Interop contract case 12 -- UNION (and the rest of explicit layout).
+//
+// Everything a hand-laid-out C record says: a union, `pack(N)`, `align(N)`, and per-field `at(N)`
+// offsets. Win32's INPUT needs the first; a wire format or a device register block needs the rest.
+//
+// Every number this program checks is a layout claim, and the generated C host header carries the
+// same claims as NS_STATIC_ASSERTs so a host's own compiler verifies them independently.
+namespace contract {
+    // The INPUT shape: one tag plus overlapping payloads.
+    public union Payload {
+        public int asInt;
+        public float asFloat;
+        public byte[4] asBytes;
+    }
+
+    public pack(1) struct WireRecord {
+        public byte kind;
+        public int length;
+    }
+
+    public align(16) struct Vector4Aligned {
+        public float[4] values;
+    }
+
+    public struct Overlapping {
+        public int first;
+        public at(0) int alias;
+        public at(8) long tail;
+    }
+
+    class Case {
+        public static int Main() {
+            // A union writes one member and reads another -- little-endian, byte 0 is the low byte.
+            Payload p;
+            p.asInt = 0;
+            p.asBytes[0] = 42;
+            if (p.asInt != 42) { return 1; }
+
+            // pack(1): the int starts at offset 1, not 4.
+            WireRecord w;
+            w.kind = 1;
+            w.length = 42;
+            if (w.length != 42) { return 2; }
+
+            // align(16): a fixed array inside an over-aligned struct still indexes normally.
+            Vector4Aligned v;
+            v.values[0] = 1;
+            v.values[3] = 41;
+            if ((int)(v.values[0] + v.values[3]) != 42) { return 3; }
+
+            // at(N): two names for the same four bytes.
+            Overlapping o;
+            o.first = 42;
+            o.tail = 0;
+            return o.alias;
+        }
+    }
+}

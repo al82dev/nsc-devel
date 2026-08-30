@@ -1,0 +1,92 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Deque
+{
+    public class ArrayDeque<T>
+    {
+        private T[] items;
+        private int head;
+        private int count;
+
+        public ArrayDeque(int capacity)
+        {
+            if (capacity < 2) { capacity = 2; }
+            items = new T[capacity];
+            head = 0;
+            count = 0;
+        }
+
+        public int Count { get { return count; } }
+        public bool IsEmpty { get { return count == 0; } }
+
+        private int Index(int logicalIndex)
+        {
+            return (head + logicalIndex) % items.Length;
+        }
+
+        private void Grow()
+        {
+            int newCapacity = items.Length * 2;
+            const T[] grown = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                grown[i] = items[Index(i)];
+                i = i + 1;
+            }
+            delete[] items;
+            items = grown;
+            head = 0;
+        }
+
+        public void AddBack(T value)
+        {
+            if (count == items.Length) { Grow(); }
+            items[Index(count)] = value;
+            count = count + 1;
+        }
+
+        public void AddFront(T value)
+        {
+            if (count == items.Length) { Grow(); }
+            head = head - 1;
+            if (head < 0) { head = items.Length - 1; }
+            items[head] = value;
+            count = count + 1;
+        }
+
+        public void RemoveFront(T[] result)
+        {
+            if (count == 0) { throw new InvalidOperationException(); }
+            result[0] = items[head];
+            head = (head + 1) % items.Length;
+            count = count - 1;
+            if (count == 0) { head = 0; }
+        }
+
+        public void RemoveBack(T[] result)
+        {
+            if (count == 0) { throw new InvalidOperationException(); }
+            int index = Index(count - 1);
+            result[0] = items[index];
+            count = count - 1;
+            if (count == 0) { head = 0; }
+        }
+
+        public T PeekFront()
+        {
+            if (count == 0) { throw new InvalidOperationException(); }
+            return items[head];
+        }
+
+        public T PeekBack()
+        {
+            if (count == 0) { throw new InvalidOperationException(); }
+            return items[Index(count - 1)];
+        }
+
+        ~ArrayDeque()
+        {
+            delete[] items;
+        }
+    }
+}

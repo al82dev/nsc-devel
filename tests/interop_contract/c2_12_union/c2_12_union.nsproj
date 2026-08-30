@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>c2_12_union</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>

@@ -1,0 +1,13 @@
+namespace Engine.Geometry
+{
+    public struct Point
+    {
+        int X;
+        int Y;
+    }
+
+    internal struct Scratch
+    {
+        int Value;
+    }
+}

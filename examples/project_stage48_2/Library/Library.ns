@@ -1,0 +1,51 @@
+namespace Stage48_2
+{
+    public interface ICounter
+    {
+        int Get();
+    }
+
+    public class Counter : ICounter
+    {
+        public int Value;
+
+        public int Get()
+        {
+            return Value;
+        }
+    }
+
+    public struct Pair
+    {
+        public int X;
+        public int Y;
+    }
+
+    public enum Operation
+    {
+        Add = 1,
+        Subtract = 2
+    }
+
+    extern C delegate int Transform(int value);
+
+    public class Api
+    {
+        public const int MetadataVersion = 1;
+
+        public static export extern C int Add(int left, int right)
+        {
+            return left + right;
+        }
+
+        public static export extern C Pair Echo(Pair value)
+        {
+            return value;
+        }
+
+        public static export extern C int Invoke(Transform callback, int value)
+        {
+            return callback(value);
+        }
+    }
+}

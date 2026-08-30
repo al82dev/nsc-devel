@@ -1,0 +1,114 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 07 -- Clases y objetos
+// Fuente de inspiracion: Learn C# Programming, chapter_04 (Employee.cs, AccessModifiers.cs) y
+// chapter_05 (Employee.cs, Program.cs).
+// ============================================================================================
+//
+// Este es el primer tutorial que usa class en vez de struct -- la contraparte de tutorial_06.
+// Una class en NativeSharp (igual que en C# real) es un tipo REFERENCIA: asignar un objeto de
+// clase a otra variable NO copia sus campos, copia una referencia al MISMO objeto -- las dos
+// variables apuntan a la misma memoria. Ese es el contraste central de este ejemplo frente a
+// tutorial_06 (struct, semantica de valor).
+namespace Tutorial.ClasesObjetos
+{
+    public class Employee
+    {
+        // Modificadores de acceso (Learn C# AccessModifiers.cs): private solo visible dentro de
+        // la clase; public visible desde afuera.
+        private string name;
+        private int salary;
+
+        // Campo static compartido por TODAS las instancias -- no vive dentro de ningun objeto en
+        // particular, vive una sola vez por clase (contraste directo con name/salary de arriba).
+        private static int liveEmployeeCount = 0;
+
+        public Employee(string employeeName, int employeeSalary)
+        {
+            // "raii string name" no puede recibir el parametro directo con "=" (no es
+            // owned-returning); String.Copy lo materializa como propio del objeto -- si en vez de
+            // eso se guardara el parametro tal cual, el llamador seguiria siendo el dueno real y
+            // el objeto quedaria con una referencia prestada que no le pertenece.
+            name = String.Copy(employeeName);
+            salary = employeeSalary;
+            liveEmployeeCount = liveEmployeeCount + 1;
+        }
+
+        // Metodo de instancia -- opera sobre EL objeto sobre el que se invoca (this implicito).
+        public int GiveRaise(int amount)
+        {
+            salary = salary + amount;
+            return salary;
+        }
+
+        public int Salary()
+        {
+            return salary;
+        }
+
+        public string Name()
+        {
+            return name;
+        }
+
+        // Metodo static -- pertenece a la clase, no a ningun objeto; se llama como
+        // Employee.LiveCount(), nunca como empleado.LiveCount().
+        public static int LiveCount()
+        {
+            return liveEmployeeCount;
+        }
+
+        // Destructor -- se invoca automaticamente cuando el objeto se destruye (via raii o
+        // delete explicito), igual que ~TrackedResource en el modelo de ownership (ver
+        // tutorial_12). Aqui se usa solo para mantener el contador static correcto.
+        ~Employee()
+        {
+            liveEmployeeCount = liveEmployeeCount - 1;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            if (Employee.LiveCount() != 0)
+            {
+                return 1; // no deberia haber empleados vivos todavia
+            }
+
+            raii Employee alice = new Employee("Alice", 50000);
+            raii Employee bob = new Employee("Bob", 60000);
+            int liveAfterTwo = Employee.LiveCount(); // 2
+
+            int aliceAfterRaise = alice.GiveRaise(5000); // 55000
+
+            // Semantica de REFERENCIA (a diferencia de struct en tutorial_06): "alias" y "alice"
+            // apuntan al MISMO objeto Employee -- borrowed es un prestamo de lectura/escritura
+            // sobre ese mismo objeto, no una copia independiente.
+            borrowed Employee alias = alice;
+            alias.GiveRaise(1000);
+            int aliceAfterAliasRaise = alice.Salary(); // 56000 -- el cambio via "alias" SI se ve
+                                                        // a traves de "alice", porque son el
+                                                        // mismo objeto.
+
+            raii string nameLabel = String.Copy("empleado: ");
+            raii string nameLine = String.Concat(nameLabel, alice.Name());
+            Console.WriteLine(nameLine);
+
+            raii string salaryLabel = String.Copy("salario final = ");
+            raii string salaryDigits = String.ToString(aliceAfterAliasRaise);
+            raii string salaryLine = String.Concat(salaryLabel, salaryDigits);
+            Console.WriteLine(salaryLine);
+
+            int bobSalary = bob.Salary(); // 60000
+
+            // liveAfterTwo==2, aliceAfterRaise==55000, aliceAfterAliasRaise==56000, bobSalary==60000
+            // Al salir de Main, alice y bob (raii) se destruyen automaticamente -- pero eso pasa
+            // DESPUES del return, asi que Employee.LiveCount() todavia reporta 2 aqui.
+            int result = liveAfterTwo * 1000 + bobSalary / 1000;
+            if (aliceAfterAliasRaise == 56000) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

@@ -1,0 +1,33 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class SelectionSorter : StudentSorter
+    {
+        public override owned string Name() { return String.Copy("Selection Sort"); }
+
+        public override void Sort(Student[] data, int count, StudentComparer comparer, SortStatistics statistics)
+        {
+            statistics.Reset();
+            int i = 0;
+            while (i < count - 1)
+            {
+                int smallest = i;
+                int j = i + 1;
+                while (j < count)
+                {
+                    if (Compare(data[j], data[smallest], comparer, statistics) < 0)
+                    {
+                        smallest = j;
+                    }
+                    j = j + 1;
+                }
+                if (smallest != i)
+                {
+                    Swap(data, i, smallest, statistics);
+                }
+                i = i + 1;
+            }
+        }
+    }
+}

@@ -1,0 +1,27 @@
+using NativeSharp.Core;
+
+class Holder3
+{
+    private int total;
+
+    public void Consume(owned int value)
+    {
+        NestedCall();
+    }
+
+    private void NestedCall()
+    {
+        total = total + 1;
+    }
+}
+
+class Repro3
+{
+    public static int Main()
+    {
+        Holder3 h = new Holder3();
+        h.Consume(7);
+        delete h;
+        return 1;
+    }
+}

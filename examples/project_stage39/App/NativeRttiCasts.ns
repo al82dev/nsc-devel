@@ -1,0 +1,72 @@
+namespace Stage39.Demo
+{
+    public interface IEntity
+    {
+    }
+
+    public interface IMovable : IEntity
+    {
+    }
+
+    public class Entity
+    {
+    }
+
+    public class Actor : Entity
+    {
+    }
+
+    public class Player : Actor, IMovable
+    {
+    }
+
+    public class Harness
+    {
+        public static int Run()
+        {
+            Player player = new Player();
+            Entity entity = player;
+
+            bool isPlayer = entity is Player;
+            bool isMovable = entity is IMovable;
+            bool isEntityInterface = entity is IEntity;
+
+            Player safePlayer = entity as Player;
+            IMovable safeMovable = entity as IMovable;
+            Player checkedPlayer = (Player)entity;
+            IMovable checkedMovable = (IMovable)entity;
+
+            IMovable interfaceReference = player;
+            bool interfaceContainsPlayer = interfaceReference is Player;
+            Player fromInterface = interfaceReference as Player;
+            Player checkedFromInterface = (Player)interfaceReference;
+
+            Entity absent = null;
+            bool nullIsPlayer = absent is Player;
+            Player nullAsPlayer = absent as Player;
+            Player nullCheckedPlayer = (Player)absent;
+
+            if (isPlayer)
+            {
+                return 1;
+            }
+            if (isMovable)
+            {
+                return 2;
+            }
+            if (isEntityInterface)
+            {
+                return 3;
+            }
+            if (interfaceContainsPlayer)
+            {
+                return 4;
+            }
+            if (nullIsPlayer)
+            {
+                return 5;
+            }
+            return 0;
+        }
+    }
+}

@@ -1,0 +1,15 @@
+namespace NativeSharp.BookExamples.HashTable
+{
+    public class Symbol
+    {
+        public string Name;
+        public string Kind;
+        public int Address;
+        public Symbol(string name, string kind, int address)
+        {
+            Name = name;
+            Kind = kind;
+            Address = address;
+        }
+    }
+}

@@ -1,0 +1,107 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.CircularJosephus
+{
+    public class CircularList
+    {
+        private CircleNode head;
+        private int count;
+
+        public CircularList()
+        {
+            head = null;
+            count = 0;
+        }
+
+        public int Count { get { return count; } }
+        public CircleNode First { get { return head; } }
+
+        public void AddLast(int value)
+        {
+            CircleNode node = new CircleNode(value);
+            if (head == null)
+            {
+                head = node;
+                node.Next = node;
+                node.Previous = node;
+            }
+            else
+            {
+                CircleNode tail = head.Previous;
+                node.Next = head;
+                node.Previous = tail;
+                tail.Next = node;
+                head.Previous = node;
+            }
+            count = count + 1;
+        }
+
+        public int Remove(CircleNode node)
+        {
+            if (node == null || count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+
+            int value = node.Value;
+            if (count == 1)
+            {
+                head = null;
+            }
+            else
+            {
+                node.Previous.Next = node.Next;
+                node.Next.Previous = node.Previous;
+                if (node == head)
+                {
+                    head = node.Next;
+                }
+            }
+            node.Next = null;
+            node.Previous = null;
+            delete node;
+            count = count - 1;
+            return value;
+        }
+
+        public void PrintOneLap()
+        {
+            if (head == null)
+            {
+                Console.WriteLine("<empty>");
+                return;
+            }
+            raii string line = String.Copy("");
+            CircleNode current = head;
+            int visited = 0;
+            while (visited < count)
+            {
+                raii string text = String.ToString(current.Value);
+                raii string withValue = String.Concat(line, text);
+                line = move(withValue);
+                if (visited + 1 < count)
+                {
+                    raii string withArrow = String.Concat(line, " -> ");
+                    line = move(withArrow);
+                }
+                current = current.Next;
+                visited = visited + 1;
+            }
+            raii string closed = String.Concat(line, " -> (back to head)");
+            line = move(closed);
+            Console.WriteLine(line);
+        }
+
+        public void Clear()
+        {
+            while (count > 0)
+            {
+                Remove(head);
+            }
+        }
+
+        ~CircularList()
+        {
+            Clear();
+        }
+    }
+}

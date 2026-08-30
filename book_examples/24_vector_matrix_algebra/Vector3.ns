@@ -1,0 +1,25 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.LinearAlgebra
+{
+    public class Vector3
+    {
+        public double X;public double Y;public double Z;
+        public Vector3(double x,double y,double z){X=x;Y=y;Z=z;}
+        public double this[int index]
+        {
+            get { if(index==0){return X;} if(index==1){return Y;} return Z; }
+            set { if(index==0){X=value;} else if(index==1){Y=value;} else{Z=value;} }
+        }
+        public static Vector3 operator +(Vector3 a,Vector3 b){return new Vector3(a.X+b.X,a.Y+b.Y,a.Z+b.Z);}
+        public static Vector3 operator -(Vector3 a,Vector3 b){return new Vector3(a.X-b.X,a.Y-b.Y,a.Z-b.Z);}
+        public static Vector3 operator -(Vector3 a){return new Vector3(-a.X,-a.Y,-a.Z);}
+        public double Dot(Vector3 other){return X*other.X+Y*other.Y+Z*other.Z;}
+        public Vector3 Cross(Vector3 other){return new Vector3(Y*other.Z-Z*other.Y,Z*other.X-X*other.Z,X*other.Y-Y*other.X);}
+        public void Print(string label)
+        {
+            raii string x=NumberText.Format(X);raii string y=NumberText.Format(Y);raii string z=NumberText.Format(Z);
+            raii string a=String.Concat(label,"(");raii string b=String.Concat(a,x);raii string c=String.Concat(b,", ");
+            raii string d=String.Concat(c,y);raii string e=String.Concat(d,", ");raii string f=String.Concat(e,z);raii string line=String.Concat(f,")");Console.WriteLine(line);
+        }
+    }
+}

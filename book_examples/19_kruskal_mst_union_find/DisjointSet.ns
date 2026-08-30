@@ -1,0 +1,28 @@
+namespace NativeSharp.BookExamples.Kruskal
+{
+    public class DisjointSet
+    {
+        private int[] parent; private int[] rank;
+        public DisjointSet(int count)
+        {
+            parent=new int[count]; rank=new int[count]; int i=0; while(i<count){parent[i]=i;rank[i]=0;i=i+1;}
+        }
+        public int Find(int value)
+        {
+            int root=value;
+            while(parent[root]!=root){root=parent[root];}
+            int current=value;
+            while(parent[current]!=current){int next=parent[current];parent[current]=root;current=next;}
+            return root;
+        }
+        public bool Union(int a,int b)
+        {
+            int ra=Find(a);int rb=Find(b);if(ra==rb){return false;}
+            if(rank[ra]<rank[rb]){parent[ra]=rb;}
+            else if(rank[ra]>rank[rb]){parent[rb]=ra;}
+            else{parent[rb]=ra;rank[ra]=rank[ra]+1;}
+            return true;
+        }
+        ~DisjointSet(){delete[] parent;delete[] rank;}
+    }
+}

@@ -1,0 +1,164 @@
+using NativeSharp.Core.Threading;
+
+// Stage 54.2 "Atomics" -- programa de verificacion empaquetado.
+//
+// Misma convencion de exit codes que cada ronda de Stage 53/54.1: cada chequeo que falla
+// devuelve un codigo de salida DISTINTO, y el ultimo chequeo exitoso termina en "return 0".
+//
+// DISCIPLINA EXTRA DE ESTA RONDA (la misma regla de rigor de Stage 54, ver
+// claude/05_metodo_de_trabajo_y_archivo_historico.md): las Secciones 1 y 2 verifican el
+// contrato de valor de retorno EXACTO de las diez operaciones (Increment/Decrement/Add/
+// Exchange/CompareExchange x Int32/Int64), incluyendo el caso en que CompareExchange NO
+// coincide (Seccion 1.6/2.6) -- no alcanza con probar solo el camino feliz. Las Secciones 3 y 4
+// son la prueba REAL de atomicidad: varios hilos de sistema operativo, corriendo EN
+// SIMULTANEO (todos arrancados antes de que este programa llame al primer Join(), igual que la
+// Seccion 4 de Stage 54.1), incrementando un MISMO contador compartido miles de veces cada
+// uno -- si Interlocked.Increment no fuera realmente atomico, alguna de esas escrituras se
+// perderia (una condicion de carrera cásica de "leer-sumar-escribir" sin proteccion) y el total
+// final seria MENOR que threads*iteraciones. Ningun chequeo usa Sleep() como sustituto de
+// sincronizacion -- Thread.Join() (WaitForSingleObject, una barrera real de kernel) es la unica
+// forma de esperar a que los hilos en segundo plano terminen antes de leer el resultado.
+class SharedCounters
+{
+    // Contadores COMPARTIDOS por las Secciones 3/4 -- a diferencia de Stage 54.1 (donde cada
+    // hilo escribia en su PROPIO campo porque todavia no habia forma segura de compartir uno),
+    // aca el punto ES compartir el mismo AtomicInt32/AtomicInt64 entre varios hilos a la vez.
+    public static AtomicInt32 Int32Counter;
+    public static AtomicInt64 Int64Counter;
+
+    // Campo que NINGUN codigo de este programa toca jamas -- el control negativo de la Seccion 5.
+    public static int NeverTouched = 0;
+}
+
+class Program
+{
+    // 4 hilos x 2500 incrementos cada uno = 10000 exactos, si Interlocked.Increment es
+    // verdaderamente atomico. Elegido para que la prueba sea genuinamente concurrente (bastante
+    // trabajo como para que los cuatro hilos se solapen de verdad bajo Wine) sin volver la
+    // suite de tests lenta (este programa completo corre 5 veces por nivel de optimizacion).
+    private static void Int32StressWorker()
+    {
+        int i = 0;
+        while (i < 2500)
+        {
+            SharedCounters.Int32Counter.Increment();
+            i = i + 1;
+        }
+    }
+
+    private static void Int64StressWorker()
+    {
+        int i = 0;
+        while (i < 2500)
+        {
+            SharedCounters.Int64Counter.Increment();
+            i = i + 1;
+        }
+    }
+
+    public static int Main()
+    {
+        // ==== Seccion 1: AtomicInt32 -- contrato de valor de retorno exacto, un solo hilo =====
+
+        raii AtomicInt32 counter32 = new AtomicInt32(10);
+
+        int r1 = counter32.Increment();
+        if (r1 != 11) { return 1; }
+        if (counter32.Value != 11) { return 2; }
+
+        int r2 = counter32.Decrement();
+        if (r2 != 10) { return 3; }
+        if (counter32.Value != 10) { return 4; }
+
+        int r3 = counter32.Add(5);
+        if (r3 != 15) { return 5; }
+        if (counter32.Value != 15) { return 6; }
+
+        // Exchange devuelve el valor VIEJO (15), no el nuevo (42).
+        int r4 = counter32.Exchange(42);
+        if (r4 != 15) { return 7; }
+        if (counter32.Value != 42) { return 8; }
+
+        // CompareExchange, camino "coincide": comparand (42) == valor actual (42) -> intercambia,
+        // devuelve el valor VIEJO (42).
+        int r5 = counter32.CompareExchange(100, 42);
+        if (r5 != 42) { return 9; }
+        if (counter32.Value != 100) { return 10; }
+
+        // CompareExchange, camino "NO coincide": comparand (42) != valor actual (100) -> NO
+        // intercambia, devuelve el valor VIEJO de todas formas (100) -- el valor almacenado se
+        // queda en 100, NUNCA pasa a ser 999. Este es el camino que un chequeo "solo del caso
+        // feliz" se saltearia.
+        int r6 = counter32.CompareExchange(999, 42);
+        if (r6 != 100) { return 11; }
+        if (counter32.Value != 100) { return 12; }
+
+        // ==== Seccion 2: AtomicInt64 -- mismo contrato exacto, con valores de 64 bits ==========
+
+        raii AtomicInt64 counter64 = new AtomicInt64(1000000000000);
+
+        long s1 = counter64.Increment();
+        if (s1 != 1000000000001) { return 13; }
+        if (counter64.Value != 1000000000001) { return 14; }
+
+        long s2 = counter64.Decrement();
+        if (s2 != 1000000000000) { return 15; }
+        if (counter64.Value != 1000000000000) { return 16; }
+
+        long s3 = counter64.Add(500);
+        if (s3 != 1000000000500) { return 17; }
+        if (counter64.Value != 1000000000500) { return 18; }
+
+        long s4 = counter64.Exchange(2000000000000);
+        if (s4 != 1000000000500) { return 19; }
+        if (counter64.Value != 2000000000000) { return 20; }
+
+        long s5 = counter64.CompareExchange(3000000000000, 2000000000000);
+        if (s5 != 2000000000000) { return 21; }
+        if (counter64.Value != 3000000000000) { return 22; }
+
+        long s6 = counter64.CompareExchange(9999999999999, 2000000000000);
+        if (s6 != 3000000000000) { return 23; }
+        if (counter64.Value != 3000000000000) { return 24; }
+
+        // ==== Seccion 3: AtomicInt32 -- prueba REAL de atomicidad, 4 hilos concurrentes ========
+        // Los cuatro CreateThread ya volvieron (los cuatro hilos ya estan corriendo, o a punto de
+        // correr) antes de que este programa llame al primer Join() -- una prueba real de
+        // concurrencia, no cuatro hilos secuenciales disfrazados. Los cuatro escriben sobre el
+        // MISMO AtomicInt32.Increment(), miles de veces cada uno.
+
+        SharedCounters.Int32Counter = new AtomicInt32(0);
+        ThreadStart int32Start = Int32StressWorker;
+        raii Thread int32Thread1 = new Thread(int32Start);
+        raii Thread int32Thread2 = new Thread(int32Start);
+        raii Thread int32Thread3 = new Thread(int32Start);
+        raii Thread int32Thread4 = new Thread(int32Start);
+        int32Thread1.Join();
+        int32Thread2.Join();
+        int32Thread3.Join();
+        int32Thread4.Join();
+        if (SharedCounters.Int32Counter.Value != 10000) { return 25; }
+
+        // ==== Seccion 4: AtomicInt64 -- misma prueba real de atomicidad, ancho de 64 bits ======
+
+        SharedCounters.Int64Counter = new AtomicInt64(0);
+        ThreadStart int64Start = Int64StressWorker;
+        raii Thread int64Thread1 = new Thread(int64Start);
+        raii Thread int64Thread2 = new Thread(int64Start);
+        raii Thread int64Thread3 = new Thread(int64Start);
+        raii Thread int64Thread4 = new Thread(int64Start);
+        int64Thread1.Join();
+        int64Thread2.Join();
+        int64Thread3.Join();
+        int64Thread4.Join();
+        if (SharedCounters.Int64Counter.Value != 10000) { return 26; }
+
+        // ==== Seccion 5: control negativo -- un campo que NINGUN codigo toco sigue en 0 ========
+        // Confirma que este programa realmente discrimina (los chequeos de arriba no estan
+        // pasando "gratis" por memoria pre-inicializada en 0 por casualidad).
+
+        if (SharedCounters.NeverTouched != 0) { return 27; }
+
+        return 0;
+    }
+}

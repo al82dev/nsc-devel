@@ -1,0 +1,111 @@
+using NativeSharp.Core.Diagnostics;
+
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.DateTime -- Stage 53.1 "Time".
+    //
+    // Reloj de pared (wall-clock), UTC unicamente. Representado igual que en C# real:
+    // Ticks de 100 nanosegundos desde 0001-01-01 00:00:00 UTC.
+    //
+    // Windows entrega la hora del sistema como FILETIME: ticks de 100ns desde 1601-01-01, no
+    // desde 0001-01-01. La constante FileTimeEpochOffsetTicks de abajo es la distancia fija
+    // entre esas dos fechas, medida en ticks de 100ns -- se puede reconstruir a mano en
+    // cualquier momento (no es un numero magico memorizado):
+    //
+    //   Dias del 0001-01-01 al 1601-01-01 (calendario Gregoriano proleptico, 1600 anios):
+    //     anios bisiestos en ese tramo = floor(1600/4) - floor(1600/100) + floor(1600/400)
+    //                                  = 400 - 16 + 4 = 388
+    //     dias  = 1600 * 365 + 388 = 584000 + 388 = 584388
+    //   ticks = dias * 86400 s/dia * 10,000,000 ticks/s
+    //         = 584388 * 864,000,000,000
+    //         = 504,911,232,000,000,000
+    //
+    // Ese es exactamente el valor usado abajo -- y coincide con la constante que .NET real usa
+    // internamente para esta misma conversion (DateTime.FromFileTimeUtc), lo cual es la
+    // confirmacion independiente de que la cuenta esta bien hecha.
+    //
+    // Alcance deliberado de esta primera ronda (53.1): SOLO Ticks + aritmetica + conversion
+    // FILETIME. NO hay descomposicion a calendario (Year/Month/Day/Hour/Minute/Second) todavia
+    // -- eso es aritmetica de calendario Gregoriano completa (anios bisiestos, longitud de mes
+    // variable, etc.), una pieza de ingenieria separada y no trivial que merece su propia
+    // revision con cuidado, no algo para colar de apuro en la ronda de Time. Se documenta como
+    // recorte deliberado, no como bug, siguiendo la misma disciplina que
+    // HANDOVER_STAGE52_TO_STAGE53.md ya establecio para otros limites conocidos (struct-value
+    // ABI > 8 bytes, SortedDictionary como arreglo ordenado). Para timing de juego (delta time,
+    // frame pacing, profiling) lo que realmente importa es Stopwatch/TimeSpan, no el calendario
+    // -- por eso ese es el foco real de Stage 53.1, y DateTime queda deliberadamente minimo.
+    public struct DateTime
+    {
+        public long Ticks;
+
+        // Ver derivacion completa en el comentario de archivo de arriba.
+        private static long FileTimeEpochOffsetTicks()
+        {
+            return 504911232000000000;
+        }
+
+        public static DateTime FromTicks(long ticks)
+        {
+            DateTime result;
+            result.Ticks = ticks;
+            return result;
+        }
+
+        // fileTimeTicks: ticks de 100ns desde 1601-01-01 UTC (formato FILETIME crudo de Win32,
+        // el mismo valor que devuelve NativeClock.QuerySystemFileTimeRaw()).
+        public static DateTime FromFileTimeUtc(long fileTimeTicks)
+        {
+            return FromTicks(fileTimeTicks + FileTimeEpochOffsetTicks());
+        }
+
+        // "using NativeSharp.Core.Diagnostics;" al tope del archivo (mismo patron ya
+        // establecido por lib/NativeSharp.Core.Collections.Generic/*.ns con
+        // "using NativeSharp.Core;") es lo que permite escribir "NativeClock" sin calificar
+        // aca -- evita depender de si nsc replica ademas la regla de C# real de buscar primero
+        // en el namespace hijo del namespace actual, que no esta confirmada contra el
+        // compilador real.
+        public static DateTime UtcNow()
+        {
+            return FromFileTimeUtc(NativeClock.QuerySystemFileTimeRaw());
+        }
+
+        public long ToFileTimeUtc()
+        {
+            return Ticks - FileTimeEpochOffsetTicks();
+        }
+
+        public DateTime Add(TimeSpan span)
+        {
+            return FromTicks(Ticks + span.Ticks);
+        }
+
+        public DateTime Subtract(TimeSpan span)
+        {
+            return FromTicks(Ticks - span.Ticks);
+        }
+
+        public TimeSpan DifferenceFrom(DateTime earlier)
+        {
+            return TimeSpan.FromTicks(Ticks - earlier.Ticks);
+        }
+
+        public bool Equals(DateTime other)
+        {
+            return Ticks == other.Ticks;
+        }
+
+        // -1 / 0 / 1, igual disciplina que TimeSpan.CompareTo / String.Compare.
+        public int CompareTo(DateTime other)
+        {
+            if (Ticks < other.Ticks)
+            {
+                return -1;
+            }
+            if (Ticks > other.Ticks)
+            {
+                return 1;
+            }
+            return 0;
+        }
+    }
+}

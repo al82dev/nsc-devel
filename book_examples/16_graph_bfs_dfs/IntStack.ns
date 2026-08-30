@@ -1,0 +1,20 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.GraphTraversal
+{
+    public class IntStack
+    {
+        private int[] data;
+        private int count;
+        public IntStack(int capacity) { data = new int[capacity]; count = 0; }
+        public bool IsEmpty { get { return count == 0; } }
+        private void Grow()
+        {
+            int[] grown = new int[data.Length * 2];
+            int i = 0; while (i < count) { grown[i] = data[i]; i = i + 1; }
+            delete[] data; data = grown;
+        }
+        public void Push(int value) { if (count == data.Length) { Grow(); } data[count] = value; count = count + 1; }
+        public int Pop() { if (count == 0) { throw new InvalidOperationException(); } count = count - 1; return data[count]; }
+        ~IntStack() { delete[] data; }
+    }
+}

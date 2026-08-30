@@ -1,0 +1,93 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class MergeSorter : StudentSorter
+    {
+        public override owned string Name() { return String.Copy("Merge Sort"); }
+
+        private void Merge(
+            Student[] data,
+            Student[] buffer,
+            int left,
+            int middle,
+            int right,
+            StudentComparer comparer,
+            SortStatistics statistics)
+        {
+            int i = left;
+            int j = middle + 1;
+            int k = left;
+
+            while (i <= middle && j <= right)
+            {
+                if (Compare(data[i], data[j], comparer, statistics) <= 0)
+                {
+                    buffer[k] = data[i];
+                    i = i + 1;
+                }
+                else
+                {
+                    buffer[k] = data[j];
+                    j = j + 1;
+                }
+                statistics.Move();
+                k = k + 1;
+            }
+
+            while (i <= middle)
+            {
+                buffer[k] = data[i];
+                statistics.Move();
+                i = i + 1;
+                k = k + 1;
+            }
+
+            while (j <= right)
+            {
+                buffer[k] = data[j];
+                statistics.Move();
+                j = j + 1;
+                k = k + 1;
+            }
+
+            k = left;
+            while (k <= right)
+            {
+                data[k] = buffer[k];
+                statistics.Move();
+                k = k + 1;
+            }
+        }
+
+        private void SortRange(
+            Student[] data,
+            Student[] buffer,
+            int left,
+            int right,
+            StudentComparer comparer,
+            SortStatistics statistics)
+        {
+            if (left >= right)
+            {
+                return;
+            }
+
+            int middle = left + (right - left) / 2;
+            SortRange(data, buffer, left, middle, comparer, statistics);
+            SortRange(data, buffer, middle + 1, right, comparer, statistics);
+            Merge(data, buffer, left, middle, right, comparer, statistics);
+        }
+
+        public override void Sort(Student[] data, int count, StudentComparer comparer, SortStatistics statistics)
+        {
+            statistics.Reset();
+            Student[] buffer = new Student[count];
+            if (count > 1)
+            {
+                SortRange(data, buffer, 0, count - 1, comparer, statistics);
+            }
+            delete[] buffer;
+        }
+    }
+}

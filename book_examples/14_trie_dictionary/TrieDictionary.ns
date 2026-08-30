@@ -1,0 +1,140 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Trie
+{
+    public class TrieDictionary
+    {
+        private TrieNode root;
+        private int count;
+
+        public TrieDictionary()
+        {
+            root = new TrieNode();
+            count = 0;
+        }
+        public int Count { get { return count; } }
+
+        private int IndexOf(char c)
+        {
+            if (c >= 'A' && c <= 'Z') { c = (char)((int)c + 32); }
+            if (c < 'a' || c > 'z') { return -1; }
+            return (int)c - (int)'a';
+        }
+
+        public bool Insert(string word)
+        {
+            TrieNode current = root;
+            int i = 0;
+            while (i < word.Length)
+            {
+                int index = IndexOf(word[i]);
+                if (index < 0) { throw new ArgumentException(); }
+                if (current.Children[index] == null)
+                {
+                    current.Children[index] = new TrieNode();
+                }
+                current = current.Children[index];
+                current.PrefixCount = current.PrefixCount + 1;
+                i = i + 1;
+            }
+            if (current.Terminal) { return false; }
+            current.Terminal = true;
+            count = count + 1;
+            return true;
+        }
+
+        private TrieNode FindNode(string text)
+        {
+            TrieNode current = root;
+            int i = 0;
+            while (i < text.Length)
+            {
+                int index = IndexOf(text[i]);
+                if (index < 0) { return null; }
+                current = current.Children[index];
+                if (current == null) { return null; }
+                i = i + 1;
+            }
+            return current;
+        }
+
+        public bool Contains(string word)
+        {
+            TrieNode node = FindNode(word);
+            return node != null && node.Terminal;
+        }
+
+        public bool StartsWith(string prefix)
+        {
+            return FindNode(prefix) != null;
+        }
+
+        public int CountWithPrefix(string prefix)
+        {
+            TrieNode node = FindNode(prefix);
+            if (node == null) { return 0; }
+            if (prefix.Length == 0) { return count; }
+            return node.PrefixCount;
+        }
+
+        private void PrintWordsNode(TrieNode node, string prefix, int[] printed, int limit)
+        {
+            if (node == null || printed[0] >= limit) { return; }
+            if (node.Terminal)
+            {
+                raii string line = String.Concat("  ", prefix);
+                Console.WriteLine(line);
+                printed[0] = printed[0] + 1;
+            }
+            int i = 0;
+            while (i < 26 && printed[0] < limit)
+            {
+                TrieNode child = node.Children[i];
+                if (child != null)
+                {
+                    char c = (char)((int)'a' + i);
+                    raii string letter = String.ToString(c);
+                    raii string nextPrefix = String.Concat(prefix, letter);
+                    PrintWordsNode(child, nextPrefix, printed, limit);
+                }
+                i = i + 1;
+            }
+        }
+
+        public void PrintSuggestions(string prefix, int limit)
+        {
+            TrieNode node = FindNode(prefix);
+            if (node == null)
+            {
+                Console.WriteLine("  <no matches>");
+                return;
+            }
+            int[] printed = new int[1];
+            printed[0] = 0;
+            PrintWordsNode(node, prefix, printed, limit);
+            delete[] printed;
+        }
+
+        private void ClearNode(TrieNode node)
+        {
+            if (node == null) { return; }
+            int i = 0;
+            while (i < 26)
+            {
+                TrieNode child = node.Children[i];
+                if (child != null)
+                {
+                    ClearNode(child);
+                    node.Children[i] = null;
+                }
+                i = i + 1;
+            }
+            delete node;
+        }
+
+        ~TrieDictionary()
+        {
+            ClearNode(root);
+            root = null;
+        }
+    }
+}

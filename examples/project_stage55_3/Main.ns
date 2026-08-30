@@ -1,0 +1,56 @@
+using NativeSharp.Core.Diagnostics;
+
+// Stage 55.3 "Diagnostics" -- programa de verificacion empaquetado. Misma convencion que el
+// resto de Stage 53/54/55: cada chequeo que falla devuelve un codigo de salida distinto, y solo
+// si TODOS pasan se llega al "return 0" final.
+class Program
+{
+    public static int Main()
+    {
+        // ---- IsDebuggerPresent: no debe crashear -----------------------------------------
+        //
+        // Deliberadamente NO se compara el resultado contra true/false: si este ejecutable
+        // corre bajo Wine directo (el caso normal de este proyecto), IsDebuggerPresent()
+        // devuelve false; si alguien lo corre desde adentro de un debugger real, devolveria
+        // true -- ambos son resultados legitimos, ninguno indica un bug. El unico chequeo
+        // real de esta linea es que la llamada se ejecute sin crashear, lo cual el mero hecho
+        // de llegar a la siguiente linea ya confirma.
+
+        bool debuggerPresent = Debug.IsDebuggerPresent();
+
+        // ---- CaptureStackFrameCount: positivo, con techo de sanidad ----------------------
+        //
+        // El techo (1024) no es un limite real de RtlCaptureStackBackTrace -- es una cota de
+        // sanidad para atrapar una lectura corrupta. Este programa tiene una pila de llamadas
+        // muy chica (Main -> esta llamada), asi que un conteo positivo y razonablemente chico
+        // es lo unico esperable.
+
+        int frameCount = Debug.CaptureStackFrameCount();
+        if (frameCount <= 0)
+        {
+            return 1;
+        }
+        if (frameCount > 1024)
+        {
+            return 2;
+        }
+
+        // ---- OutputString: no debe crashear, ni con un mensaje normal ni con uno vacio ---
+        //
+        // OutputDebugStringA no tiene un valor de retorno que verificar (es void en Win32
+        // real) -- el unico chequeo posible es que ninguna de las dos llamadas de abajo
+        // crashee el proceso, lo cual llegar al "return 0" final ya confirma.
+
+        Debug.OutputString("NativeSharp Stage 55.3 Diagnostics: verification in progress.");
+        Debug.OutputString("");
+
+        // debuggerPresent se usa aca solo para que la variable no quede "sin usar" -- no
+        // afecta el resultado de la verificacion (ver el comentario de arriba).
+        if (debuggerPresent)
+        {
+            return 0;
+        }
+
+        return 0;
+    }
+}

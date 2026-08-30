@@ -1,0 +1,37 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    public class HourlyEmployee : Employee
+    {
+        private int hourlyRateCents;
+        private int hoursWorked;
+
+        public HourlyEmployee(int id, string employeeName, int hourlyRate, int hours)
+            : base(id, employeeName)
+        {
+            hourlyRateCents = hourlyRate;
+            hoursWorked = hours;
+        }
+
+        public override owned Money CalculateWeeklyPay()
+        {
+            int regularHours = hoursWorked;
+            int overtimeHours = 0;
+            if (regularHours > 40)
+            {
+                overtimeHours = regularHours - 40;
+                regularHours = 40;
+            }
+
+            int regularPay = regularHours * hourlyRateCents;
+            int overtimePay = overtimeHours * hourlyRateCents * 3 / 2;
+            return new Money(regularPay + overtimePay);
+        }
+
+        public override owned string Classification()
+        {
+            return String.Copy("Hourly");
+        }
+    }
+}

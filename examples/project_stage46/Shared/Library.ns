@@ -1,0 +1,20 @@
+namespace Stage46.SharedLibrary
+{
+    public class NativeMath
+    {
+        public static int Add(int left, int right)
+        {
+            return left + right;
+        }
+
+        public static int Multiply(int left, int right)
+        {
+            return left * right;
+        }
+
+        private static int Hidden(int value)
+        {
+            return value + 1;
+        }
+    }
+}

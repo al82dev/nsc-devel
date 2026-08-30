@@ -1,0 +1,44 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.DoublyLinkedList
+{
+    public class ListPrinter
+    {
+        public static void Forward(DoublyLinkedList<int> list)
+        {
+            raii string line = String.Copy("");
+            DoublyNode<int> current = list.First;
+            while (current != null)
+            {
+                raii string value = String.ToString(current.Value);
+                raii string withValue = String.Concat(line, value);
+                line = move(withValue);
+                if (current.Next != null)
+                {
+                    raii string withArrow = String.Concat(line, " <-> ");
+                    line = move(withArrow);
+                }
+                current = current.Next;
+            }
+            Console.WriteLine(line);
+        }
+
+        public static void Backward(DoublyLinkedList<int> list)
+        {
+            raii string line = String.Copy("");
+            DoublyNode<int> current = list.Last;
+            while (current != null)
+            {
+                raii string value = String.ToString(current.Value);
+                raii string withValue = String.Concat(line, value);
+                line = move(withValue);
+                if (current.Previous != null)
+                {
+                    raii string withArrow = String.Concat(line, " <-> ");
+                    line = move(withArrow);
+                }
+                current = current.Previous;
+            }
+            Console.WriteLine(line);
+        }
+    }
+}

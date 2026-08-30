@@ -1,0 +1,148 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 02 -- Variables, tipos y operadores
+// Fuente de inspiracion: K&R cap. 2 "Types, Operators and Expressions".
+// ============================================================================================
+//
+// K&R dedica el capitulo 2 a los tipos basicos de C (char, int, float, double, y sus variantes
+// short/long/unsigned) y a los operadores aritmeticos, relacionales, logicos, bitwise, de
+// asignacion compuesta y de incremento/decremento. NativeSharp tiene un catalogo de tipos mas
+// grande (herencia directa de C#: byte/short/ushort/int/uint/long/ulong/nint/nuint/float/double/
+// bool/char/string, todos con tamano fijo, ningun "int es lo que el compilador decida" como en C
+// clasico) pero los MISMOS operadores del capitulo 2 de K&R existen tal cual.
+namespace Tutorial.VariablesTiposOperadores
+{
+    class Program
+    {
+        public static int Main()
+        {
+            // ---- Tipos basicos con tamano fijo (a diferencia de C, donde "int" varia por
+            // plataforma) ------------------------------------------------------------------
+            byte smallByte = 200;          // 0..255
+            short aShort = (short)-1000;   // 16 bits con signo (el cast es necesario: la
+                                            // conversion implicita de literal negativo a short no
+                                            // se acepta, a diferencia de un literal positivo que
+                                            // si cabe -- ver aUShort/aUInt mas abajo)
+            ushort aUShort = 40000;        // 16 bits sin signo
+            int anInt = 100000;
+            uint aUInt = 3000000000;       // cabe en uint, no en int
+            long aLong = 9000000000;       // no cabe en int de 32 bits
+            float aFloat = 3.5f;
+            double aDouble = 2.71828;
+            bool aBool = true;
+            char aChar = 'N';
+
+            // ---- Operadores aritmeticos (K&R S2.5) -----------------------------------------
+            int sum = anInt + 42;
+            int difference = anInt - 42;
+            int product = 6 * 7;
+            int quotient = 100 / 3;   // division entera: trunca, igual que en C -> 33
+            int remainder = 100 % 3;  // modulo -> 1
+
+            // ---- Conversion de tipos (K&R S2.7) --------------------------------------------
+            // Un cast explicito, igual que en C: (tipo)expresion. Aqui una conversion "angosta"
+            // (long -> int) que en C tambien trunca los bits altos sin avisar -- NativeSharp no
+            // agrega chequeo de rango en runtime para esto, exactamente como C.
+            int narrowed = (int)aLong;
+            double widened = (double)anInt; // conversion "ancha", sin perdida
+
+            // ---- Incremento/decremento (K&R S2.8) ------------------------------------------
+            // K&R S2.8 presenta ++/--. El lexer de NativeSharp SI tokeniza ++ y -- (PlusPlus/
+            // MinusMinus en TokenKind.h), pero el lowering LLVM del modelo OOP todavia no los baja
+            // a codigo real ("Stage 34 OOP lowering does not yet lower ++/--" -- confirmado
+            // intentandolo antes de escribir esta nota). Mientras tanto se escribe explicito, que
+            // de cualquier forma es lo unico que existe en C real anterior a los operadores de
+            // incremento (y sigue siendo valido C# real).
+            int counter = 0;
+            counter = counter + 1;
+            counter = counter + 1;
+            counter = counter - 1;
+            // counter == 1
+
+            // ---- Operadores bitwise (K&R S2.9) ----------------------------------------------
+            int bitsA = 0b1010; // 10
+            int bitsB = 0b0110; // 6
+            int bitAnd = bitsA & bitsB;   // 0010 = 2
+            int bitOr = bitsA | bitsB;    // 1110 = 14
+            int bitXor = bitsA ^ bitsB;   // 1100 = 12
+            int bitNot = ~bitsA;          // complemento a dos de 10
+            int shiftedLeft = bitsA << 2; // 101000 = 40
+            int shiftedRight = bitsA >> 1; // 0101 = 5
+
+            // ---- Operadores de asignacion compuesta (K&R S2.10) -----------------------------
+            // El lexer SI tokeniza +=/-=/*=//= (ver isAssignmentOperator en TokenKind.h) y el
+            // parser los acepta, pero el lowering LLVM del modelo OOP todavia no los baja a
+            // codigo real ("Stage 34 OOP lowering currently requires simple '=' assignment;
+            // compound assignment remains in procedural HIR" -- confirmado intentandolo). Se
+            // escribe la forma expandida, que es exactamente lo que += etc. significan de todas
+            // formas.
+            int accumulator = 10;
+            accumulator = accumulator + 5;  // 15
+            accumulator = accumulator - 3;  // 12
+            accumulator = accumulator * 2;  // 24
+            accumulator = accumulator / 4;  // 6
+
+            // ---- Operadores relacionales y logicos (K&R S2.6) -------------------------------
+            bool isGreater = sum > difference;
+            bool isEqual = quotient == 33;
+            bool logicalCombo = isGreater && isEqual || aBool;
+
+            // NOTA: K&R S2.11 (Conditional Expressions, el operador ternario `?:`) y S2.4
+            // (constantes simbolicas via #define) NO tienen equivalente hoy en NativeSharp -- no
+            // hay operador ternario en la gramatica (ver TokenKind.h: no existe un token de "?")
+            // y no hay preprocesador de macros en absoluto (ninguna forma de #define/#include
+            // condicional -- ver claude/04_restricciones_arquitectonicas.md: nada de codigo
+            // dinamico ni mecanismos tipo preprocesador). Donde C usaria `#define MAX 100` se usa
+            // `const int Max = 100;` (una constante real del lenguaje, con tipo, en vez de una
+            // sustitucion de texto ciega); donde C usaria `x > y ? x : y` hace falta un
+            // if/else explicito -- ver tutorial_03 para el control de flujo completo.
+
+            // Disciplina de ownership de NativeSharp.Core.String (documentada al inicio de
+            // String.ns): un argumento de llamada solo acepta un valor ya materializado (un
+            // local, un prestamo), nunca el resultado "fresco" de otra llamada owned-returning
+            // anidada directamente. Por eso cada Concat/Copy/ToString intermedio se guarda en su
+            // propio local `raii` antes de usarse -- exactamente como hace el propio String.ns.
+            raii string title = String.Copy("=== Tutorial 02: variables, tipos y operadores ===");
+            Console.WriteLine(title);
+
+            raii string sumLabel = String.Copy("sum = ");
+            raii string sumDigits = String.ToString(sum);
+            raii string sumLine = String.Concat(sumLabel, sumDigits);
+            Console.WriteLine(sumLine);
+
+            raii string bitLabel = String.Copy("bitAnd/bitOr/bitXor = ");
+            raii string bitAndDigits = String.ToString(bitAnd);
+            raii string bitOrDigits = String.ToString(bitOr);
+            raii string bitXorDigits = String.ToString(bitXor);
+            raii string separator = String.Copy(" / ");
+            raii string bitStep1 = String.Concat(bitLabel, bitAndDigits);
+            raii string bitStep2 = String.Concat(bitStep1, separator);
+            raii string bitStep3 = String.Concat(bitStep2, bitOrDigits);
+            raii string bitStep4 = String.Concat(bitStep3, separator);
+            raii string bitLine = String.Concat(bitStep4, bitXorDigits);
+            Console.WriteLine(bitLine);
+
+            raii string accLabel = String.Copy("accumulator final = ");
+            raii string accDigits = String.ToString(accumulator);
+            raii string accLine = String.Concat(accLabel, accDigits);
+            Console.WriteLine(accLine);
+
+            // Resultado final: una combinacion de varias de las operaciones de arriba, para que
+            // el codigo de salida dependa realmente de que cada seccion se haya evaluado bien.
+            int result = sum + difference + product + quotient + remainder + narrowed +
+                counter + bitAnd + bitOr + bitXor + shiftedLeft + shiftedRight + accumulator;
+            if (isGreater) { result = result + 1; }
+            if (isEqual) { result = result + 1; }
+            if (logicalCombo) { result = result + 1; }
+            if (smallByte == 200) { result = result + 1; }
+            if (aShort == -1000) { result = result + 1; }
+            if (aUShort == 40000) { result = result + 1; }
+            if (aUInt == 3000000000) { result = result + 1; }
+            if (widened == 100000.0) { result = result + 1; }
+            if (aChar == 'N') { result = result + 1; }
+            if (bitNot == -11) { result = result + 1; }
+            return result;
+        }
+    }
+}

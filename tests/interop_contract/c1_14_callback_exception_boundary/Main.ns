@@ -1,0 +1,29 @@
+// Interop contract case 14 -- CALLBACK EXCEPTION BOUNDARY.
+//
+// A NativeSharp exception cannot leave NativeSharp code through a C boundary. A `throw` here is a
+// Win64 SEH RaiseException; letting it continue past the callback would unwind FOREIGN frames (a
+// Win32 message pump, a driver, an event loop) whose cleanup contract this compiler knows nothing
+// about. The boundary stops it and the process exits with the defined trap code 128 + 13 = 141.
+//
+// Run this fixture expecting exit code 141, not 0.
+//
+// The exception base is declared inline, the way every Stage 45 exception-handling fixture
+// declares it, so this contract case stays self-contained (no ProjectReference needed).
+namespace NativeSharp.Core { public class Exception { } }
+
+using NativeSharp.Core;
+
+extern C delegate int Failing(int value);
+
+class Boom : Exception { }
+
+class Case
+{
+    public static int Throws(int value) { throw new Boom(); }
+
+    public static int Main()
+    {
+        Failing f = Throws;
+        return f(1);
+    }
+}

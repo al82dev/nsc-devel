@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>Stage50Ownership</Name>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+  </ItemGroup>
+</Project>

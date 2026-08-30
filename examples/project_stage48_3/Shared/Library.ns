@@ -1,0 +1,108 @@
+namespace NativeSharp.Stage48_3
+{
+    extern C delegate int IntCallback(int value);
+    extern C delegate int BufferCallback(int* values, int count);
+
+    public enum HostMode
+    {
+        First = 1,
+        Second = 2
+    }
+
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+    }
+
+    public struct LayoutProbe
+    {
+        public byte Tag;
+        public int Value;
+    }
+
+    public class Counter
+    {
+        public int Value;
+
+        public Counter(int value)
+        {
+            Value = value;
+        }
+    }
+
+    public class HostApi
+    {
+        private static IntCallback StoredCallback;
+
+        public static export extern C int NS48_Add(int left, int right)
+        {
+            return left + right;
+        }
+
+        public static export extern C int* NS48_EchoIntPointer(int* values)
+        {
+            return values;
+        }
+
+        public static export extern C int NS48_InvokeBuffer(BufferCallback callback, int* values, int count)
+        {
+            return callback(values, count);
+        }
+
+        public static export extern C void* NS48_EchoPointer(void* value)
+        {
+            return value;
+        }
+
+        public static export extern C Pair NS48_EchoPair(Pair value)
+        {
+            return value;
+        }
+
+        public static export extern C HostMode NS48_EchoMode(HostMode value)
+        {
+            return value;
+        }
+
+        public static export extern C LayoutProbe NS48_EchoLayout(LayoutProbe value)
+        {
+            return value;
+        }
+
+        public static export extern C int NS48_Invoke(IntCallback callback, int value)
+        {
+            return callback(value);
+        }
+
+        public static export extern C void NS48_SetCallback(IntCallback callback)
+        {
+            StoredCallback = callback;
+        }
+
+        public static export extern C int NS48_CallCallback(int value)
+        {
+            return StoredCallback(value);
+        }
+
+        public static export extern C Counter NS48_Counter_Create(int initialValue)
+        {
+            return new Counter(initialValue);
+        }
+
+        public static export extern C int NS48_Counter_Get(Counter counter)
+        {
+            return counter.Value;
+        }
+
+        public static export extern C void NS48_Counter_Add(Counter counter, int delta)
+        {
+            counter.Value = counter.Value + delta;
+        }
+
+        public static export extern C void NS48_Counter_Destroy(Counter counter)
+        {
+            delete counter;
+        }
+    }
+}

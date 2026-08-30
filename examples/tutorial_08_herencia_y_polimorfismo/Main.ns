@@ -1,0 +1,146 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 08 -- Herencia y polimorfismo
+// Fuente de inspiracion: Learn C# Programming, chapter_06 (Shape.cs, Point.cs) y Systems
+// Programming with C# and .NET cap. 1 (jerarquias de interfaces/implementaciones).
+// ============================================================================================
+namespace Tutorial.HerenciaPolimorfismo
+{
+    // abstract: no se puede instanciar Shape directamente, solo sus derivadas -- igual que
+    // Device en el ejemplo de interfaces del propio compilador (project_stage36_recovery).
+    public abstract class Shape
+    {
+        protected string label;
+
+        public Shape(string shapeLabel)
+        {
+            label = String.Copy(shapeLabel);
+        }
+
+        // abstract: cada derivada DEBE dar su propia implementacion -- no hay cuerpo aqui.
+        public abstract int Area();
+
+        // virtual: tiene un cuerpo por defecto, pero una derivada PUEDE reemplazarlo con
+        // override si quiere (a diferencia de abstract, que obliga).
+        public virtual owned string Describe()
+        {
+            raii string prefix = String.Copy("Figura: ");
+            return String.Concat(prefix, label);
+        }
+
+        public string Label()
+        {
+            return label;
+        }
+    }
+
+    public class Rectangle : Shape
+    {
+        private int width;
+        private int height;
+
+        // base(...) invoca el constructor de la clase padre -- igual que en C# real.
+        public Rectangle(int rectWidth, int rectHeight)
+            : base("Rectangulo")
+        {
+            width = rectWidth;
+            height = rectHeight;
+        }
+
+        public override int Area()
+        {
+            return width * height;
+        }
+    }
+
+    public class Square : Rectangle
+    {
+        // Herencia de dos niveles: Square hereda de Rectangle, que hereda de Shape. Reutiliza
+        // Area() de Rectangle sin reescribirlo (ancho == alto).
+        public Square(int side)
+            : base(side, side)
+        {
+        }
+
+        // override de un metodo que YA era override en Rectangle -- valido, y Describe() sigue
+        // siendo virtual mas abajo en la cadena.
+        public override owned string Describe()
+        {
+            raii string baseDescription = base.Describe();
+            raii string suffix = String.Copy(" (cuadrado)");
+            return String.Concat(baseDescription, suffix);
+        }
+    }
+
+    public class Circle : Shape
+    {
+        private int radius;
+
+        public Circle(int circleRadius)
+            : base("Circulo")
+        {
+            radius = circleRadius;
+        }
+
+        // Area aproximada con radio*radio*3 (entero) -- suficiente para el ejemplo, sin
+        // necesitar Math.PI real.
+        public override int Area()
+        {
+            return radius * radius * 3;
+        }
+    }
+
+    class Program
+    {
+        // Polimorfismo (el punto central del capitulo): esta funcion recibe un Shape prestado
+        // (borrowed) -- no sabe ni le importa si es un Rectangle, un Square o un Circle. La
+        // llamada a Area() se resuelve en tiempo de EJECUCION segun el tipo real del objeto
+        // (dispatch virtual), no segun el tipo estatico de la variable/parametro.
+        public static int Describe_And_Area(borrowed Shape shape)
+        {
+            return shape.Area();
+        }
+
+        public static int Main()
+        {
+            raii Rectangle rect = new Rectangle(4, 5);
+            raii Square square = new Square(6);
+            raii Circle circle = new Circle(3);
+
+            int rectArea = Describe_And_Area(rect);     // 20
+            int squareArea = Describe_And_Area(square);  // 36
+            int circleArea = Describe_And_Area(circle);  // 27
+
+            raii string squareDescription = square.Describe(); // usa el override de Square, que
+                                                                 // a su vez llama a base.Describe()
+                                                                 // -- imprime "Figura: Rectangulo
+                                                                 // (cuadrado)" porque Square nunca
+                                                                 // cambio el label heredado de la
+                                                                 // cadena base(side,side) ->
+                                                                 // base("Rectangulo"); asi de
+                                                                 // literal es base() encadenado.
+            Console.WriteLine(squareDescription);
+
+            raii string rectDescription = rect.Describe(); // Rectangle no tiene override propio
+                                                             // de Describe -- usa el de Shape.
+            Console.WriteLine(rectDescription);
+
+            raii string areaLabel = String.Copy("areas rect/square/circle = ");
+            raii string a1 = String.ToString(rectArea);
+            raii string sep = String.Copy(" / ");
+            raii string a2 = String.ToString(squareArea);
+            raii string a3 = String.ToString(circleArea);
+            raii string s1 = String.Concat(areaLabel, a1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, a2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string areaLine = String.Concat(s4, a3);
+            Console.WriteLine(areaLine);
+
+            // rectArea==20, squareArea==36, circleArea==27
+            int result = rectArea + squareArea + circleArea;
+            return result % 250;
+        }
+    }
+}

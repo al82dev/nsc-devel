@@ -1,0 +1,131 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+// Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- programa de verificacion empaquetado.
+// Misma convencion que todo Stage 53: cada chequeo que falla devuelve un codigo de salida
+// distinto, y el ultimo chequeo exitoso termina en "return 0".
+//
+// NOTA DE OWNERSHIP: File.ReadAllText esta declarado como "public static string ReadAllText(...)"
+// (NO "owned string"), exactamente el mismo patron que Environment.GetEnvironmentVariable desde
+// 53.2b -- por eso el resultado se guarda en variables "string" comunes, NUNCA "raii string". El
+// analizador de ownership de este compilador decide si una llamada "devuelve propiedad" mirando
+// el TIPO DE RETORNO DECLARADO del metodo, no lo que el runtime hace de verdad -- como
+// ReadAllText no declara "owned", intentar `raii string x = File.ReadAllText(...)` es un error de
+// compilacion ("RAII ownership cannot be copied or borrowed"), verificado directamente contra
+// este mismo compilador antes de escribir este archivo. Contraste directo con Path.Combine (mas
+// abajo, chequeo 12): esa SI esta declarada "owned string" (es NativeSharp puro, escrita
+// siguiendo la misma disciplina que el resto de NativeSharp.Core.String desde Stage 51), asi que
+// su resultado SI tiene que capturarse con `raii string` -- lo contrario (`string x =
+// Path.Combine(...)`) es tambien un error de compilacion ("owned return value cannot initialize
+// a non-owning local"), en la direccion opuesta al de ReadAllText. Ambos errores se verificaron
+// directamente contra este compilador antes de escribir este archivo -- no son hipoteticos.
+//
+// NOTA DE ESTADO: a diferencia de examples/project_stage53_3/Main.ns (que solo lee/borra un
+// archivo preexistente que el harness prepara), este programa CREA sus propios archivos de
+// contenido variable a lo largo de la ejecucion -- por eso, igual que Stage 53.3, el harness de
+// C++ que corre este ejecutable (ver tests/unit/Stage53_3bFilesystemPathsContentTests.cpp) lo
+// hace con un directorio de trabajo DEDICADO y VACIO, no el directorio de ctest.
+class Program
+{
+    public static int Main()
+    {
+        // ---- ReadAllText de un archivo inexistente -> "" (no crash) ------------------------
+
+        string missing = File.ReadAllText("nativesharp_stage53_3b_missing.txt");
+        if (missing.Length != 0)
+        {
+            return 1;
+        }
+
+        // ---- WriteAllText + ReadAllText: round trip basico, verificado por longitud Y
+        //      contenido -----------------------------------------------------------------------
+
+        File.WriteAllText("nativesharp_stage53_3b_a.txt", "hola mundo");
+        string readBack = File.ReadAllText("nativesharp_stage53_3b_a.txt");
+        if (readBack.Length != 10)
+        {
+            return 2;
+        }
+        if (!readBack.Equals("hola mundo"))
+        {
+            return 3;
+        }
+
+        // ---- WriteAllText sobreescribe con contenido MAS LARGO ------------------------------
+
+        File.WriteAllText("nativesharp_stage53_3b_a.txt", "un contenido bastante mas largo que el anterior");
+        string longer = File.ReadAllText("nativesharp_stage53_3b_a.txt");
+        if (longer.Length != 47)
+        {
+            return 4;
+        }
+        if (!longer.Equals("un contenido bastante mas largo que el anterior"))
+        {
+            return 5;
+        }
+
+        // ---- WriteAllText sobreescribe con contenido MAS CORTO: confirma que CREATE_ALWAYS
+        //      trunca el archivo -- no debe quedar basura del contenido largo anterior colgando
+        //      al final ---------------------------------------------------------------------
+
+        File.WriteAllText("nativesharp_stage53_3b_a.txt", "x");
+        string shorter = File.ReadAllText("nativesharp_stage53_3b_a.txt");
+        if (shorter.Length != 1)
+        {
+            return 6;
+        }
+        if (!shorter.Equals("x"))
+        {
+            return 7;
+        }
+
+        // ---- WriteAllText con contenido vacio: el archivo termina en longitud cero, no en
+        //      error --------------------------------------------------------------------------
+
+        File.WriteAllText("nativesharp_stage53_3b_a.txt", "");
+        string empty = File.ReadAllText("nativesharp_stage53_3b_a.txt");
+        if (empty.Length != 0)
+        {
+            return 8;
+        }
+
+        // ---- AppendAllText sobre un archivo QUE NO EXISTE: se comporta igual que
+        //      WriteAllText (OPEN_ALWAYS lo crea) --------------------------------------------
+
+        File.AppendAllText("nativesharp_stage53_3b_b.txt", "primero");
+        string afterFirstAppend = File.ReadAllText("nativesharp_stage53_3b_b.txt");
+        if (!afterFirstAppend.Equals("primero"))
+        {
+            return 9;
+        }
+
+        // ---- AppendAllText sobre un archivo QUE YA EXISTE: AGREGA al final, no reemplaza
+        //      (esta es la diferencia real con WriteAllText, y el chequeo mas importante de
+        //      todo este programa) -----------------------------------------------------------
+
+        File.AppendAllText("nativesharp_stage53_3b_b.txt", "segundo");
+        string afterSecondAppend = File.ReadAllText("nativesharp_stage53_3b_b.txt");
+        if (afterSecondAppend.Length != 14)
+        {
+            return 10;
+        }
+        if (!afterSecondAppend.Equals("primerosegundo"))
+        {
+            return 11;
+        }
+
+        // ---- Round trip completo con Path.Combine: escribir/leer usando un path armado con
+        //      Path (confirma que File.* y Path.* interoperan sin fricciones, aunque una sea
+        //      operacion nucleo y la otra sea NativeSharp puro) ------------------------------
+
+        raii string combinedPath = Path.Combine("", "nativesharp_stage53_3b_c.txt");
+        File.WriteAllText(combinedPath, "via Path.Combine");
+        string viaCombinedPath = File.ReadAllText(combinedPath);
+        if (!viaCombinedPath.Equals("via Path.Combine"))
+        {
+            return 12;
+        }
+
+        return 0;
+    }
+}

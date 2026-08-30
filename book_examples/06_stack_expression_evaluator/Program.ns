@@ -1,0 +1,45 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.StackEvaluator
+{
+    class Program
+    {
+        private static void EvaluateAndPrint(ExpressionEvaluator evaluator, string expression)
+        {
+            int result = evaluator.Evaluate(expression);
+            raii string resultText = String.ToString(result);
+            raii string s1 = String.Concat(expression, " = ");
+            raii string line = String.Concat(s1, resultText);
+            Console.WriteLine(line);
+        }
+
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 06 - Stack + Expression Evaluator");
+            Console.WriteLine("----------------------------------------------------------");
+            Console.WriteLine("Two ArrayStack<T> instances implement a small shunting-yard evaluator.");
+            Console.WriteLine("");
+
+            raii ExpressionEvaluator evaluator = new ExpressionEvaluator();
+
+            EvaluateAndPrint(evaluator, "2 + 3 * 4");
+            EvaluateAndPrint(evaluator, "(2 + 3) * 4");
+            EvaluateAndPrint(evaluator, "100 / (5 * 2) + 7");
+            EvaluateAndPrint(evaluator, "8 * (12 - 5) + 36 / 6");
+            EvaluateAndPrint(evaluator, "42 + 18 / 3 - 5 * 2");
+
+            Console.WriteLine("");
+            Console.WriteLine("Malformed expression handling:");
+            try
+            {
+                int ignored = evaluator.Evaluate("10 / (3 - 3)");
+            }
+            catch (ExpressionException problem)
+            {
+                Console.WriteLine(problem.Message);
+            }
+
+            return 0;
+        }
+    }
+}

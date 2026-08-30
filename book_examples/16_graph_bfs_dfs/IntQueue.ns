@@ -1,0 +1,30 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.GraphTraversal
+{
+    public class IntQueue
+    {
+        private int[] data;
+        private int head;
+        private int count;
+        public IntQueue(int capacity) { data = new int[capacity]; head = 0; count = 0; }
+        public bool IsEmpty { get { return count == 0; } }
+        private int Index(int logical) { return (head + logical) % data.Length; }
+        private void Grow()
+        {
+            int[] grown = new int[data.Length * 2];
+            int i = 0; while (i < count) { grown[i] = data[Index(i)]; i = i + 1; }
+            delete[] data; data = grown; head = 0;
+        }
+        public void Enqueue(int value)
+        {
+            if (count == data.Length) { Grow(); }
+            data[Index(count)] = value; count = count + 1;
+        }
+        public int Dequeue()
+        {
+            if (count == 0) { throw new InvalidOperationException(); }
+            int value = data[head]; head = (head + 1) % data.Length; count = count - 1; return value;
+        }
+        ~IntQueue() { delete[] data; }
+    }
+}

@@ -1,0 +1,67 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class HeapSorter : StudentSorter
+    {
+        public override owned string Name() { return String.Copy("Heap Sort"); }
+
+        private void SiftDown(
+            Student[] data,
+            int root,
+            int count,
+            StudentComparer comparer,
+            SortStatistics statistics)
+        {
+            int current = root;
+            bool done = false;
+
+            while (!done)
+            {
+                int left = current * 2 + 1;
+                if (left >= count)
+                {
+                    done = true;
+                }
+                else
+                {
+                    int largest = left;
+                    int right = left + 1;
+                    if (right < count && Compare(data[right], data[left], comparer, statistics) > 0)
+                    {
+                        largest = right;
+                    }
+
+                    if (Compare(data[largest], data[current], comparer, statistics) > 0)
+                    {
+                        Swap(data, current, largest, statistics);
+                        current = largest;
+                    }
+                    else
+                    {
+                        done = true;
+                    }
+                }
+            }
+        }
+
+        public override void Sort(Student[] data, int count, StudentComparer comparer, SortStatistics statistics)
+        {
+            statistics.Reset();
+            int root = count / 2 - 1;
+            while (root >= 0)
+            {
+                SiftDown(data, root, count, comparer, statistics);
+                root = root - 1;
+            }
+
+            int end = count - 1;
+            while (end > 0)
+            {
+                Swap(data, 0, end, statistics);
+                SiftDown(data, 0, end, comparer, statistics);
+                end = end - 1;
+            }
+        }
+    }
+}

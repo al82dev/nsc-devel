@@ -1,0 +1,157 @@
+Stage 54.3 "Mutex" -- archivos modificados/nuevos en esta ronda
+(tercera subronda de Stage 54, threading -- incluye la caracteristica Mutex Y dos correcciones
+de concurrencia preexistentes, compilador-wide, halladas por la rigurosidad de testing de esta
+subronda: ver 59_stage54_3_mutex.md para el detalle tecnico completo de ambos bugs)
+
+MODIFICADOS:
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+  src/LLVM/LlvmCApi.h
+  src/Runtime/WindowsRuntimeBuilder.cpp
+  src/Linker/WindowsExecutableBuilder.cpp
+  src/Linker/WindowsLibraryBuilder.cpp
+  tests/unit/Stage47HostCAbiTests.cpp
+  tests/unit/Stage48_3CHostIntegrationTests.cpp
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp
+  tests/unit/Stage37StaticInitializationTests.cpp
+  CMakeLists.txt
+
+NOTA IMPORTANTE sobre `ProjectOopLlvmLowerer.cpp`: la mayoria de este archivo se toco por DOS
+razones independientes, no una. La primera (esperada): los cuatro bloques de lowering de las core
+operations de Mutex (MutexCreate/Lock/Unlock/Close), calcando el patron de Thread. La segunda (NO
+planeada al arrancar la ronda, el hallazgo mas importante de esta subronda): la reescritura
+completa de `defineTypeInitializers` -- el guard de inicializacion perezosa de estaticos ("cctor")
+-- para corregir DOS bugs de concurrencia preexistentes y compilador-wide, ajenos a Mutex
+conceptualmente:
+  (1) el guard original no tenia NINGUNA sincronizacion (load/compare/store plano no-atomico),
+      permitiendo que dos hilos tocando por primera vez los estaticos de la MISMA clase
+      ejecutaran AMBOS el inicializador -- corregido con LLVMBuildAtomicCmpXchg (CAS real) mas
+      cargas/escrituras atomicas via la funcion LLVMSetOrdering, nueva en esta ronda.
+  (2) esa primera correccion introdujo un self-deadlock: un inicializador de campo estatico que
+      lee otro campo estatico de SU PROPIO tipo dispara una llamada recursiva al mismo cctor,
+      desde el mismo hilo, que bajo un guard CAS-only queda esperando eternamente a si mismo --
+      corregido con un global "owner thread id" por tipo mas un hook de runtime interno nuevo
+      (__nativesharp_get_current_thread_id, wrapper de GetCurrentThreadId de Win32).
+Ver 59_stage54_3_mutex.md, secciones "El descubrimiento de esta ronda" y "El segundo bug", para
+el diagnostico completo (incluida la prueba con un programa de referencia en C/mingw que confirmo
+que el bug era de NativeSharp y no de Wine).
+
+NOTA sobre `tests/unit/Stage37StaticInitializationTests.cpp`: modificado por una razon distinta a
+las tres bibliotecas host-integration de arriba -- NO es sincronizacion de kernel32Symbols. Su
+aserción original buscaba textualmente el `store i8 1, ptr @__nsc_cctor_state_` PLANO de la
+version VIEJA (insegura) del guard, que la correccion (1) de arriba elimina (la transicion 0->1
+ahora es un `cmpxchg` atomico). Se corrigio la aserción para verificar la propiedad de orden
+equivalente sobre el IR nuevo (`cmpxchg` antes de `store atomic i8 2`) -- no es una regresion de
+comportamiento, es una aserción actualizada para reflejar un detalle de implementacion que cambio
+a proposito. Ver 59_stage54_3_mutex.md, seccion "La unica regresion aparente...".
+
+NOTA sobre `kernel32Symbols` (disciplina de sincronizacion en las cinco ubicaciones): esta ronda
+agrego DOS imports nuevos de Win32 para la caracteristica Mutex (CreateMutexA, ReleaseMutex) mas
+UNO nuevo para la correccion del cctor (GetCurrentThreadId) -- tres en total, sincronizados en las
+cinco ubicaciones de siempre (35 -> 38 entradas): WindowsExecutableBuilder.cpp,
+WindowsLibraryBuilder.cpp, y las tres copias locales en Stage47HostCAbiTests.cpp/
+Stage48_3CHostIntegrationTests.cpp/Stage48_4CppHostIntegrationTests.cpp. WaitForSingleObject
+(Stage 54.1) y CloseHandle (Stage 53.3b) se REUSARON integros para Mutex, sin re-declarar.
+
+NUEVOS:
+  lib/NativeSharp.Core.Threading/Mutex.ns
+  examples/project_stage54_3/Stage54_3Mutex.nsproj
+  examples/project_stage54_3/Main.ns
+  tests/unit/Stage54_3MutexTests.cpp
+  59_stage54_3_mutex.md
+  59_stage54_3_mutex_implementacion_paso_a_paso.md
+  STAGE54_3_CHANGED_FILES.txt (este archivo)
+
+Total: 16 modificados + 7 nuevos = 23 archivos propios de esta ronda.
+
+CONVENCION NUEVA DESDE ESTA RONDA (pedido explicito de Alberto, 2026-08-28): el ZIP INCREMENTAL
+ahora tambien empaqueta el arbol `lib/` COMPLETO (las 5 bibliotecas .ns -- NativeSharp.Core,
+NativeSharp.Core.Threading, NativeSharp.Core.Collections.Generic, NativeSharp.Core.IO,
+NativeSharp.Core.Diagnostics -- 41 archivos, ~416 KB), no solo los .ns tocados en esta ronda
+especifica. Motivo: estas bibliotecas se distribuyen y consumen como codigo FUENTE .ns (via
+ProjectReference, recompiladas en cada proyecto -- NativeSharp no tiene hoy un formato de
+libreria precompilada/estatica real; ver 59_stage54_3_mutex.md y el hilo de chat de esta ronda
+para la discusion tecnica completa de por que), asi que sin el arbol completo un proyecto que
+referencia mas de una libreria no puede compilar solo con el zip incremental. El ZIP COMPLETO ya
+incluia `lib/` entero desde siempre (no cambia); esta convencion cierra el hueco solo del
+incremental. Documentado tambien en claude/05_metodo_de_trabajo_y_archivo_historico.md para que
+aplique automaticamente en toda ronda futura.
+
+Total con `lib/` completo agregado: 22 archivos propios de la ronda (los 16 modificados + 6 de los
+7 nuevos -- `Mutex.ns` ya queda cubierto por el arbol `lib/` completo, no se duplica) + 41 archivos
+reales de `lib/` (mas 6 entradas de directorio vacias que `zip` agrega automaticamente) = 69
+entradas totales en el zip incremental.
+
+ADDENDUM (pedido explicito de Alberto, posterior al cierre de la ronda): "--deploy" via CMake.
+Alberto pidio una forma de decirle al build donde esta instalado el compilador (su instalacion
+real vive en `C:\native-sharp`) para copiar ahi el `nsc.exe` recien construido junto con `lib/`
+completo, en vez de copiar archivos a mano cada vez. Se agrego `install(TARGETS nsc ...)` +
+`install(DIRECTORY lib/ ...)` a `CMakeLists.txt` -- el mecanismo estandar de CMake para esto, sin
+inventar un flag custom: `cmake --install build --config Release --prefix C:\native-sharp`.
+Documentado en `BUILD.md`, seccion nueva "Instalar/desplegar el compilador en otra ruta". Se
+descarto un guard `CMAKE_SKIP_INSTALL_RPATH` (no tuvo efecto en este sandbox por como CMake separa
+"agregar RPATH nuevo" de "limpiar el RPATH de build") a favor de `BUILD_WITH_INSTALL_RPATH TRUE` +
+`INSTALL_RPATH "${LLVM_LIBRARY_DIRS}"` (solo en `NOT WIN32` -- en Windows, PE/COFF no tiene RPATH,
+este bloque es un no-op), que ademas de evitar el quirk es lo correcto: el binario instalado en
+Linux/macOS sigue necesitando encontrar la misma libLLVM del sistema. Verificado de punta a punta
+en este sandbox: `cmake --install build --prefix <ruta-temporal>` deja `<ruta>/bin/nsc` +
+`<ruta>/lib/NativeSharp.Core*` completos; un proyecto de humo que referencia esas rutas instaladas
+(ProjectReference a `NativeSharp.Core`/`NativeSharp.Core.Threading`, usando `Mutex`) compilo y
+corrio bajo Wine con exit code 0 usando EXCLUSIVAMENTE los archivos de la instalacion, sin tocar
+el arbol de trabajo original. Suite completa reconfirmada despues de este cambio: 220/221 (mismo
+unico fallo preexistente de siempre). Archivo modificado adicional por este addendum: `BUILD.md`
+(nuevo, no estaba en la lista de MODIFICADOS de arriba porque se agrego despues del cierre inicial
+de la ronda).
+
+ADDENDUM 2 (bug real reportado por Alberto en su maquina, posterior al addendum de --deploy):
+al correr el build real adaptado (`clang-cl` + `lld-link`, con `-DNSC_WARNINGS_AS_ERRORS=ON`, que
+es EXACTAMENTE el flag que su toolchain usa) aparecieron 16 errores de compilacion:
+`error: missing field 'implicitFieldMemberOrdinal' initializer [-Werror,-Wmissing-field-initializers]`
+en `ProjectMethodBodyModel.cpp`, seguidos de la falla en cascada de `cmake --install` (nunca se
+genero `nsc.exe`). Causa raiz: el struct `MethodCoreBinding`
+(`include/nativesharp/Frontend/ProjectMethodBodyModel.h`) tiene 8 campos desde Stage 54.2 (el
+octavo, `implicitFieldMemberOrdinal`, se agrego para el direccionamiento del campo `value_`
+implicito de AtomicInt32/AtomicInt64). 16 inicializaciones posicionales por agregado de este
+struct en `ProjectMethodBodyModel.cpp` solo especificaban los primeros 7 campos -- valido en C++
+(el octavo se value-initializa igual), pero bajo `-Wmissing-field-initializers` (parte de
+`-Wextra`) se marca como warning, y bajo `-Werror`/`/WX` eso es un error duro. GAP DE PROCESO
+CONFIRMADO: este sandbox NUNCA habia compilado con `NSC_WARNINGS_AS_ERRORS=ON` (el flag por
+defecto es OFF, confirmado via `build/CMakeCache.txt`), asi que el warning paso desapercibido
+desde que se introdujo el octavo campo en Stage 54.2 hasta que la build real de Alberto lo
+atrapo. Se corrigieron los 16 sitios exactos (lineas 2923, 3357, 3388, 3574, 4162, 5240, 5256,
+5289, 5370, 5486, 5510, 5589, 5685, 5737, 6139, 6153 de `ProjectMethodBodyModel.cpp`) agregando
+`std::nullopt` explicito como octavo valor. Verificado con reconfiguracion +
+rebuild completo + `ctest` en este sandbox con `-DNSC_WARNINGS_AS_ERRORS=ON` activado (antes
+apagado): build limpio (exit 0, cero `error:`), suite 220/221 (mismo unico fallo preexistente de
+siempre, cero regresiones). Ademas, verificado desde una EXTRACCION AISLADA NUEVA del zip completo
+regenerado (no el arbol de trabajo original) con el mismo flag `-DNSC_WARNINGS_AS_ERRORS=ON`:
+build limpio + 220/221, confirmando que el zip entregado a Alberto compila igual que su toolchain
+real exige. LECCION DE PROCESO adoptada de aqui en adelante: toda ronda futura debe verificarse en
+este sandbox al menos una vez con `-DNSC_WARNINGS_AS_ERRORS=ON`, no solo con la configuracion por
+defecto (OFF), para no dejar pasar de nuevo un caso asi. No se agrega ningun archivo nuevo a la
+lista de MODIFICADOS: `ProjectMethodBodyModel.cpp` ya estaba en ella por la caracteristica Mutex.
+Ambos zips (incremental y completo) fueron regenerados con esta correccion incluida.
+
+Verificacion: 176/176 checks en nsc_stage54_3_mutex_tests, estable en tres corridas consecutivas
+del binario completo (cada corrida incluye ejecuciones REALES bajo Wine de cinco fixtures: la
+minima de core operations, la del modulo de runtime, el ejemplo empaquetado a O0/O2 -- 5 corridas
+cada uno, la regla de rigor extra de Stage 54 --, la regresion dedicada del Bug #1 del cctor -- 8
+hilos race-condition sobre el primer touch de una clase nueva, 8 corridas Wine a O0 Y O2, 16 en
+total --, y la regresion dedicada del Bug #2 -- dos patrones de auto-referencia estatica, acotados
+por el timeout de 20s ya incorporado en el helper de ejecucion bajo Wine); ejemplo empaquetado
+verificado independientemente en 80/80 corridas limpias (40 a O0, 40 a O2) durante el desarrollo
+del fix; isolamiento dedicado de la carrera del cctor (2 hilos x 2500, ~50% de fallo antes del
+fix) confirmado en 0/40 fallos despues; programa de auto-referencia estatica confirmado colgado
+(exit 124, timeout de 15s) ANTES de la segunda correccion y limpio (exit 0) DESPUES; prueba
+independiente con un programa de referencia en C puro compilado con x86_64-w64-mingw32-gcc (NO con
+NativeSharp) corrido 30/30 veces limpio bajo el mismo Wine donde el equivalente NativeSharp
+fallaba ~50% de las veces, confirmando que el bug era real y propio de NativeSharp, no un artefacto
+de Wine; suite completa del proyecto 220/221 (unico fallo: nsc.stage52-4.owned-cleanup-runtime,
+hallazgo preexistente documentado desde Stage 53.5, no relacionado con esta ronda) tanto antes
+como despues de registrar el test dedicado de esta subronda; zip completo del compilador
+verificado configurando + compilando limpio desde una extraccion nueva.

@@ -1,0 +1,151 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 19 -- Excepciones
+// Fuente de inspiracion: Learn C# Programming chapter_14 (Catching.cs, ConditionalCatch.cs,
+// Throwing.cs, CustomExceptions.cs, Rethrowing1.cs/Rethrowing2.cs, Finally.cs).
+// ============================================================================================
+//
+// K&R/C no tienen excepciones -- los errores se comunican con codigos de retorno (y errno).
+// NativeSharp SI tiene try/catch/finally/throw reales (Stage 45), con destruccion RAII garantizada
+// durante el desenrollado de pila (ver tutorial_12, "Cleanup ante excepcion"). Lo que NO tiene:
+// switch/pattern-matching sobre excepciones (no hay switch en absoluto, ver tutorial_03) -- el
+// filtrado de tipos de excepcion se hace con multiples bloques catch en orden, igual que C# real.
+//
+// Nota real encontrada escribiendo este ejemplo (no un bug inventado para ensenar, uno real):
+// reusar el MISMO objeto `raii` en un segundo `try` (con o sin `finally`) DESPUES de que un
+// primer `try`/`catch` sobre ese mismo objeto atrapo una excepcion de verdad hace crashear el
+// binario (SIGSEGV) -- ver BUGS_ENCONTRADOS/bug_try_catch_reuso_objeto_tras_catch.md en la raiz
+// del repo para el repro minimo y el analisis. Por eso, abajo, cada seccion de demostracion usa
+// su PROPIA cuenta -- no es una limitacion pedagogica, es evitar un bug real de compilador que
+// esta fuera del alcance de este paquete de ejemplos (arreglarlo es trabajo de compilador, no de
+// ejemplo academico).
+namespace Tutorial.Excepciones
+{
+    // Excepcion personalizada -- cualquier clase que herede (transitivamente) de
+    // NativeSharp.Core.Exception sirve como tipo de excepcion propio.
+    public class InsufficientFundsException : Exception
+    {
+        public int Requested;
+        public int Available;
+    }
+
+    public class Account
+    {
+        private int balance;
+
+        public Account(int initialBalance)
+        {
+            balance = initialBalance;
+        }
+
+        public int Balance() { return balance; }
+
+        // Throwing (K&R no tiene equivalente): en vez de devolver -1 o un codigo de error, se
+        // lanza una excepcion con datos estructurados sobre que salio mal.
+        public void Withdraw(int amount)
+        {
+            if (amount > balance)
+            {
+                InsufficientFundsException problem = new InsufficientFundsException();
+                problem.Requested = amount;
+                problem.Available = balance;
+                throw problem;
+            }
+            balance = balance - amount;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // Catch basico, con la variable de excepcion tipada (K&R no tiene esto en absoluto).
+            raii Account accountA = new Account(100);
+            int caughtRequested = 0;
+            int caughtAvailable = 0;
+            try
+            {
+                accountA.Withdraw(500);
+            }
+            catch (InsufficientFundsException problem)
+            {
+                caughtRequested = problem.Requested;
+                caughtAvailable = problem.Available;
+            }
+            // caughtRequested==500, caughtAvailable==100, accountA.Balance() sigue en 100 (el
+            // retiro nunca se aplico)
+
+            // finally -- corre SIEMPRE, haya o no excepcion, antes de que el control siga.
+            raii Account accountB = new Account(100);
+            int finallyRuns = 0;
+            try
+            {
+                accountB.Withdraw(30); // esta SI tiene fondos, no lanza nada
+            }
+            finally
+            {
+                finallyRuns = finallyRuns + 1;
+            }
+            int balanceAfterValidWithdraw = accountB.Balance(); // 70
+
+            // Multiples catch en orden -- el primero cuyo tipo coincide gana (no hay switch/
+            // pattern matching, ver comentario de cabecera).
+            raii Account accountC = new Account(100);
+            int matchedSpecific = 0;
+            int matchedGeneric = 0;
+            try
+            {
+                accountC.Withdraw(1000);
+            }
+            catch (InsufficientFundsException specific)
+            {
+                matchedSpecific = 1;
+            }
+            catch (Exception generic)
+            {
+                matchedGeneric = 1;
+            }
+            // matchedSpecific==1, matchedGeneric==0 -- el catch especifico va primero y coincide
+
+            // Rethrow (throw; sin argumento, dentro de un catch) -- propaga la MISMA excepcion
+            // hacia el llamador de este metodo, en vez de manejarla aca.
+            raii Account accountD = new Account(100);
+            int outerCaught = 0;
+            try
+            {
+                try
+                {
+                    accountD.Withdraw(9999);
+                }
+                catch (InsufficientFundsException inner)
+                {
+                    throw; // no la maneja aca -- la deja pasar hacia el catch de afuera
+                }
+            }
+            catch (InsufficientFundsException outer)
+            {
+                outerCaught = 1;
+            }
+
+            raii string label = String.Copy("caughtRequested/caughtAvailable/balance = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(caughtRequested);
+            raii string d2 = String.ToString(caughtAvailable);
+            raii string d3 = String.ToString(balanceAfterValidWithdraw);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string line = String.Concat(s4, d3);
+            Console.WriteLine(line);
+
+            // caughtRequested==500, caughtAvailable==100, finallyRuns==1,
+            // balanceAfterValidWithdraw==70, matchedSpecific==1, matchedGeneric==0, outerCaught==1
+            int result = caughtRequested / 10 + caughtAvailable + finallyRuns * 10 +
+                balanceAfterValidWithdraw + matchedSpecific + outerCaught;
+            if (matchedGeneric == 0) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

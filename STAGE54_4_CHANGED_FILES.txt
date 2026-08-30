@@ -1,0 +1,64 @@
+Stage 54.4 "Condition Variables" -- archivos modificados/nuevos en esta ronda
+(cuarta subronda de Stage 54, threading -- Monitor. Implementada EN LA MISMA PASADA que Stage 54.5
+por instruccion explicita de Alberto ("aunque sea un poco mas tardado, ya implementes 54.4 y
+54.5"); varios archivos del compilador se tocaron UNA SOLA VEZ para ambas subrondas combinadas --
+ver STAGE54_5_CHANGED_FILES.txt para el detalle especifico de Semaphore/Event. Ver
+60_stage54_4_monitor.md para el diseño tecnico completo.)
+
+MODIFICADOS (compartidos con Stage 54.5, tocados una sola vez para las 14 core operations
+combinadas -- 5 de Monitor + 9 de Semaphore/Event):
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+  src/Runtime/WindowsRuntimeBuilder.cpp
+  src/Linker/WindowsExecutableBuilder.cpp
+  src/Linker/WindowsLibraryBuilder.cpp
+  tests/unit/Stage47HostCAbiTests.cpp
+  tests/unit/Stage48_3CHostIntegrationTests.cpp
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp
+  CMakeLists.txt
+
+NUEVOS (especificos de esta subronda, Monitor):
+  lib/NativeSharp.Core.Threading/Monitor.ns
+  examples/project_stage54_4/Stage54_4Monitor.nsproj
+  examples/project_stage54_4/Main.ns
+  tests/unit/Stage54_4MonitorTests.cpp
+  60_stage54_4_monitor.md
+  60_stage54_4_monitor_implementacion_paso_a_paso.md
+  STAGE54_4_CHANGED_FILES.txt (este archivo)
+
+NOTA sobre `MethodCoreBinding` (noveno campo, `secondaryImplicitFieldMemberOrdinal`): agregar este
+campo hubiera reintroducido EXACTAMENTE el mismo bug real de `-Wmissing-field-initializers` que
+Stage 54.3 encontro y corrigio (ver la addenda del manifiesto de esa ronda) -- esta vez corregido
+de forma PREVENTIVA, ANTES de escribir codigo nuevo: los 16 call sites existentes de
+`MethodCoreBinding{...}` se parcharon primero (mismo script Python con aserciones de linea, misma
+tecnica que la correccion real de Stage 54.3), y solo entonces se escribio el bloque de
+reconocimiento de Monitor. Cero fallas de compilacion relacionadas con este campo en toda la ronda.
+
+NOTA sobre `ProjectOopHirNode`/`ProjectOopMirNode` (campo `secondaryMemberOrdinal`, mas
+`secondaryImmediate` en MIR): a diferencia de `MethodCoreBinding`, agregar estos campos fue SEGURO
+sin tocar ningun call site existente -- ambas structs se construyen via asignacion de campos
+(`makeNode()`/`lowerNode()`), no aggregate-init posicional. Confirmado leyendo el codigo de
+construccion antes de asumirlo, no por analogia.
+
+NOTA sobre `kernel32Symbols` (disciplina de sincronizacion en las cinco ubicaciones): esta ronda
+agrego 10 imports Win32 nuevos EN TOTAL (5 de Monitor: AcquireSRWLockExclusive/
+ReleaseSRWLockExclusive/WakeConditionVariable/WakeAllConditionVariable/SleepConditionVariableSRW;
+5 de Semaphore/Event, ver STAGE54_5_CHANGED_FILES.txt), sincronizados JUNTOS, en una sola pasada,
+en las cinco ubicaciones de siempre (38 -> 48 entradas), verificados con un script Python que
+cuenta las entradas reales del array (ignorando lineas de comentario) contra su tamaño declarado
+en cada una de las cinco ubicaciones. El primer intento de `--emit-project-oop-exe` sobre el
+smoke-test scratch fallo en el LINKER (`lld-link: undefined symbol`) para los 10 simbolos --
+exactamente el fallo esperado por esta regla del proyecto, confirmando por que existe.
+
+VERIFICACION: build completo con `-DNSC_WARNINGS_AS_ERRORS=ON` limpio. `ctest -R
+"stage54-4|stage54-5"`: 2/2 exitosos (147+~130 checks). `ctest` completo: 222/223 -- la unica
+falla (`nsc.stage52-4.owned-cleanup-runtime`) es PRE-EXISTENTE, de Stage 52.4 (ownership/RAII),
+NO tocado por esta ronda -- un "negative test" que espera un crash real bajo Wine (double-free
+deliberado) que dejo de reproducirse en este entorno especifico (confirmado consistente en 3
+corridas, independiente de reiniciar `wineserver`). Reportado a Alberto como hallazgo separado,
+fuera de alcance de esta ronda -- no bloquea esta entrega.

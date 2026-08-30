@@ -1,0 +1,29 @@
+namespace NativeSharp.BookExamples.Sorting
+{
+    public class SortStatistics
+    {
+        private int comparisons;
+        private int swaps;
+        private int moves;
+
+        public SortStatistics()
+        {
+            Reset();
+        }
+
+        public int Comparisons { get { return comparisons; } }
+        public int Swaps { get { return swaps; } }
+        public int Moves { get { return moves; } }
+
+        public void Reset()
+        {
+            comparisons = 0;
+            swaps = 0;
+            moves = 0;
+        }
+
+        public void Comparison() { comparisons = comparisons + 1; }
+        public void Swap() { swaps = swaps + 1; }
+        public void Move() { moves = moves + 1; }
+    }
+}

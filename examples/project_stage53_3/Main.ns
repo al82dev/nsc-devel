@@ -1,0 +1,153 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+// Stage 53.3 "Filesystem/Paths" -- programa de verificacion empaquetado. Misma convencion que
+// todo Stage 53: cada chequeo que falla devuelve un codigo de salida distinto (para poder
+// identificar EXACTAMENTE cual fallo con solo mirar el exit code), y el ultimo chequeo exitoso
+// termina en "return 0" (a diferencia de Stage 53.2/53.2b, aca no hay ningun Environment.Exit
+// que probar, asi que un "return 0" comun y corriente es el mecanismo de exito).
+//
+// Los chequeos de File/Directory (15-20) dependen de dos cosas que el harness de C++ que corre
+// este ejecutable prepara ANTES de invocar el .exe (ver testPackagedExampleAtOptimizationLevel
+// en tests/unit/Stage53_3FilesystemPathsTests.cpp):
+//   1. El directorio de trabajo del proceso Wine tiene que ser un directorio ESCRIBIBLE y VACIO
+//      dedicado a este test (no el directorio del build en general) -- los checks 17-20 CREAN
+//      y BORRAN archivos/directorios de verdad en el disco.
+//   2. Tiene que existir de antemano un archivo llamado exactamente
+//      "nativesharp_stage53_3_existing_file.txt" en ese directorio -- Stage 53.3 todavia NO
+//      tiene File.WriteAllText (ver el comentario de cabecera de File.ns para por que quedo
+//      deliberadamente fuera de esta ronda), asi que no hay forma de crear ese archivo DESDE
+//      NativeSharp todavia; el harness lo crea con una llamada de C++ comun y corriente antes
+//      de correr el ejecutable.
+class Program
+{
+    public static int Main()
+    {
+        // ---- Path.Combine ------------------------------------------------------------------
+
+        raii string combined = Path.Combine("C:\\Users\\alberto", "archivo.txt");
+        if (!combined.Equals("C:\\Users\\alberto\\archivo.txt"))
+        {
+            return 1;
+        }
+
+        raii string combinedTrailingBackslash = Path.Combine("C:\\Users\\alberto\\", "archivo.txt");
+        if (!combinedTrailingBackslash.Equals("C:\\Users\\alberto\\archivo.txt"))
+        {
+            return 2;
+        }
+
+        raii string combinedTrailingSlash = Path.Combine("C:/Users/alberto/", "archivo.txt");
+        if (!combinedTrailingSlash.Equals("C:/Users/alberto/archivo.txt"))
+        {
+            return 3;
+        }
+
+        raii string combinedEmptyFirst = Path.Combine("", "archivo.txt");
+        if (!combinedEmptyFirst.Equals("archivo.txt"))
+        {
+            return 4;
+        }
+
+        raii string combinedEmptySecond = Path.Combine("C:\\Users\\alberto", "");
+        if (!combinedEmptySecond.Equals("C:\\Users\\alberto"))
+        {
+            return 5;
+        }
+
+        // ---- Path.GetFileName / GetDirectoryName -------------------------------------------
+
+        raii string fileName = Path.GetFileName("C:\\Users\\alberto\\archivo.txt");
+        if (!fileName.Equals("archivo.txt"))
+        {
+            return 6;
+        }
+
+        raii string directoryName = Path.GetDirectoryName("C:\\Users\\alberto\\archivo.txt");
+        if (!directoryName.Equals("C:\\Users\\alberto"))
+        {
+            return 7;
+        }
+
+        raii string directoryNameNoSeparator = Path.GetDirectoryName("archivo.txt");
+        if (directoryNameNoSeparator.Length != 0)
+        {
+            return 8;
+        }
+
+        // ---- Path.GetExtension / GetFileNameWithoutExtension -------------------------------
+
+        raii string extension = Path.GetExtension("C:\\Users\\alberto\\archivo.txt");
+        if (!extension.Equals(".txt"))
+        {
+            return 9;
+        }
+
+        raii string extensionNone = Path.GetExtension("C:\\Users\\alberto\\archivo");
+        if (extensionNone.Length != 0)
+        {
+            return 10;
+        }
+
+        raii string withoutExtension = Path.GetFileNameWithoutExtension("C:\\Users\\alberto\\archivo.txt");
+        if (!withoutExtension.Equals("archivo"))
+        {
+            return 11;
+        }
+
+        raii string withoutExtensionNone = Path.GetFileNameWithoutExtension("C:\\Users\\alberto\\archivo");
+        if (!withoutExtensionNone.Equals("archivo"))
+        {
+            return 12;
+        }
+
+        // ---- Path.DirectorySeparatorChar / AltDirectorySeparatorChar -----------------------
+
+        if (Path.DirectorySeparatorChar() != '\\')
+        {
+            return 13;
+        }
+        if (Path.AltDirectorySeparatorChar() != '/')
+        {
+            return 14;
+        }
+
+        // ---- File.Exists / Directory.Exists / Directory.CreateDirectory (Win32 real) --------
+
+        if (File.Exists("nativesharp_stage53_3_missing_file.txt"))
+        {
+            return 15;
+        }
+        if (Directory.Exists("nativesharp_stage53_3_new_dir"))
+        {
+            return 16;
+        }
+
+        Directory.CreateDirectory("nativesharp_stage53_3_new_dir");
+        if (!Directory.Exists("nativesharp_stage53_3_new_dir"))
+        {
+            return 17;
+        }
+        // Un directorio no es un archivo -- File.Exists tiene que devolver false para el MISMO
+        // path que Directory.Exists acaba de confirmar como existente (ver el comentario de
+        // cabecera de buildFileExists en WindowsRuntimeBuilder.cpp).
+        if (File.Exists("nativesharp_stage53_3_new_dir"))
+        {
+            return 18;
+        }
+
+        // ---- File.Exists / File.Delete (Win32 real) ------------------------------------------
+
+        if (!File.Exists("nativesharp_stage53_3_existing_file.txt"))
+        {
+            return 19;
+        }
+        File.Delete("nativesharp_stage53_3_existing_file.txt");
+        if (File.Exists("nativesharp_stage53_3_existing_file.txt"))
+        {
+            return 20;
+        }
+
+        return 0;
+    }
+}

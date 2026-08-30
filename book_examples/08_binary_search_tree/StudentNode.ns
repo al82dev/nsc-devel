@@ -1,0 +1,16 @@
+namespace NativeSharp.BookExamples.BinarySearchTree
+{
+    public class StudentNode
+    {
+        public Student Value;
+        public StudentNode Left;
+        public StudentNode Right;
+
+        public StudentNode(Student value)
+        {
+            Value = value;
+            Left = null;
+            Right = null;
+        }
+    }
+}

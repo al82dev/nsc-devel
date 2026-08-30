@@ -1,0 +1,495 @@
+using NativeSharp.Core;
+
+class Program
+{
+    public static int Main()
+    {
+        string hello = "Hello";
+        string world = " World";
+        raii string joined = hello + world;
+        if (joined != "Hello World")
+        {
+            return 1;
+        }
+        raii string slice = joined.Substring(6, 5);
+        if (!slice.Equals("World"))
+        {
+            return 2;
+        }
+        if (!joined.Contains("lo Wo"))
+        {
+            return 3;
+        }
+
+        if (!joined.StartsWith("Hello"))
+        {
+            return 10;
+        }
+        if (!joined.EndsWith("World"))
+        {
+            return 11;
+        }
+        if (joined.LastIndexOf("o") != 7)
+        {
+            return 12;
+        }
+        char[] vowels = new char[2];
+        vowels[0] = 'e';
+        vowels[1] = 'o';
+        if (joined.IndexOfAny(vowels) != 1)
+        {
+            return 13;
+        }
+        delete[] vowels;
+
+        raii string inserted = joined.Insert(5, ",");
+        if (!inserted.Equals("Hello, World"))
+        {
+            return 20;
+        }
+        raii string removed = joined.Remove(5);
+        if (!removed.Equals("Hello"))
+        {
+            return 21;
+        }
+        raii string removedRange = joined.Remove(0, 6);
+        if (!removedRange.Equals("World"))
+        {
+            return 22;
+        }
+        raii string swapped = joined.Replace('o', '0');
+        if (!swapped.Equals("Hell0 W0rld"))
+        {
+            return 23;
+        }
+        raii string replaced = joined.Replace("World", "NativeSharp");
+        if (!replaced.Equals("Hello NativeSharp"))
+        {
+            return 24;
+        }
+
+        raii string padded = String.Copy("  hi  ");
+        raii string trimmed = padded.Trim();
+        if (!trimmed.Equals("hi"))
+        {
+            return 30;
+        }
+        raii string leftTrimmed = padded.TrimStart();
+        if (!leftTrimmed.Equals("hi  "))
+        {
+            return 31;
+        }
+        raii string rightTrimmed = padded.TrimEnd();
+        if (!rightTrimmed.Equals("  hi"))
+        {
+            return 32;
+        }
+        raii string stripped = padded.Strip();
+        if (!stripped.Equals("hi"))
+        {
+            return 33;
+        }
+
+        raii string leftPadded = "7".PadLeft(3, '0');
+        if (!leftPadded.Equals("007"))
+        {
+            return 40;
+        }
+        raii string rightPadded = "7".PadRight(3, '.');
+        if (!rightPadded.Equals("7.."))
+        {
+            return 41;
+        }
+        raii string centered = "hi".Center(6);
+        if (!centered.Equals("  hi  "))
+        {
+            return 42;
+        }
+        raii string zfilled = "-7".ZFill(4);
+        if (!zfilled.Equals("-007"))
+        {
+            return 43;
+        }
+
+        raii string lowered = "HeLLo".ToLower();
+        if (!lowered.Equals("hello"))
+        {
+            return 50;
+        }
+        raii string uppered = "HeLLo".ToUpper();
+        if (!uppered.Equals("HELLO"))
+        {
+            return 51;
+        }
+        raii string swappedCase = "HeLLo".SwapCase();
+        if (!swappedCase.Equals("hEllO"))
+        {
+            return 52;
+        }
+        raii string capitalized = "hELLO".Capitalize();
+        if (!capitalized.Equals("Hello"))
+        {
+            return 53;
+        }
+        raii string titled = "hello world".Title();
+        if (!titled.Equals("Hello World"))
+        {
+            return 54;
+        }
+
+        if (!"abc".IsAlpha())
+        {
+            return 60;
+        }
+        if (!"123".IsDigit())
+        {
+            return 61;
+        }
+        if (!"abc123".IsAlnum())
+        {
+            return 62;
+        }
+        if (!"abc".IsAscii())
+        {
+            return 63;
+        }
+        if (!"ABC".IsUpper())
+        {
+            return 64;
+        }
+        if (!"abc".IsLower())
+        {
+            return 65;
+        }
+        if (!"   ".IsWhiteSpace())
+        {
+            return 66;
+        }
+        if (!String.IsNullOrWhiteSpace(""))
+        {
+            return 67;
+        }
+
+        int hashOne = "hello".GetHashCode();
+        int hashTwo = "hello".GetHashCode();
+        if (hashOne != hashTwo)
+        {
+            return 70;
+        }
+
+        char[] chars = "abc".ToCharArray();
+        if (chars.Length != 3 || chars[0] != 'a')
+        {
+            return 80;
+        }
+        delete[] chars;
+
+        char[] destination = new char[5];
+        "abc".CopyTo(destination, 2);
+        if (destination[2] != 'a' || destination[3] != 'b' || destination[4] != 'c')
+        {
+            return 81;
+        }
+        delete[] destination;
+
+        string[] parts = new string[3];
+        parts[0] = "a";
+        parts[1] = "b";
+        parts[2] = "c";
+        raii string joinedParts = String.Join("-", parts);
+        if (!joinedParts.Equals("a-b-c"))
+        {
+            return 90;
+        }
+        delete[] parts;
+
+        if (!true.ToString().Equals("True"))
+        {
+            return 100;
+        }
+        if (!'x'.ToString().Equals("x"))
+        {
+            return 101;
+        }
+        if (!(42).ToString().Equals("42"))
+        {
+            return 102;
+        }
+        if (!(-42).ToString().Equals("-42"))
+        {
+            return 103;
+        }
+        long bigValue = 9000000000;
+        if (!bigValue.ToString().Equals("9000000000"))
+        {
+            return 104;
+        }
+        ulong bigUnsigned = 18000000000000000000;
+        if (!bigUnsigned.ToString().Equals("18000000000000000000"))
+        {
+            return 105;
+        }
+
+        // Stage 51 regression: ulong / int-literal debia preservar aritmetica entera
+        // (era el bug corregido por Alberto en este stage: ulong / 10 se promovia a double).
+        ulong dividend = 100;
+        ulong quotient = dividend / 10;
+        if (!quotient.ToString().Equals("10"))
+        {
+            return 110;
+        }
+
+        if (!joined.Equals("hello world", true))
+        {
+            return 120;
+        }
+        if (!joined.Contains("WORLD", true))
+        {
+            return 121;
+        }
+        if (joined.IndexOf("WORLD", true) != 6)
+        {
+            return 122;
+        }
+        if (!joined.StartsWith("HELLO", true))
+        {
+            return 123;
+        }
+        if (!joined.EndsWith("WORLD", true))
+        {
+            return 124;
+        }
+
+        // Stage 51.x: los overloads reales de StringComparison, ahora que el pipeline OOP
+        // resuelve acceso calificado a miembros de enum (Tipo.Miembro), comparacion de enums
+        // (==) y el cast explicito enum->int, de extremo a extremo hasta LLVM.
+        if (!joined.Equals("hello world", StringComparison.OrdinalIgnoreCase))
+        {
+            return 130;
+        }
+        if (joined.Equals("HELLO WORLD", StringComparison.Ordinal))
+        {
+            return 131;
+        }
+        if (!joined.Contains("WORLD", StringComparison.OrdinalIgnoreCase))
+        {
+            return 132;
+        }
+        if (joined.IndexOf("WORLD", StringComparison.OrdinalIgnoreCase) != 6)
+        {
+            return 133;
+        }
+        if (!joined.StartsWith("HELLO", StringComparison.OrdinalIgnoreCase))
+        {
+            return 134;
+        }
+        if (!joined.EndsWith("WORLD", StringComparison.OrdinalIgnoreCase))
+        {
+            return 135;
+        }
+
+        // Stage 51.x: Split/RSplit/SplitLines/Partition/RPartition/Count -- superficie que
+        // dependia del hueco de "owned string[]" (ver la nota tecnica al inicio del bloque
+        // correspondiente en String.ns), resuelta con el patron de buffer provisto por el
+        // caller. Importante: cada elemento escrito es un string owned -- limpiarlo requiere
+        // `delete` elemento por elemento ANTES de `delete[]` el arreglo (delete[] solo libera
+        // el arreglo, no llama destructores de sus elementos; ver la misma nota).
+        string[] splitParts = new string[4];
+        int partCount = String.Split("a,b,c", ',', splitParts);
+        if (partCount != 3)
+        {
+            return 140;
+        }
+        if (!splitParts[0].Equals("a") || !splitParts[1].Equals("b") || !splitParts[2].Equals("c"))
+        {
+            return 141;
+        }
+        int freeParts = 0;
+        while (freeParts < partCount)
+        {
+            delete splitParts[freeParts];
+            freeParts = freeParts + 1;
+        }
+        delete[] splitParts;
+
+        string[] bounded = new string[2];
+        int boundedCount = String.Split("a,b,c", ',', bounded);
+        if (boundedCount != 2)
+        {
+            return 142;
+        }
+        if (!bounded[0].Equals("a") || !bounded[1].Equals("b,c"))
+        {
+            return 143;
+        }
+        delete bounded[0];
+        delete bounded[1];
+        delete[] bounded;
+
+        string[] rbounded = new string[2];
+        int rboundedCount = String.RSplit("a,b,c", ',', rbounded);
+        if (rboundedCount != 2)
+        {
+            return 144;
+        }
+        if (!rbounded[0].Equals("a,b") || !rbounded[1].Equals("c"))
+        {
+            return 145;
+        }
+        delete rbounded[0];
+        delete rbounded[1];
+        delete[] rbounded;
+
+        string[] lines = new string[8];
+        int lineCount = String.SplitLines("one\r\ntwo\nthree\rfour", lines);
+        if (lineCount != 4)
+        {
+            return 146;
+        }
+        if (!lines[0].Equals("one") || !lines[1].Equals("two") ||
+            !lines[2].Equals("three") || !lines[3].Equals("four"))
+        {
+            return 147;
+        }
+        int freeLines = 0;
+        while (freeLines < lineCount)
+        {
+            delete lines[freeLines];
+            freeLines = freeLines + 1;
+        }
+        delete[] lines;
+
+        string[] partitioned = new string[3];
+        bool foundPartition = String.Partition("key=value", "=", partitioned);
+        if (!foundPartition)
+        {
+            return 148;
+        }
+        if (!partitioned[0].Equals("key") || !partitioned[1].Equals("=") || !partitioned[2].Equals("value"))
+        {
+            return 149;
+        }
+        delete partitioned[0];
+        delete partitioned[1];
+        delete partitioned[2];
+        delete[] partitioned;
+
+        string[] rpartitioned = new string[3];
+        bool foundRPartition = String.RPartition("a=b=c", "=", rpartitioned);
+        if (!foundRPartition)
+        {
+            return 150;
+        }
+        if (!rpartitioned[0].Equals("a=b") || !rpartitioned[1].Equals("=") || !rpartitioned[2].Equals("c"))
+        {
+            return 151;
+        }
+        delete rpartitioned[0];
+        delete rpartitioned[1];
+        delete rpartitioned[2];
+        delete[] rpartitioned;
+
+        if (String.Count("banana", "an") != 2)
+        {
+            return 152;
+        }
+
+        raii string noPrefix = "hello world".RemovePrefix("hello ");
+        if (!noPrefix.Equals("world"))
+        {
+            return 153;
+        }
+        raii string noSuffix = "hello world".RemoveSuffix(" world");
+        if (!noSuffix.Equals("hello"))
+        {
+            return 154;
+        }
+
+        if (String.Compare("abc", "abd") >= 0)
+        {
+            return 155;
+        }
+        if (String.Compare("abc", "abc") != 0)
+        {
+            return 156;
+        }
+        if (String.CompareOrdinal("b", "a") <= 0)
+        {
+            return 157;
+        }
+        if ("abc".CompareTo("abd") >= 0)
+        {
+            return 158;
+        }
+
+        raii string cloned = "clone-me".Clone();
+        if (!cloned.Equals("clone-me"))
+        {
+            return 159;
+        }
+
+        string[] formatArgs = new string[2];
+        formatArgs[0] = "World";
+        formatArgs[1] = "42";
+        raii string formatted = String.Format("Hello {0}, answer is {1}!", formatArgs);
+        if (!formatted.Equals("Hello World, answer is 42!"))
+        {
+            return 160;
+        }
+        delete[] formatArgs;
+
+        if (!"123".IsDecimal())
+        {
+            return 161;
+        }
+        if (!"123".IsNumeric())
+        {
+            return 162;
+        }
+        if (!"valid_Id_1".IsIdentifier())
+        {
+            return 163;
+        }
+        if ("1bad".IsIdentifier())
+        {
+            return 164;
+        }
+        if (!"Hello".IsPrintable())
+        {
+            return 165;
+        }
+        if (!"Hello World".IsTitle())
+        {
+            return 167;
+        }
+        if ("hello world".IsTitle())
+        {
+            return 168;
+        }
+
+        raii string tabsExpanded = "a\tb".ExpandTabs(4);
+        if (!tabsExpanded.Equals("a   b"))
+        {
+            return 169;
+        }
+
+        raii string normalizedLineEndings = "a\r\nb\rc".ReplaceLineEndings();
+        if (!normalizedLineEndings.Equals("a\nb\nc"))
+        {
+            return 170;
+        }
+
+        raii string lowerInvariant = "HELLO".ToLowerInvariant();
+        if (!lowerInvariant.Equals("hello"))
+        {
+            return 171;
+        }
+        raii string upperInvariant = "hello".ToUpperInvariant();
+        if (!upperInvariant.Equals("HELLO"))
+        {
+            return 172;
+        }
+
+        return 0;
+    }
+}

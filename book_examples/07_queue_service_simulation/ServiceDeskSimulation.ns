@@ -1,0 +1,102 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.QueueSimulation
+{
+    public class ServiceDeskSimulation
+    {
+        private CircularQueue<Customer> waiting;
+        private Customer[] dequeueSlot;
+        private SimulationStatistics statistics;
+
+        public ServiceDeskSimulation()
+        {
+            waiting = new CircularQueue<Customer>(4);
+            dequeueSlot = new Customer[1];
+            statistics = new SimulationStatistics();
+        }
+
+        private void PrintArrival(Customer customer, int queueLength)
+        {
+            raii string id = String.ToString(customer.Id);
+            raii string time = String.ToString(customer.ArrivalTime);
+            raii string length = String.ToString(queueLength);
+            raii string s1 = String.Concat("t=", time);
+            raii string s2 = String.Concat(s1, "  customer #");
+            raii string s3 = String.Concat(s2, id);
+            raii string s4 = String.Concat(s3, " arrives; queue=");
+            raii string line = String.Concat(s4, length);
+            Console.WriteLine(line);
+        }
+
+        private void PrintService(Customer customer)
+        {
+            raii string id = String.ToString(customer.Id);
+            raii string start = String.ToString(customer.ServiceStart);
+            raii string finish = String.ToString(customer.ServiceFinish);
+            raii string wait = String.ToString(customer.WaitingTime);
+            raii string s1 = String.Concat("      service #", id);
+            raii string s2 = String.Concat(s1, " start=");
+            raii string s3 = String.Concat(s2, start);
+            raii string s4 = String.Concat(s3, " finish=");
+            raii string s5 = String.Concat(s4, finish);
+            raii string s6 = String.Concat(s5, " waited=");
+            raii string line = String.Concat(s6, wait);
+            Console.WriteLine(line);
+        }
+
+        public int Run(Customer[] customers, int customerCount)
+        {
+            int nextArrival = 0;
+            int clock = 0;
+            Customer active = null;
+            int busyUntil = 0;
+
+            while (nextArrival < customerCount || !waiting.IsEmpty || active != null)
+            {
+                if (active != null && clock >= busyUntil)
+                {
+                    active = null;
+                }
+
+                while (nextArrival < customerCount && customers[nextArrival].ArrivalTime == clock)
+                {
+                    waiting.Enqueue(customers[nextArrival]);
+                    PrintArrival(customers[nextArrival], waiting.Count);
+                    statistics.ObserveQueue(waiting.Count);
+                    nextArrival = nextArrival + 1;
+                }
+
+                if (active == null && !waiting.IsEmpty)
+                {
+                    waiting.Dequeue(dequeueSlot);
+                    active = dequeueSlot[0];
+                    active.StartAt(clock);
+                    busyUntil = active.ServiceFinish;
+                    statistics.RecordService(active);
+                    PrintService(active);
+                }
+
+                if (active == null && waiting.IsEmpty && nextArrival < customerCount)
+                {
+                    statistics.RecordIdleMinute();
+                }
+
+                clock = clock + 1;
+            }
+
+            return clock - 1;
+        }
+
+        public SimulationStatistics Statistics()
+        {
+            return statistics;
+        }
+
+        ~ServiceDeskSimulation()
+        {
+            delete waiting;
+            delete[] dequeueSlot;
+            delete statistics;
+        }
+    }
+}

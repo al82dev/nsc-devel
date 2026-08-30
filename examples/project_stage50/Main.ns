@@ -1,0 +1,91 @@
+class Resource
+{
+    private static int liveCount = 0;
+    private static int destroyCount = 0;
+    private int value;
+
+    public Resource(int initialValue)
+    {
+        value = initialValue;
+        liveCount = liveCount + 1;
+    }
+
+    public int Read()
+    {
+        return value;
+    }
+
+    public static int LiveCount()
+    {
+        return liveCount;
+    }
+
+    public static int DestroyCount()
+    {
+        return destroyCount;
+    }
+
+    ~Resource()
+    {
+        liveCount = liveCount - 1;
+        destroyCount = destroyCount + 1;
+    }
+}
+
+class Program
+{
+    public static owned Resource Create(int value)
+    {
+        raii Resource result = new Resource(value);
+        return move(result);
+    }
+
+    public static int Inspect(borrowed Resource value)
+    {
+        return value.Read();
+    }
+
+    public static int Consume(owned Resource value)
+    {
+        return value.Read();
+    }
+
+    public static int Main()
+    {
+        if (Resource.LiveCount() != 0 || Resource.DestroyCount() != 0)
+        {
+            return 10;
+        }
+
+        raii Resource resource = Create(42);
+        if (Resource.LiveCount() != 1)
+        {
+            return 11;
+        }
+
+        {
+            borrowed Resource view = resource;
+            if (Inspect(view) != 42)
+            {
+                return 12;
+            }
+
+            if (resource.Read() != 42 || Resource.LiveCount() != 1)
+            {
+                return 13;
+            }
+        }
+
+        if (Consume(move(resource)) != 42)
+        {
+            return 14;
+        }
+
+        if (Resource.LiveCount() != 0 || Resource.DestroyCount() != 1)
+        {
+            return 15;
+        }
+
+        return 0;
+    }
+}

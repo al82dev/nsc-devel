@@ -1,0 +1,114 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 13 -- Ownership en funciones: owned, borrowed y funciones que devuelven owned
+// Continua tutorial_12 -- aca el foco es la FRONTERA entre funciones: quien es dueno de un
+// objeto cuando cruza un parametro o un valor de retorno.
+// ============================================================================================
+//
+// Tres formas de que un objeto cruce una llamada:
+//   - `borrowed T` (parametro): un prestamo de lectura/escritura. El que llama sigue siendo
+//     dueno; la funcion NO destruye el objeto al terminar.
+//   - `owned T` (parametro): la funcion se vuelve DUEÑA. El que llama debe transferir la
+//     propiedad explicitamente con move() -- no puede seguir usando su variable despues.
+//   - `owned T` (retorno): la funcion CREA (o transfiere) un objeto y se lo entrega al que
+//     llama, que ahora es responsable de destruirlo (normalmente guardandolo en un local raii).
+namespace Tutorial.OwnershipEnFunciones
+{
+    public class Resource
+    {
+        private static int liveCount = 0;
+        private static int destroyedCount = 0;
+        private int value;
+
+        public Resource(int initialValue)
+        {
+            value = initialValue;
+            liveCount = liveCount + 1;
+        }
+
+        public int Read() { return value; }
+        public static int LiveCount() { return liveCount; }
+        public static int DestroyedCount() { return destroyedCount; }
+
+        ~Resource()
+        {
+            liveCount = liveCount - 1;
+            destroyedCount = destroyedCount + 1;
+        }
+    }
+
+    class Program
+    {
+        // Retorno owned: esta funcion CREA el Resource y lo entrega -- el caller recibe la
+        // propiedad. "return move(result);" es obligatorio aca porque "result" es un local
+        // NOMBRADO (a diferencia de "return new Resource(...);" directo, que no necesitaria
+        // move -- ver la nota de disciplina de ownership en String.ns, tutorial_02).
+        public static owned Resource Create(int value)
+        {
+            raii Resource result = new Resource(value);
+            return move(result);
+        }
+
+        // Parametro borrowed: Inspect solo MIRA el objeto -- no se vuelve dueno, y el objeto
+        // sigue vivo y disponible para el caller despues de esta llamada.
+        public static int Inspect(borrowed Resource resource)
+        {
+            return resource.Read();
+        }
+
+        // Parametro owned: Consume se vuelve dueno del objeto que recibe -- lo usa, y cuando
+        // Consume termina, ESE objeto se destruye (porque nadie mas lo referencia ya). El caller
+        // tiene que haber usado move() para entregarlo, asi que no puede volver a tocarlo.
+        public static int Consume(owned Resource resource)
+        {
+            return resource.Read();
+        }
+
+        public static int Main()
+        {
+            if (Resource.LiveCount() != 0) { return 1; }
+
+            // Create() devuelve owned -> el resultado se guarda en un local raii, que ahora es
+            // el dueno.
+            raii Resource resource = Create(42);
+            if (Resource.LiveCount() != 1) { return 2; }
+
+            {
+                // borrowed: un prestamo, con scope propio. "resource" sigue siendo dueno -- este
+                // prestamo no destruye nada al salir del bloque.
+                borrowed Resource view = resource;
+                int inspected = Inspect(view);
+                if (inspected != 42) { return 3; }
+                if (resource.Read() != 42 || Resource.LiveCount() != 1) { return 4; }
+                // El objeto SIGUE vivo aca -- Inspect solo lo miro, no se lo quedo.
+            }
+
+            // Consume(...) exige owned -> hay que mover "resource" explicitamente. Despues de
+            // esta linea, la variable "resource" ya no se puede volver a usar (el compilador lo
+            // rechaza -- ver examples/project_stage50/negative/UseAfterMove.ns).
+            int consumedValue = Consume(move(resource));
+            if (consumedValue != 42) { return 5; }
+            if (Resource.LiveCount() != 0 || Resource.DestroyedCount() != 1) { return 6; }
+
+            // Un segundo Resource, para mostrar que Create()/Consume() no dejan estado colgado
+            // entre llamadas -- cada objeto tiene su propio ciclo de vida independiente.
+            int secondValue = Consume(Create(100)); // Create() devuelve un valor "fresco" -- se
+                                                       // puede pasar directo a un parametro owned
+                                                       // sin pasar por un local raii intermedio.
+            if (secondValue != 100) { return 7; }
+            if (Resource.DestroyedCount() != 2) { return 8; }
+
+            raii string label = String.Copy("valores consumidos = ");
+            raii string d1 = String.ToString(consumedValue);
+            raii string sep = String.Copy(" + ");
+            raii string d2 = String.ToString(secondValue);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string line = String.Concat(s2, d2);
+            Console.WriteLine(line);
+
+            return consumedValue + secondValue; // 42 + 100 = 142
+        }
+    }
+}

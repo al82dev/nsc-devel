@@ -1,0 +1,135 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 04 -- Funciones y recursion
+// Fuente de inspiracion: K&R cap. 4 "Functions and Program Structure".
+// ============================================================================================
+//
+// K&R cap. 4 cubre funciones (parametros, retorno), variables externas/scope, variables static,
+// bloques anidados y recursion (S4.10). NativeSharp no tiene funciones sueltas de archivo (ver
+// tutorial_01) -- el equivalente directo de una "funcion externa" de C es un metodo static de
+// una clase, y el equivalente de una "variable externa" (global, compartida entre funciones) es
+// un campo static de esa clase. El resto del capitulo se traslada casi literal.
+namespace Tutorial.FuncionesRecursion
+{
+    class Program
+    {
+        // Campo static == "external variable" de K&R S4.3: vive fuera de cualquier metodo,
+        // compartido por todas las llamadas. Se usa aqui para contar cuantas veces se invoco
+        // Factorial recursivamente (K&R S4.6 "Static Variables" -- ahi el ejemplo es un contador
+        // interno a una sola funcion; aqui se ve el mismo patron desde el lado del campo).
+        private static int factorialCalls = 0;
+
+        // Recursion (K&R S4.10): la forma canonica de factorial recursivo. Cada activacion tiene
+        // su propio "n" -- una variable automatica/local, independiente de las demas
+        // activaciones en la pila -- exactamente la explicacion de K&R.
+        public static int Factorial(int n)
+        {
+            factorialCalls = factorialCalls + 1;
+            if (n <= 1)
+            {
+                return 1;
+            }
+            return n * Factorial(n - 1);
+        }
+
+        // Fibonacci recursivo -- el otro ejemplo clasico de recursion, con DOS llamadas
+        // recursivas por activacion en vez de una (crecimiento exponencial de llamadas, a
+        // proposito para contrastar con la version iterativa de abajo).
+        public static int FibonacciRecursive(int n)
+        {
+            if (n <= 1)
+            {
+                return n;
+            }
+            return FibonacciRecursive(n - 1) + FibonacciRecursive(n - 2);
+        }
+
+        // La misma serie, iterativa -- O(n) en vez de O(2^n). No es que uno sea "mas correcto"
+        // que el otro; es la comparacion pedagogica clasica de cualquier curso de algoritmos
+        // (y el motivo por el que el grupo de "algoritmos clasicos" de este tutorial, mas
+        // adelante, insiste tanto en medir cuantas operaciones hace cada enfoque).
+        public static int FibonacciIterative(int n)
+        {
+            if (n <= 1)
+            {
+                return n;
+            }
+            int previous = 0;
+            int current = 1;
+            int i = 2;
+            while (i <= n)
+            {
+                int next = previous + current;
+                previous = current;
+                current = next;
+                i = i + 1;
+            }
+            return current;
+        }
+
+        // Argumentos - Call by Value (K&R S1.8): NativeSharp pasa los parametros por valor para
+        // todo tipo "simple" (int, bool, etc.), igual que C -- modificar el parametro adentro NO
+        // se refleja afuera. NativeSharp no tiene ref/out (a diferencia de C# real) asi que, a
+        // diferencia de C, ni siquiera hay una forma de pedir "por referencia" para un tipo
+        // simple -- ver claude/00_estado_stage50.md / STAGE52_CHECKPOINT.md, "ref/out reales" es
+        // una limitacion de lenguaje conocida y declarada, no un descuido de este ejemplo.
+        public static int TryToMutate(int value)
+        {
+            value = value * 100;
+            return value; // el cambio se ve aqui...
+        }
+
+        // Scope (K&R S4.4): un parametro/local con el mismo nombre que un campo de la clase
+        // OCULTA el campo dentro del cuerpo del metodo -- hace falta calificar con el nombre de
+        // la clase (o, para instancia, "this.") para llegar al de afuera. Aqui se usa el nombre
+        // completo de la clase porque factorialCalls es static.
+        public static int ScopeDemo(int factorialCalls)
+        {
+            // Este "factorialCalls" es el parametro local, NO el campo static de arriba.
+            int localOnly = factorialCalls + 1;
+            return localOnly;
+        }
+
+        public static int Main()
+        {
+            int fact5 = Factorial(5); // 120, y deja factorialCalls en 5 (5,4,3,2,1)
+            int callsAfterFact5 = factorialCalls;
+
+            int fibRecursive10 = FibonacciRecursive(10); // 55
+            int fibIterative10 = FibonacciIterative(10); // 55, mismo resultado, mucho menos trabajo
+
+            int original = 7;
+            int mutated = TryToMutate(original);
+            // original sigue siendo 7 -- call by value, K&R S1.8.
+
+            int scoped = ScopeDemo(1000); // usa el parametro (1000+1=1001), no el campo static
+
+            raii string factLabel = String.Copy("5! = ");
+            raii string factDigits = String.ToString(fact5);
+            raii string callsLabel = String.Copy(" (llamadas recursivas: ");
+            raii string callsDigits = String.ToString(callsAfterFact5);
+            raii string closeParen = String.Copy(")");
+            raii string s1 = String.Concat(factLabel, factDigits);
+            raii string s2 = String.Concat(s1, callsLabel);
+            raii string s3 = String.Concat(s2, callsDigits);
+            raii string factLine = String.Concat(s3, closeParen);
+            Console.WriteLine(factLine);
+
+            raii string fibLabel = String.Copy("fib(10) recursivo/iterativo = ");
+            raii string fibRDigits = String.ToString(fibRecursive10);
+            raii string slash = String.Copy(" / ");
+            raii string fibIDigits = String.ToString(fibIterative10);
+            raii string f1 = String.Concat(fibLabel, fibRDigits);
+            raii string f2 = String.Concat(f1, slash);
+            raii string fibLine = String.Concat(f2, fibIDigits);
+            Console.WriteLine(fibLine);
+
+            // original==7 (no mutado), mutated==700, scoped==1001, fact5==120,
+            // fibRecursive10==fibIterative10==55
+            int result = original + mutated + scoped + fact5 + fibRecursive10;
+            if (fibRecursive10 == fibIterative10) { result = result + 1000; }
+            return result % 250; // mantener el codigo de salida en un rango razonable
+        }
+    }
+}

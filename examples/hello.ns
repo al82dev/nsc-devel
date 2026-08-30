@@ -1,0 +1,7 @@
+extern C int puts(char* text);
+
+int Main()
+{
+    puts("Hello from NativeSharp");
+    return 0;
+}

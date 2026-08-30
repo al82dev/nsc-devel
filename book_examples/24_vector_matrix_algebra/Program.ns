@@ -1,0 +1,22 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.LinearAlgebra
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 24 - Vector and Matrix Algebra");
+            Console.WriteLine("------------------------------------------------------");
+            Vector3 a=new Vector3(1.0,2.0,3.0);Vector3 b=new Vector3(4.0,-1.0,2.0);
+            Vector3 sum=a+b;Vector3 difference=a-b;Vector3 cross=a.Cross(b);double dot=a.Dot(b);
+            a.Print("a = ");b.Print("b = ");sum.Print("a+b = ");difference.Print("a-b = ");cross.Print("a x b = ");
+            raii string dotText=NumberText.Format(dot);raii string dotLine=String.Concat("a dot b = ",dotText);Console.WriteLine(dotLine);
+            Matrix3 scale=new Matrix3();scale.Set(0,0,2.0);scale.Set(1,1,3.0);scale.Set(2,2,1.0);
+            Matrix3 shear=Matrix3.Identity();shear.Set(0,1,1.0);
+            Matrix3 composed=scale*shear;composed.Print("scale * shear:");
+            Vector3 transformed=composed.Transform(a);transformed.Print("transformed a = ");
+            delete transformed;delete composed;delete shear;delete scale;delete cross;delete difference;delete sum;delete b;delete a;
+            return 0;
+        }
+    }
+}

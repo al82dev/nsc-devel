@@ -1,0 +1,55 @@
+#pragma once
+
+#include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/Linker/PeExecutableVerifier.h"
+#include "nativesharp/Linker/WindowsRuntimeImports.h"
+
+#include <vector>
+
+#include <filesystem>
+#include <string>
+#include <string_view>
+
+namespace nativesharp::llvm_backend
+{
+class LlvmModule;
+}
+
+namespace nativesharp::linker
+{
+class WindowsExecutableBuilder final
+{
+public:
+    bool build(
+        llvm_backend::LlvmModule& programModule,
+        const std::filesystem::path& outputPath,
+        std::string& error);
+
+    bool build(
+        llvm_backend::LlvmModule& programModule,
+        const std::filesystem::path& outputPath,
+        llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        std::string& error);
+
+    bool build(
+        llvm_backend::LlvmModule& programModule,
+        const std::filesystem::path& outputPath,
+        llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        std::string_view mainSymbol,
+        std::string& error);
+
+    const PeExecutableInfo& info() const noexcept;
+
+    // Interop Foundation: external inputs for the link. `externalImports` are the project's
+    // `extern C from "<dll>"` declarations (merged into the runtime import tables -- see
+    // WindowsRuntimeImports.h); `extraLibraries` are caller-supplied .lib files (--link-lib)
+    // appended to the link line as-is.
+    void setExternalImports(std::vector<ExternalImportModule> externalImports);
+    void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
+
+private:
+    PeExecutableInfo info_;
+    std::vector<ExternalImportModule> externalImports_;
+    std::vector<std::filesystem::path> extraLinkLibraries_;
+};
+}

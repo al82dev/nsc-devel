@@ -1,0 +1,217 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Threading;
+
+// Stage 54.1 "Threads" -- programa de verificacion empaquetado.
+//
+// Misma convencion de exit codes que cada ronda de Stage 53: cada chequeo que falla devuelve un
+// codigo de salida DISTINTO, y el ultimo chequeo exitoso termina en "return 0".
+//
+// DISCIPLINA EXTRA DE ESTA RONDA (instruccion explicita de Alberto, ver
+// claude/05_metodo_de_trabajo_y_archivo_historico.md): cada verificacion de abajo usa
+// SINCRONIZACION REAL (Thread.Join(), que internamente es WaitForSingleObject -- una barrera de
+// memoria real impuesta por el kernel de Windows) antes de leer cualquier valor que un hilo en
+// segundo plano escribio. NINGUN chequeo usa Sleep() como sustituto de sincronizacion, y ningun
+// chequeo asume un orden de ejecucion particular entre hilos que corren en simultaneo -- cuando
+// varios hilos corren a la vez (ver la Seccion 4 mas abajo), cada uno escribe en su PROPIO campo
+// estatico dedicado, precisamente para no depender de primitivas de sincronizacion que este
+// stage todavia no tiene (Interlocked/atomics es Stage 54.2, deliberadamente posterior).
+//
+// LIMITACION DOCUMENTADA, NO VERIFICABLE EN ESTE PROGRAMA (ver el comentario de cabecera de
+// Thread.ns para la discusion completa): una excepcion sin capturar que escapa un ThreadStart
+// termina el PROCESO COMPLETO -- no se puede ejercitar aca sin matar este mismo programa de
+// verificacion. Tampoco se verifica el contenido del trabajo de un hilo DETACHED (Seccion 6):
+// una vez Detach()ado, este programa no tiene forma determinista de saber cuando ese hilo
+// termina, exactamente la razon por la que Detach() es la operacion peligrosa de las dos.
+class StaticSlots
+{
+    // Un campo por escenario -- cada hilo de este programa escribe en el SUYO, nunca en uno
+    // compartido, para que ningun chequeo dependa de una primitiva de sincronizacion que Stage
+    // 54.1 todavia no provee (Interlocked llega en Stage 54.2).
+    public static int FromStaticMethod = 0;
+    public static int FromLambda = 0;
+    public static int Concurrent1 = 0;
+    public static int Concurrent2 = 0;
+    public static int Concurrent3 = 0;
+    public static int FromAutoJoinScope = 0;
+    public static int NeverTouched = 0;
+}
+
+class InstanceWorker
+{
+    public int Value;
+
+    public InstanceWorker()
+    {
+        Value = 0;
+    }
+
+    public void SetValue()
+    {
+        Value = 222;
+    }
+}
+
+class Program
+{
+    // ---- Seccion 1: hilo con delegate ligado a un metodo STATIC --------------------------
+
+    private static void StaticWorker()
+    {
+        StaticSlots.FromStaticMethod = 111;
+    }
+
+    // ---- Seccion 4: tres hilos que corren EN SIMULTANEO, cada uno con su propio campo -----
+
+    private static void ConcurrentWorker1()
+    {
+        StaticSlots.Concurrent1 = 401;
+    }
+
+    private static void ConcurrentWorker2()
+    {
+        StaticSlots.Concurrent2 = 402;
+    }
+
+    private static void ConcurrentWorker3()
+    {
+        StaticSlots.Concurrent3 = 403;
+    }
+
+    // ---- Seccion 5: el hilo que RAII debe unir automaticamente (auto-Join() del destructor) -
+
+    private static void AutoJoinWorker()
+    {
+        StaticSlots.FromAutoJoinScope = 555;
+    }
+
+    public static int Main()
+    {
+        // ==== Seccion 1: delegate ligado a un metodo static =================================
+
+        ThreadStart staticStart = StaticWorker;
+        raii Thread staticThread = new Thread(staticStart);
+        staticThread.Join();
+        if (StaticSlots.FromStaticMethod != 111)
+        {
+            return 1;
+        }
+
+        // ==== Seccion 2: delegate ligado a un metodo de INSTANCIA ============================
+        // El receptor (el propio InstanceWorker) se mantiene vivo en este mismo scope durante
+        // TODA la vida del hilo -- exactamente la disciplina de orden de declaracion que el
+        // comentario de cabecera de Thread.ns describe (el objeto que el hilo usa se declara
+        // ANTES que el Thread, para que la destruccion en orden inverso de RAII lo mantenga
+        // vivo mientras el Thread pueda seguir corriendo).
+
+        raii InstanceWorker worker = new InstanceWorker();
+        ThreadStart instanceStart = worker.SetValue;
+        raii Thread instanceThread = new Thread(instanceStart);
+        instanceThread.Join();
+        if (worker.Value != 222)
+        {
+            return 2;
+        }
+
+        // ==== Seccion 3: delegate de LAMBDA que captura una variable escalar =================
+        // Stage 50.7 solo permite capturar escalares en una lambda (int/bool/char/...) -- la
+        // lambda no puede "devolver" nada a la variable original capturada (la captura es una
+        // COPIA tomada en el momento de crear el delegate, ver lowerLambdaCreate en
+        // ProjectOopLlvmLowerer.cpp), asi que el resultado observable se escribe en un campo
+        // estatico, igual que en la Seccion 1.
+
+        int factor = 7;
+        ThreadStart lambdaStart = () =>
+        {
+            StaticSlots.FromLambda = factor * 10;
+        };
+        raii Thread lambdaThread = new Thread(lambdaStart);
+        lambdaThread.Join();
+        if (StaticSlots.FromLambda != 70)
+        {
+            return 3;
+        }
+
+        // ==== Seccion 4: tres hilos corriendo EN SIMULTANEO =================================
+        // Los tres CreateThread ya volvieron (los tres hilos ya estan corriendo, o a punto de
+        // correr) antes de que este programa llame al primer Join() -- por eso este es un
+        // chequeo real de concurrencia, no tres hilos secuenciales disfrazados. Cada uno escribe
+        // en su propio campo, sin carrera de datos posible.
+
+        ThreadStart concurrentStart1 = ConcurrentWorker1;
+        ThreadStart concurrentStart2 = ConcurrentWorker2;
+        ThreadStart concurrentStart3 = ConcurrentWorker3;
+        raii Thread concurrentThread1 = new Thread(concurrentStart1);
+        raii Thread concurrentThread2 = new Thread(concurrentStart2);
+        raii Thread concurrentThread3 = new Thread(concurrentStart3);
+        concurrentThread1.Join();
+        concurrentThread2.Join();
+        concurrentThread3.Join();
+        if (StaticSlots.Concurrent1 != 401)
+        {
+            return 4;
+        }
+        if (StaticSlots.Concurrent2 != 402)
+        {
+            return 5;
+        }
+        if (StaticSlots.Concurrent3 != 403)
+        {
+            return 6;
+        }
+
+        // ==== Seccion 5: RAII auto-Join() -- LA verificacion central de esta ronda ===========
+        // Ningun Join() explicito aca: el Thread se declara y se deja caer fuera de scope SIN
+        // llamarlo. Si ~Thread() de verdad hace auto-Join() (en vez de, por ejemplo, cerrar el
+        // HANDLE sin esperar), entonces para cuando el bloque termina el hilo YA corrio hasta el
+        // final -- el chequeo de StaticSlots.FromAutoJoinScope INMEDIATAMENTE despues del
+        // bloque debe ver 555, sin ningun Join() visible en este archivo.
+
+        {
+            ThreadStart autoJoinStart = AutoJoinWorker;
+            raii Thread autoJoinThread = new Thread(autoJoinStart);
+            // (sin Join() aca a proposito -- ver el comentario de arriba)
+        }
+        if (StaticSlots.FromAutoJoinScope != 555)
+        {
+            return 7;
+        }
+
+        // ==== Seccion 6: idempotencia de Join()/Detach() =====================================
+        // Llamar Join() una segunda vez sobre un Thread ya unido, o Detach() despues de Join(),
+        // deben ser no-ops silenciosos (via el flag joined_) -- si no lo fueran, esto colgaria
+        // el proceso (WaitForSingleObject sobre un HANDLE ya cerrado) o crashearia, y el harness
+        // de C++ que corre este programa (con timeout) lo detectaria como una falla.
+
+        staticThread.Join();
+        staticThread.Detach();
+        if (StaticSlots.FromStaticMethod != 111)
+        {
+            return 8;
+        }
+
+        // ==== Seccion 7: Detach() como primera operacion (nunca Join()) =====================
+        // LIMITACION DOCUMENTADA: no se verifica el CONTENIDO del trabajo de este hilo (no hay
+        // forma deterministica de saberlo desde aca una vez detached) -- solo que Detach() en si
+        // mismo retorna de inmediato (no bloquea) y que el resto de este programa sigue
+        // corriendo y termina con normalidad. El campo que este hilo tocaria ni siquiera se
+        // declara, para que quede clarisimo que este chequeo no depende de su resultado.
+
+        ThreadStart detachStart = StaticWorker;
+        raii Thread detachThread = new Thread(detachStart);
+        detachThread.Detach();
+        // (el destructor de detachThread, al final de este scope, ve joined_==true por el
+        // Detach() de arriba -- no vuelve a llamar Join(), no bloquea este programa)
+
+        // ==== Seccion 8: control negativo -- un campo que NINGUN hilo toco sigue en 0 ========
+        // Confirma que este programa realmente discrimina (los chequeos de arriba no estan
+        // pasando "gratis" por memoria pre-inicializada en 0 por casualidad) -- StaticSlots
+        // tiene siete campos, y este es el unico que ningun Worker de arriba escribe jamas.
+
+        if (StaticSlots.NeverTouched != 0)
+        {
+            return 9;
+        }
+
+        return 0;
+    }
+}

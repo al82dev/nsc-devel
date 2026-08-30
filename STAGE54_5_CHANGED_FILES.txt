@@ -1,0 +1,40 @@
+Stage 54.5 "Otras primitivas de sincronizacion" -- archivos modificados/nuevos en esta ronda
+(quinta subronda de Stage 54, threading -- Semaphore y Event. Implementada EN LA MISMA PASADA que
+Stage 54.4 por instruccion explicita de Alberto; los archivos del compilador compartidos con esa
+subronda se listan en STAGE54_4_CHANGED_FILES.txt, no repetidos aca. Ver
+61_stage54_5_semaphore_event.md para el diseño tecnico completo.)
+
+MODIFICADOS: ver STAGE54_4_CHANGED_FILES.txt, seccion "MODIFICADOS (compartidos...)" -- los mismos
+13 archivos del compilador mas CMakeLists.txt, tocados una sola vez para las 14 core operations
+combinadas de ambas subrondas.
+
+NUEVOS (especificos de esta subronda, Semaphore/Event):
+  lib/NativeSharp.Core.Threading/Semaphore.ns
+  lib/NativeSharp.Core.Threading/Event.ns
+  examples/project_stage54_5/Stage54_5SyncPrimitives.nsproj
+  examples/project_stage54_5/Main.ns
+  tests/unit/Stage54_5SyncPrimitivesTests.cpp
+  61_stage54_5_semaphore_event.md
+  61_stage54_5_semaphore_event_implementacion_paso_a_paso.md
+  STAGE54_5_CHANGED_FILES.txt (este archivo)
+
+NOTA sobre el mecanismo de compilador: CERO extensiones nuevas a `MethodCoreBinding`/
+`ProjectOopHirNode`/`ProjectOopMirNode` -- las 9 core operations de esta subronda
+(SemaphoreCreate/Wait/Release/Close, EventCreate/Set/Reset/Wait/Close) son HANDLE-based puras,
+mismo shape exacto que las cuatro de Mutex (Stage 54.3), reusando los buckets `expected=0U/1U/2U`
+ya existentes del bloque HIR compartido de "String core operation" sin ningun shape nuevo.
+
+NOTA sobre el runtime hook COMPARTIDO (`__nativesharp_wait_for_handle_timeout`): `Semaphore.Wait`
+y `Event.Wait` lowerean AMBOS al MISMO wrapper de LLVM -- la primera vez que dos valores distintos
+de `MethodCoreOperationKind` comparten un wrapper de runtime en la historia de este compilador.
+Verificado en el test dedicado contando explicitamente que el wrapper aparece llamado exactamente
+2 veces en el fixture minimo (una por cada call site).
+
+NOTA sobre `kernel32Symbols`: los 5 imports Win32 de esta subronda (CreateSemaphoreA,
+ReleaseSemaphore, CreateEventA, SetEvent, ResetEvent) se sincronizaron JUNTO con los 5 de Monitor
+en la misma pasada -- ver STAGE54_4_CHANGED_FILES.txt para el detalle completo (38 -> 48 entradas
+en las cinco ubicaciones). WaitForSingleObject (Stage 54.1) y CloseHandle (Stage 53.3b) se
+REUSARON integros para Semaphore/Event, sin re-declarar.
+
+VERIFICACION: ver STAGE54_4_CHANGED_FILES.txt, seccion "VERIFICACION" -- identica para ambas
+subrondas (build+ctest corridos una sola vez, cubriendo ambas).

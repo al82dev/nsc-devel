@@ -1,0 +1,78 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Diagnostics;
+
+// Stage 55.1 "Process" -- programa de verificacion empaquetado. Sigue la misma convencion que
+// examples/project_stage53_2/Main.ns: cada chequeo que falla devuelve un codigo de salida
+// distinto, y solo si TODOS pasan se llega al "return 0" final.
+class Program
+{
+    public static int Main()
+    {
+        // ---- CurrentProcessId: positivo -------------------------------------------------
+
+        long pid = Process.CurrentProcessId();
+        if (pid <= 0)
+        {
+            return 1;
+        }
+
+        // ---- WorkingSetSize: positivo, con techo de sanidad (menos de 16 GB) ------------
+        //
+        // El techo no es un limite real de Windows -- es una cota de sanidad para atrapar una
+        // lectura corrupta (por ejemplo, un offset de GEP mal calculado en el marshaling de
+        // PROCESS_MEMORY_COUNTERS que termine leyendo un campo distinto de WorkingSetSize).
+        // Ningun proceso de verificacion como este usa mas de unos pocos MB en la practica;
+        // 16 GB deja margen de sobra sin dejar de servir como red de seguridad.
+
+        long workingSet = Process.WorkingSetSize();
+        if (workingSet <= 0)
+        {
+            return 2;
+        }
+        if (workingSet > 17179869184)
+        {
+            return 3;
+        }
+
+        // ---- KernelTime/UserTime: nunca negativos ----------------------------------------
+        //
+        // No se compara contra un valor exacto (el tiempo de CPU consumido hasta este punto
+        // depende de la maquina, la carga del sistema, y si corre bajo Wine o Windows real) --
+        // solo se verifica que FILETIME.QuadPart, reinterpretado como TimeSpan.Ticks, no venga
+        // negativo (lo que indicaria un bug de marshaling de los 8 bytes altos/bajos del
+        // FILETIME, no un valor real de Win32).
+
+        TimeSpan kernelTime = Process.KernelTime();
+        if (kernelTime.Ticks < 0)
+        {
+            return 4;
+        }
+        TimeSpan userTime = Process.UserTime();
+        if (userTime.Ticks < 0)
+        {
+            return 5;
+        }
+
+        // ---- PriorityClass: leer, escribir EL MISMO valor, releer y confirmar -----------
+        //
+        // Se escribe el mismo valor que ya se leyo (no uno distinto) a proposito: cambiar la
+        // prioridad de un proceso real durante una verificacion automatizada podria afectar
+        // negativamente a otros procesos corriendo en la misma maquina (por ejemplo, subirla a
+        // HIGH_PRIORITY_CLASS) -- este chequeo prueba el camino completo de GetPriorityClass/
+        // SetPriorityClass sin ningun efecto secundario observable fuera de este proceso.
+
+        int originalPriority = Process.PriorityClass();
+        if (originalPriority <= 0)
+        {
+            return 6;
+        }
+        Process.SetPriorityClass(originalPriority);
+        int priorityAfterSet = Process.PriorityClass();
+        if (priorityAfterSet != originalPriority)
+        {
+            return 7;
+        }
+
+        return 0;
+    }
+}

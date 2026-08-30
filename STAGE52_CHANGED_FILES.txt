@@ -1,0 +1,208 @@
+Stage 52 (Generic Collections) -- archivos modificados/agregados respecto del cierre de Stage 51
+(nsc 0.1.0-dev51, 203/204, unica falla conocida: nsc.stage50_10.ownership-examples-documentation)
+
+MODIFICADOS -- compilador (fixes reales, ver 52_nativesharp_generic_collections.md seccion 4):
+  include/nativesharp/AST/TypeSyntax.h
+  src/AST/TypeSyntax.cpp
+    - originProjectOrdinal()/originNamespace() overrides para resolucion de generics cross-project
+      (namespace de origen del call site vs. namespace de definicion del template)
+  include/nativesharp/Frontend/ProjectGenericModel.h
+  src/Frontend/ProjectGenericModel.cpp
+    - cloneType(): propagacion de origin tags, sin mutar baseName() (evita romper la identidad
+      de clave de especializacion)
+  src/Frontend/ProjectNameLookup.cpp
+    - bindTypeSyntax(): usa originNamespace() cuando esta presente
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+    - fix 8: move() como target de asignacion a elemento de arreglo
+    - fix 9: default(T) -- analisis semantico
+    - fix 10(a): !parameterOwnable evaluado PRIMERO en el loop de viabilidad de overload
+      (parametro owned/borrowed no-ownable ya no cae en el catch-all de rechazo)
+    - elementIsReferenceLike calculado para toda forma de fuente de move() (local, parametro,
+      elemento de arreglo), no solo elemento de arreglo
+  include/nativesharp/Lexer/TokenKind.h
+  src/Lexer/TokenKind.cpp
+  src/Lexer/Lexer.cpp
+    - KwDefault: nuevo token/keyword para default(T)
+  include/nativesharp/AST/AstNodeKind.h
+  src/AST/AstNodeKind.cpp
+    - DefaultValueExpression: nuevo nodo AST
+  src/Parser/Parser.cpp
+    - parsing de default(Tipo)
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+    - DefaultValue: nuevo nodo HIR + lowering de DefaultValueExpression
+    - MoveExpression: booleanValue = elementIsReferenceLike (fix 10b)
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+    - DefaultValue: nuevo nodo MIR (paso HIR->MIR, typeKey propagado)
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+    - DefaultValue: LLVMConstNull(llvmType(...))
+    - fix 10(b): MoveValue usa llvmType(node->typeKey) en vez de puntero hardcodeado; null-store
+      condicionado a node->booleanValue
+  src/Frontend/ProjectCompilation.cpp
+    - wiring menor de soporte a los cambios anteriores (ver diff real para el detalle linea a linea)
+
+MODIFICADOS -- version e infraestructura de build:
+  include/nativesharp/Basic/Version.h
+    - kCompilerVersion "0.1.0-dev52", kCompilerStage "52"
+  CMakeLists.txt
+    - PASS_REGULAR_EXPRESSION de nsc.version actualizado a dev52/stage 52
+    - registra el target/test nsc_stage52_generic_collections_compiler_fixes_tests
+      (nsc.stage52.generic-collections-compiler-fixes)
+
+MODIFICADOS -- libreria:
+  lib/NativeSharp.Core/Exception.ns
+    - + ArgumentException (Dictionary<TKey,TValue>.Add / SortedList<TKey,TValue>.Add en clave
+      duplicada)
+
+NUEVOS -- libreria (NativeSharp.Core.Collections.Generic, paquete completo de Stage 52):
+  lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj
+  lib/NativeSharp.Core.Collections.Generic/Delegates.ns
+    - HashFunc<T>, Comparison<T>, Predicate<T>, Action<T>, KeyValueAction<TKey,TValue>
+  lib/NativeSharp.Core.Collections.Generic/Hashing.ns
+  lib/NativeSharp.Core.Collections.Generic/KeyValuePair.ns
+  lib/NativeSharp.Core.Collections.Generic/List.ns
+  lib/NativeSharp.Core.Collections.Generic/Queue.ns
+  lib/NativeSharp.Core.Collections.Generic/Stack.ns
+  lib/NativeSharp.Core.Collections.Generic/LinkedListNode.ns
+  lib/NativeSharp.Core.Collections.Generic/LinkedList.ns
+  lib/NativeSharp.Core.Collections.Generic/Dictionary.ns
+  lib/NativeSharp.Core.Collections.Generic/HashSet.ns
+  lib/NativeSharp.Core.Collections.Generic/SortedList.ns
+  lib/NativeSharp.Core.Collections.Generic/SortedDictionary.ns
+  lib/NativeSharp.Core.Collections.Generic/SortedSet.ns
+
+NUEVOS -- ejemplo:
+  examples/project_stage52/Stage52Collections.nsproj
+  examples/project_stage52/Main.ns
+
+NUEVOS -- tests:
+  tests/unit/Stage52GenericCollectionsCompilerFixesTests.cpp
+    - 88 checks: los 10 fixes de compilador + el limite de struct >8 bytes (documentado, no
+      arreglado -- ver seccion 5 del capitulo conceptual), cada uno hasta objeto COFF real donde
+      aplica
+
+NUEVOS -- documentacion (solo en el FULL, no en SOURCE-ONLY):
+  52_nativesharp_generic_collections.md
+  52_nativesharp_generic_collections_implementacion_paso_a_paso.md
+  HANDOVER_STAGE52_TO_STAGE53.md
+
+================================================================================================
+RONDA DE CORRECCION DE CIERRE (post-entrega, en respuesta a
+STAGE52_FALTANTES_Y_CRITERIOS_DE_CIERRE.md) -- ver 10_stage52_correcciones_cierre.md
+================================================================================================
+
+MODIFICADOS -- documentacion/historia (P0 3.1/3.4 -- FULL acumulativo real, 204/204):
+  examples/project_stage50/README.md
+    - restaurado desde el ultimo FULL certificado (/tmp/ns51/final/NativeSharp_Stage51_FULL.zip,
+      identico en las dos copias historicas encontradas en disco -- contenido genuino, no
+      fabricado). Sin esto, nsc.stage50_10.ownership-examples-documentation fallaba (203/204):
+      el arbol de trabajo no era realmente acumulativo, le faltaba contenido historico real.
+
+MODIFICADOS -- compilador (soporte de `var`, bloque pedido por Alberto por separado del cierre):
+  include/nativesharp/Lexer/TokenKind.h
+  src/Lexer/TokenKind.cpp
+  src/Lexer/Lexer.cpp
+    - KwVar: nuevo token/keyword reservado (verificado que "var" no se usaba como identificador
+      en ningun lugar del arbol preexistente)
+  src/Parser/Parser.cpp
+    - parseVariableDeclaration: bypass completo de parseType() para `var`, construye un
+      TypeSyntax marcador (baseTokenKind == KwVar) directamente
+    - dos puntos de dispatch (statement principal, inicializador de for) reconocen KwVar
+  src/Frontend/ProjectMethodBodyModel.cpp
+    - analyzeVariable: intercepta el marcador `var`, exige inicializador, analiza el
+      inicializador PRIMERO (sin delegate-target-typing), infiere typeKey desde su tipo
+      resuelto (rechaza builtin:void), reutiliza el ExpressionResult ya calculado
+  src/Frontend/ProjectNameLookup.cpp
+    - bindTypeSyntax: skip explicito del marcador `var` (si no, el pase de binding de tipos de
+      todo el AST reportaba "unknown type name 'var'" antes de llegar a analyzeVariable)
+
+MODIFICADOS -- libreria (P1, metodos de alto valor + comparer configurable):
+  lib/NativeSharp.Core.Collections.Generic/List.ns
+    - + EnsureCapacity (publico), TrimExcess, AddRange, InsertRange, RemoveRange, GetRange,
+      FindLastIndex, FindLast, FindAll
+  lib/NativeSharp.Core.Collections.Generic/Queue.ns
+    - + Queue(int capacity), EnsureCapacity (publico), TrimExcess, TryDequeue, TryPeek, CopyTo
+  lib/NativeSharp.Core.Collections.Generic/Stack.ns
+    - + Stack(int capacity), EnsureCapacity (publico), TrimExcess, TryPop, TryPeek, CopyTo
+  lib/NativeSharp.Core.Collections.Generic/LinkedList.ns
+    - + AddAfter, AddBefore, Find, FindLast, Remove(LinkedListNode<T>)
+  lib/NativeSharp.Core.Collections.Generic/Dictionary.ns
+    - + TryAdd, EnsureCapacity (publico), TrimExcess (Grow() refactorizado a RehashTo(capacity)
+      compartido por crecimiento y compactacion)
+  lib/NativeSharp.Core.Collections.Generic/HashSet.ns
+    - + UnionWith, IntersectWith, ExceptWith, SymmetricExceptWith, IsSubsetOf, IsProperSubsetOf,
+      IsSupersetOf, IsProperSupersetOf, Overlaps, SetEquals, RemoveWhere, TryGetValue,
+      EnsureCapacity, TrimExcess
+  lib/NativeSharp.Core.Collections.Generic/SortedSet.ns
+    - + constructor Comparison<T>, mismas set operations que HashSet, GetViewBetween, Reverse,
+      EnsureCapacity, TrimExcess
+  lib/NativeSharp.Core.Collections.Generic/SortedList.ns
+    - + constructor Comparison<TKey> (cierra la inconsistencia Delegates.ns/SortedList que
+      senalo la revision: el comentario ya afirmaba que este constructor existia), IndexOfValue,
+      EnsureCapacity (publico), TrimExcess
+  lib/NativeSharp.Core.Collections.Generic/SortedDictionary.ns
+    - + constructor Comparison<TKey>, EnsureCapacity, TrimExcess
+
+NUEVOS -- libreria (Seccion 16, tipos genericos adicionales):
+  lib/NativeSharp.Core.Collections.Generic/PriorityQueue.ns
+    - PriorityQueue<TElement,TPriority>: binary min-heap, constructor Comparison<TPriority>
+      opcional, Enqueue/Dequeue/Peek/TryDequeue/TryPeek/EnsureCapacity/TrimExcess/Clear
+  lib/NativeSharp.Core.Collections.Generic/Comparer.ns
+    - Comparer<T> (constructores, no Default()/Create() estatico -- Comparer<int>.Metodo() no
+      parsea como expresion hoy, verificado contra el compilador) y EqualityComparer<T>
+      (constructor HashFunc<T> obligatorio, sin Default: no hay hashing estructural universal)
+
+MODIFICADOS -- ejemplo (misma superficie nueva, instanciada con T valor Y T referencia):
+  examples/project_stage52/Main.ns
+    - + RunListAdditions, RunQueueAndStackAdditions, RunLinkedListAdditions,
+      RunDictionaryAdditions, RunHashSetAdditions, RunSortedCollectionsAdditions,
+      RunPriorityQueueAndComparers
+
+NUEVOS -- tests:
+  tests/unit/Stage52_1GenericCollectionsAdditionsTests.cpp
+    - compila examples/project_stage52 completo (con todas las adiciones) hasta objeto COFF
+      verificado -- regresion end-to-end en vez de fixtures sinteticas por metodo
+  tests/unit/Stage52_2VarKeywordTests.cpp
+    - var con T valor/referencia/for-loop hasta objeto COFF; negativos: sin inicializador,
+      inicializador void, uso ilegal como tipo de campo
+
+MODIFICADOS -- build:
+  CMakeLists.txt
+    - registra nsc_stage52_1_generic_collections_additions_tests
+      (nsc.stage52-1.generic-collections-additions) y nsc_stage52_2_var_keyword_tests
+      (nsc.stage52-2.var-keyword)
+
+NUEVOS -- documentacion de cierre (Task 26) y hallazgo de ejecucion real (Task 27), sólo en FULL:
+  STAGE52_CHECKPOINT.md
+  TEST_MATRIX_52.md
+  PART5_CONFORMANCE_STAGE52.md
+  PACKAGE_VERIFICATION_STAGE52.md
+  WORKLOG_CURRENT_STATE_52.md
+  WINE_EXECUTION_FINDINGS_STAGE52.md
+    - hallazgo critico: Wine 9.0 SI se pudo instalar y ejecutar en este sandbox (a diferencia de
+      Stage 50/51). Un binario trivial corre correcto (exit code real confirmado); List<T>.Add()
+      -- y, aislado sin generics, cualquier metodo con parametro `owned` de tipo valor que llama
+      a otro metodo -- crashea por corrupcion de stack. Causa raiz identificada en el codigo
+      fuente: emitOwnedParameterDestroy (src/LLVM/ProjectOopLlvmLowerer.cpp, codigo de Stage 50,
+      anterior a Stage 52) no chequea si el tipo `owned` es reference-like antes de tratarlo
+      como puntero de 8 bytes al limpiar tras una excepcion.
+  WINE_CHECKLIST_STAGE52.md
+    - checklist para que Alberto confirme el hallazgo en Windows real
+  windows_execution_checklist/repro_1_minimal.exe
+  windows_execution_checklist/repro_2_owned_no_nested_call.exe
+  windows_execution_checklist/repro_3_owned_nested_call.exe
+  windows_execution_checklist/Stage52Collections.exe
+    - 4 binarios PE32+ reales, listos para correr en Windows sin recompilar
+
+MODIFICADOS -- handover (actualizado con el hallazgo de ejecucion real):
+  HANDOVER_STAGE52_TO_STAGE53.md
+
+MANIFEST_SHA256.txt regenerado (609/609 PASS) para reflejar el arbol FULL acumulativo real,
+incluyendo la documentacion de cierre y el paquete de verificacion de Windows de esta ronda.
+
+SIN CAMBIOS respecto del cierre de Stage 51:
+  todo src/ e include/ fuera de los archivos listados arriba, lib/NativeSharp.Core/*.ns fuera
+  de Exception.ns, todo tests/ fuera de los archivos nuevos, todo examples/ fuera de
+  project_stage50/README.md y project_stage52.

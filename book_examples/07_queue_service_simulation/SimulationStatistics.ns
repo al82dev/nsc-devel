@@ -1,0 +1,50 @@
+namespace NativeSharp.BookExamples.QueueSimulation
+{
+    public class SimulationStatistics
+    {
+        private int totalWaitingTime;
+        private int maximumWaitingTime;
+        private int maximumQueueLength;
+        private int idleMinutes;
+        private int servedCustomers;
+
+        public SimulationStatistics()
+        {
+            totalWaitingTime = 0;
+            maximumWaitingTime = 0;
+            maximumQueueLength = 0;
+            idleMinutes = 0;
+            servedCustomers = 0;
+        }
+
+        public int TotalWaitingTime { get { return totalWaitingTime; } }
+        public int MaximumWaitingTime { get { return maximumWaitingTime; } }
+        public int MaximumQueueLength { get { return maximumQueueLength; } }
+        public int IdleMinutes { get { return idleMinutes; } }
+        public int ServedCustomers { get { return servedCustomers; } }
+
+        public void ObserveQueue(int length)
+        {
+            if (length > maximumQueueLength)
+            {
+                maximumQueueLength = length;
+            }
+        }
+
+        public void RecordService(Customer customer)
+        {
+            int wait = customer.WaitingTime;
+            totalWaitingTime = totalWaitingTime + wait;
+            if (wait > maximumWaitingTime)
+            {
+                maximumWaitingTime = wait;
+            }
+            servedCustomers = servedCustomers + 1;
+        }
+
+        public void RecordIdleMinute()
+        {
+            idleMinutes = idleMinutes + 1;
+        }
+    }
+}

@@ -1,0 +1,13 @@
+namespace NativeSharp.BookExamples.HashTable
+{
+    public class BucketNode
+    {
+        public Symbol Value;
+        public BucketNode Next;
+        public BucketNode(Symbol value)
+        {
+            Value = value;
+            Next = null;
+        }
+    }
+}

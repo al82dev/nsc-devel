@@ -1,0 +1,43 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Searching
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 03 - Searching Objects");
+            Console.WriteLine("-------------------------------------------------");
+            Console.WriteLine("The algorithms below are implemented here; no collection search API is used.");
+            Console.WriteLine("");
+
+            Student[] unsorted = new Student[16];
+            Student[] sorted = new Student[16];
+            StudentDataset.FillUnsorted(unsorted);
+            StudentDataset.FillSorted(sorted);
+
+            raii SearchStatistics statistics = new SearchStatistics();
+            raii LinearSearcher linear = new LinearSearcher();
+            raii BinarySearcher binary = new BinarySearcher();
+            raii RecursiveBinarySearcher recursive = new RecursiveBinarySearcher();
+            raii ExponentialSearcher exponential = new ExponentialSearcher();
+
+            Console.WriteLine("Search for existing student 1240:");
+            SearchReport.Run(linear, unsorted, 16, 1240, statistics);
+            SearchReport.Run(binary, sorted, 16, 1240, statistics);
+            SearchReport.Run(recursive, sorted, 16, 1240, statistics);
+            SearchReport.Run(exponential, sorted, 16, 1240, statistics);
+
+            Console.WriteLine("");
+            Console.WriteLine("Search for missing student 1255:");
+            SearchReport.Run(linear, unsorted, 16, 1255, statistics);
+            SearchReport.Run(binary, sorted, 16, 1255, statistics);
+            SearchReport.Run(recursive, sorted, 16, 1255, statistics);
+            SearchReport.Run(exponential, sorted, 16, 1255, statistics);
+
+            StudentDataset.Destroy(unsorted, 16);
+            StudentDataset.Destroy(sorted, 16);
+            return 0;
+        }
+    }
+}

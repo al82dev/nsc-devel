@@ -1,0 +1,81 @@
+#include "nativesharp/AST/AstNodeKind.h"
+
+namespace nativesharp::ast
+{
+std::string_view astNodeKindName(AstNodeKind kind) noexcept
+{
+    switch (kind)
+    {
+#define NS_AST_KIND(name) case AstNodeKind::name: return #name
+        NS_AST_KIND(CompilationUnit);
+        NS_AST_KIND(NamespaceDeclaration);
+        NS_AST_KIND(UsingNamespaceDirective);
+        NS_AST_KIND(UsingAliasDirective);
+        NS_AST_KIND(FunctionDeclaration);
+        NS_AST_KIND(ParameterDeclaration);
+        NS_AST_KIND(GlobalVariableDeclaration);
+        NS_AST_KIND(StructDeclaration);
+        NS_AST_KIND(ClassDeclaration);
+        NS_AST_KIND(InterfaceDeclaration);
+        NS_AST_KIND(DelegateDeclaration);
+        NS_AST_KIND(FieldDeclaration);
+        NS_AST_KIND(MethodDeclaration);
+        NS_AST_KIND(ConstructorDeclaration);
+        NS_AST_KIND(DestructorDeclaration);
+        NS_AST_KIND(PropertyDeclaration);
+        NS_AST_KIND(IndexerDeclaration);
+        NS_AST_KIND(EventDeclaration);
+        NS_AST_KIND(BaseConstructorInitializer);
+        NS_AST_KIND(ThisConstructorInitializer);
+        NS_AST_KIND(EnumDeclaration);
+        NS_AST_KIND(EnumMemberDeclaration);
+        NS_AST_KIND(ExternCDeclaration);
+        NS_AST_KIND(BlockStatement);
+        NS_AST_KIND(VariableDeclarationStatement);
+        NS_AST_KIND(IfStatement);
+        NS_AST_KIND(WhileStatement);
+        NS_AST_KIND(ForStatement);
+        NS_AST_KIND(ForeachStatement);
+        NS_AST_KIND(BreakStatement);
+        NS_AST_KIND(ContinueStatement);
+        NS_AST_KIND(ReturnStatement);
+        NS_AST_KIND(TryStatement);
+        NS_AST_KIND(CatchClause);
+        NS_AST_KIND(ThrowStatement);
+        NS_AST_KIND(UsingStatement);
+        NS_AST_KIND(ExpressionStatement);
+        NS_AST_KIND(IdentifierExpression);
+        NS_AST_KIND(IntegerLiteralExpression);
+        NS_AST_KIND(FloatingLiteralExpression);
+        NS_AST_KIND(CharacterLiteralExpression);
+        NS_AST_KIND(StringLiteralExpression);
+        NS_AST_KIND(BooleanLiteralExpression);
+        NS_AST_KIND(NullLiteralExpression);
+        NS_AST_KIND(ThisExpression);
+        NS_AST_KIND(BaseExpression);
+        NS_AST_KIND(UnaryExpression);
+        NS_AST_KIND(BinaryExpression);
+        NS_AST_KIND(AssignmentExpression);
+        NS_AST_KIND(CallExpression);
+        NS_AST_KIND(IndexExpression);
+        NS_AST_KIND(MemberExpression);
+        NS_AST_KIND(PointerMemberExpression);
+        NS_AST_KIND(PostfixExpression);
+        NS_AST_KIND(CastExpression);
+        NS_AST_KIND(TypeTestExpression);
+        NS_AST_KIND(SafeCastExpression);
+        NS_AST_KIND(LambdaExpression);
+        NS_AST_KIND(SizeofTypeExpression);
+        NS_AST_KIND(SizeofExpression);
+        NS_AST_KIND(DefaultValueExpression);
+        NS_AST_KIND(NewExpression);
+        NS_AST_KIND(ObjectCreationExpression);
+        NS_AST_KIND(DeleteExpression);
+        NS_AST_KIND(StackallocExpression);
+        NS_AST_KIND(MoveExpression);
+#undef NS_AST_KIND
+    }
+
+    return "UnknownAstNode";
+}
+}

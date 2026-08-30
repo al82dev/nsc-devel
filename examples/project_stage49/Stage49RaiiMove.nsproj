@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>Stage49RaiiMove</Name>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

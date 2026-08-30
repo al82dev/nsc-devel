@@ -1,0 +1,63 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 01 -- "Hola, mundo"
+// Fuente de inspiracion: K&R "The C Programming Language", cap. 1.1 "Getting Started".
+// ============================================================================================
+//
+// K&R empieza con el programa mas famoso de la historia de la programacion:
+//
+//     #include <stdio.h>
+//     main()
+//     {
+//         printf("hello, world\n");
+//     }
+//
+// Dos diferencias estructurales saltan de inmediato al pasar esto a NativeSharp:
+//
+// 1) No existen funciones sueltas a nivel de archivo. Como en C# real (y a diferencia de C),
+//    TODO codigo ejecutable vive dentro de una clase. El punto de entrada de un programa
+//    NativeSharp es "public static int Main()" de alguna clase del proyecto -- no "main()" a
+//    secas.
+//
+// 2) Main() DEVUELVE un int, no llama a exit()/return implicito de void. Ese entero es el
+//    codigo de salida real del proceso (igual que "return 0;" al final de un main() de C que
+//    declara "int main(void)"). `NativeSharp.Core.Console.WriteLine(string)` SI imprime de
+//    verdad -- es una "core operation" (igual que String.Concat/String.Equals) que el compilador
+//    reconoce por nombre y sustituye por una llamada nativa real a la consola de Windows (ver
+//    MethodCoreOperationKind::ConsoleWriteLine en ProjectMethodBodyModel.cpp); el cuerpo vacio en
+//    lib/NativeSharp.Core/Console.ns es solo el placeholder que el compilador reemplaza, igual
+//    que con String.Concat. Solo existe el overload de un string -- para imprimir un numero hay
+//    que convertirlo primero con String.ToString(valor) (ver mas abajo). Aun asi, TODOS los
+//    ejemplos de este tutorial (y toda la suite de regresion del compilador) tambien devuelven
+//    un codigo de salida verificable -- la forma de confirmar mecanicamente, sin depender de leer
+//    texto, que el programa hizo lo que dice que hace.
+namespace Tutorial.HelloMundo
+{
+    class Program
+    {
+        public static int Main()
+        {
+            // Un string NativeSharp es un tipo nativo con longitud explicita (Stage 41), no un
+            // puntero a char terminado en '\0' como en C. String.Copy convierte el literal en un
+            // string "owned" real -- un literal de cadena por si solo NO puede inicializar un
+            // local `raii` directamente (ver el comentario de disciplina de ownership al inicio
+            // de lib/NativeSharp.Core/String.ns); esta es la forma real de "materializar" un
+            // literal cuando se necesita dueno propio.
+            raii string greeting = String.Copy("Hola, mundo desde NativeSharp");
+
+            Console.WriteLine(greeting);
+
+            // Para imprimir un numero primero hay que convertirlo a string -- no hay overload de
+            // WriteLine(int) (ver la nota arriba).
+            raii string lengthLabel = String.Copy("Longitud del saludo: ");
+            raii string lengthDigits = String.ToString(greeting.Length);
+            raii string lengthLine = String.Concat(lengthLabel, lengthDigits);
+            Console.WriteLine(lengthLine);
+
+            // El "resultado" real y verificable de este programa: la longitud del saludo.
+            // "Hola, mundo desde NativeSharp".Length == 29.
+            return greeting.Length;
+        }
+    }
+}

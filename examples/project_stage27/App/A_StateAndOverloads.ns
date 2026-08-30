@@ -1,0 +1,16 @@
+namespace Demo;
+
+public partial class Counter
+{
+    int Value;
+
+    public int Add(int delta)
+    {
+        return this.Value + delta;
+    }
+
+    public float Add(float delta)
+    {
+        return 0.0f;
+    }
+}

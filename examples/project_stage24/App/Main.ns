@@ -1,0 +1,10 @@
+using Engine.Geometry;
+using Geometry = Engine.Geometry;
+
+namespace Demo.App;
+
+struct Scene
+{
+    Point Origin;
+    Geometry.Point Other;
+}

@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <Name>Core</Name>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+</Project>

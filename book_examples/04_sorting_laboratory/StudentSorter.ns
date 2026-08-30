@@ -1,0 +1,27 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Sorting
+{
+    public abstract class StudentSorter
+    {
+        public abstract owned string Name();
+        public abstract void Sort(Student[] data, int count, StudentComparer comparer, SortStatistics statistics);
+
+        protected static void Swap(Student[] data, int a, int b, SortStatistics statistics)
+        {
+            Student temporary = data[a];
+            data[a] = data[b];
+            data[b] = temporary;
+            statistics.Swap();
+            statistics.Move();
+            statistics.Move();
+            statistics.Move();
+        }
+
+        protected static int Compare(Student left, Student right, StudentComparer comparer, SortStatistics statistics)
+        {
+            statistics.Comparison();
+            return comparer.Compare(left, right);
+        }
+    }
+}

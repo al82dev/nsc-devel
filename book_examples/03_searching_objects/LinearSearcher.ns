@@ -1,0 +1,29 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Searching
+{
+    public class LinearSearcher : StudentSearcher
+    {
+        public override owned string Name()
+        {
+            return String.Copy("Linear Search");
+        }
+
+        public override int Search(Student[] data, int count, int targetId, SearchStatistics statistics)
+        {
+            statistics.Reset();
+            int index = 0;
+            while (index < count)
+            {
+                statistics.Probe();
+                statistics.Comparison();
+                if (data[index].Id == targetId)
+                {
+                    return index;
+                }
+                index = index + 1;
+            }
+            return -1;
+        }
+    }
+}

@@ -1,0 +1,27 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.BinarySearchTree
+{
+    public class Student
+    {
+        private int id;
+        private string name;
+        private int grade;
+
+        public Student(int studentId, string studentName, int finalGrade)
+        {
+            id = studentId;
+            name = String.Copy(studentName);
+            grade = finalGrade;
+        }
+
+        public int Id { get { return id; } }
+        public string Name { get { return name; } }
+        public int Grade { get { return grade; } }
+
+        ~Student()
+        {
+            delete name;
+        }
+    }
+}

@@ -1,0 +1,112 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.RationalNumbers
+{
+    class Program
+    {
+        private static void PrintBinaryOperation(
+            string caption,
+            Rational left,
+            string symbol,
+            Rational right,
+            Rational result)
+        {
+            raii string leftText = left.ToText();
+            raii string rightText = right.ToText();
+            raii string resultText = result.ToText();
+            raii string equals = String.Copy(" = ");
+            raii string space = String.Copy(" ");
+            raii string s1 = String.Concat(caption, leftText);
+            raii string s2 = String.Concat(s1, space);
+            raii string s3 = String.Concat(s2, symbol);
+            raii string s4 = String.Concat(s3, space);
+            raii string s5 = String.Concat(s4, rightText);
+            raii string s6 = String.Concat(s5, equals);
+            raii string line = String.Concat(s6, resultText);
+            Console.WriteLine(line);
+        }
+
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 01 - Rational Numbers");
+            Console.WriteLine("------------------------------------------------");
+
+            Rational a = new Rational(2, 3);
+            Rational b = new Rational(5, 7);
+
+            Rational sum = a + b;
+            Rational difference = a - b;
+            Rational product = a * b;
+            Rational quotient = a / b;
+            Rational negative = -a;
+
+            PrintBinaryOperation("", a, "+", b, sum);
+            PrintBinaryOperation("", a, "-", b, difference);
+            PrintBinaryOperation("", a, "*", b, product);
+            PrintBinaryOperation("", a, "/", b, quotient);
+
+            raii string negText = negative.ToText();
+            raii string negLine = String.Concat("-2/3 = ", negText);
+            Console.WriteLine(negLine);
+
+            Console.WriteLine("");
+            Console.WriteLine("Exact comparisons (no floating-point rounding):");
+            if (a < b) { Console.WriteLine("  2/3 < 5/7"); }
+            if (sum > a) { Console.WriteLine("  (2/3 + 5/7) > 2/3"); }
+
+            Console.WriteLine("");
+            Console.WriteLine("Harmonic series H(10) = 1 + 1/2 + ... + 1/10");
+            Rational harmonic = RationalSeries.Harmonic(10);
+            raii string harmonicText = harmonic.ToText();
+            Console.WriteLine(harmonicText);
+
+            Console.WriteLine("");
+            Console.WriteLine("First 8 terms of the Leibniz series for pi/4:");
+            Rational piQuarter = RationalSeries.LeibnizPiQuarter(8);
+            raii string piQuarterText = piQuarter.ToText();
+            Console.WriteLine(piQuarterText);
+
+            Console.WriteLine("");
+            Console.WriteLine("Normalization examples:");
+            Rational normalizedA = new Rational(42, 56);
+            Rational normalizedB = new Rational(-18, -24);
+            raii string normalizedAText = normalizedA.ToText();
+            raii string normalizedBText = normalizedB.ToText();
+            raii string normalizedALine = String.Concat("  42/56  -> ", normalizedAText);
+            raii string normalizedBLine = String.Concat("  -18/-24 -> ", normalizedBText);
+            Console.WriteLine(normalizedALine);
+            Console.WriteLine(normalizedBLine);
+
+            bool caughtInvalid = false;
+            try
+            {
+                Rational invalid = new Rational(1, 0);
+                delete invalid;
+            }
+            catch (ZeroDenominatorException problem)
+            {
+                caughtInvalid = true;
+                Console.WriteLine("  Invalid denominator correctly rejected with an exception.");
+            }
+
+            delete a;
+            delete b;
+            delete sum;
+            delete difference;
+            delete product;
+            delete quotient;
+            delete negative;
+            delete harmonic;
+            delete piQuarter;
+            delete normalizedA;
+            delete normalizedB;
+
+            if (!caughtInvalid)
+            {
+                return 1;
+            }
+
+            return 0;
+        }
+    }
+}

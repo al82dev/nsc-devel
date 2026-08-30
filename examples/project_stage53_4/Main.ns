@@ -1,0 +1,141 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+// Stage 53.4 "Filesystem/Paths (cierre)" -- programa de verificacion empaquetado.
+// Misma convencion que todo Stage 53: cada chequeo que falla devuelve un codigo de salida
+// distinto, y el ultimo chequeo exitoso termina en "return 0".
+//
+// NOTA DE OWNERSHIP: Path.GetFullPath esta declarado como "public static string GetFullPath(...)"
+// (NO "owned string"), exactamente el mismo patron que Environment.GetEnvironmentVariable (53.2b)
+// y File.ReadAllText (53.3b) -- por eso su resultado se guarda en variables "string" comunes,
+// NUNCA "raii string". Contraste directo con Path.GetFileName/Path.Combine (usadas mas abajo):
+// esas SI estan declaradas "owned string" (son NativeSharp puro, parte de la disciplina original
+// de Path.ns desde Stage 53.3), asi que sus resultados SI se capturan con "raii string". Las dos
+// reglas conviven en el mismo archivo Path.ns desde esta ronda -- GetFullPath es la UNICA
+// operacion nucleo de esa clase, todo lo demas sigue siendo NativeSharp puro (ver el comentario
+// de cabecera de Path.ns).
+//
+// NOTA DE ESTADO: igual que Stage 53.3/53.3b, este programa crea/borra sus propios archivos y
+// directorios a lo largo de la ejecucion -- el harness de C++ que lo corre (ver
+// tests/unit/Stage53_4FilesystemPathsCierreTests.cpp) lo hace con un directorio de trabajo
+// DEDICADO y VACIO, no el directorio de ctest.
+class Program
+{
+    public static int Main()
+    {
+        // ---- Directory.Delete de un directorio VACIO existente: confirma que realmente borra,
+        //      no solo que no crashea --------------------------------------------------------
+
+        Directory.CreateDirectory("nativesharp_stage53_4_dir");
+        if (!Directory.Exists("nativesharp_stage53_4_dir"))
+        {
+            return 1;
+        }
+        Directory.Delete("nativesharp_stage53_4_dir");
+        if (Directory.Exists("nativesharp_stage53_4_dir"))
+        {
+            return 2;
+        }
+
+        // ---- Directory.Delete de un directorio que NO EXISTE: no debe crashear (misma
+        //      simplificacion deliberada que File.Delete desde 53.3) ------------------------
+
+        Directory.Delete("nativesharp_stage53_4_missing_dir");
+        if (Directory.Exists("nativesharp_stage53_4_missing_dir"))
+        {
+            return 3;
+        }
+
+        // ---- Directory.Delete de un directorio NO VACIO: RemoveDirectoryA falla en silencio
+        //      (nota real de Win32, no una simplificacion de este compilador) -- el directorio
+        //      debe seguir existiendo despues del intento. Recien cuando se vacia, el segundo
+        //      intento de Delete lo borra de verdad. ------------------------------------------
+
+        Directory.CreateDirectory("nativesharp_stage53_4_full");
+        raii string innerPath = Path.Combine("nativesharp_stage53_4_full", "inner.txt");
+        File.WriteAllText(innerPath, "x");
+        Directory.Delete("nativesharp_stage53_4_full");
+        if (!Directory.Exists("nativesharp_stage53_4_full"))
+        {
+            return 4;
+        }
+        File.Delete(innerPath);
+        Directory.Delete("nativesharp_stage53_4_full");
+        if (Directory.Exists("nativesharp_stage53_4_full"))
+        {
+            return 5;
+        }
+
+        // ---- Path.GetFullPath("."): "." es la forma correcta de pedir el directorio de trabajo
+        //      actual -- GetFullPathNameA lo resuelve sin componente relativo que agregar.
+        //      Ademas confirma idempotencia: resolver un path YA absoluto lo devuelve sin
+        //      cambios. --------------------------------------------------------------------
+
+        string cwd = Path.GetFullPath(".");
+        if (cwd.Length == 0)
+        {
+            return 6;
+        }
+        string cwdAgain = Path.GetFullPath(cwd);
+        if (cwdAgain.Length != cwd.Length)
+        {
+            return 7;
+        }
+        if (!cwdAgain.Equals(cwd))
+        {
+            return 8;
+        }
+
+        // ---- Path.GetFullPath(""): a diferencia de ".", un path VACIO es un FALLO real de
+        //      GetFullPathNameA (verificado bajo Wine, no una suposicion) -- devuelve 0, que esta
+        //      clase colapsa a "" (string vacio) via la misma simplificacion de siempre ante
+        //      cualquier fallo de Win32. Este comportamiento sorprendio durante la verificacion
+        //      de esta ronda: la intuicion inicial (que "" se resolveria como el directorio de
+        //      trabajo actual, igual que ".") resulto ser INCORRECTA -- ver
+        //      `54_stage53_4_filesystem_paths_cierre_implementacion_paso_a_paso.md` para el
+        //      detalle completo de como se detecto y corrigio.
+
+        string empty = Path.GetFullPath("");
+        if (empty.Length != 0)
+        {
+            return 9;
+        }
+
+        // ---- Path.GetFullPath sobre un nombre de archivo relativo: el resultado debe terminar
+        //      exactamente en ese nombre de archivo (Path.GetFileName de vuelta lo confirma). --
+
+        string fullFileName = Path.GetFullPath("nativesharp_stage53_4_relative.txt");
+        if (fullFileName.Length == 0)
+        {
+            return 10;
+        }
+        raii string nameOnly = Path.GetFileName(fullFileName);
+        if (!nameOnly.Equals("nativesharp_stage53_4_relative.txt"))
+        {
+            return 11;
+        }
+
+        // ---- Interoperabilidad real con File.*: escribir con el nombre RELATIVO, leer/borrar
+        //      con el path ABSOLUTO que Path.GetFullPath calculo ANTES de que el archivo
+        //      existiera (GetFullPathNameA es resolucion lexica pura, no consulta el disco) --
+        //      deben ser el mismo archivo en ambos casos. ----------------------------------
+
+        File.WriteAllText("nativesharp_stage53_4_relative.txt", "contenido de prueba");
+        if (!File.Exists(fullFileName))
+        {
+            return 12;
+        }
+        string viaFullPath = File.ReadAllText(fullFileName);
+        if (!viaFullPath.Equals("contenido de prueba"))
+        {
+            return 13;
+        }
+        File.Delete(fullFileName);
+        if (File.Exists("nativesharp_stage53_4_relative.txt"))
+        {
+            return 14;
+        }
+
+        return 0;
+    }
+}

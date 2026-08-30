@@ -1,0 +1,45 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.DoublyLinkedList
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 09 - Doubly Linked List");
+            Console.WriteLine("------------------------------------------------");
+            raii DoublyLinkedList<int> list = new DoublyLinkedList<int>();
+            list.AddLast(20);
+            list.AddLast(30);
+            list.AddFirst(10);
+            list.AddLast(50);
+            list.InsertAt(3, 40);
+            Console.WriteLine("Initial list, forward:");
+            ListPrinter.Forward(list);
+            Console.WriteLine("Same nodes, backward from tail:");
+            ListPrinter.Backward(list);
+
+            Console.WriteLine("");
+            Console.WriteLine("Insert 25 at index 2 and remove 40:");
+            list.InsertAt(2, 25);
+            list.RemoveFirstValue(40);
+            ListPrinter.Forward(list);
+
+            int[] removed = new int[1];
+            list.RemoveAt(0, removed);
+            raii string removedText = String.ToString(removed[0]);
+            raii string removedLine = String.Concat("removed head: ", removedText);
+            Console.WriteLine(removedLine);
+            delete[] removed;
+
+            Console.WriteLine("Reverse by swapping every node's next/previous links:");
+            list.Reverse();
+            ListPrinter.Forward(list);
+            ListPrinter.Backward(list);
+
+            raii string countText = String.ToString(list.Count);
+            raii string countLine = String.Concat("remaining node count: ", countText);
+            Console.WriteLine(countLine);
+            return 0;
+        }
+    }
+}

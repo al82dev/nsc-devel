@@ -1,0 +1,20 @@
+using NativeSharp.Core;
+
+class Holder2
+{
+    public void Consume(owned int value)
+    {
+        // no nested call
+    }
+}
+
+class Repro2
+{
+    public static int Main()
+    {
+        Holder2 h = new Holder2();
+        h.Consume(7);
+        delete h;
+        return 5;
+    }
+}

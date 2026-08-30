@@ -1,0 +1,16 @@
+namespace NativeSharp.BookExamples.DoublyLinkedList
+{
+    public class DoublyNode<T>
+    {
+        public T Value;
+        public DoublyNode<T> Previous;
+        public DoublyNode<T> Next;
+
+        public DoublyNode(T value)
+        {
+            Value = value;
+            Previous = null;
+            Next = null;
+        }
+    }
+}

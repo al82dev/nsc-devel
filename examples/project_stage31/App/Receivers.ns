@@ -1,0 +1,63 @@
+namespace Demo;
+
+public class Counter
+{
+    public int Value;
+
+    public Counter(int start)
+    {
+        Value = start;
+    }
+
+    public int Add(int delta)
+    {
+        Value = Value + delta;
+        return Value;
+    }
+}
+
+public class ReceiverHarness
+{
+    public Counter Make(int start)
+    {
+        return new Counter(start);
+    }
+
+    public int Read(Counter counter)
+    {
+        return counter.Value;
+    }
+
+    public int Write(Counter counter)
+    {
+        counter.Value = 11;
+        return counter.Value;
+    }
+
+    public int Call(Counter counter)
+    {
+        return counter.Add(2);
+    }
+
+    public int Local()
+    {
+        Counter counter = new Counter(3);
+        return counter.Add(4);
+    }
+
+    public int Temporary()
+    {
+        return (new Counter(5)).Add(6);
+    }
+
+    public int ReturnedReceiver()
+    {
+        return Make(7).Add(8);
+    }
+
+    public int WriteReturnedReceiver()
+    {
+        Make(9).Value = 12;
+        return 0;
+    }
+}

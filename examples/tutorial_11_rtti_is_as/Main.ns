@@ -1,0 +1,103 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 11 -- RTTI: is / as / casts verificados
+// Fuente de inspiracion: Learn C# Programming chapter_06 (CompareObjects.cs) y
+// project_stage39/App/NativeRttiCasts.ns (el ejemplo original de compilador para esta feature).
+// ============================================================================================
+//
+// "RTTI" (Run-Time Type Information) es identidad de tipo -- saber, en tiempo de ejecucion, si un
+// objeto ES de tal tipo (is), intentar convertirlo de forma segura (as, null si no coincide), o
+// exigir la conversion y fallar ruidosamente si no coincide (cast explicito). Es DELIBERADAMENTE
+// distinto de reflection: is/as/cast solo preguntan "es este tipo, si o no" sobre un tipo
+// conocido en tiempo de compilacion -- nunca inspeccionan miembros por nombre ni invocan nada
+// dinamicamente por string. NativeSharp declara explicitamente que NO habra reflection real,
+// CLR, ni dispatch resuelto en runtime por nombre (ver claude/04_restricciones_arquitectonicas.md
+// del propio repo) -- is/as/cast no rompen esa regla porque el tipo contra el que se compara
+// siempre esta fijo en el codigo fuente, nunca llega como dato en runtime.
+namespace Tutorial.RttiIsAs
+{
+    public interface IPet
+    {
+    }
+
+    public class Animal
+    {
+    }
+
+    public class Dog : Animal, IPet
+    {
+        public int Bark()
+        {
+            return 1;
+        }
+    }
+
+    public class Cat : Animal, IPet
+    {
+        public int Meow()
+        {
+            return 2;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            Dog rex = new Dog();
+            Animal asAnimal = rex; // upcast implicito -- una referencia Dog vista como Animal
+
+            // is (K&R no tiene equivalente -- esto es puramente C#): pregunta booleana sobre el
+            // tipo REAL del objeto, sin importar el tipo de la variable que lo sostiene.
+            bool isDog = asAnimal is Dog;         // true -- el objeto real es un Dog
+            bool isCat = asAnimal is Cat;         // false
+            bool isPet = asAnimal is IPet;        // true -- Dog implementa IPet
+
+            // as: conversion SEGURA -- si el tipo no coincide, da null en vez de lanzar excepcion.
+            Dog safeDog = asAnimal as Dog;   // no-null, es un Dog de verdad
+            Cat safeCat = asAnimal as Cat;   // null -- no era un Cat
+
+            // Cast explicito: exige que coincida -- si no, falla en runtime (no se prueba el
+            // caso de falla aqui para no depender de que excepciones esten bien propagadas en
+            // este punto del tutorial; ver tutorial_19 para excepciones).
+            Dog checkedDog = (Dog)asAnimal;
+            int barks = checkedDog.Bark(); // 1
+
+            // El patron idiomatico real: "as" + chequeo de null, en vez de "is" seguido de un
+            // cast (evita preguntar el tipo dos veces).
+            int meowsOrZero = 0;
+            Cat maybeCat = asAnimal as Cat;
+            if (maybeCat != null)
+            {
+                meowsOrZero = maybeCat.Meow();
+            }
+
+            Animal nothing = null;
+            bool nullIsDog = nothing is Dog; // false -- null nunca "es" ningun tipo
+
+            raii string line1 = String.Copy("isDog/isCat/isPet = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(isDog);
+            raii string d2 = String.ToString(isCat);
+            raii string d3 = String.ToString(isPet);
+            raii string s1 = String.Concat(line1, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string line1Full = String.Concat(s4, d3);
+            Console.WriteLine(line1Full);
+
+            // isDog==true, isCat==false, isPet==true, safeDog!=null, safeCat==null, barks==1,
+            // meowsOrZero==0 (asAnimal era un Dog, no un Cat), nullIsDog==false
+            int result = barks + meowsOrZero;
+            if (isDog) { result = result + 1; }
+            if (!isCat) { result = result + 1; }
+            if (isPet) { result = result + 1; }
+            if (safeDog != null) { result = result + 1; }
+            if (safeCat == null) { result = result + 1; }
+            if (!nullIsDog) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

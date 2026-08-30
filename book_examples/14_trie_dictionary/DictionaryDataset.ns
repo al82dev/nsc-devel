@@ -1,0 +1,29 @@
+namespace NativeSharp.BookExamples.Trie
+{
+    public class DictionaryDataset
+    {
+        public static void Fill(TrieDictionary dictionary)
+        {
+            dictionary.Insert("array");
+            dictionary.Insert("asset");
+            dictionary.Insert("assembler");
+            dictionary.Insert("assembly");
+            dictionary.Insert("binary");
+            dictionary.Insert("bind");
+            dictionary.Insert("binding");
+            dictionary.Insert("compiler");
+            dictionary.Insert("compile");
+            dictionary.Insert("compilation");
+            dictionary.Insert("component");
+            dictionary.Insert("graph");
+            dictionary.Insert("graphics");
+            dictionary.Insert("shader");
+            dictionary.Insert("shadow");
+            dictionary.Insert("shape");
+            dictionary.Insert("texture");
+            dictionary.Insert("thread");
+            dictionary.Insert("tree");
+            dictionary.Insert("trie");
+        }
+    }
+}

@@ -1,0 +1,182 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Diagnostics;
+
+// Stage 53.1 "Time" -- programa de verificacion empaquetado. Sigue exactamente la misma
+// convencion que examples/project_stage51/Main.ns: cada chequeo que falla devuelve un codigo
+// de salida distinto y creciente, 0 significa que TODOS pasaron. Corriendo bajo Wine (o
+// Windows real) el codigo de salida dice exactamente cual chequeo fallo, sin necesitar attachear
+// un debugger.
+//
+// Nota Stage 40 que se aplica en TODO este archivo: un struct (TimeSpan, DateTime) devuelto por
+// una llamada es un valor TEMPORAL, sin direccion de memoria estable -- por eso jamas se llama
+// un metodo ni se lee un campo directo sobre el resultado de una llamada
+// ("TimeSpan.FromSeconds(1.5).Ticks" NO compila). Cada resultado de tipo struct se nombra en un
+// local primero, y RECIEN AHI se le puede leer un campo o llamar un metodo. Esta misma regla ya
+// se topo (y se resolvio con el mismo patron) en Stopwatch.ns's ElapsedMilliseconds/
+// ElapsedSeconds -- ver el comentario de ahi para la explicacion completa.
+class Program
+{
+    public static int Main()
+    {
+        // ---- TimeSpan: aritmetica pura, sin tocar el sistema operativo -----------------
+
+        TimeSpan oneAndHalfSeconds = TimeSpan.FromSeconds(1.5);
+        if (oneAndHalfSeconds.Ticks != 15000000)
+        {
+            return 1;
+        }
+
+        TimeSpan fromMillis = TimeSpan.FromMilliseconds(2500.0);
+        if (fromMillis.TotalSeconds() != 2.5)
+        {
+            return 2;
+        }
+
+        TimeSpan threeSeconds = TimeSpan.FromSeconds(3.0);
+        TimeSpan twoSeconds = TimeSpan.FromSeconds(2.0);
+        TimeSpan fiveSeconds = TimeSpan.FromSeconds(5.0);
+        TimeSpan oneSecond = TimeSpan.FromSeconds(1.0);
+
+        TimeSpan sum = threeSeconds.Add(twoSeconds);
+        if (sum.Ticks != fiveSeconds.Ticks)
+        {
+            return 3;
+        }
+        TimeSpan difference = threeSeconds.Subtract(twoSeconds);
+        if (difference.Ticks != oneSecond.Ticks)
+        {
+            return 4;
+        }
+        if (threeSeconds.CompareTo(twoSeconds) != 1)
+        {
+            return 5;
+        }
+        if (twoSeconds.CompareTo(threeSeconds) != -1)
+        {
+            return 6;
+        }
+        if (threeSeconds.CompareTo(threeSeconds) != 0)
+        {
+            return 7;
+        }
+
+        TimeSpan zero = TimeSpan.Zero();
+        if (zero.Ticks != 0)
+        {
+            return 8;
+        }
+
+        TimeSpan negatedThreeSeconds = threeSeconds.Negate();
+        TimeSpan negativeThreeSeconds = TimeSpan.FromSeconds(-3.0);
+        if (!negatedThreeSeconds.Equals(negativeThreeSeconds))
+        {
+            return 9;
+        }
+
+        // ---- NativeClock: las tres operaciones nucleo que SI tocan Win32 ----------------
+
+        if (NativeClock.QueryFrequencyRaw() <= 0)
+        {
+            return 20;
+        }
+        long counterFirst = NativeClock.QueryCounterRaw();
+        // Bucle chico solo para asegurar que pasa ALGO de tiempo real entre las dos lecturas --
+        // no mide nada, solo evita que ambas lecturas caigan exactamente en el mismo tick.
+        long spin = 0;
+        while (spin < 200000)
+        {
+            spin = spin + 1;
+        }
+        long counterSecond = NativeClock.QueryCounterRaw();
+        if (counterSecond < counterFirst)
+        {
+            return 21;
+        }
+
+        // ---- DateTime: la conversion FILETIME (1601) -> Ticks (0001) tiene que ser exacta.
+        //
+        // En vez de comparar contra una fecha "esperada" escrita a mano (fragil: depende de
+        // CUANDO se corre el test), se acorrala DateTime.UtcNow() entre dos lecturas crudas de
+        // QuerySystemFileTimeRaw() tomadas justo antes y justo despues -- si la aritmetica de
+        // conversion (sumar/restar FileTimeEpochOffsetTicks) esta bien, el valor convertido
+        // tiene que caer exactamente entre esas dos lecturas, sin importar que dia es hoy.
+        long fileTimeBefore = NativeClock.QuerySystemFileTimeRaw();
+        DateTime now = DateTime.UtcNow();
+        long fileTimeAfter = NativeClock.QuerySystemFileTimeRaw();
+        long nowAsFileTime = now.ToFileTimeUtc();
+        if (nowAsFileTime < fileTimeBefore || nowAsFileTime > fileTimeAfter)
+        {
+            return 30;
+        }
+        // Verifica la constante de desfase de epoca contra su propia derivacion (ver el
+        // comentario de cabecera de DateTime.ns): FromFileTimeUtc(0) tiene que reproducir
+        // EXACTAMENTE 504,911,232,000,000,000 -- ni una unidad de mas o de menos.
+        DateTime epochZero = DateTime.FromFileTimeUtc(0);
+        if (epochZero.Ticks != 504911232000000000)
+        {
+            return 31;
+        }
+        DateTime tenSecondsLater = now.Add(TimeSpan.FromSeconds(10.0));
+        TimeSpan measuredDifference = tenSecondsLater.DifferenceFrom(now);
+        if (measuredDifference.Ticks != 100000000)
+        {
+            return 32;
+        }
+        if (now.CompareTo(tenSecondsLater) != -1)
+        {
+            return 33;
+        }
+
+        // ---- Stopwatch: la pieza que mas le importa a un motor de juego -----------------
+
+        raii Stopwatch sw = Stopwatch.StartNew();
+        long busy = 0;
+        while (busy < 2000000)
+        {
+            busy = busy + 1;
+        }
+        sw.Stop();
+        TimeSpan swElapsed = sw.Elapsed();
+        if (swElapsed.Ticks <= 0)
+        {
+            return 40;
+        }
+        if (sw.Frequency() <= 0)
+        {
+            return 41;
+        }
+        if (sw.ElapsedMilliseconds() <= 0.0)
+        {
+            return 42;
+        }
+
+        raii Stopwatch sw2 = new Stopwatch();
+        if (sw2.IsRunning())
+        {
+            return 43;
+        }
+        sw2.Start();
+        if (!sw2.IsRunning())
+        {
+            return 44;
+        }
+        sw2.Stop();
+        if (sw2.IsRunning())
+        {
+            return 45;
+        }
+        sw2.Reset();
+        TimeSpan sw2ElapsedAfterReset = sw2.Elapsed();
+        if (sw2ElapsedAfterReset.Ticks != 0)
+        {
+            return 46;
+        }
+        sw2.Restart();
+        if (!sw2.IsRunning())
+        {
+            return 47;
+        }
+
+        return 0;
+    }
+}

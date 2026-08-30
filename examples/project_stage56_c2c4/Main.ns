@@ -1,0 +1,180 @@
+// Stage 56 / C2-C3-C4 -- programa de verificacion empaquetado.
+//
+// Misma convencion que examples/project_stage56_c1/Main.ns: cada chequeo que falla devuelve su
+// propio codigo de salida, y solo si TODOS pasan se llega al "return 0" final.
+//
+// Donde C1 hizo expresable una FUNCION C, estas tres fases hacen expresable una DECLARACION C:
+//
+//   C2.1 arrays embebidos en campos          -- `float[4] rgba;`
+//   C2.2 union, pack(N), align(N), at(N)     -- todo lo que dice un registro C hecho a mano
+//   C3   aliases FFI                          -- los typedefs de un header C
+//   C4   ref / out / in                       -- parametros por referencia
+
+using DWORD = uint;
+using HANDLE = void*;
+using PDWORD = DWORD*;
+using LPDWORD = PDWORD;
+using Rgba = float[4];
+
+namespace Stage56Example
+{
+    // ---- C2.1: arrays embebidos ---------------------------------------------------------------
+
+    public struct Material
+    {
+        public Rgba albedo;
+        public byte[16] uuid;
+        public DWORD flags;
+    }
+
+    // ---- C2.2: union y layout explicito --------------------------------------------------------
+
+    public union Payload
+    {
+        public int asInt;
+        public float asFloat;
+        public byte[4] asBytes;
+    }
+
+    public pack(1) struct WireRecord
+    {
+        public byte kind;
+        public int length;
+    }
+
+    public align(16) struct Vector4Aligned
+    {
+        public float[4] values;
+    }
+
+    public struct Overlapping
+    {
+        public int first;
+        public at(0) int alias;
+        public at(8) long tail;
+    }
+
+    class Program
+    {
+        // ---- C4: ref / out / in ---------------------------------------------------------------
+
+        public static void Bump(ref int value) { value = value + 1; }
+
+        // La forma GetMessage/GetClientRect: el llamado LLENA un registro que el llamador posee.
+        public static void Describe(out Material material)
+        {
+            material.albedo[0] = 1;
+            material.albedo[3] = 2;
+            material.uuid[0] = 7;
+            material.uuid[15] = 9;
+            material.flags = 3u;
+        }
+
+        // `in` existe para evitar la copia, no para abrir un canal de vuelta.
+        public static int Sum(in Material material)
+        {
+            return (int)(material.albedo[0] + material.albedo[3]);
+        }
+
+        public static int Main()
+        {
+            // ---- C2.1: campo array embebido, y la misma aritmetica sobre un puntero crudo -----
+
+            Material material;
+            Describe(out material);
+
+            if ((int)material.uuid[0] + (int)material.uuid[15] != 16)
+            {
+                return 1;
+            }
+
+            if (material.flags != 3u)
+            {
+                return 2;
+            }
+
+            float* firstChannel = &material.albedo[0];
+            float* lastChannel = &material.albedo[3];
+            if ((int)(firstChannel[0] + lastChannel[0]) != 3)
+            {
+                return 3;
+            }
+
+            // ---- C2.2: una union escribe un miembro y lee otro --------------------------------
+            //
+            // Little-endian: el byte 0 es el byte bajo del int.
+
+            Payload payload;
+            payload.asInt = 0;
+            payload.asBytes[0] = 42;
+            if (payload.asInt != 42)
+            {
+                return 4;
+            }
+
+            // pack(1): el int arranca en el offset 1, no en el 4.
+
+            WireRecord record;
+            record.kind = 1;
+            record.length = 42;
+            if (record.length != 42)
+            {
+                return 5;
+            }
+
+            // align(16): un array embebido dentro de un struct sobre-alineado se indexa igual.
+
+            Vector4Aligned vector;
+            vector.values[0] = 1;
+            vector.values[3] = 41;
+            if ((int)(vector.values[0] + vector.values[3]) != 42)
+            {
+                return 6;
+            }
+
+            // at(N): dos nombres para los mismos cuatro bytes.
+
+            Overlapping overlapping;
+            overlapping.first = 42;
+            overlapping.tail = 0;
+            if (overlapping.alias != 42)
+            {
+                return 7;
+            }
+
+            // ---- C3: aliases FFI --------------------------------------------------------------
+            //
+            // Un alias es un typedef, no un tipo distinto: DWORD ES uint, en todas partes.
+
+            DWORD flags = 40u;
+            HANDLE handle = null;
+            LPDWORD pointer = &flags;
+
+            if (handle != null)
+            {
+                return 8;
+            }
+
+            if (*pointer != 40u)
+            {
+                return 9;
+            }
+
+            // ---- C4: ref / out / in -----------------------------------------------------------
+
+            int counter = 1;
+            Bump(ref counter);
+            if (counter != 2)
+            {
+                return 10;
+            }
+
+            if (Sum(in material) != 3)
+            {
+                return 11;
+            }
+
+            return 0;
+        }
+    }
+}

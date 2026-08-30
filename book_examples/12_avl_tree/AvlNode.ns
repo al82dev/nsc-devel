@@ -1,0 +1,17 @@
+namespace NativeSharp.BookExamples.AvlTree
+{
+    public class AvlNode
+    {
+        public AvlRecord Value;
+        public AvlNode Left;
+        public AvlNode Right;
+        public int Height;
+        public AvlNode(AvlRecord value)
+        {
+            Value = value;
+            Left = null;
+            Right = null;
+            Height = 1;
+        }
+    }
+}

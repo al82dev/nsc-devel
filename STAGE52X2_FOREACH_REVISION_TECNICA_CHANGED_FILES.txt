@@ -1,0 +1,104 @@
+Stage 52.x.2 -- revision tecnica de foreach (STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md) --
+archivos modificados/agregados respecto de la entrega anterior (cierre del bug owned sin move(),
+ver STAGE52_CIERRE_BUG_OWNED_MOVE_CHANGED_FILES.txt)
+
+Ver 52_x_2_foreach_revision_tecnica_paso_a_paso.md para la explicacion didactica completa paso a
+paso (comandos y errores reales del compilador, no reconstruidos a posteriori).
+
+MODIFICADOS -- compilador:
+  include/nativesharp/Parser/Parser.h
+    - makeVariableDeclaration gana un 5to parametro, isConst = false por defecto (P0.3).
+  src/Parser/Parser.cpp
+    - parseForeachStatement: higiene de temporales con prefijo `$` (P0.1); doble-parseo de la
+      expresion de coleccion (`collection` real + `collectionProbe` desechable) para el analisis
+      de ownership posterior (P0.2); ambos elementDecl pasan isConst=true (P0.3); `const` ya no
+      se consume en la posicion de elemento de foreach, ahora es error de sintaxis (P0.4);
+      `Current` leido como acceso de miembro plano, sin `makeZeroArgCallExpression` (P1.1);
+      `collectionProbe` adjuntado como hijo extra del nodo ForeachStatement.
+  src/Frontend/ProjectMethodBodyModel.cpp
+    - analyzeForeach: probe de ownership sobre collectionProbe (scratch DiagnosticEngine) antes
+      de analizar la declaracion real de $__foreach_source, agregando `raii` cuando la fuente es
+      una expresion owned-returning de tipo referencia/string (P0.2); teardown de la cleanup
+      region de $__foreach_source al final de la funcion, simetrico al de analyzeFor -- bug real
+      destapado por el propio fix de P0.2 (la fuente nunca antes podia ser raii, asi que este gap
+      estaba dormido), causaba "Stage 45.10 structured exit references an inactive cleanup
+      region" en cualquier return/break/continue posterior en el mismo metodo.
+
+MODIFICADOS -- libreria (lib/NativeSharp.Core.Collections.Generic/), P1.1 (Current como
+propiedad):
+  ListEnumerator.ns          -- Current() (metodo) -> Current (propiedad get-only)
+
+MODIFICADOS -- libreria, P1.2 (GetEnumerator() extendido):
+  Queue.ns            -- indexer this[int] (por PhysicalIndex) + GetEnumerator()
+  Stack.ns            -- indexer this[int] (tope-a-fondo) + GetEnumerator()
+  LinkedList.ns       -- GetEnumerator() (sin indexer -- camina la cadena viva via First()/Next())
+  HashSet.ns          -- GetEnumerator() (snapshot via ToArray(), wrapper sobre Dictionary<T,bool>)
+  SortedSet.ns        -- GetEnumerator() (snapshot via ToArray(), wrapper sobre SortedList<T,bool>)
+  PriorityQueue.ns    -- indexer this[int] (orden heap, TElement solo) + GetEnumerator()
+  Dictionary.ns        -- comentario de clase: decision de NO agregar GetEnumerator() (landmine de
+                          ABI de structs >8 bytes con KeyValuePair<TKey,TValue>), alternativa
+                          Keys()/Values() documentada
+  SortedDictionary.ns  -- idem
+  SortedList.ns        -- idem
+
+AGREGADOS -- libreria (enumeradores nuevos, P1.2):
+  QueueEnumerator.ns
+  StackEnumerator.ns
+  LinkedListEnumerator.ns
+  HashSetEnumerator.ns
+  SortedSetEnumerator.ns
+  PriorityQueueEnumerator.ns
+
+MODIFICADOS -- ejemplos:
+  examples/project_stage52x_foreach/Main.ns
+    - CountUpToEnumerator.Current() (metodo) -> Current (propiedad get-only), P1.1.
+    - comentario de cabecera actualizado (Current ya no lleva parentesis).
+
+ELIMINADOS -- scratch de esta sesion (nunca fue un entregable real, usado solo para verificar
+empiricamente el bug de P0.2 antes de corregirlo):
+  examples/project_foreach_owned_source/
+
+AGREGADOS -- tests:
+  tests/unit/Stage52_5ForeachSemanticGapsTests.cpp (nuevo, 24/24 PASS)
+    - P0.1 higiene (ejecucion real bajo Wine); P0.2 fuente owned-returning (ejecucion real); P0.3
+      elemento readonly (diagnostico negativo); P0.4 const rechazado (diagnostico negativo); P1.1
+      Current como propiedad con un enumerador hecho a mano (ejecucion real).
+  tests/unit/Stage52_6ForeachCollectionsEnumeratorsTests.cpp (nuevo, 16/16 PASS)
+    - foreach real sobre Queue/Stack/LinkedList/HashSet/SortedSet/PriorityQueue en un solo
+      fixture, verificando ORDEN real (no solo compila/no crashea) bajo Wine; Dictionary sin
+      GetEnumerator() (diagnostico negativo limpio); Dictionary.Keys()/Values() (ejecucion real,
+      alternativa documentada).
+  CMakeLists.txt
+    - registro de nsc.stage52-5.foreach-semantic-gaps y nsc.stage52-6.foreach-collections-
+      enumerators.
+
+MODIFICADOS -- documentacion:
+  52_x_2_foreach_revision_tecnica_paso_a_paso.md (nuevo)
+    - bitacora paso a paso completa de esta ronda (13 pasos), comandos y errores reales del
+      compilador, incluido el bug de cleanup region destapado en el Paso 3.
+  52_x_nativesharp_foreach.md
+    - banner de actualizacion al inicio senalando que Current() (metodo) en el texto original
+      quedo obsoleto -- la forma actual es Current (propiedad) -- sin reescribir el documento
+      historico completo.
+  TEST_MATRIX_52.md
+    - nuevas filas nsc.stage52-5.foreach-semantic-gaps (24/24) y nsc.stage52-6.foreach-
+      collections-enumerators (16/16); nueva seccion resumen de la ronda.
+  STAGE52_CHECKPOINT.md
+    - status line actualizada, CTest 210/210.
+
+REGRESION: ctest completo, 210/210 (208 previos + 2 nuevos), 100% passed, 0 failed. Los binarios
+ya documentados en rondas anteriores re-verificados bajo Wine 9.0 real tras estos cambios, mismos
+valores que antes (sin regresion):
+  Stage52xForeach.exe      -> 91,  sin crash
+  Stage52Collections.exe   -> 149, sin crash
+
+PENDIENTE (honestamente no completado en esta ronda):
+  - P1 #7-10 (heredado de la ronda anterior): reescritura completa de
+    52_nativesharp_generic_collections.md,
+    52_nativesharp_generic_collections_implementacion_paso_a_paso.md,
+    PART5_CONFORMANCE_STAGE52.md, handover hacia Stage 53.
+  - Empaquetado SOURCE-ONLY incremental real (item #19-21 de esta misma revision): este zip de
+    entrega SI se construyo como delta incremental real (ver mas abajo), a diferencia de la ronda
+    anterior que empaqueto el arbol completo -- pero las rondas PREVIAS (foreach 52.x original,
+    cierre de owned/move) no se han re-empaquetado retroactivamente como deltas.
+  - Windows real (no solo Wine) sigue pendiente, prioridad declarada por el checklist original.

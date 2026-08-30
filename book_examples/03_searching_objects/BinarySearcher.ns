@@ -1,0 +1,43 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Searching
+{
+    public class BinarySearcher : StudentSearcher
+    {
+        public override owned string Name()
+        {
+            return String.Copy("Binary Search");
+        }
+
+        public override int Search(Student[] data, int count, int targetId, SearchStatistics statistics)
+        {
+            statistics.Reset();
+            int low = 0;
+            int high = count - 1;
+
+            while (low <= high)
+            {
+                int middle = low + (high - low) / 2;
+                statistics.Probe();
+                statistics.Comparison();
+
+                if (data[middle].Id == targetId)
+                {
+                    return middle;
+                }
+
+                statistics.Comparison();
+                if (data[middle].Id < targetId)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+
+            return -1;
+        }
+    }
+}

@@ -1,0 +1,73 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.LinkedList
+{
+    class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 05 - Singly Linked List<T>");
+            Console.WriteLine("-----------------------------------------------------");
+            Console.WriteLine("The node chain and all list operations are implemented from scratch.");
+            Console.WriteLine("");
+
+            raii SinglyLinkedList<int> list = new SinglyLinkedList<int>();
+
+            list.AddLast(10);
+            list.AddLast(20);
+            list.AddLast(30);
+            list.AddFirst(5);
+            list.InsertAt(2, 15);
+            list.InsertAt(list.Count, 40);
+            IntListPrinter.Print("after insertions: ", list);
+
+            int position30 = list.IndexOf(30);
+            raii string positionText = String.ToString(position30);
+            raii string positionLine = String.Concat("index of 30: ", positionText);
+            Console.WriteLine(positionLine);
+
+            if (list.Contains(15))
+            {
+                Console.WriteLine("list contains 15");
+            }
+
+            int[] removed = new int[1];
+            list.RemoveFirst(removed);
+            int removedFirst = removed[0];
+            list.RemoveAt(2, removed);
+            int removedMiddle = removed[0];
+            raii string firstText = String.ToString(removedFirst);
+            raii string middleText = String.ToString(removedMiddle);
+            raii string r1 = String.Concat("removed first/middle: ", firstText);
+            raii string r2 = String.Concat(r1, " / ");
+            raii string removedLine = String.Concat(r2, middleText);
+            Console.WriteLine(removedLine);
+            IntListPrinter.Print("after removals:   ", list);
+
+            list.Reverse();
+            IntListPrinter.Print("after reverse:    ", list);
+
+            list.SetAt(1, 999);
+            IntListPrinter.Print("after SetAt:      ", list);
+
+            Console.WriteLine("");
+            Console.WriteLine("Walking the node chain directly:");
+            SinglyNode<int> node = list.First();
+            int ordinal = 0;
+            while (node != null)
+            {
+                raii string ordinalText = String.ToString(ordinal);
+                raii string valueText = String.ToString(node.Value);
+                raii string s1 = String.Concat("node ", ordinalText);
+                raii string s2 = String.Concat(s1, " contains ");
+                raii string line = String.Concat(s2, valueText);
+                Console.WriteLine(line);
+                node = node.Next;
+                ordinal = ordinal + 1;
+            }
+
+            delete[] removed;
+            return 0;
+        }
+    }
+}

@@ -1,0 +1,54 @@
+int Trace = 0;
+
+int NextIndex()
+{
+    Trace = Trace * 10 + 1;
+    return 1;
+}
+
+int* NextPointer(int* pointer)
+{
+    Trace = Trace * 10 + 2;
+    return pointer;
+}
+
+int Main()
+{
+    int value = 0;
+    int* moved = NextIndex() + NextPointer(&value);
+    moved -= 1;
+
+    int[4] values;
+    int index = 0;
+
+    while (index < 4)
+    {
+        values[index] = index;
+        index++;
+    }
+
+    int sum = 0;
+    for (int i = 0; i < 4; i++)
+    {
+        if (i == 2)
+        {
+            continue;
+        }
+        sum += values[i];
+    }
+
+    bool first = sum > 0;
+    bool second = first && Trace == 12;
+    bool third = second || false;
+
+    int* heap = new int[4];
+    heap[0] = sum;
+    delete[] heap;
+
+    if (third)
+    {
+        return sum;
+    }
+
+    return 0;
+}

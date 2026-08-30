@@ -1,0 +1,40 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    public class PayrollReport
+    {
+        private static void PrintEmployee(Employee employee, Money pay)
+        {
+            raii string idText = String.ToString(employee.Id);
+            raii string classText = employee.Classification();
+            raii string payText = pay.ToText();
+            raii string s1 = String.Concat("#", idText);
+            raii string s2 = String.Concat(s1, "  ");
+            raii string s3 = String.Concat(s2, employee.Name);
+            raii string s4 = String.Concat(s3, "  [");
+            raii string s5 = String.Concat(s4, classText);
+            raii string s6 = String.Concat(s5, "]  weekly pay: ");
+            raii string line = String.Concat(s6, payText);
+            Console.WriteLine(line);
+        }
+
+        public static owned Money Print(Employee[] employees, int count)
+        {
+            int totalCents = 0;
+            int index = 0;
+
+            while (index < count)
+            {
+                Employee employee = employees[index];
+                raii Money pay = employee.CalculateWeeklyPay();
+                PrintEmployee(employee, pay);
+                totalCents = totalCents + pay.Cents;
+
+                index = index + 1;
+            }
+
+            return new Money(totalCents);
+        }
+    }
+}

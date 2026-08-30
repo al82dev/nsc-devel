@@ -1,0 +1,80 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.QueueSimulation
+{
+    public class CircularQueue<T>
+    {
+        private T[] items;
+        private int head;
+        private int tail;
+        private int count;
+        private int capacity;
+
+        public CircularQueue(int initialCapacity)
+        {
+            capacity = initialCapacity;
+            if (capacity < 2) { capacity = 2; }
+            items = new T[capacity];
+            head = 0;
+            tail = 0;
+            count = 0;
+        }
+
+        public int Count { get { return count; } }
+        public bool IsEmpty { get { return count == 0; } }
+
+        private void Grow()
+        {
+            int newCapacity = capacity * 2;
+            const T[] grown = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                int source = (head + i) % capacity;
+                grown[i] = items[source];
+                i = i + 1;
+            }
+            delete[] items;
+            items = grown;
+            capacity = newCapacity;
+            head = 0;
+            tail = count;
+        }
+
+        public void Enqueue(T value)
+        {
+            if (count == capacity)
+            {
+                Grow();
+            }
+            items[tail] = value;
+            tail = (tail + 1) % capacity;
+            count = count + 1;
+        }
+
+        public void Peek(T[] result)
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            result[0] = items[head];
+        }
+
+        public void Dequeue(T[] result)
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            result[0] = items[head];
+            head = (head + 1) % capacity;
+            count = count - 1;
+        }
+
+        ~CircularQueue()
+        {
+            delete[] items;
+        }
+    }
+}

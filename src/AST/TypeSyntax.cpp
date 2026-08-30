@@ -1,0 +1,62 @@
+#include "nativesharp/AST/TypeSyntax.h"
+
+#include <utility>
+
+namespace nativesharp::ast
+{
+std::string_view ownershipQualifierSyntaxKindName(OwnershipQualifierSyntaxKind kind) noexcept
+{
+    switch (kind)
+    {
+        case OwnershipQualifierSyntaxKind::None: return "none";
+        case OwnershipQualifierSyntaxKind::Owned: return "owned";
+        case OwnershipQualifierSyntaxKind::Borrowed: return "borrowed";
+    }
+
+    return "none";
+}
+
+TypeSyntax::TypeSyntax(SourceRange range, lexer::TokenKind baseTokenKind, std::string baseName)
+    : range_(range),
+      baseTokenKind_(baseTokenKind),
+      baseName_(std::move(baseName))
+{
+}
+
+SourceRange TypeSyntax::range() const noexcept { return range_; }
+void TypeSyntax::setRange(SourceRange range) noexcept { range_ = range; }
+lexer::TokenKind TypeSyntax::baseTokenKind() const noexcept { return baseTokenKind_; }
+const std::string& TypeSyntax::baseName() const noexcept { return baseName_; }
+void TypeSyntax::setBaseName(std::string baseName) { baseName_ = std::move(baseName); }
+OwnershipQualifierSyntaxKind TypeSyntax::ownershipQualifier() const noexcept { return ownershipQualifier_; }
+void TypeSyntax::setOwnershipQualifier(OwnershipQualifierSyntaxKind qualifier) noexcept
+{
+    ownershipQualifier_ = qualifier;
+}
+
+void TypeSyntax::setBaseTokenKind(lexer::TokenKind kind) noexcept
+{
+    baseTokenKind_ = kind;
+}
+
+void TypeSyntax::prependModifiers(const std::vector<TypeModifierSyntax>& modifiers)
+{
+    if (modifiers.empty()) return;
+    modifiers_.insert(modifiers_.begin(), modifiers.begin(), modifiers.end());
+}
+void TypeSyntax::addTypeArgument(TypeSyntax* typeArgument) { typeArguments_.push_back(typeArgument); }
+const std::vector<TypeSyntax*>& TypeSyntax::typeArguments() const noexcept { return typeArguments_; }
+void TypeSyntax::clearTypeArguments() noexcept { typeArguments_.clear(); }
+void TypeSyntax::addModifier(TypeModifierSyntax modifier) { modifiers_.push_back(modifier); }
+const std::vector<TypeModifierSyntax>& TypeSyntax::modifiers() const noexcept { return modifiers_; }
+std::optional<std::size_t> TypeSyntax::originProjectOrdinal() const noexcept { return originProjectOrdinal_; }
+void TypeSyntax::setOriginProjectOrdinal(std::size_t projectOrdinal) noexcept
+{
+    originProjectOrdinal_ = projectOrdinal;
+}
+std::optional<std::string> TypeSyntax::originNamespace() const noexcept { return originNamespace_; }
+void TypeSyntax::setOriginNamespace(std::string namespaceName) noexcept
+{
+    originNamespace_ = std::move(namespaceName);
+}
+}

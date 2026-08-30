@@ -1,0 +1,99 @@
+namespace Stage36.Demo
+{
+    public interface IReadable
+    {
+        int Read();
+    }
+
+    public interface IStatus
+    {
+        int Status();
+    }
+
+    public interface IAdvanced : IReadable, IStatus
+    {
+        int Scale(int factor);
+    }
+
+    public abstract class Device : IReadable
+    {
+        protected int Value;
+
+        public Device(int value)
+        {
+            Value = value;
+        }
+
+        public abstract int Read();
+
+        ~Device()
+        {
+            Value = 0;
+        }
+    }
+
+    public class Sensor : Device, IAdvanced
+    {
+        public Sensor(int value)
+            : base(value)
+        {
+        }
+
+        public override int Read()
+        {
+            return Value;
+        }
+
+        public int Status()
+        {
+            return 7;
+        }
+
+        public int Scale(int factor)
+        {
+            return Read() * factor;
+        }
+
+        ~Sensor()
+        {
+            Value = -1;
+        }
+    }
+
+    public class Holder
+    {
+        private IReadable Reader;
+
+        public Holder(IReadable reader)
+        {
+            Reader = reader;
+        }
+
+        public int Invoke()
+        {
+            return Reader.Read();
+        }
+    }
+
+    public class Harness
+    {
+        public static IReadable Make(int value)
+        {
+            return new Sensor(value);
+        }
+
+        public static int Run()
+        {
+            IAdvanced advanced = new Sensor(21);
+            IReadable readable = advanced;
+            Holder holder = new Holder(readable);
+
+            int result = advanced.Scale(2) + advanced.Status() + holder.Invoke();
+
+            delete advanced;
+            delete holder;
+
+            return result;
+        }
+    }
+}

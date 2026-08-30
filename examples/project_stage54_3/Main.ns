@@ -1,0 +1,176 @@
+using NativeSharp.Core.Threading;
+
+// Stage 54.3 "Mutex" -- programa de verificacion empaquetado.
+//
+// Misma convencion de exit codes que cada ronda de Stage 53/54: cada chequeo que falla devuelve
+// un codigo de salida DISTINTO, y el ultimo chequeo exitoso termina en "return 0".
+//
+// DISCIPLINA EXTRA DE ESTA RONDA (la misma regla de rigor de Stage 54, ver
+// claude/05_metodo_de_trabajo_y_archivo_historico.md): ademas del camino feliz (Secciones 1-2),
+// este programa ejercita explicitamente los corner cases de lifecycle que la regla exige --
+// liberar un mutex nunca adquirido (Seccion 3), destruir un mutex via scope de "raii" (Seccion
+// 4), agotamiento modesto de recursos creando y destruyendo muchos mutex (Seccion 5) -- y, mas
+// importante, la prueba REAL de exclusion mutua (Secciones 6-7): varios hilos de sistema
+// operativo, corriendo EN SIMULTANEO, incrementando un contador COMPARTIDO **no-atomico**
+// (un `int` comun, NO un AtomicInt32 de Stage 54.2) protegido por Mutex.Lock()/Unlock() --
+// si el mutex no proveyera exclusion mutua real, la secuencia leer-sumar-escribir sin proteccion
+// perderia escrituras y el total final seria MENOR que threads*iteraciones. La demostracion de
+// que este mismo patron de test PUEDE detectar una carrera quedo confirmada por separado, de
+// forma manual, antes de escribir este archivo (ver 59_stage54_3_mutex.md, seccion
+// "Verificacion" -- una version deliberadamente SIN Mutex del mismo patron, corrida 20 veces bajo
+// Wine, mostro perdida de escrituras en 1 de 20 corridas). Ningun chequeo usa Sleep() como
+// sustituto de sincronizacion -- Thread.Join() es la unica forma de esperar hilos.
+class SharedState
+{
+    public static int Counter = 0;
+    public static Mutex Lock1 = new Mutex();
+    public static int CounterTwo = 0;
+    public static Mutex Lock2 = new Mutex();
+
+    // Campo que NINGUN codigo de este programa toca jamas -- el control negativo de la Seccion 8.
+    public static int NeverTouched = 0;
+}
+
+class Program
+{
+    // 4 hilos x 2500 incrementos cada uno = 10000 exactos, si Mutex.Lock()/Unlock() realmente
+    // proveen exclusion mutua sobre el `int` NO-atomico `SharedState.Counter`.
+    private static void CounterWorker()
+    {
+        int i = 0;
+        while (i < 2500)
+        {
+            SharedState.Lock1.Lock();
+            SharedState.Counter = SharedState.Counter + 1;
+            SharedState.Lock1.Unlock();
+            i = i + 1;
+        }
+    }
+
+    // Segundo mutex INDEPENDIENTE, protegiendo un SEGUNDO contador independiente -- confirma que
+    // dos instancias de Mutex no interfieren entre si (cada una con su propio HANDLE de Win32).
+    // 4 hilos x 1000 = 4000 exactos.
+    private static void CounterTwoWorker()
+    {
+        int i = 0;
+        while (i < 1000)
+        {
+            SharedState.Lock2.Lock();
+            SharedState.CounterTwo = SharedState.CounterTwo + 1;
+            SharedState.Lock2.Unlock();
+            i = i + 1;
+        }
+    }
+
+    public static int Main()
+    {
+        // ==== Seccion 1: Lock/Unlock basico, un solo hilo =====================================
+
+        raii Mutex m1 = new Mutex();
+        int value = 0;
+
+        m1.Lock();
+        value = value + 1;
+        m1.Unlock();
+        if (value != 1) { return 1; }
+
+        m1.Lock();
+        value = value + 41;
+        m1.Unlock();
+        if (value != 42) { return 2; }
+
+        // ==== Seccion 2: adquisicion RECURSIVA (reentrante) del mismo mutex, mismo hilo ========
+        // Un mutex de kernel de Win32 es reentrante: el mismo hilo puede adquirirlo varias veces
+        // sin bloquearse contra si mismo -- cada Lock() necesita su propio Unlock().
+
+        m1.Lock();
+        m1.Lock();
+        m1.Lock();
+        value = value + 8;
+        if (value != 50) { return 3; }
+        m1.Unlock();
+        m1.Unlock();
+        m1.Unlock();
+        // Confirma que el mutex quedo realmente libre despues de las tres liberaciones: una
+        // cuarta adquisicion (fuera de cualquier anidamiento) tambien tiene exito.
+        m1.Lock();
+        value = value + 1;
+        m1.Unlock();
+        if (value != 51) { return 4; }
+
+        // ==== Seccion 3: Unlock() sobre un mutex NUNCA adquirido -- no debe crashear ===========
+
+        raii Mutex neverLocked = new Mutex();
+        neverLocked.Unlock();
+        neverLocked.Unlock();
+        // Si llegamos aca sin crashear, el chequeo paso -- confirmamos ademas que el mutex sigue
+        // usable normalmente despues de esos dos releases sin adquisicion previa.
+        neverLocked.Lock();
+        neverLocked.Unlock();
+
+        // ==== Seccion 4: destruccion via scope "raii" de un Mutex de vida corta ================
+
+        {
+            raii Mutex scoped = new Mutex();
+            scoped.Lock();
+            scoped.Unlock();
+            // "scoped" se destruye aca, al final de este bloque -- ~Mutex() cierra su HANDLE.
+        }
+        // Un Mutex completamente distinto sigue funcionando normalmente despues de que el
+        // anterior se destruyo -- confirma que no hay interferencia entre HANDLEs de mutex.
+        m1.Lock();
+        value = value + 1;
+        m1.Unlock();
+        if (value != 52) { return 5; }
+
+        // ==== Seccion 5: agotamiento modesto de recursos -- crear y destruir muchos mutex ======
+
+        int created = 0;
+        while (created < 200)
+        {
+            raii Mutex temp = new Mutex();
+            temp.Lock();
+            temp.Unlock();
+            created = created + 1;
+        }
+        if (created != 200) { return 6; }
+
+        // ==== Seccion 6: prueba REAL de exclusion mutua -- 4 hilos, contador NO-atomico ========
+        // Los cuatro CreateThread ya volvieron (los cuatro hilos ya estan corriendo, o a punto de
+        // correr) antes de que este programa llame al primer Join() -- concurrencia genuina, no
+        // hilos secuenciales disfrazados.
+
+        ThreadStart counterStart = CounterWorker;
+        raii Thread ct1 = new Thread(counterStart);
+        raii Thread ct2 = new Thread(counterStart);
+        raii Thread ct3 = new Thread(counterStart);
+        raii Thread ct4 = new Thread(counterStart);
+        ct1.Join();
+        ct2.Join();
+        ct3.Join();
+        ct4.Join();
+        if (SharedState.Counter != 10000) { return 7; }
+
+        // ==== Seccion 7: SEGUNDO mutex independiente, prueba de no-interferencia ===============
+
+        ThreadStart counterTwoStart = CounterTwoWorker;
+        raii Thread ct5 = new Thread(counterTwoStart);
+        raii Thread ct6 = new Thread(counterTwoStart);
+        raii Thread ct7 = new Thread(counterTwoStart);
+        raii Thread ct8 = new Thread(counterTwoStart);
+        ct5.Join();
+        ct6.Join();
+        ct7.Join();
+        ct8.Join();
+        if (SharedState.CounterTwo != 4000) { return 8; }
+        // El PRIMER contador/mutex de la Seccion 6 sigue intacto -- confirma que ambos pares
+        // mutex+contador vivieron su vida concurrente sin pisarse entre si.
+        if (SharedState.Counter != 10000) { return 9; }
+
+        // ==== Seccion 8: control negativo -- un campo que NINGUN codigo toco sigue en 0 ========
+
+        if (SharedState.NeverTouched != 0) { return 10; }
+
+        return 0;
+    }
+}

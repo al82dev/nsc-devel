@@ -1,0 +1,67 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Knapsack
+{
+    public class KnapsackSolver
+    {
+        private static int Cell(int row,int column,int width){return row*width+column;}
+        private static int Max(int a,int b){if(a>b){return a;}return b;}
+        public static void Solve(Item[] items,int itemCount,int capacity)
+        {
+            int width=capacity+1;
+            int[] dp=new int[(itemCount+1)*width];
+            int i=1;
+            while(i<=itemCount)
+            {
+                Item item=items[i-1];
+                int w=0;
+                while(w<=capacity)
+                {
+                    int without=dp[Cell(i-1,w,width)];
+                    int best=without;
+                    if(item.Weight<=w)
+                    {
+                        int with=item.Value+dp[Cell(i-1,w-item.Weight,width)];
+                        best=Max(without,with);
+                    }
+                    dp[Cell(i,w,width)]=best;
+                    w=w+1;
+                }
+                i=i+1;
+            }
+            raii string best=String.ToString(dp[Cell(itemCount,capacity,width)]);
+            raii string bestLine=String.Concat("maximum value: ",best);
+            Console.WriteLine(bestLine);
+            Console.WriteLine("chosen items (reconstructed by walking the DP table backward):");
+            int remaining=capacity;
+            int row=itemCount;
+            int usedWeight=0;
+            while(row>0)
+            {
+                int current=dp[Cell(row,remaining,width)];
+                int previous=dp[Cell(row-1,remaining,width)];
+                if(current!=previous)
+                {
+                    Item chosen=items[row-1];
+                    usedWeight=usedWeight+chosen.Weight;
+                    raii string weight=String.ToString(chosen.Weight);
+                    raii string value=String.ToString(chosen.Value);
+                    raii string a=String.Concat("  ",chosen.Name);
+                    raii string b=String.Concat(a,"  weight=");
+                    raii string c=String.Concat(b,weight);
+                    raii string d=String.Concat(c,"  value=");
+                    raii string line=String.Concat(d,value);
+                    Console.WriteLine(line);
+                    remaining=remaining-chosen.Weight;
+                }
+                row=row-1;
+            }
+            raii string uw=String.ToString(usedWeight);
+            raii string cap=String.ToString(capacity);
+            raii string a=String.Concat("weight used: ",uw);
+            raii string b=String.Concat(a," / ");
+            raii string line=String.Concat(b,cap);
+            Console.WriteLine(line);
+            delete[] dp;
+        }
+    }
+}

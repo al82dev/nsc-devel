@@ -1,0 +1,192 @@
+#include "nativesharp/Compilation/ProjectGraphDumper.h"
+#include "nativesharp/Compilation/ProjectGraphLoader.h"
+
+#include "../support/TestContext.h"
+
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <string_view>
+
+namespace
+{
+using nativesharp::compilation::ProjectGraphDumper;
+using nativesharp::compilation::ProjectGraphLoader;
+using nativesharp::tests::TestContext;
+
+void writeFile(const std::filesystem::path& path, std::string_view text)
+{
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream stream(path, std::ios::binary);
+    stream << text;
+}
+
+void writeProject(
+    const std::filesystem::path& directory,
+    std::string_view fileName,
+    std::string_view moduleName,
+    std::string_view references = {})
+{
+    writeFile(directory / "Main.ns", "int Value() { return 1; }\n");
+    std::string project =
+        "<Project>\n"
+        "  <PropertyGroup><Name>" + std::string(moduleName) + "</Name></PropertyGroup>\n";
+    if (!references.empty())
+    {
+        project += "  <ItemGroup>\n";
+        project += references;
+        project += "  </ItemGroup>\n";
+    }
+    project += "</Project>\n";
+    writeFile(directory / fileName, project);
+}
+
+void testDependencyOrderAndDiamond(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path shared = root / "Shared";
+    const std::filesystem::path left = root / "Left";
+    const std::filesystem::path right = root / "Right";
+    const std::filesystem::path app = root / "App";
+
+    writeProject(shared, "Shared.nsproj", "Shared");
+    writeProject(
+        left,
+        "Left.nsproj",
+        "Left",
+        "    <ProjectReference Include=\"../Shared/Shared.nsproj\" />\n");
+    writeProject(
+        right,
+        "Right.nsproj",
+        "Right",
+        "    <ProjectReference Include=\"../Shared/Shared.nsproj\" />\n");
+    writeProject(
+        app,
+        "App.nsproj",
+        "App",
+        "    <ProjectReference Include=\"../Right/Right.nsproj\" />\n"
+        "    <ProjectReference Include=\"../Left/Left.nsproj\" />\n");
+
+    ProjectGraphLoader loader;
+    std::string error;
+    const auto graph = loader.load(app / "App.nsproj", error);
+    tests.expect(graph.has_value(), "diamond project graph loads");
+    if (!graph.has_value())
+    {
+        return;
+    }
+
+    tests.expect(graph->projects().size() == 4, "shared diamond dependency is loaded only once");
+    tests.expect(graph->projects()[0].moduleName() == "Shared", "deepest dependency is ordered first");
+    tests.expect(graph->projects()[1].moduleName() == "Left", "sorted left dependency follows shared");
+    tests.expect(graph->projects()[2].moduleName() == "Right", "sorted right dependency follows left");
+    tests.expect(graph->projects()[3].moduleName() == "App", "root project is ordered last");
+    tests.expect(
+        graph->rootProject() != nullptr && graph->rootProject()->moduleName() == "App",
+        "root project accessor returns the graph root");
+
+    std::ostringstream firstDump;
+    std::ostringstream secondDump;
+    ProjectGraphDumper dumper;
+    dumper.dump(*graph, firstDump);
+    dumper.dump(*graph, secondDump);
+    tests.expect(firstDump.str() == secondDump.str(), "project graph dump is deterministic");
+    tests.expect(firstDump.str().find("[0] Shared") != std::string::npos, "graph dump exposes dependency order");
+    tests.expect(firstDump.str().find("[3] App (root)") != std::string::npos, "graph dump marks root project");
+}
+
+void testCycleDiagnostic(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path a = root / "CycleA";
+    const std::filesystem::path b = root / "CycleB";
+    const std::filesystem::path c = root / "CycleC";
+    writeProject(
+        a,
+        "A.nsproj",
+        "A",
+        "    <ProjectReference Include=\"../CycleB/B.nsproj\" />\n");
+    writeProject(
+        b,
+        "B.nsproj",
+        "B",
+        "    <ProjectReference Include=\"../CycleC/C.nsproj\" />\n");
+    writeProject(
+        c,
+        "C.nsproj",
+        "C",
+        "    <ProjectReference Include=\"../CycleA/A.nsproj\" />\n");
+
+    ProjectGraphLoader loader;
+    std::string error;
+    const auto graph = loader.load(a / "A.nsproj", error);
+    tests.expect(!graph.has_value(), "cyclic project graph is rejected");
+    tests.expect(
+        error.find("project reference cycle: A -> B -> C -> A") != std::string::npos,
+        "cycle diagnostic reports the deterministic module chain");
+}
+
+void testDuplicateModuleDiagnostic(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path first = root / "FirstShared";
+    const std::filesystem::path second = root / "SecondShared";
+    const std::filesystem::path app = root / "DuplicateApp";
+    writeProject(first, "First.nsproj", "SharedModule");
+    writeProject(second, "Second.nsproj", "SharedModule");
+    writeProject(
+        app,
+        "App.nsproj",
+        "DuplicateApp",
+        "    <ProjectReference Include=\"../FirstShared/First.nsproj\" />\n"
+        "    <ProjectReference Include=\"../SecondShared/Second.nsproj\" />\n");
+
+    ProjectGraphLoader loader;
+    std::string error;
+    const auto graph = loader.load(app / "App.nsproj", error);
+    tests.expect(!graph.has_value(), "two project files cannot own the same module identity");
+    tests.expect(
+        error.find("duplicate module name 'SharedModule'") != std::string::npos,
+        "duplicate module diagnostic names the conflicting module");
+}
+
+void testMissingTransitiveReference(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path library = root / "BrokenLibrary";
+    const std::filesystem::path app = root / "BrokenApp";
+    writeProject(
+        library,
+        "BrokenLibrary.nsproj",
+        "BrokenLibrary",
+        "    <ProjectReference Include=\"../Missing/Missing.nsproj\" />\n");
+    writeProject(
+        app,
+        "BrokenApp.nsproj",
+        "BrokenApp",
+        "    <ProjectReference Include=\"../BrokenLibrary/BrokenLibrary.nsproj\" />\n");
+
+    ProjectGraphLoader loader;
+    std::string error;
+    const auto graph = loader.load(app / "BrokenApp.nsproj", error);
+    tests.expect(!graph.has_value(), "missing transitive project reference rejects the graph");
+    tests.expect(
+        error.find("referenced project does not exist") != std::string::npos,
+        "missing transitive project preserves ProjectLoader diagnostic");
+}
+}
+
+int main()
+{
+    TestContext tests;
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / "nativesharp_stage23_project_graph";
+    std::error_code errorCode;
+    std::filesystem::remove_all(root, errorCode);
+    std::filesystem::create_directories(root, errorCode);
+
+    testDependencyOrderAndDiamond(tests, root);
+    testCycleDiagnostic(tests, root);
+    testDuplicateModuleDiagnostic(tests, root);
+    testMissingTransitiveReference(tests, root);
+
+    std::filesystem::remove_all(root, errorCode);
+    return tests.result();
+}

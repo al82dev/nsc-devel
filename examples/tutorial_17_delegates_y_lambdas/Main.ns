@@ -1,0 +1,85 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 17 -- Delegates y lambdas
+// Fuente de inspiracion: Systems Programming with C# and .NET (delegados como parametros de
+// funciones de orden superior) y project_stage42/project_stage43 de este mismo repo.
+// ============================================================================================
+namespace Tutorial.DelegatesLambdas
+{
+    // Un delegate declara una FIRMA -- cualquier metodo o lambda que la cumpla se puede asignar
+    // a una variable de este tipo, exactamente como un puntero a funcion tipado.
+    public delegate int Transform(int value);
+
+    public class MathOps
+    {
+        public static int Double(int value)
+        {
+            return value * 2;
+        }
+
+        public static int Square(int value)
+        {
+            return value * value;
+        }
+    }
+
+    class Program
+    {
+        // Funcion de orden superior -- recibe el delegate como parametro y lo invoca sin saber
+        // que operacion concreta hace.
+        public static int ApplyTwice(Transform transform, int value)
+        {
+            return transform(transform(value));
+        }
+
+        public static int Main()
+        {
+            // Un delegate puede apuntar a un metodo con nombre...
+            Transform doubleIt = MathOps.Double;
+            int doubledTwice = ApplyTwice(doubleIt, 3); // Double(Double(3)) = 12
+
+            // ...o a una lambda sin nombre, escrita inline.
+            Transform addOne = x => x + 1;
+            int addedTwice = ApplyTwice(addOne, 10); // 10+1+1 = 12
+
+            // Lambda de bloque -- cuando el cuerpo necesita mas de una expresion.
+            Transform blockLambda = x =>
+            {
+                int doubled = x * 2;
+                return doubled + 1;
+            };
+            int blockResult = blockLambda(5); // 11
+
+            // Closure: la lambda "captura" una variable local del scope que la rodea -- sigue
+            // viendo su valor incluso despues de que Main() ya avanzo mas alla de la linea donde
+            // se declaro "factor".
+            int factor = 3;
+            Transform multiplyByFactor = x => x * factor;
+            int multiplied = multiplyByFactor(7); // 21 -- usa "factor" capturado, no un valor fijo
+
+            // Un delegate se puede pasar directo en el sitio de llamada, sin variable
+            // intermedia.
+            int viaInlineCall = ApplyTwice(x => x - 1, 20); // 20-1-1 = 18
+
+            raii string label = String.Copy("doubledTwice/addedTwice/blockResult/multiplied = ");
+            raii string sep = String.Copy(" / ");
+            raii string d1 = String.ToString(doubledTwice);
+            raii string d2 = String.ToString(addedTwice);
+            raii string d3 = String.ToString(blockResult);
+            raii string d4 = String.ToString(multiplied);
+            raii string s1 = String.Concat(label, d1);
+            raii string s2 = String.Concat(s1, sep);
+            raii string s3 = String.Concat(s2, d2);
+            raii string s4 = String.Concat(s3, sep);
+            raii string s5 = String.Concat(s4, d3);
+            raii string s6 = String.Concat(s5, sep);
+            raii string line = String.Concat(s6, d4);
+            Console.WriteLine(line);
+
+            // doubledTwice==12, addedTwice==12, blockResult==11, multiplied==21, viaInlineCall==18
+            int result = doubledTwice + addedTwice + blockResult + multiplied + viaInlineCall;
+            return result % 250;
+        }
+    }
+}

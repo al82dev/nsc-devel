@@ -1,0 +1,139 @@
+using NativeSharp.Core;
+
+// ============================================================================================
+// Tutorial 10 -- Propiedades, indexadores y operadores
+// Fuente de inspiracion: Learn C# Programming chapter_04 (Point.cs) y Systems Programming with
+// C# and .NET (Complex.cs -- operadores sobrecargados). Ver tambien project_stage38 en este
+// mismo repo, el ejemplo original de compilador que probo por primera vez esta superficie.
+// ============================================================================================
+namespace Tutorial.PropiedadesIndexadoresOperadores
+{
+    public class Vector2
+    {
+        private int x;
+        private int y;
+
+        public Vector2(int initialX, int initialY)
+        {
+            x = initialX;
+            y = initialY;
+        }
+
+        // Propiedad con getter y setter explicitos (no auto-propiedad) -- X/Y se comportan como
+        // campos desde afuera ("v.X", no "v.GetX()") pero corren codigo real por dentro.
+        public int X
+        {
+            get { return x; }
+            set { x = value; }
+        }
+
+        public int Y
+        {
+            get { return y; }
+            set { y = value; }
+        }
+
+        // Propiedad get-only calculada -- no hay campo "length" detras, se recalcula cada vez
+        // que se lee (distancia Manhattan, igual que ManhattanDistanceFromOrigin en tutorial_06,
+        // pero expuesta como propiedad en vez de metodo).
+        public int ManhattanLength
+        {
+            get
+            {
+                int absX = x;
+                if (absX < 0) { absX = -absX; }
+                int absY = y;
+                if (absY < 0) { absY = -absY; }
+                return absX + absY;
+            }
+        }
+
+        // Indexador -- v[0] es X, v[1] es Y. Permite tratar el vector como si fuera un arreglo
+        // de 2 elementos sin serlo de verdad.
+        public int this[int index]
+        {
+            get
+            {
+                if (index == 0) { return x; }
+                return y;
+            }
+            set
+            {
+                if (index == 0) { x = value; }
+                else { y = value; }
+            }
+        }
+
+        // Operadores sobrecargados -- "+" entre dos Vector2 produce un Vector2 nuevo; "=="/"!="
+        // comparan por valor (componente a componente), no por identidad de objeto.
+        public static Vector2 operator +(Vector2 left, Vector2 right)
+        {
+            return new Vector2(left.X + right.X, left.Y + right.Y);
+        }
+
+        public static bool operator ==(Vector2 left, Vector2 right)
+        {
+            return left.X == right.X && left.Y == right.Y;
+        }
+
+        public static bool operator !=(Vector2 left, Vector2 right)
+        {
+            return !(left == right);
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // Vector2 no declara destructor, asi que estos locales se dejan sin "raii" a
+            // proposito -- son objetos "sueltos" (nadie los libera explicitamente, viven hasta
+            // que el proceso termina). Esto es deliberado para mantener el foco de ESTE tutorial
+            // en propiedades/indexadores/operadores: el modelo de ownership completo (raii,
+            // cuando SI hace falta liberar memoria de verdad) es el tema de tutorial_12/13. Nota
+            // tecnica real encontrada mientras se escribia este ejemplo: el resultado de un
+            // operador sobrecargado (`a + b`) hoy NO se reconoce como "owned-returning call" por
+            // el analisis de ownership, aunque el metodo operator+ declare `owned Vector2` como
+            // retorno -- por eso NO se puede escribir `raii Vector2 sum = a + b;` todavia (falla
+            // con "RAII ownership cannot be copied or borrowed"). Es un hueco real, no una
+            // limitacion inventada para este ejemplo.
+            Vector2 a = new Vector2(3, 4);
+            Vector2 b = new Vector2(1, 2);
+
+            int lengthA = a.ManhattanLength; // 7, se lee como campo, corre como metodo
+
+            // El indexador se usa exactamente como si Vector2 fuera un arreglo.
+            int firstComponent = a[0]; // 3
+            a[1] = 40;                  // muta Y a traves del indexador
+            int mutatedY = a.Y;         // 40
+
+            Vector2 sum = a + b; // operator+ -- (3+1, 40+2) = (4, 42)
+
+            Vector2 same = new Vector2(4, 42);
+            bool equalsSum = sum == same;   // operator==, por valor -> true
+            bool differsFromA = sum != a;   // operator!=, por valor -> true (Y distinto: 42 vs 40)
+
+            raii string lengthLabel = String.Copy("a.ManhattanLength = ");
+            raii string lengthDigits = String.ToString(lengthA);
+            raii string lengthLine = String.Concat(lengthLabel, lengthDigits);
+            Console.WriteLine(lengthLine);
+
+            raii string sumLabel = String.Copy("sum = (");
+            raii string sumX = String.ToString(sum.X);
+            raii string comma = String.Copy(", ");
+            raii string sumY = String.ToString(sum.Y);
+            raii string close = String.Copy(")");
+            raii string s1 = String.Concat(sumLabel, sumX);
+            raii string s2 = String.Concat(s1, comma);
+            raii string s3 = String.Concat(s2, sumY);
+            raii string sumLine = String.Concat(s3, close);
+            Console.WriteLine(sumLine);
+
+            // lengthA==7, firstComponent==3, mutatedY==40, sum.X==4, sum.Y==42
+            int result = lengthA + firstComponent + mutatedY + sum.X + sum.Y;
+            if (equalsSum) { result = result + 1; }
+            if (differsFromA) { result = result + 1; }
+            return result % 250;
+        }
+    }
+}

@@ -1,0 +1,231 @@
+Stage 56 / C2-C3-C4 "Language completion" -- archivos modificados/nuevos en esta ronda
+(fases C2, C3 y C4 del roadmap del compilador, 01_Compiler_Roadmap.md secciones 3.3 arrays
+embebidos, 3.4 union/layout explicito, 3.5 aliases FFI, 3.7 ref/out/in -- mas la parte de C5 que
+se puede certificar sin Wine. Ver 64_stage56_c2c4_language_completion.md para el diseno tecnico
+completo y 64_stage56_c2c4_language_completion_implementacion_paso_a_paso.md para el registro
+mecanico. Esta ronda se aplica ENCIMA de Stage 56 / C1, ver STAGE56_C1_CHANGED_FILES.txt.)
+
+
+MODIFICADOS
+-----------
+
+  include/nativesharp/Frontend/ProjectMemberModel.h
+  src/Frontend/ProjectMemberModel.cpp
+      - C2.1: evaluateConstantArrayCount (movido desde ProjectObjectLayoutModel, que ahora
+        delega), fixedArrayElementTypeKey y fixedArrayCount. La clave canonica de un array
+        embebido pasa a llevar el CONTADOR ("builtin:float[4]") en vez de una huella opaca de la
+        sintaxis del contador ("builtin:float[38:4:3:4]"), que es lo que hacia imposible bajar un
+        acceso a elementos.
+      - C2.1: rechazo de un array embebido como tipo de parametro o de retorno, con el arreglo en
+        el mensaje (C degrada a puntero y no permite retornarlo; la alternativa era copiar 16
+        bytes en silencio).
+      - C2.2: explicitFieldOffset en el simbolo del campo, con diagnostico donde un offset no
+        significa nada (campo estatico, miembro de clase).
+      - C4: ParameterPassKind + pointeeTypeKey en MethodParameterSymbol, y la forma de paso
+        incorporada a la CLAVE DE FIRMA -- F(int* p) y F(ref int p) bajan a la misma firma de
+        maquina y sin eso chocarian como duplicados.
+
+  include/nativesharp/Frontend/ProjectObjectLayoutModel.h
+  src/Frontend/ProjectObjectLayoutModel.cpp
+      - C2.1: evaluateArrayCount delega en ProjectMemberModel (una sola definicion de "contador
+        constante" en todo el compilador). checkedMultiply quedo sin uso y se elimino.
+      - C2.2: ESTE es el unico lugar del compilador que sabe que una union no es un struct
+        ordinario. Lee los marcadores de layout de la declaracion (union, pack=N, align=N) y los
+        pasa al target layout. StructValueLayout expone ademas lo que la declaracion pidio
+        (isUnion/pack/minimumAlignment/hasExplicitFieldOffsets) para que el generador de headers C
+        pueda REPRODUCIR el layout en vez de adivinarlo desde offsets que coinciden.
+
+  include/nativesharp/Target/TargetDataLayout.h
+  src/Target/TargetDataLayout.cpp
+      C2.2: StructLayoutOptions (isUnion, pack, minimumAlignment) y StructFieldRequest (layout +
+      offset explicito opcional), con un layoutStruct general. Una sola pasada cubre struct plano,
+      union, packed y offsets explicitos, porque difieren solo en como se elige el offset y como
+      avanza el tamano. El overload de un argumento se conserva.
+
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+      - C2.1: MethodCoreOperationKind::RawElement -- indexar almacenamiento INLINE y no manejado,
+        que cubre tanto un campo/local array embebido como un puntero crudo. Antes ninguna de las
+        dos formas tenia lowering (la segunda pasaba el chequeo del frontend y moria en HIR).
+      - C4: dereferenciado implicito de un parametro por referencia (un uso evalua al pointee, no
+        al puntero); `in` no asignable; checkArgumentPassKinds exigiendo que el sitio de la llamada
+        y la firma coincidan en la palabra clave, en las dos direcciones; diagnostico preciso
+        cuando lo unico mal es la palabra clave (en las DOS rutas de resolucion de llamadas);
+        verifyOutParameterAssignments cerrando la obligacion de `out`, contando cualquier escritura
+        A TRAVES del parametro.
+
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+      - C2.1: nodo RawElementAddress y su lowering. La unica diferencia entre las dos bases es
+        como se obtiene la base -- un array embebido ES su almacenamiento (contexto de direccion),
+        un puntero CONTIENE una direccion (contexto de valor).
+      - C4: la forma de paso entra en el NOMBRE MANGLEADO, o F(int*) y F(ref int) se volverian una
+        sola funcion LLVM. Y el uso de un parametro por referencia baja a
+        PointerLoad(ParameterValue) en valor / ParameterValue en direccion.
+
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+      C2.1: RawElementAddress con su tamano/alineacion de elemento, obtenidos por elementLayout --
+      extraido de la lambda que ya vivia en el caso del array manejado, para que las dos rutas
+      pregunten lo mismo de la misma forma (dos respuestas que discrepen sobre el tamano de un
+      struct darian un stride de GEP que no coincide con el layout del campo).
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      C2.1: el caso RawElementAddress (GEP byte a byte, base + indice * elementSize, SIN bounds
+      check y sin null check -- es el tier crudo, a diferencia de ArrayElementAddress), y llvmType
+      mapeando T[N] a [N x T], que es lo que hace que un local de array embebido sea un solo
+      alloca.
+
+  include/nativesharp/AST/TypeSyntax.h
+  src/AST/TypeSyntax.cpp
+      C3: setBaseTokenKind y prependModifiers -- lo que necesita la expansion de un alias:
+      sustituir la base, y meter los modificadores del alias POR DEBAJO de los del sitio de uso,
+      para que `using PDWORD = uint*;` usado como `PDWORD*` de `uint**`.
+
+  include/nativesharp/Parser/Parser.h
+  src/Parser/Parser.cpp
+      - C2.2: `union` (misma rutina que struct, con un marcador de layout -- NO un
+        NamedTypeDeclarationKind paralelo), `pack(N)`/`align(N)` como modificadores de
+        declaracion, y `at(N)` como modificador de campo aceptado en cualquier posicion entre los
+        modificadores. Los cuatro son palabras clave CONTEXTUALES, igual que `partial`.
+      - C3: el destino de `using X = ...;` pasa a ser un TIPO COMPLETO (antes solo un nombre
+        calificado), y el nombre del alias se registra en knownTypeNames_ -- sin eso
+        `DWORD d = 42u;` se parsea como expresion.
+      - C4: `ref`/`out`/`in` antes del tipo de un parametro (anaden un modificador puntero al tipo
+        y dejan la forma en el nodo), y `f(ref x)` en el sitio de la llamada.
+
+  src/Frontend/ProjectNameLookup.cpp
+      C3: LookupEnvironment gana typeAliases; la expansion del alias ocurre en bindTypeSyntax,
+      DENTRO del propio nodo, con tope de profundidad para reportar ciclos. Despues de eso el AST
+      dice lo que el alias decia y nada aguas abajo se entera de que los aliases existen -- que es
+      exactamente lo que significa un typedef. El NOMBRE ESCRITO se captura antes de expandir y se
+      conserva en la ligadura (sin eso, los diagnosticos hablarian de codigo que nadie escribio).
+
+  src/Interop/CHeaderGenerator.cpp
+      C2: el header C generado emite array embebido con la extension despues del nombre, `union`
+      como union (con el typedef adelantado del mismo tag), `pack(N)` como el par pragma, y
+      `align(N)` como NS_ALIGNAS sobre el PRIMER MIEMBRO (despues del tag no es C valido).
+      Offsets explicitos se rechazan con la razon y la alternativa.
+
+  tests/interop_contract/README.md
+      La matriz de 15 casos del roadmap queda COMPLETA, y se documenta la certificacion de layout
+      contra clang.
+
+  CMakeLists.txt
+      Registro del ejecutable nsc_stage56_c2c4_language_completion_tests (con NSC_SOURCE_DIR: lo
+      necesita para las fixtures, el ejemplo y para invocar clang sobre el header generado) y del
+      test nsc.stage56.c2c4-language-completion.
+
+
+NUEVOS
+------
+
+  tests/unit/Stage56C2C4LanguageCompletionTests.cpp
+      Suite de la ronda: 16 escenarios, 81 checks.
+
+  tests/interop_contract/c2_11_fixed_field_array/{c2_11_fixed_field_array.nsproj, Main.ns}
+  tests/interop_contract/c2_12_union/{c2_12_union.nsproj, Main.ns}
+  tests/interop_contract/c4_ref_out_in/{c4_ref_out_in.nsproj, Main.ns}
+      Las filas 11 y 12 de la matriz contractual, mas la fila de C4.
+
+  examples/project_stage56_c2c4/{Stage56C2C4LanguageCompletion.nsproj, Main.ns}
+      Ejemplo empaquetado que recorre C2, C3 y C4 en orden de roadmap.
+
+  64_stage56_c2c4_language_completion.md
+  64_stage56_c2c4_language_completion_implementacion_paso_a_paso.md
+  STAGE56_C2C4_CHANGED_FILES.txt (este archivo)
+
+
+HALLAZGOS MEDIDOS EN ESTA RONDA (antes de arreglarlos)
+------------------------------------------------------
+
+  1. La clave de tipo de un array embebido era `builtin:float[38:4:3:4]` -- una huella de la
+     SINTAXIS del contador, no el contador. El tipo parseaba y el layout era correcto, pero nada
+     aguas abajo podia leer de ahi el tipo del elemento ni cuantos hay, y por eso indexarlo era
+     imposible de bajar.
+
+  2. El mensaje "index expression requires an indexer reference or a POINTER with one integral
+     index" era falso en su segunda mitad: `p[0]` sobre un `int*` pasaba ese chequeo y moria
+     despues en HIR con "Stage 38 OOP lowering requires class/interface index expressions to
+     resolve to an indexer accessor". Ninguna de las dos formas crudas tenia lowering.
+
+  3. El destino de un `using` alias solo podia ser un nombre calificado, asi que las tres formas
+     que un header C realmente usa -- `uint`, `void*`, `float[4]` -- eran inescribibles.
+
+  4. (Encontrado por la propia suite, no por revision) La expansion de aliases sobrescribia el
+     NOMBRE ESCRITO en la ligadura, y la suite existente nsc.project-name-lookup lo atrapo en el
+     primer build: la ligadura decia `Point` donde la persona habia escrito `PointAlias`.
+
+  5. (Encontrado por el propio fixture contractual) La verificacion de la obligacion de `out`
+     rechazaba mal la forma GetMessage/GetClientRect -- llenar un struct campo por campo --
+     porque solo contaba la asignacion directa al parametro.
+
+  6. (Encontrado compilando el header con clang) `NS_ALIGNAS(N)` despues del tag de un struct no
+     es C valido; va sobre el primer miembro.
+
+
+CERTIFICACION DE LAYOUT SIN WINE (lo que compensa la ausencia de ejecucion real)
+--------------------------------------------------------------------------------
+
+Los numeros de layout de esta ronda NO se verifican contra la opinion de este compilador. El
+header C generado declara cada agregado junto con NS_STATIC_ASSERT de tamano, alineacion y offset
+por campo, y la suite le pide a CLANG -- apuntando al ABI de MSVC, con -Werror -- que lo compile.
+Si NativeSharp y clang discreparan sobre un array embebido, una union, un pack o un align, eso es
+un build roto, no un test verde con un numero equivocado adentro.
+
+Ademas se corre la matriz de tamanos de la seccion 4 del roadmap ("Nivel B -- foreign ABI"):
+
+  1, 2, 3, 4, 8, 12, 16, 24, 64, 80 bytes
+
+Los tamanos 3, 12, 24 y 80 estan a proposito: no son ni ancho de registro ni numeros redondos, y
+son exactamente donde se esconde un bug de layout.
+
+Esto no necesita Wine, asi que es un chequeo DURO en cualquier maquina con clang.
+
+
+NOTA SOBRE WINE (limitacion de entorno de esta ronda)
+-----------------------------------------------------
+
+Este sandbox NO tiene Wine. Por instruccion directa de Alberto no se invirtio tiempo en
+instalarlo. La mitad de EJECUCION REAL de la politica de testing queda como skip explicito -- cada
+escenario reporta literalmente "Wine unavailable -- execution skipped", nunca un rojo falso ni un
+pase silencioso.
+
+Para correr en Windows real (del lado de Alberto):
+
+  tests\interop_contract\c1_03_function_pointer_parameter   -> 42
+  tests\interop_contract\c1_04_function_pointer_return      -> 42
+  tests\interop_contract\c1_05_raw_pointer_cast             -> 42
+  tests\interop_contract\c2_11_fixed_field_array            -> 42
+  tests\interop_contract\c2_12_union                        -> 42
+  tests\interop_contract\c4_ref_out_in                      -> 42
+  tests\interop_contract\c1_14_callback_exception_boundary  -> 141   (NO 0)
+  examples\project_stage56_c1                               -> 0
+  examples\project_stage56_c2c4                             -> 0
+
+
+VERIFICACION
+------------
+
+  Build completo con -DNSC_WARNINGS_AS_ERRORS=ON : limpio (0 warnings, 0 errores)
+  ctest completo                                  : 234/234
+  Suite C1                                        : 92 checks
+  Suite C2-C3-C4                                  : 81 checks
+  Header C generado compilado por clang (ABI MSVC, -Werror) : pasa, aserciones incluidas
+  Matriz de tamanos 1..80 bytes contra clang      : pasa
+  Manifest regenerado y verificado dentro del ZIP extraido
+  Extraccion aislada: configure + build + ctest desde cero
+
+
+ESTADO DEL ROADMAP DEL COMPILADOR
+----------------------------------
+
+  C1 Interop completion        OK   function-pointer round trip, import identity, borde de excepciones
+  C2 C aggregate completeness  OK   arrays embebidos, union, pack/align/offsets explicitos
+  C3 Alias/FFI ergonomics      OK   typedefs de builtin/puntero/array/function-pointer, cadenas
+  C4 Language references       OK   ref/out/in (definite assignment por caminos: pendiente)
+  C5 Certification hardening   ~    matriz de layout contra clang OK; matriz de EJECUCION necesita Wine/Windows
+
+Definition of Done de esta instancia -- ALCANZADA. Una library C desconocida puede hoy exigir
+functions, structs, fixed arrays, unions, typedefs, callbacks, function-pointer returns y external
+libraries sin un solo caso especial por nombre dentro del compilador.

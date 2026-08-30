@@ -1,0 +1,61 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.HashTable
+{
+    class Program
+    {
+        private static void Add(SymbolTable table, string name, string kind, int address)
+        {
+            table.Add(new Symbol(name, kind, address));
+        }
+        private static void Lookup(SymbolTable table, string name)
+        {
+            Symbol symbol = table.Find(name);
+            if (symbol == null)
+            {
+                raii string line = String.Concat("not found: ", name);
+                Console.WriteLine(line);
+                return;
+            }
+            raii string address = String.ToString(symbol.Address);
+            raii string a = String.Concat(name, "  kind=");
+            raii string b = String.Concat(a, symbol.Kind);
+            raii string c = String.Concat(b, "  address=");
+            raii string line = String.Concat(c, address);
+            Console.WriteLine(line);
+        }
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 15 - Hash Table / Symbol Table");
+            Console.WriteLine("-------------------------------------------------------");
+            raii SymbolTable table = new SymbolTable(7);
+            Add(table, "main", "function", 4096);
+            Add(table, "Update", "method", 4200);
+            Add(table, "Render", "method", 4300);
+            Add(table, "player", "global", 8192);
+            Add(table, "enemyCount", "global", 8200);
+            Add(table, "Matrix4", "type", 0);
+            Add(table, "Vector3", "type", 0);
+            Add(table, "Texture", "type", 0);
+            Add(table, "LoadAsset", "function", 4500);
+            Add(table, "UnloadAsset", "function", 4700);
+
+            Console.WriteLine("Separate chaining distribution:");
+            table.PrintBuckets();
+            Console.WriteLine("");
+            Lookup(table, "Render");
+            Lookup(table, "Vector3");
+            Lookup(table, "MissingSymbol");
+            Console.WriteLine("");
+            Console.WriteLine("Remove enemyCount and inspect its bucket chain again:");
+            table.Remove("enemyCount");
+            table.PrintBuckets();
+            raii string count = String.ToString(table.Count);
+            raii string col = String.ToString(table.Collisions);
+            raii string a = String.Concat("symbols: ", count);
+            raii string b = String.Concat(a, ", insertion collisions observed: ");
+            raii string line = String.Concat(b, col);
+            Console.WriteLine(line);
+            return 0;
+        }
+    }
+}

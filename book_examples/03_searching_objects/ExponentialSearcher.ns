@@ -1,0 +1,75 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Searching
+{
+    public class ExponentialSearcher : StudentSearcher
+    {
+        public override owned string Name()
+        {
+            return String.Copy("Exponential Search");
+        }
+
+        private int BinarySearchRange(
+            Student[] data,
+            int targetId,
+            int low,
+            int high,
+            SearchStatistics statistics)
+        {
+            while (low <= high)
+            {
+                int middle = low + (high - low) / 2;
+                statistics.Probe();
+                statistics.Comparison();
+                if (data[middle].Id == targetId)
+                {
+                    return middle;
+                }
+
+                statistics.Comparison();
+                if (data[middle].Id < targetId)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+            return -1;
+        }
+
+        public override int Search(Student[] data, int count, int targetId, SearchStatistics statistics)
+        {
+            statistics.Reset();
+            if (count == 0)
+            {
+                return -1;
+            }
+
+            statistics.Probe();
+            statistics.Comparison();
+            if (data[0].Id == targetId)
+            {
+                return 0;
+            }
+
+            int bound = 1;
+            while (bound < count)
+            {
+                statistics.Probe();
+                statistics.Comparison();
+                if (data[bound].Id >= targetId)
+                {
+                    int lower = bound / 2;
+                    return BinarySearchRange(data, targetId, lower, bound, statistics);
+                }
+                bound = bound * 2;
+            }
+
+            int low = bound / 2;
+            int high = count - 1;
+            return BinarySearchRange(data, targetId, low, high, statistics);
+        }
+    }
+}

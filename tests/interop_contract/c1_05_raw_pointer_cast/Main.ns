@@ -1,0 +1,30 @@
+// Interop contract case 5 -- RAW POINTER CAST.
+//
+// The full round trip an untyped proc-address forces: an address arrives as `nint` (or `void*`),
+// is asserted to have a signature, and is called. Both spellings are exercised, in both
+// directions, and the reinterpretation between two foreign signatures with it.
+namespace contract {
+    extern C delegate int Adder(int a, int b);
+    extern C delegate int AlsoTwoInts(int x, int y);
+    class Case {
+        public static int AddImpl(int a, int b) { return a + b; }
+        public static int Main() {
+            Adder f = AddImpl;
+
+            // function pointer -> nint -> function pointer
+            nint raw = (nint)f;
+            if (raw == 0) { return 1; }
+            Adder viaNint = (Adder)raw;
+            if (viaNint(1, 2) != 3) { return 2; }
+
+            // function pointer -> void* -> function pointer
+            void* p = (void*)f;
+            Adder viaPointer = (Adder)p;
+            if (viaPointer(3, 4) != 7) { return 3; }
+
+            // explicit reinterpretation between two foreign signatures
+            AlsoTwoInts other = (AlsoTwoInts)f;
+            return other(20, 22);
+        }
+    }
+}

@@ -1,0 +1,40 @@
+bool Logic(bool left, bool right)
+{
+    return left && right;
+}
+
+int DeadTail()
+{
+    return 1;
+    int dead = 2;
+    return dead;
+}
+
+int Main()
+{
+    int value = 0;
+    int maybe;
+    int addressed = 7;
+    int* pointer = &addressed;
+
+    if (value == 0)
+    {
+        value = 1;
+    }
+    else
+    {
+        value = 2;
+    }
+
+    while (value < 4)
+    {
+        value++;
+    }
+
+    if (Logic(true, false))
+    {
+        value += *pointer;
+    }
+
+    return value + maybe;
+}

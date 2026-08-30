@@ -1,0 +1,10 @@
+using Engine.Model;
+using ModelWidget = Engine.Model.Widget;
+
+namespace Demo.App;
+
+struct Scene
+{
+    Widget Primary;
+    ModelWidget Secondary;
+}

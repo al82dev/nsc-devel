@@ -1,0 +1,26 @@
+Stage 53.5 "Command-line arguments" -- archivos modificados/creados en esta ronda
+
+MODIFICADOS
+  lib/NativeSharp.Core/Environment.ns
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+  src/Runtime/WindowsRuntimeBuilder.cpp
+  src/Linker/WindowsExecutableBuilder.cpp
+  src/Linker/WindowsLibraryBuilder.cpp
+  tests/unit/Stage47HostCAbiTests.cpp        (efecto colateral: shell32 import + 3 simbolos nuevos)
+  tests/unit/Stage48_3CHostIntegrationTests.cpp   (idem)
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp (idem)
+  CMakeLists.txt
+
+NUEVOS
+  examples/project_stage53_5/Stage53_5CommandLineArgs.nsproj
+  examples/project_stage53_5/Main.ns
+  tests/unit/Stage53_5CommandLineArgsTests.cpp
+  55_stage53_5_command_line_args.md
+  55_stage53_5_command_line_args_implementacion_paso_a_paso.md
+  STAGE53_5_CHANGED_FILES.txt

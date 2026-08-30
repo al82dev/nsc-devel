@@ -1,0 +1,37 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.BinaryHeap
+{
+    public class Scheduler
+    {
+        private JobPriorityQueue queue;
+        private int sequence;
+        public Scheduler()
+        {
+            queue = new JobPriorityQueue(4);
+            sequence = 0;
+        }
+        public void Submit(int id, string name, int priority)
+        {
+            queue.Enqueue(new Job(id, name, priority, sequence));
+            sequence = sequence + 1;
+        }
+        public void PrintHeap() { queue.PrintHeapArray(); }
+        public void RunAll()
+        {
+            while (!queue.IsEmpty)
+            {
+                Job job = queue.Dequeue();
+                raii string id = String.ToString(job.Id);
+                raii string priority = String.ToString(job.Priority);
+                raii string a = String.Concat("run job #", id);
+                raii string b = String.Concat(a, "  priority=");
+                raii string c = String.Concat(b, priority);
+                raii string d = String.Concat(c, "  ");
+                raii string line = String.Concat(d, job.Name);
+                Console.WriteLine(line);
+                delete job;
+            }
+        }
+        ~Scheduler() { delete queue; }
+    }
+}

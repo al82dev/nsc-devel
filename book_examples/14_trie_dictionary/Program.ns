@@ -1,0 +1,46 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Trie
+{
+    class Program
+    {
+        private static void Query(TrieDictionary dictionary, string word)
+        {
+            bool found = dictionary.Contains(word);
+            raii string state = String.Copy("not found");
+            if (found) { raii string foundState = String.Copy("found"); state = move(foundState); }
+            raii string a = String.Concat("  ", word);
+            raii string b = String.Concat(a, ": ");
+            raii string line = String.Concat(b, state);
+            Console.WriteLine(line);
+        }
+        private static void Prefix(TrieDictionary dictionary, string prefix)
+        {
+            raii string header = String.Concat("suggestions for prefix: ", prefix);
+            Console.WriteLine(header);
+            dictionary.PrintSuggestions(prefix, 8);
+            int count = dictionary.CountWithPrefix(prefix);
+            raii string n = String.ToString(count);
+            raii string line = String.Concat("  total words below prefix: ", n);
+            Console.WriteLine(line);
+        }
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 14 - Trie Dictionary");
+            Console.WriteLine("----------------------------------------------");
+            raii TrieDictionary dictionary = new TrieDictionary();
+            DictionaryDataset.Fill(dictionary);
+            Query(dictionary, "compiler");
+            Query(dictionary, "compilation");
+            Query(dictionary, "compilex");
+            Query(dictionary, "graph");
+            Query(dictionary, "graphics");
+            Console.WriteLine("");
+            Prefix(dictionary, "comp");
+            Console.WriteLine("");
+            Prefix(dictionary, "sha");
+            Console.WriteLine("");
+            Prefix(dictionary, "tr");
+            return 0;
+        }
+    }
+}

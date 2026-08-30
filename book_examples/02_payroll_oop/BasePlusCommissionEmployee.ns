@@ -1,0 +1,31 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.Payroll
+{
+    public class BasePlusCommissionEmployee : CommissionEmployee
+    {
+        private int basePayCents;
+
+        public BasePlusCommissionEmployee(
+            int id,
+            string employeeName,
+            int weeklySales,
+            int percentage,
+            int basePay)
+            : base(id, employeeName, weeklySales, percentage)
+        {
+            basePayCents = basePay;
+        }
+
+        public override owned Money CalculateWeeklyPay()
+        {
+            raii Money commission = base.CalculateWeeklyPay();
+            return new Money(commission.Cents + basePayCents);
+        }
+
+        public override owned string Classification()
+        {
+            return String.Copy("Base + Commission");
+        }
+    }
+}

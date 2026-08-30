@@ -1,0 +1,115 @@
+Stage 53.4 "Filesystem/Paths (cierre)" -- archivos
+====================================================================
+
+ARCHIVOS NUEVOS (ejemplo empaquetado + test)
+-----------------------------------------------
+examples/project_stage53_4/Stage53_4FilesystemPathsCierre.nsproj
+examples/project_stage53_4/Main.ns
+    Programa de verificacion empaquetado. 14 chequeos: Directory.Delete sobre un directorio
+    vacio (confirma borrado real), sobre uno inexistente (no crashea), y sobre uno NO vacio
+    (RemoveDirectoryA falla en silencio -- el directorio sigue existiendo hasta vaciarlo);
+    Path.GetFullPath(".") no vacio e idempotente; Path.GetFullPath("") (confirma que un path
+    vacio ES un fallo real de GetFullPathNameA, a diferencia de "."); Path.GetFullPath sobre
+    un nombre de archivo relativo, verificado con Path.GetFileName; interoperabilidad real
+    con File.* usando el path absoluto calculado antes de que el archivo existiera. Incluye
+    comentario de cabecera documentando la sorpresa real de esta ronda (""  != ".") y el
+    contraste de ownership entre GetFullPath (no owned) y GetFileName/Combine (si owned).
+
+tests/unit/Stage53_4FilesystemPathsCierreTests.cpp
+    Test dedicado. Fixture minimo de lowering (Directory.Delete/Path.GetFullPath emiten la
+    llamada exacta a su simbolo de runtime) + programa empaquetado probado en -O0 Y -O2, con
+    directorio de trabajo dedicado (mismo patron que todo Stage 53 desde 53.3). A diferencia
+    de 53.3b, confirma desde el lado Linux que el directorio de trabajo queda COMPLETAMENTE
+    VACIO despues de la corrida -- el testigo independiente correcto para una ronda que crea
+    y borra todo lo que usa.
+
+54_stage53_4_filesystem_paths_cierre.md
+    Documento conceptual ultra-verbose: Directory.Delete como calco exacto de File.Delete,
+    Path.GetFullPath como primera operacion nucleo de Path (y el patron de dos llamadas
+    Win32 reutilizado de GetEnvironmentVariable), y la seccion completa sobre la sorpresa
+    real de esta ronda: un path vacio ("") NO es sinonimo de "." para GetFullPathNameA.
+
+54_stage53_4_filesystem_paths_cierre_implementacion_paso_a_paso.md
+    Documento paso a paso con comandos y salidas reales, incluyendo el probe aislado de una
+    sola linea que detecto la suposicion incorrecta sobre GetFullPathNameA("") (Paso 4) y su
+    correccion en los tres lugares que la habian heredado (codigo de comentarios, Path.ns,
+    Main.ns) antes de empaquetar la entrega final.
+
+ARCHIVOS MODIFICADOS (biblioteca NativeSharp)
+------------------------------------------------
+lib/NativeSharp.Core.IO/Directory.ns
+    + Delete(string) -> void. Comentario de cabecera actualizado (ya no dice "trivial de
+      agregar en una ronda futura" -- esta ronda es esa ronda futura).
+
+lib/NativeSharp.Core.IO/Path.ns
+    + GetFullPath(string) -> string, la PRIMERA operacion nucleo de esta clase. Comentario
+      de cabecera reescrito sustancialmente: ya no es cierto que Path sea 100% NativeSharp
+      puro (todo lo demas de la clase SI lo sigue siendo).
+
+ARCHIVOS MODIFICADOS (compilador)
+------------------------------------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + enum MethodCoreOperationKind: DirectoryDelete, PathGetFullPath.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    + Directory.Delete: nueva rama else-if dentro del if compartido de File/Directory ya
+      existente (reusa el flag isFile).
+    + Path.GetFullPath: nuevo if propio (Path es una tercera clase distinta de File/
+      Directory; el resto de los metodos de Path deben seguir sin pasar por este
+      reconocimiento).
+    + 2 lineas en methodCoreOperationKindName().
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + enum ProjectOopHirNodeKind: CoreDirectoryDelete, CorePathGetFullPath.
+
+src/Frontend/ProjectOopHirModel.cpp
+    + toString().
+    + Ambas se agregan a la condicion OR compartida de string intrinsics, y al bucket
+      "expected = 1U" (un solo operando cada una).
+    + 2 lineas en el if/else de seleccion de kind.
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + enum ProjectOopMirNodeKind: 2 valores nuevos.
+
+src/Frontend/ProjectOopMirModel.cpp
+    + toString() + 2 casos de conversion HIR->MIR.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + 2 constantes de nombre de simbolo, 4 campos LLVMValueRef/LLVMTypeRef, extension de
+      declareRuntime() (DirectoryDelete: void(ptr); PathGetFullPath: ptr(ptr)), 2 case de
+      lowering.
+
+src/Runtime/WindowsRuntimeBuilder.cpp
+    + buildDirectoryDelete() -- calco letra por letra de buildFileDelete, cambiando
+      DeleteFileA por RemoveDirectoryA.
+    + buildPathGetFullPath() -- calco de buildEnvironmentGetVariable, adaptado a la firma
+      real de 4 parametros de GetFullPathNameA (lpFilePart siempre NULL).
+    + declaracion de RemoveDirectoryA/GetFullPathNameA.
+
+ARCHIVOS MODIFICADOS (whitelist de kernel32, patron ya establecido desde 53.1)
+--------------------------------------------------------------------------------
+src/Linker/WindowsLibraryBuilder.cpp
+src/Linker/WindowsExecutableBuilder.cpp
+tests/unit/Stage48_3CHostIntegrationTests.cpp
+tests/unit/Stage47HostCAbiTests.cpp
+tests/unit/Stage48_4CppHostIntegrationTests.cpp
+    kernel32Symbols: 25 -> 27 entradas (agrega RemoveDirectoryA, GetFullPathNameA).
+
+CMakeLists.txt
+    + target nsc_stage53_4_filesystem_paths_cierre_tests +
+      add_test(nsc.stage53-4.filesystem-paths-cierre).
+
+RESULTADO FINAL VERIFICADO
+-----------------------------
+nsc_stage53_4_filesystem_paths_cierre_tests: PASS, 43/43 chequeos (fixture de lowering +
+ejecucion real bajo Wine del programa empaquetado, en AMBOS -O0 y -O2, con confirmacion
+independiente desde el lado Linux de que el directorio de trabajo queda completamente vacio
+tras la corrida). Confirmado estable en dos corridas consecutivas.
+
+ctest completo: 100% tests passed, 0 tests failed out of 216 (215 previos + 1 nuevo),
+confirmado estable en dos corridas repetidas.
+
+Cero bugs de compilador encontrados en esta ronda. Un incidente real: una suposicion
+semantica incorrecta sobre GetFullPathNameA("") (se penso que seria sinonimo de "."),
+detectada con un probe aislado de una sola linea ANTES de empaquetar la entrega final, y
+corregida en los tres lugares que la habian heredado (ver Paso 4 del documento paso a paso).

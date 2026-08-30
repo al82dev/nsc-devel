@@ -1,0 +1,34 @@
+Stage 53.6 "Enumeracion de directorios" -- archivos modificados/nuevos en esta ronda
+(cierra Stage 53 completo)
+
+MODIFICADOS:
+  lib/NativeSharp.Core.IO/Directory.ns
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+  src/Runtime/WindowsRuntimeBuilder.cpp
+  src/Linker/WindowsExecutableBuilder.cpp
+  src/Linker/WindowsLibraryBuilder.cpp
+  tests/unit/Stage47HostCAbiTests.cpp
+  tests/unit/Stage48_3CHostIntegrationTests.cpp
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp
+  CMakeLists.txt
+
+NUEVOS:
+  examples/project_stage53_6/Stage53_6DirectoryEnumeration.nsproj
+  examples/project_stage53_6/Main.ns
+  tests/unit/Stage53_6DirectoryEnumerationTests.cpp
+  56_stage53_6_directory_enumeration.md
+  56_stage53_6_directory_enumeration_implementacion_paso_a_paso.md
+  STAGE53_6_CHANGED_FILES.txt (este archivo)
+
+Total: 15 modificados + 6 nuevos = 21 archivos.
+
+Verificacion: 45/45 checks en nsc_stage53_6_directory_enumeration_tests (estable en 3 corridas);
+suite completa 217/218 (unico fallo: nsc.stage52-4.owned-cleanup-runtime, hallazgo preexistente
+documentado desde Stage 53.5, no relacionado con esta ronda); zip completo del compilador
+verificado configurando + compilando limpio desde una extraccion nueva.

@@ -1,0 +1,25 @@
+namespace NativeSharp.BookExamples.BinaryHeap
+{
+    public class Job
+    {
+        public int Id;
+        public string Name;
+        public int Priority;
+        public int Sequence;
+
+        public Job(int id, string name, int priority, int sequence)
+        {
+            Id = id;
+            Name = name;
+            Priority = priority;
+            Sequence = sequence;
+        }
+
+        public static bool operator >(Job a, Job b)
+        {
+            if (a.Priority != b.Priority) { return a.Priority > b.Priority; }
+            return a.Sequence < b.Sequence;
+        }
+        public static bool operator <(Job a, Job b) { return b > a; }
+    }
+}

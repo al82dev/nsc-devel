@@ -1,0 +1,49 @@
+using NativeSharp.Core;
+namespace NativeSharp.BookExamples.Lcs
+{
+    public class LcsSolver
+    {
+        private static int Cell(int row,int col,int width){return row*width+col;}
+        private static int Max(int a,int b){if(a>b){return a;}return b;}
+        public static owned string Solve(string left,string right)
+        {
+            int rows=left.Length+1;int cols=right.Length+1;
+            int[] dp=new int[rows*cols];
+            int i=1;
+            while(i<rows)
+            {
+                int j=1;
+                while(j<cols)
+                {
+                    if(left[i-1]==right[j-1]){dp[Cell(i,j,cols)]=dp[Cell(i-1,j-1,cols)]+1;}
+                    else{dp[Cell(i,j,cols)]=Max(dp[Cell(i-1,j,cols)],dp[Cell(i,j-1,cols)]);}
+                    j=j+1;
+                }
+                i=i+1;
+            }
+            int length=dp[Cell(left.Length,right.Length,cols)];
+            char[] reverse=new char[length];
+            int pos=0;int r=left.Length;int c=right.Length;
+            while(r>0 && c>0)
+            {
+                if(left[r-1]==right[c-1])
+                {
+                    reverse[pos]=left[r-1];pos=pos+1;r=r-1;c=c-1;
+                }
+                else if(dp[Cell(r-1,c,cols)]>=dp[Cell(r,c-1,cols)]){r=r-1;}
+                else{c=c-1;}
+            }
+            raii string result=String.Copy("");
+            int k=length-1;
+            while(k>=0)
+            {
+                raii string ch=String.ToString(reverse[k]);
+                raii string next=String.Concat(result,ch);
+                result=move(next);
+                k=k-1;
+            }
+            delete[] reverse;delete[] dp;
+            return move(result);
+        }
+    }
+}

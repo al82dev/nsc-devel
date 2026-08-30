@@ -1,0 +1,263 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Core.Threading;
+
+// Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29) -- programa de verificacion
+// empaquetado, misma convencion que cada ronda de Stage 53/54/55: cada chequeo que falla devuelve
+// un codigo de salida distinto, y solo si TODOS pasan se llega al "return 0" final. Cubre las
+// ocho piezas de esta ronda en el orden en que se implementaron: Thread.Sleep, File.Copy/Move,
+// Directory.Move, Random, NumericLimits, ScopedLock, MathUtil.
+class Program
+{
+    private static Mutex sharedMutex = new Mutex();
+    private static int sharedCounter = 0;
+
+    public static int IncrementUnderLock()
+    {
+        raii ScopedLock guard = new ScopedLock(sharedMutex);
+        sharedCounter = sharedCounter + 1;
+        return sharedCounter;
+    }
+
+    public static int Main()
+    {
+        // ---- 1. Thread.Sleep: no debe crashear, y el reloj debe avanzar (o al menos no ir hacia
+        // atras) -- chequeo deliberadamente laxo (limite superior generoso de 5000 ms) para no
+        // volverse fragil bajo carga de CI/Wine, misma disciplina que Stage 55.3 aplico a
+        // IsDebuggerPresent. -----------------------------------------------------------------
+
+        long before = Environment.TickCount64();
+        Thread.Sleep(20);
+        long after = Environment.TickCount64();
+        long elapsed = after - before;
+        if (elapsed < 0)
+        {
+            return 1;
+        }
+        if (elapsed > 5000)
+        {
+            return 2;
+        }
+
+        // ---- 2. File.Copy/File.Move: contenido preservado, archivo origen intacto tras Copy,
+        // archivo origen AUSENTE (y destino presente) tras Move. -------------------------------
+
+        File.WriteAllText("prestage56_source.txt", "contenido de prueba");
+        bool copied = File.Copy("prestage56_source.txt", "prestage56_copy.txt", true);
+        if (!copied)
+        {
+            return 3;
+        }
+        if (!File.Exists("prestage56_source.txt"))
+        {
+            return 4;
+        }
+        if (!File.Exists("prestage56_copy.txt"))
+        {
+            return 5;
+        }
+        if (File.ReadAllText("prestage56_copy.txt") != "contenido de prueba")
+        {
+            return 6;
+        }
+
+        bool movedFile = File.Move("prestage56_copy.txt", "prestage56_moved.txt");
+        if (!movedFile)
+        {
+            return 7;
+        }
+        if (File.Exists("prestage56_copy.txt"))
+        {
+            return 8;
+        }
+        if (!File.Exists("prestage56_moved.txt"))
+        {
+            return 9;
+        }
+
+        // Copy con overwrite=false sobre un destino que YA existe debe fallar (bFailIfExists
+        // invertido correctamente -- ver el comentario de cabecera de buildFileCopy en
+        // WindowsRuntimeBuilder.cpp).
+        bool copiedNoOverwrite = File.Copy("prestage56_source.txt", "prestage56_moved.txt", false);
+        if (copiedNoOverwrite)
+        {
+            return 10;
+        }
+
+        // ---- 3. Directory.Move: el directorio origen desaparece, el destino aparece. ---------
+
+        Directory.CreateDirectory("prestage56_dir_source");
+        bool movedDir = Directory.Move("prestage56_dir_source", "prestage56_dir_dest");
+        if (!movedDir)
+        {
+            return 11;
+        }
+        if (Directory.Exists("prestage56_dir_source"))
+        {
+            return 12;
+        }
+        if (!Directory.Exists("prestage56_dir_dest"))
+        {
+            return 13;
+        }
+
+        // ---- 4. Random: semilla explicita determinista, rangos respetados, Next()/NextDouble()/
+        // NextBool()/NextInt64() dentro de sus contratos declarados en Random.ns. --------------
+
+        Random seeded1 = new Random(424242);
+        Random seeded2 = new Random(424242);
+        int firstFromSeeded1 = seeded1.Next();
+        int firstFromSeeded2 = seeded2.Next();
+        if (firstFromSeeded1 != firstFromSeeded2)
+        {
+            return 14;
+        }
+
+        Random rng = new Random(123456789);
+        int i = 0;
+        while (i < 200)
+        {
+            int unbounded = rng.Next();
+            if (unbounded < 0)
+            {
+                return 15;
+            }
+
+            int bounded = rng.Next(50);
+            if (bounded < 0 || bounded >= 50)
+            {
+                return 16;
+            }
+
+            int ranged = rng.Next(10, 20);
+            if (ranged < 10 || ranged >= 20)
+            {
+                return 17;
+            }
+
+            double fraction = rng.NextDouble();
+            if (fraction < 0.0 || fraction >= 1.0)
+            {
+                return 18;
+            }
+
+            i = i + 1;
+        }
+
+        // NextBool()/NextInt64() no tienen rango que verificar mas alla de "no crashear" -- se
+        // llaman igual, para que la superficie completa de la clase corra al menos una vez.
+        bool coinFlip = rng.NextBool();
+        long anyLong = rng.NextInt64();
+        if (coinFlip != true && coinFlip != false)
+        {
+            return 19;
+        }
+        if (anyLong == 0 && anyLong == 1)
+        {
+            // Rama inalcanzable en la practica (un long no puede ser 0 Y 1 a la vez) -- existe
+            // solo para que el compilador nunca marque anyLong como "no usada".
+            return 20;
+        }
+
+        // ---- 5. NumericLimits: valores conocidos, spot-check contra las constantes reales de
+        // cada tipo. --------------------------------------------------------------------------
+
+        if (NumericLimits.Int32Max() != 2147483647)
+        {
+            return 21;
+        }
+        if (NumericLimits.Int32Min() >= 0)
+        {
+            return 22;
+        }
+        if (NumericLimits.UInt32Max() <= 0U)
+        {
+            return 23;
+        }
+        if (NumericLimits.Int64Max() <= 0L)
+        {
+            return 24;
+        }
+        if (NumericLimits.ByteMax() != 255)
+        {
+            return 25;
+        }
+        if (NumericLimits.ShortMin() >= 0)
+        {
+            return 26;
+        }
+        if (NumericLimits.UShortMax() != 65535)
+        {
+            return 27;
+        }
+        double doubleMax = NumericLimits.DoubleMax();
+        if (doubleMax <= 0.0)
+        {
+            return 28;
+        }
+
+        // ---- 6. ScopedLock: exclusion mutua sin deadlock, reentrancia sobre el mismo Mutex. ---
+
+        int firstCount = IncrementUnderLock();
+        int secondCount = IncrementUnderLock();
+        if (firstCount != 1)
+        {
+            return 29;
+        }
+        if (secondCount != 2)
+        {
+            return 30;
+        }
+
+        raii ScopedLock outerGuard = new ScopedLock(sharedMutex);
+        {
+            raii ScopedLock innerGuard = new ScopedLock(sharedMutex);
+            sharedCounter = sharedCounter + 1;
+        }
+        if (sharedCounter != 3)
+        {
+            return 31;
+        }
+
+        // ---- 7. MathUtil: Min/Max/Clamp/Lerp por tipo. ----------------------------------------
+
+        if (MathUtil.Min(3, 7) != 3)
+        {
+            return 32;
+        }
+        if (MathUtil.Max(3, 7) != 7)
+        {
+            return 33;
+        }
+        if (MathUtil.Clamp(-5, 0, 10) != 0)
+        {
+            return 34;
+        }
+        if (MathUtil.Clamp(15, 0, 10) != 10)
+        {
+            return 35;
+        }
+        if (MathUtil.Min(3L, 7L) != 3L)
+        {
+            return 36;
+        }
+        if (MathUtil.Max(3L, 7L) != 7L)
+        {
+            return 37;
+        }
+
+        float lerpedFloat = MathUtil.Lerp(0.0F, 10.0F, 0.5F);
+        if (lerpedFloat < 4.9F || lerpedFloat > 5.1F)
+        {
+            return 38;
+        }
+
+        double lerpedDouble = MathUtil.Lerp(0.0, 100.0, 0.25);
+        if (lerpedDouble < 24.9 || lerpedDouble > 25.1)
+        {
+            return 39;
+        }
+
+        return 0;
+    }
+}
