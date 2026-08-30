@@ -1,0 +1,88 @@
+// Interop contract case (phase C6) -- STRUCT MATH, the shape a game framework is built on.
+//
+// A Vector3 with a constructor, properties, an indexer and operators. This is the exact shape the
+// math of a framework like Saru is written in, and before C6 none of the four was declarable on a
+// struct -- the parser refused all of them with one blanket message.
+//
+// The reason this belongs in the interop contract folder and not only in a language test: none of
+// these members changes the type's LAYOUT or its ABI. This Vector3 is twelve bytes holding three
+// floats, exactly as it would be in C, and it crosses the boundary as such. That is why
+// NativeSharp does not need a second, "plain" kind of struct for interop.
+namespace contract {
+    public struct Vector3 {
+        public float x;
+        public float y;
+        public float z;
+
+        public Vector3(float px, float py, float pz) { x = px; y = py; z = pz; }
+
+        public float LengthSquared { get { return x * x + y * y + z * z; } }
+
+        public float this[int index] {
+            get { if (index == 0) { return x; } if (index == 1) { return y; } return z; }
+        }
+
+        public static Vector3 Zero { get { return new Vector3(0, 0, 0); } }
+        public static Vector3 One { get { return new Vector3(1, 1, 1); } }
+
+        public static Vector3 operator+(Vector3 l, Vector3 r) { return new Vector3(l.x + r.x, l.y + r.y, l.z + r.z); }
+        public static Vector3 operator-(Vector3 l, Vector3 r) { return new Vector3(l.x - r.x, l.y - r.y, l.z - r.z); }
+        public static Vector3 operator*(Vector3 l, float s) { return new Vector3(l.x * s, l.y * s, l.z * s); }
+        public static Vector3 operator-(Vector3 v) { return new Vector3(-v.x, -v.y, -v.z); }
+        public static bool operator==(Vector3 l, Vector3 r) { return l.x == r.x && l.y == r.y && l.z == r.z; }
+        public static bool operator!=(Vector3 l, Vector3 r) { return !(l == r); }
+
+        public static float Dot(Vector3 l, Vector3 r) { return l.x * r.x + l.y * r.y + l.z * r.z; }
+        public static Vector3 Cross(Vector3 l, Vector3 r) {
+            return new Vector3(l.y * r.z - l.z * r.y, l.z * r.x - l.x * r.z, l.x * r.y - l.y * r.x);
+        }
+    }
+
+    public struct Matrix4 {
+        public float[16] m;
+
+        public Matrix4(float diagonal) { m[0] = diagonal; m[5] = diagonal; m[10] = diagonal; m[15] = diagonal; }
+
+        public float this[int index] { get { return m[index]; } set { m[index] = value; } }
+
+        public static Matrix4 Identity { get { return new Matrix4(1); } }
+
+        public float Trace { get { return m[0] + m[5] + m[10] + m[15]; } }
+    }
+
+    class Case {
+        public static int Main() {
+            Vector3 a = new Vector3(1, 2, 3);
+            Vector3 b = Vector3.One;
+
+            // Operators, mixed with a scalar, composing into an expression.
+            Vector3 sum = (a + b) * 2;
+            if ((int)sum.x != 4) { return 1; }
+
+            // The inverse, and comparison by value.
+            Vector3 back = sum * 0.5f - b;
+            if (back != a) { return 2; }
+
+            // Unary minus.
+            if ((int)(-a).z != -3) { return 3; }
+
+            // Property and indexer on the same value.
+            if ((int)a.LengthSquared != 14) { return 4; }
+            if ((int)a[2] != 3) { return 5; }
+
+            // Static factories returning constructed values.
+            if (Vector3.Zero != new Vector3(0, 0, 0)) { return 6; }
+
+            // Cross and dot, the two products every framework has.
+            Vector3 cross = Vector3.Cross(new Vector3(1, 0, 0), new Vector3(0, 1, 0));
+            if ((int)cross.z != 1) { return 7; }
+
+            // A matrix, indexed for both reading and writing.
+            Matrix4 identity = Matrix4.Identity;
+            identity[5] = 2;
+            if ((int)identity.Trace != 5) { return 8; }
+
+            return (int)Vector3.Dot(sum, Vector3.One) + (int)a.LengthSquared + 10;
+        }
+    }
+}

@@ -102,6 +102,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::MoveOwnedField: return "move-owned-field";
         case ProjectOopHirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopHirNodeKind::RawElementAddress: return "raw-element-address";
+        case ProjectOopHirNodeKind::ValueConstruction: return "value-construction";
+        case ProjectOopHirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopHirNodeKind::AddressValue: return "address-value";
         case ProjectOopHirNodeKind::BorrowValue: return "borrow-value";
         case ProjectOopHirNodeKind::ThisValue: return "this";
@@ -2956,7 +2958,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             }
             const auto ordinal = static_cast<std::size_t>(
                 binding - constructionModel_->constructions().data());
-            auto node = makeNode(ProjectOopHirNodeKind::ObjectConstruction, expression, binding->targetTypeKey);
+            auto node = makeNode(
+                binding->targetIsStruct
+                    ? ProjectOopHirNodeKind::ValueConstruction
+                    : ProjectOopHirNodeKind::ObjectConstruction,
+                expression, binding->targetTypeKey);
             node->constructionOrdinal = ordinal;
             node->targetTypeOrdinal = binding->targetTypeOrdinal;
             node->memberOrdinal = binding->selectedConstructorMemberOrdinal;
@@ -3115,6 +3121,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     }
 }
 
+// C6 "struct members": does this expression denote storage that already exists? An identifier, a
+// field of one, an element of one, and a dereference all do -- and a parenthesized form of any of
+// them does too. A call, an operator, a conversion or a `new` does not: its result is a value with
+// no home. Only the second group needs a temporary made for it.
+bool ProjectOopHirModel::isNaturallyAddressable(const ast::AstNode* expression) const noexcept
+{
+    if (expression == nullptr) return false;
+    switch (expression->kind())
+    {
+        case ast::AstNodeKind::IdentifierExpression:
+        case ast::AstNodeKind::MemberExpression:
+        case ast::AstNodeKind::IndexExpression:
+        case ast::AstNodeKind::ThisExpression:
+        case ast::AstNodeKind::BaseExpression:
+            return true;
+        case ast::AstNodeKind::UnaryExpression:
+            // `*p` is storage; `-v` is a value.
+            return expression->tokenKind() == lexer::TokenKind::Star;
+        default:
+            return false;
+    }
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
     const ast::AstNode* receiverSyntax,
     std::string_view receiverTypeKey,
@@ -3146,6 +3175,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
     // receiver, lowering a struct receiver as a value here would copy it and mutations of `this`
     // would be lost.  Stage 40 therefore requires an addressable receiver and preserves that
     // address explicitly into MIR/LLVM.
+    //
+    // C6 "struct members": ... and a struct temporary has no address until one is made for it.
+    // Before C6 that did not come up much, because a struct expression was almost always a local
+    // or a field. Operators change that completely -- `(a + b).x`, `Cross(u, v).z`,
+    // `(-v).LengthSquared`, `new Vector3(1,2,3)[0]` are ordinary math, and every one of them
+    // reaches a member of a value that lives nowhere. Measured before this: the operator path had
+    // no addressability check at all and produced IR the verifier rejected ("GEP base pointer is
+    // not a vector", GEPing into a loaded `[12 x i8]`), while the call path reported "temporary
+    // struct values are not addressable".
+    //
+    // So a temporary receiver is MATERIALIZED: given a home, and the member reached through it.
+    // Anything that is naturally addressable keeps its own address, unchanged -- this adds a slot
+    // only where there was none to begin with.
+    if (isStructValueType(receiverTypeKey) && !isNaturallyAddressable(receiverSyntax))
+    {
+        auto value = lowerExpression(receiverSyntax, memberOrdinal, false, error);
+        if (value == nullptr) return nullptr;
+        auto node = makeNode(
+            ProjectOopHirNodeKind::TemporaryAddress, receiverSyntax, std::string(receiverTypeKey));
+        node->elementTypeKey = std::string(receiverTypeKey);
+        node->children.push_back(std::move(value));
+        return node;
+    }
     return lowerExpression(receiverSyntax, memberOrdinal, isStructValueType(receiverTypeKey), error);
 }
 

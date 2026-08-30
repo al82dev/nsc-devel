@@ -35,6 +35,7 @@ Fuera de la matriz de 15, pero de la misma naturaleza:
 | Caso | Fixture |
 |---|---|
 | `ref` / `out` / `in` (fase C4) | **`c4_ref_out_in/`** |
+| Matemática de struct: ctor + propiedades + indexer + operadores (fase C6) | **`c6_struct_math/`** |
 
 ## Certificación de layout contra un toolchain foráneo
 
@@ -45,6 +46,11 @@ tamaño, alineación y offset de cada campo— y le pide a **clang, apuntando al
 `union`, un `pack(N)` o un `align(N)`, eso es un build roto, no un test verde con un número
 equivocado adentro. La misma suite corre la matriz de tamaños del roadmap (sección 4):
 **1, 2, 3, 4, 8, 12, 16, 24, 64, 80 bytes**.
+
+La fila de C6 usa la misma máquina para responder una pregunta distinta: que un `Vector3` **con
+constructor, propiedades, indexer y operadores** siga siendo doce bytes con tres floats. Es la
+evidencia de que NativeSharp no necesita un segundo tipo de struct "plano" para interop — esos
+miembros no cuestan un byte.
 
 Esto no necesita Wine y por lo tanto es un chequeo DURO en cualquier máquina con clang.
 
@@ -58,7 +64,7 @@ echo %ERRORLEVEL%
 
 Códigos de salida esperados:
 
-- `c1_03`, `c1_04`, `c1_05`, `c2_11`, `c2_12`, `c4_ref_out_in` → **42**.
+- `c1_03`, `c1_04`, `c1_05`, `c2_11`, `c2_12`, `c4_ref_out_in`, `c6_struct_math` → **42**.
 - `c1_13` → **compila y linkea**; no está pensado para ejecutarse (`a.dll`/`b.dll` no existen a
   propósito: el caso es que dos identidades que comparten nombre de símbolo puedan coexistir).
 - `c1_14` → **141** (`128 + LlvmTrapReason::CallbackExceptionEscape`), no 0. Una salida 0 ahí

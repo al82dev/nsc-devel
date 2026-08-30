@@ -408,6 +408,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::MoveOwnedField: return "move-owned-field";
         case ProjectOopMirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopMirNodeKind::RawElementAddress: return "raw-element-address";
+        case ProjectOopMirNodeKind::ValueConstruct: return "value-construct";
+        case ProjectOopMirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopMirNodeKind::AddressValue: return "address-value";
         case ProjectOopMirNodeKind::BorrowValue: return "borrow-value";
         case ProjectOopMirNodeKind::ThisValue: return "this";
@@ -1515,6 +1517,45 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         }
 
+        case ProjectOopHirNodeKind::TemporaryAddress:
+            result->kind = ProjectOopMirNodeKind::TemporaryAddress;
+            break;
+        case ProjectOopHirNodeKind::ValueConstruction:
+        {
+            // C6 "struct members": a struct has no allocation plan -- there is nothing to
+            // allocate. Its size and alignment come straight from the value layout the object
+            // layout model already computed for it, which is the same layout it crosses the C
+            // boundary with.
+            if (!node->targetTypeOrdinal.has_value() || objectLayoutModel_ == nullptr)
+            {
+                error = "C6 struct construction has no target type ordinal";
+                return nullptr;
+            }
+            const StructValueLayout* layout =
+                objectLayoutModel_->structLayoutForType(*node->targetTypeOrdinal);
+            if (layout == nullptr)
+            {
+                error = "C6 struct construction has no value layout";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::ValueConstruct;
+            result->immediate = layout->size;
+            result->alignment = layout->alignment;
+            result->zeroInitialize = true;
+            if (node->memberOrdinal.has_value())
+            {
+                const ProjectOopHirFunction* constructor =
+                    hirModel_->functionForMember(*node->memberOrdinal);
+                if (constructor == nullptr)
+                {
+                    error = "C6 struct constructor has no OOP HIR function";
+                    return nullptr;
+                }
+                result->calleeName = constructor->mangledName;
+                result->memberOrdinal = node->memberOrdinal;
+            }
+            break;
+        }
         case ProjectOopHirNodeKind::ObjectConstruction:
         {
             if (!node->constructionOrdinal.has_value())

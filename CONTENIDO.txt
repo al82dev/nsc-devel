@@ -1,25 +1,25 @@
-NativeSharp -- arbol COMPLETO del compilador, estado final tras las fases C1..C5 del roadmap
+NativeSharp -- arbol COMPLETO del compilador, estado final tras las fases C1..C6 del roadmap
 =============================================================================================
 
 Este zip trae UNA carpeta raiz (NativeSharp/) con el arbol entero. No es incremental: es todo lo
 necesario para configurar, construir y correr los tests desde cero.
 
-QUE HAY ADENTRO (conteos reales, verificables con `find`)
-----------------------------------------------------------
+VERIFICAR QUE LLEGO COMPLETO
+-----------------------------
 
-  1087 archivos en total, de los cuales:
+  python verify_manifest.py          -> MANIFEST: 1094/1094 PASS
 
-    276  .cpp    codigo C++ del compilador y sus tests
-    175  .h      headers del compilador
-    291  .ns     codigo NativeSharp (librerias lib/, ejemplos, tutoriales, fixtures)
-    131  .nsproj proyectos NativeSharp
-     94  .bat    scripts de build/clean de los tutoriales (Windows)
-     11  .cmd    scripts de toolchain y de hosts C/C++/C#/C++CLI (Windows)
-     73  .md     documentacion (capitulos, paso a paso, checkpoints, BUILD.md, bugs)
-     22  .txt    manifiestos de cambios por ronda, matrices de tests, checklists
-      7  .cs / 2 .csproj / 1 .vcxproj / 3 .c   hosts de ejemplo para el borde de interop
-      1  .py     verify_manifest.py
-      1  CMakeLists.txt
+CONSTRUIR
+---------
+
+  cmake -S . -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DNSC_WARNINGS_AS_ERRORS=ON
+  cmake --build build-clang -j
+  ctest --test-dir build-clang       -> 235/235
+
+INSTALAR (deploy a tu ruta fija)
+---------------------------------
+
+  cmake --install build-clang --config Release --prefix C:\native-sharp
 
 DIRECTORIOS
 -----------
@@ -32,7 +32,7 @@ DIRECTORIOS
   tests/integration/    tests de integracion
   tests/support/        TestContext
   tests/interop_contract/  la matriz contractual de interop, como proyectos reales
-  examples/             83 proyectos: tutoriales 01..22 + los proyectos por etapa
+  examples/             los proyectos por etapa + tutoriales 01..22
   book_examples/        ejemplos del libro
   tools/                build_project.cmd, clean_project.cmd, prepare_libraries.cmd,
                         setup_toolchain.cmd
@@ -40,31 +40,31 @@ DIRECTORIOS
   BUGS_ENCONTRADOS/     los bugs reales encontrados, con repro minimo
   windows_execution_checklist/  checklists de ejecucion en Windows real
 
-VERIFICAR QUE LLEGO COMPLETO
------------------------------
+DONDE EMPEZAR A LEER LAS RONDAS RECIENTES
+------------------------------------------
 
-  python verify_manifest.py          -> MANIFEST: 1086/1086 PASS
+  63_stage56_c1_interop_completion.md      C1: proc-address round trip, identidad de import,
+                                           borde de excepciones de callback
+  64_stage56_c2c4_language_completion.md   C2/C3/C4: arrays embebidos, union/pack/align/at,
+                                           aliases FFI, ref/out/in
+  65_stage56_c6_struct_members.md          C6: constructores, propiedades, indexers y operadores
+                                           en structs -- y POR QUE no hacen falta dos tipos de
+                                           struct (con la certificacion de clang que lo prueba)
 
-CONSTRUIR
----------
+  STAGE56_C1_CHANGED_FILES.txt             que cambio en cada ronda
+  STAGE56_C2C4_CHANGED_FILES.txt
+  STAGE56_C6_CHANGED_FILES.txt
+  tests/interop_contract/README.md         la matriz de 15 casos, completa
 
-  cmake -S . -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DNSC_WARNINGS_AS_ERRORS=ON
-  cmake --build build-clang -j
-  ctest --test-dir build-clang       -> 234/234
+ESTADO DEL ROADMAP DEL COMPILADOR
+----------------------------------
 
-INSTALAR (deploy a tu ruta fija)
----------------------------------
-
-  cmake --install build-clang --config Release --prefix C:\native-sharp
-
-DONDE EMPEZAR A LEER ESTA RONDA
---------------------------------
-
-  63_stage56_c1_interop_completion.md                  fase C1 (interop completion)
-  64_stage56_c2c4_language_completion.md               fases C2/C3/C4 + lo de C5 sin Wine
-  STAGE56_C1_CHANGED_FILES.txt                         que cambio en C1
-  STAGE56_C2C4_CHANGED_FILES.txt                       que cambio en C2/C3/C4
-  tests/interop_contract/README.md                     la matriz de 15 casos, completa
+  C1 Interop completion        OK
+  C2 C aggregate completeness  OK
+  C3 Alias/FFI ergonomics      OK
+  C4 Language references       OK
+  C5 Certification hardening   ~    layout contra clang OK; matriz de EJECUCION necesita Wine/Windows
+  C6 Struct members            OK   (fase nueva, nacida del port de Saru)
 
 QUE CORRER EN WINDOWS REAL (lo que aqui quedo como skip por no haber Wine)
 ---------------------------------------------------------------------------
@@ -75,6 +75,8 @@ QUE CORRER EN WINDOWS REAL (lo que aqui quedo como skip por no haber Wine)
   tests\interop_contract\c2_11_fixed_field_array            -> 42
   tests\interop_contract\c2_12_union                        -> 42
   tests\interop_contract\c4_ref_out_in                      -> 42
+  tests\interop_contract\c6_struct_math                     -> 42
   tests\interop_contract\c1_14_callback_exception_boundary  -> 141   (NO 0)
   examples\project_stage56_c1                               -> 0
   examples\project_stage56_c2c4                             -> 0
+  examples\project_stage56_c6                               -> 0

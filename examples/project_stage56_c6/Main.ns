@@ -1,0 +1,214 @@
+// Stage 56 / C6 "Struct members" -- programa de verificacion empaquetado.
+//
+// Misma convencion que examples/project_stage56_c1 y _c2c4: cada chequeo que falla devuelve su
+// propio codigo de salida, y solo si TODOS pasan se llega al "return 0" final.
+//
+// Este ejemplo es, a proposito, matematica de framework de juegos: es la forma que motivo la
+// ronda. Antes de C6 un struct aceptaba campos y metodos ordinarios y nada mas, asi que NADA de
+// lo que hay aqui abajo era declarable -- ni el constructor, ni las propiedades, ni el indexer,
+// ni los operadores.
+//
+// Lo que NO cambia por tenerlos, y es el punto entero de no haber inventado un segundo tipo de
+// struct: el layout y el ABI. Vector3 sigue siendo 12 bytes con tres floats y cruza a C como tal
+// (la suite de esta ronda hace que clang lo verifique campo por campo).
+
+namespace Stage56C6
+{
+    public struct Vector3
+    {
+        public float x;
+        public float y;
+        public float z;
+
+        public Vector3(float px, float py, float pz)
+        {
+            x = px;
+            y = py;
+            z = pz;
+        }
+
+        public float LengthSquared { get { return x * x + y * y + z * z; } }
+
+        public float this[int index]
+        {
+            get
+            {
+                if (index == 0) { return x; }
+                if (index == 1) { return y; }
+                return z;
+            }
+        }
+
+        public static Vector3 Zero { get { return new Vector3(0, 0, 0); } }
+        public static Vector3 One { get { return new Vector3(1, 1, 1); } }
+        public static Vector3 UnitX { get { return new Vector3(1, 0, 0); } }
+        public static Vector3 UnitY { get { return new Vector3(0, 1, 0); } }
+
+        public static Vector3 operator+(Vector3 l, Vector3 r) { return new Vector3(l.x + r.x, l.y + r.y, l.z + r.z); }
+        public static Vector3 operator-(Vector3 l, Vector3 r) { return new Vector3(l.x - r.x, l.y - r.y, l.z - r.z); }
+        public static Vector3 operator*(Vector3 l, float s) { return new Vector3(l.x * s, l.y * s, l.z * s); }
+        public static Vector3 operator-(Vector3 v) { return new Vector3(-v.x, -v.y, -v.z); }
+        public static bool operator==(Vector3 l, Vector3 r) { return l.x == r.x && l.y == r.y && l.z == r.z; }
+        public static bool operator!=(Vector3 l, Vector3 r) { return !(l == r); }
+
+        public static float Dot(Vector3 l, Vector3 r) { return l.x * r.x + l.y * r.y + l.z * r.z; }
+
+        public static Vector3 Cross(Vector3 l, Vector3 r)
+        {
+            return new Vector3(
+                l.y * r.z - l.z * r.y,
+                l.z * r.x - l.x * r.z,
+                l.x * r.y - l.y * r.x);
+        }
+
+        public static Vector3 Lerp(Vector3 from, Vector3 to, float amount)
+        {
+            return from + (to - from) * amount;
+        }
+    }
+
+    public struct Matrix4
+    {
+        public float[16] m;
+
+        public Matrix4(float diagonal)
+        {
+            m[0] = diagonal;
+            m[5] = diagonal;
+            m[10] = diagonal;
+            m[15] = diagonal;
+        }
+
+        public float this[int index]
+        {
+            get { return m[index]; }
+            set { m[index] = value; }
+        }
+
+        public static Matrix4 Identity { get { return new Matrix4(1); } }
+
+        public float Trace { get { return m[0] + m[5] + m[10] + m[15]; } }
+
+        public static Matrix4 Scale(float s)
+        {
+            Matrix4 r = new Matrix4(s);
+            r[15] = 1;
+            return r;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // ---- constructor: inicializacion en sitio, sin heap ------------------------------
+
+            Vector3 a = new Vector3(1, 2, 3);
+            if ((int)a.x != 1 || (int)a.z != 3)
+            {
+                return 1;
+            }
+
+            // ---- constructor por defecto: todos los campos en cero ---------------------------
+
+            Vector3 origin = new Vector3();
+            if (origin != Vector3.Zero)
+            {
+                return 2;
+            }
+
+            // ---- operadores, encadenados y mezclados con un escalar ---------------------------
+
+            Vector3 b = Vector3.One;
+            Vector3 sum = (a + b) * 2;
+            if ((int)sum.x != 4 || (int)sum.z != 8)
+            {
+                return 3;
+            }
+
+            // ---- acceso a miembro sobre un TEMPORAL (el resultado de un operador) -------------
+            //
+            // Esto es lo que obligo a materializar temporales: (a + b) no vive en ningun lado
+            // hasta que se le hace un lugar.
+
+            if ((int)(a + b).y != 3)
+            {
+                return 4;
+            }
+
+            if ((int)(-a).z != -3)
+            {
+                return 5;
+            }
+
+            if ((int)Vector3.Cross(Vector3.UnitX, Vector3.UnitY).z != 1)
+            {
+                return 6;
+            }
+
+            // ---- propiedad de instancia y propiedad estatica -----------------------------------
+
+            if ((int)a.LengthSquared != 14)
+            {
+                return 7;
+            }
+
+            if ((int)(a + b).LengthSquared != 29)
+            {
+                return 8;
+            }
+
+            // ---- indexer de solo lectura --------------------------------------------------------
+
+            if ((int)a[0] != 1 || (int)a[2] != 3)
+            {
+                return 9;
+            }
+
+            // ---- comparacion por valor -----------------------------------------------------------
+
+            Vector3 back = sum * 0.5f - b;
+            if (back != a)
+            {
+                return 10;
+            }
+
+            if (!(a == a))
+            {
+                return 11;
+            }
+
+            // ---- una funcion de framework escrita como se escribe en cualquier framework --------
+
+            Vector3 halfway = Vector3.Lerp(Vector3.Zero, new Vector3(2, 4, 6), 0.5f);
+            if (halfway != a)
+            {
+                return 12;
+            }
+
+            // ---- matriz: indexer de lectura Y escritura, sobre un array embebido ----------------
+
+            Matrix4 identity = Matrix4.Identity;
+            if ((int)identity.Trace != 4)
+            {
+                return 13;
+            }
+
+            Matrix4 scaled = Matrix4.Scale(2);
+            scaled[5] = 3;
+            if ((int)scaled.Trace != 8)
+            {
+                return 14;
+            }
+
+            // ---- dot, la operacion que todo esto existe para hacer -------------------------------
+
+            if ((int)Vector3.Dot(a, Vector3.One) != 6)
+            {
+                return 15;
+            }
+
+            return 0;
+        }
+    }
+}

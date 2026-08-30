@@ -5196,6 +5196,37 @@ private:
                 return lowerVirtualCall(node, error);
             case frontend::ProjectOopMirNodeKind::InterfaceInstanceCall:
                 return lowerInterfaceCall(node, error);
+            case frontend::ProjectOopMirNodeKind::TemporaryAddress:
+            {
+                // C6 "struct members": give a struct temporary a home, and hand back its address.
+                //
+                // One entry-block slot, the value stored into it, the slot returned. Entry block,
+                // not here, so a loop does not grow the stack.
+                //
+                // MEASURED, and worth writing down because the assumption is easy to make the
+                // other way round: an INDIRECT aggregate is NOT already a pointer at this level.
+                // A call that returns one writes into an sret slot and then LOADS it
+                // (`abi.sret.load`), so what an expression of that type hands over is the loaded
+                // `[N x i8]` value, exactly like a direct aggregate hands over its integer. The
+                // first version of this case short-circuited on isIndirectStructTypeKey and
+                // returned that value as if it were an address; the verifier caught it
+                // immediately ("GEP base pointer is not a vector", GEPing into a loaded
+                // [12 x i8]). So both shapes take the same path, which is also the simpler one.
+                if (node->children.size() != 1)
+                    return failValue(error, "C6 temporary address requires one operand");
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMValueRef slot = entryBlockAlloca(
+                    carrier, structAlignmentFor(node->typeKey), "struct.temp");
+                if (slot == nullptr)
+                    return failValue(error, "C6 could not reserve storage for a struct temporary");
+                LLVMBuildStore(builder_, value, slot);
+                return slot;
+            }
+            case frontend::ProjectOopMirNodeKind::ValueConstruct:
+                return lowerValueConstruction(node, error);
             case frontend::ProjectOopMirNodeKind::AllocateAndConstruct:
                 return lowerConstruction(node, error);
             case frontend::ProjectOopMirNodeKind::Deallocate:
@@ -6743,6 +6774,92 @@ private:
             return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
         }
         return interfaceCall;
+    }
+
+    // C6 "struct members": `new Vec2(1, 2)` on a struct.
+    //
+    // Everything lowerConstruction below does that is about being on the HEAP is absent here, and
+    // that absence is the point: no allocator call, no null-check branch, no class descriptor
+    // stored at offset 0, nothing to free. What remains is what construction actually means --
+    // storage, zeroed, with the constructor run on it:
+    //
+    //     %slot = alloca <carrier>            (hoisted to the entry block, like every other
+    //                                          temporary, so a loop does not grow the stack)
+    //     memset(%slot, 0, size)              every field starts at its zero value
+    //     call void @ctor(ptr %slot, args)    `this` is the slot
+    //
+    // The VALUE of the expression then follows the same rule every other struct-typed expression
+    // in this backend follows, which is what lets `new Vec2(1,2)` appear anywhere a Vec2 may:
+    // an aggregate of 1/2/4/8 bytes travels directly, so the value is a load of that width; any
+    // other size is indirect, and the value IS the address of the storage.
+    LLVMValueRef lowerValueConstruction(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->immediate == 0 || node->alignment == 0)
+        {
+            return failValue(error, "C6 struct construction has no value layout");
+        }
+        if (node->argumentCount > node->children.size())
+        {
+            return failValue(error, "C6 struct construction has an invalid source-argument count");
+        }
+        std::vector<LLVMValueRef> evaluatedArguments;
+        evaluatedArguments.reserve(node->argumentCount);
+        for (std::size_t index = 0; index < node->argumentCount; ++index)
+        {
+            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            if (value == nullptr) return nullptr;
+            evaluatedArguments.push_back(value);
+        }
+
+        LLVMTypeRef carrier = llvmType(node->typeKey, error);
+        if (carrier == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(
+            carrier, static_cast<unsigned>(node->alignment), "struct.new");
+        if (slot == nullptr) return failValue(error, "C6 struct construction could not reserve storage");
+
+        if (node->zeroInitialize)
+        {
+            LLVMValueRef args[] = {
+                slot,
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, args, 4, "");
+        }
+
+        if (!node->calleeName.empty())
+        {
+            const auto target = functions_.find(node->calleeName);
+            if (target == functions_.end())
+                return failValue(error, "C6 struct constructor target missing: " + node->calleeName);
+            std::vector<LLVMValueRef> ctorArgs;
+            ctorArgs.reserve(1 + evaluatedArguments.size());
+            ctorArgs.push_back(slot);
+            ctorArgs.insert(ctorArgs.end(), evaluatedArguments.begin(), evaluatedArguments.end());
+            if (buildPotentiallyThrowingCall(
+                    target->second.functionType, target->second.function, ctorArgs.data(),
+                    static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr && !error.empty())
+            {
+                return nullptr;
+            }
+        }
+
+        // Field initializers synthesized for an implicit default constructor run against the slot,
+        // exactly as they run against the freshly allocated object on the class path.
+        LLVMValueRef previousOverride = constructionThisOverride_;
+        constructionThisOverride_ = slot;
+        for (std::size_t index = node->argumentCount; index < node->children.size(); ++index)
+        {
+            if (lowerExpression(node->children[index].get(), error) == nullptr)
+            {
+                constructionThisOverride_ = previousOverride;
+                return nullptr;
+            }
+        }
+        constructionThisOverride_ = previousOverride;
+
+        if (isIndirectStructTypeKey(node->typeKey)) return slot;
+        return LLVMBuildLoad2(builder_, carrier, slot, "struct.new.value");
     }
 
     LLVMValueRef lowerConstruction(const frontend::ProjectOopMirNode* node, std::string& error)

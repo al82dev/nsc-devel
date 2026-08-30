@@ -758,19 +758,31 @@ void ProjectConstructionModel::bindConstruction(
         return;
     }
 
+    // C6 "struct members": `new T(args)` now also accepts a STRUCT. On a class it means
+    // "allocate on the heap and run the constructor on it"; on a struct it means "initialize
+    // storage in place and run the constructor on it" -- no allocation, no descriptor, nothing
+    // to free. The two share this entire routine because everything here is about WHICH
+    // constructor runs (candidates, overload resolution, argument conversions), and none of that
+    // depends on where the object lives.
     const std::optional<std::size_t> targetOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
-    if (!targetOrdinal.has_value() || *targetOrdinal >= nameLookup_->namedTypes().size() ||
-        nameLookup_->namedTypes()[*targetOrdinal].kind != NamedTypeDeclarationKind::Class)
+    const bool targetIsClass = targetOrdinal.has_value() &&
+        *targetOrdinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*targetOrdinal].kind == NamedTypeDeclarationKind::Class;
+    const bool targetIsStruct = targetOrdinal.has_value() &&
+        *targetOrdinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*targetOrdinal].kind == NamedTypeDeclarationKind::Struct;
+    if (!targetIsClass && !targetIsStruct)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAllocationType,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "new T(args) requires T to resolve to a class type in Macro A");
+            "new T(args) requires T to resolve to a class or struct type");
         constructions_.push_back(std::move(binding));
         return;
     }
 
+    binding.targetIsStruct = targetIsStruct;
     binding.targetTypeOrdinal = *targetOrdinal;
     binding.targetTypeKey = "type:" + nameLookup_->namedTypes()[*targetOrdinal].identity.key();
     if (nameLookup_->namedTypes()[*targetOrdinal].isAbstract)
@@ -837,8 +849,20 @@ void ProjectConstructionModel::bindConstruction(
                 diagnostics::DiagnosticId::InvalidArgumentCount,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "class has only an implicit parameterless constructor");
+                std::string(targetIsStruct ? "struct" : "class") +
+                    " has only an implicit parameterless constructor");
             binding.resolution = ConstructionResolutionKind::NoViableCandidate;
+        }
+        else if (targetIsStruct)
+        {
+            // C6 "struct members": `new Vec2()` on a struct with no declared constructor. The
+            // class path below has to walk the implicit base-constructor CHAIN to decide whether a
+            // parameterless construction is even possible; a struct has no base, so there is no
+            // chain and nothing that could make it impossible. Its default is the one C guarantees
+            // for a zeroed aggregate: every field at its zero value, which the backend produces
+            // with a memset before any field initializer runs.
+            binding.resolution = ConstructionResolutionKind::ResolvedImplicitDefault;
+            binding.selectedImplicitDefault = true;
         }
         else
         {
@@ -906,8 +930,23 @@ void ProjectConstructionModel::bindConstruction(
             diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "class has constructors, but none are accessible from this construction site");
+            std::string(targetIsStruct ? "struct" : "class") +
+                " has constructors, but none are accessible from this construction site");
         binding.resolution = ConstructionResolutionKind::Inaccessible;
+        constructions_.push_back(std::move(binding));
+        return;
+    }
+    // C6 "struct members": a struct ALWAYS has a parameterless construction available, whether or
+    // not it declares constructors of its own. This is where a struct and a class genuinely
+    // differ, and the reason is not convenience: `Vector3 v;` already produces the zeroed value,
+    // so refusing `new Vector3()` protects no invariant -- it only forces the same value to be
+    // written a different way. C# settles it the same way and for the same reason. On a class,
+    // declaring a constructor still removes the implicit default, because a class reference has
+    // no meaningful "just zeroed" state to fall back on.
+    if (!accessibleMatchingArity && targetIsStruct && argumentTypes.empty())
+    {
+        binding.resolution = ConstructionResolutionKind::ResolvedImplicitDefault;
+        binding.selectedImplicitDefault = true;
         constructions_.push_back(std::move(binding));
         return;
     }

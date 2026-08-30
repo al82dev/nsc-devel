@@ -3604,8 +3604,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 break;
             }
 
+            // C6 "struct members": an indexer is a pair of accessor METHODS, and a struct
+            // instance method already works -- it takes the receiver's address, which is exactly
+            // what an indexer on a value needs in order to be able to write through it. This used
+            // to ask referenceTypeOrdinalForTypeKey, which answers only for classes and
+            // interfaces, so `m[0]` on a struct fell through to the raw-pointer branch below and
+            // was reported as "index expression requires an indexer reference or a pointer".
+            // Matrix and vector types -- the whole reason a game framework has structs -- are
+            // indexed constantly.
             const std::optional<std::size_t> receiverType = base.valid
-                ? referenceTypeOrdinalForTypeKey(base.typeKey) : std::nullopt;
+                ? accessorReceiverTypeOrdinalForTypeKey(base.typeKey) : std::nullopt;
             if (receiverType.has_value())
             {
                 const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
@@ -6684,8 +6692,16 @@ std::vector<std::size_t> ProjectMethodBodyModel::stage38OperatorCandidates(
     if (inheritanceModel_ == nullptr || memberModel_ == nullptr) return result;
     const auto appendForType = [&](std::string_view typeKey)
     {
+        // C6 "struct members": a user-defined operator is a STATIC method, so nothing about
+        // resolving or calling one depends on whether its type is a class or a struct. This used
+        // to filter on `isClass`, and that single condition was the entire reason `a + b` on a
+        // struct reported "binary operator requires compatible numeric operands" -- the candidate
+        // was never even looked for. Measured after removing it: a Vec2 operator+ resolves, and
+        // the 8-byte struct travels directly in an i64, which is the correct Win64 ABI for that
+        // size. That is what makes vector/matrix math -- the reason structs exist in a game
+        // framework -- writable the way it is written everywhere else.
         const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
-        if (!typeOrdinal.has_value() || !inheritanceModel_->isClass(*typeOrdinal)) return;
+        if (!typeOrdinal.has_value()) return;
         for (const std::size_t ordinal : memberModel_->findMembers(*typeOrdinal, methodName))
         {
             if (ordinal >= memberModel_->members().size() || seen.contains(ordinal)) continue;
@@ -8794,6 +8810,29 @@ void ProjectMethodBodyModel::checkArgumentPassKinds(
                 : "argument " + std::to_string(index + 1) + " of '" + std::string(methodName) +
                     "' must be passed with '" + parameterPassKindKeyword(expected) + "'");
     }
+}
+
+// C6 "struct members": the type ordinal of anything that can carry ACCESSOR members -- a class,
+// an interface or a struct. Distinct from referenceTypeOrdinalForTypeKey, which answers only for
+// the two that are references: a struct is a value, and that difference matters for how the
+// receiver is passed (by address) but not at all for whether it may declare an indexer.
+std::optional<std::size_t> ProjectMethodBodyModel::accessorReceiverTypeOrdinalForTypeKey(
+    std::string_view typeKey) const noexcept
+{
+    if (inheritanceModel_ == nullptr) return std::nullopt;
+    const std::optional<std::size_t> ordinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+    if (!ordinal.has_value()) return std::nullopt;
+    if (inheritanceModel_->isClass(*ordinal) ||
+        (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)))
+    {
+        return ordinal;
+    }
+    if (nameLookup_ != nullptr && *ordinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Struct)
+    {
+        return ordinal;
+    }
+    return std::nullopt;
 }
 
 bool ProjectMethodBodyModel::isReferenceTypeKey(std::string_view typeKey) const noexcept

@@ -55,6 +55,14 @@ enum class ProjectOopHirNodeKind
     // is the element type, and the MIR pass attaches its size. A read wraps this in PointerLoad;
     // a write stores straight through it.
     RawElementAddress,
+    // C6 "struct members": `new Vec2(1, 2)` on a struct. Distinct from ObjectConstruction, which
+    // allocates: this one initializes storage IN PLACE and yields the value. No heap, no class
+    // descriptor, nothing to free -- which is exactly what makes a struct a struct.
+    ValueConstruction,
+    // C6 "struct members": the ADDRESS of a struct value that has no home -- the result of an
+    // operator, a call, a conversion or a `new`. Reaching a member of one (`(a + b).x`,
+    // `Cross(u, v).z`) needs an address, and a temporary has none until one is made for it.
+    TemporaryAddress,
     // `&lvalue` as a value: wraps the operand's ADDRESS node, carrying the pointer type
     // (T*) as this expression's type without mutating the operand.
     AddressValue,
@@ -368,6 +376,9 @@ private:
         std::size_t memberOrdinal,
         bool addressContext,
         std::string& error);
+    // C6 "struct members": true when the expression denotes storage that already exists, so a
+    // struct receiver can take its address directly instead of needing a temporary.
+    bool isNaturallyAddressable(const ast::AstNode* expression) const noexcept;
     std::unique_ptr<ProjectOopHirNode> lowerReceiver(
         const ast::AstNode* receiverSyntax,
         std::string_view receiverTypeKey,

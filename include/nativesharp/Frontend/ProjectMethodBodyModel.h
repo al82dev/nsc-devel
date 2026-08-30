@@ -1181,6 +1181,10 @@ private:
     // it and for the precise limit of that check.
     std::set<std::pair<std::size_t, std::size_t>> assignedOutParameters_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
+    // C6 "struct members": class, interface OR struct -- everything that can declare accessor
+    // members. See the definition for why this is not referenceTypeOrdinalForTypeKey.
+    std::optional<std::size_t> accessorReceiverTypeOrdinalForTypeKey(
+        std::string_view typeKey) const noexcept;
     bool isClassReferenceTypeKey(std::string_view typeKey) const noexcept;
     bool isReferenceTypeKey(std::string_view typeKey) const noexcept;
     // C1.1 "function-pointer round trip". The three sides of the round trip, as type-key

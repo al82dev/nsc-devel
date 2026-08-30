@@ -295,7 +295,16 @@ namespace Demo
 
 void testExplicitBoundaries(TestContext& tests, const std::filesystem::path& root)
 {
-    const auto expectSyntaxInvalid = [&](std::string_view name, std::string_view source)
+    // C6 "struct members" split this boundary in two, and the split is the substance of that
+    // round: what used to be one blanket refusal ("Stage 40 structs support fields plus ordinary
+    // instance/static methods") mixed things that merely had not been implemented with things
+    // that must never be allowed. Constructors, properties, indexers and operators are now legal
+    // -- they change nothing about a struct's layout or its ABI, which is why they were never a
+    // real restriction. The two below stay refused, and each says WHY, because with the gate
+    // lifted both COMPILE AND SILENTLY MISBEHAVE (measured: a struct destructor's body is emitted
+    // and never called; a virtual struct method degrades to a direct call).
+    const auto expectSyntaxInvalid =
+        [&](std::string_view name, std::string_view source, std::string_view reason)
     {
         const auto directory = root / std::string(name);
         writeProject(directory, name);
@@ -304,14 +313,39 @@ void testExplicitBoundaries(TestContext& tests, const std::filesystem::path& roo
         std::string error;
         const bool ok = compilation.compileProjectSyntax(directory / (std::string(name) + ".nsproj"), error);
         tests.expect(!ok, std::string(name) + " is rejected at syntax/member-shape boundary");
-        tests.expect(hasDiagnosticText(compilation, "Stage 40 structs support fields plus ordinary instance/static methods"),
-            std::string(name) + " reports the Stage 40 struct member subset");
+        tests.expect(hasDiagnosticText(compilation, reason),
+            std::string(name) + " explains why, rather than only that it is unsupported");
     };
 
-    expectSyntaxInvalid("StructConstructor", "struct S { public S() { } }");
-    expectSyntaxInvalid("StructProperty", "struct S { public int X { get; set; } }");
-    expectSyntaxInvalid("StructVirtual", "struct S { public virtual int F() { return 0; } }");
-    expectSyntaxInvalid("StructProtected", "struct S { protected int X; }");
+    expectSyntaxInvalid(
+        "StructDestructor", "struct S { public int X; ~S() { } }",
+        "a struct cannot declare a destructor");
+    expectSyntaxInvalid(
+        "StructVirtual", "struct S { public virtual int F() { return 0; } }",
+        "a struct method cannot be virtual, override, abstract or sealed");
+    expectSyntaxInvalid(
+        "StructProtected", "struct S { protected int X; }",
+        "a struct member cannot be protected");
+
+    const auto expectSyntaxValid = [&](std::string_view name, std::string_view source)
+    {
+        const auto directory = root / std::string(name);
+        writeProject(directory, name);
+        writeFile(directory / "Main.ns", source);
+        ProjectCompilation compilation;
+        std::string error;
+        tests.expect(
+            compilation.compileProjectSyntax(directory / (std::string(name) + ".nsproj"), error),
+            std::string(name) + " is accepted: it changes neither layout nor ABI");
+    };
+
+    expectSyntaxValid("StructConstructor", "struct S { public int X; public S(int x) { X = x; } }");
+    expectSyntaxValid("StructProperty", "struct S { public int X { get; set; } }");
+    expectSyntaxValid(
+        "StructIndexer", "struct S { public int A; public int this[int i] { get { return A; } } }");
+    expectSyntaxValid(
+        "StructOperator",
+        "struct S { public int A; public static S operator+(S l, S r) { S o; o.A = l.A + r.A; return o; } }");
 
     {
         const auto directory = root / "Recursive";
@@ -376,10 +410,27 @@ class H
 )NS");
         ProjectCompilation compilation;
         std::string error;
-        const bool ok = compilation.compileProjectOopHir(directory / "TemporaryReceiver.nsproj", error);
-        tests.expect(!ok, "temporary struct instance receiver is rejected in Stage 40");
-        tests.expect(error.find("addressable local, parameter or field") != std::string::npos,
-            "temporary receiver diagnostic explains the addressability contract");
+        // C6 "struct members" flipped this case, and the reason is worth stating because the old
+        // refusal was not wrong so much as no longer affordable.
+        //
+        // Stage 40 refused ANY member access on a struct temporary, because a temporary has no
+        // address and a struct member needs one. That cost almost nothing while a struct
+        // expression was practically always a local or a field. Operators change it completely:
+        // `(a + b).x`, `Cross(u, v).z`, `(-v).LengthSquared` and `Lerp(from, to, t)` are ordinary
+        // math, and every one of them reads a member of a value that lives nowhere. Refusing them
+        // would have made operators decorative.
+        //
+        // So a struct temporary is now MATERIALIZED -- given a slot, and the member reached
+        // through it. That is what C# and C++ both do, and it carries the same well-known trap
+        // they carry: calling a MUTATING method on a temporary, as this fixture does, compiles and
+        // then throws the mutation away with the copy. Rejecting only that would need to know
+        // which methods write, which is effect analysis this compiler does not do -- and the same
+        // rule would have to reject `(a + b).LengthSquared`, which is exactly the code the round
+        // exists to make writable.
+        tests.expect(
+            compilation.compileProjectOopHir(directory / "TemporaryReceiver.nsproj", error),
+            "a struct temporary receiver is materialized rather than refused");
+        tests.expect(error.empty(), "materializing a temporary receiver reports no error");
     }
 }
 }

@@ -104,6 +104,11 @@ struct ObjectConstructionBinding final
     const ast::AstNode* syntax = nullptr;
     std::size_t callerMemberOrdinal = 0;
     std::size_t targetTypeOrdinal = 0;
+    // C6 "struct members": `new Vec2(1, 2)` on a STRUCT means "initialize in place", not
+    // "allocate". Everything about resolving which constructor runs is identical to a class --
+    // same candidates, same overload rules, same argument conversions -- so only this flag and
+    // the lowering differ. See ProjectOopHirModel's ObjectCreationExpression case.
+    bool targetIsStruct = false;
     std::string targetTypeKey;
     std::vector<std::size_t> explicitConstructorMemberOrdinals;
     std::vector<ConstructorCandidateBinding> evaluatedCandidates;

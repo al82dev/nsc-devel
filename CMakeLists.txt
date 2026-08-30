@@ -664,6 +664,18 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage56_c2c4_language_completion_tests)
     add_test(NAME nsc.stage56.c2c4-language-completion COMMAND nsc_stage56_c2c4_language_completion_tests)
 
+    # Stage 56 / C6 "Struct members" -- constructors, properties, indexers and operators on
+    # structs, plus the two members that stay refused (destructors and virtual) with diagnostics
+    # that say why. Needs NSC_SOURCE_DIR: it compiles the tests/interop_contract/ math fixture and
+    # the packaged example from the source tree, and drives clang over the generated host header
+    # to certify that none of these members changed the struct's layout or ABI.
+    add_executable(nsc_stage56_c6_struct_members_tests tests/unit/Stage56C6StructMembersTests.cpp)
+    target_link_libraries(nsc_stage56_c6_struct_members_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage56_c6_struct_members_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage56_c6_struct_members_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage56_c6_struct_members_tests)
+    add_test(NAME nsc.stage56.c6-struct-members COMMAND nsc_stage56_c6_struct_members_tests)
+
     add_executable(nsc_stage46_native_libraries_tests tests/unit/Stage46NativeLibrariesTests.cpp)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage46_native_libraries_tests PRIVATE cxx_std_20)

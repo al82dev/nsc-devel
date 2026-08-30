@@ -1,0 +1,146 @@
+Stage 56 / C6 "Struct members" -- archivos modificados/nuevos en esta ronda
+(fase NUEVA, no estaba en el roadmap original: nacio de una pregunta directa de Alberto al portar
+la matematica de Saru -- "los structs no admiten constructores, propiedades ni operadores; la
+matematica de saru es structs con las cuatro cosas; por que son tan limitados? no podria haber 2
+tipos de structs?". Ver 65_stage56_c6_struct_members.md para la respuesta medida y el diseno.)
+
+
+MODIFICADOS
+-----------
+
+  src/Parser/Parser.cpp
+      El gate de miembros de struct era UN SOLO `if` con un mensaje "Stage 40 ... remain
+      unsupported" que rechazaba de una vez constructores, destructores, propiedades, indexers,
+      operadores, conversiones, protected y todas las formas virtuales. Ahora son reglas
+      SEPARADAS: se permiten las cinco primeras, y las dos que quedan prohibidas tienen cada una
+      su propio diagnostico explicando POR QUE -- porque con el gate levantado ambas COMPILAN Y
+      MIENTEN (medido: el cuerpo de un destructor de struct se emite y nunca se llama; un metodo
+      virtual de struct se degrada a llamada directa).
+
+  src/Frontend/ProjectMethodBodyModel.cpp
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+      - Operadores: stage38OperatorCandidates filtraba candidatos con `isClass`. Esa UNICA
+        condicion era la razon completa de que `a + b` sobre un struct reportara "binary operator
+        requires compatible numeric operands": el candidato nunca se buscaba. Un operador de
+        usuario es un metodo ESTATICO; nada de resolverlo o llamarlo depende de clase vs struct.
+      - Indexers: accessorReceiverTypeOrdinalForTypeKey (nueva) acepta class, interface Y struct,
+        a diferencia de referenceTypeOrdinalForTypeKey. Un struct es un valor, y esa diferencia
+        importa para COMO se pasa el receptor (por direccion), no para si puede declarar indexer.
+
+  src/Frontend/ProjectConstructionModel.cpp
+  include/nativesharp/Frontend/ProjectConstructionModel.h
+      - `new T(args)` acepta un struct. Toda la resolucion de CUAL constructor corre es el mismo
+        codigo que para una clase, porque nada de eso depende de donde vive el objeto.
+      - Un struct SIEMPRE acepta `new T()`, declare o no constructores propios. Aqui es donde
+        struct y clase difieren de verdad: `Vector3 v;` ya produce el valor en cero, asi que negar
+        `new Vector3()` no protege ninguna invariante. C# lo resuelve igual y por lo mismo.
+      - targetIsStruct en el binding.
+
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+      - ValueConstruction (nodo nuevo): `new` sobre struct, distinto de ObjectConstruction porque
+        no asigna.
+      - TemporaryAddress (nodo nuevo) + isNaturallyAddressable: un temporal struct se MATERIALIZA
+        en un slot para poder alcanzar sus miembros. Ver la nota de hallazgos abajo.
+
+  src/Frontend/ProjectOopMirModel.cpp
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+      ValueConstruct y TemporaryAddress; el tamano/alineacion del struct salen del StructValueLayout
+      que el layout model ya calculaba (el mismo con el que cruza a C).
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      - lowerValueConstruction: alloca en el bloque de entrada + memset + ctor con el slot como
+        `this`; el valor de la expresion es el load (directo) o el propio agregado.
+      - TemporaryAddress: un slot de entrada, el valor guardado, el slot devuelto.
+
+  tests/unit/Stage40StructValueAbiTests.cpp
+      DOS contratos que esta ronda cambia a proposito: el subconjunto de miembros (ahora ctor/
+      propiedad/indexer/operador se ACEPTAN, y destructor/virtual/protected se rechazan con su
+      propio mensaje), y el receptor temporal (ahora se materializa en vez de rechazarse).
+
+  tests/unit/ProjectConstructionModelTests.cpp
+      `new` sobre un struct ya no es un error; lo que sigue rechazado es un target que no es ni
+      clase ni struct (un enum).
+
+  CMakeLists.txt
+      Registro de nsc_stage56_c6_struct_members_tests.
+
+
+NUEVOS
+------
+
+  tests/unit/Stage56C6StructMembersTests.cpp
+      Suite de la ronda: 10 escenarios, 54 checks.
+
+  tests/interop_contract/c6_struct_math/{c6_struct_math.nsproj, Main.ns}
+      Vector3 + Matrix4 con las cuatro cosas. Esta en interop_contract y no solo en un test de
+      lenguaje a proposito: el punto es que estos miembros no cambian el layout ni el ABI.
+
+  examples/project_stage56_c6/{Stage56C6StructMath.nsproj, Main.ns}
+      Ejemplo empaquetado: matematica de framework de juegos, un codigo de salida por chequeo.
+
+  65_stage56_c6_struct_members.md
+  STAGE56_C6_CHANGED_FILES.txt (este archivo)
+
+
+LA PREGUNTA DE FONDO: POR QUE NO HAY DOS TIPOS DE STRUCT
+--------------------------------------------------------
+
+Porque NINGUNO de estos miembros toca el layout ni el ABI. Un constructor es una funcion que recibe
+la direccion del almacenamiento; una propiedad es un metodo con otro nombre; un operador es un
+metodo estatico. Ninguno agrega un byte, mueve un campo ni introduce un puntero oculto.
+
+Eso no se afirma: la suite entrega a un host C un Vector3 con constructor, propiedad, indexer,
+operadores y propiedad estatica, y hace que CLANG (ABI de MSVC, -Werror) verifique:
+
+  _Static_assert(sizeof(NS_Vector3) == 12, "a rich struct is still three floats");
+  _Static_assert(sizeof(NS_Matrix4) == 64, "a rich struct is still sixteen floats");
+  _Static_assert(offsetof(NS_Vector3, z) == 8, "members added no hidden field");
+
+Dos tipos de struct habrian duplicado layout, ABI, generacion de headers, la matriz contractual de
+interop y cada switch sobre tipos nombrados -- para resolver un problema que no existe.
+
+El eje donde un struct de interop SI difiere de uno de lenguaje es el LAYOUT, y esa separacion ya
+existe desde C2.2: union, pack(N), align(N) y at(N). Es ortogonal y ya esta hecha.
+
+
+HALLAZGOS MEDIDOS EN ESTA RONDA
+--------------------------------
+
+  1. El gate era una decision de ALCANCE POR ETAPA, no derivada del ABI. Levantandolo: propiedades
+     y conversiones ya funcionaban intactas; operadores faltaban por UNA LINEA; indexers por el
+     lookup del receptor; solo constructores necesitaban trabajo real.
+
+  2. Destructores y virtual en struct COMPILAN con el gate levantado y silenciosamente hacen lo
+     incorrecto. Esa es la razon por la que el gate existia, y por la que no podia solo borrarse.
+
+  3. (Lo destapo el propio fixture contractual, no una revision) Stage 40 rechazaba TODO acceso a
+     miembro sobre un temporal struct. Con operadores eso deja de ser afordable: `(a + b).x`,
+     `Cross(u, v).z`, `(-v).LengthSquared` son matematica ordinaria. Peor: el camino de OPERADOR no
+     tenia chequeo alguno y producia IR que el verificador rechazaba --
+     "GEP base pointer is not a vector", haciendo GEP dentro de un [12 x i8] cargado.
+
+  4. (Suposicion corregida, vale la pena dejarla escrita) Un agregado INDIRECTO no es ya un puntero
+     a nivel de expresion. Una llamada que devuelve uno escribe en su slot sret y despues lo CARGA
+     (abi.sret.load), asi que entrega el valor [N x i8], igual que un directo entrega su entero. La
+     primera version de TemporaryAddress tomo un atajo asumiendo lo contrario; el verificador lo
+     atrapo de inmediato.
+
+
+TRAMPA HEREDADA, DICHA EXPLICITAMENTE
+--------------------------------------
+
+Llamar a un metodo MUTADOR sobre un temporal ahora compila, y la mutacion se descarta con la copia
+-- exactamente como en C# y en C++. Rechazar solo eso exigiria saber que metodos escriben (analisis
+de efectos que este compilador no hace), y la misma regla rechazaria `(a + b).LengthSquared`, que
+es justamente el codigo que la ronda existe para hacer escribible.
+
+
+VERIFICACION
+------------
+
+  Build completo con -DNSC_WARNINGS_AS_ERRORS=ON : limpio
+  ctest completo                                  : 235/235
+  Suite C6                                        : 54 checks
+  Vector3/Matrix4 ricos vs clang (ABI MSVC)       : mismo tamano, alineacion y offsets
+  Fixture c6_struct_math + ejemplo project_stage56_c6 : compilan a -O0 y -O2

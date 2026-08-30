@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>c6_struct_math</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>

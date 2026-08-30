@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup><Name>Stage56C6StructMath</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

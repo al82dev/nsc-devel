@@ -42,6 +42,11 @@ enum class ProjectOopMirNodeKind
     // C2.1 "fixed arrays" -- see ProjectOopHirNodeKind::RawElementAddress. `immediate` carries the
     // element size in bytes, `alignment` its alignment.
     RawElementAddress,
+    // C6 -- see ProjectOopHirNodeKind::ValueConstruction. `immediate` is the struct's size,
+    // `alignment` its alignment, `calleeName` the constructor to run (empty for a default).
+    ValueConstruct,
+    // C6 -- see ProjectOopHirNodeKind::TemporaryAddress.
+    TemporaryAddress,
     AddressValue,
     BorrowValue,
     ThisValue,

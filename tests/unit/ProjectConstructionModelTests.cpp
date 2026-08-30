@@ -256,16 +256,34 @@ void testAccessibility(TestContext& tests, const std::filesystem::path& root)
 void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path& root)
 {
     {
-        const auto directory = root / "InvalidTarget";
-        writeProject(directory, "InvalidTarget");
+        // C6 "struct members" flipped this case deliberately: `new Value()` on a STRUCT is now
+        // legal and means "initialize in place", not "allocate". What stays rejected is a target
+        // that is neither a class nor a struct -- an enum has no constructor to run and no
+        // storage shape `new` could mean anything for.
+        const auto directory = root / "ValueTarget";
+        writeProject(directory, "ValueTarget");
         writeFile(directory / "Main.ns",
             "struct Value { int X; } class Maker { Value Make() { return new Value(); } }\n");
         ProjectCompilation compilation;
         std::string error;
+        tests.expect(
+            compilation.compileProjectConstructions(directory / "ValueTarget.nsproj", error),
+            "new T(args) accepts a struct target and constructs it in place");
+        tests.expect(diagnosticCount(compilation, DiagnosticId::InvalidAllocationType) == 0,
+            "struct object creation emits no InvalidAllocationType");
+    }
+
+    {
+        const auto directory = root / "InvalidTarget";
+        writeProject(directory, "InvalidTarget");
+        writeFile(directory / "Main.ns",
+            "enum Mode { A } class Maker { Mode Make() { return new Mode(); } }\n");
+        ProjectCompilation compilation;
+        std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "InvalidTarget.nsproj", error);
-        tests.expect(!ok, "new T(args) rejects non-class named types");
+        tests.expect(!ok, "new T(args) rejects a target that is neither a class nor a struct");
         tests.expect(diagnosticCount(compilation, DiagnosticId::InvalidAllocationType) == 1,
-            "non-class object creation emits InvalidAllocationType");
+            "non-constructible object creation emits InvalidAllocationType");
     }
 
     {

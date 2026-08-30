@@ -1210,29 +1210,62 @@ ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form)
         ast::AstNode* member = parseClassMember(structName, true);
         if (member != nullptr)
         {
-            const bool unsupportedKind =
-                member->kind() == ast::AstNodeKind::ConstructorDeclaration ||
-                member->kind() == ast::AstNodeKind::DestructorDeclaration ||
-                member->kind() == ast::AstNodeKind::PropertyDeclaration ||
-                member->kind() == ast::AstNodeKind::IndexerDeclaration;
-            const bool unsupportedMethodForm = member->kind() == ast::AstNodeKind::MethodDeclaration &&
-                (member->hasModifier(TokenKind::KwVirtual) ||
-                 member->hasModifier(TokenKind::KwOverride) ||
-                 member->hasModifier(TokenKind::KwAbstract) ||
-                 member->hasModifier(TokenKind::KwSealed) ||
-                 member->auxiliaryText().starts_with("operator:") ||
-                 member->auxiliaryText().starts_with("conversion:"));
-            const bool protectedMember = member->tokenKind() == TokenKind::KwProtected;
-
-            if (unsupportedKind || unsupportedMethodForm || protectedMember)
+            // C6 "struct members". This gate used to be ONE condition refusing constructors,
+            // destructors, properties, indexers, operators, conversions, `protected` and every
+            // virtual form at once, with a single "Stage 40 ... remain unsupported" message. That
+            // lumped together three genuinely different things, and the difference is the whole
+            // point:
+            //
+            //   * Some of them were only FORBIDDEN, never missing -- a property on a struct
+            //     lowers to an ordinary instance method taking the receiver's address, which this
+            //     compiler has emitted since Stage 40. Measured by lifting the gate: it compiled
+            //     and called the getter correctly.
+            //   * Some needed a small, bounded piece of work -- operators, indexers, constructors.
+            //   * And TWO of them must stay refused for reasons that are not about effort at all.
+            //     Those two get their own message here, because "unsupported" would be a lie: with
+            //     the gate lifted they COMPILE AND SILENTLY MISBEHAVE, which is worse than being
+            //     rejected. Measured, both of them:
+            //
+            //       - a struct DESTRUCTOR emits its body and is never called. A value type has no
+            //         owner and is copied freely; there is no moment this compiler can point to as
+            //         "this is the last copy, run it now". RAII lives on `raii` class locals and on
+            //         `owned` fields, which have exactly that moment.
+            //       - `virtual`/`override`/`abstract`/`sealed` on a struct degrades to a DIRECT
+            //         call. A value has no vtable pointer and no place to put one without changing
+            //         its layout -- and its layout is the contract it crosses the C boundary with.
+            //         Polymorphism is what classes are for.
+            if (member->kind() == ast::AstNodeKind::DestructorDeclaration)
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedDeclaration,
                     diagnostics::DiagnosticSeverity::Error,
                     member->range(),
-                    "Stage 40 structs support fields plus ordinary instance/static methods; "
-                    "constructors, destructors, properties/indexers, operators/conversions, protected, "
-                    "virtual, override, abstract and sealed members remain unsupported");
+                    "a struct cannot declare a destructor: a value type has no owner and is copied "
+                    "freely, so there is no last copy to run it on; use a raii class, or an owned "
+                    "field, for a resource with a lifetime");
+            }
+            else if (member->kind() == ast::AstNodeKind::MethodDeclaration &&
+                     (member->hasModifier(TokenKind::KwVirtual) ||
+                      member->hasModifier(TokenKind::KwOverride) ||
+                      member->hasModifier(TokenKind::KwAbstract) ||
+                      member->hasModifier(TokenKind::KwSealed)))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member->range(),
+                    "a struct method cannot be virtual, override, abstract or sealed: a value has "
+                    "no vtable pointer, and adding one would change the layout the struct crosses "
+                    "the C boundary with; use a class for polymorphism");
+            }
+            else if (member->tokenKind() == TokenKind::KwProtected)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member->range(),
+                    "a struct member cannot be protected: structs are not inheritable, so there is "
+                    "no derived type for protected to mean anything to");
             }
             else
             {
