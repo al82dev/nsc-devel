@@ -1,0 +1,80 @@
+NativeSharp -- arbol COMPLETO del compilador, estado final tras las fases C1..C5 del roadmap
+=============================================================================================
+
+Este zip trae UNA carpeta raiz (NativeSharp/) con el arbol entero. No es incremental: es todo lo
+necesario para configurar, construir y correr los tests desde cero.
+
+QUE HAY ADENTRO (conteos reales, verificables con `find`)
+----------------------------------------------------------
+
+  1087 archivos en total, de los cuales:
+
+    276  .cpp    codigo C++ del compilador y sus tests
+    175  .h      headers del compilador
+    291  .ns     codigo NativeSharp (librerias lib/, ejemplos, tutoriales, fixtures)
+    131  .nsproj proyectos NativeSharp
+     94  .bat    scripts de build/clean de los tutoriales (Windows)
+     11  .cmd    scripts de toolchain y de hosts C/C++/C#/C++CLI (Windows)
+     73  .md     documentacion (capitulos, paso a paso, checkpoints, BUILD.md, bugs)
+     22  .txt    manifiestos de cambios por ronda, matrices de tests, checklists
+      7  .cs / 2 .csproj / 1 .vcxproj / 3 .c   hosts de ejemplo para el borde de interop
+      1  .py     verify_manifest.py
+      1  CMakeLists.txt
+
+DIRECTORIOS
+-----------
+
+  src/                  el compilador (Lexer, Parser, AST, Sema, Frontend, HIR, MIR, CFG, SSA,
+                        Passes, LLVM, Runtime, Linker, Interop, Driver, Target, nsc)
+  include/nativesharp/  sus headers
+  lib/                  las 5 librerias NativeSharp.Core* como fuente .ns
+  tests/unit/           las suites (una por etapa)
+  tests/integration/    tests de integracion
+  tests/support/        TestContext
+  tests/interop_contract/  la matriz contractual de interop, como proyectos reales
+  examples/             83 proyectos: tutoriales 01..22 + los proyectos por etapa
+  book_examples/        ejemplos del libro
+  tools/                build_project.cmd, clean_project.cmd, prepare_libraries.cmd,
+                        setup_toolchain.cmd
+  claude/               notas tecnicas de las rondas recientes
+  BUGS_ENCONTRADOS/     los bugs reales encontrados, con repro minimo
+  windows_execution_checklist/  checklists de ejecucion en Windows real
+
+VERIFICAR QUE LLEGO COMPLETO
+-----------------------------
+
+  python verify_manifest.py          -> MANIFEST: 1086/1086 PASS
+
+CONSTRUIR
+---------
+
+  cmake -S . -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DNSC_WARNINGS_AS_ERRORS=ON
+  cmake --build build-clang -j
+  ctest --test-dir build-clang       -> 234/234
+
+INSTALAR (deploy a tu ruta fija)
+---------------------------------
+
+  cmake --install build-clang --config Release --prefix C:\native-sharp
+
+DONDE EMPEZAR A LEER ESTA RONDA
+--------------------------------
+
+  63_stage56_c1_interop_completion.md                  fase C1 (interop completion)
+  64_stage56_c2c4_language_completion.md               fases C2/C3/C4 + lo de C5 sin Wine
+  STAGE56_C1_CHANGED_FILES.txt                         que cambio en C1
+  STAGE56_C2C4_CHANGED_FILES.txt                       que cambio en C2/C3/C4
+  tests/interop_contract/README.md                     la matriz de 15 casos, completa
+
+QUE CORRER EN WINDOWS REAL (lo que aqui quedo como skip por no haber Wine)
+---------------------------------------------------------------------------
+
+  tests\interop_contract\c1_03_function_pointer_parameter   -> 42
+  tests\interop_contract\c1_04_function_pointer_return      -> 42
+  tests\interop_contract\c1_05_raw_pointer_cast             -> 42
+  tests\interop_contract\c2_11_fixed_field_array            -> 42
+  tests\interop_contract\c2_12_union                        -> 42
+  tests\interop_contract\c4_ref_out_in                      -> 42
+  tests\interop_contract\c1_14_callback_exception_boundary  -> 141   (NO 0)
+  examples\project_stage56_c1                               -> 0
+  examples\project_stage56_c2c4                             -> 0

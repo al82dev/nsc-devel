@@ -1,0 +1,5 @@
+cmake -S . -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_CXX_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_LINKER="C:/clang-llvm/bin/lld-link.exe" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE -DNSC_LLVM_MONOLITHIC_LIBRARY="C:/clang-llvm/lib/LLVM-C.lib" -DNSC_BUILD_TESTS=ON -DNSC_WARNINGS_AS_ERRORS=ON
+cmake --build build-clang --parallel
+cmake --install build-clang --prefix C:\native-sharp
+rem cmake -S . -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_CXX_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_LINKER="C:/clang-llvm/bin/lld-link.exe" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE -DNSC_LLVM_MONOLITHIC_LIBRARY="C:/clang-llvm/lib/LLVM-C.lib" -DNSC_BUILD_TESTS=ON -DNSC_WARNINGS_AS_ERRORS=ON
+rem cmake --build build-clang --parallel
