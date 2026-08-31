@@ -4,8 +4,8 @@ Doc de la ronda: 68_triage_y_cierre_de_bugs_reportados.md
 
 RESULTADO
 ---------
-8 reportes medidos, 7 arreglados, 1 ya estaba muerto (b7, lo cerro C1).
-ctest 237/237 (251.89 s) . checklist 32/32 . triage 16/16 . cero regresiones.
+8 reportes medidos, 7 arreglados, 1 ya estaba muerto (b7, lo cerro C1), y los 8 bajo ctest.
+ctest 238/238 . checklist 33/33 . triage 16/16 . cero regresiones.
 
 MODIFICADOS (6)
 ---------------
@@ -82,11 +82,27 @@ BORRAR -- quedaron de renombres intermedios
 FIX_B3_CHANGED_FILES.txt
 FIX_B2_B3_B5_B8_CHANGED_FILES.txt
 
-PENDIENTE
----------
-Subir los ocho casos a tests de contrato permanentes en tests/interop_contract/.
-tests/bug_triage/ es un arnes de medicion y ctest NO lo corre: tal como esta, nada
-impide que cualquiera de estos bugs vuelva sin que nadie se entere.
+RED DE REGRESION -- HECHO
+-------------------------
+tests/unit/Stage56BugFixTests.cpp   nueva suite, registrada como nsc.stage56.bugfix (test 238).
+                                    Compila los 8 fixtures a -O0 y -O2. Seis de los ocho eran
+                                    fallos ruidosos: para esos, compilar ES la regresion.
+run_windows_checklist.bat           el modo completo encadena run_bug_triage.bat como paso 5,
+                                    y el triage sale con exit != 0 si queda alguno vivo. Esto
+                                    cubre a los DOS bugs silenciosos, que ctest no puede
+                                    ejecutar en Windows por falta de Wine.
 
-Ubicacion (archivo y linea) en los errores internos de Stage 34.
-Propiedades solo-set, hallazgo nuevo del triage.
+ERRORES INTERNOS CON UBICACION -- HECHO
+---------------------------------------
+src/Frontend/ProjectOopMirModel.cpp  agrega "while lowering '<nombre mangleado>'", y para un
+                                     inicializador de campo, cual miembro.
+
+PROPIEDADES SOLO-SET -- MEDIDO, NO IMPLEMENTADO
+-----------------------------------------------
+Se intento quitando el rechazo del parser: parsea, pero no se puede usar. La resolucion de
+propiedades esta anclada al getter de punta a punta (analyzeAssignment deriva el setter de
+"set_" + getter.associatedName), asi que sin getter el miembro no liga.
+Revertido. El rechazo se queda con el motivo real y una salida.
+Cerrarlo son dos cambios en ProjectMethodBodyModel mas uno delicado: leer una propiedad
+solo-set tiene que dar error claro, y la ruta de miembro no sabe si esta leyendo o asignando.
+Ronda propia, con su propio build.

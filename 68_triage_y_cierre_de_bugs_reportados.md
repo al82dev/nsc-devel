@@ -3,8 +3,9 @@
 **Fecha:** 2026-08-30
 **Estado de partida:** Stage 56 / C8 cerrado, `ctest` 237/237, matriz de ejecución real corrida en
 Windows 32/32 (ver `claude/44_ejecucion_real_windows_c1_c8.md`).
-**Resultado:** los **ocho** reportes medidos, **siete arreglados**, uno ya estaba muerto.
-`ctest` **237/237**, checklist **32/32**, triage **16/16**, cero regresiones.
+**Resultado:** los **ocho** reportes medidos, **siete arreglados**, uno ya estaba muerto, y los
+ocho bajo `ctest` de aquí en adelante.
+`ctest` **238/238**, checklist **33/33**, triage **16/16**, cero regresiones.
 **Alcance:** sólo el compilador. Bindings, port de `Saru.Framework` y port del tutorial de OpenGL
 son de otras instancias; aquí sólo se reciben sus reportes.
 
@@ -212,15 +213,51 @@ distintos.
 | Qué | Resultado |
 |---|---|
 | Build + install | limpio |
-| `ctest` en Windows real | **237/237, 100%** (251.89 s) |
-| Checklist de ejecución (`tests/interop_contract` + ejemplos Stage 56, `-O0` y `-O2`) | **32/32, 0 fallas** |
+| `ctest` en Windows real | **238/238, 100%** |
+| Checklist de ejecución (`tests/interop_contract` + ejemplos Stage 56, `-O0` y `-O2`) | **33/33, 0 fallas** |
 | Triage (`tests/bug_triage`, `-O0` y `-O2`) | **16/16, 0 vivos** |
 
 Cero regresiones, con cambios en el parser, el frontend, el HIR, el MIR y el lowerer.
 
-**Pendiente:** subir estos ocho casos a tests de contrato permanentes en `tests/interop_contract/`.
-`tests/bug_triage/` es un arnés de medición y **`ctest` no lo corre**: tal como está, nada impide
-que cualquiera de estos vuelva sin que nadie se entere.
+### 6.1 La red de regresión
+
+Un arnés de medición no es una red. Mientras los ocho casos vivieran sólo en un `.bat` que hay que
+acordarse de correr, nada impedía que cualquiera volviera sin que nadie se enterara — que es
+exactamente cómo llegaron a acumularse. Quedaron cubiertos por dos vías, porque una sola no alcanza:
+
+- **`ctest` → `nsc.stage56.bugfix`** (`tests/unit/Stage56BugFixTests.cpp`) compila los ocho a `-O0`
+  y `-O2`. Seis de los ocho eran fallos ruidosos, así que para ésos **compilar es la regresión** y
+  esta suite los cubre entera. Es el test 238.
+- **`run_windows_checklist.bat` en modo completo** encadena `run_bug_triage.bat` como paso 5, y el
+  triage devuelve exit distinto de cero si queda alguno vivo. Esto es lo que cubre a los **dos
+  silenciosos** —`T self = this;` y el plan de asignación equivocado—, que compilan de todas formas
+  y sólo se distinguen por el valor que producen. En Windows no hay Wine, así que `ctest` no puede
+  ejecutarlos; este paso sí.
+
+### 6.2 Los errores internos ahora dicen dónde
+
+Un error del pipeline HIR→MIR llegaba como una frase pelada — `Stage 34 cannot find Stage 29
+allocation plan`, sin archivo, sin línea, sin método. Eso convirtió un bug de una línea en nueve
+pasos de bisección al portar `objloader`, y el costo lo paga otra vez cada error interno posterior.
+Ahora agrega `while lowering '<nombre mangleado>'`, y para un inicializador de campo, cuál miembro.
+No es archivo:línea todavía, pero es la diferencia entre bisecar y abrir un archivo.
+
+### 6.3 Propiedades sólo-`set`: medido, NO implementado
+
+Salió como hallazgo del triage y se intentó cerrar quitando el rechazo del parser. **Parsea, pero
+no se puede usar**, y el intento midió la razón real: la resolución de propiedades está anclada al
+getter de punta a punta — una asignación liga primero el getter y de ahí deriva el nombre del setter
+(`"set_" + associatedName`, en `analyzeAssignment`) — así que sin getter el miembro no liga y sale
+`has no compatible member named 'X'`, que es *peor* que el rechazo: convierte un "no soportado"
+claro en un "no existe" desconcertante sobre un miembro escrito ahí.
+
+Se revirtió. El rechazo se queda, ahora con el motivo y una salida (`declara un getter, o usa un
+método 'void SetX(T value)'`). Cerrarlo de verdad son dos cambios en `ProjectMethodBodyModel` — una
+rama en la resolución de expresión de miembro para el caso sólo-setter, y que `analyzeAssignment`
+tome el receptor del propio `left` cuando no hay getter — más un tercero que es el delicado:
+**leer** una propiedad sólo-`set` tiene que dar un error claro, y la ruta de miembro no sabe si está
+en posición de lectura o de asignación. Hacerlo mal ahí no da error de compilación: da código que
+lee un valor que no existe. Queda como ronda propia, con su propio build.
 
 ## 7. Archivos
 
@@ -236,8 +273,17 @@ src/Frontend/ProjectNameLookup.cpp          diagnostico de tipo no publico entre
 src/LLVM/ProjectOopLlvmLowerer.cpp          b3  wrapIndirectArgument en los dos ctors
 ```
 
-**Nuevos:** `tests/bug_triage/` (8 fixtures + README), `run_bug_triage.bat`,
-`run_windows_checklist.bat`, este doc y `STAGE56_BUGFIX_CHANGED_FILES.txt`.
+**Modificados, segunda mitad de la ronda (3):**
+
+```
+CMakeLists.txt                              registra nsc.stage56.bugfix (test 238)
+src/Frontend/ProjectOopMirModel.cpp         "while lowering '<metodo>'" en los errores internos
+src/Parser/Parser.cpp                       set-only: rechazo con el motivo real y una salida
+```
+
+**Nuevos:** `tests/unit/Stage56BugFixTests.cpp`, `tests/bug_triage/` (8 fixtures + README),
+`run_bug_triage.bat`, `run_windows_checklist.bat`, este doc y
+`STAGE56_BUGFIX_CHANGED_FILES.txt`.
 
 ## 8. Nota de método sobre el arnés
 
