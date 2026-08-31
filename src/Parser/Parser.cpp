@@ -2478,26 +2478,34 @@ ast::AstNode* Parser::parsePropertyTail(
     }
     expect(TokenKind::RightBrace, "'}'");
 
-    // Set-only properties: permitidas con cuerpo explicito, rechazadas si son automaticas.
+    // Set-only properties: NO soportadas, y el motivo real esta un piso mas abajo que aqui.
     //
-    // Antes se rechazaban TODAS con "set-only properties are not part of the Stage 38 subset",
-    // que es una limitacion sin razon detras: un setter con cuerpo es un metodo con nombre de
-    // propiedad, y no necesita un getter para tener sentido. La forma aparecio sola al escribir
-    // un test que usaba `public Big16 Setter { set { ... } }` como control, y no habia nada que
-    // justificara el rechazo.
+    // Se intento permitirlas quitando este rechazo, porque un setter con cuerpo explicito es un
+    // metodo con nombre de propiedad y no parece necesitar un getter. Parsea bien. Lo que no
+    // funciona es usarla: la resolucion de propiedades esta ANCLADA AL GETTER de punta a punta
+    // -- una asignacion a una propiedad liga primero el getter y de ahi deriva el nombre del
+    // setter ("set_" + associatedName, ver analyzeAssignment en ProjectMethodBodyModel) -- asi
+    // que sin getter el miembro no liga y sale
     //
-    // Lo que si sigue siendo un error es la forma AUTOMATICA, `int X { set; }`, y por la misma
-    // razon que en C#: una propiedad automatica es un campo de respaldo mas sus accesores, y un
-    // campo que solo se puede escribir y nunca leer no es nada. C# dice "auto-implemented
-    // properties must have a get accessor"; esto dice lo mismo con sus palabras.
-    if (!sawGet && sawAutomatic)
+    //   error: receiver/type '...' has no compatible member named 'Setter'
+    //
+    // que es peor que este rechazo: convierte un "no soportado" claro en un "no existe"
+    // desconcertante sobre un miembro que esta escrito ahi.
+    //
+    // Soportarlas de verdad es cambiar esa ruta de binding para que una expresion de miembro en
+    // posicion de asignacion pueda ligar directamente contra el setter. Es trabajo en
+    // ProjectMethodBodyModel, no aqui, y hasta que se haga el rechazo se queda -- pero diciendo
+    // que es una limitacion conocida y con que reemplazarla, no como si fuera un error del
+    // programador.
+    if (!sawGet)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             property->range(),
-            "an automatic property must have a get accessor; a set-only property needs an "
-            "explicit setter body, because there is nothing to read its backing field with");
+            "set-only properties are not supported: property access resolves through the get "
+            "accessor, so a property without one cannot be bound. Declare a get accessor, or "
+            "use an ordinary method such as 'void SetX(T value)'");
     }
     if (sawAutomatic && sawExplicit)
     {

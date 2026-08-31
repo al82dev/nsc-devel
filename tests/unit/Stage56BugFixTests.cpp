@@ -52,10 +52,17 @@ bool commandAvailable(std::string_view command)
 
 std::string wineCommand()
 {
+#ifdef _WIN32
+    // On Windows there is nothing to emulate, and probing with `command -v` -- a POSIX shell
+    // builtin -- makes cmd print "The system cannot find the path specified" once per probe.
+    // Thirty-four lines of that in the ctest log is noise that hides real output.
+    return {};
+#else
     if (std::filesystem::exists("/usr/lib/wine/wine64")) return "/usr/lib/wine/wine64";
     if (commandAvailable("wine64")) return "wine64";
     if (commandAvailable("wine")) return "wine";
     return {};
+#endif
 }
 
 int runUnderWine(const std::string& wine, const std::filesystem::path& exePath)
