@@ -11,17 +11,27 @@
 // it is specifically the delegate type that does not cross. Within a SINGLE project, a
 // delegate declared in one namespace is usable from another with `using`.
 //
-// MEDIDO: NO ES UN BUG DEL COMPILADOR. Only PUBLIC types cross a module boundary -- the same
-// rule as C# -- and the reported delegate had no accessibility modifier, so it was internal,
-// while the classes and structs beside it were written `public` and crossed fine. The asymmetry
-// was in the declarations. `public extern C delegate` parses and works, and this fixture uses
-// it.
+// MEDIDO, en dos pasos, y el primer diagnostico estuvo equivocado.
 //
-// What WAS a real defect is the diagnostic: "unknown type name" for a type that exists and is
-// simply not public sends the reader hunting for a typo that is not there, and it is what made
-// this look like a compiler limitation for a whole round. It now says the type is declared in a
-// referenced project but is not public. The bindings tree was restructured into one project per
-// library because of this misreading; that restructuring is not required.
+// Only PUBLIC types cross a module boundary -- the same rule as C#, and correct. The reported
+// delegate had no accessibility modifier, so it was internal, while the classes and structs
+// beside it were written `public` and crossed fine. That looked like the whole story, and it was
+// not: adding `public` to the delegate did not compile either.
+//
+//   error: top-level accessibility supports only public/internal class, interface, struct,
+//          enum, and delegate declarations
+//
+// The parser handled `extern` in a branch that sat AFTER the accessibility error in the same
+// else-if chain, so an `extern C delegate` could not carry an accessibility modifier at all and
+// could only ever be internal. It genuinely could not cross the boundary. THAT is the bug, and
+// it is one missing branch in Parser.cpp -- not the type system, and not the module boundary.
+//
+// A second, separate defect made it hard to see: the diagnostic said "unknown type name" for a
+// type that exists and is simply not public, which sends the reader hunting for a typo. It now
+// names the type and says it is not public.
+//
+// Consequence for the bindings tree: it was restructured into one project per library to work
+// around this. That restructuring is no longer required.
 //
 // Controls below (struct and class across the same boundary) run first, so a broken fixture
 // is distinguishable from the bug.

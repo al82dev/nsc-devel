@@ -4,22 +4,30 @@ setlocal EnableExtensions EnableDelayedExpansion
 REM ---------------------------------------------------------------------------
 REM NativeSharp -- real Windows execution checklist.
 REM
-REM Rebuilds and installs the compiler, runs ctest, then BUILDS AND RUNS every
+REM Builds and installs the compiler, runs ctest, then BUILDS AND RUNS every
 REM interop contract fixture and every Stage 56 packaged example at -O0 and -O2,
 REM comparing the real process exit code against the documented contract.
 REM
-REM This is the half of the test matrix that the sandbox rounds report as
-REM "Wine unavailable -- execution skipped".
+REM MODOS
+REM   run_windows_checklist.bat             completo: configure + build + install
+REM                                         + ctest + fixtures + ejemplos
+REM   run_windows_checklist.bat quick       build incremental + install
+REM                                         + fixtures + ejemplos, SIN ctest
+REM   run_windows_checklist.bat build       build incremental + install, nada mas
+REM   run_windows_checklist.bat norebuild   sin compilar: ctest + fixtures + ejemplos
 REM
-REM   run_windows_checklist.bat             full run (rebuild + install + tests)
-REM   run_windows_checklist.bat norebuild   skip the cmake rebuild
+REM El build SIEMPRE fue incremental -- Ninja solo recompila lo que cambio. Lo que
+REM cuesta es ctest (~4.5 min de los ~6). `quick` es el modo del ciclo de trabajo:
+REM se salta ctest y ademas el `cmake -S . -B` de reconfiguracion, que en una
+REM iteracion donde solo cambiaron .cpp no aporta nada.
 REM
-REM Everything lands in _logs\. Read _logs\SUMMARY.txt first.
-REM Nothing outside _logs\ is written.
+REM Corre `run_windows_checklist.bat` completo antes de dar una ronda por buena:
+REM ctest es lo unico que demuestra que no se rompio nada.
 REM
-REM NOTE: this file must keep CRLF line endings. cmd.exe resolves "call :label"
-REM by byte offset assuming CRLF; with LF-only endings it silently skips calls
-REM and runs labels out of order.
+REM Todo queda en _logs\. Leer _logs\SUMMARY.txt primero.
+REM
+REM NOTA: mantener finales de linea CRLF. cmd.exe resuelve "call :label" por
+REM offset de bytes asumiendo CRLF; con LF se desalinea y salta llamadas enteras.
 REM ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
@@ -29,6 +37,11 @@ set "BINDIR=%LOGDIR%\bin"
 set "SUMMARY=%LOGDIR%\SUMMARY.txt"
 set "FIXLOG=%LOGDIR%\03_fixtures.log"
 set "EXLOG=%LOGDIR%\04_examples.log"
+set "BUILDDIR=%ROOT%\build-clang"
+set "PREFIX=C:\native-sharp"
+
+set "MODE=%~1"
+if "%MODE%"=="" set "MODE=full"
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 if not exist "%BINDIR%" mkdir "%BINDIR%"
@@ -39,45 +52,66 @@ set /a FAILED=0
 > "%SUMMARY%" echo NativeSharp -- Windows execution checklist
 >> "%SUMMARY%" echo Started: %DATE% %TIME%
 >> "%SUMMARY%" echo Root   : %ROOT%
+>> "%SUMMARY%" echo Modo   : %MODE%
 >> "%SUMMARY%" echo.
 
 > "%FIXLOG%" echo === interop contract fixtures ===
 > "%EXLOG%" echo === packaged examples ===
 
-REM --- 1. Rebuild + install ---------------------------------------------------
-if /I "%~1"=="norebuild" goto :skip_build
+REM --- 1. Build + install -----------------------------------------------------
+if /I "%MODE%"=="norebuild" goto :skip_build
+if /I "%MODE%"=="full" goto :full_build
 
-echo [1/4] Rebuilding compiler and installing to C:\native-sharp ...
+echo [1/4] Build incremental e instalacion en %PREFIX% ...
+cmake --build "%BUILDDIR%" --parallel > "%LOGDIR%\01_build.log" 2>&1
+if errorlevel 1 goto :build_failed
+cmake --install "%BUILDDIR%" --prefix "%PREFIX%" >> "%LOGDIR%\01_build.log" 2>&1
+if errorlevel 1 goto :build_failed
+>> "%SUMMARY%" echo [ OK ] build incremental + install
+goto :after_build
+
+:full_build
+echo [1/4] Reconstruccion completa e instalacion en %PREFIX% ...
 call "%ROOT%\build-all.bat" > "%LOGDIR%\01_build.log" 2>&1
-if errorlevel 1 (
-    echo         FAILED -- see _logs\01_build.log
-    >> "%SUMMARY%" echo [FAIL] compiler build/install -- see 01_build.log
-    >> "%SUMMARY%" echo.
-    >> "%SUMMARY%" echo Aborted: nothing below was run against a fresh compiler.
-    goto :report
-)
+if errorlevel 1 goto :build_failed
 >> "%SUMMARY%" echo [ OK ] compiler build + install
 goto :after_build
 
+:build_failed
+echo         FALLO -- ver _logs\01_build.log
+>> "%SUMMARY%" echo [FAIL] compiler build/install -- ver 01_build.log
+>> "%SUMMARY%" echo.
+>> "%SUMMARY%" echo Abortado: nada de lo de abajo corrio contra un compilador fresco.
+goto :report
+
 :skip_build
-echo [1/4] Rebuild skipped by request.
+echo [1/4] Build omitido.
 >> "%SUMMARY%" echo [SKIP] compiler build ^(norebuild^)
 
 :after_build
+if /I "%MODE%"=="build" goto :report
 
 REM --- 2. ctest ---------------------------------------------------------------
-echo [2/4] Running ctest ...
-ctest --test-dir "%ROOT%\build-clang" --output-on-failure > "%LOGDIR%\02_ctest.log" 2>&1
+if /I "%MODE%"=="quick" goto :skip_ctest
+echo [2/4] Corriendo ctest ...
+ctest --test-dir "%BUILDDIR%" --output-on-failure > "%LOGDIR%\02_ctest.log" 2>&1
 if errorlevel 1 (
-    echo         FAILED -- see _logs\02_ctest.log
-    >> "%SUMMARY%" echo [FAIL] ctest -- see 02_ctest.log
+    echo         FALLO -- ver _logs\02_ctest.log
+    >> "%SUMMARY%" echo [FAIL] ctest -- ver 02_ctest.log
 ) else (
     >> "%SUMMARY%" echo [ OK ] ctest
 )
+goto :after_ctest
+
+:skip_ctest
+echo [2/4] ctest omitido ^(modo quick^).
+>> "%SUMMARY%" echo [SKIP] ctest ^(modo quick -- correr el modo completo antes de cerrar la ronda^)
+
+:after_ctest
 >> "%SUMMARY%" echo.
 
 REM --- 3. Interop contract fixtures -------------------------------------------
-echo [3/4] Interop contract fixtures ...
+echo [3/4] Fixtures de contrato de interop ...
 >> "%SUMMARY%" echo --- interop contract fixtures ---
 
 set "IC=tests\interop_contract"
@@ -93,16 +127,16 @@ call :run_case "%IC%\c7_definite_assignment\c7_definite_assignment.nsproj" c7_de
 call :run_case "%IC%\c8_type_root\c8_type_root.nsproj" c8_type_root 42 "%FIXLOG%"
 
 REM Exit 141 = 128 + LlvmTrapReason::CallbackExceptionEscape.
-REM A 0 here would mean a NativeSharp exception escaped through the C boundary.
+REM Un 0 aqui significaria que una excepcion NativeSharp se escapo por el borde C.
 call :run_case "%IC%\c1_14_callback_exception_boundary\c1_14_callback_exception_boundary.nsproj" c1_14_callback_exception_boundary 141 "%FIXLOG%"
 
-REM Links on purpose against a.dll / b.dll, which do not exist. Build+link only.
+REM Linkea a proposito contra a.dll / b.dll, que no existen. Solo build+link.
 call :build_only "%IC%\c1_13_two_libraries_same_symbol\c1_13_two_libraries_same_symbol.nsproj" c1_13_two_libraries_same_symbol "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 
 REM --- 4. Packaged examples ---------------------------------------------------
-echo [4/4] Packaged examples ...
+echo [4/4] Ejemplos empaquetados ...
 >> "%SUMMARY%" echo --- packaged examples ---
 
 call :run_case "examples\project_stage56_c1\Stage56C1InteropCompletion.nsproj" project_stage56_c1 0 "%EXLOG%"
@@ -122,14 +156,13 @@ echo ---------------------------------------------------------------
 type "%SUMMARY%"
 echo ---------------------------------------------------------------
 echo.
-echo Logs in: %LOGDIR%
+echo Logs en: %LOGDIR%
 
 if %FAILED% GTR 0 exit /b 1
 exit /b 0
 
 REM ===========================================================================
-REM :run_case  <.nsproj path, relative to root>  <label>  <expected exit>  <log>
-REM Builds the project at -O0 and -O2, runs it, compares the exit code.
+REM :run_case  <ruta .nsproj relativa a la raiz>  <etiqueta>  <exit esperado>  <log>
 REM ===========================================================================
 :run_case
 set "CPROJ=%ROOT%\%~1"
@@ -138,7 +171,7 @@ set "CEXPECT=%~3"
 set "CLOG=%~4"
 
 if not exist "%CPROJ%" (
-    call :fail "%CNAME%" "project not found: %CPROJ%"
+    call :fail "%CNAME%" "proyecto no encontrado"
     exit /b 0
 )
 
@@ -157,15 +190,14 @@ for %%O in (O0 O2) do (
         if "!RC!"=="%CEXPECT%" (
             call :ok "%CNAME% -%%O" "exit !RC!"
         ) else (
-            call :fail "%CNAME% -%%O" "exit !RC!, expected %CEXPECT%"
+            call :fail "%CNAME% -%%O" "exit !RC!, se esperaba %CEXPECT%"
         )
     )
 )
 exit /b 0
 
 REM ===========================================================================
-REM :build_only  <.nsproj path, relative to root>  <label>  <log>
-REM Compiles and links but never executes.
+REM :build_only  <ruta .nsproj relativa a la raiz>  <etiqueta>  <log>
 REM ===========================================================================
 :build_only
 set "CPROJ=%ROOT%\%~1"
@@ -173,7 +205,7 @@ set "CNAME=%~2"
 set "CLOG=%~3"
 
 if not exist "%CPROJ%" (
-    call :fail "%CNAME%" "project not found: %CPROJ%"
+    call :fail "%CNAME%" "proyecto no encontrado"
     exit /b 0
 )
 
@@ -181,12 +213,12 @@ for %%O in (O0 O2) do (
     set "NSC_OPT=-%%O"
     set "CEXE=%BINDIR%\%CNAME%_%%O.exe"
     >> "%CLOG%" echo.
-    >> "%CLOG%" echo --- %CNAME% -%%O ^(build+link only^) ---
+    >> "%CLOG%" echo --- %CNAME% -%%O build+link ---
     call "%ROOT%\tools\build_project.cmd" "%CPROJ%" "!CEXE!" >> "%CLOG%" 2>&1
     if errorlevel 1 (
         call :fail "%CNAME% -%%O" "build/link failed"
     ) else (
-        call :ok "%CNAME% -%%O" "built and linked, not executed"
+        call :ok "%CNAME% -%%O" "compila y linkea, no se ejecuta"
     )
 )
 exit /b 0

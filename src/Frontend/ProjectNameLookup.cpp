@@ -942,16 +942,19 @@ void ProjectNameLookup::bindTypeSyntax(
             // and is simply not public. Reporting "unknown type name" for a type that is right
             // there sends the reader hunting for a typo that does not exist.
             //
-            // This is exactly how the "an extern C delegate does not cross a ProjectReference"
-            // report happened. The generated binding declared
+            // This is half of what made the "an extern C delegate does not cross a
+            // ProjectReference" report so hard to read. The generated binding declared
             //
             //     extern C delegate long WNDPROC(nint, uint, ulong, long);
             //
             // with no accessibility modifier -- so, internal -- while the classes and structs
-            // beside it were written `public` and crossed the boundary without trouble. The
-            // asymmetry was in the declarations, not in the compiler: only public types cross a
-            // module boundary, the same rule as C#, and `public extern C delegate` parses and
-            // works. The diagnostic is what hid it, so the diagnostic is what gets fixed.
+            // beside it were written `public` and crossed the boundary without trouble. Only
+            // public types cross a module boundary, which is the same rule as C# and is right;
+            // what was wrong was that the parser had no branch letting an `extern C delegate`
+            // carry an accessibility modifier at all, so it could not be made public even if you
+            // tried. That half is fixed in Parser.cpp. This half is the diagnostic, which said
+            // "unknown type name" and sent the reader looking for a typo instead of at the
+            // declaration that was sitting right there.
             std::string internalMatch;
             if (effectiveProjectOrdinal < modules_.size() && modules_[effectiveProjectOrdinal] != nullptr)
             {

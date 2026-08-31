@@ -1,7 +1,8 @@
 // BUG TRIAGE 6 -- referenced project half: declares the `extern C delegate` type.
 //
-// The delegate is declared `public` here, and that turned out to be the whole story -- see
-// ../app/Main.ns. The originally reported version had no accessibility modifier at all.
+// The delegate is declared `public` here. The originally reported version had no accessibility
+// modifier -- and, until the parser fix, could not have had one: `public extern C delegate` was
+// rejected outright. See ../app/Main.ns.
 namespace bugtriage.raw
 {
     public extern C delegate int Adder(int left, int right);

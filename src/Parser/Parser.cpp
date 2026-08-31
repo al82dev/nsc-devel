@@ -1015,6 +1015,52 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         }
         declaration = parseEnumDeclaration();
     }
+    else if (at(TokenKind::KwExtern))
+    {
+        // `extern C delegate T Name(...);` is a TYPE declaration like any other, so it has to be
+        // able to carry an accessibility modifier. Before this branch existed, the `extern` case
+        // sat further down the chain -- AFTER the "top-level accessibility supports only ..."
+        // error -- so `public extern C delegate` was rejected outright and an extern C delegate
+        // could only ever be internal.
+        //
+        // That is the real defect behind the report that "an extern C delegate does not cross a
+        // ProjectReference". Only public types cross a module boundary, which is the same rule as
+        // C# and is correct; the delegate simply had no way to say `public`. The classes and
+        // structs beside it in the generated bindings could, which is why they crossed and it did
+        // not, and why the whole bindings tree got restructured into one project per library to
+        // work around something that was one missing branch here.
+        //
+        // An `extern C { ... }` BLOCK is not a type and has no accessibility of its own -- its
+        // members carry their own -- so a modifier on it is still an error, with its own reason.
+        if (isPartial || isAbstract || isSealed)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[declarationBeginIndex].range(),
+                "extern declarations cannot be partial, abstract, or sealed");
+        }
+        ast::AstNode* externDeclaration = parseExternCDeclaration();
+        if (externDeclaration != nullptr &&
+            externDeclaration->kind() == ast::AstNodeKind::DelegateDeclaration)
+        {
+            // Fall through to the shared tail, which is what stamps the accessibility.
+            declaration = externDeclaration;
+        }
+        else
+        {
+            if (accessibility != TokenKind::Invalid)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    tokens_[declarationBeginIndex].range(),
+                    "an 'extern C' block is not a type and has no accessibility of its own; put "
+                    "public/internal on its members instead");
+            }
+            return externDeclaration;
+        }
+    }
     else if (isPartial)
     {
         diagnostics_.report(
@@ -1044,10 +1090,6 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             "top-level accessibility supports only public/internal class, interface, struct, enum, and delegate declarations");
         synchronizeGlobal();
         return nullptr;
-    }
-    else if (at(TokenKind::KwExtern))
-    {
-        return parseExternCDeclaration();
     }
     else if (at(TokenKind::KwConst) || lexer::isOwnershipQualifierKeyword(current().kind()) ||
              lexer::isBuiltinTypeKeyword(current().kind()) || at(TokenKind::Identifier))
