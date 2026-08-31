@@ -147,6 +147,7 @@ private:
     ast::AstNode* parseAggregateInitializer();
     ast::AstNode* parseIfStatement();
     ast::AstNode* parseWhileStatement();
+    ast::AstNode* parseDoWhileStatement();
     ast::AstNode* parseForStatement();
     ast::AstNode* parseForeachStatement();
     ast::AstNode* makeIdentifierExpression(const SourceRange& range, std::string name);
@@ -169,6 +170,7 @@ private:
     ast::AstNode* parseAssignmentExpression();
     ast::AstNode* parseLambdaExpression();
     bool looksLikeLambdaExpression() const noexcept;
+    ast::AstNode* parseConditionalExpression();
     ast::AstNode* parseLogicalOrExpression();
     ast::AstNode* parseLogicalAndExpression();
     ast::AstNode* parseBitwiseOrExpression();

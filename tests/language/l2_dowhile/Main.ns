@@ -1,0 +1,116 @@
+// Language contract -- `do { ... } while (condition);`
+//
+// The distinguishing property, and the reason the loop exists at all: THE BODY RUNS BEFORE THE
+// FIRST TEST. A do-while whose condition is false from the start still executes once, which is
+// exactly what a `while` cannot express without duplicating the body or introducing a flag.
+//
+// Also pinned down here:
+//
+//   * `continue` jumps to the CONDITION, not to the top of the body. Both C and C# specify this,
+//     and getting it wrong turns a loop that terminates into one that does not.
+//   * `break` leaves the loop without evaluating the condition again.
+//   * Nesting, and that `break`/`continue` bind to the innermost loop.
+//   * That it composes with `while` and `for` around it.
+//
+// Expected exit code when healthy: 42.
+namespace languagecontract
+{
+    class Program
+    {
+        public static int Main()
+        {
+            // The whole point: a false condition still runs the body once.
+            int runs = 0;
+            do
+            {
+                runs = runs + 1;
+            }
+            while (false);
+            if (runs != 1) { return 1; }
+
+            // An ordinary counted loop.
+            int i = 0;
+            int sum = 0;
+            do
+            {
+                sum = sum + i;
+                i = i + 1;
+            }
+            while (i < 5);
+            if (i != 5) { return 2; }
+            if (sum != 10) { return 3; }
+
+            // `continue` goes to the condition, so the loop still advances and still terminates.
+            int j = 0;
+            int evens = 0;
+            do
+            {
+                j = j + 1;
+                if (j % 2 == 1) { continue; }
+                evens = evens + 1;
+            }
+            while (j < 10);
+            if (j != 10) { return 4; }
+            if (evens != 5) { return 5; }
+
+            // `break` leaves without re-testing.
+            int k = 0;
+            do
+            {
+                k = k + 1;
+                if (k == 3) { break; }
+            }
+            while (k < 100);
+            if (k != 3) { return 6; }
+
+            // Nested: break and continue bind to the innermost loop.
+            int outer = 0;
+            int inner = 0;
+            do
+            {
+                outer = outer + 1;
+                int m = 0;
+                do
+                {
+                    m = m + 1;
+                    if (m == 2) { continue; }
+                    inner = inner + 1;
+                }
+                while (m < 3);
+            }
+            while (outer < 2);
+            if (outer != 2) { return 7; }
+            if (inner != 4) { return 8; }
+
+            // A do-while inside a while, to check the two loop kinds compose.
+            int p = 0;
+            int total = 0;
+            while (p < 3)
+            {
+                int q = 0;
+                do
+                {
+                    q = q + 1;
+                    total = total + 1;
+                }
+                while (q < 2);
+                p = p + 1;
+            }
+            if (total != 6) { return 9; }
+
+            // And with the conditional expression from the sibling fixture, since both landed
+            // together and the interesting bugs live where new features meet.
+            int found = 0;
+            int step = 0;
+            do
+            {
+                step = step + 1;
+                found = found + (step % 2 == 0 ? 10 : 1);
+            }
+            while (step < 4);
+            if (found != 22) { return 10; }
+
+            return 42;
+        }
+    }
+}

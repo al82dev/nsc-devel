@@ -76,6 +76,7 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"if", TokenKind::KwIf},
         {"else", TokenKind::KwElse},
         {"while", TokenKind::KwWhile},
+        {"do", TokenKind::KwDo},
         {"for", TokenKind::KwFor},
         {"break", TokenKind::KwBreak},
         {"continue", TokenKind::KwContinue},
@@ -650,6 +651,8 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
             return makeToken(TokenKind::Comma, begin);
         case ':':
             return makeToken(TokenKind::Colon, begin);
+        case '?':
+            return makeToken(TokenKind::Question, begin);
         case '.':
             return makeToken(TokenKind::Dot, begin);
         case '~':

@@ -1,0 +1,92 @@
+// Language contract -- the conditional expression `c ? a : b`.
+//
+// Until this round the operator did not exist, and neither did the `?` token: there was no way to
+// write a conditional expression at all, and the workaround was an if/else statement plus a local,
+// which is not the same thing -- it cannot appear inside an argument, an initializer or a return.
+//
+// What this fixture pins down, and why each one is here:
+//
+//   * LAZINESS. Only the taken branch runs. This is the property that makes the operator safe to
+//     use as a guard (`p != null ? p.Value : 0`), and it is the one an implementation is most
+//     likely to get wrong, because lowering to an LLVM `select` -- which evaluates both sides --
+//     compiles, passes every check, and is wrong. Measured here with a counter, not assumed.
+//   * RIGHT ASSOCIATIVITY. `a ? b : c ? d : e` groups as `a ? b : (c ? d : e)`.
+//   * The result type when the branches differ but are both numeric.
+//   * That it composes where a statement cannot: inside an argument and inside a return.
+//
+// Expected exit code when healthy: 42.
+namespace languagecontract
+{
+    public class Counter
+    {
+        public static int trueCalls;
+        public static int falseCalls;
+
+        public static int Yes(int value) { trueCalls = trueCalls + 1; return value; }
+        public static int No(int value) { falseCalls = falseCalls + 1; return value; }
+    }
+
+    class Program
+    {
+        private static int Twice(int value) { return value + value; }
+
+        public static int Main()
+        {
+            // Basic form, both directions.
+            int a = true ? 1 : 2;
+            if (a != 1) { return 1; }
+            int b = false ? 1 : 2;
+            if (b != 2) { return 2; }
+
+            // Laziness: the untaken branch must NOT be evaluated.
+            Counter.trueCalls = 0;
+            Counter.falseCalls = 0;
+            int lazy = true ? Counter.Yes(10) : Counter.No(20);
+            if (lazy != 10) { return 3; }
+            if (Counter.trueCalls != 1) { return 4; }
+            if (Counter.falseCalls != 0) { return 5; }
+
+            lazy = false ? Counter.Yes(10) : Counter.No(20);
+            if (lazy != 20) { return 6; }
+            if (Counter.trueCalls != 1) { return 7; }
+            if (Counter.falseCalls != 1) { return 8; }
+
+            // A non-constant condition, so nothing can be folded away.
+            int n = 7;
+            int sign = n > 0 ? 1 : 0;
+            if (sign != 1) { return 9; }
+            n = 0 - 3;
+            sign = n > 0 ? 1 : 0;
+            if (sign != 0) { return 10; }
+
+            // Right associative: a ? b : (c ? d : e).
+            int grade = 55;
+            int bucket = grade >= 90 ? 3 : grade >= 70 ? 2 : grade >= 50 ? 1 : 0;
+            if (bucket != 1) { return 11; }
+
+            // Nested in the true branch as well.
+            bool outer = true;
+            bool inner = false;
+            int nested = outer ? (inner ? 100 : 200) : 300;
+            if (nested != 200) { return 12; }
+
+            // Both branches numeric but of different types: the result is their common type.
+            int small = 3;
+            long wide = 4;
+            long mixed = n > 0 ? small : wide;
+            if (mixed != 4) { return 13; }
+
+            // Composes where a statement cannot: inside an argument, and inside a return.
+            if (Twice(true ? 20 : 0) != 40) { return 14; }
+            if (Choose(true) != 21) { return 15; }
+            if (Choose(false) != 22) { return 16; }
+
+            // Inside a local initializer, which is the shape that made the operator wanted.
+            bool useFirst = 2 + 2 == 4;
+            int chosen = useFirst ? 42 : 0;
+            return chosen;
+        }
+
+        private static int Choose(bool first) { return first ? 21 : 22; }
+    }
+}

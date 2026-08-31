@@ -34,6 +34,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(VariableDeclarationStatement);
         NS_AST_KIND(IfStatement);
         NS_AST_KIND(WhileStatement);
+        NS_AST_KIND(DoWhileStatement);
         NS_AST_KIND(ForStatement);
         NS_AST_KIND(ForeachStatement);
         NS_AST_KIND(BreakStatement);
@@ -55,6 +56,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(BaseExpression);
         NS_AST_KIND(UnaryExpression);
         NS_AST_KIND(BinaryExpression);
+        NS_AST_KIND(ConditionalExpression);
         NS_AST_KIND(AssignmentExpression);
         NS_AST_KIND(CallExpression);
         NS_AST_KIND(IndexExpression);

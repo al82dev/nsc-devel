@@ -3430,6 +3430,7 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::LeftBrace)) return parseBlock();
     if (at(TokenKind::KwIf)) return parseIfStatement();
     if (at(TokenKind::KwWhile)) return parseWhileStatement();
+    if (at(TokenKind::KwDo)) return parseDoWhileStatement();
     if (at(TokenKind::KwFor)) return parseForStatement();
     if (at(TokenKind::KwForeach)) return parseForeachStatement();
 
@@ -3618,6 +3619,37 @@ ast::AstNode* Parser::parseWhileStatement()
     }
 
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::WhileStatement, tokenRangeFrom(beginIndex));
+    node->setFirst(condition);
+    node->setSecond(body);
+    return node;
+}
+
+// `do { ... } while (condition);`
+//
+// The node carries its operands in the SAME slots as a while statement -- first() is the
+// condition, second() is the body -- even though the source writes them the other way round.
+// That is deliberate: everything upstream of the backend (the body model's loop analysis, the
+// ownership flow across the back edge, the HIR walk) treats the two loops identically, and the
+// only real difference is that the body runs before the first test. Keeping the slots aligned
+// means those passes share one implementation instead of two that must be kept in step.
+//
+// The trailing `;` is required, as in C and C#.
+ast::AstNode* Parser::parseDoWhileStatement()
+{
+    const std::size_t beginIndex = index_;
+    consume();
+    ast::AstNode* body = at(TokenKind::LeftBrace) ? parseBlock() : nullptr;
+    if (body == nullptr)
+    {
+        expect(TokenKind::LeftBrace, "'{' after 'do'");
+    }
+    expect(TokenKind::KwWhile, "'while' after the do-loop body");
+    expect(TokenKind::LeftParen, "'('");
+    ast::AstNode* condition = parseExpression();
+    expect(TokenKind::RightParen, "')'");
+    expect(TokenKind::Semicolon, "';' after the do-while condition");
+
+    ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::DoWhileStatement, tokenRangeFrom(beginIndex));
     node->setFirst(condition);
     node->setSecond(body);
     return node;
@@ -4232,7 +4264,7 @@ ast::AstNode* Parser::parseAssignmentExpression()
         return parseLambdaExpression();
     }
 
-    ast::AstNode* left = parseLogicalOrExpression();
+    ast::AstNode* left = parseConditionalExpression();
     if (!lexer::isAssignmentOperator(current().kind()))
     {
         return left;
@@ -4246,6 +4278,34 @@ ast::AstNode* Parser::parseAssignmentExpression()
     node->setTokenKind(operation);
     node->setFirst(left);
     node->setSecond(right);
+    return node;
+}
+
+// `condition ? whenTrue : whenFalse`, between assignment and logical-or in precedence, and
+// RIGHT-associative -- so `a ? b : c ? d : e` is `a ? b : (c ? d : e)`, and the false branch
+// accepts an assignment (`c ? x : y = z` is `c ? x : (y = z)`), which is what C# does.
+//
+// The true branch parses as a full expression because it sits between `?` and `:`, where a
+// nested conditional cannot be ambiguous.
+ast::AstNode* Parser::parseConditionalExpression()
+{
+    ast::AstNode* condition = parseLogicalOrExpression();
+    if (!at(TokenKind::Question))
+    {
+        return condition;
+    }
+
+    consume();
+    ast::AstNode* whenTrue = parseExpression();
+    expect(TokenKind::Colon, "':' in a conditional expression");
+    ast::AstNode* whenFalse = parseAssignmentExpression();
+
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::ConditionalExpression,
+        join(condition->range(), whenFalse != nullptr ? whenFalse->range() : condition->range()));
+    node->setFirst(condition);
+    node->setSecond(whenTrue);
+    node->setThird(whenFalse);
     return node;
 }
 

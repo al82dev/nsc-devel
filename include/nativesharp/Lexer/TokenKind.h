@@ -39,6 +39,7 @@ enum class TokenKind
     KwIf,
     KwElse,
     KwWhile,
+    KwDo,
     KwFor,
     KwBreak,
     KwContinue,
@@ -96,6 +97,8 @@ enum class TokenKind
     Semicolon,
     Comma,
     Colon,
+    // Conditional expression `c ? a : b`. The only place `?` appears in the grammar.
+    Question,
     Dot,
     Arrow,
     FatArrow,

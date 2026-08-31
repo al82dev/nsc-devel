@@ -1238,6 +1238,13 @@ void ProjectMethodBodyModel::analyzeStatement(
             restoreOwnershipFlow(joinOwnershipFlow(thenState, elseState));
             break;
         }
+        // A do-while shares this analysis wholesale. The parser puts its operands in the same
+        // slots (first() = condition, second() = body), and the only semantic difference -- the
+        // body runs before the first test -- makes a do-while strictly MORE permissive than a
+        // while, so the loop's ownership-flow join here is conservative for it rather than
+        // wrong. The difference lives in the backend, where the branch goes straight into the
+        // body. Two implementations of this analysis would have to be kept in step forever.
+        case ast::AstNodeKind::DoWhileStatement:
         case ast::AstNodeKind::WhileStatement:
         {
             const ExpressionResult condition = analyzeExpression(
@@ -3698,6 +3705,58 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::BinaryExpression:
             result = analyzeBinary(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
+        case ast::AstNodeKind::ConditionalExpression:
+        {
+            // `condition ? whenTrue : whenFalse`.
+            //
+            // The type rule is deliberately narrow in this first round, and it is worth saying
+            // why rather than leaving it to be discovered: the two branches must either have the
+            // SAME type, or both be numeric -- in which case the result is their common numeric
+            // type, the same rule an arithmetic operator uses. C# also walks a conversion lattice
+            // between unrelated reference types to find a common base; that needs the inheritance
+            // model and is not what makes this operator useful. A branch pair this does not
+            // accept gets a diagnostic that says exactly which two types disagreed, never a
+            // silent pick of one of them.
+            const ExpressionResult condition = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (condition.valid && condition.typeKey != "builtin:bool")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCondition,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first()->range(),
+                    "the condition of a conditional expression must have type bool");
+            }
+            const ExpressionResult whenTrue = analyzeExpression(
+                expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            const ExpressionResult whenFalse = analyzeExpression(
+                expression->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!whenTrue.valid || !whenFalse.valid)
+            {
+                break;
+            }
+            if (whenTrue.typeKey == whenFalse.typeKey)
+            {
+                result.typeKey = whenTrue.typeKey;
+                result.valid = true;
+                break;
+            }
+            const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
+                whenTrue.typeKey, whenFalse.typeKey, whenTrue.integerConstant, whenFalse.integerConstant);
+            if (common.has_value())
+            {
+                result.typeKey = *common;
+                result.valid = true;
+                break;
+            }
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "the branches of a conditional expression have incompatible types '" +
+                    whenTrue.typeKey + "' and '" + whenFalse.typeKey + "'");
+            break;
+        }
         case ast::AstNodeKind::AssignmentExpression:
             result = analyzeAssignment(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;

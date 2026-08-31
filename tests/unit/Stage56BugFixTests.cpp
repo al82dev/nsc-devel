@@ -45,10 +45,12 @@ using nativesharp::ExitCode;
 using nativesharp::driver::Driver;
 using nativesharp::tests::TestContext;
 
+#ifndef _WIN32
 bool commandAvailable(std::string_view command)
 {
     return std::system(("command -v " + std::string(command) + " >/dev/null 2>&1").c_str()) == 0;
 }
+#endif
 
 std::string wineCommand()
 {

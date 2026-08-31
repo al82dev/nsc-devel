@@ -393,6 +393,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::ExpressionStatement: return "expression-statement";
         case ProjectOopMirNodeKind::If: return "if";
         case ProjectOopMirNodeKind::While: return "while";
+        case ProjectOopMirNodeKind::DoWhile: return "do-while";
         case ProjectOopMirNodeKind::For: return "for";
         case ProjectOopMirNodeKind::Break: return "break";
         case ProjectOopMirNodeKind::Continue: return "continue";
@@ -526,6 +527,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::EventInvoke: return "event-invoke";
         case ProjectOopMirNodeKind::Unary: return "unary";
         case ProjectOopMirNodeKind::Binary: return "binary";
+        case ProjectOopMirNodeKind::Conditional: return "conditional";
         case ProjectOopMirNodeKind::Store: return "store";
         case ProjectOopMirNodeKind::Convert: return "convert";
         case ProjectOopMirNodeKind::RuntimeTypeTest: return "runtime-type-test";
@@ -1004,6 +1006,8 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::ExpressionStatement: result->kind = ProjectOopMirNodeKind::ExpressionStatement; break;
         case ProjectOopHirNodeKind::If: result->kind = ProjectOopMirNodeKind::If; break;
         case ProjectOopHirNodeKind::While: result->kind = ProjectOopMirNodeKind::While; break;
+        case ProjectOopHirNodeKind::DoWhile: result->kind = ProjectOopMirNodeKind::DoWhile; break;
+        case ProjectOopHirNodeKind::Conditional: result->kind = ProjectOopMirNodeKind::Conditional; break;
         case ProjectOopHirNodeKind::For: result->kind = ProjectOopMirNodeKind::For; break;
         case ProjectOopHirNodeKind::Break: result->kind = ProjectOopMirNodeKind::Break; break;
         case ProjectOopHirNodeKind::Continue: result->kind = ProjectOopMirNodeKind::Continue; break;

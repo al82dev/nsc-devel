@@ -3605,6 +3605,8 @@ private:
                 return lowerIf(node, error);
             case frontend::ProjectOopMirNodeKind::While:
                 return lowerWhile(node, error);
+            case frontend::ProjectOopMirNodeKind::DoWhile:
+                return lowerDoWhile(node, error);
             case frontend::ProjectOopMirNodeKind::For:
                 return lowerFor(node, error);
 
@@ -4007,6 +4009,33 @@ private:
         return true;
     }
 
+    // `do { body } while (cond);` -- the same loop as lowerWhile with one difference: the entry
+    // branch goes to the BODY instead of to the condition, so the body always runs once.
+    //
+    // `continue` still lands on the condition block, which is what both C and C# specify: it skips
+    // the rest of the body and goes to the test, not back to the top of the body. That falls out
+    // of pushing the same {end, cond} pair onto loopStack_ as a while does.
+    bool lowerDoWhile(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 2) return fail(error, "do-while MIR is incomplete");
+        LLVMBasicBlockRef bodyBlock = appendBlock("dowhile.body");
+        LLVMBasicBlockRef condBlock = appendBlock("dowhile.cond");
+        LLVMBasicBlockRef endBlock = appendBlock("dowhile.end");
+        LLVMBuildBr(builder_, bodyBlock);
+        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        loopStack_.push_back({endBlock, condBlock, funcletStack_.size()});
+        const bool ok = lowerStatement(node->children[1].get(), error);
+        if (ok && !terminated()) LLVMBuildBr(builder_, condBlock);
+        loopStack_.pop_back();
+        if (!ok) return false;
+        LLVMPositionBuilderAtEnd(builder_, condBlock);
+        LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
+        if (condition == nullptr) return false;
+        LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        return true;
+    }
+
     bool lowerFor(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node->children.size() != 4) return fail(error, "Stage 34 for MIR is incomplete");
@@ -4202,6 +4231,8 @@ private:
                 }
                 return value;
             }
+            case frontend::ProjectOopMirNodeKind::Conditional:
+                return lowerConditional(node, error);
             case frontend::ProjectOopMirNodeKind::BorrowValue:
                 if (node->children.size() != 1 || node->children.front() == nullptr)
                     return failValue(error, "Stage 50.8 borrow value must wrap exactly one physical reference value");
@@ -6616,6 +6647,46 @@ private:
                 return isSignedInteger(operandType) ? LLVMBuildAShr(builder_, left, right, "ashr") : LLVMBuildLShr(builder_, left, right, "lshr");
             default: return failValue(error, "unsupported integer binary operation in Stage 34");
         }
+    }
+
+    // `c ? a : b`. Both branches are LAZILY evaluated -- only the taken one runs -- so this is
+    // control flow plus a phi, not an LLVM `select`, which would evaluate both. That matters for
+    // correctness and not just for speed: `p != null ? p.Value : 0` must not read through a null
+    // pointer to build the value it then discards. Same shape as the `&&`/`||` lowering below.
+    //
+    // The two branches were already given a single result type by the front end, so the incoming
+    // values agree and the phi needs no conversion of its own.
+    LLVMValueRef lowerConditional(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 3)
+            return failValue(error, "conditional expression MIR is incomplete");
+        LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
+        if (condition == nullptr) return nullptr;
+        LLVMBasicBlockRef trueBlock = appendBlock("cond.true");
+        LLVMBasicBlockRef falseBlock = appendBlock("cond.false");
+        LLVMBasicBlockRef endBlock = appendBlock("cond.end");
+        LLVMBuildCondBr(builder_, condition, trueBlock, falseBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, trueBlock);
+        LLVMValueRef whenTrue = lowerExpression(node->children[1].get(), error);
+        if (whenTrue == nullptr) return nullptr;
+        LLVMBasicBlockRef trueExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, falseBlock);
+        LLVMValueRef whenFalse = lowerExpression(node->children[2].get(), error);
+        if (whenFalse == nullptr) return nullptr;
+        LLVMBasicBlockRef falseExit = LLVMGetInsertBlock(builder_);
+        if (!terminated()) LLVMBuildBr(builder_, endBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        LLVMTypeRef resultType = llvmType(node->typeKey, error);
+        if (resultType == nullptr) return nullptr;
+        LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "cond");
+        LLVMValueRef values[] = {whenTrue, whenFalse};
+        LLVMBasicBlockRef blocks[] = {trueExit, falseExit};
+        LLVMAddIncoming(phi, values, blocks, 2);
+        return phi;
     }
 
     LLVMValueRef lowerShortCircuit(const frontend::ProjectOopMirNode* node, std::string& error)

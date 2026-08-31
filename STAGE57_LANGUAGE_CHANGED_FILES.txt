@@ -1,0 +1,193 @@
+STAGE 57 -- Operador condicional `?:` y `do...while`
+Archivos tocados. Ver 71_operador_ternario_y_do_while.md para el porque de cada cambio.
+Fecha: 2026-08-31.
+
+Verificado en Windows real: ctest 239/239, checklist 37/37, triage 16/16.
+
+
+================================================================================
+LEXER -- los dos huecos empezaban aqui: ni `?` ni `do` existian como token.
+================================================================================
+
+include/nativesharp/Lexer/TokenKind.h
+    + KwDo          (keyword `do`)
+    + Question      (el caracter `?`)
+
+src/Lexer/TokenKind.cpp
+    + NS_TOKEN_CASE(KwDo)
+    + NS_TOKEN_CASE(Question)
+      Nombres para diagnosticos y para los volcados de tokens.
+
+src/Lexer/Lexer.cpp
+    + {"do", TokenKind::KwDo} en la tabla de keywords.
+    + case '?': return makeToken(TokenKind::Question, begin);
+      Antes de esto un `?` en el fuente daba `unexpected character in source`.
+
+
+================================================================================
+AST
+================================================================================
+
+include/nativesharp/AST/AstNodeKind.h
+    + DoWhileStatement
+    + ConditionalExpression
+
+src/AST/AstNodeKind.cpp
+    + NS_AST_KIND(DoWhileStatement)
+    + NS_AST_KIND(ConditionalExpression)
+
+Forma de los nodos:
+    DoWhileStatement       first = condicion, second = cuerpo
+                           (identica a WhileStatement -- a proposito; ver doc 71 §2.2)
+    ConditionalExpression  first = condicion, second = rama true, third = rama false
+
+
+================================================================================
+PARSER
+================================================================================
+
+include/nativesharp/Parser/Parser.h
+    + ast::AstNode* parseDoWhileStatement();
+    + ast::AstNode* parseConditionalExpression();
+
+src/Parser/Parser.cpp
+    + parseDoWhileStatement()
+        `do` `{`bloque`}` `while` `(` expr `)` `;`
+        El `;` final es obligatorio y tiene su propio mensaje de error.
+    + gancho en parseStatement:
+        if (at(TokenKind::KwDo)) return parseDoWhileStatement();
+    + parseConditionalExpression()
+        Se inserta ENTRE parseAssignmentExpression y parseLogicalOrExpression,
+        que es su lugar en la tabla de precedencia. La rama falsa se parsea
+        recursivamente con parseConditionalExpression(), de donde sale gratis la
+        asociatividad a la derecha.
+    ~ parseAssignmentExpression
+        Ahora llama a parseConditionalExpression() en lugar de bajar directo a
+        parseLogicalOrExpression(). Es la UNICA linea que mete al operador en la
+        gramatica de expresiones; sin ella el resto del parser es codigo muerto.
+
+
+================================================================================
+ANALISIS SEMANTICO
+================================================================================
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    ~ case ast::AstNodeKind::DoWhileStatement
+        Comparte cuerpo con el case WhileStatement. Para esta capa los dos bucles
+        son identicos: condicion bool, un cuerpo, un LoopContext empujado para que
+        break/continue encuentren destino. La diferencia (orden de ejecucion) no
+        existe hasta el lowerer.
+    + case ast::AstNodeKind::ConditionalExpression
+        1. condicion analizada y exigida `bool` (mismo camino que `if`)
+        2. las dos ramas analizadas
+        3. tipo del resultado: iguales -> ese; si no, commonNumericType;
+           si no hay, diagnostico que NOMBRA los dos tipos.
+
+
+================================================================================
+HIR
+================================================================================
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + ProjectOopHirNodeKind::DoWhile
+    + ProjectOopHirNodeKind::Conditional
+
+src/Frontend/ProjectOopHirModel.cpp
+    + nombres "do-while" y "conditional" para los volcados
+    ~ case DoWhileStatement compartido con WhileStatement (elige el kind por
+      statement->kind())
+    + case ConditionalExpression
+        - rechaza addressContext:
+          "a conditional expression produces a value, not addressable storage"
+        - baja condicion + las dos ramas
+        - convertBranch(): compara cada rama contra el tipo del resultado y, si
+          difiere, clasifica la conversion implicita y envuelve la rama.
+          ES EL ARREGLO DEL UNICO DEFECTO DE LA RONDA: sin esto, `int ? : long`
+          produce un phi i64 con un operando i32 y el verificador de LLVM rechaza
+          el modulo. Ver doc 71 §3.2.
+
+
+================================================================================
+MIR -- sin logica: transporte hasta el lowerer.
+================================================================================
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + ProjectOopMirNodeKind::DoWhile
+    + ProjectOopMirNodeKind::Conditional
+
+src/Frontend/ProjectOopMirModel.cpp
+    + nombres "do-while" y "conditional"
+    + mapeo HIR->MIR para los dos kinds
+
+
+================================================================================
+LLVM -- aqui vive toda la diferencia de comportamiento.
+================================================================================
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + lowerDoWhile()
+        dowhile.body / dowhile.cond / dowhile.end.
+        La entrada es `br label %dowhile.body` -- incondicional. Comparado con
+        lowerWhile, que entra por %while.cond, ESA es la unica diferencia.
+        loopStack_.push_back({endBlock, condBlock, ...}): el destino de `continue`
+        es la CONDICION. Registrar el cuerpo compilaria igual y haria que los
+        bucles con `continue` no avanzaran.
+    + gancho en el dispatch de statements: case DoWhile -> lowerDoWhile
+
+    + lowerConditional()
+        cond.true / cond.false / cond.end + phi.
+        NO usa LLVMBuildSelect: `select` evalua las dos ramas y despues elige, lo
+        que rompe la pereza (`p != null ? p.Value : 0` desreferencia el nulo) sin
+        fallar en compilacion.
+        Los bloques de entrada del phi son LLVMGetInsertBlock() DESPUES de bajar
+        cada rama, no las etiquetas originales: una rama con un bucle o un
+        condicional adentro termina en otro bloque.
+    + gancho en el dispatch de expresiones: case Conditional -> lowerConditional
+
+
+================================================================================
+PRUEBAS
+================================================================================
+
+tests/language/l1_conditional/l1_conditional.nsproj      NUEVO
+tests/language/l1_conditional/Main.ns                    NUEVO
+    Devuelve 42 sano; un codigo distinto por propiedad rota.
+    Mide: forma basica en ambas direcciones | PEREZA con contador estatico
+    (trueCalls/falseCalls) | condicion no constante | asociatividad a la derecha
+    en cadena de tres | anidamiento en la rama true | ramas int/long |
+    composicion en argumento, en return y en inicializador de local.
+
+tests/language/l2_dowhile/l2_dowhile.nsproj              NUEVO
+tests/language/l2_dowhile/Main.ns                        NUEVO
+    Devuelve 42 sano.
+    Mide: cuerpo antes de la primera prueba (`while (false)` y aun asi corre) |
+    bucle contado | `continue` que llega a la CONDICION y por lo tanto termina |
+    `break` sin reevaluar | anidamiento con break/continue al bucle interior |
+    do-while dentro de un while | caso combinado con `?:` en el cuerpo.
+
+tests/unit/Stage57LanguageTests.cpp                      NUEVO
+    Arnes checkFixture() que compila las dos fixtures a -O0 y -O2 desde
+    NSC_SOURCE_DIR. Bajo Wine ademas las ejecuta; en Windows degrada a skip
+    explicito y la ejecucion la cubre run_windows_checklist.bat.
+    commandAvailable() envuelto en #ifndef _WIN32 (si no, -Werror falla por
+    funcion sin usar).
+
+CMakeLists.txt
+    + registro de la suite nsc.stage57.language (test 239)
+
+run_windows_checklist.bat
+    + seccion `--- language contract fixtures ---`
+      Compila Y EJECUTA l1_conditional y l2_dowhile a -O0 y -O2 y compara el
+      codigo de salida contra 42. Esta es la mitad que mide la pereza del
+      ternario; compilar no la mide.
+
+
+================================================================================
+NOTA DE HIGIENE -- borrar a mano, son de rondas anteriores y ya no aplican:
+================================================================================
+    68_triage_de_bugs_y_fix_b3.md
+    68_triage_de_bugs_y_cuatro_fixes.md
+    FIX_B3_CHANGED_FILES.txt
+    FIX_B2_B3_B5_B8_CHANGED_FILES.txt
+    70_roadmap_consolidado.md      (reemplazado por 70_roadmap_del_compilador.md)
+    8                              (archivo suelto, basura de una redireccion)

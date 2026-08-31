@@ -39,6 +39,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwIf);
         NS_TOKEN_CASE(KwElse);
         NS_TOKEN_CASE(KwWhile);
+        NS_TOKEN_CASE(KwDo);
         NS_TOKEN_CASE(KwFor);
         NS_TOKEN_CASE(KwBreak);
         NS_TOKEN_CASE(KwContinue);
@@ -95,6 +96,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(Semicolon);
         NS_TOKEN_CASE(Comma);
         NS_TOKEN_CASE(Colon);
+        NS_TOKEN_CASE(Question);
         NS_TOKEN_CASE(Dot);
         NS_TOKEN_CASE(Arrow);
         NS_TOKEN_CASE(FatArrow);

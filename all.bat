@@ -1,0 +1,2 @@
+run_windows_checklist.bat
+run_bug_triage.bat

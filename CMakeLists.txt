@@ -708,6 +708,13 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage56_bugfix_tests)
     add_test(NAME nsc.stage56.bugfix COMMAND nsc_stage56_bugfix_tests)
 
+    add_executable(nsc_stage57_language_tests tests/unit/Stage57LanguageTests.cpp)
+    target_link_libraries(nsc_stage57_language_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage57_language_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage57_language_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage57_language_tests)
+    add_test(NAME nsc.stage57.language COMMAND nsc_stage57_language_tests)
+
     add_executable(nsc_stage46_native_libraries_tests tests/unit/Stage46NativeLibrariesTests.cpp)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage46_native_libraries_tests PRIVATE cxx_std_20)

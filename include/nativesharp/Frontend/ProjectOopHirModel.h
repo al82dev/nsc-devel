@@ -28,6 +28,9 @@ enum class ProjectOopHirNodeKind
     ExpressionStatement,
     If,
     While,
+    // Same operand order as While -- children[0] is the condition, children[1] the body --
+    // and a distinct kind only because the backend enters the body before the first test.
+    DoWhile,
     For,
     Break,
     Continue,
@@ -259,6 +262,9 @@ enum class ProjectOopHirNodeKind
     EventInvoke,
     Unary,
     Binary,
+    // `c ? a : b`. children[0] condition, children[1] true branch, children[2] false branch.
+    // Both branches are lazily evaluated, so this lowers to control flow, not a select.
+    Conditional,
     Assignment,
     Conversion,
     RuntimeTypeTest,

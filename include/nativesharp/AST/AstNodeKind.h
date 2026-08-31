@@ -34,6 +34,7 @@ enum class AstNodeKind
     VariableDeclarationStatement,
     IfStatement,
     WhileStatement,
+    DoWhileStatement,
     ForStatement,
     ForeachStatement,
     BreakStatement,
@@ -56,6 +57,9 @@ enum class AstNodeKind
     BaseExpression,
     UnaryExpression,
     BinaryExpression,
+    // `condition ? whenTrue : whenFalse`. first() is the condition, second() the true
+    // branch, third() the false branch. Both branches are lazily evaluated, like `&&`.
+    ConditionalExpression,
     AssignmentExpression,
     CallExpression,
     IndexExpression,

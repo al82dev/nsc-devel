@@ -71,8 +71,19 @@ if errorlevel 1 goto :build_failed
 goto :after_build
 
 :full_build
+REM Se corren los tres pasos aqui en vez de delegar en build-all.bat, y la razon es un bug real
+REM que costo una corrida entera: build-all.bat termina con `cmake --install`, y el instalador
+REM devuelve 0 aunque `cmake --build` haya fallado antes -- instala lo que ya existia. El script
+REM leia ese 0, seguia adelante, y corria toda la matriz contra el nsc.exe VIEJO. Un fallo de
+REM compilacion se presentaba entonces como fixtures rojos con errores absurdos ("unexpected
+REM character in source" para sintaxis que el compilador nuevo si soporta), que es la peor forma
+REM posible de reportarlo. Cada paso se comprueba por separado.
 echo [1/5] Reconstruccion completa e instalacion en %PREFIX% ...
-call "%ROOT%\build-all.bat" > "%LOGDIR%\01_build.log" 2>&1
+cmake -S "%ROOT%" -B "%BUILDDIR%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_CXX_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_LINKER="C:/clang-llvm/bin/lld-link.exe" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE -DNSC_LLVM_MONOLITHIC_LIBRARY="C:/clang-llvm/lib/LLVM-C.lib" -DNSC_BUILD_TESTS=ON -DNSC_WARNINGS_AS_ERRORS=ON > "%LOGDIR%\01_build.log" 2>&1
+if errorlevel 1 goto :build_failed
+cmake --build "%BUILDDIR%" --parallel >> "%LOGDIR%\01_build.log" 2>&1
+if errorlevel 1 goto :build_failed
+cmake --install "%BUILDDIR%" --prefix "%PREFIX%" >> "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
 >> "%SUMMARY%" echo [ OK ] compiler build + install
 goto :after_build
@@ -132,6 +143,13 @@ call :run_case "%IC%\c1_14_callback_exception_boundary\c1_14_callback_exception_
 
 REM Linkea a proposito contra a.dll / b.dll, que no existen. Solo build+link.
 call :build_only "%IC%\c1_13_two_libraries_same_symbol\c1_13_two_libraries_same_symbol.nsproj" c1_13_two_libraries_same_symbol "%FIXLOG%"
+
+>> "%SUMMARY%" echo.
+>> "%SUMMARY%" echo --- language contract fixtures ---
+
+set "LC=tests\language"
+call :run_case "%LC%\l1_conditional\l1_conditional.nsproj" l1_conditional 42 "%FIXLOG%"
+call :run_case "%LC%\l2_dowhile\l2_dowhile.nsproj" l2_dowhile 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 
