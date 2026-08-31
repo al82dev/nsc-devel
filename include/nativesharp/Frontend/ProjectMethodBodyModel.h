@@ -7,10 +7,12 @@
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <set>
 #include <utility>
@@ -980,6 +982,28 @@ private:
     OwnershipFlowSnapshot joinOwnershipFlow(
         const OwnershipFlowSnapshot& left,
         const OwnershipFlowSnapshot& right) const;
+
+    // CC1-200 "operacion comun de branch snapshot/join".
+    //
+    // POR QUE EXISTE. El compilador ya tenia la infraestructura correcta -- captureOwnershipFlow,
+    // restoreOwnershipFlow, joinOwnershipFlow -- y `case IfStatement` la usaba bien. Pero cada
+    // construccion nueva con ramas tenia que acordarse de repetir el patron a mano, y ni `?:` ni
+    // `&&` ni `||` lo hicieron: analizaban sus dos lados secuencialmente, como si los dos se
+    // ejecutaran siempre.
+    //
+    // La consecuencia no es cosmetica. Definite assignment es un conjunto MUST y su join es una
+    // INTERSECCION; analizar secuencialmente equivale a UNIR, que es la direccion INSEGURA -- el
+    // compilador da por asignada una variable que solo se asigna en una rama. Y como C7 pone a cero
+    // el almacenamiento de los locales, el programa no explota: devuelve 0. El backend tapa el bug
+    // del analisis, que es lo que lo hacia dificil de ver.
+    //
+    // Estas dos funciones convierten ese patron en algo que se LLAMA en vez de algo que se
+    // RECUERDA. analyzeBranchState corre `work` partiendo de `entry` y devuelve el estado en que
+    // quedo, sin dejar rastro en el estado activo; commitBranchJoin instala la union de dos de esos
+    // estados como estado activo.
+    OwnershipFlowSnapshot analyzeBranchState(
+        const OwnershipFlowSnapshot& entry, const std::function<void()>& work);
+    void commitBranchJoin(const OwnershipFlowSnapshot& left, const OwnershipFlowSnapshot& right);
     OwnershipFlowSnapshot joinOwnershipFlows(
         const OwnershipFlowSnapshot& seed,
         const std::vector<OwnershipFlowSnapshot>& states) const;
@@ -1023,17 +1047,43 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    // The constant folder a `case` label needs. Deliberately narrow: integer and character
-    // literals, the unary and binary integer operators over them, casts, enum members, and `const`
-    // integer fields (which is what a Win32 message id is). Anything else answers "not a constant"
-    // and gets a diagnostic that says so, rather than a value nobody can explain.
+    // CC1-105. El plegado de una etiqueta de `case` YA NO vive aqui: lo hace
+    // `ProjectIntegerEvaluator`, el unico evaluador entero tipado del compilador. Esto queda como
+    // el punto de entrada del modelo semantico, y devuelve el par (bits, tipo) -- nunca un
+    // `std::int64_t` suelto, porque comparar dos etiquetas sin conocer su tipo fue exactamente el
+    // defecto C-001.
     //
-    // `declaringTypeOrdinal` is set only while expanding a const field's own initializer, and names
-    // the type that field belongs to. See the comment on the identifier case for why.
-    std::optional<std::int64_t> foldIntegerConstantExpression(
+    // `declaringTypeOrdinal` se pasa solo mientras se expande el inicializador de un campo `const`.
+    std::optional<ProjectIntegerValue> foldIntegerConstant(
         const ast::AstNode* expression,
-        std::size_t depth,
         std::optional<std::size_t> declaringTypeOrdinal) const;
+
+    // Adaptador que le da al evaluador compartido la resolucion de miembros y de tipos de ESTE
+    // modelo, sin que el evaluador tenga que conocer el modelo entero.
+    class ConstantMemberResolver final : public ProjectConstantMemberResolver
+    {
+    public:
+        explicit ConstantMemberResolver(const ProjectMethodBodyModel& model) noexcept
+            : model_(model)
+        {
+        }
+
+        std::optional<std::size_t> resolveConstantMember(
+            const ast::AstNode* syntax,
+            std::optional<std::size_t> declaringTypeOrdinal) const override;
+        bool describeConstantMember(
+            std::size_t memberOrdinal,
+            bool& isEnumConstant,
+            std::int64_t& enumConstantValue,
+            const ast::AstNode*& initializer,
+            std::string& declaredTypeKey,
+            std::optional<std::size_t>& declaringTypeOrdinal) const override;
+        std::string resolveTypeKey(const ast::TypeSyntax* typeSyntax) const override;
+
+    private:
+        const ProjectMethodBodyModel& model_;
+    };
+
     // Reverse linear scan of nameBindings_. Only ever called while folding a case label, whose
     // bindings were recorded moments earlier, so the scan stops almost immediately.
     const MethodNameBinding* recordedNameBinding(const ast::AstNode* syntax) const noexcept;

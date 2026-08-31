@@ -1,0 +1,181 @@
+MILESTONE CC1 -- fase 3, manejo de excepciones (tareas 32-39)
+Archivos tocados. Ver 74_cc1_fase3_eh.md para el porque de cada cambio.
+Fecha: 2026-08-31.
+
+Estado: CERRADO. Corrida de Windows del 2026-08-31 13:06: checklist 55/55 Failed 0 (eran 45; las
+diez nuevas son las cinco fixtures de EH a -O0 y -O2, todas en 42), ctest 242/242 (100%), triage
+16/16. nsc.cc1.correctness pasa y sube de 9.03 s a 22.95 s. El build recompilo los dos archivos
+tocados sin errores ni avisos.
+
+Cierra: EH-001 EH-002 EH-003. G3 cerrado. Fase 3 8/8, milestone 43/77.
+
+Los tres riesgos anotados abajo se midieron y NINGUNO se materializo -- ver 74_cc1_fase3_eh.md #7.
+Queda anotado un hueco de observabilidad como tarea 77 (fase 5): ctest no captura el
+"PASS: <n> checks" de TestContext, asi que los logs muestran que no fallo ninguna comprobacion,
+no cuantas corrio.
+
+Barrido previo obligatorio, hecho ANTES de escribir backend: los 142 simbolos LLVM* usados en
+ProjectOopLlvmLowerer.cpp cruzados contra los 242 declarados en src/LLVM/LlvmCApi.h -- 0 faltantes.
+El codigo nuevo no introduce ningun simbolo LLVM* que no estuviera ya en uso.
+
+
+================================================================================
+BACKEND -- EH-001 (tareas 32, 33, 34)
+================================================================================
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + struct ActiveCatchBody { LLVMValueRef exception; std::size_t loopDepthAtEntry; }
+      Declarado junto a FuncletContext y DELIBERADAMENTE fuera de el.
+
+      LA CORRECCION DE LA TAREA 32, medida y no razonada. El texto original colgaba la obligacion
+      de un campo nuevo en FuncletContext, marcado "en los contextos creados para clausulas catch".
+      Barrido de todos los push_back sobre funcletStack_: hay exactamente uno, en
+      emitExceptionalCleanupChain, y construye FuncletKind::Cleanup. NADIE empuja una entrada
+      Catch -- desde B-006/B-007 los cuerpos de clausula se bajan como bloques padre ordinarios.
+      Un campo ahi habria sido codigo inalcanzable: cerraba el hallazgo en el papel y no medía
+      nada. La obligacion se ancla en activeCatchExceptions_, que es la pila que si sigue "estoy
+      dentro del cuerpo de un catch".
+
+    ~ activeCatchExceptions_ pasa de std::vector<LLVMValueRef> a std::vector<ActiveCatchBody>.
+      loopDepthAtEntry es loopStack_.size() al empezar a bajar el cuerpo, y es lo que distingue
+      "sale del catch" de "sale de un bucle o switch abierto DENTRO del catch": un salto cuyo
+      marco de bucle ya existia aterriza fuera del cuerpo; uno cuyo marco se empujo dentro, no.
+
+    + structuredExitLeavesCatchBody(bool isReturn)
+      return sale de todas las clausulas por definicion, y por eso no consulta loopStack_.
+      Para break/continue basta mirar la clausula mas interna: una salida que no abandona la mas
+      interna no abandona ninguna, y una sola llamada limpia el unico slot TLS por muchas que
+      abandone.
+
+    + emitCatchBodyExceptionClear()
+      Emite la limpieza en un bloque PROPIO, `eh.catch.leave.N`, no en linea. Motivo: darle nombre
+      en el IR a lo que produjo la obligacion, para poder COMPROBARLO con un test en vez de
+      razonarlo. -O2 pliega el bloque; la llamada sobrevive.
+
+    ~ lowerStructuredExit: llamada a las dos anteriores ANTES de las tres formas de salida -- la
+      rama simple, el recorrido de cleanups y el desenrollado de funclets -- y en las tres por
+      igual, porque la divergencia que se cierra es precisamente que la simple se la saltaba.
+      Va ANTES de los cleanups y no despues, igual que ya hacia eh.catch.handled.N: un destructor
+      que corre de salida puede lanzar y publicar una excepcion actual nueva, y limpiar despues
+      borraria esa en lugar de esta.
+
+    ~ lowerTryRegion: el push del cuerpo de clausula registra loopStack_.size() ahi mismo, antes
+      de bajar el cuerpo.
+
+    ~ lowerRethrow: activeCatchExceptions_.back() -> .back().exception.
+
+    ~ Anotacion sobre la limpieza del catchret dentro del bucle de desenrollado: NO SE ALCANZA HOY
+      (su guarda exige kind == FuncletKind::Catch). Se deja en pie porque es el codigo correcto si
+      alguna vez vuelve a empujarse una entrada Catch, y anotada como lo que es.
+      TAREA 34, resuelta midiendo y no con una guarda nueva: (1) una salida estructurada termina
+      el bloque, asi que el br a handledBlocks[index] no se emite en ese camino; (2) la limpieza
+      del catchret es inalcanzable; (3) y aunque coincidieran, __nativesharp_exception_clear solo
+      escribe null en un slot TLS -- verificado en src/Runtime/WindowsRuntimeBuilder.cpp,
+      buildExceptionClear -- asi que dos limpiezas son idempotentes entre si.
+
+
+================================================================================
+QUE SE PUEDE MEDIR DE EH-001, Y QUE NO
+================================================================================
+
+NO hay hoy un fallo observable desde NativeSharp que EH-001 arregle, y conviene decirlo antes de
+las fixtures para que nadie lo lea al reves. __nativesharp_throw publica la excepcion nueva en el
+mismo slot TLS ANTES de levantarla (TlsSetValue incondicional), asi que un slot sucio queda pisado
+por el siguiente throw; y los dos unicos lectores del slot -- el filtro RTTI de cada clausula
+tipada y la lectura de caughtException tras el catchpad -- corren siempre despues de una
+publicacion. El documento de auditoria lo dice con el mismo cuidado.
+
+Se arregla igual porque el estado del slot al terminar una clausula no puede depender de por que
+puerta salio, y porque cuesta una llamada que -O2 ni siquiera conserva donde no hace falta.
+
+Lo medible se mide donde es medible: en el IR, no en la ejecucion.
+
+
+================================================================================
+TESTS
+================================================================================
+
+tests/unit/Cc1CorrectnessTests.cpp
+    + include de ProjectCompilation.h, LlvmModule.h, ProjectOopLlvmLowerer.h, <memory>.
+
+    + lowerToLlvmText(): baja un programa a LLVM con ProjectCompilation + ProjectOopLlvmLowerer y
+      devuelve module->text(). Verifica el modulo por el camino.
+
+    + countCatchLeaveBlocksThatClear(): cuenta los bloques eh.catch.leave.N cuyo CUERPO contiene de
+      verdad la llamada. Un bloque vacio cuenta 0 -- eso es lo que hace util contarlos en vez de
+      buscar el nombre de la funcion suelto por el modulo, cosa que pasaria igual por los
+      eh.catch.handled.N que ya la llamaban antes de este cambio.
+
+    + cc1-eh-structured-exit-clears        -- catch con continue, break y return  -> espera 3
+    + cc1-eh-fallthrough-unchanged         -- catch que solo cae por fallthrough  -> espera 0,
+                                              y que la limpieza de la salida normal siga presente
+    + cc1-eh-inner-loop-break-is-not-an-exit -- break de un while abierto DENTRO del catch -> 0
+
+      Los dos negativos son los que convierten al positivo en una medida y no en una coincidencia.
+      El tercero es el que mide loopDepthAtEntry: sin el, "emitir siempre que haya un catch activo"
+      pasaria el primero y seria incorrecto.
+
+    + cinco checkFixture nuevas: cc1-c4-catch-continue, cc1-c5-catch-break, cc1-c6-catch-return,
+      cc1-c7-finally-switch, cc1-c8-loop-catch-switch. Todas 42.
+
+
+================================================================================
+FIXTURES DE EJECUCION (tareas 35-38)
+================================================================================
+
+tests/cc1/c4_catch_continue/{Main.ns,c4_catch_continue.nsproj}      NUEVO   -- tarea 35
+    while -> try/catch cuyo catch termina en continue, y una SEGUNDA excepcion de otro tipo en una
+    vuelta posterior. Incluye un while abierto dentro del catch cuyo break no debe contar como
+    salida, y una segunda vuelta con los dos tipos en orden inverso.
+
+tests/cc1/c5_catch_break/{Main.ns,c5_catch_break.nsproj}            NUEVO   -- tarea 36
+    break simple desde el catch; break desde un catch CON finally, contando que el cleanup corre
+    exactamente una vez por vuelta (ni cero ni dos); y un switch dentro del catch cuyo break local
+    no abandona la clausula, comprobado por lo que se ejecuta DESPUES del switch.
+
+tests/cc1/c6_catch_return/{Main.ns,c6_catch_return.nsproj}          NUEVO   -- tarea 36
+    return desde el catch cruzando un finally, y desde un catch anidado cruzando dos, de dentro
+    afuera. Termina lanzando y atrapando de nuevo.
+
+tests/cc1/c7_finally_switch/{Main.ns,c7_finally_switch.nsproj}      NUEVO   -- tarea 37
+    LA CORRECCION DEL AUDITOR. Mi propuesta original (bucle -> catch -> switch) NO demuestra que
+    funcletDepth y continueFuncletDepth sean numeros distintos: desde B-006/B-007 el cuerpo de un
+    catch es bloque padre ordinario y los dos valores coinciden ahi.
+    El caso quirurgico es un switch dentro de un funclet de CLEANUP:
+        bucle -> try -> [ try {throw} finally { switch {...break...} resto } ] -> catch
+    Fija: el break no abandona el finally; lo que sigue al switch dentro del finally si corre; la
+    excepcion sigue propagandose y la atrapa el catch exterior; el bucle exterior da sus vueltas.
+    Incluye la misma forma SIN excepcion, porque el cuerpo del finally se emite dos veces en el
+    codigo generado y solo la copia excepcional vive dentro de un funclet.
+
+tests/cc1/c8_loop_catch_switch/{Main.ns,c8_loop_catch_switch.nsproj} NUEVO  -- tarea 38
+    bucle -> catch -> switch con break local y continue al bucle exterior. Sigue siendo
+    indispensable, y su cabecera dice explicitamente que NO demuestra, para que nadie la lea como
+    la prueba de EH-003. Lo que se cuenta es lo que hay DESPUES del switch dentro del catch:
+    confundir un destino con el otro es un fallo silencioso. Repite la forma con los dos destinos
+    intercambiados.
+
+
+================================================================================
+REGISTRO (tarea 39)
+================================================================================
+
+run_windows_checklist.bat
+    + cinco run_case en la seccion "milestone CC1 fixtures", los cinco esperando 42.
+      Lineas anadidas enteras con CRLF; no se movio ninguna etiqueta :label.
+
+CMakeLists.txt
+    SIN CAMBIOS. Las fixtures se leen desde NSC_SOURCE_DIR y no necesitan target propio.
+
+
+================================================================================
+RIESGOS QUE LA CORRIDA DECIDIO (anotados antes de conocer el resultado, ninguno se dio)
+================================================================================
+
+1. switch dentro de un funclet de cleanup (c7) es una combinacion que este backend no habia
+   emitido nunca. Si LLVMVerifyModule la rechaza, el fallo estara en como lowerSwitch compone sus
+   bloques con el funclet activo, no en la fixture.
+2. break/continue desde un catch CON finally (c5, segundo bloque) recorre la ruta complexExit con
+   ordinales de cleanup, que hasta ahora solo se ejercia con return.
+3. Cinco fixtures nuevas son tambien cinco programas nuevos de NativeSharp; un rechazo del
+   frontend seria un limite del lenguaje que hay que anotar, no un fallo de la fase.

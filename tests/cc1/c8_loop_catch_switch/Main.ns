@@ -1,0 +1,130 @@
+// CC1 EH-002 -- `bucle -> catch -> switch` con `break` local y `continue` al bucle exterior.
+//
+// QUE MIDE. Un `switch` trae su propio destino de `break` pero HEREDA el destino de `continue` del
+// bucle que lo envuelve. Cuando ese switch esta dentro del cuerpo de un `catch`, las dos salidas
+// van a sitios distintos y solo una de ellas abandona el catch:
+//
+//   * `break` sale del switch y NADA MAS -- lo que sigue en el cuerpo del catch corre;
+//   * `continue` sale del switch, del catch y de la vuelta del bucle a la vez.
+//
+// Confundir un destino con el otro es un fallo silencioso: el programa sigue corriendo, solo que
+// ejecuta o se salta el resto del cuerpo del catch. Por eso lo que se cuenta aqui es lo que hay
+// DESPUES del switch, no solo que el bucle termine.
+//
+// Esta fixture NO demuestra que `funcletDepth` y `continueFuncletDepth` sean numeros distintos --
+// el cuerpo de un catch es codigo padre ordinario desde B-006/B-007, asi que ambos valen lo mismo
+// aqui. Esa propiedad la mide c7, con un switch dentro de un `finally`. Las dos hacen falta y
+// miden cosas distintas.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1loopcatchswitch
+{
+    class Program
+    {
+        private static void Fail(int step)
+        {
+            if (step == 4)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+            throw new InvalidOperationException();
+        }
+
+        public static int Main()
+        {
+            int localBreaks = 0;   // secciones que salieron por `break`
+            int skips = 0;         // secciones que salieron por `continue`
+            int afterSwitch = 0;   // veces que se ejecuto lo que sigue al switch, dentro del catch
+            int completed = 0;     // veces que la vuelta llego al final del cuerpo del bucle
+            int otherType = 0;
+            int step = 0;
+
+            while (step < 5)
+            {
+                step = step + 1;
+                try
+                {
+                    Fail(step);
+                }
+                catch (ArgumentOutOfRangeException other)
+                {
+                    // Otra clausula, para que la seleccion siga siendo por tipo y no por posicion
+                    // ahora que hay un switch de por medio.
+                    otherType = otherType + 1;
+                    continue;
+                }
+                catch (InvalidOperationException problem)
+                {
+                    switch (step)
+                    {
+                        case 1:
+                            localBreaks = localBreaks + 1;
+                            break;
+                        case 2:
+                            skips = skips + 1;
+                            continue;
+                        case 3:
+                            localBreaks = localBreaks + 1;
+                            break;
+                        default:
+                            skips = skips + 1;
+                            continue;
+                    }
+                    // Alcanzable solo por las secciones que salieron con `break`.
+                    afterSwitch = afterSwitch + 1;
+                }
+                completed = completed + 1;
+            }
+
+            if (step != 5) { return 1; }
+            // Pasos 1 y 3.
+            if (localBreaks != 2) { return 2; }
+            // Pasos 2 y 5.
+            if (skips != 2) { return 3; }
+            // Paso 4.
+            if (otherType != 1) { return 4; }
+            // Solo las dos vueltas que salieron del switch por `break` llegaron aqui.
+            if (afterSwitch != 2) { return 5; }
+            // Y esas mismas dos llegaron al final del cuerpo del bucle: el catch termino por
+            // fallthrough, no por salida estructurada.
+            if (completed != 2) { return 6; }
+
+            // Segunda forma: el mismo switch pero con `default` como la seccion que sale por
+            // `break`, es decir con los dos destinos intercambiados respecto al bloque de arriba.
+            // Si `break` y `continue` estuvieran cruzados, el bloque anterior y este fallarian con
+            // cuentas distintas, no con la misma -- que es lo que hace util repetir la forma.
+            int swapBreaks = 0;
+            int swapSkips = 0;
+            int swapTail = 0;
+            int index = 0;
+            while (index < 3)
+            {
+                index = index + 1;
+                try
+                {
+                    throw new InvalidOperationException();
+                }
+                catch (InvalidOperationException problem)
+                {
+                    switch (index)
+                    {
+                        case 1:
+                            swapSkips = swapSkips + 1;
+                            continue;
+                        default:
+                            swapBreaks = swapBreaks + 1;
+                            break;
+                    }
+                    swapTail = swapTail + 1;
+                }
+            }
+            if (swapSkips != 1) { return 7; }
+            if (swapBreaks != 2) { return 8; }
+            if (swapTail != 2) { return 9; }
+
+            return 42;
+        }
+    }
+}

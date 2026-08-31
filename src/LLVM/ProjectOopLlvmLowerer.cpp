@@ -338,6 +338,17 @@ private:
         LLVMBasicBlockRef unwindDestination = nullptr;
     };
 
+    // CC1 EH-001. One entry per `catch` clause body currently being lowered, innermost last.
+    // Deliberately NOT a field on FuncletContext: since the B-006/B-007 fix, clause bodies are
+    // ordinary parent blocks and nothing ever pushes a FuncletKind::Catch entry onto funcletStack_
+    // any more (the only push site builds Cleanup entries), so an obligation hung there would be
+    // unreachable code that closes the finding on paper and measures nothing.
+    struct ActiveCatchBody final
+    {
+        LLVMValueRef exception = nullptr;
+        std::size_t loopDepthAtEntry = 0;
+    };
+
     // A cleanup region (a RAII local's scope-exit, a `using`, an owned-parameter destroy, or a
     // `finally` body) can be reached by more than one exceptional unwind chain within the same
     // method -- for example a local declared before two sibling try blocks is unwound both by
@@ -3234,6 +3245,39 @@ private:
         return emitCleanupAction(ordinal, error);
     }
 
+    // CC1 EH-001 -- "does this structured exit leave the body of an enclosing `catch`?"
+    //
+    // The invariant being repaired: the NORMAL end of a catch clause falls through
+    // `eh.catch.handled.N`, which calls __nativesharp_exception_clear and drops the thread-local
+    // current exception. A `break`, `continue` or `return` out of that same clause branches
+    // straight to its structured target and never passes through that block, so the same clause
+    // could end with the TLS slot cleared or not cleared depending purely on WHICH legal exit the
+    // program took. Clearing the current exception is a semantic obligation of leaving a catch,
+    // not a property of falling into one particular LLVM block, so it is decided here.
+    //
+    // `return` leaves every clause it sits inside. `break`/`continue` target loopStack_.back();
+    // that frame leaves the innermost clause exactly when it already existed when the clause body
+    // began. Testing the innermost clause is enough: an exit that does not leave the innermost one
+    // leaves none, and one call clears the single TLS slot however many it leaves.
+    bool structuredExitLeavesCatchBody(bool isReturn) const noexcept
+    {
+        if (activeCatchExceptions_.empty()) return false;
+        if (isReturn) return true;
+        if (loopStack_.empty()) return false;
+        return (loopStack_.size() - 1U) < activeCatchExceptions_.back().loopDepthAtEntry;
+    }
+
+    // The clear is emitted into a block of its own rather than inline, so that what the obligation
+    // produced is NAMEABLE in the emitted IR and can be asserted by a test instead of reasoned
+    // about. -O2 folds the block away; the call survives.
+    void emitCatchBodyExceptionClear()
+    {
+        LLVMBasicBlockRef leaveBlock = appendBlock("eh.catch.leave");
+        LLVMBuildBr(builder_, leaveBlock);
+        LLVMPositionBuilderAtEnd(builder_, leaveBlock);
+        buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+    }
+
     bool lowerStructuredExit(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         const bool isReturn = node->kind == frontend::ProjectOopMirNodeKind::Return;
@@ -3273,6 +3317,17 @@ private:
             if (returnStorage_ == nullptr)
                 return fail(error, "Stage 45.10 return through cleanup/catch has no return spill slot");
             LLVMBuildStore(builder_, returnValue, returnStorage_);
+        }
+
+        // CC1 EH-001. Before ANY of the exit shapes below -- simple branch, cleanup traversal,
+        // funclet unwind -- and on both paths equally, because the divergence being closed is
+        // precisely that the simple one skipped it. Emitted BEFORE the cleanups rather than after,
+        // matching what eh.catch.handled.N already does (it clears, then branches into the
+        // `finally`): a destructor running on the way out may itself throw and publish a new
+        // current exception, and clearing afterwards would wipe that one instead of this one.
+        if (structuredExitLeavesCatchBody(isReturn))
+        {
+            emitCatchBodyExceptionClear();
         }
 
         if (!complexExit)
@@ -3329,6 +3384,15 @@ private:
                 }
             }
 
+            // NOT REACHED TODAY, and left standing deliberately. Since the B-006/B-007 fix the
+            // only push site for funcletStack_ builds FuncletKind::Cleanup entries, so the guard
+            // above always takes the failure branch and no exit ever unwinds a Catch funclet here.
+            // Verified by sweeping every push_back into funcletStack_, not assumed. It stays
+            // because it is the correct code for a Catch entry should one ever be pushed again --
+            // and if that happens the extra clear is harmless: __nativesharp_exception_clear only
+            // stores null into one TLS slot, so the EH-001 clear emitted above and this one are
+            // idempotent with respect to each other. That is what makes "clear twice" a non-issue
+            // rather than a bug to guard against.
             LLVMBasicBlockRef catchExit = appendBlock("eh.catch.exit");
             LLVMBuildCatchRet(builder_, current.pad, catchExit);
             funcletStack_.pop_back();
@@ -3520,7 +3584,7 @@ private:
         // than on a Catch entry in funcletStack_. The funcletStack_ walk is kept as a fallback so
         // any remaining path that still lowers a handler inside a funclet keeps working unchanged.
         LLVMValueRef exception =
-            activeCatchExceptions_.empty() ? nullptr : activeCatchExceptions_.back();
+            activeCatchExceptions_.empty() ? nullptr : activeCatchExceptions_.back().exception;
         for (auto found = funcletStack_.rbegin();
              exception == nullptr && found != funcletStack_.rend(); ++found)
         {
@@ -3944,7 +4008,11 @@ private:
 
                 // `rethrow` inside this body used to find its exception by walking funcletStack_ for
                 // an active catch funclet. The body is ordinary parent code now, so it looks here.
-                activeCatchExceptions_.push_back(caughtException);
+                // CC1 EH-001: loopStack_.size() is recorded HERE, before the body is lowered, so
+                // a `break`/`continue` inside it can tell "leaves this catch" from "leaves a loop
+                // or switch opened inside this catch".
+                activeCatchExceptions_.push_back(
+                    ActiveCatchBody{caughtException, loopStack_.size()});
                 const bool handlerOk = lowerStatement(catchNode->children.front().get(), error);
                 const bool handlerTerminated = terminated();
                 activeCatchExceptions_.pop_back();
@@ -8207,10 +8275,16 @@ private:
     // Multi-catch fix -- exception type ordinal -> the stable RTTI type id its catch clause tests
     // against on the parent-side dispatch path. See lowerTryRegion's catchswitch comment.
     std::unordered_map<std::size_t, std::uint64_t> typedCatchTypeIds_;
-    // Multi-catch fix -- innermost-last stack of the exception object each ENCLOSING catch clause
-    // is currently handling. Catch bodies are no longer lowered inside a funclet, so `rethrow` can
-    // no longer find its exception by walking funcletStack_; this is where it looks instead.
-    std::vector<LLVMValueRef> activeCatchExceptions_;
+    // Multi-catch fix -- innermost-last stack of the ENCLOSING catch clause bodies currently being
+    // lowered. Catch bodies are no longer lowered inside a funclet, so `rethrow` can no longer find
+    // its exception by walking funcletStack_; this is where it looks instead.
+    //
+    // CC1 EH-001 added the second field. `loopDepthAtEntry` is loopStack_.size() at the moment the
+    // clause body started lowering, and it is what tells a `break`/`continue` whether it LEAVES this
+    // catch body or merely leaves a loop/switch that was opened INSIDE it: a structured exit whose
+    // target loop frame already existed when the body began lands outside the body; one whose frame
+    // was pushed inside it does not. See structuredExitLeavesCatchBody().
+    std::vector<ActiveCatchBody> activeCatchExceptions_;
     LLVMValueRef sehPersonalityFunction_ = nullptr;
     LLVMTypeRef sehPersonalityFunctionType_ = nullptr;
     LLVMValueRef memsetFunction_ = nullptr;

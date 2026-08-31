@@ -1,0 +1,142 @@
+// CC1 EH-003 -- `switch` dentro de un `finally` que corre durante un desenrollado excepcional.
+//
+// POR QUE ESTA FIXTURE Y NO LA OBVIA. La prueba que yo habia propuesto para demostrar que
+// `funcletDepth` y `continueFuncletDepth` de `LoopTargets` son de verdad dos numeros distintos era
+// `bucle -> catch -> switch`. Es una prueba necesaria -- vive en c8 -- pero NO demuestra eso:
+// desde los arreglos B-006/B-007 el cuerpo de un `catch` se baja como bloque padre ordinario, asi
+// que un switch escrito dentro de un catch NO esta a mayor profundidad de funclet que el bucle que
+// lo envuelve. La correccion es del auditor externo y esta fixture es la consecuencia.
+//
+// El caso quirurgico es un `switch` dentro de un funclet de CLEANUP, que es lo unico que hoy si
+// empuja una entrada en `funcletStack_`:
+//
+//     bucle exterior
+//       try
+//         try { throw }            <- la excepcion entra por el camino excepcional
+//         finally { switch { ... break ... } resto }   <- el finally corre COMO FUNCLET
+//       catch { ... }              <- y la excepcion sigue su camino hasta aqui
+//
+// Ahi el marco de bucle del `switch` se registra con la profundidad de funclet del cleanup, y el
+// marco del bucle exterior con 0. Su `break` tiene que quedarse dentro del funclet: si se fuera al
+// destino del bucle exterior estaria saltando fuera de un cleanuppad, que es IR invalido, y si
+// arrastrara el `continue` del bucle exterior estaria abandonando el funclet por la puerta
+// equivocada.
+//
+// Lo que se fija, y en este orden:
+//   * el `break` del switch NO abandona el finally;
+//   * lo que sigue al switch DENTRO del finally si se ejecuta;
+//   * la excepcion sigue propagandose despues del finally y la atrapa el catch exterior;
+//   * el bucle exterior no se altera: da todas sus vueltas.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1finallyswitch
+{
+    class Trace
+    {
+        public static int Marks;
+        public static int Tails;
+    }
+
+    class Program
+    {
+        // El `finally` de este metodo corre DOS veces por vuelta en el sentido del codigo emitido
+        // (una copia para la salida normal y otra como funclet para la excepcional), pero UNA sola
+        // vez por ejecucion. Que `Tails` cuente exactamente una por vuelta es tambien la prueba de
+        // que el cleanup no se duplico.
+        private static void ThrowThroughFinallyWithSwitch(int tag)
+        {
+            try
+            {
+                throw new InvalidOperationException();
+            }
+            finally
+            {
+                switch (tag)
+                {
+                    case 1:
+                        Trace.Marks = Trace.Marks + 1;
+                        break;
+                    case 2:
+                        Trace.Marks = Trace.Marks + 20;
+                        break;
+                    default:
+                        Trace.Marks = Trace.Marks + 300;
+                        break;
+                }
+                // Si el `break` de arriba hubiera abandonado el finally en vez de solo el switch,
+                // esta linea no correria y `Tails` se quedaria corto.
+                Trace.Tails = Trace.Tails + 1;
+            }
+        }
+
+        // La misma forma pero SIN excepcion, para separar "el switch funciona en el finally normal"
+        // de "el switch funciona en el finally excepcional". Son dos copias distintas del cuerpo en
+        // el codigo emitido y solo la segunda vive dentro de un funclet.
+        private static void FallThroughFinallyWithSwitch(int tag)
+        {
+            try
+            {
+                Trace.Marks = Trace.Marks + 0;
+            }
+            finally
+            {
+                switch (tag)
+                {
+                    case 1:
+                        Trace.Marks = Trace.Marks + 1;
+                        break;
+                    default:
+                        Trace.Marks = Trace.Marks + 300;
+                        break;
+                }
+                Trace.Tails = Trace.Tails + 1;
+            }
+        }
+
+        public static int Main()
+        {
+            Trace.Marks = 0;
+            Trace.Tails = 0;
+
+            int rounds = 0;
+            int caught = 0;
+            int tag = 0;
+            while (tag < 3)
+            {
+                tag = tag + 1;
+                rounds = rounds + 1;
+                try
+                {
+                    ThrowThroughFinallyWithSwitch(tag);
+                }
+                catch (InvalidOperationException problem)
+                {
+                    caught = caught + 1;
+                }
+            }
+
+            // El bucle exterior dio sus tres vueltas: el break del switch, dos funclets mas
+            // adentro, no toco su control de flujo.
+            if (rounds != 3) { return 1; }
+            if (tag != 3) { return 2; }
+            // La excepcion sobrevivio al finally las tres veces.
+            if (caught != 3) { return 3; }
+            // 1 + 20 + 300: cada vuelta entro por su seccion y por ninguna otra.
+            if (Trace.Marks != 321) { return 4; }
+            // Y el resto del finally corrio despues del break, una vez por vuelta.
+            if (Trace.Tails != 3) { return 5; }
+
+            // La copia normal del mismo finally.
+            Trace.Marks = 0;
+            Trace.Tails = 0;
+            FallThroughFinallyWithSwitch(1);
+            FallThroughFinallyWithSwitch(9);
+            if (Trace.Marks != 301) { return 6; }
+            if (Trace.Tails != 2) { return 7; }
+
+            return 42;
+        }
+    }
+}

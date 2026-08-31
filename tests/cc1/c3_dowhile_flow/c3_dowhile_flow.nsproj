@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c3_dowhile_flow</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

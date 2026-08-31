@@ -928,6 +928,26 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     assignedLocals_.insert(declaredAfterSnapshot.begin(), declaredAfterSnapshot.end());
 }
 
+// CC1-200. El patron de rama, en un solo sitio. Ver la declaracion en el header para el porque.
+//
+// Corre `work` partiendo EXACTAMENTE de `entry`, devuelve el estado en el que quedo, y deja el
+// estado activo de vuelta en `entry`. El llamador combina dos de estos con commitBranchJoin.
+ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeBranchState(
+    const OwnershipFlowSnapshot& entry, const std::function<void()>& work)
+{
+    restoreOwnershipFlow(entry);
+    work();
+    OwnershipFlowSnapshot exitState = captureOwnershipFlow();
+    restoreOwnershipFlow(entry);
+    return exitState;
+}
+
+void ProjectMethodBodyModel::commitBranchJoin(
+    const OwnershipFlowSnapshot& left, const OwnershipFlowSnapshot& right)
+{
+    restoreOwnershipFlow(joinOwnershipFlow(left, right));
+}
+
 ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     const OwnershipFlowSnapshot& left,
     const OwnershipFlowSnapshot& right) const
@@ -1232,44 +1252,81 @@ void ProjectMethodBodyModel::analyzeStatement(
                     "if condition must have type bool");
             }
 
+            // CC1-200. Este case ya hacia lo correcto a mano; ahora lo hace a traves de las dos
+            // funciones compartidas. El cambio no altera su comportamiento -- es literalmente el
+            // mismo capture / restore(entry) / analizar / capture / restore(join) -- y ese es el
+            // punto: `?:`, `&&` y `||` estaban rotos porque tenian que ACORDARSE de repetir este
+            // patron, y no se acordaron. Reescribirlo aqui es lo que demuestra que la pieza
+            // compartida es equivalente a la version que ya era correcta.
             const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
-            analyzeBlock(statement->second(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
-            const OwnershipFlowSnapshot thenState = captureOwnershipFlow();
-
-            restoreOwnershipFlow(branchEntry);
-            if (statement->third() != nullptr)
-            {
-                if (statement->third()->kind() == ast::AstNodeKind::IfStatement)
+            const OwnershipFlowSnapshot thenState = analyzeBranchState(
+                branchEntry,
+                [&]
                 {
-                    analyzeStatement(statement->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                }
-                else
+                    analyzeBlock(
+                        statement->second(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
+                });
+            const OwnershipFlowSnapshot elseState = analyzeBranchState(
+                branchEntry,
+                [&]
                 {
-                    analyzeBlock(statement->third(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
-                }
-            }
-            const OwnershipFlowSnapshot elseState = captureOwnershipFlow();
-            restoreOwnershipFlow(joinOwnershipFlow(thenState, elseState));
+                    if (statement->third() == nullptr) return;
+                    if (statement->third()->kind() == ast::AstNodeKind::IfStatement)
+                    {
+                        analyzeStatement(
+                            statement->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                    }
+                    else
+                    {
+                        analyzeBlock(
+                            statement->third(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
+                    }
+                });
+            commitBranchJoin(thenState, elseState);
             break;
         }
-        // A do-while shares this analysis wholesale. The parser puts its operands in the same
-        // slots (first() = condition, second() = body), and the only semantic difference -- the
-        // body runs before the first test -- makes a do-while strictly MORE permissive than a
-        // while, so the loop's ownership-flow join here is conservative for it rather than
-        // wrong. The difference lives in the backend, where the branch goes straight into the
-        // body. Two implementations of this analysis would have to be kept in step forever.
+        // CC1-210/CC1-211/CC1-212. Los dos bucles COMPARTEN este case, pero ya NO comparten su
+        // semantica de flujo: las dos diferencias reales estan marcadas abajo con `isDoWhile`.
+        //
+        // Por que un solo case y no dos: lo unico que distingue a un do-while de un while son (a)
+        // el orden entre cuerpo y condicion y (b) que NO existe el camino de cero iteraciones. Todo
+        // lo demas -- el LoopContext, la union de los estados de `continue`, y sobre todo la
+        // comprobacion de RAII a traves del back-edge, que son sesenta lineas -- es identico.
+        // Duplicarlo daria dos copias de la parte dificil que habria que mantener en paso para
+        // siempre, que es exactamente el problema que este milestone existe para reducir.
+        //
+        // El comentario anterior afirmaba que analizar un do-while como un while era "meramente
+        // conservador". Para definite assignment eso era falso en un sentido: incluir el camino de
+        // cero iteraciones en una INTERSECCION hacia que una variable asignada solo en el cuerpo NO
+        // contara como definitivamente asignada despues del bucle -- rechazaba codigo valido. No era
+        // inseguro, pero era incorrecto, y la correccion es esta.
         case ast::AstNodeKind::DoWhileStatement:
         case ast::AstNodeKind::WhileStatement:
         {
-            const ExpressionResult condition = analyzeExpression(
-                statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            if (condition.valid && condition.typeKey != "builtin:bool")
+            const bool isDoWhile = statement->kind() == ast::AstNodeKind::DoWhileStatement;
+
+            // La condicion se analiza EXACTAMENTE UNA VEZ, aqui para un while y despues del cuerpo
+            // para un do-while. Una vez y no cero: aunque el punto en que se analiza sea
+            // inalcanzable, el HIR va a recorrer esa sintaxis igual y necesita su binding de tipo.
+            const auto analyzeLoopCondition = [&]()
             {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidCondition,
-                    diagnostics::DiagnosticSeverity::Error,
-                    statement->first()->range(),
-                    "while condition must have type bool");
+                const ExpressionResult condition = analyzeExpression(
+                    statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                if (condition.valid && condition.typeKey != "builtin:bool")
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidCondition,
+                        diagnostics::DiagnosticSeverity::Error,
+                        statement->first()->range(),
+                        isDoWhile
+                            ? "do-while condition must have type bool"
+                            : "while condition must have type bool");
+                }
+            };
+
+            if (!isDoWhile)
+            {
+                analyzeLoopCondition();
             }
 
             const OwnershipFlowSnapshot loopEntry = captureOwnershipFlow();
@@ -1294,6 +1351,34 @@ void ProjectMethodBodyModel::analyzeStatement(
             OwnershipFlowSnapshot noBackEdge;
             noBackEdge.reachable = false;
             const OwnershipFlowSnapshot backEdgeState = joinOwnershipFlows(noBackEdge, backEdgeStates);
+
+            // CC1-212. En un do-while la condicion se evalua DESPUES del cuerpo, sobre el estado que
+            // llega por el back-edge. Eso es lo que hace que la condicion pueda leer una variable
+            // asignada dentro del cuerpo, que es legal y antes se rechazaba.
+            OwnershipFlowSnapshot afterCondition;
+            afterCondition.reachable = false;
+            if (isDoWhile)
+            {
+                if (backEdgeState.reachable)
+                {
+                    restoreOwnershipFlow(backEdgeState);
+                    analyzeLoopCondition();
+                    afterCondition = captureOwnershipFlow();
+                }
+                else
+                {
+                    // Cuerpo que nunca cae ni continua (todas sus salidas retornan o lanzan). La
+                    // condicion es codigo inalcanzable, pero el HIR va a recorrerla igual, asi que
+                    // se analiza en una sonda alcanzable desechable -- el mismo patron que usa
+                    // analyzeBlock para el codigo muerto -- y el estado terminado se restaura.
+                    const OwnershipFlowSnapshot terminated = captureOwnershipFlow();
+                    OwnershipFlowSnapshot probe = backEdgeState;
+                    probe.reachable = true;
+                    restoreOwnershipFlow(probe);
+                    analyzeLoopCondition();
+                    restoreOwnershipFlow(terminated);
+                }
+            }
 
             if (backEdgeState.reachable)
             {
@@ -1343,11 +1428,30 @@ void ProjectMethodBodyModel::analyzeStatement(
                 }
             }
 
-            OwnershipFlowSnapshot postLoop = loopEntry;
-            postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
-            if (backEdgeState.reachable)
+            // CC1-211. AQUI ESTA LA SEGUNDA DIFERENCIA, y es la que importa para definite
+            // assignment: un while puede no ejecutar el cuerpo NI UNA VEZ, asi que su estado
+            // posterior parte de `loopEntry`; un do-while SIEMPRE lo ejecuta, asi que ese camino no
+            // existe y no debe entrar en el join. Como el join de un conjunto MUST es una
+            // interseccion, incluir `loopEntry` en un do-while borraba toda asignacion hecha en el
+            // cuerpo.
+            OwnershipFlowSnapshot postLoop;
+            if (isDoWhile)
             {
-                postLoop = joinOwnershipFlow(postLoop, backEdgeState);
+                postLoop.reachable = false;
+                postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
+                if (afterCondition.reachable)
+                {
+                    postLoop = joinOwnershipFlow(postLoop, afterCondition);
+                }
+            }
+            else
+            {
+                postLoop = loopEntry;
+                postLoop = joinOwnershipFlows(postLoop, loopContext.breakStates);
+                if (backEdgeState.reachable)
+                {
+                    postLoop = joinOwnershipFlow(postLoop, backEdgeState);
+                }
             }
             restoreOwnershipFlow(postLoop);
             break;
@@ -3188,121 +3292,90 @@ std::optional<std::size_t> ProjectMethodBodyModel::constantMemberOfType(
     return std::nullopt;
 }
 
-std::optional<std::int64_t> ProjectMethodBodyModel::foldIntegerConstantExpression(
+// CC1-105. El plegado de constantes enteras ya NO se implementa aqui.
+//
+// Aqui vivia un segundo evaluador de constantes, escrito para las etiquetas de `switch`, que
+// operaba todo sobre `std::int64_t` sin consultar el tipo semantico del valor. Produjo cuatro
+// defectos P1 de una sola vez -- casts que no normalizaban (C-001), division/modulo/shift sin
+// signo evaluados con signo (C-002), minimo-con-signo entre -1 sin proteger (C-003, comportamiento
+// indefinido DENTRO del compilador disparado por texto de entrada) y ancho de shift fijo a 64
+// (C-004) -- y no por descuido: un evaluador que no conoce el tipo del valor que evalua no puede
+// dar la respuesta correcta a ninguna de esas cuatro preguntas.
+//
+// Ahora esto es un adaptador: `ProjectIntegerEvaluator` hace el trabajo, y este modelo solo le
+// presta su resolucion de nombres. Devuelve el par (bits, tipo) para que el llamador pueda
+// normalizar al tipo gobernante antes de comparar.
+std::optional<ProjectIntegerValue> ProjectMethodBodyModel::foldIntegerConstant(
     const ast::AstNode* expression,
-    std::size_t depth,
     std::optional<std::size_t> declaringTypeOrdinal) const
 {
-    // A `const` field whose initializer names another const field recurses. The bound stops a
-    // cycle that the member model would otherwise have to prove impossible.
-    if (expression == nullptr || depth > 32) return std::nullopt;
+    const ConstantMemberResolver resolver(*this);
+    return ProjectIntegerEvaluator(&resolver).evaluate(expression, declaringTypeOrdinal);
+}
 
-    switch (expression->kind())
+std::optional<std::size_t> ProjectMethodBodyModel::ConstantMemberResolver::resolveConstantMember(
+    const ast::AstNode* syntax,
+    std::optional<std::size_t> declaringTypeOrdinal) const
+{
+    // Dos formas llegan aqui y las dos importan: `Color.Red`, y `Messages.Destroy` (un campo
+    // `const int`, que es lo que es todo identificador de mensaje de Win32). El nombre ya lo
+    // resolvio analyzeExpression, asi que esto lee el binding que dejo en vez de hacer lookup una
+    // segunda vez y arriesgar una respuesta distinta.
+    if (syntax == nullptr) return std::nullopt;
+    const MethodNameBinding* binding = model_.recordedNameBinding(syntax);
+    if (binding != nullptr && binding->candidateMemberOrdinals.size() == 1)
     {
-        case ast::AstNodeKind::IntegerLiteralExpression:
-        case ast::AstNodeKind::CharacterLiteralExpression:
-            return static_cast<std::int64_t>(expression->integerValue());
-
-        case ast::AstNodeKind::CastExpression:
-            // The value is unchanged by the cast for every case a label can legally take; the
-            // TYPE was already checked against the governing type by the caller.
-            return foldIntegerConstantExpression(expression->first(), depth + 1, declaringTypeOrdinal);
-
-        case ast::AstNodeKind::UnaryExpression:
-        {
-            const std::optional<std::int64_t> operand =
-                foldIntegerConstantExpression(expression->first(), depth + 1, declaringTypeOrdinal);
-            if (!operand.has_value()) return std::nullopt;
-            switch (expression->tokenKind())
-            {
-                case lexer::TokenKind::Plus: return *operand;
-                case lexer::TokenKind::Minus:
-                    return static_cast<std::int64_t>(
-                        0U - static_cast<std::uint64_t>(*operand));
-                case lexer::TokenKind::Tilde:
-                    return static_cast<std::int64_t>(~static_cast<std::uint64_t>(*operand));
-                default: return std::nullopt;
-            }
-        }
-
-        case ast::AstNodeKind::BinaryExpression:
-        {
-            const std::optional<std::int64_t> left =
-                foldIntegerConstantExpression(expression->first(), depth + 1, declaringTypeOrdinal);
-            if (!left.has_value()) return std::nullopt;
-            const std::optional<std::int64_t> right =
-                foldIntegerConstantExpression(expression->second(), depth + 1, declaringTypeOrdinal);
-            if (!right.has_value()) return std::nullopt;
-            // Arithmetic is done on the unsigned twin so that overflow wraps instead of being
-            // undefined. The result is a bit pattern either way -- the label's declared type has
-            // already been checked, and the backend re-widens it to the governing type.
-            const std::uint64_t a = static_cast<std::uint64_t>(*left);
-            const std::uint64_t b = static_cast<std::uint64_t>(*right);
-            switch (expression->tokenKind())
-            {
-                case lexer::TokenKind::Plus: return static_cast<std::int64_t>(a + b);
-                case lexer::TokenKind::Minus: return static_cast<std::int64_t>(a - b);
-                case lexer::TokenKind::Star: return static_cast<std::int64_t>(a * b);
-                case lexer::TokenKind::Slash:
-                    if (*right == 0) return std::nullopt;
-                    return *left / *right;
-                case lexer::TokenKind::Percent:
-                    if (*right == 0) return std::nullopt;
-                    return *left % *right;
-                case lexer::TokenKind::Amp: return static_cast<std::int64_t>(a & b);
-                case lexer::TokenKind::Pipe: return static_cast<std::int64_t>(a | b);
-                case lexer::TokenKind::Caret: return static_cast<std::int64_t>(a ^ b);
-                case lexer::TokenKind::LessLess:
-                    if (*right < 0 || *right > 63) return std::nullopt;
-                    return static_cast<std::int64_t>(a << static_cast<unsigned>(*right));
-                case lexer::TokenKind::GreaterGreater:
-                    if (*right < 0 || *right > 63) return std::nullopt;
-                    return *left >> static_cast<unsigned>(*right);
-                default: return std::nullopt;
-            }
-        }
-
-        case ast::AstNodeKind::IdentifierExpression:
-        case ast::AstNodeKind::MemberExpression:
-        {
-            // Two shapes land here and both matter: `Color.Red`, and `Messages.Destroy` (a
-            // `const int` field, which is what every Win32 message id is). The name was already
-            // resolved by analyzeExpression, so this reads the binding it left behind rather than
-            // doing lookup a second time and risking a different answer.
-            const MethodNameBinding* binding = recordedNameBinding(expression);
-            std::optional<std::size_t> ordinal;
-            if (binding != nullptr && binding->candidateMemberOrdinals.size() == 1)
-            {
-                ordinal = binding->candidateMemberOrdinals.front();
-            }
-            else if (declaringTypeOrdinal.has_value() &&
-                expression->kind() == ast::AstNodeKind::IdentifierExpression)
-            {
-                // Inside a const field's own initializer there may be no binding to read: build()
-                // analyzes METHOD BODIES BEFORE FIELD INITIALIZERS, so when a case label in a
-                // method folds `Messages.Second`, the initializer `First + 1` has not been through
-                // analyzeExpression yet and its `First` has no recorded binding. Resolving an
-                // unqualified name against the field's own declaring type is exactly the rule that
-                // initializer is written under, and it keeps the Win32 idiom
-                // (`WM_USER + 1`) working without reordering build().
-                ordinal = constantMemberOfType(*declaringTypeOrdinal, expression->text());
-            }
-            if (!ordinal.has_value() || memberModel_ == nullptr ||
-                *ordinal >= memberModel_->members().size())
-            {
-                return std::nullopt;
-            }
-            const ClassMemberSymbol& member = memberModel_->members()[*ordinal];
-            if (member.kind != ClassMemberKind::Field) return std::nullopt;
-            if (member.isEnumConstant) return member.enumConstantValue;
-            if (!member.isConst || member.syntax == nullptr) return std::nullopt;
-            return foldIntegerConstantExpression(
-                member.syntax->first(), depth + 1, member.declaringTypeOrdinal);
-        }
-
-        default:
-            return std::nullopt;
+        return binding->candidateMemberOrdinals.front();
     }
+
+    // Dentro del inicializador de un campo `const` puede no haber binding que leer: build()
+    // analiza los CUERPOS DE METODO ANTES que los inicializadores de campo, asi que cuando una
+    // etiqueta en un cuerpo pliega `Messages.Second`, el inicializador `First + 1` todavia no paso
+    // por analyzeExpression y su `First` no tiene binding. Resolver un nombre sin calificar contra
+    // el propio tipo declarante del campo es exactamente la regla bajo la que ese inicializador
+    // esta escrito, y mantiene vivo el idioma de Win32 (`WM_USER + 1`) sin reordenar build().
+    if (declaringTypeOrdinal.has_value() &&
+        syntax->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        return model_.constantMemberOfType(*declaringTypeOrdinal, syntax->text());
+    }
+    return std::nullopt;
+}
+
+bool ProjectMethodBodyModel::ConstantMemberResolver::describeConstantMember(
+    std::size_t memberOrdinal,
+    bool& isEnumConstant,
+    std::int64_t& enumConstantValue,
+    const ast::AstNode*& initializer,
+    std::string& declaredTypeKey,
+    std::optional<std::size_t>& declaringTypeOrdinal) const
+{
+    if (model_.memberModel_ == nullptr ||
+        memberOrdinal >= model_.memberModel_->members().size())
+    {
+        return false;
+    }
+    const ClassMemberSymbol& member = model_.memberModel_->members()[memberOrdinal];
+    if (member.kind != ClassMemberKind::Field) return false;
+
+    isEnumConstant = member.isEnumConstant;
+    enumConstantValue = member.enumConstantValue;
+    declaredTypeKey = member.declaredTypeKey;
+    declaringTypeOrdinal = member.declaringTypeOrdinal;
+    initializer = member.syntax != nullptr ? member.syntax->first() : nullptr;
+
+    if (isEnumConstant) return true;
+    return member.isConst && initializer != nullptr;
+}
+
+std::string ProjectMethodBodyModel::ConstantMemberResolver::resolveTypeKey(
+    const ast::TypeSyntax* typeSyntax) const
+{
+    if (typeSyntax == nullptr || model_.memberModel_ == nullptr || model_.nameLookup_ == nullptr)
+    {
+        return {};
+    }
+    return model_.memberModel_->canonicalTypeKey(typeSyntax, *model_.nameLookup_);
 }
 
 // `switch (governing) { case a: ... default: ... }`
@@ -3406,8 +3479,8 @@ void ProjectMethodBodyModel::analyzeSwitch(
                 }
             }
 
-            const std::optional<std::int64_t> folded =
-                foldIntegerConstantExpression(label->first(), 0, std::nullopt);
+            const std::optional<ProjectIntegerValue> folded =
+                foldIntegerConstant(label->first(), std::nullopt);
             if (!folded.has_value())
             {
                 diagnostics.report(
@@ -3418,24 +3491,45 @@ void ProjectMethodBodyModel::analyzeSwitch(
                 continue;
             }
 
+            // CC1-106. LA NORMALIZACION VA ANTES DE COMPARAR, y esa es toda la correccion de C-001.
+            //
+            // Una etiqueta se pliega en el tipo de SU PROPIA expresion, que puede ser mas ancho que
+            // el tipo gobernante. El backend, en cambio, materializa la constante con el ancho del
+            // gobernante. Comparar sin normalizar deja que el frontend vea dos numeros distintos
+            // donde LLVM vera dos casos identicos -- y un `switch` de LLVM con un valor de caso
+            // repetido es comportamiento indefinido.
+            //
+            // El caso concreto: gobernante `char`, `case 65:` y `case 321:`. Antes de CC1-100 la
+            // conversion constante aceptaba 321 hacia `char`, el frontend los veia distintos, y el
+            // backend emitia `i8 65` para los dos.
+            const std::int64_t canonical = static_cast<std::int64_t>(
+                governing.valid && ProjectIntegerEvaluator::isIntegerType(governing.typeKey)
+                    ? ProjectIntegerEvaluator::normalize(folded->bits, governing.typeKey)
+                    : folded->bits);
+
             bool duplicate = false;
             for (const std::int64_t seen : seenValues)
             {
-                if (seen != *folded) continue;
+                if (seen != canonical) continue;
                 duplicate = true;
-                // Not a style rule: LLVM's `switch` has undefined behaviour with a repeated case
-                // value, and the second label is unreachable code that reads as live code.
+                // No es una regla de estilo: el `switch` de LLVM tiene comportamiento indefinido con
+                // un valor de caso repetido, y la segunda etiqueta es codigo muerto que se lee como
+                // codigo vivo.
                 diagnostics.report(
                     diagnostics::DiagnosticId::DuplicateSymbol,
                     diagnostics::DiagnosticSeverity::Error,
                     label->range(),
-                    "duplicate case label with value " + std::to_string(*folded));
+                    "duplicate case label with value " + std::to_string(canonical));
                 break;
             }
             if (duplicate) continue;
 
-            seenValues.push_back(*folded);
-            sectionBinding.labelValues.push_back(*folded);
+            // CC1-107. Aguas abajo viaja el valor YA CANONICO, para que HIR, MIR y el backend
+            // reciban exactamente el patron de bits que LLVM materializara. Si el binding llevara el
+            // valor sin normalizar, la comprobacion de duplicados de arriba estaria protegiendo un
+            // numero distinto del que acaba en la instruccion.
+            seenValues.push_back(canonical);
+            sectionBinding.labelValues.push_back(canonical);
         }
 
         binding.sections.push_back(std::move(sectionBinding));
@@ -4086,14 +4180,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         {
             // `condition ? whenTrue : whenFalse`.
             //
-            // The type rule is deliberately narrow in this first round, and it is worth saying
-            // why rather than leaving it to be discovered: the two branches must either have the
-            // SAME type, or both be numeric -- in which case the result is their common numeric
-            // type, the same rule an arithmetic operator uses. C# also walks a conversion lattice
-            // between unrelated reference types to find a common base; that needs the inheritance
-            // model and is not what makes this operator useful. A branch pair this does not
-            // accept gets a diagnostic that says exactly which two types disagreed, never a
-            // silent pick of one of them.
+            // EL TIPO. Las dos ramas deben tener el MISMO tipo, o ser ambas numericas -- en cuyo
+            // caso el resultado es su tipo comun, la misma regla que usa un operador aritmetico.
+            // C# ademas recorre una reticula de conversiones entre tipos referencia no
+            // emparentados para encontrar una base comun; eso necesita el modelo de herencia y no
+            // es lo que hace util al operador. Un par de ramas que esto no acepta recibe un
+            // diagnostico que dice exactamente que dos tipos discreparon, nunca una eleccion
+            // silenciosa de una de ellas.
+            //
+            // EL FLUJO (CC1-203). Las dos ramas se analizan CADA UNA desde el estado que hay tras
+            // la condicion, y el estado posterior es la union de las dos. Antes se analizaban
+            // secuencialmente, y eso hacia que `c ? (x = 1) : 0` diera `x` por definitivamente
+            // asignada: definite assignment es un conjunto MUST cuyo join es una INTERSECCION, y
+            // analizar en secuencia equivale a unir, que es la direccion insegura. El programa no
+            // explotaba porque C7 pone a cero el almacenamiento del local -- devolvia 0. El backend
+            // tapaba el bug del analisis.
             const ExpressionResult condition = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             if (condition.valid && condition.typeKey != "builtin:bool")
@@ -4104,18 +4205,68 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     expression->first()->range(),
                     "the condition of a conditional expression must have type bool");
             }
-            const ExpressionResult whenTrue = analyzeExpression(
-                expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            const ExpressionResult whenFalse = analyzeExpression(
-                expression->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+
+            const OwnershipFlowSnapshot branchEntry = captureOwnershipFlow();
+            ExpressionResult whenTrue;
+            ExpressionResult whenFalse;
+            const OwnershipFlowSnapshot trueState = analyzeBranchState(
+                branchEntry,
+                [&]
+                {
+                    whenTrue = analyzeExpression(
+                        expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                });
+            const OwnershipFlowSnapshot falseState = analyzeBranchState(
+                branchEntry,
+                [&]
+                {
+                    whenFalse = analyzeExpression(
+                        expression->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                });
+            commitBranchJoin(trueState, falseState);
+
             if (!whenTrue.valid || !whenFalse.valid)
             {
                 break;
             }
+
+            // CC1-204. OWNERSHIP DEL RESULTADO. Un ternario cuyas dos ramas devuelven `owned` ES
+            // una expresion que transfiere propiedad, y hasta ahora se perdia: solo se copiaban
+            // typeKey y valid, asi que `raii string r = c ? MakeA() : MakeB();` no podia
+            // reconocerse como inicializacion valida de un RAII.
+            //
+            // La regla es la conservadora y la unica sana: el resultado solo conserva una propiedad
+            // de ownership si AMBAS ramas coinciden en ella. Si difieren, el valor no tiene una
+            // procedencia unica que un checker de lifetime pueda seguir, y decir que si la tiene
+            // seria peor que no decir nada. El origen concreto (local o parametro) solo se propaga
+            // cuando las dos ramas nombran exactamente el mismo, por la misma razon.
+            const auto mergeOwnership = [&]()
+            {
+                if (whenTrue.ownership != whenFalse.ownership) return;
+                result.ownership = whenTrue.ownership;
+                result.ownershipTransfer =
+                    whenTrue.ownershipTransfer && whenFalse.ownershipTransfer;
+                if (whenTrue.ownershipSourceLocalOrdinal == whenFalse.ownershipSourceLocalOrdinal)
+                {
+                    result.ownershipSourceLocalOrdinal = whenTrue.ownershipSourceLocalOrdinal;
+                }
+                if (whenTrue.ownershipSourceParameterOrdinal ==
+                    whenFalse.ownershipSourceParameterOrdinal)
+                {
+                    result.ownershipSourceParameterOrdinal =
+                        whenTrue.ownershipSourceParameterOrdinal;
+                }
+                if (whenTrue.borrowedLocalOrdinal == whenFalse.borrowedLocalOrdinal)
+                {
+                    result.borrowedLocalOrdinal = whenTrue.borrowedLocalOrdinal;
+                }
+            };
+
             if (whenTrue.typeKey == whenFalse.typeKey)
             {
                 result.typeKey = whenTrue.typeKey;
                 result.valid = true;
+                mergeOwnership();
                 break;
             }
             const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
@@ -4124,6 +4275,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 result.typeKey = *common;
                 result.valid = true;
+                // Un tipo numerico comun implica que las dos ramas son valores numericos, que no
+                // llevan ownership. No hay nada que fusionar.
                 break;
             }
             diagnostics.report(
@@ -7871,17 +8024,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    const TokenKind operation = expression->tokenKind();
+
     const ExpressionResult left = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-    const ExpressionResult right = analyzeExpression(
-        expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+
+    // CC1-207 / CC1-208. `&&` y `||` NO evaluan siempre su operando derecho, y el backend ya lo
+    // sabe: lowerShortCircuit emite un salto condicional y un phi de verdad. El analisis, en
+    // cambio, analizaba los dos operandos en secuencia y despues miraba que operador era -- asi que
+    // todo lo que el RHS produjera (una asignacion, un move, un borrow) quedaba registrado como si
+    // hubiera corrido siempre.
+    //
+    // El caso concreto: `c && (x = 1)` daba `x` por definitivamente asignada. Definite assignment
+    // es un conjunto MUST cuyo join es una INTERSECCION, y analizar en secuencia equivale a UNIR,
+    // que es la direccion insegura. Es el mismo defecto que tenia `?:`, y se arregla con la misma
+    // pieza -- no con dos parches locales distintos.
+    //
+    // La rama "RHS no evaluado" es el estado tal cual quedo tras el operando izquierdo: en ese
+    // camino el corto-circuito ya decidio el resultado y nada mas se ejecuta.
+    const bool shortCircuits = operation == TokenKind::AmpAmp || operation == TokenKind::PipePipe;
+    ExpressionResult right;
+    if (shortCircuits)
+    {
+        const OwnershipFlowSnapshot afterLeft = captureOwnershipFlow();
+        const OwnershipFlowSnapshot rhsEvaluated = analyzeBranchState(
+            afterLeft,
+            [&]
+            {
+                right = analyzeExpression(
+                    expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            });
+        commitBranchJoin(rhsEvaluated, afterLeft);
+    }
+    else
+    {
+        right = analyzeExpression(
+            expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+
     if (!left.valid || !right.valid)
     {
         return {};
     }
 
     ExpressionResult result;
-    const TokenKind operation = expression->tokenKind();
 
     const auto isStringLike = [](std::string_view typeKey) noexcept
     {

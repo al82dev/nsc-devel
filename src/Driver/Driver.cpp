@@ -405,7 +405,11 @@ void Driver::printHelp(std::ostream& output)
         << "Stage 53 adds the platform library: time, environment and environment variables, "
         << "filesystem paths and contents, command-line arguments, and directory enumeration. "
         << "Stage 54 adds threading: threads, atomics, mutexes, monitors, semaphores and events. "
-        << "Stage 55 adds process, hardware and diagnostics support.\n";
+        << "Stage 55 adds process, hardware and diagnostics support. "
+        << "Stage 56 completes interop and the type system: C aggregates, FFI aliases, "
+        << "ref/out/in, struct members, definite assignment and the Object type root. "
+        << "Stage 57 completes the language surface: the conditional operator, do-while and "
+        << "switch/case.\n";
 }
 
 ExitCode Driver::printCodeGeneration(
@@ -660,10 +664,16 @@ ExitCode Driver::runExecutableGeneration(
 
 void Driver::printVersion(std::ostream& output)
 {
+    // CC1-000: the build id goes on its own line and is always printed. It is the only field here
+    // that distinguishes two compilers built from different source -- `kCompilerVersion` is the
+    // release identity and stays put -- so a consumer asking "is this the compiler I was just
+    // handed?" reads this line instead of hashing the binary, which is what one had to do on
+    // 2026-08-31.
     output
         << "nsc " << kCompilerVersion
         << " (NativeSharp " << kLanguageVersion
-        << ", stage " << kCompilerStage << ")\n";
+        << ", stage " << kCompilerStage << ")\n"
+        << "build " << kCompilerBuildId << '\n';
 }
 
 void Driver::printTarget(std::ostream& output)

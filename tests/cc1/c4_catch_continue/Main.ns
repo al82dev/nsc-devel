@@ -1,0 +1,121 @@
+// CC1 EH-002 -- `continue` desde el cuerpo de un `catch`.
+//
+// QUE MIDE. La salida NORMAL de un catch cae por el bloque `eh.catch.handled.N`, que llama a
+// __nativesharp_exception_clear y suelta la excepcion actual guardada en TLS. Un `continue` desde
+// ese mismo cuerpo se baja directamente al destino estructurado y NO pasa por ese bloque. Antes de
+// EH-001 la misma clausula terminaba con el TLS limpio o sucio segun cual de sus dos salidas
+// legales tomara el programa. Esta fixture ejerce la salida por `continue` y despues lanza una
+// SEGUNDA excepcion DE OTRO TIPO, que es donde una excepcion vieja que sobreviviera al catch
+// tendria como confundirse con la nueva.
+//
+// HONESTIDAD SOBRE LO QUE SE MIDE. Hoy `__nativesharp_throw` publica la excepcion nueva en el
+// mismo slot TLS antes de levantarla, asi que un slot sucio queda pisado y no hay -- todavia -- un
+// fallo observable desde el lenguaje. Lo que esta fixture fija de verdad es el COMPORTAMIENTO
+// estructurado: que el `continue` va a donde debe, que la segunda excepcion se distingue por tipo
+// de la primera, y que un `break` de un bucle abierto DENTRO del catch no se confunde con salir
+// del catch. La limpieza del TLS en si se mide en el IR, en `nsc.cc1.correctness`, porque desde
+// NativeSharp no hay forma de leer ese slot.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1catchcontinue
+{
+    class Program
+    {
+        // El paso 1 lanza un tipo, el paso 2 lanza otro, el resto no lanza. Los tres caminos
+        // existen para que la clausula que atrapa dependa del tipo y no del orden.
+        private static void Fail(int step)
+        {
+            if (step == 1)
+            {
+                throw new InvalidOperationException();
+            }
+            if (step == 2)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        public static int Main()
+        {
+            int invalidOps = 0;
+            int outOfRange = 0;
+            int completed = 0;
+            int innerBreaks = 0;
+            int step = 0;
+
+            while (step < 4)
+            {
+                step = step + 1;
+                try
+                {
+                    Fail(step);
+                }
+                catch (InvalidOperationException first)
+                {
+                    invalidOps = invalidOps + 1;
+
+                    // Un bucle abierto DENTRO del catch. Su `break` sale solo de este bucle: no
+                    // sale del catch, y por tanto no es una salida del catch. Es el caso que
+                    // distingue "el marco de bucle ya existia cuando empezo el cuerpo" de "el
+                    // marco se empujo dentro del cuerpo".
+                    int inner = 0;
+                    while (true)
+                    {
+                        inner = inner + 1;
+                        if (inner == 3) { break; }
+                    }
+                    if (inner != 3) { return 10; }
+                    innerBreaks = innerBreaks + 1;
+
+                    // Y ahora si: `continue` del bucle EXTERIOR, que si abandona el catch.
+                    continue;
+                }
+                catch (ArgumentOutOfRangeException second)
+                {
+                    outOfRange = outOfRange + 1;
+                    continue;
+                }
+
+                // Solo alcanzable cuando Fail() no lanzo.
+                completed = completed + 1;
+            }
+
+            if (step != 4) { return 1; }
+            if (invalidOps != 1) { return 2; }
+            if (outOfRange != 1) { return 3; }
+            if (completed != 2) { return 4; }
+            if (innerBreaks != 1) { return 5; }
+
+            // Segunda vuelta, con las excepciones en orden inverso: el tipo que se atrapa depende
+            // del filtro RTTI, no de haber sido el primero en lanzarse en el programa.
+            int reverseInvalid = 0;
+            int reverseRange = 0;
+            int reverseStep = 3;
+            while (reverseStep > 0)
+            {
+                reverseStep = reverseStep - 1;
+                try
+                {
+                    if (reverseStep == 2) { throw new ArgumentOutOfRangeException(); }
+                    if (reverseStep == 1) { throw new InvalidOperationException(); }
+                }
+                catch (InvalidOperationException third)
+                {
+                    reverseInvalid = reverseInvalid + 1;
+                    continue;
+                }
+                catch (ArgumentOutOfRangeException fourth)
+                {
+                    reverseRange = reverseRange + 1;
+                    continue;
+                }
+            }
+            if (reverseInvalid != 1) { return 6; }
+            if (reverseRange != 1) { return 7; }
+
+            return 42;
+        }
+    }
+}

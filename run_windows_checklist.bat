@@ -153,6 +153,19 @@ call :run_case "%LC%\l2_dowhile\l2_dowhile.nsproj" l2_dowhile 42 "%FIXLOG%"
 call :run_case "%LC%\l3_switch\l3_switch.nsproj" l3_switch 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
+>> "%SUMMARY%" echo --- milestone CC1 fixtures ---
+
+set "CC=tests\cc1"
+call :run_case "%CC%\c1_constants\c1_constants.nsproj" cc1_c1_constants 42 "%FIXLOG%"
+call :run_case "%CC%\c2_ternary_ownership\c2_ternary_ownership.nsproj" cc1_c2_ternary_ownership 42 "%FIXLOG%"
+call :run_case "%CC%\c3_dowhile_flow\c3_dowhile_flow.nsproj" cc1_c3_dowhile_flow 42 "%FIXLOG%"
+call :run_case "%CC%\c4_catch_continue\c4_catch_continue.nsproj" cc1_c4_catch_continue 42 "%FIXLOG%"
+call :run_case "%CC%\c5_catch_break\c5_catch_break.nsproj" cc1_c5_catch_break 42 "%FIXLOG%"
+call :run_case "%CC%\c6_catch_return\c6_catch_return.nsproj" cc1_c6_catch_return 42 "%FIXLOG%"
+call :run_case "%CC%\c7_finally_switch\c7_finally_switch.nsproj" cc1_c7_finally_switch 42 "%FIXLOG%"
+call :run_case "%CC%\c8_loop_catch_switch\c8_loop_catch_switch.nsproj" cc1_c8_loop_catch_switch 42 "%FIXLOG%"
+
+>> "%SUMMARY%" echo.
 
 REM --- 4. Packaged examples ---------------------------------------------------
 echo [4/5] Ejemplos empaquetados ...

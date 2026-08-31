@@ -1,0 +1,96 @@
+// CC1 -- el analisis semantico de `do...while` modela un do-while, no un while.
+//
+// EL DEFECTO (F-005). El modelo semantico compartia el case de `while` para las dos formas, y el
+// comentario que lo justificaba decia que hacerlo era "meramente conservador porque un do-while
+// ejecuta al menos una vez". Para definite assignment eso era falso, aunque no en la direccion
+// peligrosa:
+//
+//   * El estado posterior al bucle partia de `loopEntry`, es decir, del camino de CERO
+//     ITERACIONES. Como definite assignment es un conjunto MUST y su join es una INTERSECCION,
+//     incluir ese camino borraba toda asignacion hecha en el cuerpo -- y un do-while no TIENE
+//     camino de cero iteraciones.
+//   * La condicion se analizaba ANTES del cuerpo, asi que no podia leer nada asignado dentro de el.
+//
+// Las dos hacian que el compilador RECHAZARA codigo valido. Nunca que aceptara codigo invalido --
+// por eso este defecto es P2 y el de `?:` es P1, aunque el documento de origen los listara igual.
+// Esta fixture es lo que fija que ese rechazo ya no ocurre; su gemelo negativo
+// `cc1-while-flow-still-strict` fija que `while` SIGUE rechazando la misma forma, que si es
+// correcta ahi.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+namespace cc1dowhile
+{
+    class Program
+    {
+        public static int Main()
+        {
+            // El caso central: `total` se asigna SOLO dentro del cuerpo y se lee despues del bucle.
+            // Antes esto no compilaba, porque el join incluia el camino de cero iteraciones.
+            int total;
+            int index = 0;
+            do
+            {
+                total = index * 10;
+                index = index + 1;
+            }
+            while (index < 4);
+            if (total != 30) { return 1; }
+
+            // La condicion lee una variable asignada dentro del cuerpo. Solo es expresable porque
+            // la condicion se analiza DESPUES del cuerpo.
+            int limit;
+            int steps = 0;
+            do
+            {
+                limit = 3;
+                steps = steps + 1;
+            }
+            while (steps < limit);
+            if (steps != 3) { return 2; }
+
+            // La propiedad que hace existir al bucle: cuerpo antes de la primera prueba.
+            int runs = 0;
+            int assignedOnce;
+            do
+            {
+                assignedOnce = 7;
+                runs = runs + 1;
+            }
+            while (false);
+            if (runs != 1) { return 3; }
+            if (assignedOnce != 7) { return 4; }
+
+            // `continue` salta a la condicion, y lo asignado antes del continue sigue contando
+            // despues del bucle solo si TODOS los caminos del back-edge lo asignan.
+            int seen = 0;
+            int marker;
+            int j = 0;
+            do
+            {
+                j = j + 1;
+                marker = j;
+                if (j % 2 == 1) { continue; }
+                seen = seen + 1;
+            }
+            while (j < 6);
+            if (j != 6) { return 5; }
+            if (seen != 3) { return 6; }
+            if (marker != 6) { return 7; }
+
+            // `break` sale sin reevaluar la condicion; su estado tambien entra en el join posterior.
+            int viaBreak;
+            int k = 0;
+            do
+            {
+                k = k + 1;
+                viaBreak = k * 2;
+                if (k == 3) { break; }
+            }
+            while (k < 100);
+            if (k != 3) { return 8; }
+            if (viaBreak != 6) { return 9; }
+
+            return 42;
+        }
+    }
+}

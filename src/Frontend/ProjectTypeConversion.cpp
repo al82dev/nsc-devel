@@ -91,7 +91,24 @@ bool constantFits(std::uint64_t value, bool sourceUnsigned, std::string_view tar
     {
         return value <= std::numeric_limits<std::uint8_t>::max();
     }
-    if (target == "builtin:char" || target == "builtin:ushort")
+    // CC1-100 "char es unsigned de 8 bits". `builtin:char` estaba agrupado aqui con
+    // `builtin:ushort` y aceptaba hasta 65535, mientras TODAS las demas capas del compilador lo
+    // tratan como un byte: `llvmType` lo mapea a i8, la ABI lo pasa como i8, el parser lee un
+    // literal de caracter de un byte y el modelo de layout le da tamano 1.
+    //
+    // La diferencia no era cosmetica. Un `switch` sobre un `char` aceptaba `case 65:` y `case 321:`
+    // como etiquetas distintas -- 321 <= 65535, asi que la conversion constante decia que si -- y
+    // el backend materializaba las dos como `i8 65`, entregandole a LLVM dos valores de caso
+    // identicos en un mismo switch, que es comportamiento indefinido. El chequeo de duplicados
+    // existe precisamente para impedir eso, y esta linea era el agujero debajo.
+    //
+    // El `char` de NativeSharp mide un byte hoy. Cuando pase a UTF-16, esta linea se mueve CON el
+    // layout, no antes.
+    if (target == "builtin:char")
+    {
+        return value <= std::numeric_limits<std::uint8_t>::max();
+    }
+    if (target == "builtin:ushort")
     {
         return value <= std::numeric_limits<std::uint16_t>::max();
     }

@@ -3,11 +3,46 @@ cmake_minimum_required(VERSION 3.25)
 project(
     NativeSharp
     VERSION 0.1.0
-    DESCRIPTION "NativeSharp stage 50 ownership types"
+    DESCRIPTION "NativeSharp stage 57 -- language completion and CC1 correctness"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+
+# CC1-000 "build identity". Ver include/nativesharp/Basic/BuildId.h.in para el porque completo:
+# hasta que esto existio, TODOS los builds de TODAS las stages reportaban `0.1.0-dev55`, asi que
+# dos compiladores distintos eran indistinguibles para cualquier consumidor.
+#
+# El id es el mtime mas nuevo del arbol de fuentes mas el timestamp de este configure, hasheados.
+# Se regenera en cada configure, de modo que no puede quedarse viejo como una constante escrita a
+# mano -- que es precisamente el modo de falla que se esta arreglando.
+#
+# El header generado se llama BuildId.h y NO Version.h a proposito: si se generara con el mismo
+# nombre que el header que ya vive en include/, habria dos archivos con la misma ruta logica y cual
+# gana dependeria del orden de los include paths de cada target. Nombres distintos, cero ambiguedad.
+file(GLOB_RECURSE NSC_IDENTITY_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
+set(NSC_NEWEST_SOURCE_STAMP "00000000000000")
+foreach(nsc_identity_source IN LISTS NSC_IDENTITY_SOURCES)
+    file(TIMESTAMP "${nsc_identity_source}" nsc_identity_stamp "%Y%m%d%H%M%S" UTC)
+    if(nsc_identity_stamp STRGREATER NSC_NEWEST_SOURCE_STAMP)
+        set(NSC_NEWEST_SOURCE_STAMP "${nsc_identity_stamp}")
+    endif()
+endforeach()
+string(TIMESTAMP NSC_CONFIGURE_STAMP "%Y%m%d%H%M%S" UTC)
+string(SHA256 NSC_BUILD_ID_FULL "${NSC_NEWEST_SOURCE_STAMP}-${NSC_CONFIGURE_STAMP}")
+string(SUBSTRING "${NSC_BUILD_ID_FULL}" 0 16 NSC_BUILD_ID)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Basic/BuildId.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/Basic/BuildId.h"
+    @ONLY)
+# Directory-scoped a proposito: aplica a todos los targets declarados despues (que son todos, el
+# primer add_library viene mas abajo), sin tener que tocar las decenas de
+# target_include_directories que ya existen.
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
+message(STATUS "NativeSharp build identity: ${NSC_BUILD_ID} (fuentes ${NSC_NEWEST_SOURCE_STAMP})")
 
 # Organizacion explicita de la salida del build, dentro de ${CMAKE_BINARY_DIR} (el directorio
 # que le pasas a "cmake -B"), no en otro lado y no por accidente de donde CMake decida ponerla
@@ -190,6 +225,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectDestructionModel.cpp
     src/Frontend/ProjectDestructionModelDumper.cpp
     src/Frontend/ProjectTypeConversion.cpp
+    src/Frontend/ProjectIntegerEvaluator.cpp
     src/Frontend/ProjectConversionClassifier.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
@@ -715,6 +751,32 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage57_language_tests)
     add_test(NAME nsc.stage57.language COMMAND nsc_stage57_language_tests)
 
+    # ---------------------------------------------------------------------------------------
+    # Milestone CC1 -- Compiler Correctness & Semantic Consolidation.
+    # Ver MILESTONE_1_TASKS.md para el registro de defectos y el estado de cada tarea.
+    # ---------------------------------------------------------------------------------------
+
+    # CC1-000/CC1-001: identidad del build. Solo necesita el header generado, sin frontend.
+    nsc_add_unit_test(
+        nsc_cc1_build_identity_tests
+        tests/unit/Cc1BuildIdentityTests.cpp
+        nsc.version.identity)
+
+    # CC1-102/CC1-103/CC1-104: el evaluador entero tipado compartido. Unit test puro.
+    nsc_add_unit_test(
+        nsc_cc1_integer_evaluator_tests
+        tests/unit/Cc1IntegerEvaluatorTests.cpp
+        nsc.cc1.integer-evaluator)
+
+    # CC1-002: la suite de fixtures del milestone -- positivas de ejecucion y negativas de
+    # diagnostico. Necesita el driver completo porque compila y enlaza proyectos reales.
+    add_executable(nsc_cc1_correctness_tests tests/unit/Cc1CorrectnessTests.cpp)
+    target_link_libraries(nsc_cc1_correctness_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_cc1_correctness_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_cc1_correctness_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_cc1_correctness_tests)
+    add_test(NAME nsc.cc1.correctness COMMAND nsc_cc1_correctness_tests)
+
     add_executable(nsc_stage46_native_libraries_tests tests/unit/Stage46NativeLibrariesTests.cpp)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage46_native_libraries_tests PRIVATE cxx_std_20)
@@ -1178,10 +1240,18 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
 
+    # CC1-000: el regex incluye ahora la linea `build <id>`. La stage subio a 57, y este test es
+    # justo el que se le habia quedado atras al numero anterior -- por eso se le agrega tambien la
+    # comprobacion del build id: si la generacion de BuildId.h se rompiera, esto se pone rojo aqui
+    # ademas de en nsc.version.identity.
+    #
+    # `[0-9a-f]` y no `.*` a proposito: un @NSC_BUILD_ID@ sin sustituir dejaria la linea vacia, y un
+    # `.*` la aceptaria igual.
     add_test(NAME nsc.version COMMAND nsc --version)
     set_tests_properties(
         nsc.version
-        PROPERTIES PASS_REGULAR_EXPRESSION "nsc 0.1.0-dev55.*NativeSharp 0.1.*stage 55")
+        PROPERTIES PASS_REGULAR_EXPRESSION
+            "nsc 0.1.0-dev55.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

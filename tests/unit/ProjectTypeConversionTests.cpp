@@ -97,5 +97,27 @@ int main()
         !ProjectTypeConversion::commonNumericType("builtin:bool", "builtin:int").has_value(),
         "bool does not participate in numeric common-type selection");
 
+    // CC1-101 "regresiones de rango de char". `builtin:char` es un byte en layout, ABI, LLVM y
+    // parser; aqui aceptaba hasta 65535 porque compartia rama con `ushort`. Un `switch` sobre
+    // `char` con `case 65:` y `case 321:` pasaba el frontend y le entregaba a LLVM dos casos
+    // `i8 65` identicos -- comportamiento indefinido, justo debajo del chequeo de duplicados que
+    // existe para impedirlo. Estas cuatro lineas son lo que impide que vuelva.
+    tests.expect(
+        ProjectTypeConversion::classifyImplicit(
+            "builtin:int", "builtin:char", ProjectIntegerConstant{255, false}).exists(),
+        "255 fits in char");
+    tests.expect(
+        !ProjectTypeConversion::classifyImplicit(
+            "builtin:int", "builtin:char", ProjectIntegerConstant{256, false}).exists(),
+        "256 does not fit in char -- char is one byte");
+    tests.expect(
+        !ProjectTypeConversion::classifyImplicit(
+            "builtin:int", "builtin:char", ProjectIntegerConstant{321, false}).exists(),
+        "321 does not fit in char -- this is the value that used to collide with 65 as i8");
+    tests.expect(
+        ProjectTypeConversion::classifyImplicit(
+            "builtin:int", "builtin:ushort", ProjectIntegerConstant{65535, false}).exists(),
+        "65535 still fits in ushort -- splitting char off did not narrow ushort");
+
     return tests.result();
 }

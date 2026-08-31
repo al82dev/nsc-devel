@@ -1,0 +1,117 @@
+// CC1 EH-002 -- `return` desde el cuerpo de un `catch`.
+//
+// QUE MIDE. La tercera salida estructurada, y la unica que abandona TODAS las clausulas `catch`
+// que la envuelven a la vez, no solo la mas interna. Por eso en el backend `return` no consulta
+// `loopStack_`: sale de todo por definicion.
+//
+// Lo que se fija aqui:
+//   * el valor devuelto desde dentro de un catch es el que sale del metodo, tambien cuando cruza
+//     un `finally` (el backend tiene que derramarlo en el hueco de retorno antes de recorrer los
+//     cleanups, o el valor se pierde en el camino);
+//   * ese `finally` corre, y corre antes de que el metodo devuelva;
+//   * el mismo `return` desde un catch ANIDADO cruza dos `finally`, en orden de dentro a fuera;
+//   * despues de volver de un metodo que salio por esa ruta, un `throw` nuevo se sigue atrapando
+//     con normalidad -- es decir, la salida por `return` no deja el estado de excepcion del hilo
+//     en una forma que estorbe a la siguiente.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1catchreturn
+{
+    class Trace
+    {
+        public static int Steps;
+    }
+
+    class Program
+    {
+        // return desde el catch, cruzando un finally.
+        private static int ReturnThroughFinally(int seed)
+        {
+            try
+            {
+                if (seed > 0)
+                {
+                    throw new InvalidOperationException();
+                }
+                return 100;
+            }
+            catch (InvalidOperationException problem)
+            {
+                return seed * 3;
+            }
+            finally
+            {
+                Trace.Steps = Trace.Steps + 1;
+            }
+        }
+
+        // return desde un catch anidado: cruza el finally interior y luego el exterior.
+        private static int ReturnThroughTwoFinallies(int seed)
+        {
+            try
+            {
+                try
+                {
+                    if (seed > 0)
+                    {
+                        throw new ArgumentOutOfRangeException();
+                    }
+                }
+                catch (ArgumentOutOfRangeException inner)
+                {
+                    return seed + 7;
+                }
+                finally
+                {
+                    Trace.Steps = Trace.Steps + 10;
+                }
+            }
+            finally
+            {
+                Trace.Steps = Trace.Steps + 100;
+            }
+            // Alcanzable con seed <= 0: sin este camino la forma dependeria de que el analisis de
+            // retorno definido dedujera que el cuerpo del try exterior nunca termina normalmente,
+            // que es una propiedad distinta de la que esta fixture quiere medir.
+            return 0;
+        }
+
+        public static int Main()
+        {
+            Trace.Steps = 0;
+
+            if (ReturnThroughFinally(5) != 15) { return 1; }
+            if (Trace.Steps != 1) { return 2; }
+
+            // El camino sin excepcion del mismo metodo, para que el 1 de arriba no pueda venir por
+            // casualidad de la ruta equivocada.
+            if (ReturnThroughFinally(0) != 100) { return 3; }
+            if (Trace.Steps != 2) { return 4; }
+
+            Trace.Steps = 0;
+            if (ReturnThroughTwoFinallies(1) != 8) { return 5; }
+            // 10 del finally interior + 100 del exterior: los dos, una vez cada uno.
+            if (Trace.Steps != 110) { return 6; }
+
+            // Y despues de todo eso, atrapar sigue funcionando, y sigue distinguiendo tipos.
+            int caught = 0;
+            try
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+            catch (InvalidOperationException wrong)
+            {
+                caught = caught + 100;
+            }
+            catch (ArgumentOutOfRangeException right)
+            {
+                caught = caught + 1;
+            }
+            if (caught != 1) { return 7; }
+
+            return 42;
+        }
+    }
+}

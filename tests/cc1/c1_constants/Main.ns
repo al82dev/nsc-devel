@@ -1,0 +1,126 @@
+// CC1 -- contrato de constantes enteras tipadas en etiquetas de `switch`.
+//
+// Antes de este milestone el plegado de etiquetas se hacia sobre `std::int64_t` sin consultar el
+// tipo semantico del valor, y eso produjo cuatro defectos de una sola causa:
+//
+//   C-001  un cast no normalizaba, asi que `(byte)300` valia 300 para el frontend y 44 para el
+//          backend. Dos etiquetas que el frontend veia distintas llegaban a LLVM como el MISMO
+//          valor de caso, que es comportamiento indefinido en su instruccion `switch` -- justo lo
+//          que el chequeo de duplicados existe para impedir.
+//   C-002  `/`, `%` y `>>` se evaluaban con signo aunque el tipo fuera sin signo.
+//   C-003  minimo-con-signo entre -1 no estaba protegido.
+//   C-004  el contador de shift se validaba contra 64 bits, no contra el ancho del operando.
+//
+// Esta fixture ejercita el camino completo: constantes plegadas en etiquetas, un cast que estrecha,
+// y gobernantes de tres anchos distintos (int, byte, char). Lo que mide y una lista de checks no
+// mide es que el VALOR con el que salta el programa sea el mismo que el frontend comparo.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+namespace cc1constants
+{
+    public class Codes
+    {
+        public const int Base = 1 << 4;
+        public const int Next = Base + 1;
+        public const int Masked = 255 & 15;
+        public const int Wide = 1 << 20;
+    }
+
+    class Program
+    {
+        private static int Classify(int code)
+        {
+            switch (code)
+            {
+                case Codes.Base:
+                    return 100;
+                case Codes.Next:
+                    return 200;
+                case Codes.Masked:
+                    return 300;
+                case Codes.Wide:
+                    return 400;
+                case 1 << 6:
+                    return 500;
+                case 100 / 3:
+                    return 600;
+                case 100 % 7:
+                    return 700;
+                case 0 - 5:
+                    return 800;
+                default:
+                    break;
+            }
+            return 0;
+        }
+
+        // Gobernante de OCHO bits. `(byte)300` se normaliza a 44 antes de compararse, asi que el
+        // frontend ve el mismo 44 que el backend va a materializar.
+        private static int ByteCase(byte value)
+        {
+            switch (value)
+            {
+                case (byte)300:
+                    return 44;
+                case 45:
+                    return 45;
+                case 255:
+                    return 255;
+                default:
+                    return 0;
+            }
+        }
+
+        // Gobernante `char`. `char` mide un byte: 'A' es 65 y no hay forma de escribir una etiqueta
+        // de 321 que colisione con ella, porque la conversion constante ya no la acepta.
+        private static int CharCase(char letter)
+        {
+            switch (letter)
+            {
+                case 'a':
+                    return 1;
+                case 65:
+                    return 2;
+                case 255:
+                    return 3;
+                default:
+                    return 0;
+            }
+        }
+
+        public static int Main()
+        {
+            if (Classify(16) != 100) { return 1; }
+            if (Classify(17) != 200) { return 2; }
+            if (Classify(15) != 300) { return 3; }
+            if (Classify(1048576) != 400) { return 4; }
+            if (Classify(64) != 500) { return 5; }
+            if (Classify(33) != 600) { return 6; }
+            if (Classify(2) != 700) { return 7; }
+            if (Classify(0 - 5) != 800) { return 8; }
+            if (Classify(999) != 0) { return 9; }
+
+            // El caso que produjo el defecto: el frontend comparo 44, y aqui se comprueba que el
+            // programa efectivamente salta en 44 y no en 300.
+            byte narrowed = 44;
+            if (ByteCase(narrowed) != 44) { return 10; }
+            byte other = 45;
+            if (ByteCase(other) != 45) { return 11; }
+            byte top = 255;
+            if (ByteCase(top) != 255) { return 12; }
+            byte miss = 7;
+            if (ByteCase(miss) != 0) { return 13; }
+
+            char lower = 'a';
+            if (CharCase(lower) != 1) { return 14; }
+            char upper = 'A';
+            if (CharCase(upper) != 2) { return 15; }
+            char high = 255;
+            if (CharCase(high) != 3) { return 16; }
+            char miss2 = 'z';
+            if (CharCase(miss2) != 0) { return 17; }
+
+            return 42;
+        }
+    }
+}

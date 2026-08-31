@@ -1,0 +1,117 @@
+// CC1 EH-002 -- `break` desde el cuerpo de un `catch`, con y sin `finally` de por medio.
+//
+// QUE MIDE. El gemelo de c4 para la otra salida estructurada. `break` y `continue` no comparten
+// destino ni profundidad de funclet en el backend -- `LoopTargets` guarda las dos por separado,
+// justamente porque un `switch` trae su propio destino de `break` pero HEREDA el `continue` del
+// bucle que lo envuelve. Medir solo una de las dos dejaria la otra sin cubrir.
+//
+// Lo que se fija aqui:
+//   * un `break` desde el catch abandona el bucle exterior y no una vuelta mas;
+//   * el `finally` del mismo `try` corre en esa salida, y corre UNA vez;
+//   * un `break` de un `switch` abierto DENTRO del catch se queda dentro del catch, y el resto
+//     del cuerpo del catch sigue corriendo despues de el.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1catchbreak
+{
+    class Program
+    {
+        private static void Fail(int step)
+        {
+            if (step == 2)
+            {
+                throw new InvalidOperationException();
+            }
+        }
+
+        public static int Main()
+        {
+            // 1. break simple desde el catch.
+            int rounds = 0;
+            int caught = 0;
+            int step = 0;
+            while (step < 9)
+            {
+                step = step + 1;
+                rounds = rounds + 1;
+                try
+                {
+                    Fail(step);
+                }
+                catch (InvalidOperationException problem)
+                {
+                    caught = caught + 1;
+                    break;
+                }
+            }
+            if (rounds != 2) { return 1; }
+            if (caught != 1) { return 2; }
+            if (step != 2) { return 3; }
+
+            // 2. break desde el catch con `finally`: la salida estructurada tiene que arrastrar el
+            //    cleanup obligatorio, no saltarselo.
+            int finallyRuns = 0;
+            int secondRounds = 0;
+            int secondStep = 0;
+            while (secondStep < 9)
+            {
+                secondStep = secondStep + 1;
+                secondRounds = secondRounds + 1;
+                try
+                {
+                    Fail(secondStep);
+                }
+                catch (InvalidOperationException problem)
+                {
+                    break;
+                }
+                finally
+                {
+                    finallyRuns = finallyRuns + 1;
+                }
+            }
+            if (secondRounds != 2) { return 4; }
+            // Dos vueltas => dos ejecuciones del finally: la normal de la vuelta 1 y la de la
+            // salida por break de la vuelta 2. Ni una menos (break saltandose el cleanup) ni una
+            // mas (el cleanup corriendo dos veces en la misma salida).
+            if (finallyRuns != 2) { return 5; }
+
+            // 3. break de un `switch` abierto DENTRO del catch. No abandona el catch: lo que sigue
+            //    en el cuerpo del catch tiene que ejecutarse igual.
+            int afterSwitch = 0;
+            int marked = 0;
+            int thirdStep = 0;
+            while (thirdStep < 4)
+            {
+                thirdStep = thirdStep + 1;
+                try
+                {
+                    throw new InvalidOperationException();
+                }
+                catch (InvalidOperationException problem)
+                {
+                    switch (thirdStep)
+                    {
+                        case 1:
+                            marked = marked + 1;
+                            break;
+                        case 2:
+                            marked = marked + 10;
+                            break;
+                        default:
+                            marked = marked + 100;
+                            break;
+                    }
+                    afterSwitch = afterSwitch + 1;
+                }
+            }
+            if (thirdStep != 4) { return 6; }
+            if (marked != 211) { return 7; }
+            if (afterSwitch != 4) { return 8; }
+
+            return 42;
+        }
+    }
+}

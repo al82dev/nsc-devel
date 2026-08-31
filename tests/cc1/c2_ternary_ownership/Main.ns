@@ -1,0 +1,70 @@
+// CC1 -- el operador condicional conserva la semantica de ownership de sus ramas.
+//
+// EL DEFECTO (F-002). Al combinar las dos ramas de un `?:`, el modelo semantico solo copiaba
+// `typeKey` y `valid`. Todo lo demas del ExpressionResult -- `ownership`, `ownershipTransfer`, el
+// origen del owner -- se perdia. La consecuencia visible es que esta linea NO COMPILABA:
+//
+//     raii string chosen = flag ? (prefix + "A") : (prefix + "B");
+//
+// Las dos ramas son concatenaciones, y una concatenacion SI devuelve un owner con transferencia.
+// Pero el ternario entregaba un resultado sin ownership, y la comprobacion de inicializacion de un
+// `raii` -- que exige `new`, `move`, `null` o una expresion que transfiera propiedad -- lo
+// rechazaba. Un hueco semantico, no una corrupcion de memoria: el compilador rechazaba codigo
+// correcto y no habia forma de escribirlo de otra manera dentro de una expresion.
+//
+// LA REGLA QUE ESTA FIXTURE FIJA: el resultado conserva una propiedad de ownership solo si AMBAS
+// ramas coinciden en ella. Es la unica respuesta sana -- si difieren, el valor no tiene una
+// procedencia unica que se pueda seguir, y afirmar que si la tiene seria peor que no afirmar nada.
+// El caso mixto esta en el negativo `cc1-ternary-ownership-mixed` de la suite.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+namespace cc1ownership
+{
+    class Program
+    {
+        private static int Length(string value)
+        {
+            return value.Length;
+        }
+
+        public static int Main()
+        {
+            string prefix = "ns-";
+
+            // La linea que no compilaba. Las dos ramas transfieren propiedad, asi que el ternario
+            // completo transfiere propiedad y puede inicializar un owner.
+            bool takeFirst = 2 + 2 == 4;
+            raii string chosen = takeFirst ? (prefix + "alpha") : (prefix + "beta");
+            if (Length(chosen) != 8) { return 1; }
+
+            bool takeSecond = 2 + 2 == 5;
+            raii string other = takeSecond ? (prefix + "alpha") : (prefix + "bb");
+            if (Length(other) != 5) { return 2; }
+
+            // Anidado: la rama falsa es a su vez un ternario, y las dos hojas siguen transfiriendo.
+            int pick = 3;
+            raii string nested = pick == 1
+                ? (prefix + "one")
+                : (pick == 2 ? (prefix + "two") : (prefix + "three"));
+            if (Length(nested) != 8) { return 3; }
+
+            // Condicion no constante, para que nada se pliegue y las dos ramas sigan vivas en el
+            // backend. El owner que gana tiene que destruirse exactamente una vez al salir de
+            // scope: si el ternario perdiera la transferencia, o la duplicara, esto es lo que lo
+            // haria visible al ejecutar.
+            int counter = 0;
+            int index = 0;
+            while (index < 3)
+            {
+                raii string loopOwner = index % 2 == 0
+                    ? (prefix + "even")
+                    : (prefix + "odd");
+                counter = counter + Length(loopOwner);
+                index = index + 1;
+            }
+            if (counter != 20) { return 4; }
+
+            return 42;
+        }
+    }
+}
