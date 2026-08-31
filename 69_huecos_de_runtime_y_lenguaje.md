@@ -5,7 +5,9 @@
 **Método:** medido contra el árbol, no de memoria. Los huecos de lenguaje salen de
 `include/nativesharp/Lexer/TokenKind.h` (la lista completa de keywords y de puntuación); los de
 runtime, de leer las APIs públicas de `lib/NativeSharp.Core*`.
-**Alcance:** el compilador y su biblioteca. Bindings y ports son de otras instancias.
+**Alcance:** el compilador y su biblioteca — `src/`, `include/`, `lib/`, `tests/`. **Nada más.**
+Qué hacer con estos huecos desde fuera —qué bindear, qué envolver, qué construir encima— no se
+decide aquí y no está en este documento.
 
 ---
 
@@ -113,88 +115,20 @@ payload de red.
 
 ---
 
-## 7. Preguntas de alcance que se contestaron midiendo
+## 7. La única pieza de esto que es del compilador: COM
 
-### 7.1 ¿Se puede hacer NativeForms, un clon de WinForms sobre Win32?
+Todo lo demás de esta lista se resuelve dentro de `lib/NativeSharp.Core*` con lo que el lenguaje ya
+sabe hacer. **COM no.** Consumir una interfaz COM son vtables, `IUnknown`, `HRESULT` y
+`QueryInterface`, y `extern C` no alcanza: hoy se resuelve generando thunks fuera del compilador,
+y el lenguaje no lo expresa.
 
-**Sí, y las piezas difíciles ya están.** `extern C from "user32.dll"` con identidad de import por
-triple; `extern C delegate` como puntero a función crudo **con thunk cacheado por objetivo**
-—crítico, porque `SetWindowLongPtr` y `UnhookWindowsHookEx` comparan punteros—; el **borde de
-excepciones** en callbacks, sin el cual un `throw` dentro de un `WndProc` desenrolla el message
-pump de Windows; structs con layout exacto, arrays embebidos y unions para `MSG`, `WNDCLASSEXW`,
-`PAINTSTRUCT`, `INPUT`; clases con `virtual`/`override`/`abstract`, interfaces, propiedades,
-`event`.
+Es el único punto de esta lista donde el compilador tiene que crecer, y es la inversión de mayor
+retorno que le queda: una fundación COM desbloquea de una sola vez todo lo que en Windows vive
+detrás de esa ABI.
 
-**Lo que falta antes de escribir la primera línea:** `switch` (§2), `Encoding` UTF-16 (§4), y sobre
-todo **la decisión de ownership del árbol de controles**. En WinForms `Controls` es dueño de los
-hijos, `Parent` es un back-pointer, y cada handler captura referencias cruzadas. Con single-owner
-y sin `shared` el diseño tiene que quedar fijado así: **el `Form` posee todo el árbol; `Parent` y
-todo lo demás es `borrowed`; los handlers son métodos del propio `Form`.** Es una restricción real,
-no un bloqueo, pero decidirla después de tener treinta controles escritos sería carísimo.
-
-**La decisión de arquitectura:** HWND real por control más comctl32 (teclado, foco, IME,
-accesibilidad, DPI y scrollbars gratis, look nativo por definición) contra el modelo FLTK de un
-solo HWND y todo dibujado a mano (control total, cero comctl32, y reimplementar todo eso). Para
-algo que se llame clon de WinForms, la respuesta es la primera con owner-draw sólo donde haga
-falta: WinForms mismo es exactamente eso, y FLTK eligió la segunda y por eso se ve como FLTK.
-
-**Nota de alcance:** los docs `01`/`06` fijan Win32/OpenGL/Vulkan/DirectX y "nunca aplicaciones de
-soporte comercial". Un toolkit GUI no es engine, y para herramientas de gamedev —editor de niveles,
-empaquetador de assets— se justifica solo. Conviene declararlo explícito para que no se cuele scope
-de app de negocio por la puerta de atrás.
-
-### 7.2 Audio e imagen internos
-
-**Vale la pena nativo**, barato y sin dependencias: parser/writer de **WAV/RIFF**; **BMP, TGA, PPM,
-QOI**; **PNG** en cuanto haya inflate y CRC32 (§5); y un **mezclador propio** (float32, N voces,
-resample lineal) — el mixer es tuyo por definición, ninguna librería lo va a dar como se quiere.
-
-**No vale la pena nativo:** JPEG (un decoder decente son 2–3k líneas), MP3, OGG. `stb_image`,
-`dr_mp3`/`minimp3` y `stb_vorbis` son single-header C, que es justo lo que nsbind consume.
-
-**Backend de audio:** `waveOut` es C plano y funciona hoy sin COM, pero con 30–60 ms de latencia,
-inaceptable para un juego. WASAPI y XAudio2 son COM. OpenAL es la salida C plana buena.
-
-### 7.3 Skia
-
-Skia es C++ y su API C oficial (`sk_*.h`) está incompleta. SkiaSharp funciona porque existe
-`libSkiaSharp`, que expone una API C plana grande — **eso sí es bindeable**, sin COM ni shims.
-
-El problema no es técnico sino de costo: compilar Skia pide depot_tools/GN/Ninja, el binario ronda
-8–12 MB, la superficie de API es enorme, y ata al versionado de un tercero gigante. Para un
-lenguaje ligero de juegos es desproporcionado.
-
-Alternativas con ~90% del valor y una fracción del costo: **NanoVG** (dos archivos C, dibuja
-vectores sobre el contexto GL que de todos modos va a existir) si lo que se quiere es un canvas 2D
-para UI y juegos 2D; **Blend2D** (API C, MIT, CPU) si se quiere calidad de impresión;
-**stb_truetype** para texto. Skia sólo si hace falta su ecosistema completo.
-
-### 7.4 GDI+ / System.Drawing — el dato que cambia el cálculo
-
-**GDI+ no es COM.** `gdiplus.dll` exporta una API C plana (`gdiplusflat.h`: `GdiplusStartup`,
-`GdipCreateBitmapFromFile`, `GdipDrawImageRectI`, `GdipDrawString`…). El `System.Drawing` de .NET es
-literalmente un wrapper sobre esa API.
-
-Es decir: **consumible hoy, con `extern C from "gdiplus.dll"`, sin una sola primitiva nueva del
-compilador.** Da de un jalón cargar y guardar BMP/JPEG/PNG/GIF/TIFF, líneas, curvas, paths y texto
-con antialiasing, y un `NativeSharp.Drawing` con `Bitmap`/`Graphics`/`Pen`/`Brush`/`Font`/`Color`/
-`Rectangle`. Sin aceleración por hardware y más lento que Direct2D, y Microsoft lo trata como
-legacy, pero está en todo Windows desde XP. Necesita `GdiplusStartup`/`Shutdown` envueltos en RAII,
-y encaja perfecto con el `OnPaint` de NativeForms.
-
-**Es la ruta más corta a imagen y dibujo 2D, y ya está disponible.**
-
-### 7.5 Imagen nativa de Windows = WIC
-
-`IWICImagingFactory` **sí es COM**. Decodifica y codifica PNG/JPEG/GIF/TIFF/BMP/DDS/HEIF (WebP en
-Win11), convierte formatos de pixel, escala y lee metadatos, sin un solo tercero.
-
-Y aquí está la conexión que importa: **la fundación COM que ya hace falta para DXGI/D3D11
-desbloquea de golpe WIC + WASAPI + XAudio2 + Media Foundation + DirectWrite + Direct2D.** Es
-probablemente la inversión de compilador con mayor retorno de toda esta lista, y el único punto
-donde el compilador tiene que crecer para nada de esto.
-
----
+Qué haría falta, a grandes rasgos: representar una vtable de interfaz COM como tipo, la convención
+de llamada por slot con `this` primero, `HRESULT` como tipo de retorno con su regla de error, y
+`GUID` como literal y como valor — que es también por lo que `Guid` aparece en §4.
 
 ## 8. Orden sugerido
 
@@ -202,9 +136,7 @@ donde el compilador tiene que crecer para nada de esto.
 2. Texto y números: `ToString(float/double)`, `Parse`/`TryParse`, `StringBuilder`, `Console`.
 3. `Encoding` + `Convert`/Base64 + `BitConverter` + `Span<T>` + `Guid`.
 4. `Stream` / `BinaryReader` / `ReadAllBytes`.
-5. **Inflate/Deflate + CRC32** → PNG, zip, gzip de un golpe.
-6. GDI+ flat → `NativeSharp.Drawing` (ya posible, retorno inmediato).
-7. Winsock2 + WinHTTP.
-8. **Fundación COM** → D3D11, WIC, WASAPI, DirectWrite.
-9. NativeForms sobre 1 + 3 + 6.
-10. NanoVG o Blend2D antes de considerar Skia.
+5. **Inflate/Deflate + CRC32.**
+6. Winsock2 + WinHTTP.
+7. Serialización.
+8. **Fundación COM** (§7).
