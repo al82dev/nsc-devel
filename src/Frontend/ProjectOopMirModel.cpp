@@ -801,6 +801,13 @@ bool ProjectOopMirModel::build(
         function.body = lowerNode(source.body.get(), error);
         if (function.body == nullptr)
         {
+            // Say WHERE. An internal error from this pipeline used to arrive as a bare sentence --
+            // "Stage 34 cannot find Stage 29 allocation plan" and nothing else: no file, no line,
+            // no method. In a 300-line source file that turned a one-line bug into nine steps of
+            // manual bisection, which is exactly what happened porting objloader, and the cost is
+            // paid again by every internal error after it. The mangled name is the cheapest thing
+            // here that actually narrows the search, and it is always available.
+            error += "\n  while lowering '" + source.mangledName + "'";
             return false;
         }
         if (!function.isLambda)
@@ -813,6 +820,10 @@ bool ProjectOopMirModel::build(
         auto value = lowerNode(source.value.get(), error);
         if (value == nullptr)
         {
+            // Same reason as the function body above: a field initializer that fails to lower
+            // otherwise reports nothing at all about which field it was.
+            error += "\n  while lowering the field initializer of member #" +
+                std::to_string(source.memberOrdinal);
             return false;
         }
         fieldInitializers_.push_back(ProjectOopMirFieldInitializer{

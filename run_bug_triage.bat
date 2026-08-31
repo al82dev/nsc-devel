@@ -73,6 +73,10 @@ type "%REPORT%"
 echo ---------------------------------------------------------------
 echo.
 echo Detalle en: %TLOG%
+
+REM Salir distinto de cero si queda alguno vivo, para que run_windows_checklist.bat pueda
+REM encadenarlo y no haya que leer el reporte a ojo.
+if %ALIVE% GTR 0 exit /b 1
 exit /b 0
 
 REM ===========================================================================

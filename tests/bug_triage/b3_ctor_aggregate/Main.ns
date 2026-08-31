@@ -9,20 +9,11 @@
 // The call site passes the aggregate by value ([16 x i8]) while the constructor's own
 // signature declares that parameter as `ptr`. Measured scope: 8 bytes passes; 12, 16, 20 and
 // 64 fail -- anything that does not fit in a register. It is SPECIFIC TO CONSTRUCTORS: the
-// same value into a static method and into an instance method both lower fine, and both are
-// controls below.
+// same value into a static method, an instance method and a property setter all lower fine,
+// and all three are controls below.
 //
 // Impact is not cosmetic: it deforms the public API of every type naturally built from a
 // Matrix or a Vector4, which in a game framework is most of the interesting constructors.
-//
-// NOTE on the first version of this fixture: it also had a property setter as a third
-// control, because the original report lists setters as working. That version did not
-// compile, for an unrelated reason worth writing down:
-//
-//   error: set-only properties are not part of the Stage 38 subset
-//
-// A property here needs a getter as well. The control was dropped rather than grown, so that
-// this file measures one thing. The set-only restriction is its own small language gap.
 //
 // Expected exit code when healthy: 42.
 namespace bugtriage
@@ -37,9 +28,16 @@ namespace bugtriage
 
     public class Controls
     {
+        public float stored;
+
         public static float StaticTakes(Big16 value) { return value.a; }
 
         public float InstanceTakes(Big16 value) { return value.a; }
+
+        public Big16 Setter
+        {
+            set { stored = value.a; }
+        }
     }
 
     public class TakesBigInConstructor
@@ -55,15 +53,18 @@ namespace bugtriage
         {
             Big16 v = { 42.0f, 1.0f, 2.0f, 3.0f };
 
-            // Controls: the two shapes that are known to lower correctly.
+            // Controls: the three shapes that are known to lower correctly.
             if (Controls.StaticTakes(v) != 42.0f) { return 1; }
 
             Controls ctrl = new Controls();
             if (ctrl.InstanceTakes(v) != 42.0f) { return 2; }
 
+            ctrl.Setter = v;
+            if (ctrl.stored != 42.0f) { return 3; }
+
             // The bug.
             TakesBigInConstructor sut = new TakesBigInConstructor(v);
-            if (sut.seen != 42.0f) { return 3; }
+            if (sut.seen != 42.0f) { return 4; }
 
             return 42;
         }

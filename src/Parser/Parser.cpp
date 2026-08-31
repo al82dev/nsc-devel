@@ -2478,13 +2478,26 @@ ast::AstNode* Parser::parsePropertyTail(
     }
     expect(TokenKind::RightBrace, "'}'");
 
-    if (!sawGet)
+    // Set-only properties: permitidas con cuerpo explicito, rechazadas si son automaticas.
+    //
+    // Antes se rechazaban TODAS con "set-only properties are not part of the Stage 38 subset",
+    // que es una limitacion sin razon detras: un setter con cuerpo es un metodo con nombre de
+    // propiedad, y no necesita un getter para tener sentido. La forma aparecio sola al escribir
+    // un test que usaba `public Big16 Setter { set { ... } }` como control, y no habia nada que
+    // justificara el rechazo.
+    //
+    // Lo que si sigue siendo un error es la forma AUTOMATICA, `int X { set; }`, y por la misma
+    // razon que en C#: una propiedad automatica es un campo de respaldo mas sus accesores, y un
+    // campo que solo se puede escribir y nunca leer no es nada. C# dice "auto-implemented
+    // properties must have a get accessor"; esto dice lo mismo con sus palabras.
+    if (!sawGet && sawAutomatic)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             property->range(),
-            "set-only properties are not part of the Stage 38 subset");
+            "an automatic property must have a get accessor; a set-only property needs an "
+            "explicit setter body, because there is nothing to read its backing field with");
     }
     if (sawAutomatic && sawExplicit)
     {

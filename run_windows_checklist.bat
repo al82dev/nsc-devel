@@ -62,7 +62,7 @@ REM --- 1. Build + install -----------------------------------------------------
 if /I "%MODE%"=="norebuild" goto :skip_build
 if /I "%MODE%"=="full" goto :full_build
 
-echo [1/4] Build incremental e instalacion en %PREFIX% ...
+echo [1/5] Build incremental e instalacion en %PREFIX% ...
 cmake --build "%BUILDDIR%" --parallel > "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
 cmake --install "%BUILDDIR%" --prefix "%PREFIX%" >> "%LOGDIR%\01_build.log" 2>&1
@@ -71,7 +71,7 @@ if errorlevel 1 goto :build_failed
 goto :after_build
 
 :full_build
-echo [1/4] Reconstruccion completa e instalacion en %PREFIX% ...
+echo [1/5] Reconstruccion completa e instalacion en %PREFIX% ...
 call "%ROOT%\build-all.bat" > "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
 >> "%SUMMARY%" echo [ OK ] compiler build + install
@@ -85,7 +85,7 @@ echo         FALLO -- ver _logs\01_build.log
 goto :report
 
 :skip_build
-echo [1/4] Build omitido.
+echo [1/5] Build omitido.
 >> "%SUMMARY%" echo [SKIP] compiler build ^(norebuild^)
 
 :after_build
@@ -93,7 +93,7 @@ if /I "%MODE%"=="build" goto :report
 
 REM --- 2. ctest ---------------------------------------------------------------
 if /I "%MODE%"=="quick" goto :skip_ctest
-echo [2/4] Corriendo ctest ...
+echo [2/5] Corriendo ctest ...
 ctest --test-dir "%BUILDDIR%" --output-on-failure > "%LOGDIR%\02_ctest.log" 2>&1
 if errorlevel 1 (
     echo         FALLO -- ver _logs\02_ctest.log
@@ -104,14 +104,14 @@ if errorlevel 1 (
 goto :after_ctest
 
 :skip_ctest
-echo [2/4] ctest omitido ^(modo quick^).
+echo [2/5] ctest omitido ^(modo quick^).
 >> "%SUMMARY%" echo [SKIP] ctest ^(modo quick -- correr el modo completo antes de cerrar la ronda^)
 
 :after_ctest
 >> "%SUMMARY%" echo.
 
 REM --- 3. Interop contract fixtures -------------------------------------------
-echo [3/4] Fixtures de contrato de interop ...
+echo [3/5] Fixtures de contrato de interop ...
 >> "%SUMMARY%" echo --- interop contract fixtures ---
 
 set "IC=tests\interop_contract"
@@ -136,7 +136,7 @@ call :build_only "%IC%\c1_13_two_libraries_same_symbol\c1_13_two_libraries_same_
 >> "%SUMMARY%" echo.
 
 REM --- 4. Packaged examples ---------------------------------------------------
-echo [4/4] Ejemplos empaquetados ...
+echo [4/5] Ejemplos empaquetados ...
 >> "%SUMMARY%" echo --- packaged examples ---
 
 call :run_case "examples\project_stage56_c1\Stage56C1InteropCompletion.nsproj" project_stage56_c1 0 "%EXLOG%"
@@ -144,6 +144,24 @@ call :run_case "examples\project_stage56_c2c4\Stage56C2C4LanguageCompletion.nspr
 call :run_case "examples\project_stage56_c6\Stage56C6StructMath.nsproj" project_stage56_c6 0 "%EXLOG%"
 call :run_case "examples\project_stage56_c7\project_stage56_c7.nsproj" project_stage56_c7 0 "%EXLOG%"
 call :run_case "examples\project_stage56_c8\project_stage56_c8.nsproj" project_stage56_c8 0 "%EXLOG%"
+
+REM --- 5. Regresion de bugs reportados ----------------------------------------
+REM Solo en el modo completo. Los ocho casos de tests\bug_triage tambien estan bajo ctest
+REM (nsc.stage56.bugfix), pero ahi solo se verifica que COMPILAN: en Windows no hay Wine, asi
+REM que la mitad de ejecucion la corre este script. Dos de esos bugs eran silenciosos -- el
+REM programa compilaba y devolvia el valor equivocado -- y para esos, ejecutar es la unica
+REM verificacion que existe.
+if /I "%MODE%"=="quick" goto :report
+if /I "%MODE%"=="build" goto :report
+>> "%SUMMARY%" echo.
+>> "%SUMMARY%" echo --- regresion de bugs reportados ---
+echo [5/5] Regresion de bugs reportados ...
+call "%ROOT%\run_bug_triage.bat" > "%LOGDIR%\05_triage_run.log" 2>&1
+if errorlevel 1 (
+    call :fail "bug_triage" "hay bugs vivos -- ver _logs\TRIAGE.txt"
+) else (
+    call :ok "bug_triage" "16/16, cero vivos"
+)
 
 :report
 >> "%SUMMARY%" echo.
