@@ -11,9 +11,17 @@
 // it is specifically the delegate type that does not cross. Within a SINGLE project, a
 // delegate declared in one namespace is usable from another with `using`.
 //
-// This one is not merely cosmetic: it dictated the layout of the whole bindings tree. Each
-// library had to become a single project with the generated code in a `Raw/` subdirectory,
-// instead of a generated project plus a wrapper project.
+// MEDIDO: NO ES UN BUG DEL COMPILADOR. Only PUBLIC types cross a module boundary -- the same
+// rule as C# -- and the reported delegate had no accessibility modifier, so it was internal,
+// while the classes and structs beside it were written `public` and crossed fine. The asymmetry
+// was in the declarations. `public extern C delegate` parses and works, and this fixture uses
+// it.
+//
+// What WAS a real defect is the diagnostic: "unknown type name" for a type that exists and is
+// simply not public sends the reader hunting for a typo that is not there, and it is what made
+// this look like a compiler limitation for a whole round. It now says the type is declared in a
+// referenced project but is not public. The bindings tree was restructured into one project per
+// library because of this misreading; that restructuring is not required.
 //
 // Controls below (struct and class across the same boundary) run first, so a broken fixture
 // is distinguishable from the bug.

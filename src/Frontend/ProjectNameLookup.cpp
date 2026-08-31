@@ -938,12 +938,67 @@ void ProjectNameLookup::bindTypeSyntax(
         if (binding.candidateTypeOrdinals.empty())
         {
             binding.kind = TypeNameBindingKind::Unresolved;
-            diagnostics.report(
-                diagnostics::DiagnosticId::UnknownTypeName,
-                diagnostics::DiagnosticSeverity::Error,
-                syntax->range(),
-                "unknown type name '" + syntax->baseName() + "' in module '" +
-                    std::string(unit.moduleName()) + "'");
+            // Before saying the name is unknown, check whether it EXISTS in a referenced project
+            // and is simply not public. Reporting "unknown type name" for a type that is right
+            // there sends the reader hunting for a typo that does not exist.
+            //
+            // This is exactly how the "an extern C delegate does not cross a ProjectReference"
+            // report happened. The generated binding declared
+            //
+            //     extern C delegate long WNDPROC(nint, uint, ulong, long);
+            //
+            // with no accessibility modifier -- so, internal -- while the classes and structs
+            // beside it were written `public` and crossed the boundary without trouble. The
+            // asymmetry was in the declarations, not in the compiler: only public types cross a
+            // module boundary, the same rule as C#, and `public extern C delegate` parses and
+            // works. The diagnostic is what hid it, so the diagnostic is what gets fixed.
+            std::string internalMatch;
+            if (effectiveProjectOrdinal < modules_.size() && modules_[effectiveProjectOrdinal] != nullptr)
+            {
+                const std::string& wanted = syntax->baseName();
+                const std::string suffix = "." + wanted;
+                for (const std::size_t visibleOrdinal :
+                     modules_[effectiveProjectOrdinal]->visibleProjectOrdinals())
+                {
+                    if (visibleOrdinal >= typesByModule_.size()) continue;
+                    for (const auto& entry : typesByModule_[visibleOrdinal])
+                    {
+                        if (entry.second >= namedTypes_.size()) continue;
+                        if (namedTypes_[entry.second].accessibility == NamedTypeAccessibility::Public)
+                        {
+                            continue;
+                        }
+                        if (entry.first == wanted ||
+                            (entry.first.size() > suffix.size() &&
+                             entry.first.compare(
+                                 entry.first.size() - suffix.size(), suffix.size(), suffix) == 0))
+                        {
+                            internalMatch = entry.first;
+                            break;
+                        }
+                    }
+                    if (!internalMatch.empty()) break;
+                }
+            }
+            if (!internalMatch.empty())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::UnknownTypeName,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax->range(),
+                    "type '" + internalMatch + "' is declared in a referenced project but is not "
+                    "public, so it does not cross the project boundary; declare it 'public' "
+                    "(module '" + std::string(unit.moduleName()) + "')");
+            }
+            else
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::UnknownTypeName,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax->range(),
+                    "unknown type name '" + syntax->baseName() + "' in module '" +
+                        std::string(unit.moduleName()) + "'");
+            }
         }
         else if (binding.candidateTypeOrdinals.size() == 1)
         {

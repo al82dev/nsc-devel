@@ -1700,11 +1700,34 @@ const ObjectFieldLayout* ProjectOopMirModel::fieldLayout(std::size_t memberOrdin
 
 const ObjectAllocationPlan* ProjectOopMirModel::allocationPlan(std::size_t constructionOrdinal) const noexcept
 {
-    if (objectLayoutModel_ == nullptr || constructionOrdinal >= objectLayoutModel_->allocationPlans().size())
+    if (objectLayoutModel_ == nullptr)
     {
         return nullptr;
     }
-    return &objectLayoutModel_->allocationPlans()[constructionOrdinal];
+    // The plan vector is NOT indexed by construction ordinal, and treating it as if it were was
+    // the bug. buildAllocationPlans() walks every construction but APPENDS a plan only for the
+    // ones that actually allocate: it skips an unresolved construction, and -- since C6 -- every
+    // STRUCT construction, which has no class layout and needs no plan at all because there is
+    // nothing to allocate.
+    //
+    // So `allocationPlans()[ordinal]` was only correct while every construction produced a plan.
+    // One skipped construction shifted every later plan down by one, and from there the lookup
+    // either ran off the end -- the reported "Stage 34 cannot find Stage 29 allocation plan", an
+    // internal error with no file and no line, which cost nine bisection steps to isolate when it
+    // showed up in a 300-line file -- or, in the cases that stayed in range, silently returned
+    // SOMEBODY ELSE'S plan and would have allocated a class with the wrong size and alignment.
+    // The loud half is what got reported; the silent half is the reason this is worth fixing at
+    // the root instead of widening the bounds check.
+    //
+    // Each plan already records the ordinal it belongs to, so match on it.
+    for (const ObjectAllocationPlan& plan : objectLayoutModel_->allocationPlans())
+    {
+        if (plan.constructionOrdinal == constructionOrdinal)
+        {
+            return &plan;
+        }
+    }
+    return nullptr;
 }
 
 // C2.1 "fixed arrays": the size and alignment of one element, for every element type this

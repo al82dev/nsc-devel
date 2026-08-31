@@ -1,0 +1,89 @@
+NativeSharp -- 68 Triage de bugs y cuatro arreglos (b2, b3, b5, b8)
+Fecha: 2026-08-30
+Doc de la ronda: 68_triage_de_bugs_y_cuatro_fixes.md
+
+MODIFICADOS (3)
+---------------
+src/LLVM/ProjectOopLlvmLowerer.cpp                          [b3]
+    lowerValueConstruction  -- wrapIndirectArgument sobre cada argumento de origen (C6, struct)
+    lowerConstruction       -- wrapIndirectArgument sobre cada argumento de origen (clase, heap)
+    Motivo: el call site del constructor pasaba el agregado por valor mientras su firma,
+    construida por declareFunctions a traves de abiParameterType, declaraba ptr. El verifier
+    de LLVM rechazaba el modulo. Los cuatro lowerers de llamada ya hacian este wrap; el
+    constructor era el unico camino que no pasaba por el mapeo del ABI de Win64.
+
+src/Frontend/ProjectOopMirModel.cpp                         [b5]
+    ProjectOopMirModel::allocationPlan -- busca el plan por su constructionOrdinal en vez de
+    indexar el vector por ese ordinal.
+    Motivo: buildAllocationPlans() agrega un plan solo para las construcciones que asignan y
+    se salta las de struct (desde C6) y las no resueltas, asi que el indice del vector deja de
+    coincidir con el ordinal en cuanto hay un salto. Rompia ruidoso al salirse de rango y
+    SILENCIOSO al quedarse dentro, devolviendo el plan de otra construccion.
+
+src/Frontend/ProjectMethodBodyModel.cpp                     [b8, b2]
+    isShift / shiftResultType (helpers nuevos) + rama de shift en analyzeBinary  [b8]
+    Motivo: el tipo de un shift es el del operando IZQUIERDO promovido, no el tipo comun de
+    los dos. commonNumericType caia a la tabla de preferencias y devolvia builtin:double para
+    1u << 28 y para ushort >> 8.
+
+    nullLiteralOperand en la resolucion de operadores del usuario                [b2]
+    Motivo: `left == null` dentro de operator== resolvia al propio operador y recursaba hasta
+    el stack overflow. DESVIACION DELIBERADA de C#: alli tambien recursa, pero C# tiene
+    `is null` y `(object)x` como salida y NativeSharp no. Revertible en tres lineas.
+
+NUEVOS -- arnes de triage (19)
+------------------------------
+run_bug_triage.bat
+tests/bug_triage/README.md
+tests/bug_triage/b1_this_copy/Main.ns
+tests/bug_triage/b1_this_copy/b1_this_copy.nsproj
+tests/bug_triage/b2_operator_null/Main.ns
+tests/bug_triage/b2_operator_null/b2_operator_null.nsproj
+tests/bug_triage/b3_ctor_aggregate/Main.ns
+tests/bug_triage/b3_ctor_aggregate/b3_ctor_aggregate.nsproj
+tests/bug_triage/b4_this_by_value/Main.ns
+tests/bug_triage/b4_this_by_value/b4_this_by_value.nsproj
+tests/bug_triage/b5_ctor_owned_field_array/Main.ns
+tests/bug_triage/b5_ctor_owned_field_array/b5_ctor_owned_field_array.nsproj
+tests/bug_triage/b6_delegate_projectref/lib/Callback.ns
+tests/bug_triage/b6_delegate_projectref/lib/BugTriageDelegateLib.nsproj
+tests/bug_triage/b6_delegate_projectref/app/Main.ns
+tests/bug_triage/b6_delegate_projectref/app/b6_delegate_projectref.nsproj
+tests/bug_triage/b7_duplicate_extern_c/Main.ns
+tests/bug_triage/b7_duplicate_extern_c/b7_duplicate_extern_c.nsproj
+tests/bug_triage/b8_shift_folding/Main.ns
+tests/bug_triage/b8_shift_folding/b8_shift_folding.nsproj
+
+NUEVOS -- checklist de ejecucion real en Windows (1)
+---------------------------------------------------
+run_windows_checklist.bat
+    Reconstruye, instala, corre ctest, y despues compila Y EJECUTA cada fixture de
+    tests/interop_contract y cada ejemplo de Stage 56 a -O0 y -O2 comparando el exit code
+    real contra el contrato. Cierra la mitad de ejecucion que las rondas en sandbox
+    reportaban como "Wine unavailable -- execution skipped".
+
+NUEVOS -- documentacion (2)
+---------------------------
+68_triage_de_bugs_y_cuatro_fixes.md
+FIX_B3_CHANGED_FILES.txt
+
+NO TOCADOS
+----------
+Ningun archivo existente del repo fue modificado, salvo el unico listado arriba.
+Los _logs/ que dejan los dos .bat son salida, no fuente.
+
+VERIFICACION -- PENDIENTE
+-------------------------
+run_windows_checklist.bat   ctest debe seguir en 237/237 y la matriz en 32/32
+run_bug_triage.bat          b2, b3, b5 y b8 deben pasar a ARREGLADO
+
+Si algo se rompe, orden de sospecha: b8 (toca el tipo de toda expresion de shift), luego b2
+(cambia a que liga una comparacion), y al final b5 y b3 (locales, sin cambio de semantica).
+
+SIGUEN VIVOS, para la proxima tanda
+-----------------------------------
+b1  T local = this;  guarda el puntero            (silencioso, el mas grave que queda)
+b4  this como argumento por valor
+b6  extern C delegate no cruza ProjectReference
++   ubicacion (archivo y linea) en los errores internos de Stage 34
++   propiedades solo-set, hallazgo nuevo del triage

@@ -1,10 +1,10 @@
 // BUG TRIAGE 6 -- referenced project half: declares the `extern C delegate` type.
 //
-// Classes and structs declared here DO resolve from the referencing project. The delegate
-// type is the one that does not cross the module boundary. See ../app/Main.ns.
+// The delegate is declared `public` here, and that turned out to be the whole story -- see
+// ../app/Main.ns. The originally reported version had no accessibility modifier at all.
 namespace bugtriage.raw
 {
-    extern C delegate int Adder(int left, int right);
+    public extern C delegate int Adder(int left, int right);
 
     public struct Pair
     {

@@ -1436,7 +1436,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 node->integerValue = *capture;
                 return node;
             }
-            return makeNode(ProjectOopHirNodeKind::ThisValue, expression, resultType);
+            // `this` inside a STRUCT method is the receiver's ADDRESS -- struct receivers are
+            // passed by address and memory-homed since Stage 40.2 -- so in a VALUE context the
+            // expression `this` has to load through it, exactly the way a `ref` parameter does a
+            // few cases below. Handing back the bare ThisValue there was two reported bugs at
+            // once, and they are the same line:
+            //
+            //   * `Get(this)` passed the POINTER where the callee's signature wanted the
+            //     aggregate; the LLVM verifier rejected the module. Loud.
+            //   * `S8 self = this;` stored the pointer BITS into the local's own bytes -- for an
+            //     8-byte struct the carrier is `i64`, so `store ptr` fit and nothing complained --
+            //     and every later field read decoded those bits as the struct's fields. Silent,
+            //     no diagnostic, passes the verifier, and it is the one that reaches production.
+            //     It was also, bitterly, the workaround people wrote for the loud one.
+            //
+            // Nothing changes for a CLASS: `this` IS the reference, and its value in both
+            // contexts is that pointer. Nothing changes in an ADDRESS context either -- and every
+            // existing consumer of ThisValue is one: `lowerReceiver` lowers a struct receiver
+            // with addressContext = true (so `this.field` and `this.Method()` keep taking the
+            // address), and the constructor-initializer and instance-initializer helpers build
+            // ThisValue directly as a receiver.
+            auto self = makeNode(ProjectOopHirNodeKind::ThisValue, expression, resultType);
+            if (addressContext || !isStructValueType(resultType))
+            {
+                return self;
+            }
+            auto load = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, resultType);
+            load->children.push_back(std::move(self));
+            return load;
         }
 
         case ast::AstNodeKind::IdentifierExpression:

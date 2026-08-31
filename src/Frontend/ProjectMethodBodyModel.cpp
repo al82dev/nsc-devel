@@ -63,6 +63,25 @@ bool isArithmetic(TokenKind kind) noexcept
         kind == TokenKind::GreaterGreater;
 }
 
+bool isShift(TokenKind kind) noexcept
+{
+    return kind == TokenKind::LessLess || kind == TokenKind::GreaterGreater;
+}
+
+// The promoted type of a shift's LEFT operand, which is also the type of the whole shift.
+// Anything narrower than `int` promotes to `int`; everything else keeps its own type. This is
+// the C and C# rule, and it is deliberately NOT a function of the right operand -- see the shift
+// branch in analyzeBinary for what happened when it was.
+std::string shiftResultType(std::string_view leftTypeKey)
+{
+    if (leftTypeKey == "builtin:byte" || leftTypeKey == "builtin:char" ||
+        leftTypeKey == "builtin:short" || leftTypeKey == "builtin:ushort")
+    {
+        return "builtin:int";
+    }
+    return std::string(leftTypeKey);
+}
+
 std::string stage38OperatorMethodName(TokenKind kind, std::size_t arity)
 {
     switch (kind)
@@ -7467,7 +7486,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     }
 
     const std::string operatorName = stage38OperatorMethodName(operation, 2);
-    if (!operatorName.empty())
+    // A comparison against the `null` LITERAL does not bind to a user-defined operator. Without
+    // this, the guard every `operator ==` has to open with was itself the recursion:
+    //
+    //     public static bool operator ==(Node left, Node right)
+    //     {
+    //         if (left == null) { return right == null; }   // <- calls op_Equality(left, null)
+    //
+    // The static type of `left` is `Node`, so `left == null` resolved to the user operator like
+    // any other comparison, and the emitted IR called op_Equality with a null second argument --
+    // five recursive calls in a six-line operator. It compiled clean and died of stack overflow.
+    //
+    // This is a DELIBERATE DEVIATION from C#, and worth saying so plainly: in real C# that line
+    // does recurse, and the escapes are `(object)left == null` or `left is null`. NativeSharp has
+    // no `is null`, and until C8 had no `object` to cast to either, so the trap had no exit at
+    // all. It is a bad default for a language without a GC and without those escapes -- the cost
+    // of the deviation is that a user operator can no longer observe a comparison against the
+    // null literal, which is a thing nobody wants; the benefit is that the obvious, correct-
+    // looking guard stops being a hang. A comparison against null is reference identity, and
+    // that is what it now lowers to.
+    const bool nullLiteralOperand =
+        (expression->first() != nullptr &&
+         expression->first()->kind() == ast::AstNodeKind::NullLiteralExpression) ||
+        (expression->second() != nullptr &&
+         expression->second()->kind() == ast::AstNodeKind::NullLiteralExpression);
+    if (!operatorName.empty() && !nullLiteralOperand)
     {
         std::vector<std::size_t> candidates = stage38OperatorCandidates(
             operatorName, left.typeKey, right.typeKey);
@@ -7530,6 +7573,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "comparison operands have incompatible Stage 34 types");
+        return result;
+    }
+
+    // A shift is not a symmetric arithmetic operator, and treating it as one was the bug. Its
+    // result type is the LEFT operand's promoted type; the right operand only has to be integral
+    // and contributes nothing to the type.
+    //
+    // Running it through commonNumericType asked instead for a type BOTH sides convert to. For
+    // `1u << 28` -- uint on the left, an int literal on the right -- there is no integral type
+    // both reach, so the search fell through to the preference table and landed on the first
+    // entry both do reach: `builtin:double`. The result was that the perfectly ordinary line
+    //
+    //     uint v = 1u << 28;
+    //
+    // failed with "cannot initialize local 'v' of type 'builtin:uint' from 'builtin:double'",
+    // a diagnostic that gives no hint whatsoever where the double came from. The same wrong rule
+    // is why a shift over a type narrower than int failed as well: `(int)(someUshort >> 8)` has
+    // to be int, the promoted left type, not something common to a ushort and an int literal.
+    if (isShift(operation))
+    {
+        if (!ProjectTypeConversion::isIntegral(left.typeKey) ||
+            !ProjectTypeConversion::isIntegral(right.typeKey) ||
+            left.typeKey == "builtin:bool" || right.typeKey == "builtin:bool")
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "shift operands must be integral in Stage 34");
+            return result;
+        }
+        result.typeKey = shiftResultType(left.typeKey);
+        result.valid = true;
         return result;
     }
 

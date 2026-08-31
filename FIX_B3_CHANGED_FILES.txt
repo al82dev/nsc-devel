@@ -1,0 +1,59 @@
+NativeSharp -- 68 Triage de bugs y fix b3 (ctor con agregado por valor)
+Fecha: 2026-08-30
+Doc de la ronda: 68_triage_de_bugs_y_fix_b3.md
+
+MODIFICADOS (1)
+---------------
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    lowerValueConstruction  -- wrapIndirectArgument sobre cada argumento de origen (C6, struct)
+    lowerConstruction       -- wrapIndirectArgument sobre cada argumento de origen (clase, heap)
+    Motivo: el call site del constructor pasaba el agregado por valor mientras su firma,
+    construida por declareFunctions a traves de abiParameterType, declaraba ptr. El verifier
+    de LLVM rechazaba el modulo. Los cuatro lowerers de llamada ya hacian este wrap; el
+    constructor era el unico camino que no pasaba por el mapeo del ABI de Win64.
+
+NUEVOS -- arnes de triage (19)
+------------------------------
+run_bug_triage.bat
+tests/bug_triage/README.md
+tests/bug_triage/b1_this_copy/Main.ns
+tests/bug_triage/b1_this_copy/b1_this_copy.nsproj
+tests/bug_triage/b2_operator_null/Main.ns
+tests/bug_triage/b2_operator_null/b2_operator_null.nsproj
+tests/bug_triage/b3_ctor_aggregate/Main.ns
+tests/bug_triage/b3_ctor_aggregate/b3_ctor_aggregate.nsproj
+tests/bug_triage/b4_this_by_value/Main.ns
+tests/bug_triage/b4_this_by_value/b4_this_by_value.nsproj
+tests/bug_triage/b5_ctor_owned_field_array/Main.ns
+tests/bug_triage/b5_ctor_owned_field_array/b5_ctor_owned_field_array.nsproj
+tests/bug_triage/b6_delegate_projectref/lib/Callback.ns
+tests/bug_triage/b6_delegate_projectref/lib/BugTriageDelegateLib.nsproj
+tests/bug_triage/b6_delegate_projectref/app/Main.ns
+tests/bug_triage/b6_delegate_projectref/app/b6_delegate_projectref.nsproj
+tests/bug_triage/b7_duplicate_extern_c/Main.ns
+tests/bug_triage/b7_duplicate_extern_c/b7_duplicate_extern_c.nsproj
+tests/bug_triage/b8_shift_folding/Main.ns
+tests/bug_triage/b8_shift_folding/b8_shift_folding.nsproj
+
+NUEVOS -- checklist de ejecucion real en Windows (1)
+---------------------------------------------------
+run_windows_checklist.bat
+    Reconstruye, instala, corre ctest, y despues compila Y EJECUTA cada fixture de
+    tests/interop_contract y cada ejemplo de Stage 56 a -O0 y -O2 comparando el exit code
+    real contra el contrato. Cierra la mitad de ejecucion que las rondas en sandbox
+    reportaban como "Wine unavailable -- execution skipped".
+
+NUEVOS -- documentacion (2)
+---------------------------
+68_triage_de_bugs_y_fix_b3.md
+FIX_B3_CHANGED_FILES.txt
+
+NO TOCADOS
+----------
+Ningun archivo existente del repo fue modificado, salvo el unico listado arriba.
+Los _logs/ que dejan los dos .bat son salida, no fuente.
+
+VERIFICACION -- PENDIENTE
+-------------------------
+run_windows_checklist.bat   ctest debe seguir en 237/237 y la matriz en 32/32
+run_bug_triage.bat          b3 debe pasar de VIVO a ARREGLADO

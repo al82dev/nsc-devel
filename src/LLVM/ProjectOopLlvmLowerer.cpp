@@ -7089,6 +7089,21 @@ private:
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
             if (value == nullptr) return nullptr;
+            // Win64 aggregate ABI: a struct whose size is not 1/2/4/8 travels as a POINTER to a
+            // caller-owned per-call copy, never by value. The constructor's SIGNATURE already
+            // carries that mapping -- declareFunctions builds every parameter through
+            // abiParameterType -- so the call site has to agree, exactly like the four ordinary
+            // call lowerers already do.
+            //
+            // Missing this was the bug: the call site loaded `[16 x i8]` and passed it by value
+            // while the constructor declared `ptr`, and the LLVM verifier rejected the whole
+            // module with "Call parameter type does not match function signature!". Measured
+            // scope was every aggregate that does not fit in a register -- 12, 16, 20 and 64
+            // bytes fail, 8 passes -- and it was SPECIFIC to constructors, because a constructor
+            // is the one call shape that did not go through the mapping. It deformed the public
+            // API of every type naturally built from a Matrix or a Vector4.
+            value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
+            if (value == nullptr) return nullptr;
             evaluatedArguments.push_back(value);
         }
 
@@ -7228,6 +7243,21 @@ private:
         for (std::size_t index = 0; index < node->argumentCount; ++index)
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            if (value == nullptr) return nullptr;
+            // Win64 aggregate ABI: a struct whose size is not 1/2/4/8 travels as a POINTER to a
+            // caller-owned per-call copy, never by value. The constructor's SIGNATURE already
+            // carries that mapping -- declareFunctions builds every parameter through
+            // abiParameterType -- so the call site has to agree, exactly like the four ordinary
+            // call lowerers already do.
+            //
+            // Missing this was the bug: the call site loaded `[16 x i8]` and passed it by value
+            // while the constructor declared `ptr`, and the LLVM verifier rejected the whole
+            // module with "Call parameter type does not match function signature!". Measured
+            // scope was every aggregate that does not fit in a register -- 12, 16, 20 and 64
+            // bytes fail, 8 passes -- and it was SPECIFIC to constructors, because a constructor
+            // is the one call shape that did not go through the mapping. It deformed the public
+            // API of every type naturally built from a Matrix or a Vector4.
+            value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
             if (value == nullptr) return nullptr;
             evaluatedArguments.push_back(value);
         }
