@@ -34,11 +34,15 @@ semáforo, evento, scoped lock), `Path`/`File`/`Directory`, `Process`/`Stopwatch
 
 Verificado contra `TokenKind.h`. **No existe el token, no sólo la característica.**
 
+**Actualización 2026-08-31.** Los tres primeros de esta tabla **ya se cerraron**: `?:` y `do…while`
+en la ronda del doc 71 (verde en Windows real), `switch`/`case` en la del doc 72. Se dejan tachados
+en vez de borrados porque el resto del documento razona sobre ellos.
+
 | Falta | Consecuencia concreta |
 |---|---|
-| **`switch` / `case`** | Un `WndProc` es una cadena `if / else if` de cuarenta ramas, sin jump table. Es *el* patrón de Win32. `default` sí existe como keyword y se puede reusar. |
-| **`?:`** | No existe el token `?` en absoluto. Tampoco `??` ni `?.`. |
-| **`do…while`**, `goto` | No existen. |
+| ~~**`switch` / `case`**~~ **HECHO — doc 72** | Era *el* patrón de Win32: un `WndProc` era una cadena `if / else if` de cuarenta ramas, sin jump table. Ahora baja a una `LLVMBuildSwitch`. `default` se reusó como se preveía. |
+| ~~**`?:`**~~ **HECHO — doc 71** | El token `?` ya existe. `??` y `?.` siguen sin existir: ahora el obstáculo es de diseño, no de lexer. |
+| ~~**`do…while`**~~ **HECHO — doc 71** · `goto` | `goto` no existe y no está planeado. |
 | `params` | Sin argumentos variádicos idiomáticos. |
 | Interpolación de strings | Cada línea de texto se arma a mano. Ver §3. |
 | `sbyte` | No está en la lista de builtins. |
@@ -51,8 +55,9 @@ Verificado contra `TokenKind.h`. **No existe el token, no sólo la característi
 | Propiedades sólo-`set` | Hueco conocido; el motivo real está en §6.3 del doc 68. |
 | `x += y` en lowering OOP | Reportado roto contra C1–C5 por el port de saru. **Hay que re-medirlo contra C8** antes de darlo por vivo. |
 
-**`switch` y `?:` son los dos que están deformando código real ahora mismo**, y son los más
-baratos de la lista.
+~~**`switch` y `?:` son los dos que están deformando código real ahora mismo**, y son los más
+baratos de la lista.~~ — cerrados. Lo más caro que queda de esta tabla es la interpolación de
+strings, y depende de §3 (texto y números), no del lenguaje.
 
 ---
 
@@ -132,7 +137,7 @@ de llamada por slot con `this` primero, `HRESULT` como tipo de retorno con su re
 
 ## 8. Orden sugerido
 
-1. `switch` + `?:` + `do…while`, y re-medir `x += y`.
+1. ~~`switch` + `?:` + `do…while`~~ **hecho** (docs 71 y 72); falta re-medir `x += y`.
 2. Texto y números: `ToString(float/double)`, `Parse`/`TryParse`, `StringBuilder`, `Console`.
 3. `Encoding` + `Convert`/Base64 + `BitConverter` + `Span<T>` + `Guid`.
 4. `Stream` / `BinaryReader` / `ReadAllBytes`.

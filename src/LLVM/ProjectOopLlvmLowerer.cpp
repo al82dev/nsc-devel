@@ -315,11 +315,18 @@ private:
         Cleanup
     };
 
+    // One frame per construct that `break` or `continue` can name. A loop pushes a frame whose two
+    // targets are its own; a SWITCH pushes one whose break target is the switch end and whose
+    // CONTINUE TARGET IS INHERITED from the enclosing loop, so `continue` inside a case continues
+    // that loop. That inheritance is why the funclet depth is stored twice: the break target sits
+    // at the depth of the construct that owns it, while the continue target sits at the depth of a
+    // loop that may be several funclets further out.
     struct LoopTargets final
     {
         LLVMBasicBlockRef breakTarget = nullptr;
         LLVMBasicBlockRef continueTarget = nullptr;
         std::size_t funcletDepth = 0;
+        std::size_t continueFuncletDepth = 0;
     };
 
     struct FuncletContext final
@@ -3239,9 +3246,17 @@ private:
         if (isBreak || isContinue)
         {
             if (loopStack_.empty()) return fail(error, "Stage 45.10 loop exit has no LLVM loop target");
-            targetFuncletDepth = loopStack_.back().funcletDepth;
+            // A switch frame carries its own break target but the ENCLOSING LOOP's continue
+            // target, so the two sides can sit at different funclet depths. Picking the wrong one
+            // here would make a break unwind funclets it must not, or a continue skip funclets it
+            // must.
+            targetFuncletDepth = isBreak
+                ? loopStack_.back().funcletDepth
+                : loopStack_.back().continueFuncletDepth;
             if (targetFuncletDepth > funcletStack_.size())
                 return fail(error, "Stage 45.10 loop target has an invalid funclet depth");
+            if (isContinue && loopStack_.back().continueTarget == nullptr)
+                return fail(error, "continue reached the backend with no enclosing loop target");
         }
 
         LLVMValueRef returnValue = nullptr;
@@ -3609,6 +3624,10 @@ private:
                 return lowerDoWhile(node, error);
             case frontend::ProjectOopMirNodeKind::For:
                 return lowerFor(node, error);
+            case frontend::ProjectOopMirNodeKind::Switch:
+                return lowerSwitch(node, error);
+            case frontend::ProjectOopMirNodeKind::SwitchSection:
+                return fail(error, "a switch section must be lowered by its enclosing switch");
 
             default:
             {
@@ -3999,7 +4018,7 @@ private:
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
         LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
-        loopStack_.push_back({endBlock, condBlock, funcletStack_.size()});
+        loopStack_.push_back({endBlock, condBlock, funcletStack_.size(), funcletStack_.size()});
         LLVMPositionBuilderAtEnd(builder_, bodyBlock);
         const bool ok = lowerStatement(node->children[1].get(), error);
         if (ok && !terminated()) LLVMBuildBr(builder_, condBlock);
@@ -4023,7 +4042,7 @@ private:
         LLVMBasicBlockRef endBlock = appendBlock("dowhile.end");
         LLVMBuildBr(builder_, bodyBlock);
         LLVMPositionBuilderAtEnd(builder_, bodyBlock);
-        loopStack_.push_back({endBlock, condBlock, funcletStack_.size()});
+        loopStack_.push_back({endBlock, condBlock, funcletStack_.size(), funcletStack_.size()});
         const bool ok = lowerStatement(node->children[1].get(), error);
         if (ok && !terminated()) LLVMBuildBr(builder_, condBlock);
         loopStack_.pop_back();
@@ -4032,6 +4051,108 @@ private:
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
         LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
+        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        return true;
+    }
+
+    // `switch (governing) { case a: ... }` lowers to ONE `LLVMBuildSwitch`, which is what the
+    // whole construct is for: LLVM turns that into a jump table when the label values are dense
+    // enough and into a balanced decision tree when they are not. The chain of `else if` it
+    // replaces is n comparisons in the worst case no matter what the values look like, and a
+    // WndProc is forty of them.
+    //
+    // NO FALL-THROUGH, so the block layout is flat: each case block ends by branching to
+    // switch.end -- exactly as if the section had written `break` -- rather than falling into the
+    // next section's block. `break` inside a section produces the same branch through the ordinary
+    // structured-exit path, which is why `break` stays legal and means what it always meant.
+    //
+    // WHEN THERE IS NO `default`, the switch's default target is switch.end: an unmatched value
+    // skips the whole statement.
+    bool lowerSwitch(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.empty()) return fail(error, "switch MIR is incomplete");
+
+        LLVMValueRef governing = lowerExpression(node->children[0].get(), error);
+        if (governing == nullptr) return false;
+        const std::string& governingTypeKey = node->children[0]->typeKey;
+        LLVMTypeRef governingType = llvmType(governingTypeKey, error);
+        if (governingType == nullptr) return false;
+        // The frontend already rejected anything that is not integral or an enum, and llvmType maps
+        // exactly those two to an integer carrier. Restating the rule here -- in type-key terms
+        // rather than by probing the LLVM type -- keeps the backend honest if that ever changes,
+        // and needs no new entry in LlvmCApi.h.
+        if (!isEnumTypeKey(governingTypeKey) &&
+            !frontend::ProjectTypeConversion::isIntegral(governingTypeKey))
+        {
+            return fail(error, "switch governing value is not integral or an enum: " + governingTypeKey);
+        }
+        // An enum lowers to i32 and its members are signed; every other governing type answers for
+        // itself. Same rule the constant-field lowering uses, so a `case` constant and the value it
+        // is compared against can never disagree about sign.
+        const LLVMBool signExtend =
+            (isEnumTypeKey(governingTypeKey) || isSignedInteger(governingTypeKey)) ? 1 : 0;
+
+        const std::size_t sectionCount = node->children.size() - 1;
+        std::vector<LLVMBasicBlockRef> sectionBlocks;
+        sectionBlocks.reserve(sectionCount);
+        for (std::size_t index = 0; index < sectionCount; ++index)
+        {
+            sectionBlocks.push_back(appendBlock("switch.case"));
+        }
+        LLVMBasicBlockRef endBlock = appendBlock("switch.end");
+
+        LLVMBasicBlockRef defaultBlock = endBlock;
+        unsigned caseCount = 0;
+        for (std::size_t index = 0; index < sectionCount; ++index)
+        {
+            const frontend::ProjectOopMirNode* section = node->children[index + 1].get();
+            if (section == nullptr || section->kind != frontend::ProjectOopMirNodeKind::SwitchSection)
+                return fail(error, "a switch MIR child is not a section");
+            if (section->switchHasDefault) defaultBlock = sectionBlocks[index];
+            caseCount += static_cast<unsigned>(section->switchLabels.size());
+        }
+
+        LLVMValueRef instruction = LLVMBuildSwitch(builder_, governing, defaultBlock, caseCount);
+        for (std::size_t index = 0; index < sectionCount; ++index)
+        {
+            const frontend::ProjectOopMirNode* section = node->children[index + 1].get();
+            for (const std::int64_t label : section->switchLabels)
+            {
+                LLVMAddCase(
+                    instruction,
+                    LLVMConstInt(governingType, static_cast<unsigned long long>(label), signExtend),
+                    sectionBlocks[index]);
+            }
+        }
+
+        // The frame that makes `break` mean "leave the switch". Its continue target is INHERITED
+        // from the enclosing loop, if there is one, so `continue` inside a case continues that loop
+        // -- the body model already proved there is one to continue.
+        const LLVMBasicBlockRef enclosingContinue =
+            loopStack_.empty() ? nullptr : loopStack_.back().continueTarget;
+        const std::size_t enclosingContinueDepth =
+            loopStack_.empty() ? 0 : loopStack_.back().continueFuncletDepth;
+        loopStack_.push_back(
+            {endBlock, enclosingContinue, funcletStack_.size(), enclosingContinueDepth});
+
+        bool ok = true;
+        for (std::size_t index = 0; index < sectionCount && ok; ++index)
+        {
+            const frontend::ProjectOopMirNode* section = node->children[index + 1].get();
+            LLVMPositionBuilderAtEnd(builder_, sectionBlocks[index]);
+            if (section->children.empty() || section->children.front() == nullptr)
+            {
+                // Labels with no statements. Legal, and it means "match these values and do
+                // nothing" -- never "fall into the next section".
+                LLVMBuildBr(builder_, endBlock);
+                continue;
+            }
+            ok = lowerStatement(section->children.front().get(), error);
+            if (ok && !terminated()) LLVMBuildBr(builder_, endBlock);
+        }
+        loopStack_.pop_back();
+        if (!ok) return false;
+
         LLVMPositionBuilderAtEnd(builder_, endBlock);
         return true;
     }
@@ -4064,7 +4185,7 @@ private:
         }
         else LLVMBuildBr(builder_, bodyBlock);
 
-        loopStack_.push_back({endBlock, incBlock, funcletStack_.size()});
+        loopStack_.push_back({endBlock, incBlock, funcletStack_.size(), funcletStack_.size()});
         LLVMPositionBuilderAtEnd(builder_, bodyBlock);
         const bool bodyOk = lowerStatement(node->children[3].get(), error);
         if (bodyOk && !terminated()) LLVMBuildBr(builder_, incBlock);

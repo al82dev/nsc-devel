@@ -78,6 +78,8 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"while", TokenKind::KwWhile},
         {"do", TokenKind::KwDo},
         {"for", TokenKind::KwFor},
+        {"switch", TokenKind::KwSwitch},
+        {"case", TokenKind::KwCase},
         {"break", TokenKind::KwBreak},
         {"continue", TokenKind::KwContinue},
         {"return", TokenKind::KwReturn},

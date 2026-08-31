@@ -1,6 +1,6 @@
 # 70 — Roadmap del compilador
 
-**Fecha:** 2026-08-30.
+**Fecha:** 2026-08-30, actualizado 2026-08-31.
 **Alcance:** el compilador y su biblioteca (`src/`, `include/`, `lib/`, `tests/`). Nada más.
 
 Los bindings y los ports de `saru_framework` y del tutorial de OpenGL los llevan otras instancias.
@@ -30,7 +30,18 @@ en Windows real (`claude/44_ejecucion_real_windows_c1_c8.md`).
 **Bugs reportados: cero vivos.** Ocho medidos, siete arreglados, uno ya estaba muerto, y los ocho
 bajo `ctest` (`68_triage_y_cierre_de_bugs_reportados.md`).
 
-**Estado verificable hoy:** `ctest` 238/238, checklist de ejecución 33/33, triage 16/16.
+**Stage 57 — huecos de lenguaje, primera y segunda ronda:**
+
+```
+?:          operador condicional, perezoso, asociativo a la derecha   doc 71  VERDE
+do...while  cuerpo antes de la primera prueba, continue a la cond.    doc 71  VERDE
+switch/case sin fall-through, etiquetas constantes, LLVMBuildSwitch   doc 72  VERDE
+```
+
+Las tres cerraron en Windows real. `nsc.stage57.language` cubre las tres fixtures a `-O0` y `-O2`
+más seis casos negativos del `switch` que verifican que falló **y por qué**.
+
+**Estado verificable hoy:** `ctest` 239/239, checklist de ejecución 39/39, triage 16/16.
 
 ---
 
@@ -41,13 +52,22 @@ Resumen del orden:
 
 ### 2.1 Lenguaje
 
-`switch`/`case` y el operador ternario `?:` primero — no existe ni el token `?` — más `do…while`, y
-re-medir `x += y` en lowering OOP contra C8. Son los más baratos y los que están deformando código
-real ahora mismo.
+**Hecho:** `?:` y `do…while` (doc 71) · `switch`/`case` (doc 72).
 
-Después: `params`, interpolación de strings, `sbyte`, `Nullable<T>`, structs genéricos,
-`readonly struct` / `in` en el receptor, union anónima, alias genéricos, inferencia de argumentos
-de tipo en genéricos.
+**Lo siguiente, por costo creciente:**
+
+1. **Re-medir `x += y`** en lowering OOP contra C8. Reportado roto contra C1–C5; nunca se
+   re-midió. Es medición, no implementación, y puede que ya esté muerto — como b7.
+2. **`params`** y **`sbyte`**. Los dos son mecánicos.
+3. **Interpolación de strings.** Depende de `StringBuilder` y de `ToString(double)` para valer la
+   pena, así que va después de §2.2.1.
+4. **`??` y `?.`.** El token `?` ya existe; lo que falta es la decisión de qué significan con
+   referencias, y `Nullable<T>` si se quiere la versión completa. Diseño, no cobertura.
+5. **Structs genéricos** (`Vector2<T>`), **`readonly struct` / `in` en el receptor**, union anónima,
+   alias genéricos, inferencia de argumentos de tipo en genéricos.
+
+**No planeados, dicho explícitamente:** `goto`; `goto case`/`goto default` (no hacen falta sin
+fall-through); switch sobre `string`; patrones.
 
 ### 2.2 Biblioteca (`lib/NativeSharp.Core*`)
 
@@ -87,6 +107,15 @@ ese roadmap, y el contenedor de las fases C1…C8. Los docs `63_` a `67_` son lo
   está anclada al getter de punta a punta. Ver §6.3 de `68_triage_y_cierre_de_bugs_reportados.md`.
 - **Archivo y línea en los errores internos.** Hoy dicen el método (`while lowering '<mangled>'`),
   que ya es la diferencia entre bisecar y abrir un archivo, pero no la ubicación exacta.
+- **El evaluador de constantes está duplicado.** Stage 37 tiene uno completo, encerrado dentro de
+  `isCompileTimeConstantExpression`, que sólo devuelve un `bool`; `switch` necesitó otro, más
+  estrecho, para plegar etiquetas. Extraer el de Stage 37 a un método reutilizable dejaría una sola
+  noción de "constante" en el compilador y le daría a las etiquetas las mismas reglas que ya tienen
+  los campos `const`. Ver §3.5 y §6 de `72_switch_case.md`.
+- **Orden de `ProjectMethodBodyModel::build()`.** Analiza cuerpos de método antes que
+  inicializadores de campo, lo que obliga a rodeos cuando algo de un cuerpo necesita el valor de un
+  `const` que se define en términos de otro. Reordenar los dos bucles probablemente es seguro
+  —un inicializador de campo no puede referirse a un cuerpo— pero no está medido.
 
 ---
 
@@ -101,3 +130,11 @@ De `claude/03_posicionamiento.md` y `claude/04_restricciones_arquitectonicas.md`
 - **LLVM no es una dependencia permanente asumida.** HIR→MIR→LLVM ya está en forma
   backend-agnostic donde importa: MIR es IR propio, LLVM es un backend en el último escalón.
   Self-hosting y cambiar de backend son ejes independientes.
+
+  La consecuencia práctica, que hay que saber antes de tocar el backend: **el árbol no incluye los
+  headers de LLVM.** `src/LLVM/LlvmCApi.h` declara a mano el subconjunto de la API C que se usa, y
+  se linkea contra `LLVM-C.lib`. Eso mantiene la superficie de dependencia explícita y medible —hoy
+  141 símbolos— pero significa que **usar una función de LLVM que no esté en esa lista falla al
+  compilar**, como identificador desconocido. Después de tocar `ProjectOopLlvmLowerer.cpp`, cruzar
+  sus símbolos `LLVM*` contra ese header antes de pedir una compilación. Ver §7 de
+  `72_switch_case.md`, donde esto costó una corrida.

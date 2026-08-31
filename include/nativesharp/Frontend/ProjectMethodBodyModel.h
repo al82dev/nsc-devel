@@ -10,6 +10,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <set>
 #include <utility>
@@ -319,6 +320,25 @@ struct MethodUsingBinding final
     std::size_t disposeContractMemberOrdinal = 0;
     std::optional<std::size_t> disposeImplementationMemberOrdinal;
     bool interfaceDispatch = false;
+};
+
+// `switch` / `case`. The body model is where a case label stops being an expression: it is folded
+// to an integer, checked against the governing type, and checked for duplicates. Everything
+// downstream reads these numbers, so no later pass has to know how to evaluate a constant.
+struct MethodSwitchSectionBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::vector<std::int64_t> labelValues;
+    bool hasDefault = false;
+};
+
+struct MethodSwitchBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::size_t methodMemberOrdinal = 0;
+    std::size_t scopeOrdinal = 0;
+    std::string governingTypeKey;
+    std::vector<MethodSwitchSectionBinding> sections;
 };
 
 enum class MethodStructuredExitKind
@@ -860,6 +880,7 @@ public:
     std::span<const MethodOwnershipTransferBinding> ownershipTransferBindings() const noexcept;
     std::span<const MethodBorrowBinding> borrowBindings() const noexcept;
     std::span<const MethodLocalBorrowBinding> localBorrowBindings() const noexcept;
+    std::span<const MethodSwitchBinding> switchBindings() const noexcept;
     std::span<const MethodStructuredExitBinding> structuredExits() const noexcept;
     std::span<const MethodCleanupContinuation> cleanupContinuations() const noexcept;
     std::span<const MethodLambdaBinding> lambdaBindings() const noexcept;
@@ -935,6 +956,12 @@ private:
         std::size_t continueCleanupDepth = 0;
         std::vector<OwnershipFlowSnapshot> breakStates;
         std::vector<OwnershipFlowSnapshot> continueStates;
+        // A switch pushes a context too, because `break` inside a switch leaves the SWITCH. But it
+        // is not a `continue` target: `continue` inside a switch inside a loop continues the loop,
+        // so analyzeLoopExit walks past every frame with this flag when it looks for one. Without
+        // the flag a `continue` in a `switch` in a `while` would either be rejected or, worse,
+        // bound to a jump target that does not exist.
+        bool isSwitch = false;
     };
 
     struct FinallyContext final
@@ -991,6 +1018,28 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeSwitch(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    // The constant folder a `case` label needs. Deliberately narrow: integer and character
+    // literals, the unary and binary integer operators over them, casts, enum members, and `const`
+    // integer fields (which is what a Win32 message id is). Anything else answers "not a constant"
+    // and gets a diagnostic that says so, rather than a value nobody can explain.
+    //
+    // `declaringTypeOrdinal` is set only while expanding a const field's own initializer, and names
+    // the type that field belongs to. See the comment on the identifier case for why.
+    std::optional<std::int64_t> foldIntegerConstantExpression(
+        const ast::AstNode* expression,
+        std::size_t depth,
+        std::optional<std::size_t> declaringTypeOrdinal) const;
+    // Reverse linear scan of nameBindings_. Only ever called while folding a case label, whose
+    // bindings were recorded moments earlier, so the scan stops almost immediately.
+    const MethodNameBinding* recordedNameBinding(const ast::AstNode* syntax) const noexcept;
+    // The const or enum-constant field of `typeOrdinal` named `name`, if there is one.
+    std::optional<std::size_t> constantMemberOfType(
+        std::size_t typeOrdinal, std::string_view name) const noexcept;
     void analyzeReturn(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
@@ -1240,6 +1289,10 @@ private:
     // type is rejected here with a diagnostic instead of reaching the backend.
     bool isExternCDelegateTypeKey(std::string_view typeKey) const noexcept;
     bool isAnyDelegateTypeKey(std::string_view typeKey) const noexcept;
+    // True only for a "type:" key that actually names an enum. Structs, classes and delegates
+    // share that prefix, so the prefix alone answers nothing. Mirrors the identical predicate the
+    // LLVM lowerer keeps for mapping an enum key to i32.
+    bool isEnumTypeKey(std::string_view typeKey) const noexcept;
     static bool isRawPointerTypeKey(std::string_view typeKey) noexcept;
     static bool isPointerSizedIntegralTypeKey(std::string_view typeKey) noexcept;
     bool canRuntimeReferenceConvert(
@@ -1299,6 +1352,7 @@ private:
     std::unordered_set<const ast::AstNode*> reportedUnassignedReads_;
     bool ownershipFlowReachable_ = true;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
+    std::vector<MethodSwitchBinding> switchBindings_;
     std::vector<MethodStructuredExitBinding> structuredExits_;
     std::vector<MethodCleanupContinuation> cleanupContinuations_;
     std::vector<std::size_t> activeCleanupRegions_;

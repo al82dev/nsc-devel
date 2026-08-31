@@ -650,6 +650,16 @@ LLVMValueRef LLVMBuildCondBr(
     LLVMValueRef condition,
     LLVMBasicBlockRef trueBlock,
     LLVMBasicBlockRef falseBlock);
+// `switch`. `caseCount` is only a CAPACITY HINT for LLVM's operand reservation -- the cases are
+// whatever LLVMAddCase adds afterwards, so a wrong hint costs a reallocation, never correctness.
+// `defaultBlock` is mandatory: a switch with no `default` section passes the block that follows the
+// switch, which is exactly "an unmatched value skips the statement".
+LLVMValueRef LLVMBuildSwitch(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMBasicBlockRef defaultBlock,
+    unsigned caseCount);
+void LLVMAddCase(LLVMValueRef switchInstruction, LLVMValueRef onValue, LLVMBasicBlockRef target);
 LLVMValueRef LLVMBuildRet(LLVMBuilderRef builder, LLVMValueRef value);
 LLVMValueRef LLVMBuildRetVoid(LLVMBuilderRef builder);
 LLVMValueRef LLVMBuildUnreachable(LLVMBuilderRef builder);

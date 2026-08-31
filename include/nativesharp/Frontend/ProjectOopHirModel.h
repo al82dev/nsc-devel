@@ -32,6 +32,15 @@ enum class ProjectOopHirNodeKind
     // and a distinct kind only because the backend enters the body before the first test.
     DoWhile,
     For,
+    // `switch` / `case`. children[0] is the governing expression; children[1..] are the sections,
+    // in source order. Each section is a SwitchSection node whose `switchLabels` holds the ALREADY
+    // FOLDED constant values of its labels and whose `switchHasDefault` marks the default section.
+    // The label expressions themselves are never lowered: the body model resolved them to integers
+    // and checked them for duplicates, so by this point a label is a number, not an expression.
+    Switch,
+    // One section. children[0] is a Block with the section's statements. Reaching the end of that
+    // block leaves the switch -- there is no fall-through to the next section.
+    SwitchSection,
     Break,
     Continue,
     Return,
@@ -311,6 +320,13 @@ struct ProjectOopHirNode final
     std::optional<MethodBorrowKind> borrowKind;
     std::optional<MethodLocalBorrowSourceKind> localBorrowSourceKind;
     std::optional<ProjectImplicitConversion> conversion;
+    // Set only on a SwitchSection node: the folded constant value of every label on that section,
+    // in source order. Empty on a section whose only label is `default`. Signed even when the
+    // governing type is unsigned -- the value is a bit pattern here, and the backend re-widens it
+    // to the governing type when it builds the LLVM case constant.
+    std::vector<std::int64_t> switchLabels;
+    // Set only on a SwitchSection node: this section carries the `default` label.
+    bool switchHasDefault = false;
     std::uint64_t integerValue = 0;
     double floatingValue = 0.0;
     bool booleanValue = false;
@@ -430,6 +446,7 @@ private:
     const MethodNameBinding* nameBinding(const ast::AstNode* syntax) const noexcept;
     const MethodExpressionTypeBinding* expressionType(const ast::AstNode* syntax) const noexcept;
     const MethodCallBinding* callBinding(const ast::AstNode* syntax) const noexcept;
+    const MethodSwitchBinding* switchBinding(const ast::AstNode* syntax) const noexcept;
     const MethodRuntimeTypeBinding* runtimeTypeBinding(const ast::AstNode* syntax) const noexcept;
     const MethodDelegateBinding* delegateBinding(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaBinding* lambdaBinding(const ast::AstNode* syntax) const noexcept;
@@ -485,6 +502,7 @@ private:
     std::unordered_map<const ast::AstNode*, const MethodNameBinding*> nameBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExpressionTypeBinding*> expressionTypeBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCallBinding*> callBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodSwitchBinding*> switchBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodRuntimeTypeBinding*> runtimeTypeBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodDelegateBinding*> delegateBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> lambdaBindingBySyntax_;

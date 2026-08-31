@@ -41,6 +41,8 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwWhile);
         NS_TOKEN_CASE(KwDo);
         NS_TOKEN_CASE(KwFor);
+        NS_TOKEN_CASE(KwSwitch);
+        NS_TOKEN_CASE(KwCase);
         NS_TOKEN_CASE(KwBreak);
         NS_TOKEN_CASE(KwContinue);
         NS_TOKEN_CASE(KwReturn);

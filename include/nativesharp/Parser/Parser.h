@@ -148,6 +148,11 @@ private:
     ast::AstNode* parseIfStatement();
     ast::AstNode* parseWhileStatement();
     ast::AstNode* parseDoWhileStatement();
+    ast::AstNode* parseSwitchStatement();
+    // True when the cursor sits on `case` or on the `default` OF A LABEL. `default` is also an
+    // expression keyword (`default(T)`), so it only opens a label when a colon follows it
+    // immediately -- otherwise a section that begins with `default(int)` would be misread.
+    bool atSwitchLabel() const noexcept;
     ast::AstNode* parseForStatement();
     ast::AstNode* parseForeachStatement();
     ast::AstNode* makeIdentifierExpression(const SourceRange& range, std::string name);

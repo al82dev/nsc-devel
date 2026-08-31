@@ -37,6 +37,21 @@ enum class AstNodeKind
     DoWhileStatement,
     ForStatement,
     ForeachStatement,
+    // `switch (governing) { case a: case b: ...; default: ...; }`
+    //
+    // SwitchStatement: first() is the governing expression; children() are the sections in
+    // source order.
+    // SwitchSection:   children() are the labels first, then the statements. A label is a
+    //                  SwitchLabel node; the statements are anything parseStatement produces.
+    //                  The split point is stored so the two runs never have to be
+    //                  distinguished by kind.
+    // SwitchLabel:     first() is the constant expression, or nullptr for `default`.
+    //                  flag() is true for `default`.
+    //
+    // There is NO fall-through: a section that finishes leaves the switch. See doc 72.
+    SwitchStatement,
+    SwitchSection,
+    SwitchLabel,
     BreakStatement,
     ContinueStatement,
     ReturnStatement,

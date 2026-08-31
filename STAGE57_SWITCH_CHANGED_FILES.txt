@@ -1,0 +1,252 @@
+STAGE 57 -- `switch` / `case`
+Archivos tocados. Ver 72_switch_case.md para el porque de cada cambio.
+Fecha: 2026-08-31.
+
+Estado: VERDE en Windows real. ctest 239/239, checklist 39/39, triage 16/16.
+l3_switch sale 42 a -O0 y a -O2.
+
+
+================================================================================
+LEXER
+================================================================================
+
+include/nativesharp/Lexer/TokenKind.h
+    + KwSwitch
+    + KwCase
+    `default` NO se agrego: ya existia (es tambien la keyword del valor por
+    omision de un tipo, `default(T)`). La gramatica del switch la reutiliza.
+
+src/Lexer/TokenKind.cpp
+    + NS_TOKEN_CASE(KwSwitch)
+    + NS_TOKEN_CASE(KwCase)
+
+src/Lexer/Lexer.cpp
+    + {"switch", TokenKind::KwSwitch}
+    + {"case",   TokenKind::KwCase}
+
+
+================================================================================
+AST
+================================================================================
+
+include/nativesharp/AST/AstNodeKind.h
+    + SwitchStatement
+    + SwitchSection
+    + SwitchLabel
+
+src/AST/AstNodeKind.cpp
+    + NS_AST_KIND para los tres
+
+Forma de los nodos:
+    SwitchStatement  first()        = expresion gobernante
+                     children()     = secciones, en orden de fuente
+    SwitchSection    children()     = etiquetas primero, statements despues
+                     integerValue() = cuantas children son etiquetas
+    SwitchLabel      first()        = expresion constante, o nullptr si es default
+                     flag()         = true si es default
+
+El contador explicito de etiquetas evita que cualquier consumidor tenga que
+decidir "etiqueta o statement" inspeccionando kinds -- ese tipo de decision deja
+de funcionar en silencio cuando se agrega un kind de statement nuevo.
+
+
+================================================================================
+PARSER
+================================================================================
+
+include/nativesharp/Parser/Parser.h
+    + ast::AstNode* parseSwitchStatement();
+    + bool atSwitchLabel() const noexcept;
+
+src/Parser/Parser.cpp
+    + atSwitchLabel()
+        `case` siempre abre etiqueta. `default` SOLO si el token siguiente es `:`
+        -- si no, una seccion que empiece con `default(int)` se leeria como
+        etiqueta y el parser se perderia.
+    + parseSwitchStatement()
+        - `switch` `(` expr `)` `{` seccion* `}`
+        - una seccion es: etiqueta+ statement*
+        - los statements corren hasta la siguiente etiqueta o hasta `}`
+        - un token que no abre etiqueta al inicio de una seccion produce
+          diagnostico Y se consume, para que el bucle avance
+        - la expresion de un `case` se parsea como expresion completa; que sea
+          constante y que convierta al tipo gobernante son preguntas semanticas
+    + gancho en parseStatement:
+        if (at(TokenKind::KwSwitch)) return parseSwitchStatement();
+
+
+================================================================================
+ANALISIS SEMANTICO
+================================================================================
+
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + struct MethodSwitchSectionBinding { syntax, labelValues, hasDefault }
+    + struct MethodSwitchBinding { syntax, methodMemberOrdinal, scopeOrdinal,
+                                   governingTypeKey, sections }
+    + std::span<const MethodSwitchBinding> switchBindings() const noexcept;
+    + std::vector<MethodSwitchBinding> switchBindings_;
+    ~ LoopContext gana `bool isSwitch`
+        Un switch empuja contexto porque `break` tiene que nombrarlo, pero NO es
+        destino de `continue`.
+    + void analyzeSwitch(...)
+    + std::optional<std::int64_t> foldIntegerConstantExpression(
+          expression, depth, declaringTypeOrdinal) const;
+    + const MethodNameBinding* recordedNameBinding(syntax) const noexcept;
+    + std::optional<std::size_t> constantMemberOfType(typeOrdinal, name) const noexcept;
+    + bool isEnumTypeKey(typeKey) const noexcept;
+    + #include <cstdint>
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    + switchBindings() accessor
+    + case ast::AstNodeKind::SwitchStatement -> analyzeSwitch
+    ~ analyzeBlock: salta las children de tipo SwitchLabel (UNA linea)
+        Deja que una seccion reutilice analyzeBlock entera -- scope anidado,
+        continuaciones de cleanup, sonda de codigo inalcanzable -- en vez de una
+        segunda copia ligeramente distinta.
+    ~ analyzeLoopExit:
+        - `break` liga al marco mas interno, bucle o switch.
+        - `continue` camina hacia afuera saltandose los marcos isSwitch.
+        - usa loopStack_[targetLoopIndex] en vez de loopStack_.back().
+        - mensaje de break ahora dice "within a loop or a switch".
+    + analyzeSwitch()
+        1. tipo gobernante integral o enum
+        2. cada etiqueta: conversion implicita al gobernante + plegado a entero
+        3. duplicados rechazados COMPARANDO VALORES (case 2 y case K.Two colisionan)
+        4. un solo default, en cualquier posicion
+        Flujo de ownership: cada seccion parte del estado EN EL SWITCH (no hay
+        fall-through). Al final une salidas de seccion + breaks + (solo si no hay
+        default) el estado de entrada.
+    + foldIntegerConstantExpression()
+        literales enteros y de caracter | + - ~ unarios | + - * / % & | ^ << >>
+        binarios | casts | miembros de enum | campos const.
+        Aritmetica sobre el gemelo sin signo para que el desbordamiento envuelva.
+        Guarda de profundidad 32 contra ciclos de const.
+        DETALLE NO OBVIO: build() analiza cuerpos de metodo ANTES que
+        inicializadores de campo, asi que un const definido en terminos de otro
+        const (`MyMsg = WmUser + 1`, el idioma de Win32) no tiene binding que
+        leer cuando una etiqueta lo pliega. Por eso el plegador lleva consigo el
+        tipo declarante del campo que esta expandiendo y resuelve ahi los nombres
+        sin calificar.
+    + recordedNameBinding()  -- barrido lineal inverso de nameBindings_
+    + constantMemberOfType() -- campo const o de enum de un tipo, por nombre
+    + isEnumTypeKey()        -- espejo del predicado del backend
+
+
+================================================================================
+HIR
+================================================================================
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+    + ProjectOopHirNodeKind::Switch
+    + ProjectOopHirNodeKind::SwitchSection
+    + ProjectOopHirNode::switchLabels     (std::vector<std::int64_t>)
+    + ProjectOopHirNode::switchHasDefault (bool)
+    + const MethodSwitchBinding* switchBinding(syntax) const noexcept;
+    + switchBindingBySyntax_
+
+src/Frontend/ProjectOopHirModel.cpp
+    + nombres "switch" y "switch-section"
+    + poblado de switchBindingBySyntax_ en build()
+    + switchBinding() accessor
+    + case ast::AstNodeKind::SwitchStatement
+        children[0] = gobernante; children[1..] = secciones.
+        Las expresiones de etiqueta NO se bajan: el modelo semantico ya las
+        resolvio a enteros. El cuerpo de la seccion se arma como un Block
+        ordinario (a mano, no via lowerBlock(), porque una seccion no es un
+        BlockStatement -- su lista de children empieza con etiquetas).
+
+
+================================================================================
+MIR
+================================================================================
+
+include/nativesharp/Frontend/ProjectOopMirModel.h
+    + ProjectOopMirNodeKind::Switch
+    + ProjectOopMirNodeKind::SwitchSection
+    + ProjectOopMirNode::switchLabels
+    + ProjectOopMirNode::switchHasDefault
+
+src/Frontend/ProjectOopMirModel.cpp
+    + nombres "switch" y "switch-section"
+    + copia de switchLabels / switchHasDefault en convertNode
+    + mapeo HIR->MIR de los dos kinds
+
+
+================================================================================
+BACKEND LLVM
+================================================================================
+
+src/LLVM/LlvmCApi.h
+    + LLVMBuildSwitch
+    + LLVMAddCase
+    Este arbol NO incluye los headers de LLVM: declara a mano el subconjunto de
+    la API C que usa y linkea contra LLVM-C.lib. Usar una funcion de LLVM que no
+    este en esa lista falla al COMPILAR, como identificador desconocido. La
+    primera entrega de esta ronda se cayo justo por eso (ver §7 del doc 72).
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    ~ struct LoopTargets gana `continueFuncletDepth`
+        Un marco de switch lleva su propio destino de break pero el destino de
+        continue DEL BUCLE QUE LO ENCIERRA, y los dos pueden estar a
+        profundidades de funclet distintas. Con una sola profundidad, un break
+        desenrollaria funclets que no debe o un continue se saltaria funclets que
+        si debe.
+    ~ los tres push de loopStack_ (while / do-while / for) pasan la cuarta
+      profundidad explicitamente
+    ~ lowerStructuredExit: elige funcletDepth para break y continueFuncletDepth
+      para continue; falla explicitamente si un continue llega sin destino
+    + lowerSwitch()
+        Una sola LLVMBuildSwitch. Un bloque por seccion + switch.end.
+        Sin `default`, el destino por omision del switch es switch.end.
+        Cada bloque de caso termina ramificando a switch.end -- la ausencia de
+        fall-through se ve en el layout de bloques.
+        El marco que empuja hereda continueTarget del bucle que lo encierra.
+        La constante de cada caso usa el mismo criterio de signo que el lowering
+        de campos constantes (un enum baja a i32 y sus miembros son con signo).
+        El guard de "esto es un entero" se expresa sobre la CLAVE DE TIPO
+        (isEnumTypeKey || ProjectTypeConversion::isIntegral) en vez de probar el
+        tipo de LLVM con LLVMGetTypeKind, para no fijar el enum LLVMTypeKind con
+        valores numericos en un header nuestro.
+    + dispatch: case Switch -> lowerSwitch
+    + dispatch: case SwitchSection -> error explicito
+        ("a switch section must be lowered by its enclosing switch")
+
+
+================================================================================
+PRUEBAS
+================================================================================
+
+tests/language/l3_switch/l3_switch.nsproj                NUEVO
+tests/language/l3_switch/Main.ns                         NUEVO
+    Devuelve 42 sano; 34 codigos distintos, uno por propiedad.
+    Mide: despacho basico | default cuando nada coincide | SIN default y sin
+    coincidencia el statement se salta | varias etiquetas en una seccion |
+    NO FALL-THROUGH | la misma seccion con break dando identico resultado |
+    default en posicion NO final | seccion con etiquetas y sin statements |
+    etiquetas negativas | campos const como etiquetas, incluido uno definido
+    como `Paint + 1` | gobernante enum | gobernante char | gobernante long con
+    etiquetas int | locales dentro de una seccion | return desde una seccion |
+    anidamiento | break dentro de switch dentro de bucle sale DEL SWITCH |
+    continue dentro de switch dentro de bucle continua EL BUCLE |
+    composicion con do-while y con `?:`.
+
+tests/unit/Stage57LanguageTests.cpp
+    ~ cabecera: ahora describe las tres formas de la ronda
+    + checkFixture para l3_switch
+    + writeFile() y checkRejected()
+    + SEIS casos negativos, cada uno verificando que fallo Y POR QUE:
+        governing-type                 switch sobre double
+        duplicate-label                case 2: dos veces
+        duplicate-label-through-const  case 2: y case K.Two: con K.Two == 2
+        two-defaults                   dos default en el mismo switch
+        non-constant-label             case k: con k local
+        continue-without-loop          continue en un switch sin bucle alrededor
+
+run_windows_checklist.bat
+    + una linea en `--- language contract fixtures ---`:
+      call :run_case "%LC%\l3_switch\l3_switch.nsproj" l3_switch 42 "%FIXLOG%"
+    (CRLF preservado)
+
+CMakeLists.txt
+    SIN CAMBIOS. La suite nsc.stage57.language ya estaba registrada y cubre
+    la fixture nueva y los negativos.

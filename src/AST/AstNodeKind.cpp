@@ -37,6 +37,9 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(DoWhileStatement);
         NS_AST_KIND(ForStatement);
         NS_AST_KIND(ForeachStatement);
+        NS_AST_KIND(SwitchStatement);
+        NS_AST_KIND(SwitchSection);
+        NS_AST_KIND(SwitchLabel);
         NS_AST_KIND(BreakStatement);
         NS_AST_KIND(ContinueStatement);
         NS_AST_KIND(ReturnStatement);

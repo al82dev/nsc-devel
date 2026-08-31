@@ -3433,6 +3433,7 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwDo)) return parseDoWhileStatement();
     if (at(TokenKind::KwFor)) return parseForStatement();
     if (at(TokenKind::KwForeach)) return parseForeachStatement();
+    if (at(TokenKind::KwSwitch)) return parseSwitchStatement();
 
     if (at(TokenKind::KwBreak) || at(TokenKind::KwContinue))
     {
@@ -3652,6 +3653,105 @@ ast::AstNode* Parser::parseDoWhileStatement()
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::DoWhileStatement, tokenRangeFrom(beginIndex));
     node->setFirst(condition);
     node->setSecond(body);
+    return node;
+}
+
+bool Parser::atSwitchLabel() const noexcept
+{
+    if (at(TokenKind::KwCase)) return true;
+    if (!at(TokenKind::KwDefault)) return false;
+    return index_ + 1 < tokens_.size() && tokens_[index_ + 1].kind() == TokenKind::Colon;
+}
+
+// `switch (governing) { case a: case b: ...  default: ... }`
+//
+// SHAPE. The statement node keeps the governing expression in first() and one SwitchSection per
+// section in children(), in source order. A section keeps its labels first and its statements
+// after, with the label count in integerValue() -- so no consumer ever has to tell the two runs
+// apart by inspecting node kinds, which is the sort of thing that silently stops working the day
+// somebody adds a statement kind.
+//
+// NO FALL-THROUGH. A section that reaches its end leaves the switch; it does not slide into the
+// next one. This is the C# rule rather than the C one, and it is the whole reason `case 1: case 2:`
+// is expressed as two labels on ONE section instead of an empty section falling into the next:
+// grouping is what people actually want out of fall-through, and it is the only part of it that
+// never produces the accidental-fall-through bug. `break` stays legal and means the same thing --
+// leave the switch now -- so existing habits keep working.
+//
+// A `case` value is parsed as a full expression. Whether it is a CONSTANT, whether it converts to
+// the governing type, and whether it duplicates another label are semantic questions, answered in
+// the body model where the constant folder and the type table live -- not here, where the answer
+// would have to be guessed from syntax.
+ast::AstNode* Parser::parseSwitchStatement()
+{
+    const std::size_t beginIndex = index_;
+    consume();
+    expect(TokenKind::LeftParen, "'(' after 'switch'");
+    ast::AstNode* governing = parseExpression();
+    expect(TokenKind::RightParen, "')' after the switch governing expression");
+    expect(TokenKind::LeftBrace, "'{' to open the switch body");
+
+    ast::AstNode* node =
+        arena_.make<ast::AstNode>(ast::AstNodeKind::SwitchStatement, tokenRangeFrom(beginIndex));
+    node->setFirst(governing);
+
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        if (!atSwitchLabel())
+        {
+            // Statements can only live inside a section. Report once, then drop the token so the
+            // loop makes progress -- without this the parser spins here on malformed input.
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "expected 'case' or 'default' at the start of a switch section");
+            consume();
+            continue;
+        }
+
+        const std::size_t sectionBegin = index_;
+        ast::AstNode* section =
+            arena_.make<ast::AstNode>(ast::AstNodeKind::SwitchSection, current().range());
+
+        std::uint64_t labelCount = 0;
+        while (atSwitchLabel())
+        {
+            const std::size_t labelBegin = index_;
+            const bool isDefault = at(TokenKind::KwDefault);
+            consume();
+            ast::AstNode* value = isDefault ? nullptr : parseExpression();
+            expect(TokenKind::Colon, isDefault ? "':' after 'default'" : "':' after the case value");
+
+            ast::AstNode* label =
+                arena_.make<ast::AstNode>(ast::AstNodeKind::SwitchLabel, tokenRangeFrom(labelBegin));
+            label->setFlag(isDefault);
+            label->setFirst(value);
+            section->addChild(label);
+            ++labelCount;
+        }
+        section->setIntegerValue(labelCount);
+
+        while (!atSwitchLabel() && !at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+        {
+            const std::size_t before = index_;
+            ast::AstNode* statement = parseStatement();
+            if (statement != nullptr)
+            {
+                section->addChild(statement);
+            }
+            if (index_ == before)
+            {
+                consume();
+            }
+        }
+
+        section->setRange(tokenRangeFrom(sectionBegin));
+        node->addChild(section);
+    }
+
+    expect(TokenKind::RightBrace, "'}' to close the switch");
+    node->setRange(tokenRangeFrom(beginIndex));
     return node;
 }
 

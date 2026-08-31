@@ -41,6 +41,11 @@ enum class TokenKind
     KwWhile,
     KwDo,
     KwFor,
+    // `switch` / `case`. `default` already existed -- it is also the keyword for the default
+    // value of a type -- so the switch grammar reuses KwDefault rather than adding a second
+    // spelling of the same word.
+    KwSwitch,
+    KwCase,
     KwBreak,
     KwContinue,
     KwReturn,

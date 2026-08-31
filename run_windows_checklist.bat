@@ -150,6 +150,7 @@ call :build_only "%IC%\c1_13_two_libraries_same_symbol\c1_13_two_libraries_same_
 set "LC=tests\language"
 call :run_case "%LC%\l1_conditional\l1_conditional.nsproj" l1_conditional 42 "%FIXLOG%"
 call :run_case "%LC%\l2_dowhile\l2_dowhile.nsproj" l2_dowhile 42 "%FIXLOG%"
+call :run_case "%LC%\l3_switch\l3_switch.nsproj" l3_switch 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 

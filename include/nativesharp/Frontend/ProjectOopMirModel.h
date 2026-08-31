@@ -25,6 +25,10 @@ enum class ProjectOopMirNodeKind
     While,
     DoWhile,
     For,
+    // Mirrors the HIR shape exactly: children[0] governing expression, children[1..] sections;
+    // a section carries its folded label values and its default flag. See ProjectOopHirModel.h.
+    Switch,
+    SwitchSection,
     Break,
     Continue,
     Return,
@@ -243,6 +247,9 @@ struct ProjectOopMirNode final
     std::optional<std::size_t> virtualSlot;
     std::optional<std::size_t> interfaceSlot;
     std::optional<ProjectConversionKind> conversionKind;
+    // SwitchSection only -- carried through from the HIR unchanged. See ProjectOopHirModel.h.
+    std::vector<std::int64_t> switchLabels;
+    bool switchHasDefault = false;
     std::uint64_t immediate = 0;
     // Stage 54.4 "Condition Variables" -- set only on a CoreMonitorWait node, resolved during
     // HIR->MIR conversion exactly like `immediate` above (which, for THIS node kind only, holds

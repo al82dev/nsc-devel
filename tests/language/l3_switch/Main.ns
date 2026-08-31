@@ -1,0 +1,430 @@
+// Language contract -- `switch` / `case`.
+//
+// The construct this replaces is a chain of `else if`, and the difference is not cosmetic: an
+// `else if` chain is n comparisons in the worst case, while a switch lowers to one LLVM `switch`
+// instruction, which becomes a jump table when the label values are dense. A Win32 `WndProc` is
+// forty branches on a message id; that is the shape this exists for.
+//
+// THE DESIGN DECISION THIS FIXTURE PINS DOWN, because it differs from C: THERE IS NO
+// FALL-THROUGH. A section that reaches its end leaves the switch, exactly as if it had written
+// `break`. Grouping -- the one thing people actually want out of fall-through -- is expressed by
+// putting several labels on ONE section (`case 1: case 2:`), which is the form that cannot produce
+// the accidental-fall-through bug. `break` stays legal and means what it always meant.
+//
+// Also pinned down here:
+//
+//   * `break` inside a switch inside a loop leaves the SWITCH, not the loop.
+//   * `continue` inside a switch inside a loop continues the LOOP. These two are the pair that a
+//     naive implementation gets backwards, and getting them backwards is not a compile error
+//     anywhere: it is a jump to the wrong label.
+//   * `default` is optional, appears at most once, and may sit anywhere -- including not last.
+//   * With no `default` and no matching label, the whole statement is skipped.
+//   * Governing types: `int`, `char`, and an `enum`.
+//   * Labels: literals, negative literals, enum members, and `const` fields -- the last being the
+//     Win32 message-id shape.
+//   * Locals declared inside a section, `return` from inside a section, and nesting.
+//
+// Expected exit code when healthy: 42.
+namespace languagecontract
+{
+    public enum Color
+    {
+        Red = 0,
+        Green = 1,
+        Blue = 2
+    }
+
+    // The `const int` shape every Win32 message id has.
+    public class Messages
+    {
+        public const int Destroy = 2;
+        public const int Paint = 15;
+        public const int Close = 32;
+        // A const whose value is a constant EXPRESSION over another const. The label folder has to
+        // reach through both to know this is 16 -- which is also how it knows it does not collide
+        // with any other label in the same switch.
+        public const int PaintPlusOne = Paint + 1;
+    }
+
+    class Program
+    {
+        private static int Rank(Color value)
+        {
+            int rank = 0;
+            switch (value)
+            {
+                case Color.Red:
+                    rank = 10;
+                    break;
+                case Color.Green:
+                    rank = 20;
+                    break;
+                case Color.Blue:
+                    rank = 30;
+                    break;
+            }
+            return rank;
+        }
+
+        // `return` from inside a section, with a trailing return for the paths that fall out.
+        private static int Classify(int value)
+        {
+            switch (value)
+            {
+                case 0:
+                    return 100;
+                case 1:
+                    return 200;
+                default:
+                    break;
+            }
+            return 300;
+        }
+
+        private static int Handle(int message)
+        {
+            int handled = 0;
+            switch (message)
+            {
+                case Messages.Destroy:
+                    handled = 1;
+                    break;
+                case Messages.Paint:
+                    handled = 2;
+                    break;
+                case Messages.Close:
+                    handled = 3;
+                    break;
+                case Messages.PaintPlusOne:
+                    handled = 4;
+                    break;
+                default:
+                    handled = 0;
+                    break;
+            }
+            return handled;
+        }
+
+        public static int Main()
+        {
+            // Basic dispatch, both arms taken.
+            int a = 0;
+            switch (1)
+            {
+                case 1:
+                    a = 11;
+                    break;
+                case 2:
+                    a = 22;
+                    break;
+            }
+            if (a != 11) { return 1; }
+
+            int selector = 2;
+            switch (selector)
+            {
+                case 1:
+                    a = 11;
+                    break;
+                case 2:
+                    a = 22;
+                    break;
+            }
+            if (a != 22) { return 2; }
+
+            // `default` runs when nothing matches.
+            int d = 0;
+            switch (99)
+            {
+                case 1:
+                    d = 1;
+                    break;
+                default:
+                    d = 7;
+                    break;
+            }
+            if (d != 7) { return 3; }
+
+            // NO `default` and no match: the whole statement is skipped, leaving the value alone.
+            int untouched = 5;
+            switch (99)
+            {
+                case 1:
+                    untouched = 1;
+                    break;
+                case 2:
+                    untouched = 2;
+                    break;
+            }
+            if (untouched != 5) { return 4; }
+
+            // Several labels on ONE section -- the replacement for fall-through grouping.
+            int grouped = 0;
+            switch (3)
+            {
+                case 1:
+                case 2:
+                case 3:
+                    grouped = 100;
+                    break;
+                default:
+                    grouped = 200;
+                    break;
+            }
+            if (grouped != 100) { return 5; }
+
+            switch (1)
+            {
+                case 1:
+                case 2:
+                case 3:
+                    grouped = 300;
+                    break;
+                default:
+                    grouped = 400;
+                    break;
+            }
+            if (grouped != 300) { return 6; }
+
+            // NO FALL-THROUGH. The first section has no `break` and still does not run the second.
+            // In C this would add 10; here the section ends at the switch.
+            int hits = 0;
+            switch (1)
+            {
+                case 1:
+                    hits = hits + 1;
+                case 2:
+                    hits = hits + 10;
+            }
+            if (hits != 1) { return 7; }
+
+            // The same section written WITH `break` behaves identically -- `break` is explicit,
+            // not load-bearing.
+            hits = 0;
+            switch (1)
+            {
+                case 1:
+                    hits = hits + 1;
+                    break;
+                case 2:
+                    hits = hits + 10;
+                    break;
+            }
+            if (hits != 1) { return 8; }
+
+            // `default` in a NON-final position still only runs when nothing else matched.
+            int placed = 0;
+            switch (2)
+            {
+                case 1:
+                    placed = 1;
+                    break;
+                default:
+                    placed = 9;
+                    break;
+                case 2:
+                    placed = 2;
+                    break;
+            }
+            if (placed != 2) { return 9; }
+
+            switch (77)
+            {
+                case 1:
+                    placed = 1;
+                    break;
+                default:
+                    placed = 9;
+                    break;
+                case 2:
+                    placed = 2;
+                    break;
+            }
+            if (placed != 9) { return 10; }
+
+            // A section with labels and NO statements at all: match and do nothing. In C this
+            // would fall into whatever came next; here the section ends where it ends. (It is the
+            // last section on purpose -- consecutive labels with nothing between them belong to
+            // one section, so the only way to write an empty one is at the end.)
+            int silent = 4;
+            switch (1)
+            {
+                default:
+                    silent = 99;
+                    break;
+                case 1:
+            }
+            if (silent != 4) { return 11; }
+
+            // Negative labels.
+            int sign = 0;
+            int negative = 0 - 3;
+            switch (negative)
+            {
+                case -3:
+                    sign = 33;
+                    break;
+                case 3:
+                    sign = 3;
+                    break;
+                default:
+                    sign = 1;
+                    break;
+            }
+            if (sign != 33) { return 12; }
+
+            // `const` field labels -- the Win32 message-id shape, including one whose value is a
+            // constant expression over another const field.
+            if (Handle(Messages.Destroy) != 1) { return 13; }
+            if (Handle(Messages.Paint) != 2) { return 14; }
+            if (Handle(Messages.Close) != 3) { return 15; }
+            if (Handle(Messages.PaintPlusOne) != 4) { return 16; }
+            if (Handle(16) != 4) { return 17; }
+            if (Handle(1234) != 0) { return 18; }
+
+            // Enum governing type with enum-member labels.
+            if (Rank(Color.Red) != 10) { return 19; }
+            if (Rank(Color.Green) != 20) { return 20; }
+            if (Rank(Color.Blue) != 30) { return 21; }
+
+            // `char` governing type.
+            char letter = 'b';
+            int letterCode = 0;
+            switch (letter)
+            {
+                case 'a':
+                    letterCode = 1;
+                    break;
+                case 'b':
+                    letterCode = 2;
+                    break;
+                default:
+                    letterCode = 9;
+                    break;
+            }
+            if (letterCode != 2) { return 22; }
+
+            // A local declared inside a section. Each section is its own scope.
+            int scoped = 0;
+            switch (3)
+            {
+                case 3:
+                    int temporary = 7;
+                    scoped = temporary * 6;
+                    break;
+                default:
+                    int fallbackValue = 1;
+                    scoped = fallbackValue;
+                    break;
+            }
+            if (scoped != 42) { return 23; }
+
+            // `return` from inside a section, and the trailing-return path.
+            if (Classify(0) != 100) { return 24; }
+            if (Classify(1) != 200) { return 25; }
+            if (Classify(5) != 300) { return 26; }
+
+            // Nesting.
+            int nested = 0;
+            int outerKey = 1;
+            int innerKey = 2;
+            switch (outerKey)
+            {
+                case 1:
+                    switch (innerKey)
+                    {
+                        case 2:
+                            nested = 20;
+                            break;
+                        default:
+                            nested = 99;
+                            break;
+                    }
+                    break;
+                default:
+                    nested = 1;
+                    break;
+            }
+            if (nested != 20) { return 27; }
+
+            // `break` inside a switch inside a loop leaves the SWITCH, not the loop. If it left the
+            // loop, `loops` would stop at 2 and `inner` at 1.
+            int loops = 0;
+            int inner = 0;
+            int i = 0;
+            while (i < 3)
+            {
+                i = i + 1;
+                switch (i)
+                {
+                    case 2:
+                        break;
+                    default:
+                        inner = inner + 1;
+                        break;
+                }
+                loops = loops + 1;
+            }
+            if (loops != 3) { return 28; }
+            if (inner != 2) { return 29; }
+
+            // `continue` inside a switch inside a loop continues the LOOP. The tail after the
+            // switch is skipped on the even steps, and the loop still terminates.
+            int odds = 0;
+            int tail = 0;
+            int j = 0;
+            while (j < 5)
+            {
+                j = j + 1;
+                switch (j % 2)
+                {
+                    case 0:
+                        continue;
+                    default:
+                        odds = odds + 1;
+                        break;
+                }
+                tail = tail + 1;
+            }
+            if (j != 5) { return 30; }
+            if (odds != 3) { return 31; }
+            if (tail != 3) { return 32; }
+
+            // Composition with the two forms the previous round added.
+            int combined = 0;
+            int step = 0;
+            do
+            {
+                step = step + 1;
+                switch (step)
+                {
+                    case 1:
+                    case 3:
+                        combined = combined + (step > 2 ? 100 : 1);
+                        break;
+                    default:
+                        combined = combined + 10;
+                        break;
+                }
+            }
+            while (step < 4);
+            if (combined != 121) { return 33; }
+
+            // A `long` governing value with plain int literals as labels.
+            long wide = 4;
+            int wideCode = 0;
+            switch (wide)
+            {
+                case 4:
+                    wideCode = 40;
+                    break;
+                default:
+                    wideCode = 1;
+                    break;
+            }
+            if (wideCode != 40) { return 34; }
+
+            return 42;
+        }
+    }
+}

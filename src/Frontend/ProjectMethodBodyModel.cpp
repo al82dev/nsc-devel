@@ -797,6 +797,11 @@ std::span<const MethodLocalBorrowBinding> ProjectMethodBodyModel::localBorrowBin
     return localBorrowBindings_;
 }
 
+std::span<const MethodSwitchBinding> ProjectMethodBodyModel::switchBindings() const noexcept
+{
+    return switchBindings_;
+}
+
 std::span<const MethodStructuredExitBinding> ProjectMethodBodyModel::structuredExits() const noexcept
 {
     return structuredExits_;
@@ -1161,6 +1166,15 @@ void ProjectMethodBodyModel::analyzeBlock(
     const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
     for (const ast::AstNode* statement : block->children())
     {
+        // A switch section keeps its labels in the same child list as its statements, and the
+        // labels were already analyzed and folded by analyzeSwitch before this runs. Skipping
+        // them here is what lets a section reuse this routine wholesale -- nested scope, cleanup
+        // continuations and the unreachable-code probe included -- instead of growing a second,
+        // slightly-different copy of it.
+        if (statement != nullptr && statement->kind() == ast::AstNodeKind::SwitchLabel)
+        {
+            continue;
+        }
         if (ownershipFlowReachable_)
         {
             analyzeStatement(statement, methodMemberOrdinal, activeScope, diagnostics);
@@ -1343,6 +1357,9 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         case ast::AstNodeKind::ForeachStatement:
             analyzeForeach(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            break;
+        case ast::AstNodeKind::SwitchStatement:
+            analyzeSwitch(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;
         case ast::AstNodeKind::ReturnStatement:
             analyzeReturn(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -3134,6 +3151,344 @@ void ProjectMethodBodyModel::analyzeReturn(
     }
 }
 
+const MethodNameBinding* ProjectMethodBodyModel::recordedNameBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    if (syntax == nullptr) return nullptr;
+    for (std::size_t index = nameBindings_.size(); index > 0; --index)
+    {
+        if (nameBindings_[index - 1].syntax == syntax) return &nameBindings_[index - 1];
+    }
+    return nullptr;
+}
+
+// The constant folder for `case` labels.
+//
+// WHY IT EXISTS SEPARATELY. The body model already computes `ExpressionResult::integerConstant`,
+// but only for the shapes that need it for overload resolution -- literals, unary minus on a
+// literal, casts. A `case` label needs more than that and needs it for a different reason: two
+// labels that name the same value must be REJECTED, and "the same value" cannot be decided by
+// comparing syntax. `case WM_DESTROY:` and `case 2:` are the same label.
+//
+// WHAT IT DELIBERATELY DOES NOT DO. It is not a general constant evaluator: no floats, no strings,
+// no method calls, no `sizeof`. Anything it cannot answer for comes back as std::nullopt and the
+// caller reports "a case label must be a compile-time integer constant", which is a better outcome
+// than a folder that quietly gets a hard case wrong.
+std::optional<std::size_t> ProjectMethodBodyModel::constantMemberOfType(
+    std::size_t typeOrdinal, std::string_view name) const noexcept
+{
+    if (memberModel_ == nullptr) return std::nullopt;
+    for (const std::size_t ordinal : memberModel_->membersOfType(typeOrdinal))
+    {
+        if (ordinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+        if (member.kind != ClassMemberKind::Field || member.name != name) continue;
+        if (member.isConst || member.isEnumConstant) return ordinal;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::int64_t> ProjectMethodBodyModel::foldIntegerConstantExpression(
+    const ast::AstNode* expression,
+    std::size_t depth,
+    std::optional<std::size_t> declaringTypeOrdinal) const
+{
+    // A `const` field whose initializer names another const field recurses. The bound stops a
+    // cycle that the member model would otherwise have to prove impossible.
+    if (expression == nullptr || depth > 32) return std::nullopt;
+
+    switch (expression->kind())
+    {
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+            return static_cast<std::int64_t>(expression->integerValue());
+
+        case ast::AstNodeKind::CastExpression:
+            // The value is unchanged by the cast for every case a label can legally take; the
+            // TYPE was already checked against the governing type by the caller.
+            return foldIntegerConstantExpression(expression->first(), depth + 1, declaringTypeOrdinal);
+
+        case ast::AstNodeKind::UnaryExpression:
+        {
+            const std::optional<std::int64_t> operand =
+                foldIntegerConstantExpression(expression->first(), depth + 1, declaringTypeOrdinal);
+            if (!operand.has_value()) return std::nullopt;
+            switch (expression->tokenKind())
+            {
+                case lexer::TokenKind::Plus: return *operand;
+                case lexer::TokenKind::Minus:
+                    return static_cast<std::int64_t>(
+                        0U - static_cast<std::uint64_t>(*operand));
+                case lexer::TokenKind::Tilde:
+                    return static_cast<std::int64_t>(~static_cast<std::uint64_t>(*operand));
+                default: return std::nullopt;
+            }
+        }
+
+        case ast::AstNodeKind::BinaryExpression:
+        {
+            const std::optional<std::int64_t> left =
+                foldIntegerConstantExpression(expression->first(), depth + 1, declaringTypeOrdinal);
+            if (!left.has_value()) return std::nullopt;
+            const std::optional<std::int64_t> right =
+                foldIntegerConstantExpression(expression->second(), depth + 1, declaringTypeOrdinal);
+            if (!right.has_value()) return std::nullopt;
+            // Arithmetic is done on the unsigned twin so that overflow wraps instead of being
+            // undefined. The result is a bit pattern either way -- the label's declared type has
+            // already been checked, and the backend re-widens it to the governing type.
+            const std::uint64_t a = static_cast<std::uint64_t>(*left);
+            const std::uint64_t b = static_cast<std::uint64_t>(*right);
+            switch (expression->tokenKind())
+            {
+                case lexer::TokenKind::Plus: return static_cast<std::int64_t>(a + b);
+                case lexer::TokenKind::Minus: return static_cast<std::int64_t>(a - b);
+                case lexer::TokenKind::Star: return static_cast<std::int64_t>(a * b);
+                case lexer::TokenKind::Slash:
+                    if (*right == 0) return std::nullopt;
+                    return *left / *right;
+                case lexer::TokenKind::Percent:
+                    if (*right == 0) return std::nullopt;
+                    return *left % *right;
+                case lexer::TokenKind::Amp: return static_cast<std::int64_t>(a & b);
+                case lexer::TokenKind::Pipe: return static_cast<std::int64_t>(a | b);
+                case lexer::TokenKind::Caret: return static_cast<std::int64_t>(a ^ b);
+                case lexer::TokenKind::LessLess:
+                    if (*right < 0 || *right > 63) return std::nullopt;
+                    return static_cast<std::int64_t>(a << static_cast<unsigned>(*right));
+                case lexer::TokenKind::GreaterGreater:
+                    if (*right < 0 || *right > 63) return std::nullopt;
+                    return *left >> static_cast<unsigned>(*right);
+                default: return std::nullopt;
+            }
+        }
+
+        case ast::AstNodeKind::IdentifierExpression:
+        case ast::AstNodeKind::MemberExpression:
+        {
+            // Two shapes land here and both matter: `Color.Red`, and `Messages.Destroy` (a
+            // `const int` field, which is what every Win32 message id is). The name was already
+            // resolved by analyzeExpression, so this reads the binding it left behind rather than
+            // doing lookup a second time and risking a different answer.
+            const MethodNameBinding* binding = recordedNameBinding(expression);
+            std::optional<std::size_t> ordinal;
+            if (binding != nullptr && binding->candidateMemberOrdinals.size() == 1)
+            {
+                ordinal = binding->candidateMemberOrdinals.front();
+            }
+            else if (declaringTypeOrdinal.has_value() &&
+                expression->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                // Inside a const field's own initializer there may be no binding to read: build()
+                // analyzes METHOD BODIES BEFORE FIELD INITIALIZERS, so when a case label in a
+                // method folds `Messages.Second`, the initializer `First + 1` has not been through
+                // analyzeExpression yet and its `First` has no recorded binding. Resolving an
+                // unqualified name against the field's own declaring type is exactly the rule that
+                // initializer is written under, and it keeps the Win32 idiom
+                // (`WM_USER + 1`) working without reordering build().
+                ordinal = constantMemberOfType(*declaringTypeOrdinal, expression->text());
+            }
+            if (!ordinal.has_value() || memberModel_ == nullptr ||
+                *ordinal >= memberModel_->members().size())
+            {
+                return std::nullopt;
+            }
+            const ClassMemberSymbol& member = memberModel_->members()[*ordinal];
+            if (member.kind != ClassMemberKind::Field) return std::nullopt;
+            if (member.isEnumConstant) return member.enumConstantValue;
+            if (!member.isConst || member.syntax == nullptr) return std::nullopt;
+            return foldIntegerConstantExpression(
+                member.syntax->first(), depth + 1, member.declaringTypeOrdinal);
+        }
+
+        default:
+            return std::nullopt;
+    }
+}
+
+// `switch (governing) { case a: ... default: ... }`
+//
+// THE FOUR THINGS THIS DECIDES, and why each is here rather than downstream:
+//
+//   1. The governing type must be INTEGRAL or an ENUM. Not `string`: a string switch is a hash
+//      table and a chain of comparisons, not a jump table, and pretending otherwise in the syntax
+//      would hide that cost. Not `float`: equality on floats is a trap.
+//   2. Every `case` label is folded to an integer HERE. Downstream passes get numbers, so neither
+//      the HIR, the MIR nor the backend needs to know what a constant expression is.
+//   3. DUPLICATE LABELS ARE REJECTED. Two labels with the same value are unreachable code that
+//      looks like working code, and LLVM's `switch` has undefined behaviour with a repeated case
+//      value, so this is a correctness check and not a style one.
+//   4. At most one `default`, in any position.
+//
+// A switch pushes a LoopContext with isSwitch set, so `break` leaves the switch while `continue`
+// walks past it to the enclosing loop. See analyzeLoopExit.
+void ProjectMethodBodyModel::analyzeSwitch(
+    const ast::AstNode* statement,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (statement == nullptr) return;
+
+    const ExpressionResult governing = analyzeExpression(
+        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+
+    const bool governingIsEnum = governing.valid && isEnumTypeKey(governing.typeKey);
+    const bool governingIsIntegral =
+        governing.valid && ProjectTypeConversion::isIntegral(governing.typeKey);
+    if (governing.valid && !governingIsEnum && !governingIsIntegral)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCondition,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->first() != nullptr ? statement->first()->range() : statement->range(),
+            "switch governing expression must have an integral or enum type; it has type '" +
+                governing.typeKey + "'");
+    }
+
+    MethodSwitchBinding binding;
+    binding.syntax = statement;
+    binding.methodMemberOrdinal = methodMemberOrdinal;
+    binding.scopeOrdinal = scopeOrdinal;
+    binding.governingTypeKey = governing.typeKey;
+
+    // Every label value already claimed, across the whole switch -- sections do not get their own
+    // namespace, so this is one flat list.
+    std::vector<std::int64_t> seenValues;
+    const ast::AstNode* defaultLabel = nullptr;
+
+    for (const ast::AstNode* section : statement->children())
+    {
+        if (section == nullptr || section->kind() != ast::AstNodeKind::SwitchSection) continue;
+
+        MethodSwitchSectionBinding sectionBinding;
+        sectionBinding.syntax = section;
+
+        const std::size_t labelCount = static_cast<std::size_t>(section->integerValue());
+        for (std::size_t index = 0; index < labelCount && index < section->children().size(); ++index)
+        {
+            const ast::AstNode* label = section->children()[index];
+            if (label == nullptr || label->kind() != ast::AstNodeKind::SwitchLabel) continue;
+
+            if (label->flag())
+            {
+                if (defaultLabel != nullptr)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        label->range(),
+                        "a switch may declare only one default label");
+                    continue;
+                }
+                defaultLabel = label;
+                sectionBinding.hasDefault = true;
+                continue;
+            }
+
+            const ExpressionResult value = analyzeExpression(
+                label->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!value.valid) continue;
+
+            if (governing.valid)
+            {
+                const ProjectImplicitConversion conversion =
+                    classifyImplicit(value.typeKey, governing.typeKey, value.integerConstant);
+                if (!conversion.exists())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        label->range(),
+                        "case label of type '" + value.typeKey +
+                            "' cannot be converted to the switch governing type '" +
+                            governing.typeKey + "'");
+                    continue;
+                }
+            }
+
+            const std::optional<std::int64_t> folded =
+                foldIntegerConstantExpression(label->first(), 0, std::nullopt);
+            if (!folded.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::ConstRequiresConstant,
+                    diagnostics::DiagnosticSeverity::Error,
+                    label->range(),
+                    "a case label must be a compile-time integer constant");
+                continue;
+            }
+
+            bool duplicate = false;
+            for (const std::int64_t seen : seenValues)
+            {
+                if (seen != *folded) continue;
+                duplicate = true;
+                // Not a style rule: LLVM's `switch` has undefined behaviour with a repeated case
+                // value, and the second label is unreachable code that reads as live code.
+                diagnostics.report(
+                    diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error,
+                    label->range(),
+                    "duplicate case label with value " + std::to_string(*folded));
+                break;
+            }
+            if (duplicate) continue;
+
+            seenValues.push_back(*folded);
+            sectionBinding.labelValues.push_back(*folded);
+        }
+
+        binding.sections.push_back(std::move(sectionBinding));
+    }
+
+    // Every section starts from the state at the switch, never from the previous section's exit:
+    // there is no fall-through, so the previous section's effects cannot reach this one.
+    const OwnershipFlowSnapshot switchEntry = captureOwnershipFlow();
+    loopStack_.push_back(LoopContext{
+        scopeOrdinal,
+        activeCleanupRegions_.size(),
+        activeCleanupRegions_.size(),
+        {},
+        {},
+        true});
+
+    std::vector<OwnershipFlowSnapshot> sectionExitStates;
+    for (const ast::AstNode* section : statement->children())
+    {
+        if (section == nullptr || section->kind() != ast::AstNodeKind::SwitchSection) continue;
+        restoreOwnershipFlow(switchEntry);
+        analyzeBlock(section, methodMemberOrdinal, scopeOrdinal, true, diagnostics);
+        const OwnershipFlowSnapshot exitState = captureOwnershipFlow();
+        if (exitState.reachable)
+        {
+            sectionExitStates.push_back(exitState);
+        }
+    }
+
+    LoopContext switchContext = std::move(loopStack_.back());
+    loopStack_.pop_back();
+
+    // Control reaches the statement after the switch three ways: off the end of a section, through
+    // a `break`, or -- only when there is no `default` -- by matching nothing at all.
+    std::vector<OwnershipFlowSnapshot> exitStates = std::move(switchContext.breakStates);
+    for (OwnershipFlowSnapshot& state : sectionExitStates)
+    {
+        exitStates.push_back(std::move(state));
+    }
+    OwnershipFlowSnapshot seed;
+    if (defaultLabel != nullptr)
+    {
+        seed.reachable = false;
+    }
+    else
+    {
+        seed = switchEntry;
+    }
+    restoreOwnershipFlow(joinOwnershipFlows(seed, exitStates));
+
+    switchBindings_.push_back(std::move(binding));
+}
+
 bool ProjectMethodBodyModel::analyzeLoopExit(
     const ast::AstNode* statement,
     MethodStructuredExitKind kind,
@@ -3148,12 +3503,34 @@ bool ProjectMethodBodyModel::analyzeLoopExit(
             diagnostics::DiagnosticSeverity::Error,
             statement != nullptr ? statement->range() : SourceRange(),
             kind == MethodStructuredExitKind::Break
-                ? "break is only valid within a loop"
+                ? "break is only valid within a loop or a switch"
                 : "continue is only valid within a loop");
         return false;
     }
 
-    const std::size_t targetLoopIndex = loopStack_.size() - 1;
+    // `break` binds to the innermost frame, loop or switch alike -- that is what makes `break`
+    // inside a case leave the switch. `continue` binds to the innermost LOOP, so it walks past
+    // every switch frame on the way out: a `continue` inside a `switch` inside a `while` continues
+    // the while. Getting this backwards is not a compile error anywhere downstream; it is a jump
+    // to the wrong label.
+    std::size_t targetLoopIndex = loopStack_.size() - 1;
+    if (kind == MethodStructuredExitKind::Continue)
+    {
+        while (loopStack_[targetLoopIndex].isSwitch)
+        {
+            if (targetLoopIndex == 0)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement != nullptr ? statement->range() : SourceRange(),
+                    "continue is only valid within a loop");
+                return false;
+            }
+            --targetLoopIndex;
+        }
+    }
+
     for (const FinallyContext& finallyContext : finallyStack_)
     {
         if (targetLoopIndex < finallyContext.loopDepthAtEntry)
@@ -3169,7 +3546,7 @@ bool ProjectMethodBodyModel::analyzeLoopExit(
         }
     }
 
-    LoopContext& loop = loopStack_.back();
+    LoopContext& loop = loopStack_[targetLoopIndex];
     if (kind == MethodStructuredExitKind::Break)
     {
         loop.breakStates.push_back(captureOwnershipFlow());
@@ -9543,6 +9920,18 @@ bool ProjectMethodBodyModel::isAnyDelegateTypeKey(std::string_view typeKey) cons
     {
         if (type.identity.key() != key) continue;
         return type.kind == NamedTypeDeclarationKind::Delegate;
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::string_view key = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != key) continue;
+        return type.kind == NamedTypeDeclarationKind::Enum;
     }
     return false;
 }

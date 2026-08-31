@@ -395,6 +395,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::While: return "while";
         case ProjectOopMirNodeKind::DoWhile: return "do-while";
         case ProjectOopMirNodeKind::For: return "for";
+        case ProjectOopMirNodeKind::Switch: return "switch";
+        case ProjectOopMirNodeKind::SwitchSection: return "switch-section";
         case ProjectOopMirNodeKind::Break: return "break";
         case ProjectOopMirNodeKind::Continue: return "continue";
         case ProjectOopMirNodeKind::Return: return "return";
@@ -987,6 +989,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     {
         result->conversionKind = node->conversion->kind;
     }
+    // SwitchSection only. Copied verbatim: the values were folded once, in the body model.
+    result->switchLabels = node->switchLabels;
+    result->switchHasDefault = node->switchHasDefault;
     result->integerValue = node->integerValue;
     result->floatingValue = node->floatingValue;
     result->booleanValue = node->booleanValue;
@@ -1009,6 +1014,10 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::DoWhile: result->kind = ProjectOopMirNodeKind::DoWhile; break;
         case ProjectOopHirNodeKind::Conditional: result->kind = ProjectOopMirNodeKind::Conditional; break;
         case ProjectOopHirNodeKind::For: result->kind = ProjectOopMirNodeKind::For; break;
+        case ProjectOopHirNodeKind::Switch: result->kind = ProjectOopMirNodeKind::Switch; break;
+        case ProjectOopHirNodeKind::SwitchSection:
+            result->kind = ProjectOopMirNodeKind::SwitchSection;
+            break;
         case ProjectOopHirNodeKind::Break: result->kind = ProjectOopMirNodeKind::Break; break;
         case ProjectOopHirNodeKind::Continue: result->kind = ProjectOopMirNodeKind::Continue; break;
         case ProjectOopHirNodeKind::Return: result->kind = ProjectOopMirNodeKind::Return; break;
