@@ -182,6 +182,27 @@ bool ProjectInheritanceModel::resolveBaseSpecifications(
         return false;
     }
 
+    // C8 "type root": the ordinal of NativeSharp.Core.Object, when the compilation has it in
+    // view. Looked up once here rather than per class.
+    //
+    // Why the root is OPTIONAL rather than always present: it is a declared type like any other,
+    // and a project that does not reference the standard library (or declare its own) has no
+    // Object to derive from. Inventing one would change the vtable, the descriptor and the
+    // constructor chain of every class in every such project for a facility it cannot use. This
+    // follows exactly the convention NativeSharp.Core.Exception already set for typed
+    // catch/throw -- see ProjectMethodBodyModel::exceptionRootTypeOrdinal.
+    std::optional<std::size_t> objectRootOrdinal;
+    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    {
+        const NamedTypeDeclaration& candidate = nameLookup_->namedTypes()[ordinal];
+        if (candidate.kind == NamedTypeDeclarationKind::Class &&
+            candidate.identity.fullyQualifiedName() == "NativeSharp.Core.Object")
+        {
+            objectRootOrdinal = ordinal;
+            break;
+        }
+    }
+
     bool ok = true;
     for (ClassInheritanceInfo& info : classes_)
     {
@@ -297,6 +318,17 @@ bool ProjectInheritanceModel::resolveBaseSpecifications(
                 ok = false;
             }
             }
+        }
+
+        // C8 "type root": a class that named no base derives from Object -- except Object
+        // itself, which is where the chain has to stop. Every other consumer of the hierarchy
+        // (the vtable builder, the descriptor emitter, `base.` lookup, the constructor chain, the
+        // RTTI walk) then sees an ordinary base class and needs no special case at all: the root
+        // is a real class, not a compiler fiction.
+        if (!selectedBase.has_value() && objectRootOrdinal.has_value() &&
+            info.typeOrdinal != *objectRootOrdinal)
+        {
+            selectedBase = objectRootOrdinal;
         }
 
         info.baseTypeOrdinal = selectedBase;

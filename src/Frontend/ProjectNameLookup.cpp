@@ -917,6 +917,24 @@ void ProjectNameLookup::bindTypeSyntax(
             effectiveNamespaceSegments,
             environment,
             syntax->baseName());
+        // C8 "type root": `object` is the lowercase spelling of NativeSharp.Core.Object, the way
+        // `string` is of the native string type. Deliberately NOT a lexer keyword and resolved
+        // only as a LAST resort, after ordinary lookup has failed: a project that does not have
+        // the root in view keeps `object` as an ordinary identifier, and one that declares its own
+        // type called `object` still wins. Same shape as the alias expansion just above -- the
+        // binding's writtenName stays "object", so diagnostics say what the programmer wrote.
+        if (binding.candidateTypeOrdinals.empty() && syntax->baseName() == "object")
+        {
+            for (std::size_t ordinal = 0; ordinal < namedTypes_.size(); ++ordinal)
+            {
+                if (namedTypes_[ordinal].kind == NamedTypeDeclarationKind::Class &&
+                    namedTypes_[ordinal].identity.fullyQualifiedName() == "NativeSharp.Core.Object")
+                {
+                    binding.candidateTypeOrdinals.push_back(ordinal);
+                    break;
+                }
+            }
+        }
         if (binding.candidateTypeOrdinals.empty())
         {
             binding.kind = TypeNameBindingKind::Unresolved;

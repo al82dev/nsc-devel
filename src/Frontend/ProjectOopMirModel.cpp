@@ -388,6 +388,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
     {
         case ProjectOopMirNodeKind::Block: return "block";
         case ProjectOopMirNodeKind::LocalDeclaration: return "local-declaration";
+        case ProjectOopMirNodeKind::AggregateInitialize: return "aggregate-initialize";
+        case ProjectOopMirNodeKind::AggregateElementStore: return "aggregate-element-store";
         case ProjectOopMirNodeKind::ExpressionStatement: return "expression-statement";
         case ProjectOopMirNodeKind::If: return "if";
         case ProjectOopMirNodeKind::While: return "while";
@@ -438,6 +440,10 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::StringSubstring: return "string-substring";
         case ProjectOopMirNodeKind::StringFromCharArray: return "string-from-char-array";
         case ProjectOopMirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
+        case ProjectOopMirNodeKind::AggregateEquals: return "aggregate-equals";
+        case ProjectOopMirNodeKind::AggregateHash: return "aggregate-hash";
+        case ProjectOopMirNodeKind::CoreObjectTypeName: return "core-object-type-name";
+        case ProjectOopMirNodeKind::CoreObjectReferenceHash: return "core-object-reference-hash";
         case ProjectOopMirNodeKind::CoreClockQueryCounter: return "core-clock-query-counter";
         case ProjectOopMirNodeKind::CoreClockQueryFrequency: return "core-clock-query-frequency";
         case ProjectOopMirNodeKind::CoreClockQuerySystemFileTime: return "core-clock-query-system-filetime";
@@ -590,6 +596,16 @@ bool ProjectOopMirModel::build(
         table.vtableName = "__nsc_vtable_" + suffix;
         table.interfaceMapName = "__nsc_ifmap_" + suffix;
         table.stableTypeId = stableTypeId(table.typeKey);
+        // C8: the SHORT name, not the fully-qualified key -- `Dictionary`, not
+        // `Proj::NativeSharp.Core.Collections.Generic.Dictionary`. That is what a ToString()
+        // default is useful for, and it matches what real C#'s GetType().Name gives.
+        {
+            const std::string& identity = nameLookup.namedTypes()[sourceTable.typeOrdinal].identity.key();
+            const std::size_t lastDot = identity.find_last_of(".:");
+            table.typeDisplayName = lastDot == std::string::npos
+                ? identity : identity.substr(lastDot + 1);
+        }
+        table.typeNameGlobalName = "__nsc_typename_" + suffix;
         table.slotMemberOrdinals = sourceTable.slotMemberOrdinals;
         for (std::size_t slot = 0; slot < sourceTable.slotMemberOrdinals.size(); ++slot)
         {
@@ -1071,6 +1087,36 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::CoreConsoleWriteLine:
             result->kind = ProjectOopMirNodeKind::CoreConsoleWriteLine;
             break;
+        case ProjectOopHirNodeKind::AggregateEquals:
+        case ProjectOopHirNodeKind::AggregateHash:
+        {
+            // C8 struct half: the aggregate's size and alignment, so the backend can spill the
+            // operands into slots it can walk. The leaves themselves already carry their offsets
+            // from the HIR pass and are copied generically with the rest of the children.
+            if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr)
+            {
+                error = "C8 struct root member requires name lookup and value layouts";
+                return nullptr;
+            }
+            const auto layout = elementLayout(node->elementTypeKey);
+            if (!layout.has_value() || layout->first == 0)
+            {
+                error = "C8 cannot determine the layout of struct '" + node->elementTypeKey + "'";
+                return nullptr;
+            }
+            result->kind = node->kind == ProjectOopHirNodeKind::AggregateEquals
+                ? ProjectOopMirNodeKind::AggregateEquals
+                : ProjectOopMirNodeKind::AggregateHash;
+            result->immediate = layout->first;
+            result->alignment = layout->second;
+            break;
+        }
+        case ProjectOopHirNodeKind::CoreObjectTypeName:
+            result->kind = ProjectOopMirNodeKind::CoreObjectTypeName;
+            break;
+        case ProjectOopHirNodeKind::CoreObjectReferenceHash:
+            result->kind = ProjectOopMirNodeKind::CoreObjectReferenceHash;
+            break;
         case ProjectOopHirNodeKind::CoreClockQueryCounter:
             result->kind = ProjectOopMirNodeKind::CoreClockQueryCounter;
             break;
@@ -1520,6 +1566,44 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::TemporaryAddress:
             result->kind = ProjectOopMirNodeKind::TemporaryAddress;
             break;
+        case ProjectOopHirNodeKind::AggregateInitializer:
+        {
+            // C7 "aggregate initializer": the storage the elements are written into. Its size and
+            // alignment come from the same value layout every other consumer of this type reads,
+            // so `V v = {1, 2};` occupies exactly the bytes a C host sees.
+            if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr)
+            {
+                error = "C7 aggregate initializer requires name lookup and value layouts";
+                return nullptr;
+            }
+            const auto layout = elementLayout(node->typeKey);
+            if (!layout.has_value() || layout->first == 0)
+            {
+                error = "C7 cannot determine the layout of aggregate '" + node->typeKey + "'";
+                return nullptr;
+            }
+            result->kind = ProjectOopMirNodeKind::AggregateInitialize;
+            result->immediate = layout->first;
+            result->alignment = layout->second;
+            result->zeroInitialize = true;
+            break;
+        }
+        case ProjectOopHirNodeKind::AggregateElement:
+        {
+            result->kind = ProjectOopMirNodeKind::AggregateElementStore;
+            result->immediate = node->integerValue;
+            // C8: the element's WIDTH IN BYTES, resolved here rather than in the backend, because
+            // this is where the value layouts live. It is what lets the struct root members read
+            // every leaf -- a float, a reference, an enum -- as a plain integer of the right size,
+            // with no cast instructions at all. (C7's initializer elements carry it too and simply
+            // do not use it: one rule for what an aggregate element is, not two.)
+            if (nameLookup_ != nullptr && objectLayoutModel_ != nullptr)
+            {
+                const auto leafLayout = elementLayout(node->typeKey);
+                if (leafLayout.has_value()) result->secondaryImmediate = leafLayout->first;
+            }
+            break;
+        }
         case ProjectOopHirNodeKind::ValueConstruction:
         {
             // C6 "struct members": a struct has no allocation plan -- there is nothing to
@@ -1632,25 +1716,9 @@ std::optional<std::pair<std::uint64_t, std::uint64_t>> ProjectOopMirModel::eleme
     std::string_view typeKey) const
 {
     if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr) return std::nullopt;
-    if (typeKey == "builtin:bool" || typeKey == "builtin:byte" || typeKey == "builtin:char") return {{1, 1}};
-    if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return {{2, 2}};
-    if (typeKey == "builtin:int" || typeKey == "builtin:uint" || typeKey == "builtin:float") return {{4, 4}};
-    if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" ||
-        typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
-        ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-    {
-        const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[ordinal];
-        if ("type:" + declaration.identity.key() != typeKey) continue;
-        if (declaration.kind == NamedTypeDeclarationKind::Struct)
-        {
-            const StructValueLayout* layout = objectLayoutModel_->structLayoutForType(ordinal);
-            if (layout != nullptr) return {{layout->size, layout->alignment}};
-            return std::nullopt;
-        }
-        return {{8, 8}};
-    }
-    return std::nullopt;
+    // One rule for "how big is one of these", shared with the OOP HIR model's aggregate-element
+    // offsets (C7). See ProjectObjectLayoutModel::valueLayoutForTypeKey.
+    return objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, typeKey);
 }
 
 }

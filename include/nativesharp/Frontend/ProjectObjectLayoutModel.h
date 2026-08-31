@@ -112,6 +112,15 @@ public:
     const StructValueLayout* structLayoutForType(std::size_t typeOrdinal) const noexcept;
     const ObjectFieldLayout* fieldLayoutForMember(std::size_t memberOrdinal) const noexcept;
     target::TypeLayout classReferenceLayout() const noexcept;
+    // The size and alignment of ONE value of `typeKey` -- what an array stride, a `sizeof` and an
+    // aggregate-element offset all need. Builtins answer from the target's fixed widths, a struct
+    // from its computed value layout, and everything reference-shaped (a class, an interface, a
+    // dynamic array, a pointer, a string) from the pointer width. nullopt for a type key this
+    // project does not know. Shared by the MIR model and the OOP HIR model so a stride and an
+    // offset can never be computed by two different rules.
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> valueLayoutForTypeKey(
+        const ProjectNameLookup& nameLookup,
+        std::string_view typeKey) const;
     bool isBuilt() const noexcept;
 
 private:

@@ -103,6 +103,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopHirNodeKind::RawElementAddress: return "raw-element-address";
         case ProjectOopHirNodeKind::ValueConstruction: return "value-construction";
+        case ProjectOopHirNodeKind::AggregateInitializer: return "aggregate-initializer";
+        case ProjectOopHirNodeKind::AggregateElement: return "aggregate-element";
         case ProjectOopHirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopHirNodeKind::AddressValue: return "address-value";
         case ProjectOopHirNodeKind::BorrowValue: return "borrow-value";
@@ -132,6 +134,10 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::StringSubstring: return "string-substring";
         case ProjectOopHirNodeKind::StringFromCharArray: return "string-from-char-array";
         case ProjectOopHirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
+        case ProjectOopHirNodeKind::AggregateEquals: return "aggregate-equals";
+        case ProjectOopHirNodeKind::AggregateHash: return "aggregate-hash";
+        case ProjectOopHirNodeKind::CoreObjectTypeName: return "core-object-type-name";
+        case ProjectOopHirNodeKind::CoreObjectReferenceHash: return "core-object-reference-hash";
         case ProjectOopHirNodeKind::CoreClockQueryCounter: return "core-clock-query-counter";
         case ProjectOopHirNodeKind::CoreClockQueryFrequency: return "core-clock-query-frequency";
         case ProjectOopHirNodeKind::CoreClockQuerySystemFileTime: return "core-clock-query-system-filetime";
@@ -2240,6 +2246,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                  core->kind == MethodCoreOperationKind::ThreadCreate ||
                  core->kind == MethodCoreOperationKind::ThreadJoin ||
                  core->kind == MethodCoreOperationKind::ThreadDetach ||
+                 // C8 "type root": RuntimeHelpers.TypeName/ReferenceHash -- one operand each (an
+                 // Object reference), a string and an int out. Same shared shape as everything
+                 // else here; the operand type is new, the mechanism is not.
+                 core->kind == MethodCoreOperationKind::ObjectTypeName ||
+                 core->kind == MethodCoreOperationKind::ObjectReferenceHash ||
                  // Stage 54.3 "Mutex": MutexCreate (zero operands -- the first core operation in
                  // the project with none at all), MutexLock/MutexUnlock/MutexClose (one
                  // builtin:nint operand, the saved HANDLE) -- exact same shape as
@@ -2381,7 +2392,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     // operand, void out). FileMoveRaw/DirectoryMoveRaw are NOT here on purpose:
                     // they take two operands (source, dest), so they fall through to the default
                     // expected=2U bucket above.
-                    core->kind == MethodCoreOperationKind::ThreadSleepRaw)
+                    core->kind == MethodCoreOperationKind::ThreadSleepRaw ||
+                    // C8: TypeName/ReferenceHash each take exactly the object reference.
+                    core->kind == MethodCoreOperationKind::ObjectTypeName ||
+                    core->kind == MethodCoreOperationKind::ObjectReferenceHash)
                 {
                     expected = 1U;
                 }
@@ -2432,6 +2446,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 else if (core->kind == MethodCoreOperationKind::FileCopyRaw) kind = ProjectOopHirNodeKind::CoreFileCopy;
                 else if (core->kind == MethodCoreOperationKind::FileMoveRaw) kind = ProjectOopHirNodeKind::CoreFileMove;
                 else if (core->kind == MethodCoreOperationKind::DirectoryMoveRaw) kind = ProjectOopHirNodeKind::CoreDirectoryMove;
+                else if (core->kind == MethodCoreOperationKind::ObjectTypeName) kind = ProjectOopHirNodeKind::CoreObjectTypeName;
+                else if (core->kind == MethodCoreOperationKind::ObjectReferenceHash) kind = ProjectOopHirNodeKind::CoreObjectReferenceHash;
                 auto node = makeNode(kind, expression, core->resultTypeKey);
                 for (std::size_t index = 0; index < operands.size(); ++index)
                 {
@@ -2673,6 +2689,67 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 }
                 auto node = makeNode(ProjectOopHirNodeKind::CoreConsoleWriteLine, expression, "builtin:void");
                 node->children.push_back(std::move(argument));
+                return node;
+            }
+            // C8 "type root", struct half. ToString on a struct is a COMPILE-TIME constant -- a
+            // struct is resolved on its static type, so the answer is known here -- and therefore
+            // lowers to an ordinary string literal rather than to a node of its own.
+            if (core != nullptr && core->kind == MethodCoreOperationKind::StructToString)
+            {
+                if (addressContext)
+                {
+                    error = "C8 struct ToString() has no address";
+                    return nullptr;
+                }
+                auto node = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
+                node->stringValue = shortTypeName(core->elementTypeKey);
+                return node;
+            }
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::StructEquals ||
+                 core->kind == MethodCoreOperationKind::StructHashCode))
+            {
+                const bool isEquals = core->kind == MethodCoreOperationKind::StructEquals;
+                if (addressContext || expression->children().size() != (isEquals ? 1U : 0U))
+                {
+                    error = "C8 struct root member received an invalid operand count";
+                    return nullptr;
+                }
+                auto node = makeNode(
+                    isEquals ? ProjectOopHirNodeKind::AggregateEquals
+                             : ProjectOopHirNodeKind::AggregateHash,
+                    expression,
+                    core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                // Operand order: the receiver first, then Equals' argument. argumentCount is what
+                // separates them from the leaf descriptors that follow.
+                const ast::AstNode* receiverSyntax = expression->first() != nullptr
+                    ? expression->first()->first() : nullptr;
+                if (receiverSyntax == nullptr)
+                {
+                    error = "C8 struct root member has no receiver";
+                    return nullptr;
+                }
+                auto receiverNode = lowerExpression(receiverSyntax, memberOrdinal, false, error);
+                if (receiverNode == nullptr) return nullptr;
+                node->children.push_back(std::move(receiverNode));
+                if (isEquals)
+                {
+                    auto argument = lowerExpression(
+                        expression->children().front(), memberOrdinal, false, error);
+                    if (argument == nullptr) return nullptr;
+                    node->children.push_back(std::move(argument));
+                }
+                node->argumentCount = node->children.size();
+                if (!appendAggregateLeaves(core->elementTypeKey, 0, expression, node->children, error))
+                {
+                    return nullptr;
+                }
+                if (node->children.size() == node->argumentCount)
+                {
+                    error = "C8 struct '" + core->elementTypeKey + "' has no fields to compare or hash";
+                    return nullptr;
+                }
                 return node;
             }
             if (core != nullptr &&
@@ -2999,6 +3076,23 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         node->children.push_back(std::move(initializer));
                     }
                 }
+            }
+            return node;
+        }
+
+        case ast::AstNodeKind::AggregateInitializerExpression:
+        {
+            const MethodExpressionTypeBinding* targetType = expressionType(expression);
+            if (targetType == nullptr)
+            {
+                error = "C7 aggregate initializer has no bound target type";
+                return nullptr;
+            }
+            auto node = makeNode(
+                ProjectOopHirNodeKind::AggregateInitializer, expression, targetType->typeKey);
+            if (!appendAggregateElements(expression, targetType->typeKey, 0, memberOrdinal, node->children, error))
+            {
+                return nullptr;
             }
             return node;
         }
@@ -3457,6 +3551,203 @@ ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
     }
     return ProjectTypeConversion::classifyImplicit(
         sourceTypeKey, targetTypeKey, integerConstant, isReferenceType(targetTypeKey));
+}
+
+// C7 "aggregate initializer". Semantic analysis has already established that the shape is legal
+// (see ProjectMethodBodyModel::bindAggregateInitializer); this only has to say WHERE each value
+// goes. Nesting is resolved here, against the same StructValueLayout the C header generator emits
+// offsets from, so an initializer and a C host cannot disagree about which bytes a field occupies.
+bool ProjectOopHirModel::appendAggregateElements(
+    const ast::AstNode* syntax,
+    const std::string& targetTypeKey,
+    std::uint64_t baseOffset,
+    std::size_t memberOrdinal,
+    std::vector<std::unique_ptr<ProjectOopHirNode>>& elements,
+    std::string& error)
+{
+    // Per-element type and offset, for the two aggregate shapes the language has.
+    std::vector<std::pair<std::string, std::uint64_t>> slots;
+    if (const std::optional<std::string> elementTypeKey =
+            ProjectMemberModel::fixedArrayElementTypeKey(targetTypeKey);
+        elementTypeKey.has_value())
+    {
+        const std::optional<std::uint64_t> count =
+            ProjectMemberModel::fixedArrayCount(targetTypeKey);
+        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+        {
+            error = "C7 aggregate initializer requires the object layout model";
+            return false;
+        }
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
+            objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, *elementTypeKey);
+        if (!count.has_value() || !layout.has_value() || layout->first == 0)
+        {
+            error = "C7 aggregate initializer cannot size the element type of '" + targetTypeKey + "'";
+            return false;
+        }
+        for (std::uint64_t index = 0; index < *count; ++index)
+        {
+            slots.emplace_back(*elementTypeKey, index * layout->first);
+        }
+    }
+    else
+    {
+        if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
+        {
+            error = "C7 aggregate initializer requires the object layout model";
+            return false;
+        }
+        const std::optional<std::size_t> typeOrdinal =
+            inheritanceModel_->typeOrdinalForTypeKey(targetTypeKey);
+        const StructValueLayout* layout = typeOrdinal.has_value()
+            ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
+        if (layout == nullptr)
+        {
+            error = "C7 aggregate initializer has no value layout for '" + targetTypeKey + "'";
+            return false;
+        }
+        for (const ObjectFieldLayout& field : layout->fields)
+        {
+            slots.emplace_back(field.typeKey, field.offset);
+            // A union takes exactly one initializer, for its first member -- the same rule C has,
+            // and the same one bindAggregateInitializer enforced.
+            if (layout->isUnion) break;
+        }
+    }
+
+    if (syntax->children().size() > slots.size())
+    {
+        error = "C7 aggregate initializer has more values than '" + targetTypeKey + "' has elements";
+        return false;
+    }
+
+    for (std::size_t index = 0; index < syntax->children().size(); ++index)
+    {
+        const ast::AstNode* element = syntax->children()[index];
+        const std::string& slotTypeKey = slots[index].first;
+        const std::uint64_t slotOffset = baseOffset + slots[index].second;
+        if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+        {
+            if (!appendAggregateElements(
+                    element, slotTypeKey, slotOffset, memberOrdinal, elements, error))
+            {
+                return false;
+            }
+            continue;
+        }
+        auto value = lowerExpression(element, memberOrdinal, false, error);
+        if (value == nullptr)
+        {
+            return false;
+        }
+        const ProjectImplicitConversion conversion = classifyImplicit(
+            value->typeKey,
+            slotTypeKey,
+            expressionType(element) != nullptr ? expressionType(element)->integerConstant
+                                              : std::nullopt);
+        if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+        {
+            value = wrapImplicitConversion(std::move(value), conversion, element);
+        }
+        auto slot = makeNode(ProjectOopHirNodeKind::AggregateElement, element, slotTypeKey);
+        slot->integerValue = slotOffset;
+        slot->children.push_back(std::move(value));
+        elements.push_back(std::move(slot));
+    }
+    return true;
+}
+
+// C8 "type root", struct half: the SHORT name a struct's synthesized ToString() answers --
+// `Vector3`, not `Proj::game.math.Vector3`. Same rule the class descriptor's runtime name uses,
+// so the two spellings of "what is this type called" cannot drift apart.
+std::string ProjectOopHirModel::shortTypeName(std::string_view typeKey) const
+{
+    std::string_view identity = typeKey;
+    if (identity.starts_with("type:")) identity = identity.substr(5);
+    const std::size_t lastSeparator = identity.find_last_of(".:");
+    return std::string(
+        lastSeparator == std::string_view::npos ? identity : identity.substr(lastSeparator + 1));
+}
+
+// C8 "type root", struct half: flattens a struct into its SCALAR LEAVES -- one AggregateElement
+// per primitive field, with nested structs and fixed arrays expanded in place and their absolute
+// byte offsets computed here. Padding bytes are deliberately not leaves: a struct that crossed a C
+// boundary carries whatever the other side left in its padding, so comparing or hashing those
+// bytes would make two equal values disagree.
+//
+// The contract these leaves define, and the reason it is stated in exactly one place: the
+// synthesized Equals is BIT equality of the fields, and the synthesized GetHashCode mixes the
+// same bits. That keeps the two in agreement by construction -- which a "compare floats with
+// fcmp, hash their bits" pairing would not, since +0.0 and -0.0 compare equal but hash apart, and
+// a NaN would never equal itself while hashing identically. Anything wanting other semantics --
+// value comparison of a string field, deep comparison through a reference -- declares its own
+// Equals and GetHashCode, and the compiler then steps aside entirely.
+bool ProjectOopHirModel::appendAggregateLeaves(
+    const std::string& typeKey,
+    std::uint64_t baseOffset,
+    const ast::AstNode* syntax,
+    std::vector<std::unique_ptr<ProjectOopHirNode>>& leaves,
+    std::string& error)
+{
+    if (const std::optional<std::string> elementTypeKey =
+            ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
+        elementTypeKey.has_value())
+    {
+        const std::optional<std::uint64_t> count = ProjectMemberModel::fixedArrayCount(typeKey);
+        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr || !count.has_value())
+        {
+            error = "C8 cannot expand fixed-array field '" + typeKey + "'";
+            return false;
+        }
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> stride =
+            objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, *elementTypeKey);
+        if (!stride.has_value() || stride->first == 0)
+        {
+            error = "C8 cannot size fixed-array element '" + *elementTypeKey + "'";
+            return false;
+        }
+        for (std::uint64_t index = 0; index < *count; ++index)
+        {
+            if (!appendAggregateLeaves(
+                    *elementTypeKey, baseOffset + index * stride->first, syntax, leaves, error))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if (isStructValueType(typeKey))
+    {
+        if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
+        {
+            error = "C8 struct root member requires the object layout model";
+            return false;
+        }
+        const std::optional<std::size_t> typeOrdinal =
+            inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+        const StructValueLayout* layout = typeOrdinal.has_value()
+            ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
+        if (layout == nullptr)
+        {
+            error = "C8 struct root member has no value layout for '" + typeKey + "'";
+            return false;
+        }
+        for (const ObjectFieldLayout& field : layout->fields)
+        {
+            if (!appendAggregateLeaves(
+                    field.typeKey, baseOffset + field.offset, syntax, leaves, error))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    auto leaf = makeNode(ProjectOopHirNodeKind::AggregateElement, syntax, typeKey);
+    leaf->integerValue = baseOffset;
+    leaves.push_back(std::move(leaf));
+    return true;
 }
 
 bool ProjectOopHirModel::isStructValueType(std::string_view typeKey) const noexcept

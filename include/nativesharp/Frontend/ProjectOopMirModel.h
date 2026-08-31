@@ -45,6 +45,11 @@ enum class ProjectOopMirNodeKind
     // C6 -- see ProjectOopHirNodeKind::ValueConstruction. `immediate` is the struct's size,
     // `alignment` its alignment, `calleeName` the constructor to run (empty for a default).
     ValueConstruct,
+    // C7 -- see ProjectOopHirNodeKind::AggregateInitializer. `immediate` is the aggregate's size,
+    // `alignment` its alignment; children are AggregateElementStore nodes.
+    AggregateInitialize,
+    // C7 -- see ProjectOopHirNodeKind::AggregateElement. `immediate` is the byte offset.
+    AggregateElementStore,
     // C6 -- see ProjectOopHirNodeKind::TemporaryAddress.
     TemporaryAddress,
     AddressValue,
@@ -75,6 +80,12 @@ enum class ProjectOopMirNodeKind
     StringSubstring,
     StringFromCharArray,
     CoreConsoleWriteLine,
+    // C8 -- see ProjectOopHirNodeKind::CoreObjectTypeName / CoreObjectReferenceHash.
+    CoreObjectTypeName,
+    CoreObjectReferenceHash,
+    // C8 struct half -- see ProjectOopHirNodeKind::AggregateEquals / AggregateHash.
+    AggregateEquals,
+    AggregateHash,
     // Stage 53.1 "Time" -- see ProjectOopHirNodeKind::CoreClockQuery* above.
     CoreClockQueryCounter,
     CoreClockQueryFrequency,
@@ -301,6 +312,12 @@ struct ProjectOopMirDispatchTable final
     std::string descriptorName;
     std::string vtableName;
     std::uint64_t stableTypeId = 0;
+    // C8 "type root": the type's own name, as source wrote it -- the string
+    // NativeSharp.Core.Object.ToString() hands back. It goes into the class descriptor as a
+    // pointer to a length-prefixed constant with exactly the layout of a string literal, so
+    // returning it costs a load and allocates nothing.
+    std::string typeDisplayName;
+    std::string typeNameGlobalName;
     std::vector<std::size_t> slotMemberOrdinals;
     std::vector<std::string> slotCalleeNames;
     std::string destructionEntryName;

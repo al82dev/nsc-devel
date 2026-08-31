@@ -1,0 +1,102 @@
+// Interop contract case (phase C7) -- DEFAULT STORAGE AND THE AGGREGATE INITIALIZER.
+//
+// This belongs in the interop-contract folder rather than only in a language test because both
+// halves of C7 are promises about BYTES, and a C host is what can hold the compiler to them:
+//
+//   * a local declared without an initializer is ZEROED, not left holding whatever the stack had;
+//   * a braced initializer writes its values at the same offsets a C host sees, and everything it
+//     does not reach keeps that zero -- exactly what `struct V v = {1, 2};` means in C.
+//
+// The shape below is the one that made the hole visible in the first place: a descriptor filled
+// field by field, the way every Win32-style API expects the caller to fill one. Before C7 the
+// fields the caller did not set were garbage, silently. Now they are zero, and the fields it does
+// set land where the C declaration says they land.
+//
+// Expected exit code: 42.
+namespace contract {
+
+    // A descriptor with a mix of widths and an embedded fixed array -- the shape that makes
+    // "every unwritten byte is zero" a claim about padding as well as fields.
+    public struct SurfaceDesc {
+        public int width;
+        public int height;
+        public byte format;
+        public byte flags;
+        public float[4] clearColor;
+        public nint reserved;
+    }
+
+    public struct Extent { public int cx; public int cy; }
+    public struct Frame { public Extent origin; public Extent size; public int tag; }
+
+    class Program {
+
+        // The C4 `out` shape, and the reason `out` is exempt from the read check: the callee is
+        // the one obliged to assign, so `int value; Fill(out value);` has to be accepted.
+        static void FillWidth(out int value) { value = 8; }
+
+        public static int Main() {
+            int score = 0;
+
+            // -- default storage: a descriptor filled the way a C caller fills one ------------
+            SurfaceDesc desc;
+            desc.width = 640;
+            desc.height = 480;
+            desc.format = 3;
+            // flags, clearColor and reserved are deliberately NOT written. Every one of them must
+            // read as zero; before C7 each was whatever the stack held.
+            if (desc.flags != 0) { return 1; }
+            if (desc.clearColor[0] != 0) { return 2; }
+            if (desc.clearColor[3] != 0) { return 3; }
+            if (desc.reserved != 0) { return 4; }
+            if (desc.width != 640) { return 5; }
+            if (desc.format != 3) { return 6; }
+            score = score + 10;
+
+            // A fresh declaration in an inner scope gets a fresh default -- the zeroing lives at
+            // the declaration, not beside the hoisted stack slot.
+            int round = 0;
+            while (round < 3) {
+                SurfaceDesc scratch;
+                if (scratch.width != 0) { return 7; }
+                scratch.width = round;
+                round = round + 1;
+            }
+            score = score + 10;
+
+            // -- the aggregate initializer: the explicit spelling of the same guarantee --------
+            Extent full = {16, 9};
+            if (full.cx != 16) { return 8; }
+            if (full.cy != 9) { return 9; }
+
+            // Partial: what the list does not reach keeps the zero, as in C.
+            Extent partial = {16};
+            if (partial.cy != 0) { return 10; }
+
+            // Explicitly empty.
+            Extent zero = {};
+            if (zero.cx != 0) { return 11; }
+            if (zero.cy != 0) { return 12; }
+
+            // Nested braces follow the nested layout, offset by offset.
+            Frame frame = { {1, 2}, {320, 240}, 7 };
+            if (frame.origin.cx != 1) { return 13; }
+            if (frame.size.cy != 240) { return 14; }
+            if (frame.tag != 7) { return 15; }
+
+            // A fixed array takes the same form, trailing comma included.
+            int[4] cells = {5, 6,};
+            if (cells[0] != 5) { return 16; }
+            if (cells[3] != 0) { return 17; }
+            score = score + 10;
+
+            // -- out assigns its argument -----------------------------------------------------
+            int width;
+            FillWidth(out width);
+            if (width != 8) { return 18; }
+            score = score + 12;
+
+            return score;
+        }
+    }
+}

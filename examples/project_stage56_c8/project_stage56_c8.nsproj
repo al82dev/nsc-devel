@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>project_stage56_c8</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

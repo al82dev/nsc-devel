@@ -379,6 +379,17 @@ enum class MethodCoreOperationKind
     StringSubstring,
     StringFromCharArray,
     ConsoleWriteLine,
+    // C8 "type root": the two primitives NativeSharp.Core.Object's virtual methods need and that
+    // cannot be written in NativeSharp -- read a type's name out of its runtime descriptor, and
+    // turn a reference into an integer. See lib/NativeSharp.Core/Object.ns.
+    ObjectTypeName,
+    ObjectReferenceHash,
+    // C8 "type root", struct half: the three root members a STRUCT gets, synthesized by the
+    // compiler and resolved statically -- no vtable, no boxing, not one byte of layout change.
+    // A struct that declares its own member of the same name wins; these only fill the gap.
+    StructToString,
+    StructEquals,
+    StructHashCode,
     // Stage 53.1 "Time" -- NativeSharp.Core.Diagnostics.NativeClock's three zero-argument raw
     // Win32 wrappers. See NativeClock.ns for why these three and not a higher-level API
     // directly: everything else in Stage 53.1 (Stopwatch/TimeSpan/DateTime) is ordinary
@@ -882,6 +893,12 @@ private:
         std::unordered_set<std::size_t> maybeMovedOwnedParameters;
         std::unordered_set<std::size_t> invalidLocalBorrows;
         std::unordered_set<std::size_t> maybeInvalidLocalBorrows;
+        // C7 "definite assignment". Unlike every other set here it is a MUST set, not a MAY set:
+        // joining two paths keeps only what both agree on. joinOwnershipFlow intersects it.
+        std::unordered_set<std::size_t> assignedLocals;
+        // How many locals existed when this snapshot was taken. Local ordinals only ever grow, so
+        // this separates "not assigned" from "did not exist yet" -- see restoreOwnershipFlow.
+        std::size_t localCount = 0;
     };
 
     struct ExpressionResult final
@@ -1181,6 +1198,35 @@ private:
     // it and for the precise limit of that check.
     std::set<std::pair<std::size_t, std::size_t>> assignedOutParameters_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
+    // C7 "definite assignment". Three questions, one per helper:
+    //
+    //  - is this local's type one the analysis reports on at all? (see the definition: aggregates
+    //    are excluded because the backend gives them defined zero storage, so a partially filled
+    //    aggregate is a legitimate C-style idiom rather than a garbage read);
+    //  - given an assignment target, which local -- if any -- does writing it assign?
+    //  - and the report itself, called from the one place identifiers become reads.
+    bool definiteAssignmentTracksLocal(std::size_t localOrdinal) const noexcept;
+    bool typeKeyHasDefinedDefaultStorage(std::string_view typeKey) const noexcept;
+    // C8 "type root": a union takes no compiler-provided Equals/GetHashCode -- see the refusal in
+    // analyzeCall for why.
+    bool aggregateIsUnion(std::string_view typeKey) const noexcept;
+    const ast::AstNode* definiteAssignmentTargetRoot(const ast::AstNode* target) const noexcept;
+    void markAssignmentTarget(const ast::AstNode* target, std::size_t scopeOrdinal);
+    void checkDefiniteAssignment(
+        const ast::AstNode* expression,
+        std::size_t localOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    // C7 "aggregate initializer": the element list a braced initializer fills, and the binder
+    // that type-checks one against its target. Both are shared with the HIR lowering by shape
+    // rather than by call: the lowerer needs offsets, which live in the layout model.
+    std::optional<std::vector<std::string>> aggregateElementTypeKeys(
+        std::string_view typeKey) const;
+    ExpressionResult bindAggregateInitializer(
+        const ast::AstNode* syntax,
+        const std::string& targetTypeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     // C6 "struct members": class, interface OR struct -- everything that can declare accessor
     // members. See the definition for why this is not referenceTypeOrdinalForTypeKey.
     std::optional<std::size_t> accessorReceiverTypeOrdinalForTypeKey(
@@ -1238,6 +1284,19 @@ private:
     std::unordered_set<std::size_t> maybeMovedOwnedParameters_;
     std::unordered_set<std::size_t> invalidLocalBorrows_;
     std::unordered_set<std::size_t> maybeInvalidLocalBorrows_;
+    // C7 "definite assignment": the locals DEFINITELY assigned at the current point of the walk.
+    // It travels with the ownership flow state (see OwnershipFlowSnapshot) because it needs
+    // exactly the same control-flow discipline -- it is joined by INTERSECTION at every merge, so
+    // a local assigned on only one arm of an `if` is not assigned after it.
+    std::unordered_set<std::size_t> assignedLocals_;
+    // The identifier syntax node currently being written to rather than read from. An assignment
+    // analyzes its own left-hand side through the ordinary expression path, so without this the
+    // very statement that assigns a local would be reported as a read of it.
+    const ast::AstNode* definiteAssignmentWriteTarget_ = nullptr;
+    // One diagnostic per offending read: a statement can be analyzed more than once (the
+    // unreachable-code probe in analyzeBlock does exactly that), and that must not multiply the
+    // same message.
+    std::unordered_set<const ast::AstNode*> reportedUnassignedReads_;
     bool ownershipFlowReachable_ = true;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
     std::vector<MethodStructuredExitBinding> structuredExits_;

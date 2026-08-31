@@ -1,0 +1,173 @@
+// Stage 56 / C7 "Definite assignment e inicializador agregado" -- programa de verificacion empaquetado.
+//
+// Misma convencion que examples/project_stage56_c1, _c2c4 y _c6: cada chequeo que falla devuelve
+// su propio codigo de salida, y solo si TODOS pasan se llega al "return 0" final.
+//
+// QUE CIERRA ESTA RONDA. Antes de C7, `V v;` seguido de leer `v` compilaba a un `alloca` y nada
+// mas: la lectura devolvia lo que hubiera en la pila. Sin store, sin ceros, sin diagnostico, en
+// cualquier nivel de optimizacion y para CUALQUIER tipo de local -- un int, un puntero, una
+// referencia de clase, un arreglo. Era el agujero de "respuesta silenciosamente incorrecta" mas
+// grande que puede tener un lenguaje, y estaba abierto por omision.
+//
+// Se cierra con dos mitades que solo funcionan juntas:
+//
+//   1. ALMACENAMIENTO DEFINIDO (backend). Una local declarada sin inicializador se pone en cero en
+//      el punto donde se ejecuta su declaracion -- en la declaracion, no junto al alloca izado, de
+//      modo que una local declarada dentro de un bucle recupera su valor por omision en cada
+//      vuelta. NativeSharp ya no tiene lecturas no inicializadas en ninguna parte.
+//
+//   2. DEFINITE ASSIGNMENT (front end). Un analisis MUST sensible a caminos sobre la misma
+//      maquinaria de flujo que ya usa el verificador de ownership, unido por INTERSECCION en cada
+//      confluencia. Leer una local escalar, puntero, referencia o delegate por un camino donde
+//      nada la escribio es un error de compilacion.
+//
+// La mitad 1 es lo que hace asequible a la mitad 2, y la razon por la que el analisis puede ser
+// exactamente todo lo estricto que debe ser y ni un poco mas. Los AGREGADOS -- structs por valor y
+// arreglos fijos `T[N]` -- no se reportan nunca, porque `Color c; c.tag = 1;` es el idioma de C que
+// este lenguaje conserva a proposito ("struct sin metodos se comporta como en C") y llenar un
+// agregado por partes a traves de ramas y bucles es justo la forma que un analisis MUST no puede
+// seguir sin rechazar programas correctos. Lo que garantiza la mitad 1 es que los campos que ese
+// programa nunca escribe se lean como CERO, de forma determinista, y no como basura.
+//
+// Y la mitad 1 no cuesta nada donde no hace falta: en un programa que este analisis acepta, cada
+// lectura esta dominada por un store real, asi que el store de ceros es codigo muerto y SROA lo
+// elimina. En -O2 este archivo entero se pliega a un solo `mov eax, 0; ret`.
+
+namespace Stage56C7
+{
+    // Un descriptor con anchos mezclados y un arreglo fijo embebido: la forma que hace de "cada
+    // byte no escrito es cero" una afirmacion sobre el relleno tanto como sobre los campos.
+    public struct SurfaceDesc
+    {
+        public int width;
+        public int height;
+        public byte format;
+        public byte flags;
+        public float[4] clearColor;
+        public nint reserved;
+    }
+
+    public struct Extent
+    {
+        public int cx;
+        public int cy;
+    }
+
+    public struct Frame
+    {
+        public Extent origin;
+        public Extent size;
+        public int tag;
+    }
+
+    // Un struct grande (20 bytes) viaja INDIRECTO bajo el ABI de agregados de Win64. Esta ronda
+    // encontro un bug de C6 justo aqui: construir uno guardaba la DIRECCION del valor recien
+    // construido en la local en lugar del valor, y cada lectura de campo posterior leia bits de
+    // puntero. Silencioso, y sin nada de que quejarse para el verificador de IR.
+    public struct Big
+    {
+        public float a;
+        public float b;
+        public float c;
+        public float d;
+        public int e;
+
+        public Big(float v) { a = v; b = v + 1; c = v + 2; d = v + 3; e = 9; }
+    }
+
+    public class Program
+    {
+        // La forma `out` de C4, y la razon por la que `out` esta exento del chequeo de lectura: el
+        // llamado es el obligado a asignar, asi que `int value; Fill(out value);` debe aceptarse.
+        private static void FillWidth(out int value)
+        {
+            value = 8;
+        }
+
+        public static int Main()
+        {
+            // -- almacenamiento por omision -----------------------------------------------------
+            SurfaceDesc desc;
+            desc.width = 640;
+            desc.height = 480;
+            desc.format = 3;
+            // flags, clearColor y reserved NO se escriben a proposito. Todos deben leerse como
+            // cero; antes de C7 cada uno era lo que hubiera en la pila.
+            if (desc.flags != 0) { return 1; }
+            if (desc.clearColor[0] != 0) { return 2; }
+            if (desc.clearColor[3] != 0) { return 3; }
+            if (desc.reserved != 0) { return 4; }
+            if (desc.width != 640) { return 5; }
+            if (desc.height != 480) { return 6; }
+            if (desc.format != 3) { return 7; }
+
+            // Una declaracion nueva en un ambito interno recibe un valor por omision nuevo: el
+            // puesta-en-cero vive en la declaracion, no junto al espacio de pila izado.
+            int round = 0;
+            while (round < 3)
+            {
+                SurfaceDesc scratch;
+                if (scratch.width != 0) { return 8; }
+                scratch.width = round;
+                round = round + 1;
+            }
+
+            // Un agregado llenado por partes a traves de ramas y bucles: la forma que el analisis
+            // deja pasar a proposito, y que la mitad 1 vuelve segura. `depth` no se escribe nunca.
+            Extent shape;
+            if (desc.width > 100) { shape.cx = 40; } else { shape.cy = 40; }
+            int step = 0;
+            while (step < 2) { shape.cy = shape.cy + 1; step = step + 1; }
+            if (shape.cx != 40) { return 9; }
+            if (shape.cy != 2) { return 10; }
+
+            // -- inicializador agregado ---------------------------------------------------------
+            Extent full = {16, 9};
+            if (full.cx != 16) { return 11; }
+            if (full.cy != 9) { return 12; }
+
+            // Parcial: lo que la lista no alcanza conserva el cero, igual que en C.
+            Extent partial = {16};
+            if (partial.cx != 16) { return 13; }
+            if (partial.cy != 0) { return 14; }
+
+            // Vacio explicito: la forma escrita de "todo en cero".
+            Extent zero = {};
+            if (zero.cx != 0) { return 15; }
+            if (zero.cy != 0) { return 16; }
+
+            // Llaves anidadas siguen el layout anidado, offset por offset.
+            Frame frame = { {1, 2}, {320, 240}, 7 };
+            if (frame.origin.cx != 1) { return 17; }
+            if (frame.origin.cy != 2) { return 18; }
+            if (frame.size.cx != 320) { return 19; }
+            if (frame.size.cy != 240) { return 20; }
+            if (frame.tag != 7) { return 21; }
+
+            // Un arreglo fijo toma la misma forma, coma final incluida.
+            int[4] cells = {5, 6,};
+            if (cells[0] != 5) { return 22; }
+            if (cells[1] != 6) { return 23; }
+            if (cells[3] != 0) { return 24; }
+
+            // Los valores no tienen por que ser constantes.
+            int width = 6;
+            int[3] scaled = {width, width * 2, width * 3};
+            if (scaled[0] != 6) { return 25; }
+            if (scaled[2] != 18) { return 26; }
+
+            // -- out asigna su argumento --------------------------------------------------------
+            int fetched;
+            FillWidth(out fetched);
+            if (fetched != 8) { return 27; }
+
+            // -- un struct indirecto viaja como VALOR, no como direccion ------------------------
+            Big big = new Big(10);
+            if (big.a != 10) { return 28; }
+            if (big.d != 13) { return 29; }
+            if (big.e != 9) { return 30; }
+
+            return 0;
+        }
+    }
+}

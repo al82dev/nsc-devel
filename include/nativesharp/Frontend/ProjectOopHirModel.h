@@ -59,6 +59,15 @@ enum class ProjectOopHirNodeKind
     // allocates: this one initializes storage IN PLACE and yields the value. No heap, no class
     // descriptor, nothing to free -- which is exactly what makes a struct a struct.
     ValueConstruction,
+    // C7 "aggregate initializer": `V v = {1, 2};` and `int[4] cells = {1};`. typeKey is the
+    // aggregate; children are AggregateElement nodes, ALREADY FLATTENED to absolute byte offsets,
+    // so nesting (`Matrix m = { {1, 0}, {0, 1} };`) is resolved here rather than in the backend.
+    // Elements the source did not mention are simply absent: the storage is zeroed first, which
+    // is exactly the rule C gives a partial initializer.
+    AggregateInitializer,
+    // C7: one element of the above. integerValue is its byte offset from the start of the
+    // aggregate, typeKey its type, and its single child the value to store there.
+    AggregateElement,
     // C6 "struct members": the ADDRESS of a struct value that has no home -- the result of an
     // operator, a call, a conversion or a `new`. Reaching a member of one (`(a + b).x`,
     // `Cross(u, v).z`) needs an address, and a temporary has none until one is made for it.
@@ -93,6 +102,19 @@ enum class ProjectOopHirNodeKind
     StringSubstring,
     StringFromCharArray,
     CoreConsoleWriteLine,
+    // C8 -- see MethodCoreOperationKind::ObjectTypeName / ObjectReferenceHash. One operand each
+    // (the object reference); result is builtin:string and builtin:int respectively.
+    CoreObjectTypeName,
+    CoreObjectReferenceHash,
+    // C8 struct half -- see MethodCoreOperationKind::StructEquals / StructHashCode. Children are
+    // the operands (two for Equals, one for GetHashCode, counted by argumentCount) followed by
+    // AggregateElement nodes describing the struct's SCALAR LEAVES: one per primitive field,
+    // nesting and fixed arrays already flattened, padding deliberately absent. Each leaf carries
+    // its byte offset in integerValue and its type in typeKey, and has no child of its own.
+    // (StructToString needs no node of its own: the answer is a compile-time constant, so it
+    // lowers to an ordinary StringLiteral.)
+    AggregateEquals,
+    AggregateHash,
     // Stage 53.1 "Time" -- see MethodCoreOperationKind::ClockQuery* in ProjectMethodBodyModel.h.
     CoreClockQueryCounter,
     CoreClockQueryFrequency,
@@ -422,6 +444,25 @@ private:
         std::string_view targetTypeKey,
         std::optional<ProjectIntegerConstant> integerConstant = std::nullopt) const;
     bool isStructValueType(std::string_view typeKey) const noexcept;
+    // C8 "type root", struct half. See the definitions for the contract the leaves define.
+    std::string shortTypeName(std::string_view typeKey) const;
+    bool appendAggregateLeaves(
+        const std::string& typeKey,
+        std::uint64_t baseOffset,
+        const ast::AstNode* syntax,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& leaves,
+        std::string& error);
+    // C7 "aggregate initializer": flattens one braced initializer -- and, recursively, any braced
+    // initializer nested inside it -- into AggregateElement nodes carrying absolute byte offsets
+    // measured from the start of the OUTERMOST aggregate. `baseOffset` is where the aggregate
+    // being filled starts within that outermost one.
+    bool appendAggregateElements(
+        const ast::AstNode* syntax,
+        const std::string& targetTypeKey,
+        std::uint64_t baseOffset,
+        std::size_t memberOrdinal,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& elements,
+        std::string& error);
     bool isClassReferenceType(std::string_view typeKey) const noexcept;
     bool isReferenceType(std::string_view typeKey) const noexcept;
 

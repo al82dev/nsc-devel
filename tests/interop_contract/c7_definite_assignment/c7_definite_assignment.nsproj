@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>c7_definite_assignment</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>

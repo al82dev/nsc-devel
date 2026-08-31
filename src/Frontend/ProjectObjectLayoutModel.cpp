@@ -179,6 +179,45 @@ target::TypeLayout ProjectObjectLayoutModel::classReferenceLayout() const noexce
     return targetLayout_.layoutOf(BuiltinLayoutKind::Pointer);
 }
 
+std::optional<std::pair<std::uint64_t, std::uint64_t>>
+ProjectObjectLayoutModel::valueLayoutForTypeKey(
+    const ProjectNameLookup& nameLookup,
+    std::string_view typeKey) const
+{
+    if (typeKey == "builtin:bool" || typeKey == "builtin:byte" || typeKey == "builtin:char") return {{1, 1}};
+    if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return {{2, 2}};
+    if (typeKey == "builtin:int" || typeKey == "builtin:uint" || typeKey == "builtin:float") return {{4, 4}};
+    if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" ||
+        typeKey == "builtin:nuint" || typeKey == "builtin:double" || typeKey == "builtin:string" ||
+        ProjectTypeConversion::isNativeArray(typeKey) || typeKey.ends_with("*")) return {{8, 8}};
+    // C2.1 "fixed arrays": inline storage, so its size is the element stride times the count --
+    // not a pointer. This is what lets a `float[4]` FIELD be measured the same way a `float[4]`
+    // local is.
+    if (const std::optional<std::string> element =
+            ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
+        element.has_value())
+    {
+        const std::optional<std::uint64_t> count = ProjectMemberModel::fixedArrayCount(typeKey);
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+            valueLayoutForTypeKey(nameLookup, *element);
+        if (!count.has_value() || !elementLayout.has_value()) return std::nullopt;
+        return {{elementLayout->first * *count, elementLayout->second}};
+    }
+    for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+    {
+        const NamedTypeDeclaration& declaration = nameLookup.namedTypes()[ordinal];
+        if ("type:" + declaration.identity.key() != typeKey) continue;
+        if (declaration.kind == NamedTypeDeclarationKind::Struct)
+        {
+            const StructValueLayout* layout = structLayoutForType(ordinal);
+            if (layout != nullptr) return {{layout->size, layout->alignment}};
+            return std::nullopt;
+        }
+        return {{8, 8}};
+    }
+    return std::nullopt;
+}
+
 bool ProjectObjectLayoutModel::isBuilt() const noexcept
 {
     return built_;

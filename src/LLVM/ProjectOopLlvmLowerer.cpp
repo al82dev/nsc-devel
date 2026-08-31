@@ -1259,13 +1259,17 @@ private:
             return fail(error, "Stage 36 failed to create interface-map header type");
         }
         LLVMStructSetBody(interfaceMapType_, interfaceMapFields, 2, 0);
-        LLVMTypeRef descriptorFields[] = {ptr, ptr, i64, i64, ptr, ptr};
+        // C8 "type root" appends field 6: a pointer to this type's NAME, laid out exactly like a
+        // string literal ({i64 length, [N+1 x i8] bytes}) so NativeSharp.Core.Object.ToString()
+        // can hand it back as a `string` with a single load and no allocation. Appended rather
+        // than inserted so every existing field index in this file stays valid.
+        LLVMTypeRef descriptorFields[] = {ptr, ptr, i64, i64, ptr, ptr, ptr};
         descriptorType_ = LLVMStructCreateNamed(context_, "nativesharp.class_descriptor");
         if (descriptorType_ == nullptr)
         {
             return fail(error, "Macro A failed to create NativeSharp class-descriptor type");
         }
-        LLVMStructSetBody(descriptorType_, descriptorFields, 6, 0);
+        LLVMStructSetBody(descriptorType_, descriptorFields, 7, 0);
 
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
@@ -1421,15 +1425,23 @@ private:
                 interfaceMap = interfaceMapFound->second;
             }
 
+            LLVMValueRef typeName = internTypeNameConstant(
+                table.typeNameGlobalName, table.typeDisplayName);
+            if (typeName == nullptr)
+            {
+                return fail(error, "C8 descriptor cannot materialize its type name constant");
+            }
+
             LLVMValueRef values[] = {
                 baseDescriptor,
                 vtable,
                 LLVMConstInt(i64, table.slotMemberOrdinals.size(), 0),
                 LLVMConstInt(i64, table.stableTypeId, 0),
                 interfaceMap,
-                destructionFound->second.function
+                destructionFound->second.function,
+                typeName
             };
-            LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType_, values, 6);
+            LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType_, values, 7);
             LLVMSetInitializer(descriptorFound->second, initializer);
             LLVMSetGlobalConstant(descriptorFound->second, 1);
         }
@@ -3560,8 +3572,9 @@ private:
                     LLVMValueRef address = node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
                     if (value == nullptr || address == nullptr) return fail(error, "Stage 34 local initialization failed");
                     LLVMBuildStore(builder_, value, address);
+                    return true;
                 }
-                return true;
+                return emitDefaultLocalStorage(node, error);
 
             case frontend::ProjectOopMirNodeKind::ExpressionStatement:
                 if (!node->children.empty() && lowerExpression(node->children.front().get(), error) == nullptr && error.empty())
@@ -3601,6 +3614,48 @@ private:
                 return value != nullptr && error.empty();
             }
         }
+    }
+
+    // C7 "definite assignment", backend half. A local declared without an initializer used to be
+    // an `alloca` and nothing else, so reading it returned whatever the stack happened to hold --
+    // silently, at every optimization level, for every type. This gives that declaration a
+    // meaning: the slot is zeroed at the point the declaration executes.
+    //
+    // Why at the declaration and not next to the entry-block alloca: a local declared inside a
+    // loop body is a fresh variable on each iteration, and its default has to be re-established on
+    // each one. The allocas are hoisted to the entry block (see collectLocalAllocas) purely so
+    // mem2reg can promote them; the semantics live here.
+    //
+    // What this costs: nothing in a program the front-end analysis accepts. There, every read is
+    // dominated by a real store, so the zeroing store is dead and SROA/mem2reg delete it. It is
+    // paid for only where the program relies on the default -- an aggregate filled field by field,
+    // which is exactly the C-style struct idiom the analysis deliberately permits.
+    bool emitDefaultLocalStorage(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node == nullptr || !node->localOrdinal.has_value())
+        {
+            return true;
+        }
+        const auto slot = localStorage_.find(*node->localOrdinal);
+        if (slot == localStorage_.end() || slot->second == nullptr)
+        {
+            return fail(error, "Stage 56 C7 default local storage has no alloca");
+        }
+        LLVMTypeRef type = llvmType(node->typeKey, error);
+        if (type == nullptr)
+        {
+            return false;
+        }
+        // LLVMConstNull covers every shape this can be -- integers and floats zero, pointers
+        // null, and an indirect-aggregate carrier `[N x i8]` becomes `zeroinitializer`, which the
+        // backend expands into the memset it would have taken to write by hand.
+        LLVMValueRef store = LLVMBuildStore(builder_, LLVMConstNull(type), slot->second);
+        const unsigned structAlignment = structAlignmentFor(node->typeKey);
+        if (structAlignment > 1U)
+        {
+            LLVMSetAlignment(store, structAlignment);
+        }
+        return true;
     }
 
     bool lowerTryRegion(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -4265,6 +4320,17 @@ private:
                 if (clockQueryCounterFunction_ == nullptr)
                     return failValue(error, "Stage 53.1 NativeClock.QueryCounterRaw requires its runtime hook");
                 return buildNoUnwindCall(clockQueryCounterFunctionType_, clockQueryCounterFunction_, nullptr, 0, "clock.counter");
+            // C8 "type root": the two primitives NativeSharp.Core.Object's virtual methods rest
+            // on. Both take the object reference as their single operand.
+            case frontend::ProjectOopMirNodeKind::AggregateEquals:
+                return lowerAggregateEquals(node, error);
+            case frontend::ProjectOopMirNodeKind::AggregateHash:
+                return lowerAggregateHash(node, error);
+            case frontend::ProjectOopMirNodeKind::CoreObjectTypeName:
+                return lowerObjectTypeName(node, error);
+            case frontend::ProjectOopMirNodeKind::CoreObjectReferenceHash:
+                return lowerObjectReferenceHash(node, error);
+
             case frontend::ProjectOopMirNodeKind::CoreClockQueryFrequency:
                 if (clockQueryFrequencyFunction_ == nullptr)
                     return failValue(error, "Stage 53.1 NativeClock.QueryFrequencyRaw requires its runtime hook");
@@ -5227,6 +5293,11 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::ValueConstruct:
                 return lowerValueConstruction(node, error);
+            case frontend::ProjectOopMirNodeKind::AggregateInitialize:
+                return lowerAggregateInitializer(node, error);
+            case frontend::ProjectOopMirNodeKind::AggregateElementStore:
+                return failValue(
+                    error, "C7 aggregate element store must be lowered by its owning initializer");
             case frontend::ProjectOopMirNodeKind::AllocateAndConstruct:
                 return lowerConstruction(node, error);
             case frontend::ProjectOopMirNodeKind::Deallocate:
@@ -5743,6 +5814,216 @@ private:
 
         LLVMPositionBuilderAtEnd(builder_, doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+    }
+
+    // C8 "type root", struct half. Both members below read the struct's SCALAR LEAVES -- the flat
+    // list of primitive fields with absolute byte offsets that the HIR pass computed (see
+    // ProjectOopHirModel::appendAggregateLeaves). Padding is not in that list, deliberately.
+    //
+    // The one shared step: an operand of struct type arrives as a VALUE here (a carrier integer or
+    // a loaded [N x i8]), and leaves are reached by address, so the value gets a home first.
+    LLVMValueRef spillAggregate(const frontend::ProjectOopMirNode* node, std::size_t index, std::string& error)
+    {
+        LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+        if (value == nullptr) return nullptr;
+        LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
+        if (carrier == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(
+            carrier, static_cast<unsigned>(node->alignment), "struct.root.operand");
+        if (slot == nullptr) return failValue(error, "C8 could not reserve struct operand storage");
+        LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+        if (node->alignment > 1U) LLVMSetAlignment(store, static_cast<unsigned>(node->alignment));
+        return slot;
+    }
+
+    // Loads one leaf as raw BITS, widened to i64. Nothing here asks what TYPE the leaf is, only
+    // how many bytes it occupies (the MIR pass resolved that from the same value layout everything
+    // else in this compiler reads): memory is untyped, so a float leaf is loaded as an i32 and a
+    // reference leaf as an i64 without a single cast instruction.
+    //
+    // Reading bits rather than values is the whole contract. It is what makes the synthesized
+    // Equals and GetHashCode agree by construction -- a "compare floats with fcmp, hash their
+    // bits" pairing would not, since +0.0 and -0.0 compare equal but hash apart, and a NaN would
+    // never equal itself while hashing identically.
+    LLVMValueRef loadLeafBits(
+        LLVMValueRef base,
+        const frontend::ProjectOopMirNode* leaf,
+        std::string_view stem,
+        std::string& error)
+    {
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMTypeRef loadType = nullptr;
+        switch (leaf->secondaryImmediate)
+        {
+            case 1: loadType = LLVMInt8TypeInContext(context_); break;
+            case 2: loadType = LLVMInt16TypeInContext(context_); break;
+            case 4: loadType = LLVMInt32TypeInContext(context_); break;
+            case 8: loadType = i64; break;
+            default: break;
+        }
+        if (loadType == nullptr)
+        {
+            return failValue(
+                error,
+                "C8 struct leaf '" + leaf->typeKey + "' has no scalar width the root members can read");
+        }
+        const std::string stemText(stem);
+        LLVMValueRef address = byteOffset(base, leaf->immediate, (stemText + ".addr").c_str());
+        LLVMValueRef value = LLVMBuildLoad2(builder_, loadType, address, stemText.c_str());
+        LLVMSetAlignment(value, static_cast<unsigned>(leaf->secondaryImmediate));
+        if (leaf->secondaryImmediate == 8) return value;
+        return LLVMBuildZExt(builder_, value, i64, (stemText + ".bits").c_str());
+    }
+
+    LLVMValueRef lowerAggregateEquals(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->argumentCount != 2 || node->children.size() <= 2 || node->alignment == 0)
+            return failValue(error, "C8 struct Equals is malformed");
+        LLVMValueRef left = spillAggregate(node, 0, error);
+        if (left == nullptr) return nullptr;
+        LLVMValueRef right = spillAggregate(node, 1, error);
+        if (right == nullptr) return nullptr;
+
+        LLVMValueRef equal = nullptr;
+        for (std::size_t index = node->argumentCount; index < node->children.size(); ++index)
+        {
+            const frontend::ProjectOopMirNode* leaf = node->children[index].get();
+            if (leaf == nullptr || leaf->kind != frontend::ProjectOopMirNodeKind::AggregateElementStore)
+                return failValue(error, "C8 struct Equals has a malformed leaf");
+            LLVMValueRef leftBits = loadLeafBits(left, leaf, "struct.eq.left", error);
+            if (leftBits == nullptr) return nullptr;
+            LLVMValueRef rightBits = loadLeafBits(right, leaf, "struct.eq.right", error);
+            if (rightBits == nullptr) return nullptr;
+            LLVMValueRef same = LLVMBuildICmp(
+                builder_, LLVMIntEQ, leftBits, rightBits, "struct.eq.leaf");
+            equal = equal == nullptr ? same : LLVMBuildAnd(builder_, equal, same, "struct.eq.and");
+        }
+        // A straight-line AND rather than an early-out chain: the leaf loads have no side effects
+        // and cannot fault (both operands are live stack slots), so short-circuiting would only
+        // add branches for the optimizer to undo.
+        return equal;
+    }
+
+    LLVMValueRef lowerAggregateHash(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->argumentCount != 1 || node->children.size() <= 1 || node->alignment == 0)
+            return failValue(error, "C8 struct GetHashCode is malformed");
+        LLVMValueRef value = spillAggregate(node, 0, error);
+        if (value == nullptr) return nullptr;
+
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        // FNV-1a's offset basis and prime, over 64 bits, applied one leaf at a time. Chosen for
+        // the same reason it is chosen everywhere: it is two instructions per leaf and it spreads
+        // low-entropy inputs (small integers, mostly-zero structs) across the whole word, which a
+        // plain XOR or sum would not.
+        LLVMValueRef hash = LLVMConstInt(i64, 0xCBF29CE484222325ULL, 0);
+        for (std::size_t index = node->argumentCount; index < node->children.size(); ++index)
+        {
+            const frontend::ProjectOopMirNode* leaf = node->children[index].get();
+            if (leaf == nullptr || leaf->kind != frontend::ProjectOopMirNodeKind::AggregateElementStore)
+                return failValue(error, "C8 struct GetHashCode has a malformed leaf");
+            LLVMValueRef bits = loadLeafBits(value, leaf, "struct.hash.leaf", error);
+            if (bits == nullptr) return nullptr;
+            hash = LLVMBuildXor(builder_, hash, bits, "struct.hash.xor");
+            hash = LLVMBuildMul(
+                builder_, hash, LLVMConstInt(i64, 0x100000001B3ULL, 0), "struct.hash.mul");
+        }
+        LLVMValueRef folded = LLVMBuildXor(
+            builder_, hash, LLVMBuildLShr(builder_, hash, LLVMConstInt(i64, 32, 0), "struct.hash.shift"),
+            "struct.hash.fold");
+        return LLVMBuildTrunc(builder_, folded, LLVMInt32TypeInContext(context_), "struct.hash");
+    }
+
+    // C8 "type root": materializes one type-name constant with the exact layout a NativeSharp
+    // string has -- {i64 length, [N+1 x i8] bytes}. Deliberately the same shape lowerStringLiteral
+    // builds, because the value ends up flowing through the language as an ordinary `string`.
+    LLVMValueRef internTypeNameConstant(const std::string& globalName, const std::string& text)
+    {
+        const auto found = typeNameGlobals_.find(globalName);
+        if (found != typeNameGlobals_.end()) return found->second;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+        LLVMTypeRef bytesType = LLVMArrayType2(i8, text.size() + 1U);
+        LLVMTypeRef literalType = LLVMStructCreateNamed(
+            context_, (globalName + "_type").c_str());
+        LLVMTypeRef fields[] = {i64, bytesType};
+        LLVMStructSetBody(literalType, fields, 2, 0);
+        LLVMValueRef values[] = {
+            LLVMConstInt(i64, static_cast<std::uint64_t>(text.size()), 0),
+            LLVMConstStringInContext2(context_, text.data(), text.size(), 0)};
+        LLVMValueRef initializer = LLVMConstNamedStruct(literalType, values, 2);
+        LLVMValueRef global = LLVMAddGlobal(module_, literalType, globalName.c_str());
+        if (global == nullptr || initializer == nullptr) return nullptr;
+        LLVMSetInitializer(global, initializer);
+        LLVMSetGlobalConstant(global, 1);
+        typeNameGlobals_.emplace(globalName, global);
+        return global;
+    }
+
+    // C8 "type root": `RuntimeHelpers.TypeName(value)` -- the name stored in the object's class
+    // descriptor, handed back as an ordinary `string`. The descriptor sits at offset 0 of every
+    // object and its field 6 already points at a constant with the exact layout a NativeSharp
+    // string has, so this is two loads and no allocation. A null reference answers a null string
+    // rather than faulting: every string operation in this compiler is already null-tolerant (see
+    // nullableStringLength), and a helper that traps would be worse than one that tells the truth.
+    LLVMValueRef lowerObjectTypeName(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 1 || descriptorType_ == nullptr)
+            return failValue(error, "C8 RuntimeHelpers.TypeName requires one reference operand");
+        LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+        if (value == nullptr) return nullptr;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+
+        LLVMValueRef isNull = LLVMBuildICmp(
+            builder_, LLVMIntEQ, value, LLVMConstNull(ptr), "typename.isnull");
+        LLVMBasicBlockRef nullBlock = appendBlock("typename.null");
+        LLVMBasicBlockRef valueBlock = appendBlock("typename.value");
+        LLVMBasicBlockRef doneBlock = appendBlock("typename.done");
+        LLVMBuildCondBr(builder_, isNull, nullBlock, valueBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        LLVMBuildBr(builder_, doneBlock);
+        LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
+
+        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, value, "typename.descriptor");
+        LLVMValueRef nameAddress = LLVMBuildStructGEP2(
+            builder_, descriptorType_, descriptor, 6, "descriptor.type_name.addr");
+        LLVMValueRef name = LLVMBuildLoad2(builder_, ptr, nameAddress, "descriptor.type_name");
+        LLVMBuildBr(builder_, doneBlock);
+        LLVMBasicBlockRef valueIncoming = LLVMGetInsertBlock(builder_);
+
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        LLVMValueRef phi = LLVMBuildPhi(builder_, ptr, "typename.phi");
+        LLVMValueRef incomingValues[] = {LLVMConstNull(ptr), name};
+        LLVMBasicBlockRef incomingBlocks[] = {nullIncoming, valueIncoming};
+        LLVMAddIncoming(phi, incomingValues, incomingBlocks, 2);
+        return phi;
+    }
+
+    // C8 "type root": `RuntimeHelpers.ReferenceHash(value)` -- the reference's own address, mixed
+    // down to an int. The mix is the final avalanche of SplitMix64, chosen because it maps zero to
+    // zero (so a null reference hashes to 0 without a branch) and because a raw address makes a
+    // poor hash on its own: allocations are aligned, so the low bits a bucket index reads are
+    // always the same. Not stable across runs -- ASLR sees to that -- exactly like real C#'s
+    // RuntimeHelpers.GetHashCode.
+    LLVMValueRef lowerObjectReferenceHash(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() != 1)
+            return failValue(error, "C8 RuntimeHelpers.ReferenceHash requires one reference operand");
+        LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+        if (value == nullptr) return nullptr;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+        LLVMValueRef bits = LLVMBuildPtrToInt(builder_, value, i64, "refhash.bits");
+        LLVMValueRef shifted = LLVMBuildLShr(
+            builder_, bits, LLVMConstInt(i64, 33, 0), "refhash.shift0");
+        LLVMValueRef mixed = LLVMBuildXor(builder_, bits, shifted, "refhash.mix0");
+        mixed = LLVMBuildMul(
+            builder_, mixed, LLVMConstInt(i64, 0xFF51AFD7ED558CCDULL, 0), "refhash.mul0");
+        shifted = LLVMBuildLShr(builder_, mixed, LLVMConstInt(i64, 29, 0), "refhash.shift1");
+        mixed = LLVMBuildXor(builder_, mixed, shifted, "refhash.mix1");
+        return LLVMBuildTrunc(builder_, mixed, i32, "refhash");
     }
 
     LLVMValueRef lowerStringLiteral(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -6858,8 +7139,72 @@ private:
         }
         constructionThisOverride_ = previousOverride;
 
-        if (isIndirectStructTypeKey(node->typeKey)) return slot;
-        return LLVMBuildLoad2(builder_, carrier, slot, "struct.new.value");
+        // BUG FOUND BY C7, FIXED HERE. This used to short-circuit -- `if
+        // (isIndirectStructTypeKey(...)) return slot;` -- handing back the ADDRESS of the freshly
+        // constructed struct for any aggregate that travels indirectly (anything not 1/2/4/8
+        // bytes). But an expression of aggregate type hands over the LOADED carrier at this
+        // level, never a pointer: a call returning one writes into an sret slot and then loads it
+        // (`abi.sret.load`), and the TemporaryAddress case above already carries the same lesson
+        // in writing. The mismatch was silent rather than fatal wherever the consumer stored the
+        // result: `Big g = new Big(1.0f);` on a twenty-byte struct emitted
+        // `store ptr %struct.new, ptr %local0.addr` -- the local ended up holding a POINTER in
+        // its first eight bytes, and every field read afterwards read pointer bits as floats.
+        // Wrong values, no diagnostic, no verifier complaint. One shape, one path.
+        LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "struct.new.value");
+        if (node->alignment > 1U) LLVMSetAlignment(loaded, static_cast<unsigned>(node->alignment));
+        return loaded;
+    }
+
+    // C7 "aggregate initializer": `V v = {1, 2};`. Same shape as lowerValueConstruction above --
+    // reserve the storage, give it a defined starting state, write into it, then hand back the
+    // value the way this type's ABI hands values back. The only difference is what does the
+    // writing: element stores at fixed byte offsets instead of a constructor call.
+    //
+    // The zeroing is not redundant with the one emitDefaultLocalStorage does: this builds a
+    // TEMPORARY, and a partial initializer leaves the elements it does not mention untouched, so
+    // this is what makes `{1}` on a four-element array mean "1, 0, 0, 0" rather than "1, garbage".
+    LLVMValueRef lowerAggregateInitializer(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->immediate == 0 || node->alignment == 0)
+        {
+            return failValue(error, "C7 aggregate initializer has no value layout");
+        }
+        LLVMTypeRef carrier = llvmType(node->typeKey, error);
+        if (carrier == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(
+            carrier, static_cast<unsigned>(node->alignment), "aggregate.init");
+        if (slot == nullptr) return failValue(error, "C7 aggregate initializer could not reserve storage");
+
+        LLVMValueRef memsetArgs[] = {
+            slot,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArgs, 4, "");
+
+        for (const auto& child : node->children)
+        {
+            if (child == nullptr ||
+                child->kind != frontend::ProjectOopMirNodeKind::AggregateElementStore ||
+                child->children.size() != 1)
+            {
+                return failValue(error, "C7 aggregate initializer has a malformed element");
+            }
+            LLVMValueRef value = lowerExpression(child->children.front().get(), error);
+            if (value == nullptr) return nullptr;
+            LLVMValueRef address = byteOffset(slot, child->immediate, "aggregate.element.addr");
+            LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+            // An element is written through its own typed address, so it needs its own natural
+            // alignment -- the carrier's `[N x i8]` shape would otherwise imply align 1.
+            const unsigned elementAlignment = structAlignmentFor(child->typeKey);
+            if (elementAlignment > 1U) LLVMSetAlignment(store, elementAlignment);
+        }
+
+        // Always the loaded carrier, never the slot pointer -- see the note in
+        // lowerValueConstruction for the bug that short-circuit causes.
+        LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "aggregate.init.value");
+        if (node->alignment > 1U) LLVMSetAlignment(loaded, static_cast<unsigned>(node->alignment));
+        return loaded;
     }
 
     LLVMValueRef lowerConstruction(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -7668,6 +8013,8 @@ private:
     std::unordered_map<std::size_t, FunctionInfo> staticInitFunctions_;
     std::unordered_map<std::string, FunctionInfo> functions_;
     std::unordered_map<std::string, LLVMValueRef> stringGlobals_;
+    // C8 "type root": one name constant per class, keyed by its global's name.
+    std::unordered_map<std::string, LLVMValueRef> typeNameGlobals_;
     std::size_t stringSequence_ = 0;
     // C1.2 "import identity": plain NUL-terminated C strings (library names, external symbol
     // names) and the two Win32 entry points a runtime-bound import needs. All three stay null in

@@ -1,0 +1,145 @@
+// Stage 56 / C8 "Raiz de tipos" -- programa de verificacion empaquetado.
+//
+// Misma convencion que examples/project_stage56_c1, _c2c4, _c6 y _c7: cada chequeo que falla
+// devuelve su propio codigo de salida, y solo si TODOS pasan se llega al "return 0" final.
+//
+// QUE AGREGA ESTA RONDA. Antes de C8 el lenguaje no tenia raiz: `override string ToString()`
+// fallaba con "no hay metodo heredado que sobrescribir", `a.Equals(b)` con "el tipo no tiene un
+// miembro llamado Equals", y `object` no era un tipo. Ahora:
+//
+//   * NativeSharp.Core.Object es la raiz REAL de las clases -- una clase declarada sin base
+//     deriva implicitamente de ella y recibe ToString/Equals/GetHashCode virtuales. `object` es
+//     su forma en minuscula, como `string` lo es del string nativo.
+//   * un STRUCT recibe los tres SINTETIZADOS por el compilador y resueltos estaticamente.
+//   * los primitivos ya tenian `ToString()` (fachada sobre NativeSharp.Core.String), y sigue.
+//
+// LO QUE NO HAY, Y POR QUE: BOXING. `object o = 5;` y `object o = miStruct;` son errores de
+// compilacion. La razon no es esfuerzo: boxear implicaria una asignacion en heap oculta y, en un
+// lenguaje sin GC y explicito con la propiedad en todo lo demas, la pregunta de quien libera la
+// caja de `x.GetHashCode()` no tiene buena respuesta. El mismo problema se resuelve sin cajas.
+//
+// LO QUE CUESTA: tres slots en la vtable de cada clase y un puntero por descriptor hacia el
+// nombre del tipo (una constante en el binario, no una asignacion). Los objetos no crecen ni un
+// byte, porque Object no declara campos, y los structs no cambian NADA -- ni layout, ni ABI, ni
+// un puntero de vtable que no tienen ni pueden tener.
+
+using NativeSharp.Core;
+
+namespace Stage56C8
+{
+    public class Widget
+    {
+    }
+
+    public class Gadget
+    {
+        public int id;
+
+        // Antes de C8 esta linea no compilaba: no habia metodo heredado que sobrescribir.
+        public override string ToString()
+        {
+            return "Gadget";
+        }
+    }
+
+    public class Cog : Gadget
+    {
+        public override string ToString()
+        {
+            return "Cog";
+        }
+    }
+
+    public struct Vec2
+    {
+        public int x;
+        public int y;
+    }
+
+    public struct Nested
+    {
+        public Vec2 origin;
+        public float scale;
+        public byte tag;
+    }
+
+    // Un struct que declara los suyos: gana sobre los sintetizados. El compilador llena un hueco,
+    // nunca tapa lo que escribiste.
+    public struct Tagged
+    {
+        public int value;
+
+        public string ToString()
+        {
+            return "Tagged!";
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            // -- clases -------------------------------------------------------------------------
+            Widget widget = new Widget();
+            if (!String.Equals(widget.ToString(), "Widget")) { return 1; }
+
+            Gadget gadget = new Gadget();
+            if (!String.Equals(gadget.ToString(), "Gadget")) { return 2; }
+
+            // El nombre por omision sale del descriptor del objeto EN TIEMPO DE EJECUCION: una
+            // referencia a la raiz responde el nombre real del tipo, no el estatico.
+            object asRoot = widget;
+            if (!String.Equals(asRoot.ToString(), "Widget")) { return 3; }
+
+            // Y una sobrescritura despacha virtualmente a traves de la raiz, como cualquier otra.
+            object asRootGadget = gadget;
+            if (!String.Equals(asRootGadget.ToString(), "Gadget")) { return 4; }
+
+            Cog cog = new Cog();
+            Gadget asBase = cog;
+            if (!String.Equals(asBase.ToString(), "Cog")) { return 5; }
+
+            // Equals por identidad de referencia: la unica igualdad que la raiz puede conocer.
+            if (!widget.Equals(widget)) { return 6; }
+            if (widget.Equals(gadget)) { return 7; }
+            if (widget.GetHashCode() != widget.GetHashCode()) { return 8; }
+
+            // -- structs ------------------------------------------------------------------------
+            Vec2 a = {1, 2};
+            Vec2 b = {1, 2};
+            Vec2 c = {1, 3};
+
+            if (!String.Equals(a.ToString(), "Vec2")) { return 9; }
+            if (!a.Equals(b)) { return 10; }
+            if (a.Equals(c)) { return 11; }
+            if (a.GetHashCode() != b.GetHashCode()) { return 12; }
+            if (a.GetHashCode() == c.GetHashCode()) { return 13; }
+
+            // Structs anidados y arreglos fijos se aplanan a hojas escalares; el RELLENO queda
+            // fuera a proposito, porque un valor que cruzo un borde C trae en su relleno lo que
+            // el otro lado haya dejado ahi.
+            Nested n1 = { {7, 8}, 1.5f, 3 };
+            Nested n2 = { {7, 8}, 1.5f, 3 };
+            Nested n3 = { {7, 8}, 1.5f, 4 };
+            if (!n1.Equals(n2)) { return 14; }
+            if (n1.Equals(n3)) { return 15; }
+            if (n1.GetHashCode() != n2.GetHashCode()) { return 16; }
+            if (!String.Equals(n1.ToString(), "Nested")) { return 17; }
+
+            // Lo declarado gana sobre lo sintetizado.
+            Tagged tagged = {1};
+            if (!String.Equals(tagged.ToString(), "Tagged!")) { return 18; }
+
+            // -- primitivos ---------------------------------------------------------------------
+            int number = 5;
+            raii string numberText = number.ToString();
+            if (!String.Equals(numberText, "5")) { return 19; }
+
+            bool flag = true;
+            raii string flagText = flag.ToString();
+            if (!String.Equals(flagText, "True")) { return 20; }
+
+            return 0;
+        }
+    }
+}

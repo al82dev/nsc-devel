@@ -1,82 +1,90 @@
-NativeSharp -- arbol COMPLETO del compilador, estado final tras las fases C1..C6 del roadmap
-=============================================================================================
+NativeSharp — compilador nativo tipo C# para x86_64-pc-windows-msvc
+===================================================================
 
-Este zip trae UNA carpeta raiz (NativeSharp/) con el arbol entero. No es incremental: es todo lo
-necesario para configurar, construir y correr los tests desde cero.
+Entrega: Stage 56, fases C1 a C8 completas.
+Estado: ctest 237/237, build limpio desde cero con -DNSC_WARNINGS_AS_ERRORS=ON, cero warnings.
 
-VERIFICAR QUE LLEGO COMPLETO
------------------------------
+Todo lo que hay aquí adentro es el árbol completo del compilador. No falta nada: fuentes,
+cabeceras, biblioteca estándar en NativeSharp, suites de prueba, casos contractuales de interop,
+ejemplos empaquetados, herramientas y documentación.
 
-  python verify_manifest.py          -> MANIFEST: 1094/1094 PASS
 
-CONSTRUIR
----------
+CÓMO COMPILARLO
+---------------
 
-  cmake -S . -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DNSC_WARNINGS_AS_ERRORS=ON
-  cmake --build build-clang -j
-  ctest --test-dir build-clang       -> 235/235
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNSC_WARNINGS_AS_ERRORS=ON
+    cmake --build build
+    ctest --test-dir build
 
-INSTALAR (deploy a tu ruta fija)
----------------------------------
+Requiere LLVM 20 y un C++20. En una máquina donde LLVM 20 no esté en la ruta por omisión:
 
-  cmake --install build-clang --config Release --prefix C:\native-sharp
+    -DLLVM_DIR=<prefijo>/lib/cmake/llvm
 
-DIRECTORIOS
------------
+El compilador se llama `nsc` y queda en `build/bin/`.
 
-  src/                  el compilador (Lexer, Parser, AST, Sema, Frontend, HIR, MIR, CFG, SSA,
-                        Passes, LLVM, Runtime, Linker, Interop, Driver, Target, nsc)
-  include/nativesharp/  sus headers
-  lib/                  las 5 librerias NativeSharp.Core* como fuente .ns
-  tests/unit/           las suites (una por etapa)
-  tests/integration/    tests de integracion
-  tests/support/        TestContext
-  tests/interop_contract/  la matriz contractual de interop, como proyectos reales
-  examples/             los proyectos por etapa + tutoriales 01..22
-  book_examples/        ejemplos del libro
-  tools/                build_project.cmd, clean_project.cmd, prepare_libraries.cmd,
-                        setup_toolchain.cmd
-  claude/               notas tecnicas de las rondas recientes
-  BUGS_ENCONTRADOS/     los bugs reales encontrados, con repro minimo
-  windows_execution_checklist/  checklists de ejecucion en Windows real
+    nsc --emit-project-oop-exe <proyecto.nsproj> -O2 -o programa.exe
 
-DONDE EMPEZAR A LEER LAS RONDAS RECIENTES
-------------------------------------------
+`nsc --help` lista los demás modos (volcados de HIR/MIR/LLVM, .obj, .lib, .dll, header C del
+proyecto, metadatos de biblioteca).
 
-  63_stage56_c1_interop_completion.md      C1: proc-address round trip, identidad de import,
-                                           borde de excepciones de callback
-  64_stage56_c2c4_language_completion.md   C2/C3/C4: arrays embebidos, union/pack/align/at,
-                                           aliases FFI, ref/out/in
-  65_stage56_c6_struct_members.md          C6: constructores, propiedades, indexers y operadores
-                                           en structs -- y POR QUE no hacen falta dos tipos de
-                                           struct (con la certificacion de clang que lo prueba)
 
-  STAGE56_C1_CHANGED_FILES.txt             que cambio en cada ronda
-  STAGE56_C2C4_CHANGED_FILES.txt
-  STAGE56_C6_CHANGED_FILES.txt
-  tests/interop_contract/README.md         la matriz de 15 casos, completa
+QUÉ HAY EN CADA CARPETA
+-----------------------
 
-ESTADO DEL ROADMAP DEL COMPILADOR
-----------------------------------
+  src/          El compilador. Lexer, Parser, AST, Sema, los modelos de frontend
+                (NameLookup, MemberModel, MethodBodyModel, ConstructionModel,
+                ObjectLayoutModel, InheritanceModel, InterfaceModel), OopHirModel,
+                OopMirModel, el bajador a LLVM, el linker de Windows y el runtime.
+  include/      Las cabeceras públicas de todo lo anterior.
+  lib/          La biblioteca estándar, escrita EN NativeSharp: NativeSharp.Core (Object,
+                String, Console, Exception, DateTime, Environment, Random, ...),
+                .Collections.Generic, .Threading, .Diagnostics.
+  tests/        Las suites unitarias (una por ronda) y tests/interop_contract, que son
+                proyectos NativeSharp reales, abribles y compilables a mano.
+  examples/     Proyectos de ejemplo, uno por etapa, más los tutoriales.
+  book_examples/ Estructuras de datos clásicas, escritas en NativeSharp.
+  tools/        Utilidades de apoyo.
+  *.md          La documentación de cada ronda, en español.
+  *_CHANGED_FILES.txt  Qué se tocó en cada ronda y por qué.
 
-  C1 Interop completion        OK
-  C2 C aggregate completeness  OK
-  C3 Alias/FFI ergonomics      OK
-  C4 Language references       OK
-  C5 Certification hardening   ~    layout contra clang OK; matriz de EJECUCION necesita Wine/Windows
-  C6 Struct members            OK   (fase nueva, nacida del port de Saru)
 
-QUE CORRER EN WINDOWS REAL (lo que aqui quedo como skip por no haber Wine)
----------------------------------------------------------------------------
+LAS DOS ÚLTIMAS RONDAS
+----------------------
 
-  tests\interop_contract\c1_03_function_pointer_parameter   -> 42
-  tests\interop_contract\c1_04_function_pointer_return      -> 42
-  tests\interop_contract\c1_05_raw_pointer_cast             -> 42
-  tests\interop_contract\c2_11_fixed_field_array            -> 42
-  tests\interop_contract\c2_12_union                        -> 42
-  tests\interop_contract\c4_ref_out_in                      -> 42
-  tests\interop_contract\c6_struct_math                     -> 42
-  tests\interop_contract\c1_14_callback_exception_boundary  -> 141   (NO 0)
-  examples\project_stage56_c1                               -> 0
-  examples\project_stage56_c2c4                             -> 0
-  examples\project_stage56_c6                               -> 0
+C7 — Definite assignment e inicializador agregado (66_stage56_c7_definite_assignment.md)
+
+    Cierra el agujero más grande que le quedaba al lenguaje: `V v;` seguido de leer `v`
+    compilaba a un `alloca` y nada más, y devolvía lo que hubiera en la pila. Para cualquier
+    tipo de local, en cualquier -O, sin diagnóstico.
+
+    Se cierra con dos mitades: el backend pone en cero toda local sin inicializador, en el
+    punto de su declaración; y el front end reporta como error leer una local escalar,
+    puntero, referencia o delegate por un camino donde nada la escribió. Los agregados no se
+    reportan nunca — `Color c; c.tag = 1;` sigue siendo legal, y los campos que no escribís
+    leen cero, no basura.
+
+    Más `V v = {1, 2};` en todas sus formas, también en campos.
+
+    Encontró y arregló un bug silencioso de C6: construir un struct de más de 8 bytes
+    guardaba la dirección del valor en la local en vez del valor.
+
+C8 — Raíz de tipos (67_stage56_c8_type_root.md)
+
+    ToString / Equals / GetHashCode para clases y structs. `NativeSharp.Core.Object` es la
+    raíz real de las clases, con los tres virtuales y el nombre del tipo en el descriptor;
+    un struct los recibe sintetizados por el compilador y resueltos estáticamente.
+
+    No hay boxing en ninguna parte: `object o = 5;` es un error de compilación. Objetos que
+    no crecen un byte, structs que no cambian nada.
+
+
+LO QUE FALTA, DICHO CLARO
+-------------------------
+
+La matriz de EJECUCIÓN de la sección 5 del roadmap necesita Windows o Wine. Este árbol se
+desarrolló en una máquina sin ninguno de los dos, así que cada escenario de ejecución degrada
+a un "skip" explícito en lugar de a un check verde que no verificó nada. Todo lo que SÍ se
+puede verificar sin Windows está verificado y en verde: forma del IR, ejecutables producidos a
+-O0 y -O2, layouts certificados contra clang apuntando al ABI de MSVC con -Werror, y — donde
+aplica — el código máquina de -O2 plegado a un retorno constante, que es la prueba más fuerte
+disponible de que la semántica es la que dice el fuente.

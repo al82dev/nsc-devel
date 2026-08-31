@@ -676,6 +676,31 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage56_c6_struct_members_tests)
     add_test(NAME nsc.stage56.c6-struct-members COMMAND nsc_stage56_c6_struct_members_tests)
 
+    # Stage 56 / C7 -- definite assignment and the aggregate initializer. Closes the largest
+    # silent-wrong-answer hole the language had (a local declared without an initializer used to
+    # be an alloca and nothing else) with two halves: defined zero storage in the backend, and a
+    # path-sensitive MUST-analysis in the front end. Checks IR shape, real executables at -O0 and
+    # -O2, the exact set of programs the analysis rejects, and -- twice -- that -O2 folds the whole
+    # body to a constant return, which is what proves the defaulting stores cost nothing.
+    add_executable(nsc_stage56_c7_definite_assignment_tests tests/unit/Stage56C7DefiniteAssignmentTests.cpp)
+    target_link_libraries(nsc_stage56_c7_definite_assignment_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage56_c7_definite_assignment_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage56_c7_definite_assignment_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage56_c7_definite_assignment_tests)
+    add_test(NAME nsc.stage56.c7-definite-assignment COMMAND nsc_stage56_c7_definite_assignment_tests)
+
+    # Stage 56 / C8 -- the type root. NativeSharp.Core.Object as the real base of every class
+    # (ToString/Equals/GetHashCode, virtual, with the runtime type name carried in the class
+    # descriptor), the same three synthesized for structs and resolved statically, and NO boxing
+    # anywhere. Checks IR shape, real executables, the -O2 fold of the struct half, the exact set
+    # of programs the design refuses, and that a project without the root in view is untouched.
+    add_executable(nsc_stage56_c8_type_root_tests tests/unit/Stage56C8TypeRootTests.cpp)
+    target_link_libraries(nsc_stage56_c8_type_root_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage56_c8_type_root_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage56_c8_type_root_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage56_c8_type_root_tests)
+    add_test(NAME nsc.stage56.c8-type-root COMMAND nsc_stage56_c8_type_root_tests)
+
     add_executable(nsc_stage46_native_libraries_tests tests/unit/Stage46NativeLibrariesTests.cpp)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage46_native_libraries_tests PRIVATE cxx_std_20)

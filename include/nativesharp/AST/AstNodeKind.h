@@ -73,7 +73,10 @@ enum class AstNodeKind
     ObjectCreationExpression,
     DeleteExpression,
     StackallocExpression,
-    MoveExpression
+    MoveExpression,
+    // C7 "aggregate initializer": `V v = {1, 2};` -- the braced form, with the elements as
+    // children in declaration order and nested braces for nested aggregates.
+    AggregateInitializerExpression
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

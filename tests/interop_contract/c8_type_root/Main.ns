@@ -1,0 +1,99 @@
+// Interop contract case (phase C8) -- LA RAIZ DE TIPOS, Y LO QUE NO LE CUESTA AL LAYOUT.
+//
+// Este caso vive en la carpeta de contrato de interop por la misma razon que el de C6: la
+// pregunta que responde no es "funciona ToString", es "cuanto cuesta". Una raiz de tipos es
+// exactamente la clase de cosa que en otros lenguajes engorda cada valor -- un puntero a vtable
+// en cada struct, una caja en el heap por cada `int` que se pasa como `object`. Aqui no:
+//
+//   * una CLASE deriva implicitamente de NativeSharp.Core.Object y recibe ToString/Equals/
+//     GetHashCode virtuales; el objeto no crece un byte, porque Object no declara campos, y el
+//     costo es tres slots en la vtable mas un puntero al nombre del tipo en el descriptor;
+//   * un STRUCT recibe los tres SINTETIZADOS por el compilador y resueltos estaticamente. Sin
+//     vtable, sin caja, sin cambiar un byte de su layout. Este archivo lo verifica cruzando el
+//     mismo Vector3 de doce bytes de C6 por el borde C.
+//
+// Y no hay boxing en ninguna parte: `object o = 5;` es un error de compilacion, no una asignacion
+// en heap silenciosa. En un lenguaje sin GC y explicito con la propiedad, boxear dejaria sin
+// respuesta la pregunta de quien libera la caja.
+//
+// Codigo de salida esperado: 42.
+using NativeSharp.Core;
+
+namespace contract {
+
+    // El mismo Vector3 de C6, palabra por palabra en lo que al layout respecta: doce bytes con
+    // tres floats. Ahora ademas responde a los tres miembros de la raiz.
+    public struct Vector3 {
+        public float x;
+        public float y;
+        public float z;
+
+        public Vector3(float px, float py, float pz) { x = px; y = py; z = pz; }
+    }
+
+    // Un struct anidado con anchos mezclados: prueba que el aplanado a hojas escalares recorre
+    // structs adentro de structs y arreglos fijos, y que el relleno queda fuera.
+    public struct Header {
+        public Vector3 origin;
+        public int[2] range;
+        public byte kind;
+    }
+
+    public class Widget { }
+
+    public class Gadget {
+        public int id;
+        public override string ToString() { return "Gadget"; }
+    }
+
+    class Program {
+        public static int Main() {
+
+            // -- clases: los tres miembros de la raiz, con despacho virtual ---------------------
+            Widget widget = new Widget();
+            if (!String.Equals(widget.ToString(), "Widget")) { return 1; }
+
+            Gadget gadget = new Gadget();
+            if (!String.Equals(gadget.ToString(), "Gadget")) { return 2; }
+
+            // El nombre sale del descriptor del objeto EN TIEMPO DE EJECUCION, no del tipo
+            // estatico: una referencia a la raiz sigue respondiendo el nombre real.
+            object asRoot = widget;
+            if (!String.Equals(asRoot.ToString(), "Widget")) { return 3; }
+
+            object asRootGadget = gadget;
+            if (!String.Equals(asRootGadget.ToString(), "Gadget")) { return 4; }
+
+            // Equals por identidad de referencia, que es la unica igualdad que la raiz conoce.
+            if (!widget.Equals(widget)) { return 5; }
+            if (widget.Equals(gadget)) { return 6; }
+            if (widget.GetHashCode() != widget.GetHashCode()) { return 7; }
+
+            // -- structs: los tres sintetizados, resueltos estaticamente ------------------------
+            Vector3 a = new Vector3(1, 2, 3);
+            Vector3 b = new Vector3(1, 2, 3);
+            Vector3 c = new Vector3(1, 2, 4);
+
+            if (!String.Equals(a.ToString(), "Vector3")) { return 8; }
+            if (!a.Equals(b)) { return 9; }
+            if (a.Equals(c)) { return 10; }
+            if (a.GetHashCode() != b.GetHashCode()) { return 11; }
+            if (a.GetHashCode() == c.GetHashCode()) { return 12; }
+
+            Header h1 = { {1, 2, 3}, {4, 5}, 6 };
+            Header h2 = { {1, 2, 3}, {4, 5}, 6 };
+            Header h3 = { {1, 2, 3}, {4, 9}, 6 };
+            if (!h1.Equals(h2)) { return 13; }
+            if (h1.Equals(h3)) { return 14; }
+            if (h1.GetHashCode() != h2.GetHashCode()) { return 15; }
+            if (!String.Equals(h1.ToString(), "Header")) { return 16; }
+
+            // -- primitivos --------------------------------------------------------------------
+            int n = 5;
+            raii string text = n.ToString();
+            if (!String.Equals(text, "5")) { return 17; }
+
+            return 42;
+        }
+    }
+}

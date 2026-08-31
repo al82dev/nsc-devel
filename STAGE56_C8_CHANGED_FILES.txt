@@ -1,0 +1,85 @@
+Stage 56 / C8 "Raiz de tipos" -- archivos modificados/nuevos
+(fase NUEVA, aprobada por Alberto al cerrar C7. Ver 67_stage56_c8_type_root.md para el diseno
+completo, empezando por la decision que gobierna todo lo demas: NO HAY BOXING.)
+
+
+NUEVOS
+------
+
+  lib/NativeSharp.Core/Object.ns
+      La raiz, escrita en NativeSharp y no inventada en el compilador -- que es lo que hizo que el
+      constructor de vtables, el emisor de descriptores, `base.`, la cadena de constructores y el
+      recorrido de RTTI no necesitaran ni un caso especial: ven una clase base ordinaria. Trae
+      ToString/Equals/GetHashCode virtuales, y RuntimeHelpers con las dos primitivas que la raiz
+      necesita y que no se pueden escribir en NativeSharp.
+
+  tests/unit/Stage56C8TypeRootTests.cpp
+      55 checks.
+
+  tests/interop_contract/c8_type_root/
+  examples/project_stage56_c8/
+      Caso contractual y ejemplo empaquetado.
+
+  67_stage56_c8_type_root.md
+      El documento de la ronda.
+
+
+MODIFICADOS
+-----------
+
+  src/Frontend/ProjectInheritanceModel.cpp
+      Una clase que no nombro base deriva de NativeSharp.Core.Object -- salvo Object misma, que es
+      donde la cadena tiene que parar. La raiz es OPCIONAL: solo se inyecta si la compilacion la
+      tiene a la vista, misma convencion que NativeSharp.Core.Exception ya habia establecido para
+      catch/throw tipados. Es lo que permitio que esto aterrizara sin perturbar ninguno de los 236
+      tests ni de los 128 proyectos de ejemplo previos.
+
+  src/Frontend/ProjectNameLookup.cpp
+      `object` se resuelve a NativeSharp.Core.Object como ULTIMO RECURSO, despues de que la
+      busqueda ordinaria falla: un proyecto que declare su propio tipo `object` gana, y uno sin la
+      raiz a la vista recibe "unknown type name 'object'" en vez de un parseo que significa otra
+      cosa en silencio.
+
+  src/Parser/Parser.cpp
+      `object` como nombre de tipo conocido, para que `object x = ...;` parsee como declaracion.
+      Deliberadamente NO es palabra reservada del lexer.
+
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+      - ObjectTypeName / ObjectReferenceHash: dos operaciones nucleo mas, mismo mecanismo que
+        NativeClock.QueryCounterRaw y compania.
+      - La fachada de los tres miembros de struct, en el acceso a miembro, corriendo SOLO despues
+        de que la busqueda ordinaria fallo: lo declarado gana siempre, la sintesis llena un hueco.
+      - Su reconocimiento y chequeo en analyzeCall (aridad, tipo del argumento de Equals), y el
+        rechazo razonado de Equals/GetHashCode sobre uniones.
+
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+      - AggregateEquals / AggregateHash.
+      - appendAggregateLeaves: aplana un struct a sus HOJAS ESCALARES, con structs anidados y
+        arreglos fijos expandidos en su sitio. El RELLENO queda fuera a proposito: un valor que
+        cruzo un borde C trae en su relleno lo que el otro lado haya dejado ahi.
+      - shortTypeName: `Vector3`, no `Proj::game.math.Vector3`, misma regla que el nombre en el
+        descriptor, para que las dos formas de "como se llama este tipo" no puedan divergir.
+      - ToString de struct baja a un StringLiteral ordinario: la respuesta es una constante de
+        tiempo de compilacion, porque un struct se resuelve sobre su tipo estatico.
+
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+      Los nodos correspondientes; el nombre del tipo en la tabla de despacho; y el ANCHO EN BYTES
+      de cada hoja, resuelto aqui porque aqui viven los layouts -- es lo que permite que el
+      backend lea cada hoja (un float, una referencia, un enum) como un entero del tamano correcto
+      sin una sola instruccion de cast.
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      - Septimo campo del descriptor de clase (ANADIDO AL FINAL, ningun indice existente cambio):
+        un puntero al nombre del tipo, con el layout exacto de un string nativo. Devolverlo es una
+        carga, no una asignacion.
+      - internTypeNameConstant, lowerObjectTypeName, lowerObjectReferenceHash.
+      - lowerAggregateEquals / lowerAggregateHash: leen las hojas como BITS, que es lo que hace
+        que Equals y GetHashCode concuerden POR CONSTRUCCION. Comparar floats con fcmp y hashear
+        sus bits rompe el par dos veces: +0.0 == -0.0 pero hashean distinto, y un NaN nunca se
+        iguala a si mismo mientras hashea identico.
+
+  CMakeLists.txt
+      Registro de la suite de C8 (y de la de C7).

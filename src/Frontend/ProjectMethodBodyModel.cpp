@@ -38,6 +38,11 @@ sema::OwnershipKind ownershipKindFromSyntax(const ast::TypeSyntax* syntax) noexc
     return sema::OwnershipKind::None;
 }
 
+// C8 "type root", struct half: the marker an ExpressionResult carries when a member access
+// resolved to one of the three members the compiler synthesizes for a struct. It never escapes
+// analyzeCall, which is where the core binding is recorded -- see the facade in analyzeMember.
+constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
+
 bool isComparison(TokenKind kind) noexcept
 {
     return kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual ||
@@ -244,6 +249,8 @@ bool ProjectMethodBodyModel::build(
         maybeMovedOwnedParameters_.clear();
         invalidLocalBorrows_.clear();
         maybeInvalidLocalBorrows_.clear();
+        assignedLocals_.clear();
+        definiteAssignmentWriteTarget_ = nullptr;
         ownershipFlowReachable_ = true;
         throwFlowStates_.clear();
         const std::size_t rootScopeOrdinal = createScope(
@@ -326,7 +333,15 @@ bool ProjectMethodBodyModel::build(
             memberOrdinal,
             std::nullopt);
         ExpressionResult initializer;
-        if (field.syntax->first()->kind() == ast::AstNodeKind::LambdaExpression &&
+        if (field.syntax->first()->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+        {
+            // C7 "aggregate initializer": a field is filled against its declared type exactly the
+            // way a local is. Same binder, so `V field = {1, 2};` and `V local = {1, 2};` cannot
+            // disagree about arity, element types or partial fills.
+            initializer = bindAggregateInitializer(
+                field.syntax->first(), field.declaredTypeKey, memberOrdinal, rootScopeOrdinal, diagnostics);
+        }
+        else if (field.syntax->first()->kind() == ast::AstNodeKind::LambdaExpression &&
             isDelegateTypeKey(field.declaredTypeKey))
         {
             initializer = bindLambdaToDelegate(
@@ -422,6 +437,275 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
                     "' is never assigned in the body of '" + member.name + "'");
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// C7 "definite assignment"
+//
+// The hole this closes: before it, `V v;` followed by a read of `v` compiled to an `alloca` with
+// no store, and the read returned whatever was on the stack. No diagnostic, no zeroing, no
+// warning -- for EVERY local type, not just aggregates. The fix has two halves that must be read
+// together, because each one alone would be the wrong language:
+//
+//  1. The BACKEND gives every local without an initializer defined storage: it zeroes the slot at
+//     the declaration point (see ProjectOopLlvmLowerer's LocalDeclaration case). NativeSharp
+//     therefore has no uninitialized-read undefined behaviour left anywhere, at any optimization
+//     level. In a program this analysis accepts every zeroing store is dead and SROA deletes it,
+//     so the guarantee is free in exactly the programs that do not need it.
+//
+//  2. This analysis reports, as a hard error, the reads where the zero is CERTAINLY not what the
+//     programmer meant -- a scalar, a pointer, a reference or a delegate read on a path where
+//     nothing ever wrote it. That is the C# rule and it catches real bugs.
+//
+// The one deliberate difference from C#: an aggregate local (a struct value or a fixed `T[N]`
+// array) is never reported. That is not a weakening, it is the language Alberto asked for --
+// "struct sin metodos se comporta como en C". `Color c; c.tag = 1;` is a legitimate C idiom, and
+// piecewise filling of an aggregate through loops and branches is precisely the shape a
+// path-sensitive MUST-analysis cannot follow without rejecting correct programs. Half 1 is what
+// makes that safe: the unwritten fields read as zero, deterministically, rather than as garbage.
+bool ProjectMethodBodyModel::typeKeyHasDefinedDefaultStorage(std::string_view typeKey) const noexcept
+{
+    // A fixed-size array `T[N]` is storage, not a reference: `int[4] values;` reserves sixteen
+    // bytes exactly like C does, and the backend zeroes them. A DYNAMIC array `T[]` is a heap
+    // object behind a reference and is tracked like any other reference -- which is precisely
+    // what makes `int[] a; a[0] = 1;` reportable.
+    if (ProjectMemberModel::fixedArrayElementTypeKey(typeKey).has_value())
+    {
+        return true;
+    }
+    if (!typeKey.starts_with("type:") || nameLookup_ == nullptr)
+    {
+        return false;
+    }
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() == identity)
+        {
+            return type.kind == NamedTypeDeclarationKind::Struct;
+        }
+    }
+    return false;
+}
+
+// C8: does this type key name a union? Reads the same layout marker the parser wrote onto the
+// declaration and ProjectObjectLayoutModel reads back (see parseStructLayoutOptions there).
+bool ProjectMethodBodyModel::aggregateIsUnion(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != identity || type.syntax == nullptr) continue;
+        return type.syntax->auxiliaryText().find("union") != std::string::npos;
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::definiteAssignmentTracksLocal(std::size_t localOrdinal) const noexcept
+{
+    if (localOrdinal >= locals_.size())
+    {
+        return false;
+    }
+    const MethodLocalSymbol& local = locals_[localOrdinal];
+    if (local.typeKey.empty() || local.typeKey == "<error>")
+    {
+        return false;
+    }
+    return !typeKeyHasDefinedDefaultStorage(local.typeKey);
+}
+
+// Walks an assignment target down to the identifier the write is rooted at, exactly the way
+// verifyOutParameterAssignments walks one: `x = v`, `x.left = 0`, `x.rows[2].a = 1` and `*x = v`
+// are all writes rooted at `x`. Returns nullptr when the target is not rooted at a plain name.
+const ast::AstNode* ProjectMethodBodyModel::definiteAssignmentTargetRoot(
+    const ast::AstNode* target) const noexcept
+{
+    while (target != nullptr && target->kind() != ast::AstNodeKind::IdentifierExpression)
+    {
+        switch (target->kind())
+        {
+            case ast::AstNodeKind::MemberExpression:
+            case ast::AstNodeKind::IndexExpression:
+            case ast::AstNodeKind::UnaryExpression:
+                target = target->first();
+                continue;
+            default:
+                return nullptr;
+        }
+    }
+    return target;
+}
+
+// Records that writing `target` assigns the local it is rooted at, and -- when the whole local is
+// the target -- suppresses the read diagnostic for that one identifier node, since an assignment
+// analyzes its own left-hand side through the ordinary expression path.
+//
+// The distinction between the two cases is the entire subtlety here. Writing the WHOLE local
+// (`x = v`) always assigns it. Writing THROUGH it only assigns it when the local is the storage
+// being written -- an aggregate. `T[] items; items[0] = 1;` writes through a reference that was
+// never given a value, so `items` stays unassigned and the read of it is still reported; that is
+// a null dereference, and treating the store as an assignment would hide it. Aggregates are not
+// tracked at all (see typeKeyHasDefinedDefaultStorage), so for them this is a no-op either way.
+void ProjectMethodBodyModel::markAssignmentTarget(const ast::AstNode* target, std::size_t scopeOrdinal)
+{
+    const ast::AstNode* root = definiteAssignmentTargetRoot(target);
+    if (root == nullptr)
+    {
+        return;
+    }
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, root->text());
+    if (!name.has_value() || name->kind != ScopeNameKind::Local)
+    {
+        return;
+    }
+    if (root != target)
+    {
+        return;
+    }
+    assignedLocals_.insert(name->semanticOrdinal);
+    definiteAssignmentWriteTarget_ = root;
+}
+
+void ProjectMethodBodyModel::checkDefiniteAssignment(
+    const ast::AstNode* expression,
+    std::size_t localOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (expression == nullptr || expression == definiteAssignmentWriteTarget_) return;
+    if (!definiteAssignmentTracksLocal(localOrdinal)) return;
+    if (assignedLocals_.contains(localOrdinal)) return;
+    if (!reportedUnassignedReads_.insert(expression).second) return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->range(),
+        "use of unassigned local variable '" + locals_[localOrdinal].name + "'");
+    // Treat it as assigned from here on. The program is already rejected; repeating the same
+    // message at every later use of the same variable only buries the first one.
+    assignedLocals_.insert(localOrdinal);
+}
+
+// ---------------------------------------------------------------------------------------------
+// C7 "aggregate initializer"
+//
+// The element list an aggregate target expects, in the order a braced initializer fills it:
+// N copies of T for a fixed array `T[N]`, and the instance fields in declaration order for a
+// struct. A union is the one shape that is not a list: C initializes its FIRST member and nothing
+// else, and so does this, which is why it reports its own arity instead of the field count.
+//
+// Returns nullopt when the type is not an aggregate at all -- the caller turns that into the
+// "requires a struct or fixed-array target" diagnostic.
+std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElementTypeKeys(
+    std::string_view typeKey) const
+{
+    if (const std::optional<std::string> element =
+            ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
+        element.has_value())
+    {
+        const std::optional<std::uint64_t> count = ProjectMemberModel::fixedArrayCount(typeKey);
+        if (!count.has_value()) return std::nullopt;
+        return std::vector<std::string>(static_cast<std::size_t>(*count), *element);
+    }
+    if (nameLookup_ == nullptr || memberModel_ == nullptr || inheritanceModel_ == nullptr)
+    {
+        return std::nullopt;
+    }
+    if (!typeKeyHasDefinedDefaultStorage(typeKey)) return std::nullopt;
+    const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+    if (!typeOrdinal.has_value()) return std::nullopt;
+    bool isUnion = false;
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != typeKey.substr(5) || type.syntax == nullptr) continue;
+        // Same marker ProjectObjectLayoutModel reads (see parseStructLayoutOptions there); the
+        // markers are comma-joined, so a substring test is what identifies the union flag.
+        isUnion = type.syntax->auxiliaryText().find("union") != std::string::npos;
+        break;
+    }
+    std::vector<std::string> elements;
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+    {
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst) continue;
+        elements.push_back(member.declaredTypeKey);
+        if (isUnion) break;
+    }
+    return elements;
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindAggregateInitializer(
+    const ast::AstNode* syntax,
+    const std::string& targetTypeKey,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    ExpressionResult result;
+    const std::optional<std::vector<std::string>> elements = aggregateElementTypeKeys(targetTypeKey);
+    if (!elements.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "an aggregate initializer requires a struct or fixed-array target, not '" +
+                targetTypeKey + "'");
+        return result;
+    }
+    if (syntax->children().size() > elements->size())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "aggregate initializer for '" + targetTypeKey + "' has " +
+                std::to_string(syntax->children().size()) + " values but the type takes " +
+                std::to_string(elements->size()));
+        return result;
+    }
+
+    // Fewer values than elements is legal and means exactly what it means in C: everything the
+    // list does not reach keeps the zero the backend already wrote. `{}` is therefore the
+    // explicit spelling of "all zero".
+    bool valid = true;
+    for (std::size_t index = 0; index < syntax->children().size(); ++index)
+    {
+        const ast::AstNode* element = syntax->children()[index];
+        const std::string& elementTypeKey = (*elements)[index];
+        if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+        {
+            const ExpressionResult nested = bindAggregateInitializer(
+                element, elementTypeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            valid = valid && nested.valid;
+            continue;
+        }
+        const ExpressionResult value = analyzeExpression(
+            element, methodMemberOrdinal, scopeOrdinal, diagnostics);
+        if (!value.valid)
+        {
+            valid = false;
+            continue;
+        }
+        const ProjectImplicitConversion conversion = classifyImplicit(
+            value.typeKey, elementTypeKey, value.integerConstant);
+        if (!conversion.exists())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                element->range(),
+                "cannot initialize element " + std::to_string(index) + " of '" + targetTypeKey +
+                    "' of type '" + elementTypeKey + "' from '" + value.typeKey + "'");
+            valid = false;
+        }
+    }
+
+    result.typeKey = targetTypeKey;
+    result.valid = valid;
+    recordExpressionType(syntax, methodMemberOrdinal, scopeOrdinal, result);
+    return result;
 }
 
 std::span<const MethodScope> ProjectMethodBodyModel::scopes() const noexcept
@@ -585,6 +869,8 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::captureOwn
     state.maybeMovedOwnedParameters = maybeMovedOwnedParameters_;
     state.invalidLocalBorrows = invalidLocalBorrows_;
     state.maybeInvalidLocalBorrows = maybeInvalidLocalBorrows_;
+    state.assignedLocals = assignedLocals_;
+    state.localCount = locals_.size();
     return state;
 }
 
@@ -597,6 +883,25 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
     maybeMovedOwnedParameters_ = state.maybeMovedOwnedParameters;
     invalidLocalBorrows_ = state.invalidLocalBorrows;
     maybeInvalidLocalBorrows_ = state.maybeInvalidLocalBorrows;
+    // C7: a snapshot cannot say anything about a local that did not exist when it was taken, and
+    // restoring one must not silently un-assign such a local. Catch clauses are the case that
+    // forced this: analyzeTry captures its catch-entry state, THEN declares the exception local
+    // (which the handler itself binds, so it starts out assigned), THEN restores -- and a plain
+    // assignment of the set would have thrown that binding away and reported every use of a
+    // caught exception as a read of an unassigned variable. Local ordinals only ever grow, so
+    // "declared after this snapshot" is exactly "ordinal >= its local count". Carrying those bits
+    // across cannot mask a real error: a local declared after the snapshot point is, by lexical
+    // scoping, not nameable on the path being restored.
+    std::vector<std::size_t> declaredAfterSnapshot;
+    for (const std::size_t ordinal : assignedLocals_)
+    {
+        if (ordinal >= state.localCount)
+        {
+            declaredAfterSnapshot.push_back(ordinal);
+        }
+    }
+    assignedLocals_ = state.assignedLocals;
+    assignedLocals_.insert(declaredAfterSnapshot.begin(), declaredAfterSnapshot.end());
 }
 
 ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
@@ -665,6 +970,27 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwners
         right.maybeInvalidLocalBorrows,
         result.invalidLocalBorrows,
         result.maybeInvalidLocalBorrows);
+    // C7 "definite assignment": the only MUST set in this snapshot, so the join is an
+    // intersection and not a union. `int x; if (c) { x = 1; }` leaves x unassigned afterwards
+    // precisely because the else-path -- which here is the empty implicit one -- never wrote it.
+    // The one exception is the same one restoreOwnershipFlow makes: a local the other side never
+    // saw (it was declared after that side's snapshot was taken) is not evidence of anything, so
+    // it is carried rather than intersected away.
+    result.localCount = std::max(left.localCount, right.localCount);
+    for (const std::size_t ordinal : left.assignedLocals)
+    {
+        if (right.assignedLocals.contains(ordinal) || ordinal >= right.localCount)
+        {
+            result.assignedLocals.insert(ordinal);
+        }
+    }
+    for (const std::size_t ordinal : right.assignedLocals)
+    {
+        if (ordinal >= left.localCount)
+        {
+            result.assignedLocals.insert(ordinal);
+        }
+    }
     return result;
 }
 
@@ -1107,6 +1433,8 @@ std::size_t ProjectMethodBodyModel::addCatchLocal(
     scopes_[scopeOrdinal].localOrdinals.push_back(localOrdinal);
     scopeNames_[scopeOrdinal].push_back(ScopeName{
         ScopeNameKind::Local, catchClause->text(), localOrdinal, catchClause->range()});
+    // C7: the exception object is bound by the handler itself, never by user code.
+    assignedLocals_.insert(localOrdinal);
     return localOrdinal;
 }
 
@@ -1230,6 +1558,8 @@ std::size_t ProjectMethodBodyModel::addUsingLocal(
     scopes_[scopeOrdinal].localOrdinals.push_back(localOrdinal);
     scopeNames_[scopeOrdinal].push_back(ScopeName{
         ScopeNameKind::Local, statement->text(), localOrdinal, statement->range()});
+    // C7: the foreach element is bound by the loop itself, never by user code.
+    assignedLocals_.insert(localOrdinal);
     return localOrdinal;
 }
 
@@ -1666,6 +1996,18 @@ void ProjectMethodBodyModel::analyzeVariable(
                 "'var' requires an initializer");
             return;
         }
+        // C7 "aggregate initializer": a braced initializer is filled AGAINST a declared type; it
+        // has no type of its own to infer from, exactly like a bare lambda or a method group.
+        if (variable->first()->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->first()->range(),
+                "'var' cannot infer a type from an aggregate initializer; name the struct or "
+                "fixed-array type");
+            return;
+        }
         const bool isRaiiForVar = variable->hasModifier(TokenKind::KwRaii);
         ExpressionResult varInit = analyzeExpression(
             variable->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
@@ -1764,6 +2106,13 @@ void ProjectMethodBodyModel::analyzeVariable(
             // Already analyzed above (before typeKey existed, so this couldn't happen in the
             // usual typeKey-first order) -- reuse it rather than analyzing the initializer twice.
             initializer = std::move(*precomputedVarInitializer);
+        }
+        else if (variable->first()->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+        {
+            // C7: a braced initializer has no type of its own -- it is filled AGAINST the
+            // declared type, exactly like a lambda is bound against a delegate type just below.
+            initializer = bindAggregateInitializer(
+                variable->first(), typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
         }
         else if (variable->first()->kind() == ast::AstNodeKind::LambdaExpression && isDelegateTypeKey(typeKey))
         {
@@ -2052,6 +2401,19 @@ void ProjectMethodBodyModel::analyzeVariable(
         variable->text(),
         localOrdinal,
         variable->range()});
+    // C7 "definite assignment": a declaration with an initializer assigns the local, full stop.
+    // Without one, only the types the analysis does not track (aggregates, which the backend
+    // zeroes) start out assigned; everything else must be written before it is read. A local
+    // re-entering scope on a later loop iteration is re-declared through this same path, so its
+    // assigned state is correctly reset rather than inherited from the previous iteration.
+    if (variable->first() != nullptr || !definiteAssignmentTracksLocal(localOrdinal))
+    {
+        assignedLocals_.insert(localOrdinal);
+    }
+    else
+    {
+        assignedLocals_.erase(localOrdinal);
+    }
     if (pendingLocalBorrow.has_value())
     {
         pendingLocalBorrow->localOrdinal = localOrdinal;
@@ -3938,6 +4300,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             if (scopeName->semanticOrdinal < locals_.size())
             {
                 const MethodLocalSymbol& local = locals_[scopeName->semanticOrdinal];
+                // C7 "definite assignment": this is the one place a local name becomes a READ of
+                // its value, so it is the one place the check belongs. It runs before the
+                // ownership diagnostics below on purpose -- an unassigned local is the more
+                // fundamental complaint, and the moved-from checks below would otherwise report
+                // a confusing second opinion about the same name.
+                checkDefiniteAssignment(expression, scopeName->semanticOrdinal, diagnostics);
                 if (local.isRaii && movedRaiiLocals_.contains(scopeName->semanticOrdinal))
                 {
                     diagnostics.report(
@@ -4790,6 +5158,50 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         return result;
     }
 
+    // C8 "type root", struct half. A struct is a VALUE: it has no vtable pointer and no room for
+    // one (that is exactly what C6 proved and what the C host header certifies), so it cannot
+    // inherit the root's three members the way a class does. It gets them synthesized instead,
+    // resolved on the STATIC type -- which is what a struct is -- and lowered inline. No boxing,
+    // no allocation, no layout change.
+    //
+    // This runs only after ordinary member lookup has already failed, so a struct that declares
+    // its own ToString/Equals/GetHashCode simply wins; these fill a gap, they never shadow.
+    if (!typeReceiver && receiverIsStruct && !inaccessibleFound &&
+        (expression->text() == "ToString" || expression->text() == "Equals" ||
+         expression->text() == "GetHashCode"))
+    {
+        result.methodGroup = true;
+        result.methodCandidates.clear();
+        result.valid = allowMethodGroup;
+        result.receiverSyntax = expression->first();
+        result.receiverTypeKey = receiver.typeKey;
+        result.receiverTypeOrdinal = receiverType;
+        result.typeKey = kStructRootFacadeTypeKey;
+        nameBindings_.push_back(MethodNameBinding{
+            MethodNameBindingKind::ExplicitObjectMethodGroup,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            expression->text(),
+            kStructRootFacadeTypeKey,
+            std::nullopt,
+            std::nullopt,
+            {},
+            expression->first(),
+            receiver.typeKey,
+            receiverType,
+            false});
+        if (!allowMethodGroup)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "struct root member '" + expression->text() + "' can only be used as a call target");
+        }
+        return result;
+    }
+
     diagnostics.report(
         inaccessibleFound ? diagnostics::DiagnosticId::InaccessibleMember
                           : diagnostics::DiagnosticId::UnknownMember,
@@ -4834,6 +5246,93 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 expression->first()->kind() == ast::AstNodeKind::MemberExpression
             ? expression->first()->text()
             : "<expression>";
+    }
+
+    // C8 "type root", struct half. The member access above resolved to a synthesized struct
+    // member (see the facade at the end of analyzeMember); this is where its arity and argument
+    // are checked and the core binding is recorded. Everything downstream -- HIR, MIR, LLVM --
+    // then treats it exactly like any other core operation.
+    if (callee.methodGroup && callee.typeKey == kStructRootFacadeTypeKey)
+    {
+        const std::string& memberName = call.methodName;
+        const std::string& structTypeKey = callee.receiverTypeKey;
+        std::optional<MethodCoreOperationKind> structKind;
+        std::string resultTypeKey;
+        std::size_t expectedArity = 0;
+        if (memberName == "ToString")
+        {
+            structKind = MethodCoreOperationKind::StructToString;
+            resultTypeKey = "builtin:string";
+        }
+        else if (memberName == "GetHashCode")
+        {
+            structKind = MethodCoreOperationKind::StructHashCode;
+            resultTypeKey = "builtin:int";
+        }
+        else if (memberName == "Equals")
+        {
+            structKind = MethodCoreOperationKind::StructEquals;
+            resultTypeKey = "builtin:bool";
+            expectedArity = 1;
+        }
+        if (!structKind.has_value()) return {};
+        if (expression->children().size() != expectedArity)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "the compiler-provided '" + memberName + "' on struct '" + structTypeKey +
+                    "' takes " + std::to_string(expectedArity) + " argument(s)");
+            return {};
+        }
+        // A synthesized Equals compares a struct with ITS OWN type. Widening it to take a root
+        // reference would mean boxing, which this language does not do; a struct that wants to
+        // compare against anything else declares its own Equals.
+        if (expectedArity == 1)
+        {
+            const ExpressionResult other = analyzeExpression(
+                expression->children().front(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (!other.valid) return {};
+            if (other.typeKey != structTypeKey)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->children().front()->range(),
+                    "the compiler-provided 'Equals' on struct '" + structTypeKey +
+                        "' compares against its own type, not '" + other.typeKey +
+                        "'; declare an Equals of your own to compare against anything else");
+                return {};
+            }
+        }
+        // Equality and hashing read every scalar leaf of the value. A union has no such reading:
+        // only one of its members is live at a time and nothing in the value says which. C refuses
+        // to compare unions for the same reason, and guessing here would be worse than refusing.
+        if (structKind != MethodCoreOperationKind::StructToString &&
+            aggregateIsUnion(structTypeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "union '" + structTypeKey + "' has no compiler-provided '" + memberName +
+                    "': only one member of a union is live at a time, so comparing or hashing "
+                    "every field would be meaningless; declare your own");
+            return {};
+        }
+        coreBindings_.push_back(MethodCoreBinding{
+            *structKind,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            resultTypeKey,
+            structTypeKey,
+            false, std::nullopt, std::nullopt});
+        result.typeKey = resultTypeKey;
+        result.valid = true;
+        result.assignable = false;
+        return result;
     }
 
     std::vector<std::string> lambdaTargetTypes(expression->children().size());
@@ -5587,6 +6086,37 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     "builtin:void",
                     "builtin:string",
                     false, std::nullopt, std::nullopt});
+            }
+            // C8 "type root" -- NativeSharp.Core.RuntimeHelpers' two primitives. Same recognition
+            // shape as every core operation before them (exact class, exact static method name,
+            // exact signature): read a type's name out of its runtime descriptor, and turn a
+            // reference into an integer. Neither can be written in NativeSharp, which is the
+            // whole reason they are core operations rather than library code -- see Object.ns.
+            if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.RuntimeHelpers" &&
+                selectedMember.isStatic && selectedMember.parameters.size() == 1)
+            {
+                std::optional<MethodCoreOperationKind> helperKind;
+                if (selectedMember.name == "TypeName" &&
+                    selectedMember.declaredTypeKey == "builtin:string")
+                {
+                    helperKind = MethodCoreOperationKind::ObjectTypeName;
+                }
+                else if (selectedMember.name == "ReferenceHash" &&
+                    selectedMember.declaredTypeKey == "builtin:int")
+                {
+                    helperKind = MethodCoreOperationKind::ObjectReferenceHash;
+                }
+                if (helperKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *helperKind,
+                        expression,
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        selectedMember.declaredTypeKey,
+                        selectedMember.parameters.front().typeKey,
+                        false, std::nullopt, std::nullopt});
+                }
             }
             // Stage 53.1 "Time" -- NativeSharp.Core.Diagnostics.NativeClock's three raw
             // zero-argument Win32 wrappers. Same recognition shape as ConsoleWriteLine just
@@ -6722,8 +7252,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    // C7 "definite assignment": `f(out x)` is the one argument form that ASSIGNS its operand
+    // instead of reading it -- the callee is obliged to write it (verifyOutParameterAssignments
+    // enforces that half) -- so `int x; f(out x); use(x);` must be accepted, and the `out x`
+    // itself must not be reported as a read. `ref x` and `in x` are ordinary reads and get no
+    // exemption: passing an unassigned local by reference is the same bug as reading it.
+    const ast::AstNode* const previousWriteTarget = definiteAssignmentWriteTarget_;
+    const bool assignsOperand = expression->tokenKind() == TokenKind::Amp &&
+        expression->auxiliaryText() == "pass:out";
+    if (assignsOperand)
+    {
+        markAssignmentTarget(expression->first(), scopeOrdinal);
+    }
     ExpressionResult operand = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    definiteAssignmentWriteTarget_ = previousWriteTarget;
     if (!operand.valid)
     {
         return {};
@@ -7082,11 +7625,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 false});
         }
     }
+    // C7 "definite assignment": a plain `=` assigns its target; a compound one (`x += 1`) reads it
+    // first and therefore requires it to be assigned already, so only `=` marks and suppresses.
+    // markAssignmentTarget must run BEFORE the left-hand side is analyzed, because analyzing it is
+    // what would otherwise report the target as a read of an unassigned local.
+    const ast::AstNode* const previousWriteTarget = definiteAssignmentWriteTarget_;
+    if (expression->tokenKind() == TokenKind::Equal)
+    {
+        markAssignmentTarget(expression->first(), scopeOrdinal);
+    }
     if (!left.valid)
     {
         left = analyzeExpression(
             expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics, false, true);
     }
+    definiteAssignmentWriteTarget_ = previousWriteTarget;
     if (!left.valid)
     {
         return {};
@@ -8519,6 +9072,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
         scopeNames_[lambdaScope].push_back(ScopeName{
             ScopeNameKind::Local, name, localOrdinal,
             parameterSyntax != nullptr ? parameterSyntax->range() : syntax->range()});
+        // C7: a lambda parameter is bound by the caller, exactly like a method parameter.
+        assignedLocals_.insert(localOrdinal);
     }
 
     const std::size_t nameBindingBegin = nameBindings_.size();
@@ -9196,6 +9751,11 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::StringSubstring: return "string-substring";
         case MethodCoreOperationKind::StringFromCharArray: return "string-from-char-array";
         case MethodCoreOperationKind::ConsoleWriteLine: return "console-writeline";
+        case MethodCoreOperationKind::StructToString: return "struct-to-string";
+        case MethodCoreOperationKind::StructEquals: return "struct-equals";
+        case MethodCoreOperationKind::StructHashCode: return "struct-hash-code";
+        case MethodCoreOperationKind::ObjectTypeName: return "object-type-name";
+        case MethodCoreOperationKind::ObjectReferenceHash: return "object-reference-hash";
         case MethodCoreOperationKind::ClockQueryCounter: return "clock-query-counter";
         case MethodCoreOperationKind::ClockQueryFrequency: return "clock-query-frequency";
         case MethodCoreOperationKind::ClockQuerySystemFileTime: return "clock-query-system-filetime";

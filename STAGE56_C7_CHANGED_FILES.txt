@@ -1,0 +1,93 @@
+Stage 56 / C7 "Definite assignment e inicializador agregado" -- archivos modificados/nuevos
+(fase NUEVA, no estaba en el roadmap original: nace de la correccion de alcance de Alberto despues
+de C6 -- "ese tipo de cosas son las que quiero resolver de fondo". Ver
+66_stage56_c7_definite_assignment.md para el diseno completo y las mediciones.)
+
+
+MODIFICADOS
+-----------
+
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+  src/Frontend/ProjectMethodBodyModel.cpp
+      - assignedLocals_ viaja dentro de OwnershipFlowSnapshot, junto al estado de ownership que ya
+        existia, porque necesita exactamente la misma disciplina de flujo. Es el UNICO conjunto
+        MUST de esa estructura: joinOwnershipFlow lo une por INTERSECCION, no por union.
+      - localCount en el snapshot: separa "no asignada" de "no existia todavia". Lo forzo el caso
+        de catch -- analyzeTry captura su estado de entrada a los handlers ANTES de declarar la
+        local de excepcion, y restaurar habria tirado la ligadura que el propio handler hace.
+      - checkDefiniteAssignment en analyzeIdentifier: el unico punto del compilador donde un
+        nombre de local se vuelve LECTURA de su valor, que es donde el chequeo pertenece.
+      - markAssignmentTarget: `=` (no la compuesta, que lee primero) y `out` marcan. La distincion
+        clave: escribir A TRAVES de la local solo la asigna cuando la local ES el almacenamiento
+        escrito -- un agregado. `int[] a; a[0] = 1;` sigue siendo un deref de una referencia sin
+        valor, no una asignacion de `a`.
+      - typeKeyHasDefinedDefaultStorage: los agregados (struct por valor, `T[N]`) quedan fuera del
+        analisis a proposito. Ver el doc: es la regla "struct sin metodos se comporta como en C",
+        y la mitad de backend es lo que la vuelve segura.
+      - bindAggregateInitializer / aggregateElementTypeKeys: el inicializador con llaves se llena
+        CONTRA el tipo declarado, igual que una lambda se liga contra un delegate. Un solo binder
+        para locales y para campos.
+      - `var` no puede inferir de un inicializador agregado, y lo dice.
+
+  include/nativesharp/AST/AstNodeKind.h
+  src/AST/AstNodeKind.cpp
+      AggregateInitializerExpression.
+
+  include/nativesharp/Parser/Parser.h
+  src/Parser/Parser.cpp
+      parseAggregateInitializer: `{}`, `{1, 2}`, coma final, llaves anidadas. Enganchado en
+      declaracion de local y en declaracion de campo, con la misma llamada, para que las dos
+      formas no puedan divergir.
+
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+  src/Frontend/ProjectOopHirModel.cpp
+      AggregateInitializer / AggregateElement, con el anidamiento YA APLANADO a offsets absolutos
+      contra el mismo StructValueLayout del que el generador de headers C emite offsets. Un
+      inicializador y un host C no pueden discrepar sobre que bytes ocupa un campo.
+
+  include/nativesharp/Frontend/ProjectOopMirModel.h
+  src/Frontend/ProjectOopMirModel.cpp
+      AggregateInitialize / AggregateElementStore. elementLayout ahora delega en la regla
+      compartida (abajo) en vez de tener su propia copia.
+
+  include/nativesharp/Frontend/ProjectObjectLayoutModel.h
+  src/Frontend/ProjectObjectLayoutModel.cpp
+      valueLayoutForTypeKey: UNA regla de "cuanto mide uno de estos", compartida por el modelo MIR
+      y el OOP HIR, para que un stride y un offset no puedan calcularse con reglas distintas.
+      Ahora tambien mide arreglos fijos, que es lo que permite medir un campo `float[4]` igual que
+      una local `float[4]`.
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      - emitDefaultLocalStorage: la mitad de backend. Una local sin inicializador se pone en cero
+        EN SU DECLARACION (no junto al alloca izado: una local dentro de un bucle es una variable
+        nueva en cada vuelta). En un programa que el analisis acepta, ese store esta dominado por
+        stores reales, es codigo muerto y SROA lo borra -- el ejemplo empaquetado entero se pliega
+        a `xor eax,eax; ret` en -O2.
+      - lowerAggregateInitializer: alloca + memset + un store por elemento en su offset.
+      - BUG DE C6 ARREGLADO en lowerValueConstruction: cortocircuitaba en isIndirectStructTypeKey
+        y devolvia la DIRECCION del struct recien construido. `Big g = new Big(1.0f)` con un
+        struct de 20 bytes guardaba un PUNTERO en los 20 bytes de la local, y cada lectura de
+        campo leia bits de puntero como floats. Silencioso: `store ptr, ptr` esta bien formado y
+        el verificador de IR no tenia nada que objetar. El invariante ya estaba escrito en el
+        propio compilador, en el comentario del caso TemporaryAddress.
+
+
+NUEVOS
+------
+
+  tests/unit/Stage56C7DefiniteAssignmentTests.cpp
+      77 checks. Forma del IR, ejecutables reales a -O0 y -O2, el conjunto exacto de programas que
+      el analisis rechaza, el pin de regresion del bug de C6, y -- dos veces -- que -O2 pliega el
+      cuerpo entero a un retorno constante, que es la medida de que el puesta-en-cero no cuesta
+      nada.
+
+  tests/interop_contract/c7_definite_assignment/
+      Caso contractual: un descriptor al estilo Win32 llenado campo por campo, mas el
+      inicializador agregado en todas sus formas. Codigo de salida esperado: 42.
+
+  examples/project_stage56_c7/
+      Ejemplo empaquetado, misma convencion que _c1/_c2c4/_c6: cada chequeo que falla devuelve su
+      propio codigo de salida. Se pliega entero a `xor eax,eax; ret` en -O2.
+
+  66_stage56_c7_definite_assignment.md
+      El documento de la ronda.

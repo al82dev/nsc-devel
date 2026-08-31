@@ -36,6 +36,8 @@ Fuera de la matriz de 15, pero de la misma naturaleza:
 |---|---|
 | `ref` / `out` / `in` (fase C4) | **`c4_ref_out_in/`** |
 | Matemática de struct: ctor + propiedades + indexer + operadores (fase C6) | **`c6_struct_math/`** |
+| Almacenamiento por omisión + inicializador agregado (fase C7) | **`c7_definite_assignment/`** |
+| Raíz de tipos: `ToString`/`Equals`/`GetHashCode` (fase C8) | **`c8_type_root/`** |
 
 ## Certificación de layout contra un toolchain foráneo
 
@@ -52,6 +54,20 @@ constructor, propiedades, indexer y operadores** siga siendo doce bytes con tres
 evidencia de que NativeSharp no necesita un segundo tipo de struct "plano" para interop — esos
 miembros no cuestan un byte.
 
+Las filas de C7 y C8 continúan esa misma pregunta —*"¿cuánto cuesta?"*— para las dos rondas
+siguientes, porque las dos son exactamente la clase de cosa que en otros lenguajes engorda cada
+valor:
+
+- **C7** promete que una local declarada sin inicializador está **en cero**, no llena de lo que
+  hubiera en la pila, y que un inicializador con llaves escribe sus valores en los mismos offsets
+  que ve un host C, dejando el resto en ese cero. El caso es un descriptor al estilo Win32 llenado
+  campo por campo — la forma que hizo visible el agujero.
+- **C8** promete que tener raíz de tipos no le cuesta **un byte** a nadie: una clase recibe tres
+  slots de vtable y un puntero de descriptor hacia el nombre del tipo, pero el objeto no crece
+  (`Object` no declara campos), y un struct no cambia **nada** — sigue sin vtable, con su layout
+  intacto, porque sus tres miembros se sintetizan y se resuelven estáticamente. Y no hay boxing en
+  ninguna parte: `object o = 5;` es un error de compilación, no una asignación en heap silenciosa.
+
 Esto no necesita Wine y por lo tanto es un chequeo DURO en cualquier máquina con clang.
 
 ## Compilar un fixture a mano
@@ -64,7 +80,8 @@ echo %ERRORLEVEL%
 
 Códigos de salida esperados:
 
-- `c1_03`, `c1_04`, `c1_05`, `c2_11`, `c2_12`, `c4_ref_out_in`, `c6_struct_math` → **42**.
+- `c1_03`, `c1_04`, `c1_05`, `c2_11`, `c2_12`, `c4_ref_out_in`, `c6_struct_math`,
+  `c7_definite_assignment`, `c8_type_root` → **42**.
 - `c1_13` → **compila y linkea**; no está pensado para ejecutarse (`a.dll`/`b.dll` no existen a
   propósito: el caso es que dos identidades que comparten nombre de símbolo puedan coexistir).
 - `c1_14` → **141** (`128 + LlvmTrapReason::CallbackExceptionEscape`), no 0. Una salida 0 ahí

@@ -125,9 +125,15 @@ Parser::Parser(
       arena_(arena),
       diagnostics_(diagnostics)
 {
-    static constexpr std::array<std::string_view, 15> builtinNames = {
+    static constexpr std::array<std::string_view, 16> builtinNames = {
         "void", "bool", "byte", "char", "short", "ushort", "int", "uint", "long", "ulong",
-        "nint", "nuint", "float", "double", "string"};
+        "nint", "nuint", "float", "double", "string",
+        // C8 "type root": `object` is a KNOWN TYPE NAME here so that `object x = ...;` parses as
+        // a declaration, but it is deliberately NOT a lexer keyword and gets no builtin type key:
+        // name lookup resolves it, as a last resort, to NativeSharp.Core.Object (see
+        // ProjectNameLookup::bindTypeSyntax). A project without the root in view therefore gets
+        // "unknown type name 'object'" rather than a parse that quietly means something else.
+        "object"};
 
     for (const std::string_view name : builtinNames)
     {
@@ -2121,7 +2127,9 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
 
     if (consumeIf(TokenKind::Equal))
     {
-        field->setFirst(parseExpression());
+        // C7 "aggregate initializer": a field takes the same braced form a local does, for the
+        // same reason -- it has a declared type to be filled against.
+        field->setFirst(at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
     }
     else if (isConst)
     {
@@ -3445,7 +3453,10 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
 
     if (consumeIf(TokenKind::Equal))
     {
-        variable->setFirst(parseExpression());
+        // C7 "aggregate initializer": `V v = {1, 2};`. A brace can only start an initializer
+        // here, so there is nothing to disambiguate against a block statement.
+        variable->setFirst(
+            at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
     }
     else if (isConst)
     {
@@ -3462,6 +3473,35 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
     }
     variable->setRange(tokenRangeFrom(beginIndex));
     return variable;
+}
+
+// C7 "aggregate initializer". The C form, deliberately: `{}`, `{1, 2}`, a trailing comma, and
+// nested braces for a nested aggregate (`Matrix m = { {1, 0}, {0, 1} };`). Semantic analysis is
+// what decides whether the target type accepts one and how the elements line up with its fields
+// or elements -- the parser only records the shape.
+ast::AstNode* Parser::parseAggregateInitializer()
+{
+    const std::size_t beginIndex = index_;
+    const lexer::Token& open = consume();
+    ast::AstNode* node = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::AggregateInitializerExpression, open.range());
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        ast::AstNode* element =
+            at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression();
+        if (element == nullptr)
+        {
+            break;
+        }
+        node->addChild(element);
+        if (!consumeIf(TokenKind::Comma))
+        {
+            break;
+        }
+    }
+    expect(TokenKind::RightBrace, "'}'");
+    node->setRange(tokenRangeFrom(beginIndex));
+    return node;
 }
 
 ast::AstNode* Parser::parseIfStatement()
