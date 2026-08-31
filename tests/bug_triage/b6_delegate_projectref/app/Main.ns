@@ -1,0 +1,47 @@
+// BUG TRIAGE 6 -- an `extern C delegate` is not visible across a `ProjectReference`.
+//
+// Reported 2026-08-29 while building the NativeSharp.Win32 wrapper over the generated
+// NativeSharp.Win32.Raw binding. The wrapper needed to name `WNDPROC`, declared by the
+// binding:
+//
+//   error: unknown type name 'WNDPROC' in module 'NativeSharpWin32'
+//
+// Fully qualifying gives the same error. CLASSES and STRUCTS of the referenced project
+// resolve without trouble (User32, MSG, RECT, WNDCLASSEXW are all used across the boundary):
+// it is specifically the delegate type that does not cross. Within a SINGLE project, a
+// delegate declared in one namespace is usable from another with `using`.
+//
+// This one is not merely cosmetic: it dictated the layout of the whole bindings tree. Each
+// library had to become a single project with the generated code in a `Raw/` subdirectory,
+// instead of a generated project plus a wrapper project.
+//
+// Controls below (struct and class across the same boundary) run first, so a broken fixture
+// is distinguishable from the bug.
+//
+// Expected exit code when healthy: 42.
+using bugtriage.raw;
+
+namespace bugtriage
+{
+    class Program
+    {
+        // The bug: naming a delegate type declared in the referenced project.
+        public static int Invoke(Adder callback) { return callback(20, 22); }
+
+        public static int Main()
+        {
+            // Control: a struct from the referenced project.
+            Pair p = { 20, 22 };
+            if (p.left + p.right != 42) { return 1; }
+
+            // Control: a class from the referenced project.
+            if (Ops.AddImpl(20, 22) != 42) { return 2; }
+
+            // The bug.
+            Adder callback = Ops.AddImpl;
+            if (Invoke(callback) != 42) { return 3; }
+
+            return 42;
+        }
+    }
+}

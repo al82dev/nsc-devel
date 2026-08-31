@@ -1,0 +1,42 @@
+// BUG TRIAGE 7 -- the same C symbol declared in two classes does not link (`symbol.1`).
+//
+// Reported 2026-08-29 while probing ucrtbase functions for NativeSharp.Math. Case H of
+// `tools/language_gap_reproducers.sh`.
+//
+//   lld-link: error: undefined symbol: GetCurrentThreadId.1
+//
+// The second declaration gets a disambiguated internal name, and that invented name travels
+// all the way to the linker, which of course cannot find it in the import library. It also
+// happened across two different PROJECTS.
+//
+// LIKELY ALREADY FIXED. This report predates Stage 56 / C1, which redefined an import's
+// identity as the triple (library, external symbol, signature) and states explicitly that the
+// same triple declared twice is ONE import, not a conflict -- deduplicated, library names
+// compared case-insensitively. C1's own suite found this case. This fixture exists to confirm
+// it rather than assume it.
+//
+// Expected exit code when healthy: 42.
+namespace bugtriage
+{
+    public class A
+    {
+        extern C from "kernel32.dll" { public uint GetCurrentThreadId(); }
+    }
+
+    public class B
+    {
+        extern C from "kernel32.dll" { public uint GetCurrentThreadId(); }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // Same thread, so both declarations must observe the same id.
+            if (A.GetCurrentThreadId() != B.GetCurrentThreadId()) { return 1; }
+            if (A.GetCurrentThreadId() == 0u) { return 2; }
+
+            return 42;
+        }
+    }
+}

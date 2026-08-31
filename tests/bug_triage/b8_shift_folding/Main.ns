@@ -1,0 +1,52 @@
+// BUG TRIAGE 8 -- constant folding of a shift produces `double`, and narrow shifts fail.
+//
+// Reported 2026-08-29 while probing the language surface for the binding generator.
+// Cases I and N of `tools/language_gap_reproducers.sh`. Low severity: noisy, nothing silent.
+//
+//   uint v = 1u << 28;
+//   error: cannot initialize local 'v' of type 'builtin:uint' from 'builtin:double'
+//
+// The operator itself is fine -- the same shift over VARIABLES gives the right value. It is
+// the constant folder that types the result as `double`, presumably by evaluating in floating
+// point. The diagnostic gives no hint where the `double` came from.
+//
+// Second, related case: a shift over an integer narrower than 32 bits, even over variables.
+//
+//   ushort v = (ushort)512;
+//   int hi = (int)(v >> 8);
+//   nsc: error: Stage 34 local initialization failed
+//
+// Widening first works, and is the control below.
+//
+// Bindings do not hit either one, by luck: nsbind emits resolved values, not expressions.
+// Hand-written wrappers and examples do.
+//
+// Expected exit code when healthy: 42.
+namespace bugtriage
+{
+    class Program
+    {
+        public static int Main()
+        {
+            // Control: the same shift over variables.
+            uint one = 1u;
+            uint shifted = one << 28;
+            if (shifted != 268435456u) { return 1; }
+
+            // Control N2: widen first, then shift.
+            ushort narrow = (ushort)512;
+            int widened = (int)narrow;
+            if ((widened >> 8) != 2) { return 2; }
+
+            // Case I: constant folding of a shift.
+            uint folded = 1u << 28;
+            if (folded != 268435456u) { return 3; }
+
+            // Case N: shift over an integer narrower than 32 bits.
+            int hi = (int)(narrow >> 8);
+            if (hi != 2) { return 4; }
+
+            return 42;
+        }
+    }
+}

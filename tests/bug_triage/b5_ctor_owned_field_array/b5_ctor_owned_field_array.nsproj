@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>b5_ctor_owned_field_array</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,53 @@
+// BUG TRIAGE 2 -- `x == null` inside a user-defined `operator ==` recurses infinitely.
+//
+// Reported 2026-08-30 from the Saru.Framework port (CurveKey, BoundingFrustum), found
+// independently by two instances. Compiles clean, then dies of stack overflow at runtime:
+// the guard that was supposed to stop the recursion IS the recursion.
+//
+// The `null` literal gets no special treatment. Because the static type of the left operand
+// is `Node`, `left == null` binds to the user-defined operator like any other comparison.
+// In real C# the same line is the classic infinite recursion, which is why it is written
+// `(object)left == null` or `left is null`. NativeSharp had neither escape at report time --
+// but C8 has since added `object` as a type name, so the cast may work now even if the
+// underlying binding rule is unchanged. That is worth checking separately.
+//
+// Expected exit code when healthy: 42. A stack overflow shows up as a large/negative code.
+namespace bugtriage
+{
+    public class Node
+    {
+        public int value;
+
+        public Node(int v) { value = v; }
+
+        public static bool operator ==(Node left, Node right)
+        {
+            if (left == null) { return right == null; }
+            if (right == null) { return false; }
+            return left.value == right.value;
+        }
+
+        public static bool operator !=(Node left, Node right)
+        {
+            if (left == null) { return right != null; }
+            if (right == null) { return true; }
+            return left.value != right.value;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            Node a = new Node(1);
+            Node b = new Node(1);
+            Node c = new Node(2);
+
+            if (!(a == b)) { return 1; }
+            if (a == c) { return 2; }
+            if (a != b) { return 3; }
+
+            return 42;
+        }
+    }
+}

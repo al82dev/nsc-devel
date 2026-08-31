@@ -1,0 +1,87 @@
+// BUG TRIAGE 5 -- a C6 struct constructor stored into an `owned` array FIELD breaks the compiler.
+//
+// Reported 2026-08-30 while porting `common/objloader` of opengl-tutorial.org, against a tree
+// at Stage 56 C1..C6. Internal error, WITH NO FILE AND NO LINE:
+//
+//   nsc: error: Stage 34 cannot find Stage 29 allocation plan
+//
+// That message is most of the damage: a 300-line file failing this way took nine bisection
+// steps to isolate, because nothing points anywhere.
+//
+// What defines the bug is not that A fails, it is that B and C -- each differing from A in
+// exactly one thing -- compile:
+//
+//   A   `new V3(...)` into an element of an `owned` array that is a FIELD   -> internal error
+//   B   `V3.Create(...)` instead, same field, same line                     -> compiles
+//   C   `new V3(...)` into an `owned` array that is a LOCAL                 -> compiles
+//
+// So it is neither the owned field array nor the C6 constructor on its own: it is the two
+// together. Both controls are below, and they run BEFORE the bug so a failure of the fixture
+// itself is distinguishable from the bug.
+//
+// Expected exit code when healthy: 42.
+namespace bugtriage
+{
+    public struct V3
+    {
+        public float x;
+        public float y;
+        public float z;
+
+        // C6 constructor: initialize in place, no heap allocation.
+        public V3(float px, float py, float pz) { x = px; y = py; z = pz; }
+
+        // Pre-C6 static factory: an ordinary call returning by value, no temporary to plan.
+        public static V3 Create(float px, float py, float pz)
+        {
+            V3 r;
+            r.x = px;
+            r.y = py;
+            r.z = pz;
+            return r;
+        }
+    }
+
+    public class Holder
+    {
+        private owned V3[] items;
+
+        public Holder() { items = new V3[4]; }
+
+        ~Holder() { delete[] items; }
+
+        // Control B: static factory into the same owned field array.
+        public void FillWithFactory() { items[1] = V3.Create(4.0f, 5.0f, 6.0f); }
+
+        // The bug: C6 constructor into an element of the owned field array.
+        public void FillWithConstructor() { items[0] = new V3(1.0f, 2.0f, 3.0f); }
+
+        public float First() { return items[0].x; }
+
+        public float Second() { return items[1].x; }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // Control C: the same constructor into a LOCAL owned array.
+            owned V3[] local = new V3[2];
+            local[0] = new V3(9.0f, 0.0f, 0.0f);
+            if (local[0].x != 9.0f) { return 1; }
+            delete[] local;
+
+            raii Holder h = new Holder();
+
+            // Control B.
+            h.FillWithFactory();
+            if (h.Second() != 4.0f) { return 2; }
+
+            // The bug.
+            h.FillWithConstructor();
+            if (h.First() != 1.0f) { return 3; }
+
+            return 42;
+        }
+    }
+}

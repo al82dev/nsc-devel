@@ -1,0 +1,52 @@
+// BUG TRIAGE 4 -- passing `this` as a by-value argument from a struct method breaks the verifier.
+//
+// Reported 2026-08-29 while writing NativeSharp.Math (bindings instance). Case G of
+// `tools/language_gap_reproducers.sh`. Noisy: the compiler fails, it does not emit bad code.
+//
+//   nsc: error: Stage 34 LLVM verifier rejected OOP module:
+//        Call parameter type does not match function signature!
+//
+// A struct instance method receives its receiver by address (locals are memory-homed since
+// Stage 40.2). Using `this` as a by-value argument appears to pass that address where the
+// callee's signature expects the aggregate.
+//
+// The contrast is what isolates it: `Get(v)` from OUTSIDE the struct works, and the same
+// instance method reading `x` directly works. It is specifically `this` crossing as a value.
+//
+// This is NOT the "temporary struct values are not addressable" case (case K), which has its
+// own diagnostic. Here the receiver is a perfectly addressable local.
+//
+// Expected exit code when healthy: 42.
+namespace bugtriage
+{
+    public struct V
+    {
+        public float x;
+
+        public static float Get(V v) { return v.x; }
+
+        // The bug.
+        public float Value() { return Get(this); }
+
+        // Control: the same result computed from the fields, which is the workaround in use.
+        public float ValueFromField() { return x; }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            V v;
+            v.x = 42.0f;
+
+            // Controls.
+            if (V.Get(v) != 42.0f) { return 1; }
+            if (v.ValueFromField() != 42.0f) { return 2; }
+
+            // The bug.
+            if (v.Value() != 42.0f) { return 3; }
+
+            return 42;
+        }
+    }
+}

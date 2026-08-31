@@ -1,0 +1,64 @@
+// BUG TRIAGE 1 -- `T local = this;` inside a struct method stores the POINTER, not a copy.
+//
+// Reported 2026-08-30 from the Saru.Framework port (Plane / BoundingBox / BoundingSphere,
+// 12 sites). SILENT miscompilation: compiles clean, passes every --check-*, passes the LLVM
+// verifier, and returns garbage at runtime. It is the only one of the `this` family that can
+// reach production.
+//
+// The two obvious ways to test this both PASS even while the bug is present:
+//   * reading the same field through `this` (`return a;`) resolves the bare name against
+//     `this` and never touches the broken local;
+//   * mutating the local and checking `this` did not change also succeeds, because the local
+//     really is separate storage -- right answer, wrong reason.
+// The field must be read THROUGH the local to see it.
+//
+// Expected exit code when healthy: 42.
+namespace bugtriage
+{
+    public struct S8
+    {
+        public float a;
+        public float b;
+
+        public static S8 Create()
+        {
+            S8 r;
+            r.a = 7.5f;
+            r.b = 1.0f;
+            return r;
+        }
+
+        // The bug: `self` must be a COPY of the struct, not its address.
+        public float ReadThroughCopy()
+        {
+            S8 self = this;
+            return self.a;
+        }
+
+        // Control: the same assignment from a PARAMETER of the same type lowers correctly.
+        public static float ReadThroughCopyOfParameter(S8 p)
+        {
+            S8 self = p;
+            return self.a;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            S8 v = S8.Create();
+
+            // Control first. If this fails, the fixture is wrong, not the compiler.
+            if (S8.ReadThroughCopyOfParameter(v) != 7.5f) { return 1; }
+
+            // Control: reading the field directly through `this` is the path that hides the bug.
+            if (v.a != 7.5f) { return 2; }
+
+            // The bug.
+            if (v.ReadThroughCopy() != 7.5f) { return 3; }
+
+            return 42;
+        }
+    }
+}

@@ -1,0 +1,19 @@
+// BUG TRIAGE 6 -- referenced project half: declares the `extern C delegate` type.
+//
+// Classes and structs declared here DO resolve from the referencing project. The delegate
+// type is the one that does not cross the module boundary. See ../app/Main.ns.
+namespace bugtriage.raw
+{
+    extern C delegate int Adder(int left, int right);
+
+    public struct Pair
+    {
+        public int left;
+        public int right;
+    }
+
+    public class Ops
+    {
+        public static int AddImpl(int left, int right) { return left + right; }
+    }
+}
