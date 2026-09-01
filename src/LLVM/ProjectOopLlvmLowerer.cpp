@@ -4492,6 +4492,64 @@ private:
                     builder_, LLVMInt8TypeInContext(context_), pointer, indices, 1, "pointer.arith");
             }
 
+            // IDs 79 y 81 -- `x op= e`, `++x`, `x++`. children[0] es la DIRECCION del destino,
+            // bajada UNA sola vez; children[1] el operando derecho. Carga, opera, guarda.
+            //
+            // NADA DE ARITMETICA PROPIA: la operacion entera se delega en applyBinaryOperation,
+            // el mismo codigo que emite un `Binary` corriente. Por eso `x /= y` con `uint` divide
+            // sin signo y `x >>= n` con `int` desplaza aritmeticamente sin que este caso tenga que
+            // saber nada de eso.
+            case frontend::ProjectOopMirNodeKind::CompoundStore:
+            {
+                if (node->children.size() != 2 || node->children[0] == nullptr ||
+                    node->children[1] == nullptr)
+                    return failValue(error, "compound store requires a target address and a value");
+
+                LLVMValueRef address = lowerExpression(node->children[0].get(), error);
+                if (address == nullptr) return nullptr;
+                LLVMTypeRef targetType = llvmType(node->typeKey, error);
+                if (targetType == nullptr) return nullptr;
+                LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+
+                // El operando derecho se baja UNA SOLA VEZ, en la rama que le toca. Bajarlo antes
+                // del `if` y ademas dentro de normalizeNativeIndex lo evaluaria dos veces, que es
+                // el mismo defecto que este nodo existe para evitar en el destino.
+                LLVMValueRef updated = nullptr;
+                if (node->immediate != 0)
+                {
+                    // DESTINO PUNTERO (`p += n`, `++p`). El paso es el del tipo apuntado, igual
+                    // que en PointerArithmetic, y el GEP va SIN `inbounds` por la misma razon que
+                    // alli: este nivel del lenguaje no promete quedarse dentro de una asignacion.
+                    if (node->operation != lexer::TokenKind::Plus &&
+                        node->operation != lexer::TokenKind::Minus)
+                        return failValue(error, "a pointer target supports only '+' and '-' updates");
+                    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context_);
+                    LLVMValueRef stride = LLVMConstInt(i64Type, node->immediate, 0);
+                    LLVMValueRef index = normalizeNativeIndex(node->children[1].get(), error);
+                    if (index == nullptr) return nullptr;
+                    LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "compound.offset");
+                    if (node->operation == lexer::TokenKind::Minus)
+                    {
+                        offset = LLVMBuildNeg(builder_, offset, "compound.offset.neg");
+                    }
+                    LLVMValueRef indices[] = {offset};
+                    updated = LLVMBuildGEP2(
+                        builder_, LLVMInt8TypeInContext(context_), previous, indices, 1, "compound.arith");
+                }
+                else
+                {
+                    LLVMValueRef operand = lowerExpression(node->children[1].get(), error);
+                    if (operand == nullptr) return nullptr;
+                    updated = applyBinaryOperation(
+                        node->operation, previous, operand, node->typeKey, error);
+                }
+                if (updated == nullptr) return nullptr;
+                LLVMBuildStore(builder_, updated, address);
+                // `x++` VALE EL VALOR ANTIGUO; `++x` y `x += e` valen el nuevo. Un solo bit de
+                // diferencia porque todo lo anterior es identico.
+                return node->booleanValue ? previous : updated;
+            }
+
             case frontend::ProjectOopMirNodeKind::PointerLoad:
             {
                 // Interop Foundation: `*pointer` as a value -- a plain typed load through a raw
@@ -6909,17 +6967,32 @@ private:
         LLVMValueRef left = lowerExpression(node->children[0].get(), error);
         LLVMValueRef right = left != nullptr ? lowerExpression(node->children[1].get(), error) : nullptr;
         if (left == nullptr || right == nullptr) return nullptr;
-        const std::string& operandType = node->children[0]->typeKey;
+        return applyBinaryOperation(node->operation, left, right, node->children[0]->typeKey, error);
+    }
+
+    // IDs 79/81. La aritmetica de DOS VALORES YA BAJADOS, sacada de lowerBinary para que la
+    // asignacion compuesta y `++`/`--` la reusen en vez de traer una segunda copia de las mismas
+    // reglas. Las reglas que estan aqui y en ningun otro sitio: coma flotante contra entero,
+    // division y resto con signo contra sin signo, y desplazamiento a la derecha aritmetico
+    // contra logico. Duplicarlas es exactamente el defecto que el milestone CC1 existe para
+    // quitar -- una regla del lenguaje definida por dos capas que pueden discrepar.
+    LLVMValueRef applyBinaryOperation(
+        lexer::TokenKind operation,
+        LLVMValueRef left,
+        LLVMValueRef right,
+        const std::string& operandType,
+        std::string& error)
+    {
         const bool floating = isFloating(operandType);
-        if (isComparison(node->operation))
+        if (isComparison(operation))
         {
             return floating
-                ? LLVMBuildFCmp(builder_, floatingPredicate(node->operation), left, right, "fcmp")
-                : LLVMBuildICmp(builder_, integerPredicate(node->operation, isSignedInteger(operandType)), left, right, "icmp");
+                ? LLVMBuildFCmp(builder_, floatingPredicate(operation), left, right, "fcmp")
+                : LLVMBuildICmp(builder_, integerPredicate(operation, isSignedInteger(operandType)), left, right, "icmp");
         }
         if (floating)
         {
-            switch (node->operation)
+            switch (operation)
             {
                 case lexer::TokenKind::Plus: return LLVMBuildFAdd(builder_, left, right, "fadd");
                 case lexer::TokenKind::Minus: return LLVMBuildFSub(builder_, left, right, "fsub");
@@ -6929,7 +7002,7 @@ private:
                 default: return failValue(error, "unsupported floating binary operation in Stage 34");
             }
         }
-        switch (node->operation)
+        switch (operation)
         {
             case lexer::TokenKind::Plus: return LLVMBuildAdd(builder_, left, right, "add");
             case lexer::TokenKind::Minus: return LLVMBuildSub(builder_, left, right, "sub");

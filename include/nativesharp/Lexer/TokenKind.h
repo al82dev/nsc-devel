@@ -147,4 +147,6 @@ std::string_view tokenKindName(TokenKind kind) noexcept;
 bool isBuiltinTypeKeyword(TokenKind kind) noexcept;
 bool isOwnershipQualifierKeyword(TokenKind kind) noexcept;
 bool isAssignmentOperator(TokenKind kind) noexcept;
+// IDs 79/81: el operador BASE de una asignacion compuesta (`+=` -> `+`). Invalid si no lo es.
+TokenKind compoundAssignmentBaseOperator(TokenKind kind) noexcept;
 }

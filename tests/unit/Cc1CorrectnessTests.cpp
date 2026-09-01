@@ -239,6 +239,22 @@ std::string lowerToLlvmText(
 // Cuenta los bloques `eh.catch.leave.N` del texto IR cuyo cuerpo llama de verdad a
 // __nativesharp_exception_clear. Un bloque que existiera vacio contaria como 0, que es lo que
 // hace util contar esto y no solo buscar la etiqueta.
+// IDs 79/81. Cuenta apariciones de una subcadena. Se usa para medir en el IR la propiedad que
+// ninguna fixture de ejecucion puede aislar del todo: que el destino de una asignacion compuesta
+// se evalua UNA sola vez. Si `buffer[Probe()] += 1` se hubiera desazucarado a
+// `buffer[Probe()] = buffer[Probe()] + 1`, en el IR habria DOS llamadas a Probe y no una.
+std::size_t countOccurrences(const std::string& text, std::string_view needle)
+{
+    std::size_t total = 0;
+    std::size_t cursor = 0;
+    while ((cursor = text.find(needle, cursor)) != std::string::npos)
+    {
+        ++total;
+        cursor += needle.size();
+    }
+    return total;
+}
+
 std::size_t countCatchLeaveBlocksThatClear(const std::string& text)
 {
     std::size_t total = 0;
@@ -311,6 +327,18 @@ int main()
     checkFixture(
         tests, root, "tests/cc1/c12_pointer_arith/c12_pointer_arith.nsproj",
         "cc1-c12-pointer-arith", 42);
+
+    // IDs 79, 81, 80 y 83 -- las cuatro formas que quedaban con la mitad delantera del pipeline
+    // presente y la trasera ausente. c13 y c14 son la MISMA correccion medida por los dos lados
+    // (`x++` y `x += 1` mueren en el mismo sitio del HIR y por el mismo motivo); c15 mide el
+    // acceso por `->`, cerrado en el parser convirtiendolo en `(*p).x`.
+    checkFixture(tests, root, "tests/cc1/c13_increment/c13_increment.nsproj", "cc1-c13-increment", 42);
+    checkFixture(
+        tests, root, "tests/cc1/c14_compound_assign/c14_compound_assign.nsproj",
+        "cc1-c14-compound-assign", 42);
+    checkFixture(
+        tests, root, "tests/cc1/c15_arrow_member/c15_arrow_member.nsproj",
+        "cc1-c15-arrow-member", 42);
 
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
@@ -910,6 +938,254 @@ namespace cc1both
             bool flag = 2 + 2 == 4;
             raii string chosen = flag ? (prefix + "alpha") : (prefix + "beta");
             return chosen.Length;
+        }
+    }
+}
+)NS");
+
+    // =====================================================================================
+    // IDs 79 y 81 -- la propiedad que ninguna fixture de ejecucion aisla del todo, medida en el IR.
+    //
+    // `buffer[Probe()] += 1` tiene que llamar a Probe UNA vez. La fixture c14 lo comprueba con un
+    // contador en tiempo de ejecucion, que es la prueba de comportamiento; esto lo comprueba en el
+    // IR, que es la prueba estructural: en el modulo emitido hay UNA sola llamada, no dos. Las dos
+    // miden lo mismo desde lados distintos, y la del IR es la que sigue valiendo si algun dia el
+    // optimizador aprende a fusionar dos llamadas identicas.
+    // =====================================================================================
+    {
+        const std::string text = lowerToLlvmText(
+            tests, root, "cc1-compound-single-evaluation",
+            R"NS(
+namespace cc1single
+{
+    class P
+    {
+        static int calls = 0;
+        public static int Probe() { calls = calls + 1; return 2; }
+        public static int Main()
+        {
+            int* buffer = stackalloc int[4];
+            buffer[Probe()] += 1;
+            return buffer[2];
+        }
+    }
+}
+)NS");
+        tests.expect(
+            countOccurrences(text, "call i32 @") >= 1,
+            "cc1-compound-single-evaluation: el IR contiene la llamada al indice");
+        tests.expect(
+            countOccurrences(text, "Probe") == 2,
+            "cc1-compound-single-evaluation: Probe aparece exactamente dos veces en el modulo "
+            "(su definicion y UNA llamada) -- dos llamadas significarian que el destino se "
+            "evaluo dos veces, que es el defecto que este nodo existe para evitar");
+    }
+
+    {
+        const std::string text = lowerToLlvmText(
+            tests, root, "cc1-increment-single-evaluation",
+            R"NS(
+namespace cc1singleinc
+{
+    class P
+    {
+        static int calls = 0;
+        public static int Probe() { calls = calls + 1; return 2; }
+        public static int Main()
+        {
+            int* buffer = stackalloc int[4];
+            buffer[Probe()]++;
+            return buffer[2];
+        }
+    }
+}
+)NS");
+        tests.expect(
+            countOccurrences(text, "Probe") == 2,
+            "cc1-increment-single-evaluation: `x++` evalua su destino una sola vez, igual que "
+            "`x += 1` -- son el mismo nodo");
+    }
+
+    // =====================================================================================
+    // IDs 79, 80, 81, 83 -- lo que ANTES se rechazaba y ahora es legal.
+    //
+    // Estas cuatro son las que habrian pasado en verde antes del cambio si solo se comprobara
+    // "falla": no fallaban por una errata, fallaban porque la forma no existia. Ahora miden lo
+    // contrario, que es aceptacion.
+    // =====================================================================================
+    checkAccepted(
+        tests, root, "cc1-increment-accepted",
+        R"NS(
+namespace cc1inc
+{
+    class P
+    {
+        public static int Main()
+        {
+            int i = 0;
+            for (int k = 0; k < 3; k++) { i++; }
+            --i;
+            return i;
+        }
+    }
+}
+)NS");
+
+    checkAccepted(
+        tests, root, "cc1-compound-accepted",
+        R"NS(
+namespace cc1cmp
+{
+    class P
+    {
+        public static int Main()
+        {
+            int i = 8;
+            i += 2; i -= 1; i *= 3; i /= 9; i %= 2; i &= 1; i |= 4; i ^= 1; i <<= 2; i >>= 1;
+            return i;
+        }
+    }
+}
+)NS");
+
+    checkAccepted(
+        tests, root, "cc1-arrow-field-accepted",
+        R"NS(
+namespace cc1arrowfield
+{
+    public struct Cell { public int Value; }
+    class P
+    {
+        public static int Main()
+        {
+            Cell c;
+            Cell* p = &c;
+            p->Value = 42;
+            return p->Value;
+        }
+    }
+}
+)NS");
+
+    checkAccepted(
+        tests, root, "cc1-arrow-call-accepted",
+        R"NS(
+namespace cc1arrowcall
+{
+    public struct Cell { public int Value; public int Twice() { return Value * 2; } }
+    class P
+    {
+        public static int Main()
+        {
+            Cell c;
+            Cell* p = &c;
+            p->Value = 21;
+            return p->Twice();
+        }
+    }
+}
+)NS");
+
+    // =====================================================================================
+    // IDs 79 y 81 -- los limites, con su mensaje.
+    //
+    // Un test negativo que solo exija "falla" pasaria tambien con una errata en la propia fixture.
+    // Cada uno de estos exige EL MENSAJE, y cada mensaje nombra la propiedad que se viola.
+    // =====================================================================================
+    checkRejected(
+        tests, root, "cc1-increment-non-lvalue",
+        R"NS(
+namespace cc1incbad
+{
+    class P
+    {
+        public static int Main()
+        {
+            int i = 1;
+            int j = (i + 1)++;
+            return j;
+        }
+    }
+}
+)NS",
+        "increment/decrement requires a modifiable numeric or non-void pointer operand");
+
+    checkRejected(
+        tests, root, "cc1-increment-void-pointer",
+        R"NS(
+namespace cc1incvoid
+{
+    class P
+    {
+        public static int Main()
+        {
+            int cell = 0;
+            void* p = &cell;
+            p++;
+            return 0;
+        }
+    }
+}
+)NS",
+        "increment/decrement requires a modifiable numeric or non-void pointer operand");
+
+    // Un puntero avanza y retrocede; multiplicarlo no significa nada. El mensaje lo dice.
+    checkRejected(
+        tests, root, "cc1-compound-pointer-bad-operator",
+        R"NS(
+namespace cc1cmpptrbad
+{
+    class P
+    {
+        public static int Main()
+        {
+            int* buffer = stackalloc int[4];
+            buffer *= 2;
+            return 0;
+        }
+    }
+}
+)NS",
+        "a non-void pointer supports only '+=' and '-=' with an integral right-hand side");
+
+    // DIVERGENCIA DELIBERADA DE C#, y por eso tiene test propio: C# acepta esto metiendo un cast
+    // implicito de vuelta que TRUNCA. Aqui se rechaza y se pide el cast escrito.
+    checkRejected(
+        tests, root, "cc1-compound-narrowing-rejected",
+        R"NS(
+namespace cc1cmpnarrow
+{
+    class P
+    {
+        public static int Main()
+        {
+            int i = 1;
+            double d = 2.5;
+            i += d;
+            return i;
+        }
+    }
+}
+)NS",
+        "compound assignment cannot implicitly convert its right-hand side from");
+
+    // Y la otra mitad de esa divergencia: la conversion CONSTANTE sigue valiendo, asi que la
+    // forma normal no pide ceremonia. Si el cierre anterior se hubiera escrito demasiado
+    // estrecho, esto dejaria de compilar.
+    checkAccepted(
+        tests, root, "cc1-compound-constant-narrowing-accepted",
+        R"NS(
+namespace cc1cmpconst
+{
+    class P
+    {
+        public static int Main()
+        {
+            byte b = 40;
+            b += 2;
+            short s = -1;
+            s -= 1;
+            return (int)b;
         }
     }
 }

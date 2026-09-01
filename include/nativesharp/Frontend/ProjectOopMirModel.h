@@ -214,6 +214,10 @@ enum class ProjectOopMirNodeKind
     Binary,
     Conditional,
     Store,
+    // IDs 79 y 81 -- ver ProjectOopHirNodeKind::CompoundStore, misma forma. `immediate` lleva el
+    // paso en bytes SOLO cuando el destino es un puntero (`elementTypeKey` no vacio en el HIR);
+    // vale 0 para un destino numerico, que no lo necesita.
+    CompoundStore,
     Convert,
     RuntimeTypeTest,
     SafeReferenceCast,

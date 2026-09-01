@@ -1,0 +1,134 @@
+// ID 80 y 83 -- `p->campo` y `p->Metodo()`, ejecutando.
+//
+// DE DONDE VIENE. El parser aceptaba `->` y construia un nodo propio, PointerMemberExpression. A
+// partir de ahi habia DOS negativas para una misma forma: el modelo semantico lo rechazaba para
+// llamadas ("pointer member access is not part of Stage 34 instance-callable semantics") y el HIR
+// para campos ("write '(*p).member', which is the same access and is supported"). Era la cuarta
+// forma con la mitad delantera del pipeline presente y la trasera ausente, despues de sizeof,
+// stackalloc, raw new y la aritmetica de punteros.
+//
+// COMO SE CERRO, y por que asi. `p->x` ES `(*p).x`: la misma direccion, el mismo acceso, el mismo
+// tipo. Asi que se cierra en el PARSER, convirtiendo uno en el otro, y no en el HIR anadiendo un
+// lowering propio. Un lowering propio habria sido una SEGUNDA ruta de acceso a miembro, paralela a
+// la de `.`, que hay que mantener de acuerdo con ella en sobrecarga, propiedades, indexadores,
+// metodos y estructuras -- exactamente la duplicacion semantica por la que existe el milestone
+// CC1, y exactamente como se abrio este hueco.
+//
+// LA PROPIEDAD CENTRAL, y la razon de que esta fixture valga: `p->x` y `(*p).x` tienen que dar EL
+// MISMO VALOR, siempre. No es casualidad conveniente: son el mismo nodo despues del parser. Si
+// algun dia dejan de serlo, dejan de ser lo mismo y esto lo ve.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1arrow
+{
+    public struct Inner
+    {
+        public int Value;
+    }
+
+    public struct Node
+    {
+        public int Id;
+        public double Weight;
+        public Inner Child;
+
+        public int Doubled() { return Id * 2; }
+        public int Sum { get { return Id + Child.Value; } }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // --- lectura y escritura de campo a traves de `->` --------------------------------
+            Node local;
+            Node* n = &local;
+            n->Id = 7;
+            n->Weight = 2.5;
+            n->Child.Value = 3;
+
+            if (n->Id != 7) { return 1; }
+            if (n->Weight != 2.5) { return 2; }
+            if (n->Child.Value != 3) { return 3; }
+
+            // --- LA PROPIEDAD CENTRAL: las dos formas son el mismo acceso -----------------------
+            if (n->Id != (*n).Id) { return 4; }
+            if (n->Weight != (*n).Weight) { return 5; }
+            if (n->Child.Value != (*n).Child.Value) { return 6; }
+
+            // Y escribir por una se ve por la otra, porque es la misma direccion.
+            (*n).Id = 11;
+            if (n->Id != 11) { return 7; }
+            n->Id = 13;
+            if ((*n).Id != 13) { return 8; }
+            if (local.Id != 13) { return 9; }
+
+            // --- ID 83: metodo de instancia a traves de `->` -----------------------------------
+            n->Id = 21;
+            if (n->Doubled() != 42) { return 10; }
+            if (n->Doubled() != (*n).Doubled()) { return 11; }
+
+            // --- propiedad a traves de `->` ----------------------------------------------------
+            n->Id = 40;
+            n->Child.Value = 2;
+            if (n->Sum != 42) { return 12; }
+
+            // --- combinado con los IDs 79 y 81, que es como se escribe de verdad ----------------
+            n->Id = 40;
+            n->Id++;
+            if (n->Id != 41) { return 13; }
+            ++n->Id;
+            if (n->Id != 42) { return 14; }
+            n->Id += 8;
+            if (n->Id != 50) { return 15; }
+            n->Id -= 8;
+            n->Id /= 2;
+            if (n->Id != 21) { return 16; }
+            n->Weight *= 4.0;
+            if (n->Weight != 10.0) { return 17; }
+
+            // --- sobre almacenamiento crudo, que es el uso real de `->` --------------------------
+            Node* nodes = stackalloc Node[3];
+            nodes[0].Id = 1;
+            nodes[1].Id = 2;
+            nodes[2].Id = 3;
+
+            Node* cursor = nodes;
+            if (cursor->Id != 1) { return 18; }
+            cursor++;
+            if (cursor->Id != 2) { return 19; }
+            cursor++;
+            if (cursor->Id != 3) { return 20; }
+
+            // Recorrer una lista con `p->campo` y `p++`, que es el idioma que este lenguaje
+            // existia para poder escribir y no podia.
+            Node* scan = nodes;
+            int total = 0;
+            int steps = 0;
+            while (steps < 3)
+            {
+                total += scan->Id;
+                scan++;
+                steps++;
+            }
+            if (total != 6) { return 21; }
+
+            // --- sobre un bloque reservado con `new T` ------------------------------------------
+            Node* heap = new Node;
+            heap->Id = 5;
+            heap->Weight = 1.5;
+            heap->Child.Value = 4;
+            if (heap->Id != 5) { return 22; }
+            if (heap->Doubled() != 10) { return 23; }
+            if (heap->Sum != 9) { return 24; }
+            heap->Id += 100;
+            if (heap->Id != 105) { return 25; }
+            if ((*heap).Id != 105) { return 26; }
+            delete heap;
+
+            return 42;
+        }
+    }
+}

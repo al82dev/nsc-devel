@@ -7,8 +7,8 @@ Derivada de `78_huecos_del_lenguaje_completo.md`. Sólo core. Sin LINQ, patrones
 | ID | Falta | Estado hoy |
 |---|---|---|
 | 87 | `volatile` | no existe |
-| 79 | `++` `--` | parsea y tipa; muere en HIR |
-| 81 | `+= -= *= /= %= &= \|= ^= <<= >>=` | parsea y tipa; muere en HIR |
+| ~~79~~ | `++` `--` | **HECHO** (doc 79) |
+| ~~81~~ | `+= -= *= /= %= &= \|= ^= <<= >>=` | **HECHO** (doc 79) |
 | 88 | `checked` / `unchecked` | no existe |
 | 89 | `sbyte` | no existe |
 
@@ -16,8 +16,8 @@ Derivada de `78_huecos_del_lenguaje_completo.md`. Sólo core. Sin LINQ, patrones
 
 | ID | Falta | Estado hoy |
 |---|---|---|
-| 80 | `p->campo` | parsea y tipa; muere en HIR |
-| 83 | `p->Metodo()` | parsea; muere en sema |
+| ~~80~~ | `p->campo` | **HECHO** (doc 79) |
+| ~~83~~ | `p->Metodo()` | **HECHO** (doc 79) |
 | 82 | `+=` sobre propiedad/indexador | parsea; muere en sema |
 | 84 | lambdas anidadas | parsea; muere en sema |
 | 85 | delegado a método virtual | parsea; muere en sema |

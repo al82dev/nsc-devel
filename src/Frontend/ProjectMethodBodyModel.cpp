@@ -4158,13 +4158,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result = analyzeMember(
                 expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent);
             break;
+        // IDs 80 y 83. `p->campo` y `p->Metodo()` ya no llegan aqui: el parser los convierte en
+        // `(*p).campo` y `(*p).Metodo()`, que es la MISMA operacion y la que siempre funciono.
+        // Ver Parser::parsePostfixExpression. El caso se queda -- sin rechazo -- porque el nodo
+        // sigue existiendo en el AST y un `default` mudo seria peor que una ruta explicita.
         case ast::AstNodeKind::PointerMemberExpression:
-            analyzeExpression(expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidMemberAccess,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "pointer member access is not part of Stage 34 instance-callable semantics");
+            result = analyzeMember(
+                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent);
             break;
         case ast::AstNodeKind::CallExpression:
             result = analyzeCall(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -8148,13 +8148,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
 
     if (operation == TokenKind::PlusPlus || operation == TokenKind::MinusMinus)
     {
-        if (!operand.assignable || !ProjectTypeConversion::isNumeric(operand.typeKey))
+        // ID 79. Un puntero NO VOID tambien se incrementa, y avanza un ELEMENTO -- la misma regla
+        // que `p + 1`, porque es la misma operacion. Dejarlo fuera repetiria al reves el error de
+        // la tarea 62: `++i` andando y `++p` no, cuando lo unico que cambia es el paso.
+        // `void*` queda fuera por la misma razon por la que `*p` lo rechaza: no hay tamano que
+        // avanzar.
+        const bool pointerOperand = ProjectTypeConversion::isPointer(operand.typeKey) &&
+            operand.typeKey != "builtin:void*";
+        if (!operand.assignable ||
+            !(ProjectTypeConversion::isNumeric(operand.typeKey) || pointerOperand))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidAssignmentTarget,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "increment/decrement requires a modifiable numeric operand in Stage 34");
+                "increment/decrement requires a modifiable numeric or non-void pointer operand");
             return result;
         }
         result.typeKey = operand.typeKey;
@@ -9167,6 +9175,27 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return left;
     }
 
+    // ID 81. DESTINO PUNTERO: `p += n` y `p -= n` avanzan y retroceden POR ELEMENTOS, igual que
+    // `p + n`. Ningun otro operador compuesto tiene sentido sobre un puntero, y `void*` queda
+    // fuera por la misma razon que en `*p` y en `++p`: no hay tamano que avanzar.
+    if (ProjectTypeConversion::isPointer(left.typeKey))
+    {
+        const bool offsetOperator = expression->tokenKind() == TokenKind::PlusEqual ||
+            expression->tokenKind() == TokenKind::MinusEqual;
+        if (!offsetOperator || left.typeKey == "builtin:void*" ||
+            !ProjectTypeConversion::isIntegral(right.typeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "a non-void pointer supports only '+=' and '-=' with an integral right-hand side");
+            return {};
+        }
+        left.assignable = false;
+        return left;
+    }
+
     const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
         left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
     if (!common.has_value())
@@ -9176,6 +9205,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "compound assignment requires compatible numeric operands in Stage 34");
+        return {};
+    }
+
+    // ID 81. Y ADEMAS el operando derecho tiene que caber en el tipo del destino. C# aqui mete un
+    // cast implicito de vuelta (`byte b; int n; b += n;` compila y TRUNCA); este lenguaje lo
+    // rechaza y pide el cast escrito. Es una DIVERGENCIA DELIBERADA de C#, anotada en el doc 79:
+    // el resultado se guarda en el destino, y un estrechamiento que el codigo no escribio es
+    // justo la clase de perdida silenciosa que este compilador viene rechazando en todas partes.
+    // La conversion constante sigue valiendo, asi que `byte b; b += 1;` compila sin ceremonia.
+    const ProjectImplicitConversion narrowing = classifyImplicit(
+        right.typeKey, left.typeKey, right.integerConstant);
+    if (!narrowing.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "compound assignment cannot implicitly convert its right-hand side from '" +
+                right.typeKey + "' to '" + left.typeKey +
+                "'; write the read-modify-write with an explicit cast");
         return {};
     }
     left.assignable = false;

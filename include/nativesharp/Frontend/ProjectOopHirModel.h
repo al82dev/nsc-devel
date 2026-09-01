@@ -286,6 +286,30 @@ enum class ProjectOopHirNodeKind
     // Both branches are lazily evaluated, so this lowers to control flow, not a select.
     Conditional,
     Assignment,
+    // IDs 79 y 81 -- `x op= e`, `++x`, `x++`, `--x`, `x--`.
+    //
+    // POR QUE UN NODO PROPIO Y NO UN DESAZUCARADO. La forma obvia seria reescribir `x += e` como
+    // `x = x + e` aqui mismo. Es incorrecta: el destino se evaluaria DOS VECES, asi que
+    // `a[f()] += 1` llamaria a `f` dos veces y `*p++ += 1` avanzaria dos veces. C# garantiza que
+    // el destino se evalua una sola vez, y ese es justo el motivo por el que la tarea 62 decia
+    // que esto "requiere semantica de actualizacion de lvalue".
+    //
+    // FORMA. children[0] es la DIRECCION del destino, bajada una unica vez en contexto de
+    // direccion -- exactamente lo mismo que Assignment ya calculaba para su propio destino.
+    // children[1] es el operando derecho, ya convertido al tipo del destino (o un entero de paso
+    // cuando el destino es un puntero). `operation` lleva el operador BASE (`+` para `+=` y para
+    // `++`, `<<` para `<<=`, etc.), nunca el token compuesto: quien emite la aritmetica es el
+    // mismo codigo que emite un `Binary` corriente, y por eso no hay una segunda tabla de reglas
+    // de division con signo, de desplazamiento o de coma flotante.
+    //
+    // `booleanValue` = true significa QUE EL NODO VALE EL VALOR ANTIGUO. Es la unica diferencia
+    // entre `x++` y `++x`, y es una diferencia de un solo bit precisamente porque todo lo demas
+    // -- la direccion, la carga, la operacion, el almacenamiento -- es identico.
+    //
+    // `elementTypeKey`, cuando no esta vacio, dice que el destino es un puntero y cual es el tipo
+    // apuntado. El paso lo resuelve el MIR con el mismo `elementLayout` que ya usan
+    // PointerArithmetic, el stride de un arreglo y `sizeof` -- una sola regla de tamano.
+    CompoundStore,
     Conversion,
     RuntimeTypeTest,
     SafeReferenceCast,

@@ -141,7 +141,7 @@ ella.
 
 | | Antes | Después |
 |---|---|---|
-| checklist de Windows | 45/45 | **63/63** |
+| checklist de Windows | 45/45 | **63/63** (66 tras el cierre de 79/80/81/83) |
 | `ctest` | 239 tests | **242/242, 100%** |
 | comprobaciones en `nsc.cc1.correctness` | 0 (no existía) | **~90** |
 | fixtures de ejecución CC1 | 0 | **12**, todas en 42 a `-O0` y `-O2` |
@@ -166,11 +166,11 @@ Nada de esto se arregló «de paso». Cada uno se midió, se anotó y se dejó.
 |---|---|---|
 | **77** | los logs no muestran **cuántas** comprobaciones corrió una suite, sólo que ninguna falló | un bloque de tests que desapareciera de un `.cpp` pasaría en verde |
 | **78** | `valueLayoutForTypeKey` dice que un `enum` mide **8**; `layoutNamedType`, en la misma clase, dice **4** | es la función que calcula el paso de los arreglos. **Sin medir qué hace el binario** — afirmar la expectativa en un test es el error del §4 |
-| **79** | `++`/`--` no se baja en el pipeline OOP **para ningún tipo** | es una feature, no una corrección. Fase propia |
-| **80** | `p->campo` no se baja; `(*p).campo` sí | cuarta forma con la mitad delantera presente. Ya tiene mensaje propio que nombra la alternativa |
-| **81** | `+= -= *= /= %= &= \|= ^= <<= >>=` no se bajan | el HIR exige `=` simple (`ProjectOopHirModel.cpp:2231`). **Mismo sitio y mismo mecanismo que 79** — se hacen juntas |
+| ~~79~~ | `++`/`--` | ✅ **cerrada** — doc 79. Un nodo `CompoundStore` que evalúa el destino una sola vez |
+| ~~80~~ | `p->campo` | ✅ **cerrada** — doc 79. El parser lo convierte en `(*p).campo`: UNA sola ruta de acceso a miembro |
+| ~~81~~ | `+= -= *= /= %= &= \|= ^= <<= >>=` | ✅ **cerrada** — doc 79, junto con 79, como estaba previsto |
 | **82** | `+=` sobre propiedad/indexador | muere una capa antes, en la semántica (`ProjectMethodBodyModel.cpp:9052`). Cuelga de 81 |
-| **83** | `p->Metodo()` | la semántica lo saca de las llamadas de instancia (`:4167`). Cuelga de 80 |
+| ~~83~~ | `p->Metodo()` | ✅ **cerrada** — doc 79, con el mismo cambio que 80 |
 | **84** | lambda anidada | deferida por escrito (`:9966`) |
 | **85** | delegado a método virtual | deferido por escrito (`:10198`) |
 | **86** | delegado con receptor struct | deferido por escrito (`:10207`) |
@@ -199,5 +199,7 @@ R-001. `python verify_manifest.py --audit` lista lo que queda fuera.
 | `76_cc1_fases_4b_4c_4d_4e.md` | `stackalloc`, raw `new T`, punteros, cierre de paridad |
 | `77_milestone_cc1.md` | este |
 | `78_huecos_del_lenguaje_completo.md` | **el barrido del lenguaje contra C#**, ordenado por daño: 8 huecos, 19 ausencias de core, y lo que sí funciona |
+| `79_ids_79_80_81_83.md` | **cierre de 79, 80, 81 y 83**: `++`/`--`, las diez asignaciones compuestas y `p->` |
 | `MILESTONE_1_TASKS.md` | la tabla de 80 tareas, con su estado |
 | `STAGE_CC1_*_CHANGED_FILES.txt` | el desglose por capa de cada fase |
+| `STAGE_IDS_79_81_CHANGED_FILES.txt` | el desglose por capa del cierre de 79/80/81/83 |

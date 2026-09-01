@@ -1,0 +1,63 @@
+IDs 79, 80, 81 y 83 -- ++/--, las diez asignaciones compuestas, p->campo y p->Metodo()
+=======================================================================================
+Ver 79_ids_79_80_81_83.md para el porque de cada uno. Aqui, el desglose por capa.
+
+LEXER -- la tabla `+=` -> `+`, en un solo sitio
+  include/nativesharp/Lexer/TokenKind.h        + compoundAssignmentBaseOperator (declaracion)
+  src/Lexer/TokenKind.cpp                      + compoundAssignmentBaseOperator (los diez casos),
+                                                 junto a isAssignmentOperator y no en el HIR:
+                                                 es una propiedad del token, no del lowering
+
+PARSER -- `->` deja de ser un nodo propio
+  src/Parser/Parser.cpp                        ~ parsePostfixExpression: `p->x` se construye como
+                                                 MemberExpression sobre un UnaryExpression `*`,
+                                                 con el rango del `p->x` ORIGINAL
+                                               ~ parseOperatorTail: el rechazo de `operator ++/--`
+                                                 se queda, con motivo nuevo (el viejo caduco)
+
+SEMANTICA -- tres reglas
+  src/Frontend/ProjectMethodBodyModel.cpp      ~ analyzeUnary: ++/-- aceptan puntero no void
+                                               ~ analyzeAssignment: destino puntero con += / -= e
+                                                 indice integral; y el operando derecho tiene que
+                                                 convertir al tipo del destino (divergencia
+                                                 deliberada de C#, ver doc 79 seccion 4)
+                                               ~ analyzeExpression: PointerMemberExpression deja de
+                                                 rechazar (ya no se construye)
+
+HIR -- el nodo y los dos lowerings
+  include/nativesharp/Frontend/ProjectOopHirModel.h    + ProjectOopHirNodeKind::CompoundStore
+  src/Frontend/ProjectOopHirModel.cpp          + nombre del nodo
+                                               ~ UnaryExpression/PostfixExpression: ++/-- bajan a
+                                                 CompoundStore (el uno se construye YA en el tipo
+                                                 del destino)
+                                               ~ AssignmentExpression: los diez compuestos bajan al
+                                                 mismo nodo, con el destino bajado UNA vez
+                                               - se retira el rechazo de p->campo
+
+MIR -- el paso, resuelto por el servicio canonico
+  include/nativesharp/Frontend/ProjectOopMirModel.h    + ProjectOopMirNodeKind::CompoundStore
+  src/Frontend/ProjectOopMirModel.cpp          + nombre del nodo
+                                               + conversion: elementLayout SOLO cuando el destino
+                                                 es puntero; immediate = 0 para numericos
+
+BACKEND -- carga, opera, guarda; y la aritmetica en un solo sitio
+  src/LLVM/ProjectOopLlvmLowerer.cpp           + applyBinaryOperation, extraida de lowerBinary --
+                                                 coma flotante contra entero, division y resto con
+                                                 signo contra sin signo, y desplazamiento
+                                                 aritmetico contra logico viven AHI y en ningun
+                                                 otro sitio
+                                               + case CompoundStore, en lowerExpression (no en
+                                                 lowerStatement), asi que `y = x++` tambien vale
+
+TESTS
+  tests/cc1/c13_increment/            NUEVO  ++/-- en once tipos, punteros, campos, arreglos
+  tests/cc1/c14_compound_assign/      NUEVO  los diez operadores, con signo contra sin signo
+  tests/cc1/c15_arrow_member/         NUEVO  p->x igual a (*p).x, metodo, propiedad, combinado
+  tests/unit/Cc1CorrectnessTests.cpp  ~      + countOccurrences
+                                             + 3 checkFixture
+                                             + 2 comprobaciones de IR (evaluacion unica del
+                                               destino, medida contando llamadas)
+                                             + 5 checkAccepted, 5 checkRejected
+
+CHECKLIST
+  run_windows_checklist.bat                    + 3 run_case  -> 66 casos

@@ -2777,7 +2777,10 @@ ast::AstNode* Parser::parseOperatorTail(
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             operation.range(),
-            "operator ++/-- is deliberately deferred beyond Stage 38 because correct lowering requires lvalue update semantics");
+            "a user-defined 'operator ++'/'operator --' is not supported: the built-in ++/-- now "
+            "update an lvalue in place (ID 79), but calling a user operator and storing its result "
+            "back would evaluate the operand twice, which is the one thing that lowering exists to "
+            "avoid; write an explicit method call and assignment");
     }
 
     if (at(TokenKind::LeftBrace)) method->setFirst(parseBlock());
@@ -4900,12 +4903,34 @@ ast::AstNode* Parser::parsePostfixExpression()
                 return expression;
             }
             const lexer::Token& member = consume();
+            const SourceRange access(expression->range().begin(), member.range().end());
+
+            // IDs 80 y 83. `p->campo` ES `(*p).campo`: la misma direccion, el mismo acceso, el
+            // mismo tipo. Antes se construia un PointerMemberExpression propio que el modelo
+            // semantico rechazaba para llamadas y el HIR para campos -- dos negativas para una
+            // forma que el lenguaje ya sabia bajar escrita de la otra manera.
+            //
+            // POR QUE AQUI Y NO EN EL HIR. Bajarlo abajo habria significado una segunda ruta de
+            // acceso a miembro, paralela a la de `.`, que hay que mantener de acuerdo con ella en
+            // sobrecarga, propiedades, indexadores, metodos virtuales y estructuras. Convertirlo
+            // en el parser deja UNA sola ruta: todo lo que `(*p).x` sepa hacer hoy y manana,
+            // `p->x` lo sabe automaticamente, y no hay forma de que las dos se separen.
+            //
+            // El rango del nodo es el del `p->campo` ORIGINAL, no el del `*p` sintetizado, para
+            // que un diagnostico senale lo que la persona escribio.
+            ast::AstNode* receiver = expression;
+            if (operation == TokenKind::Arrow)
+            {
+                ast::AstNode* dereference = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::UnaryExpression, access);
+                dereference->setTokenKind(TokenKind::Star);
+                dereference->setFirst(expression);
+                receiver = dereference;
+            }
+
             ast::AstNode* memberNode = arena_.make<ast::AstNode>(
-                operation == TokenKind::Dot
-                    ? ast::AstNodeKind::MemberExpression
-                    : ast::AstNodeKind::PointerMemberExpression,
-                SourceRange(expression->range().begin(), member.range().end()));
-            memberNode->setFirst(expression);
+                ast::AstNodeKind::MemberExpression, access);
+            memberNode->setFirst(receiver);
             memberNode->setText(std::string(member.lexeme()));
             expression = memberNode;
             continue;

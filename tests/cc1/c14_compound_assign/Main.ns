@@ -1,0 +1,219 @@
+// ID 81 -- los diez operadores de asignacion compuesta, ejecutando.
+//
+// DE DONDE VIENE. Los diez parseaban, el modelo semantico los tipaba (exigia operandos numericos
+// compatibles), y el HIR contestaba "currently requires simple '=' assignment; compound assignment
+// remains in procedural HIR". Es el MISMO sitio y el MISMO mecanismo que `++`/`--` (ID 79): el HIR
+// pedia `TokenKind::Equal` y rechazaba todo lo demas. Por eso se hicieron juntos: arreglar uno y
+// dejar el otro habria dejado `x++` andando y `x += 1` no, que es la misma operacion escrita de
+// otra forma.
+//
+// LA PROPIEDAD CENTRAL: EL DESTINO SE EVALUA UNA SOLA VEZ. `buffer[Probe()] += 10` tiene que
+// llamar a Probe() exactamente una vez. La implementacion facil -- reescribir `x += e` como
+// `x = x + e` -- la llamaria dos veces. Hay un contador al final que lo mide.
+//
+// LA SEGUNDA PROPIEDAD, y es la que justifica que la aritmetica NO se duplique en el backend:
+// `x /= y` con `uint` divide SIN signo y con `int` CON signo; `x >>= n` con `int` desplaza
+// aritmeticamente y con `uint` logicamente. Esas reglas viven en una sola funcion
+// (applyBinaryOperation), la misma que emite un `Binary` corriente. Si algun dia se separan, las
+// comprobaciones de abajo lo ven.
+//
+// DIVERGENCIA DELIBERADA DE C#, anotada aqui porque una fixture es donde se nota: C# permite
+// `byte b; int n; b += n;` metiendo un cast implicito de vuelta que TRUNCA. Este lenguaje lo
+// rechaza y pide el cast escrito. La conversion constante sigue valiendo, asi que `b += 1` compila
+// sin ceremonia.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1compound
+{
+    public struct Accumulator
+    {
+        public int Total;
+        public double Scale;
+    }
+
+    class Program
+    {
+        static int probeCalls = 0;
+        static int sharedTotal = 0;
+
+        public static int Probe()
+        {
+            probeCalls = probeCalls + 1;
+            return 2;
+        }
+
+        public static int Main()
+        {
+            // --- los diez, sobre `int` --------------------------------------------------------
+            int x = 100;
+            x += 5;
+            if (x != 105) { return 1; }
+            x -= 15;
+            if (x != 90) { return 2; }
+            x *= 3;
+            if (x != 270) { return 3; }
+            x /= 9;
+            if (x != 30) { return 4; }
+            x %= 7;
+            if (x != 2) { return 5; }
+            x = 12;
+            x &= 10;
+            if (x != 8) { return 6; }
+            x |= 5;
+            if (x != 13) { return 7; }
+            x ^= 6;
+            if (x != 11) { return 8; }
+            x = 3;
+            x <<= 4;
+            if (x != 48) { return 9; }
+            x >>= 2;
+            if (x != 12) { return 10; }
+
+            // --- CON SIGNO contra SIN SIGNO: la misma regla que el operador binario -------------
+            // Si la aritmetica de la asignacion compuesta se hubiera escrito por separado en el
+            // backend, este bloque es donde las dos copias empezarian a discrepar.
+            int negative = -7;
+            negative /= 2;
+            if (negative != -3) { return 11; }     // division con signo trunca hacia cero
+
+            int negativeRem = -7;
+            negativeRem %= 3;
+            if (negativeRem != -1) { return 12; }  // resto con signo
+
+            int arithmetic = -16;
+            arithmetic >>= 2;
+            if (arithmetic != -4) { return 13; }   // desplazamiento ARITMETICO: conserva el signo
+
+            uint logical = 4294967292;             // 0xFFFFFFFC
+            logical >>= 2;
+            if (logical != 1073741823) { return 14; }  // desplazamiento LOGICO: mete ceros
+
+            uint unsignedDiv = 4294967292;
+            unsignedDiv /= 2;
+            if (unsignedDiv != 2147483646) { return 15; }  // si dividiera con signo daria -2
+
+            // --- otros tipos enteros -----------------------------------------------------------
+            byte small = 200;
+            small += 55;
+            if (small != 255) { return 16; }
+            small -= 13;
+            if (small != 242) { return 17; }
+
+            short signedShort = -100;
+            signedShort += 50;
+            if (signedShort != -50) { return 18; }
+
+            long big = 1000000;
+            big *= 1000;
+            if (big != 1000000000) { return 19; }
+            big <<= 4;
+            if (big != 16000000000) { return 20; }
+
+            ulong ub = 1024;
+            ub >>= 3;
+            if (ub != 128) { return 21; }
+
+            nint ni = 50;
+            ni -= 8;
+            if (ni != 42) { return 22; }
+
+            nuint nu = 6;
+            nu *= 7;
+            if (nu != 42) { return 23; }
+
+            // --- coma flotante ------------------------------------------------------------------
+            double d = 10.0;
+            d += 2.5;
+            if (d != 12.5) { return 24; }
+            d -= 0.5;
+            if (d != 12.0) { return 25; }
+            d *= 2.0;
+            if (d != 24.0) { return 26; }
+            d /= 3.0;
+            if (d != 8.0) { return 27; }
+
+            float f = 6.0f;
+            f *= 0.5f;
+            if (f != 3.0f) { return 28; }
+
+            // --- el valor de la expresion es el NUEVO, como en C# --------------------------------
+            int chained = 10;
+            int captured = (chained += 5);
+            if (captured != 15) { return 29; }
+            if (chained != 15) { return 30; }
+
+            // --- sobre campos, elementos de arreglo y almacenamiento crudo -------------------------
+            Accumulator acc;
+            acc.Total = 10;
+            acc.Scale = 1.0;
+            acc.Total += 32;
+            if (acc.Total != 42) { return 31; }
+            acc.Scale *= 4.0;
+            if (acc.Scale != 4.0) { return 32; }
+
+            sharedTotal = 20;
+            sharedTotal += 22;
+            if (sharedTotal != 42) { return 33; }
+
+            int[] cells = new int[4];
+            cells[0] = 1;
+            cells[1] = 2;
+            cells[2] = 3;
+            cells[3] = 4;
+            cells[1] *= 10;
+            cells[2] <<= 2;
+            cells[3] -= 4;
+            if (cells[1] != 20) { return 34; }
+            if (cells[2] != 12) { return 35; }
+            if (cells[3] != 0) { return 36; }
+
+            int* buffer = stackalloc int[4];
+            buffer[0] = 5;
+            buffer[1] = 6;
+            buffer[0] += 5;
+            buffer[1] %= 4;
+            if (buffer[0] != 10) { return 37; }
+            if (buffer[1] != 2) { return 38; }
+
+            // --- PUNTEROS: `+=` y `-=` avanzan POR ELEMENTOS ---------------------------------------
+            // Misma regla que `p + n`, porque es la misma operacion. Si el paso fuera de bytes,
+            // estas comprobaciones caerian dentro del primer int.
+            buffer[2] = 7;
+            buffer[3] = 8;
+            int* walk = buffer;
+            walk += 2;
+            if (*walk != 7) { return 39; }
+            walk -= 1;
+            if (*walk != 2) { return 40; }
+            if (walk - buffer != 1) { return 41; }
+
+            byte* bytes = stackalloc byte[8];
+            bytes[3] = 99;
+            byte* byteWalk = bytes;
+            byteWalk += 3;
+            if (*byteWalk != 99) { return 43; }
+            if (byteWalk - bytes != 3) { return 44; }
+
+            double* reals = stackalloc double[3];
+            reals[2] = 9.5;
+            double* realWalk = reals;
+            realWalk += 2;
+            if (*realWalk != 9.5) { return 45; }
+
+            // --- LA PROPIEDAD CENTRAL: el destino se evalua UNA VEZ ---------------------------------
+            probeCalls = 0;
+            buffer[Probe()] += 100;
+            if (probeCalls != 1) { return 46; }
+            if (buffer[2] != 107) { return 47; }
+
+            probeCalls = 0;
+            cells[Probe()] |= 1;
+            if (probeCalls != 1) { return 48; }
+            if (cells[2] != 13) { return 49; }
+
+            return 42;
+        }
+    }
+}

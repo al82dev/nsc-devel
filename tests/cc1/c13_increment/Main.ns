@@ -1,0 +1,247 @@
+// ID 79 -- `++` y `--`, ejecutando.
+//
+// DE DONDE VIENE. Parseaban, el modelo semantico los tipaba, y el HIR contestaba "Stage 34 OOP
+// lowering does not yet lower ++/--" PARA TODOS LOS TIPOS, incluido `int`. Era el hueco mas
+// grande del lenguaje: todo bucle de este arbol se escribe `i = i + 1` -- 185 veces -- porque
+// `i++` no compilaba, y las 8 apariciones de `++` en el codigo NativeSharp del arbol estan todas
+// dentro de comentarios. El compilador nunca se habia compilado contra esta parte de su propio
+// lenguaje.
+//
+// LA PROPIEDAD CENTRAL, y la razon de que esta fixture valga: EL DESTINO SE EVALUA UNA SOLA VEZ.
+// La forma facil de implementar esto es reescribir `x++` como `x = x + 1`, y es incorrecta:
+// `buffer[Index()]++` llamaria a Index() dos veces. Al final del archivo hay un contador que lo
+// comprueba, y es la comprobacion que separa una implementacion correcta de la facil.
+//
+// QUE MAS FIJA:
+//   * prefijo y postfijo VALEN COSAS DISTINTAS -- `++x` el nuevo, `x++` el anterior -- y los dos
+//     dejan la misma variable;
+//   * funciona en TODOS los tipos numericos, no solo en `int`: la tarea 62 pedia hacerlo "para
+//     punteros" cuando no existia para ninguno, y hacerlo a medias es como se abren estos huecos;
+//   * un puntero avanza UN ELEMENTO, no un byte, y el paso es el del tipo apuntado;
+//   * sirve sobre campos, elementos de arreglo y elementos crudos, no solo sobre locales.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1increment
+{
+    public struct Counter
+    {
+        public int Hits;
+        public double Weight;
+    }
+
+    class Program
+    {
+        static int probeCalls = 0;
+        static int sharedTotal = 0;
+
+        // Devuelve SIEMPRE 2, y cuenta cuantas veces la llamaron. Es el instrumento de la
+        // propiedad central: si el destino se evaluara dos veces, este contador lo diria.
+        public static int Probe()
+        {
+            probeCalls = probeCalls + 1;
+            return 2;
+        }
+
+        public static int Main()
+        {
+            // --- prefijo y postfijo VALEN COSAS DISTINTAS -----------------------------------
+            int x = 10;
+            int a = x++;          // a = 10, x = 11
+            if (a != 10) { return 1; }
+            if (x != 11) { return 2; }
+
+            int b = ++x;          // b = 12, x = 12
+            if (b != 12) { return 3; }
+            if (x != 12) { return 4; }
+
+            int c = x--;          // c = 12, x = 11
+            if (c != 12) { return 5; }
+            if (x != 11) { return 6; }
+
+            int d = --x;          // d = 10, x = 10
+            if (d != 10) { return 7; }
+            if (x != 10) { return 8; }
+
+            // --- como sentencia, que es el uso normal ---------------------------------------
+            int counter = 0;
+            while (counter < 5)
+            {
+                counter++;
+            }
+            if (counter != 5) { return 9; }
+            while (counter > 0)
+            {
+                --counter;
+            }
+            if (counter != 0) { return 10; }
+
+            // --- en un `for`, que es donde mas duele que falte -------------------------------
+            int sum = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                sum = sum + i;
+            }
+            if (sum != 45) { return 11; }
+
+            // --- todos los tipos enteros -----------------------------------------------------
+            // Si esto se hubiera hecho "solo para punteros" como pedia la tarea 62, esta seccion
+            // entera no compilaria.
+            byte smallU = 250;
+            smallU++;
+            if (smallU != 251) { return 12; }
+
+            short smallS = -3;
+            smallS++;
+            if (smallS != -2) { return 13; }
+
+            ushort us = 65534;
+            us++;
+            if (us != 65535) { return 14; }
+
+            uint u = 7;
+            u++;
+            u++;
+            if (u != 9) { return 15; }
+
+            long big = 4294967296;
+            big++;
+            if (big != 4294967297) { return 16; }
+
+            ulong ub = 4294967296;
+            ub++;
+            if (ub != 4294967297) { return 17; }
+
+            nint ni = 100;
+            ni--;
+            if (ni != 99) { return 18; }
+
+            nuint nu = 5;
+            nu++;
+            if (nu != 6) { return 19; }
+
+            char letter = 'A';
+            letter++;
+            if (letter != 'B') { return 20; }
+
+            // --- coma flotante ---------------------------------------------------------------
+            // El paso es 1.0, no un entero convertido: la operacion ocurre entera en el tipo del
+            // destino.
+            float f = 2.5f;
+            f++;
+            if (f != 3.5f) { return 21; }
+            f--;
+            f--;
+            if (f != 1.5f) { return 22; }
+
+            double g = 10.25;
+            double gOld = g++;
+            if (gOld != 10.25) { return 23; }
+            if (g != 11.25) { return 24; }
+
+            // --- sobre un campo de struct ----------------------------------------------------
+            Counter local;
+            local.Hits = 0;
+            local.Weight = 0.5;
+            local.Hits++;
+            local.Hits++;
+            ++local.Hits;
+            if (local.Hits != 3) { return 25; }
+            local.Weight++;
+            if (local.Weight != 1.5) { return 26; }
+
+            // --- sobre un campo estatico ------------------------------------------------------
+            sharedTotal = 40;
+            sharedTotal++;
+            sharedTotal++;
+            if (sharedTotal != 42) { return 27; }
+
+            // --- sobre un elemento de arreglo nativo ------------------------------------------
+            int[] cells = new int[4];
+            cells[0] = 0;
+            cells[1] = 10;
+            cells[2] = 20;
+            cells[3] = 30;
+            cells[1]++;
+            ++cells[2];
+            cells[3]--;
+            if (cells[1] != 11) { return 28; }
+            if (cells[2] != 21) { return 29; }
+            if (cells[3] != 29) { return 30; }
+
+            // --- sobre almacenamiento crudo ---------------------------------------------------
+            int* buffer = stackalloc int[4];
+            buffer[0] = 100;
+            buffer[1] = 200;
+            buffer[0]++;
+            buffer[1]--;
+            if (buffer[0] != 101) { return 31; }
+            if (buffer[1] != 199) { return 32; }
+
+            // --- PUNTEROS: avanza UN ELEMENTO, no un byte -------------------------------------
+            // Si el paso fuera de un byte, `walk` apuntaria dentro del primer int y esto fallaria.
+            int* walk = buffer;
+            buffer[2] = 300;
+            buffer[3] = 400;
+            walk++;
+            if (*walk != 199) { return 33; }
+            ++walk;
+            if (*walk != 300) { return 34; }
+            walk--;
+            if (*walk != 199) { return 35; }
+
+            // El postfijo sobre un puntero tambien vale el valor ANTERIOR.
+            int* start = buffer;
+            int* previous = start++;
+            if (previous != buffer) { return 36; }
+            if (start - buffer != 1) { return 37; }
+
+            // Y el paso es el del TIPO: `byte` avanza 1, `double` avanza 8.
+            byte* bytes = stackalloc byte[4];
+            bytes[0] = 1;
+            bytes[1] = 2;
+            byte* bytesWalk = bytes;
+            bytesWalk++;
+            if (bytesWalk - bytes != 1) { return 38; }
+            if (*bytesWalk != 2) { return 39; }
+
+            double* reals = stackalloc double[3];
+            reals[0] = 1.5;
+            reals[1] = 2.5;
+            double* realsWalk = reals;
+            realsWalk++;
+            if (*realsWalk != 2.5) { return 40; }
+
+            // --- recorrer con el puntero, que es el idioma de C -------------------------------
+            int* scan = buffer;
+            int scanned = 0;
+            int steps = 0;
+            while (steps < 4)
+            {
+                scanned = scanned + *scan;
+                scan++;
+                steps++;
+            }
+            // 101 + 199 + 300 + 400
+            if (scanned != 1000) { return 41; }
+
+            // --- LA PROPIEDAD CENTRAL: el destino se evalua UNA VEZ ---------------------------
+            // Si `x++` se implementara como `x = x + 1`, Probe() correria dos veces y probeCalls
+            // valdria 2. Esta es la comprobacion que separa la implementacion correcta de la
+            // facil, y la razon por la que la tarea 62 decia "requiere semantica de actualizacion
+            // de lvalue".
+            probeCalls = 0;
+            buffer[Probe()]++;
+            if (probeCalls != 1) { return 43; }
+            if (buffer[2] != 301) { return 44; }
+
+            probeCalls = 0;
+            cells[Probe()]--;
+            if (probeCalls != 1) { return 45; }
+            if (cells[2] != 20) { return 46; }
+
+            return 42;
+        }
+    }
+}

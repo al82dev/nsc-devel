@@ -416,6 +416,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::StackAllocation: return "stack-allocation";
         case ProjectOopMirNodeKind::RawAllocation: return "raw-allocation";
         case ProjectOopMirNodeKind::PointerArithmetic: return "pointer-arithmetic";
+        case ProjectOopMirNodeKind::CompoundStore: return "compound-store";
         case ProjectOopMirNodeKind::ValueConstruct: return "value-construct";
         case ProjectOopMirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopMirNodeKind::AddressValue: return "address-value";
@@ -1488,6 +1489,30 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::Unary: result->kind = ProjectOopMirNodeKind::Unary; break;
         case ProjectOopHirNodeKind::Binary: result->kind = ProjectOopMirNodeKind::Binary; break;
         case ProjectOopHirNodeKind::Assignment: result->kind = ProjectOopMirNodeKind::Store; break;
+        // IDs 79 y 81. Un destino numerico no necesita paso; un destino puntero si, y lo resuelve
+        // el MISMO elementLayout que ya usan PointerArithmetic, el stride de un arreglo y sizeof.
+        case ProjectOopHirNodeKind::CompoundStore:
+        {
+            result->kind = ProjectOopMirNodeKind::CompoundStore;
+            if (!node->elementTypeKey.empty())
+            {
+                if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr)
+                {
+                    error = "compound pointer update requires name lookup and value layouts";
+                    return nullptr;
+                }
+                const auto layout = elementLayout(node->elementTypeKey);
+                if (!layout.has_value() || layout->first == 0)
+                {
+                    error = "compound pointer update cannot determine the element layout of '" +
+                        node->elementTypeKey + "'";
+                    return nullptr;
+                }
+                result->immediate = layout->first;
+                result->alignment = layout->second;
+            }
+            break;
+        }
         case ProjectOopHirNodeKind::Conversion: result->kind = ProjectOopMirNodeKind::Convert; break;
         case ProjectOopHirNodeKind::RuntimeTypeTest:
         case ProjectOopHirNodeKind::SafeReferenceCast:

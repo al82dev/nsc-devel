@@ -156,4 +156,26 @@ bool isAssignmentOperator(TokenKind kind) noexcept
     return kind == TokenKind::Equal ||
         (kind >= TokenKind::PlusEqual && kind <= TokenKind::GreaterGreaterEqual);
 }
+
+// IDs 79/81. La correspondencia `+=` -> `+` vive AQUI, junto a isAssignmentOperator, y no en el
+// HIR: es una propiedad del token, no del lowering, y tenerla en un solo sitio es lo que impide
+// que el dia que se anada un operador compuesto nuevo quede la mitad de la tabla en otra capa.
+// Devuelve Invalid para `=` (que no es compuesto) y para cualquier otro token.
+TokenKind compoundAssignmentBaseOperator(TokenKind kind) noexcept
+{
+    switch (kind)
+    {
+        case TokenKind::PlusEqual: return TokenKind::Plus;
+        case TokenKind::MinusEqual: return TokenKind::Minus;
+        case TokenKind::StarEqual: return TokenKind::Star;
+        case TokenKind::SlashEqual: return TokenKind::Slash;
+        case TokenKind::PercentEqual: return TokenKind::Percent;
+        case TokenKind::AmpEqual: return TokenKind::Amp;
+        case TokenKind::PipeEqual: return TokenKind::Pipe;
+        case TokenKind::CaretEqual: return TokenKind::Caret;
+        case TokenKind::LessLessEqual: return TokenKind::LessLess;
+        case TokenKind::GreaterGreaterEqual: return TokenKind::GreaterGreater;
+        default: return TokenKind::Invalid;
+    }
+}
 }

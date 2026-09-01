@@ -188,6 +188,9 @@ call :run_case "%CC%\c9_sizeof\c9_sizeof.nsproj" cc1_c9_sizeof 42 "%FIXLOG%"
 call :run_case "%CC%\c10_stackalloc\c10_stackalloc.nsproj" cc1_c10_stackalloc 42 "%FIXLOG%"
 call :run_case "%CC%\c11_raw_new\c11_raw_new.nsproj" cc1_c11_raw_new 42 "%FIXLOG%"
 call :run_case "%CC%\c12_pointer_arith\c12_pointer_arith.nsproj" cc1_c12_pointer_arith 42 "%FIXLOG%"
+call :run_case "%CC%\c13_increment\c13_increment.nsproj" cc1_c13_increment 42 "%FIXLOG%"
+call :run_case "%CC%\c14_compound_assign\c14_compound_assign.nsproj" cc1_c14_compound_assign 42 "%FIXLOG%"
+call :run_case "%CC%\c15_arrow_member\c15_arrow_member.nsproj" cc1_c15_arrow_member 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 

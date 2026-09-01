@@ -228,6 +228,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::Binary: return "binary";
         case ProjectOopHirNodeKind::Conditional: return "conditional";
         case ProjectOopHirNodeKind::Assignment: return "assignment";
+        case ProjectOopHirNodeKind::CompoundStore: return "compound-store";
         case ProjectOopHirNodeKind::Conversion: return "conversion";
         case ProjectOopHirNodeKind::RuntimeTypeTest: return "runtime-type-test";
         case ProjectOopHirNodeKind::SafeReferenceCast: return "safe-reference-cast";
@@ -1798,8 +1799,58 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             if (expression->tokenKind() == lexer::TokenKind::PlusPlus ||
                 expression->tokenKind() == lexer::TokenKind::MinusMinus)
             {
-                error = "Stage 34 OOP lowering does not yet lower ++/--; use explicit assignment in OOP codegen tests";
-                return nullptr;
+                // ID 79. `++x` es `x += 1` y `x++` es lo mismo devolviendo el valor anterior, asi
+                // que los dos salen por el MISMO nodo que la asignacion compuesta y no por una
+                // ruta paralela. La tarea 62 pedia extender esto "para punteros" cuando no existia
+                // para ningun tipo; aqui entra para los dos a la vez, que es la unica forma de que
+                // `++p` y `++i` no se separen.
+                if (addressContext)
+                {
+                    error = "the result of ++/-- is a value, not addressable storage";
+                    return nullptr;
+                }
+                const MethodExpressionTypeBinding* targetType = expressionType(expression->first());
+                if (targetType == nullptr)
+                {
+                    error = "Stage 34 ++/-- operand has no resolved semantic type";
+                    return nullptr;
+                }
+                auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+                if (address == nullptr) return nullptr;
+
+                auto step = makeNode(ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
+                step->operation = expression->tokenKind() == lexer::TokenKind::PlusPlus
+                    ? lexer::TokenKind::Plus
+                    : lexer::TokenKind::Minus;
+                // La UNICA diferencia entre postfijo y prefijo.
+                step->booleanValue = expression->kind() == ast::AstNodeKind::PostfixExpression;
+
+                std::unique_ptr<ProjectOopHirNode> one;
+                if (ProjectTypeConversion::isPointer(targetType->typeKey))
+                {
+                    // `++p` avanza UN ELEMENTO, no un byte. El tipo apuntado es lo que da el paso,
+                    // y lo resuelve el MIR con el mismo servicio de tamano que todo lo demas.
+                    step->elementTypeKey = targetType->typeKey.substr(0, targetType->typeKey.size() - 1);
+                    one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nint");
+                    one->integerValue = 1;
+                }
+                else if (ProjectTypeConversion::isNumeric(targetType->typeKey) &&
+                         !ProjectTypeConversion::isIntegral(targetType->typeKey))
+                {
+                    one = makeNode(ProjectOopHirNodeKind::FloatingConstant, expression, targetType->typeKey);
+                    one->floatingValue = 1.0;
+                }
+                else
+                {
+                    // El uno se construye YA en el tipo del destino, no en `int` con una conversion
+                    // detras: asi la operacion entera ocurre en un solo tipo y no hay una segunda
+                    // regla de promocion que mantener de acuerdo con la de `Binary`.
+                    one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, targetType->typeKey);
+                    one->integerValue = 1;
+                }
+                step->children.push_back(std::move(address));
+                step->children.push_back(std::move(one));
+                return step;
             }
             // Interop Foundation: `&lvalue` and `*pointer` are now first-class in the OOP
             // pipeline. HISTORY: both used to be walled off ("keeps raw pointer
@@ -2228,8 +2279,67 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             }
             if (node->operation != lexer::TokenKind::Equal)
             {
-                error = "Stage 34 OOP lowering currently requires simple '=' assignment; compound assignment remains in procedural HIR";
-                return nullptr;
+                // ID 81. Los diez operadores compuestos. El destino se baja UNA VEZ en contexto de
+                // direccion -- si se desazucarara a `x = x + e` se evaluaria dos veces y
+                // `a[f()] += 1` llamaria a `f` dos veces.
+                if (addressContext)
+                {
+                    error = "the result of a compound assignment is a value, not addressable storage";
+                    return nullptr;
+                }
+                const MethodExpressionTypeBinding* targetType = expressionType(expression->first());
+                if (targetType == nullptr)
+                {
+                    error = "Stage 34 compound assignment target has no resolved semantic type";
+                    return nullptr;
+                }
+                auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+                if (address == nullptr) return nullptr;
+                auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+
+                auto compound = makeNode(
+                    ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
+                compound->operation = lexer::compoundAssignmentBaseOperator(node->operation);
+                if (compound->operation == lexer::TokenKind::Invalid)
+                {
+                    error = "unsupported compound assignment operator";
+                    return nullptr;
+                }
+                // El valor de `x += e` es el NUEVO, como en C#.
+                compound->booleanValue = false;
+
+                if (ProjectTypeConversion::isPointer(targetType->typeKey))
+                {
+                    compound->elementTypeKey =
+                        targetType->typeKey.substr(0, targetType->typeKey.size() - 1);
+                }
+                else
+                {
+                    // La operacion ocurre ENTERA en el tipo del destino. El modelo semantico ya
+                    // exigio que el operando derecho convierta a ese tipo (ver analyzeAssignment),
+                    // asi que aqui no hay ni un estrechamiento silencioso ni una segunda tabla de
+                    // promociones distinta de la de `Binary`.
+                    const MethodExpressionTypeBinding* rhsType = expressionType(expression->second());
+                    const ProjectImplicitConversion conversion = classifyImplicit(
+                        value->typeKey,
+                        targetType->typeKey,
+                        rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                    if (!conversion.exists())
+                    {
+                        error = "compound assignment cannot convert its right-hand side from '" +
+                            value->typeKey + "' to '" + targetType->typeKey + "'";
+                        return nullptr;
+                    }
+                    if (conversion.kind != ProjectConversionKind::Identity)
+                    {
+                        value = wrapImplicitConversion(
+                            std::move(value), conversion, expression->second());
+                    }
+                }
+                compound->children.push_back(std::move(address));
+                compound->children.push_back(std::move(value));
+                return compound;
             }
             auto target = lowerExpression(expression->first(), memberOrdinal, true, error);
             auto value = lowerExpression(expression->second(), memberOrdinal, false, error);
@@ -3473,27 +3583,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             return node;
         }
 
-        // CC1 fase 4E, tarea 65 -- inventario del `default`, medido y no supuesto.
+        // ID 80, CERRADA. Aqui habia un rechazo con mensaje propio para `p->campo`: era la ultima
+        // forma de expresion con la mitad delantera del pipeline presente y la trasera ausente,
+        // despues de sizeof, stackalloc, raw new y la aritmetica de punteros.
         //
-        // Tras las fases 4A-4D queda EXACTAMENTE UNA forma de expresion sin bajar: `p->campo`. El
-        // parser la acepta (la convierte en PointerMemberExpression) y el modelo semantico la tipa;
-        // aqui no habia caso, asi que salia por el `default` con "unsupported Stage 34 OOP
-        // expression kind", que suena a fallo interno del compilador y no a lo que es: una forma
-        // del lenguaje que este pipeline todavia no baja.
+        // Se cerro donde tocaba, que no era aqui: el parser convierte `p->x` en `(*p).x` (ver
+        // Parser::parsePostfixExpression), asi que este nodo ya no se construye y este caso ya no
+        // se alcanza. Anadir en su lugar un lowering propio habria significado una SEGUNDA ruta de
+        // acceso a miembro que mantener de acuerdo con la de `.` -- que es como se abrio el hueco.
         //
-        // Se le da mensaje propio en vez de arreglarla: es la tarea 80, con ID propio. `(*p).campo`
-        // es la forma equivalente que si funciona hoy, y el mensaje la nombra para que quien se
-        // tope con esto sepa que escribir.
-        //
-        // NOTA sobre como se hizo este inventario: un barrido de las 30 formas de expresion del
-        // AST contra los `case` de esta funcion daba TAMBIEN `LambdaExpression`. Es un falso
-        // positivo del barrido: las lambdas se bajan por binding ANTES del switch, no por un
-        // `case`. Comprobado antes de escribir esto -- el barrido mide lo que mide, no lo que uno
+        // NOTA sobre como se hizo el inventario que la encontro: un barrido de las 30 formas de
+        // expresion del AST contra los `case` de esta funcion daba TAMBIEN `LambdaExpression`. Es
+        // un falso positivo del barrido: las lambdas se bajan por binding ANTES del switch, no por
+        // un `case`. Comprobado antes de escribirlo -- el barrido mide lo que mide, no lo que uno
         // quiere que mida.
-        case ast::AstNodeKind::PointerMemberExpression:
-            error = "pointer member access 'p->member' is not lowered by the OOP pipeline yet; "
-                    "write '(*p).member', which is the same access and is supported";
-            return nullptr;
 
         default:
             error = "unsupported Stage 34 OOP expression kind: " +
