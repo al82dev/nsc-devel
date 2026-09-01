@@ -168,6 +168,15 @@ Nada de esto se arregló «de paso». Cada uno se midió, se anotó y se dejó.
 | **78** | `valueLayoutForTypeKey` dice que un `enum` mide **8**; `layoutNamedType`, en la misma clase, dice **4** | es la función que calcula el paso de los arreglos. **Sin medir qué hace el binario** — afirmar la expectativa en un test es el error del §4 |
 | **79** | `++`/`--` no se baja en el pipeline OOP **para ningún tipo** | es una feature, no una corrección. Fase propia |
 | **80** | `p->campo` no se baja; `(*p).campo` sí | cuarta forma con la mitad delantera presente. Ya tiene mensaje propio que nombra la alternativa |
+| **81** | `+= -= *= /= %= &= \|= ^= <<= >>=` no se bajan | el HIR exige `=` simple (`ProjectOopHirModel.cpp:2231`). **Mismo sitio y mismo mecanismo que 79** — se hacen juntas |
+| **82** | `+=` sobre propiedad/indexador | muere una capa antes, en la semántica (`ProjectMethodBodyModel.cpp:9052`). Cuelga de 81 |
+| **83** | `p->Metodo()` | la semántica lo saca de las llamadas de instancia (`:4167`). Cuelga de 80 |
+| **84** | lambda anidada | deferida por escrito (`:9966`) |
+| **85** | delegado a método virtual | deferido por escrito (`:10198`) |
+| **86** | delegado con receptor struct | deferido por escrito (`:10207`) |
+| **87** | **no hay `volatile`** | el árbol tiene hilos reales (`Thread`/`Mutex`/`Monitor`/`Atomics`) y ninguna forma de expresar una lectura que el optimizador no pueda mover o cachear. `Atomics.ns:89` ya documenta el rodeo (`CompareExchange` consigo mismo). **Único punto de esta tabla donde un programa correcto falla en silencio** |
+| **88** | no hay `checked`/`unchecked` | el desbordamiento entero no se puede pedir ni suprimir desde el código |
+| **89** | no hay `sbyte` | no existe entero de 8 bits con signo; un `signed char` de C no se declara honestamente |
 
 **Deuda menor, anotada donde toca:** `sizeof` no es todavía constante para el evaluador de
 constantes (`const int n = sizeof(int);` no compila), lo que depende del mismo problema de orden de
@@ -189,5 +198,6 @@ R-001. `python verify_manifest.py --audit` lista lo que queda fuera.
 | `75_cc1_fase4a_sizeof.md` | `sizeof` |
 | `76_cc1_fases_4b_4c_4d_4e.md` | `stackalloc`, raw `new T`, punteros, cierre de paridad |
 | `77_milestone_cc1.md` | este |
+| `78_huecos_del_lenguaje_completo.md` | **el barrido del lenguaje contra C#**, ordenado por daño: 8 huecos, 19 ausencias de core, y lo que sí funciona |
 | `MILESTONE_1_TASKS.md` | la tabla de 80 tareas, con su estado |
 | `STAGE_CC1_*_CHANGED_FILES.txt` | el desglose por capa de cada fase |
