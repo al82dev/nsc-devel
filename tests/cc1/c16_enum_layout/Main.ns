@@ -1,0 +1,102 @@
+// ID 78 (P1) -- un `enum` mide lo mismo lo pregunte quien lo pregunte.
+//
+// DE DONDE VIENE. Esta clase tiene DOS servicios de tamano: `layoutNamedType`, que da el offset de
+// un campo dentro de un struct, y `valueLayoutForTypeKey`, que da el paso de un arreglo, el
+// resultado de `sizeof`, el tamano de un `stackalloc` y el paso de la aritmetica de punteros. Para
+// un `enum` el primero contestaba **4** y el segundo **8**: el enum caia hasta el `return {{8,8}}`
+// que existe para las REFERENCIAS (clase, interfaz, delegado), y un enum no es una referencia.
+//
+// LA CONSECUENCIA, que es lo que convierte esto en P1 y no en una fealdad: con
+// `struct S { Color a; Color b; }` el campo `b` esta en el offset 4, pero `Color* p = &s.a; p + 1`
+// avanzaba OCHO bytes -- pasado `s.b` entero, fuera del struct. Un `Color[]` tenia paso 8 mientras
+// el mismo enum ocupaba 4 dentro de un agregado.
+//
+// LA PROPIEDAD CENTRAL: `sizeof(Color)`, el paso de un `Color*`, el paso de un `Color[]` y el
+// offset de un campo `Color` tienen que estar TODOS de acuerdo. Esta fixture los enfrenta entre si
+// en vez de comparar cada uno contra un numero que yo haya escrito: si algun dia vuelven a
+// discrepar, discrepan aqui.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1enumlayout
+{
+    public enum Color
+    {
+        Red,
+        Green,
+        Blue,
+        Amber
+    }
+
+    public struct Pair
+    {
+        public Color First;
+        public Color Second;
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // --- el tamano declarado ----------------------------------------------------------
+            nuint size = sizeof(Color);
+            if (size != 4) { return 1; }
+
+            // --- un struct de dos enums mide DOS de ellos, no uno y un hueco -------------------
+            nuint pairSize = sizeof(Pair);
+            if (pairSize != size + size) { return 2; }
+            if (pairSize != 8) { return 3; }
+
+            // --- LA PROPIEDAD CENTRAL: el paso del puntero es el mismo tamano -------------------
+            // Si `p + 1` avanzara 8 donde el campo esta a 4, escribir por `p + 1` machacaria
+            // memoria que no es de `Second`, o caeria fuera del struct.
+            Pair pair;
+            pair.First = Color.Red;
+            pair.Second = Color.Blue;
+
+            Color* first = &pair.First;
+            Color* second = &pair.Second;
+            if (second - first != 1) { return 4; }
+
+            // Escribir por el puntero avanzado se ve en el campo, que es lo que el bug rompia.
+            *(first + 1) = Color.Green;
+            if (pair.Second != Color.Green) { return 6; }
+
+            // --- el paso de un arreglo crudo es el mismo -----------------------------------------
+            Color* palette = stackalloc Color[4];
+            palette[0] = Color.Red;
+            palette[1] = Color.Green;
+            palette[2] = Color.Blue;
+            palette[3] = Color.Amber;
+            if (palette[0] != Color.Red) { return 7; }
+            if (palette[3] != Color.Amber) { return 8; }
+            Color* last = palette + 3;
+            if (*last != Color.Amber) { return 9; }
+            if (last - palette != 3) { return 10; }
+
+            // --- y el de un arreglo nativo tambien ------------------------------------------------
+            Color[] managed = new Color[3];
+            managed[0] = Color.Amber;
+            managed[1] = Color.Blue;
+            managed[2] = Color.Red;
+            if (managed[0] != Color.Amber) { return 12; }
+            if (managed[2] != Color.Red) { return 13; }
+            if (managed.Length != 3) { return 14; }
+
+            // --- recorrer con puntero y con indice tiene que dar lo mismo ---------------------------
+            Color* scan = palette;
+            int matches = 0;
+            int index = 0;
+            while (index < 4)
+            {
+                if (*scan == palette[index]) { matches++; }
+                scan++;
+                index++;
+            }
+            if (matches != 4) { return 15; }
+
+            return 42;
+        }
+    }
+}

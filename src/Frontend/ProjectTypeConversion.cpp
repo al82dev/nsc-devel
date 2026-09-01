@@ -293,13 +293,29 @@ std::optional<std::string> ProjectTypeConversion::commonNumericType(
     // La regla correcta es la de C#: una expresion constante que cabe en el tipo del otro operando
     // TOMA ese tipo. Se comprueba antes del bucle de preferencia, que a partir de aqui solo
     // gobierna los casos sin constante de por medio.
-    const bool leftIsAdaptingConstant = leftToRight.kind == ProjectConversionKind::ConstantInteger;
-    const bool rightIsAdaptingConstant = rightToLeft.kind == ProjectConversionKind::ConstantInteger;
-    if (rightIsAdaptingConstant && !leftIsAdaptingConstant)
+    // ESTRECHADA A PROPOSITO, y esto es lo que la hace segura. La primera version decia "si un
+    // lado convierte por constante, gana el otro", y MEDIDO sobre el evaluador de constantes eso
+    // rompia `(-1) + 1L`: el `1L` es explicitamente `long`, la conversion long->int por constante
+    // existe, y la regla ancha lo habria evaluado en `int`. Un literal que la persona escribio
+    // ANCHO no debe estrecharse en silencio.
+    //
+    // La regla de C# es mas concreta: la conversion implicita de expresion constante va de un
+    // literal `int` -- el tipo por defecto de un literal entero -- a un tipo MAS ESTRECHO que int.
+    // Eso es exactamente lo que hace falta para `short s; s + 3` y `byte b; b + 1`, que es lo que
+    // estaba roto, y no toca nada mas.
+    const auto adaptsFromDefaultLiteral =
+        [](const ProjectImplicitConversion& conversion, std::string_view target) noexcept
+    {
+        return conversion.kind == ProjectConversionKind::ConstantInteger &&
+            conversion.sourceTypeKey == "builtin:int" &&
+            (target == "builtin:byte" || target == "builtin:char" ||
+             target == "builtin:short" || target == "builtin:ushort");
+    };
+    if (adaptsFromDefaultLiteral(rightToLeft, leftTypeKey))
     {
         return std::string(leftTypeKey);
     }
-    if (leftIsAdaptingConstant && !rightIsAdaptingConstant)
+    if (adaptsFromDefaultLiteral(leftToRight, rightTypeKey))
     {
         return std::string(rightTypeKey);
     }

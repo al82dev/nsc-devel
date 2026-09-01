@@ -213,6 +213,27 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
             if (layout != nullptr) return {{layout->size, layout->alignment}};
             return std::nullopt;
         }
+        // ID 78, P1 -- UN `enum` NO MIDE OCHO.
+        //
+        // Esta funcion es el servicio canonico de tamano del nivel crudo: de ella salen el paso de
+        // un arreglo, `sizeof`, `stackalloc` y el paso de la aritmetica de punteros. Un `enum` caia
+        // hasta el `return {{8, 8}}` de abajo, que existe para las REFERENCIAS -- clase, interfaz,
+        // delegado -- porque todas ellas miden un puntero. Pero un enum es un tipo POR VALOR, y la
+        // otra funcion de tamano de esta misma clase, `layoutNamedType`, contesta 4 para el mismo
+        // tipo (BuiltinLayoutKind::Enum).
+        //
+        // MEDIDO, y la consecuencia no es cosmetica: el offset de un campo `enum` dentro de un
+        // struct lo da layoutNamedType (4), y el paso de un `Color*` lo daba esta (8). Con
+        // `struct S { Color a; Color b; }`, `Color* p = &s.a; p + 1` aterrizaba OCHO bytes mas
+        // alla -- pasado `s.b` por completo, fuera del struct. Dos reglas de tamano para un mismo
+        // tipo es exactamente la duplicacion semantica que el milestone CC1 existe para quitar; el
+        // enum era la que quedaba viva.
+        if (declaration.kind == NamedTypeDeclarationKind::Enum)
+        {
+            const target::TypeLayout layout = targetLayout_.layoutOf(target::BuiltinLayoutKind::Enum);
+            return {{layout.size, layout.alignment}};
+        }
+        // Clase, interfaz y delegado: una referencia, que es un puntero nativo.
         return {{8, 8}};
     }
     return std::nullopt;

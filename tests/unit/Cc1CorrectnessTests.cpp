@@ -340,6 +340,12 @@ int main()
         tests, root, "tests/cc1/c15_arrow_member/c15_arrow_member.nsproj",
         "cc1-c15-arrow-member", 42);
 
+    // ID 78 (P1) -- un `enum` medía 4 según layoutNamedType y 8 según valueLayoutForTypeKey. La
+    // fixture no compara contra un número escrito por mí: enfrenta los cuatro consumidores del
+    // tamaño (sizeof, offset de campo, paso de puntero, paso de arreglo) entre sí.
+    checkFixture(
+        tests, root, "tests/cc1/c16_enum_layout/c16_enum_layout.nsproj", "cc1-c16-enum-layout", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================
@@ -1186,6 +1192,94 @@ namespace cc1cmpconst
             short s = -1;
             s -= 1;
             return (int)b;
+        }
+    }
+}
+)NS");
+
+    // =====================================================================================
+    // IDs 119 y 120 -- los encontró la corrida de las fixtures de arriba, y ninguno es del
+    // cambio que las trajo.
+    //
+    // 119: unario `+` propagaba la constancia del operando y unario `-` no, así que
+    //      `short s = 3;` compilaba y `short s = -3;` no -- el mismo literal, con signo.
+    // 120: MEDIDO llamando a commonNumericType directamente -- `short` con la constante `3` daba
+    //      **double**, porque con una constante que cabe las conversiones existen en las dos
+    //      direcciones y se caía al bucle de preferencia, ordenado de más ancho a más estrecho.
+    // =====================================================================================
+    checkAccepted(
+        tests, root, "cc1-negative-constant-narrowing",
+        R"NS(
+namespace cc1neg
+{
+    class P
+    {
+        public static int Main()
+        {
+            short s = -3;
+            short low = -32768;
+            int big = -2147483648;
+            long huge = -9007199254740993;
+            s = -1;
+            return (int)s + (int)low - (int)low + big - big + (int)(huge - huge);
+        }
+    }
+}
+)NS");
+
+    // La otra mitad: un negativo NO cabe en un destino sin signo. Si el cierre se hubiera escrito
+    // demasiado ancho, esto compilaría y truncaría en silencio.
+    checkRejected(
+        tests, root, "cc1-negative-constant-unsigned-target",
+        R"NS(
+namespace cc1negbad
+{
+    class P
+    {
+        public static int Main()
+        {
+            byte b = -1;
+            return (int)b;
+        }
+    }
+}
+)NS",
+        "cannot initialize local 'b'");
+
+    checkRejected(
+        tests, root, "cc1-negative-constant-out-of-range",
+        R"NS(
+namespace cc1negrange
+{
+    class P
+    {
+        public static int Main()
+        {
+            short s = -32769;
+            return (int)s;
+        }
+    }
+}
+)NS",
+        "cannot initialize local 's'");
+
+    // ID 120 medido desde el lenguaje: si `short + 3` siguiera dando `double`, esto no compilaría,
+    // porque no hay conversión implícita de vuelta de double a short.
+    checkAccepted(
+        tests, root, "cc1-constant-adapts-to-operand",
+        R"NS(
+namespace cc1promo
+{
+    class P
+    {
+        public static int Main()
+        {
+            short s = 10;
+            short t = s + 3;
+            byte b = 5;
+            byte c = b + 1;
+            short back = s - 3;
+            return (int)t + (int)c + (int)back;
         }
     }
 }
