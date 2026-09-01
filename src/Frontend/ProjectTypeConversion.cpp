@@ -85,8 +85,33 @@ bool isNumericWidening(std::string_view source, std::string_view target) noexcep
     return false;
 }
 
-bool constantFits(std::uint64_t value, bool sourceUnsigned, std::string_view target) noexcept
+bool constantFits(
+    std::uint64_t value, bool sourceUnsigned, bool sourceNegative, std::string_view target) noexcept
 {
+    // ID 119. Un literal NEGATIVO. Antes no llegaba nunca aqui, porque el analisis de `-` no
+    // propagaba la constancia del operando: `short s = -3;` no compilaba y `short s = 3;` si.
+    //
+    // Cabe solo en un destino CON SIGNO, y cabe hasta la MAGNITUD DEL MINIMO, que es uno mas que
+    // el maximo -- `short` llega a -32768 aunque su maximo sea 32767. `byte`, `char`, `ushort`,
+    // `uint`, `ulong` y `nuint` no tienen signo, asi que ningun negativo cabe en ellos, que es lo
+    // que hace que `byte b = -1;` siga rechazandose.
+    if (sourceNegative)
+    {
+        if (target == "builtin:short")
+        {
+            return value <= static_cast<std::uint64_t>(std::numeric_limits<std::int16_t>::max()) + 1U;
+        }
+        if (target == "builtin:int")
+        {
+            return value <= static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()) + 1U;
+        }
+        if (target == "builtin:long" || target == "builtin:nint")
+        {
+            return value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1ULL;
+        }
+        return false;
+    }
+
     if (target == "builtin:byte")
     {
         return value <= std::numeric_limits<std::uint8_t>::max();
@@ -180,7 +205,11 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
     }
 
     if (integerConstant.has_value() && isIntegral(targetTypeKey) &&
-        constantFits(integerConstant->value, integerConstant->isUnsigned, targetTypeKey))
+        constantFits(
+            integerConstant->value,
+            integerConstant->isUnsigned,
+            integerConstant->isNegative,
+            targetTypeKey))
     {
         return makeConversion(ProjectConversionKind::ConstantInteger, 2, sourceTypeKey, targetTypeKey);
     }
@@ -249,6 +278,30 @@ std::optional<std::string> ProjectTypeConversion::commonNumericType(
     if (rightToLeft.exists() && !leftToRight.exists())
     {
         return std::string(leftTypeKey);
+    }
+
+    // ID 120. EL OPERANDO CONSTANTE SE ADAPTA AL OTRO, NO AL REVES.
+    //
+    // MEDIDO, no supuesto, compilando este archivo solo y llamando a esta funcion:
+    // `commonNumericType("builtin:short", "builtin:int", -, const 3)` devolvia **builtin:double**.
+    // La razon: con una constante que cabe, las conversiones existen EN LAS DOS DIRECCIONES, asi
+    // que ninguna de las dos reglas de arriba dispara y se caia al bucle de preferencia, que esta
+    // ordenado de mas ancho a mas estrecho y por tanto acierta `double` siempre. Consecuencia:
+    // `short s; short t = s + 3;` no compilaba, y `byte b; b = b + 1;` tampoco -- la suma daba
+    // `double` y despues no habia conversion de vuelta.
+    //
+    // La regla correcta es la de C#: una expresion constante que cabe en el tipo del otro operando
+    // TOMA ese tipo. Se comprueba antes del bucle de preferencia, que a partir de aqui solo
+    // gobierna los casos sin constante de por medio.
+    const bool leftIsAdaptingConstant = leftToRight.kind == ProjectConversionKind::ConstantInteger;
+    const bool rightIsAdaptingConstant = rightToLeft.kind == ProjectConversionKind::ConstantInteger;
+    if (rightIsAdaptingConstant && !leftIsAdaptingConstant)
+    {
+        return std::string(leftTypeKey);
+    }
+    if (leftIsAdaptingConstant && !rightIsAdaptingConstant)
+    {
+        return std::string(rightTypeKey);
     }
 
     constexpr std::array<std::string_view, 12> preference = {

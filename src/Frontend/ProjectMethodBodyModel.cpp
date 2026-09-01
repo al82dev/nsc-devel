@@ -8133,11 +8133,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
     {
         if (!ProjectTypeConversion::isPointer(operand.typeKey) || operand.typeKey == "builtin:void*")
         {
+            // IDs 80/83. Desde que el parser convierte `p->x` en `(*p).x`, este `*` puede ser uno
+            // que la persona NO escribio. Un mensaje que hable de `*` ahi es desorientador -- lo
+            // descubrio `nsc.project-member-model`, que comprueba que `this->Value` se rechaza CON
+            // DiagnosticId::InvalidMemberAccess, y dejo de pasar. El nodo sintetizado se marca en
+            // el parser, asi que aqui se puede nombrar lo que de verdad se escribio, y salir con
+            // el mismo id con el que salia cuando `->` tenia nodo propio.
+            const bool writtenAsArrow = expression != nullptr && expression->auxiliaryText() == "arrow";
             diagnostics.report(
-                diagnostics::DiagnosticId::InvalidDereference,
+                writtenAsArrow
+                    ? diagnostics::DiagnosticId::InvalidMemberAccess
+                    : diagnostics::DiagnosticId::InvalidDereference,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "operand of * must be a non-void pointer");
+                writtenAsArrow
+                    ? "left side of '->' must be a non-void pointer, but '" + operand.typeKey +
+                        "' is not one; use '.' for a value or a class reference"
+                    : "operand of * must be a non-void pointer");
             return result;
         }
         result.typeKey = operand.typeKey.substr(0, operand.typeKey.size() - 1);
@@ -8186,6 +8198,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
         if (operation == TokenKind::Plus)
         {
             result.integerConstant = operand.integerConstant;
+        }
+        else if (operation == TokenKind::Minus && operand.integerConstant.has_value() &&
+                 !operand.integerConstant->isUnsigned && !operand.integerConstant->isNegative)
+        {
+            // ID 119. `-3` no conservaba su constancia: unario `+` la propagaba y unario `-` no,
+            // asi que `short s = 3;` compilaba y `short s = -3;` NO -- el mismo literal, con signo,
+            // dejaba de caber. La descubrio la fixture c13 al declarar `short smallS = -3;`.
+            //
+            // Se guarda la MAGNITUD mas la bandera, no el valor negado: `value` se compara contra
+            // cotas superiores en constantFits, y 0xFFFF...FD no pasaria ninguna. Ver
+            // ProjectIntegerConstant::isNegative.
+            //
+            // No se dobla `-(-3)` ni `-(3u)`: en el primero la constancia ya venia marcada
+            // negativa y en el segundo el literal es sin signo. Los dos son raros y ninguno vale
+            // el riesgo de una regla de signo escrita a medias.
+            ProjectIntegerConstant negated = *operand.integerConstant;
+            negated.isNegative = negated.value != 0;
+            result.integerConstant = negated;
         }
         return result;
     }

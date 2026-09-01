@@ -4925,6 +4925,10 @@ ast::AstNode* Parser::parsePostfixExpression()
                     ast::AstNodeKind::UnaryExpression, access);
                 dereference->setTokenKind(TokenKind::Star);
                 dereference->setFirst(expression);
+                // Marca el `*` como SINTETIZADO. El modelo semantico la lee para que, si el lado
+                // izquierdo no es un puntero, el diagnostico nombre `->` -- que es lo que la
+                // persona escribio -- y no un `*` que nunca tecleo.
+                dereference->setAuxiliaryText("arrow");
                 receiver = dereference;
             }
 
