@@ -19,8 +19,23 @@ No es poco, y conviene decirlo antes de la lista de faltantes.
 sobrecarga de operadores, conversiones `implicit`/`explicit`, `virtual`/`override`/`abstract`/
 `sealed`, genéricos monomorfizados, lambdas con captura, excepciones, `foreach`, `var` (existe y
 sí infiere), `ref`/`out`/`in`, `raii`/`owned`/`borrowed`/`move`, `is`/`as`, `extern C`/`export`,
-`stackalloc`, `sizeof`, inicializadores agregados (`V v = {1,2}`), raíz de tipos con
-`ToString`/`Equals`/`GetHashCode` y sin boxing.
+inicializadores agregados (`V v = {1,2}`), raíz de tipos con
+`ToString`/`Equals`/`GetHashCode` y sin boxing, y —**desde el milestone CC1**— `sizeof`,
+`stackalloc`, `new T` escalar y aritmética de punteros.
+
+> **Corrección (tarea 69).** Esta lista incluía `stackalloc` y `sizeof` **antes de que existieran
+> de verdad**. Las dos parseaban y tipaban, y morían al bajar a código: el HIR no tenía caso para
+> ninguna. Yo las di por presentes tras mirar sólo la mitad delantera del pipeline — el mismo
+> error de inferencia que luego cometió un consumidor externo con otra cosa, y que este documento
+> tiene que dejar de fomentar. **Que una forma parsee y tipe no significa que compile.**
+>
+> Las fases 4A–4D del milestone CC1 las implementaron de verdad, atravesando las cuatro capas, y
+> hay fixtures que las EJECUTAN (`c9_sizeof`, `c10_stackalloc`, `c11_raw_new`,
+> `c12_pointer_arith`, todas en 42 a `-O0` y `-O2`). Sólo por eso están ahora en esta lista.
+>
+> El documento de auditoría externa cometió el error simétrico: afirmaba que las dos existían «en
+> el pipeline clásico». Barrido completo del árbol: **no había implementación clásica de ninguna
+> de las dos.** Ver `75_cc1_fase4a_sizeof.md` §2.1 y `76_cc1_fases_4b_4c_4d_4e.md` §2.2.
 
 **Biblioteca:** `String` muy rica (mezcla de C# y Python), colecciones genéricas completas
 —`List`, `Dictionary`, `HashSet`, `SortedSet`, `SortedList`, `SortedDictionary`, `LinkedList`,

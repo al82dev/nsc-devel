@@ -1,0 +1,140 @@
+// CC1 fase 4D -- aritmetica de punteros, ejecutando.
+//
+// DE DONDE VIENE. `p[i]` funcionaba desde hacia rondas; `*(p + i)` no compilaba. Son la misma
+// direccion escrita de dos formas, y el nivel crudo de este lenguaje existe justamente para
+// expresar formas de C, donde la segunda es tan comun como la primera. Un consumidor externo lo
+// reporto como limitacion antes de que esta fase existiera.
+//
+// LA PROPIEDAD CENTRAL, y la razon de que esta fixture valga: `p[i]` y `*(p + i)` tienen que dar
+// EL MISMO VALOR. En el backend salen del mismo GEP de bytes con el mismo paso, y eso no es
+// casualidad conveniente: si algun dia dejan de compartir la forma, dejan de ser lo mismo y esta
+// fixture lo ve.
+//
+// QUE MAS FIJA:
+//   * `i + p` da lo mismo que `p + i` -- la suma conmuta aunque el puntero cambie de lado;
+//   * `p - i` retrocede, y no es lo mismo que `i - p`, que el compilador rechaza;
+//   * `q - p` es una CUENTA DE ELEMENTOS, no de bytes: divide por el paso;
+//   * la diferencia tiene signo -- `p - q` es negativo cuando q va delante;
+//   * el paso es el del TIPO: por eso los mismos recorridos se repiten con `byte` (paso 1) y con
+//     `double` (paso 8).
+//
+// NO HAY `++p` NI `--p` AQUI. La tarea 62 pedia extender el lowering de `++`/`--` para punteros, y
+// al medirlo resulta que ESE LOWERING NO EXISTE PARA NINGUN TIPO: el HIR contesta "Stage 34 OOP
+// lowering does not yet lower ++/--" tambien para un `int`. Hacerlo solo para punteros dejaria
+// `++p` funcionando y `++i` no. Queda como tarea 79, con ID propio. Aqui se escribe `p = p + 1`,
+// que es la misma operacion y si compila.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1pointerarith
+{
+    class Program
+    {
+        public static int Main()
+        {
+            // --- preparacion: un buffer con valores reconocibles -----------------------------
+            int* buffer = stackalloc int[8];
+            int index = 0;
+            while (index < 8)
+            {
+                buffer[index] = index * 10;
+                index = index + 1;
+            }
+
+            // --- LA PROPIEDAD CENTRAL: las dos formas son la misma direccion ------------------
+            index = 0;
+            while (index < 8)
+            {
+                if (buffer[index] != *(buffer + index)) { return 1; }
+                index = index + 1;
+            }
+
+            // --- suma, en los dos ordenes ----------------------------------------------------
+            if (*(buffer + 3) != 30) { return 2; }
+            if (*(3 + buffer) != 30) { return 3; }
+            if (*(buffer + 0) != 0) { return 4; }
+            if (*(buffer + 7) != 70) { return 5; }
+
+            // --- resta -----------------------------------------------------------------------
+            int* last = buffer + 7;
+            if (*last != 70) { return 6; }
+            if (*(last - 1) != 60) { return 7; }
+            if (*(last - 7) != 0) { return 8; }
+
+            // --- diferencia: CUENTA DE ELEMENTOS, no de bytes ---------------------------------
+            // Si no dividiera por el paso, esto daria 28 en vez de 7.
+            nint distance = last - buffer;
+            if (distance != 7) { return 9; }
+            // Y tiene signo.
+            nint backwards = buffer - last;
+            if (backwards != -7) { return 10; }
+            // Consigo mismo, cero.
+            nint none = buffer - buffer;
+            if (none != 0) { return 11; }
+
+            // --- recorrer avanzando el puntero -------------------------------------------------
+            int* walk = buffer;
+            int sum = 0;
+            int steps = 0;
+            while (steps < 8)
+            {
+                sum = sum + *walk;
+                walk = walk + 1;
+                steps = steps + 1;
+            }
+            if (sum != 280) { return 12; }
+            // Tras ocho pasos el puntero quedo uno mas alla del ultimo.
+            if (walk - buffer != 8) { return 13; }
+
+            // --- y retrocediendo ---------------------------------------------------------------
+            int backSum = 0;
+            while (steps > 0)
+            {
+                walk = walk - 1;
+                backSum = backSum + *walk;
+                steps = steps - 1;
+            }
+            if (backSum != 280) { return 14; }
+            if (walk - buffer != 0) { return 15; }
+
+            // --- escritura a traves de la aritmetica --------------------------------------------
+            *(buffer + 2) = 999;
+            if (buffer[2] != 999) { return 16; }
+            buffer[2] = 20;
+            if (*(buffer + 2) != 20) { return 17; }
+
+            // --- paso 1: byte ------------------------------------------------------------------
+            // Si el paso fuera fijo en vez del del tipo, estos dos bloques no podrian cuadrar los
+            // dos a la vez.
+            byte* bytes = stackalloc byte[4];
+            bytes[0] = 10;
+            bytes[1] = 20;
+            bytes[2] = 30;
+            bytes[3] = 40;
+            if (*(bytes + 2) != 30) { return 18; }
+            byte* lastByte = bytes + 3;
+            if (*lastByte != 40) { return 19; }
+            if (lastByte - bytes != 3) { return 20; }
+
+            // --- paso 8: double ------------------------------------------------------------------
+            double* reals = stackalloc double[3];
+            reals[0] = 1.5;
+            reals[1] = 2.5;
+            reals[2] = 4.0;
+            if (*(reals + 1) != 2.5) { return 21; }
+            double* lastReal = reals + 2;
+            if (*lastReal != 4.0) { return 22; }
+            if (lastReal - reals != 2) { return 23; }
+            if (*(lastReal - 2) != 1.5) { return 24; }
+
+            // --- el desplazamiento puede ser una expresion ---------------------------------------
+            int offset = 2 + 2;
+            if (*(buffer + offset) != 40) { return 25; }
+            int* moved = buffer + offset;
+            if (moved - buffer != 4) { return 26; }
+
+            return 42;
+        }
+    }
+}

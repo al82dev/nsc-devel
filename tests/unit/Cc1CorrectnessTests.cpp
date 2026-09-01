@@ -303,6 +303,15 @@ int main()
     // parseaba, tipaba mal y moria en el `default` del HIR.
     checkFixture(tests, root, "tests/cc1/c9_sizeof/c9_sizeof.nsproj", "cc1-c9-sizeof", 42);
 
+    // Fases 4B, 4C y 4D. Las tres eran la misma forma -- mitad delantera presente, feature
+    // ausente -- y las tres atraviesan ahora las cuatro capas.
+    checkFixture(
+        tests, root, "tests/cc1/c10_stackalloc/c10_stackalloc.nsproj", "cc1-c10-stackalloc", 42);
+    checkFixture(tests, root, "tests/cc1/c11_raw_new/c11_raw_new.nsproj", "cc1-c11-raw-new", 42);
+    checkFixture(
+        tests, root, "tests/cc1/c12_pointer_arith/c12_pointer_arith.nsproj",
+        "cc1-c12-pointer-arith", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================
@@ -715,6 +724,177 @@ class P
 }
 )NS",
         "NoSuchType");
+
+    // =====================================================================================
+    // stackalloc y raw new -- M-002, M-005.
+    // =====================================================================================
+
+    // Un elemento con un campo `owned` tiene un ciclo de vida que alguien debe cerrar, y ni un
+    // buffer de pila ni un bloque crudo del monton lo cierran: no hay quien llame al destructor al
+    // salir del ambito. Se prohibe en vez de inventar una semantica de destruccion para el nivel
+    // crudo.
+    checkRejected(
+        tests, root, "cc1-stackalloc-owned-element",
+        R"NS(
+namespace cc1own
+{
+    public struct Holder
+    {
+        public owned string Text;
+    }
+
+    class P
+    {
+        public static int Main()
+        {
+            Holder* slots = stackalloc Holder[2];
+            return 0;
+        }
+    }
+}
+)NS",
+        "owns a lifetime that raw storage cannot discharge");
+
+    // El mismo elemento, por el monton crudo. Misma razon, distinta puerta -- sin este par, la
+    // regla podria haberse escrito para una sola de las dos formas.
+    checkRejected(
+        tests, root, "cc1-raw-new-owned-element",
+        R"NS(
+namespace cc1own2
+{
+    public struct Holder
+    {
+        public owned string Text;
+    }
+
+    class P
+    {
+        public static int Main()
+        {
+            Holder* slot = new Holder;
+            return 0;
+        }
+    }
+}
+)NS",
+        "owns a lifetime that raw storage cannot discharge");
+
+    // El contador. La forma dinamica de `new T[n]` ya lo exigia; esta rama no lo hacia, asi que
+    // `stackalloc int[unaCadena]` tipaba sin decir una palabra.
+    checkRejected(
+        tests, root, "cc1-stackalloc-nonintegral-count",
+        R"NS(
+class P
+{
+    public static int Main()
+    {
+        string n = "four";
+        int* buffer = stackalloc int[n];
+        return 0;
+    }
+}
+)NS",
+        "stackalloc requires an integral element count");
+
+    // Sin tamano no hay reserva posible.
+    checkRejected(
+        tests, root, "cc1-stackalloc-void-element",
+        R"NS(
+class P
+{
+    public static int Main()
+    {
+        void* buffer = stackalloc void[4];
+        return 0;
+    }
+}
+)NS",
+        "stackalloc requires an element type with a size");
+
+    // =====================================================================================
+    // Aritmetica de punteros -- M-006.
+    // =====================================================================================
+
+    // Un paso de tamano cero no es un paso.
+    checkRejected(
+        tests, root, "cc1-pointer-arith-void",
+        R"NS(
+class P
+{
+    private static int Walk(void* start)
+    {
+        void* next = start + 1;
+        return 0;
+    }
+
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)NS",
+        "'void*' has no element size");
+
+    // Sumar dos direcciones no significa nada. Se rechaza explicitamente en vez de dejar que caiga
+    // por el mensaje generico de operandos numericos, que habria sido confuso.
+    checkRejected(
+        tests, root, "cc1-pointer-arith-add-two-pointers",
+        R"NS(
+class P
+{
+    private static int Bad(int* left, int* right)
+    {
+        int* sum = left + right;
+        return 0;
+    }
+
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)NS",
+        "two pointers cannot be added");
+
+    // Restarle una direccion a un entero tampoco.
+    checkRejected(
+        tests, root, "cc1-pointer-arith-integer-minus-pointer",
+        R"NS(
+class P
+{
+    private static int Bad(int* pointer)
+    {
+        int* result = 1 - pointer;
+        return 0;
+    }
+
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)NS",
+        "an integer minus a pointer is not defined");
+
+    // Y la diferencia entre punteros de tipos distintos: no hay un paso con el que dividir.
+    checkRejected(
+        tests, root, "cc1-pointer-arith-mixed-difference",
+        R"NS(
+class P
+{
+    private static int Bad(int* left, double* right)
+    {
+        nint distance = left - right;
+        return 0;
+    }
+
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)NS",
+        "same pointer type");
 
     // Y la forma que SI debe aceptarse, que es la que no compilaba antes de CC1-204.
     checkAccepted(

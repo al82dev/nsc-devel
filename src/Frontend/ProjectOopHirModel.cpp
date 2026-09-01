@@ -105,6 +105,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::MoveOwnedField: return "move-owned-field";
         case ProjectOopHirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopHirNodeKind::RawElementAddress: return "raw-element-address";
+        case ProjectOopHirNodeKind::StackAllocation: return "stack-allocation";
+        case ProjectOopHirNodeKind::RawAllocation: return "raw-allocation";
+        case ProjectOopHirNodeKind::PointerArithmetic: return "pointer-arithmetic";
         case ProjectOopHirNodeKind::ValueConstruction: return "value-construction";
         case ProjectOopHirNodeKind::AggregateInitializer: return "aggregate-initializer";
         case ProjectOopHirNodeKind::AggregateElement: return "aggregate-element";
@@ -1931,6 +1934,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 return node;
             }
 
+            // CC1 fase 4D. El binding ya decidio que esto es aritmetica de punteros y con que
+            // tipo de elemento; aqui solo se construye el nodo con los dos operandos EN EL ORDEN
+            // EN QUE SE ESCRIBIERON. Ese orden importa: `i + p` y `p + i` dan lo mismo, pero
+            // `p - i` y `i - p` no, y el backend necesita saber cual de los dos hijos es el
+            // puntero. Lo deduce de los tipos de los hijos, no de una bandera aparte.
+            if (stringCore != nullptr && stringCore->kind == MethodCoreOperationKind::PointerArithmetic)
+            {
+                if (addressContext)
+                {
+                    error = "CC1 pointer arithmetic yields a value, not addressable storage";
+                    return nullptr;
+                }
+                auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (left == nullptr) return nullptr;
+                auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (right == nullptr) return nullptr;
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::PointerArithmetic, expression, stringCore->resultTypeKey);
+                node->operation = expression->tokenKind();
+                node->elementTypeKey = stringCore->elementTypeKey;
+                node->children.push_back(std::move(left));
+                node->children.push_back(std::move(right));
+                return node;
+            }
+
             const MethodCallBinding* operatorCall = callBinding(expression);
             if (operatorCall != nullptr && operatorCall->resolution == MethodCallResolutionKind::Resolved &&
                 operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
@@ -3163,9 +3191,48 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             return node;
         }
 
+        // CC1 fase 4B -- `stackalloc T[n]`. Un alloca de arreglo y nada mas: sin cabecera de
+        // longitud, sin comprobacion de rango, sin liberacion. Es el nivel crudo, igual que
+        // `p[i]`, y la validacion de que el elemento puede vivir ahi ya la hizo el modelo
+        // semantico (sin destructor y sin campos `owned`).
+        case ast::AstNodeKind::StackallocExpression:
+        {
+            const MethodCoreBinding* core = coreBinding(expression);
+            if (core == nullptr || core->kind != MethodCoreOperationKind::StackAllocation)
+            {
+                error = "CC1 stackalloc reached OOP lowering without its resolved element type";
+                return nullptr;
+            }
+            if (addressContext)
+            {
+                error = "CC1 stackalloc yields a pointer value, not addressable storage";
+                return nullptr;
+            }
+            auto count = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (count == nullptr) return nullptr;
+            auto node = makeNode(ProjectOopHirNodeKind::StackAllocation, expression, core->resultTypeKey);
+            node->elementTypeKey = core->elementTypeKey;
+            node->children.push_back(std::move(count));
+            return node;
+        }
+
         case ast::AstNodeKind::NewExpression:
         {
             const MethodCoreBinding* core = coreBinding(expression);
+            // CC1 fase 4C -- `new T` escalar. Hasta esta ronda el mensaje de abajo decia que el
+            // raw new "remains outside this pipeline", y era cierto: el modelo semantico lo
+            // aceptaba y lo tipaba `T*`, y aqui moria. Ahora trae binding y se baja.
+            if (core != nullptr && core->kind == MethodCoreOperationKind::RawAllocation)
+            {
+                if (addressContext)
+                {
+                    error = "CC1 raw allocation yields a pointer value, not addressable storage";
+                    return nullptr;
+                }
+                auto node = makeNode(ProjectOopHirNodeKind::RawAllocation, expression, core->resultTypeKey);
+                node->elementTypeKey = core->elementTypeKey;
+                return node;
+            }
             if (core == nullptr || core->kind != MethodCoreOperationKind::ArrayAllocation)
             {
                 error = "Stage 41 OOP HIR only owns dynamic new T[count]; raw new remains outside this pipeline";
@@ -3405,6 +3472,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             node->integerValue = layout->first;
             return node;
         }
+
+        // CC1 fase 4E, tarea 65 -- inventario del `default`, medido y no supuesto.
+        //
+        // Tras las fases 4A-4D queda EXACTAMENTE UNA forma de expresion sin bajar: `p->campo`. El
+        // parser la acepta (la convierte en PointerMemberExpression) y el modelo semantico la tipa;
+        // aqui no habia caso, asi que salia por el `default` con "unsupported Stage 34 OOP
+        // expression kind", que suena a fallo interno del compilador y no a lo que es: una forma
+        // del lenguaje que este pipeline todavia no baja.
+        //
+        // Se le da mensaje propio en vez de arreglarla: es la tarea 80, con ID propio. `(*p).campo`
+        // es la forma equivalente que si funciona hoy, y el mensaje la nombra para que quien se
+        // tope con esto sepa que escribir.
+        //
+        // NOTA sobre como se hizo este inventario: un barrido de las 30 formas de expresion del
+        // AST contra los `case` de esta funcion daba TAMBIEN `LambdaExpression`. Es un falso
+        // positivo del barrido: las lambdas se bajan por binding ANTES del switch, no por un
+        // `case`. Comprobado antes de escribir esto -- el barrido mide lo que mide, no lo que uno
+        // quiere que mida.
+        case ast::AstNodeKind::PointerMemberExpression:
+            error = "pointer member access 'p->member' is not lowered by the OOP pipeline yet; "
+                    "write '(*p).member', which is the same access and is supported";
+            return nullptr;
 
         default:
             error = "unsupported Stage 34 OOP expression kind: " +

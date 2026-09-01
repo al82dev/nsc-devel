@@ -1,0 +1,107 @@
+// CC1 fase 4C -- `new T` escalar, ejecutando.
+//
+// DE DONDE VIENE. El modelo semantico aceptaba `new int` y lo tipaba `int*`; el HIR lo rechazaba
+// con un mensaje que lo decia con todas las letras: "raw new remains outside this pipeline". Es la
+// tercera forma con la mitad delantera presente y la trasera ausente, despues de `sizeof` y
+// `stackalloc`.
+//
+// QUE FIJA:
+//   * `new T` reserva un bloque del tamano DE UN elemento y devuelve `T*`;
+//   * se escribe y se lee por `*p`;
+//   * `delete p` lo libera -- esa parte ya existia y aqui se comprueba que sigue funcionando
+//     sobre lo que produce el `new` nuevo;
+//   * el tamano es el del tipo, no uno fijo: por eso hay un caso con `byte`, uno con `double` y
+//     uno con un struct de 16 bytes.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1rawnew
+{
+    public struct Padded
+    {
+        public int First;
+        public byte Middle;
+        public double Last;
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // --- int -------------------------------------------------------------------------
+            int* number = new int;
+            *number = 41;
+            if (*number != 41) { return 1; }
+            *number = *number + 1;
+            if (*number != 42) { return 2; }
+            delete number;
+
+            // --- byte ------------------------------------------------------------------------
+            byte* small = new byte;
+            *small = 200;
+            if (*small != 200) { return 3; }
+            delete small;
+
+            // --- double ----------------------------------------------------------------------
+            double* real = new double;
+            *real = 2.5;
+            if (*real != 2.5) { return 4; }
+            *real = *real * 2.0;
+            if (*real != 5.0) { return 5; }
+            delete real;
+
+            // --- struct ----------------------------------------------------------------------
+            // El bloque tiene que medir 16, no el tamano de un puntero: los tres campos han de
+            // caber y sobrevivir a la escritura de los otros.
+            //
+            // SE ESCRIBE `(*record).First` Y NO `record->First` A PROPOSITO. El parser acepta `->`
+            // y lo convierte en PointerMemberExpression; el modelo semantico lo tipa; y el HIR NO
+            // TIENE ese caso, asi que muere en el `default`. Es la cuarta forma con la mitad
+            // delantera presente y la trasera ausente, despues de sizeof, stackalloc y raw new.
+            // Queda como tarea 80, con ID propio; no se arregla "de paso".
+            //
+            // `(*p).campo` si esta soportado, y el comentario del propio backend lo dice con
+            // todas las letras al bajar `*` en contexto de direccion.
+            Padded* record = new Padded;
+            (*record).First = 7;
+            (*record).Middle = 8;
+            (*record).Last = 9.5;
+            if ((*record).First != 7) { return 6; }
+            if ((*record).Middle != 8) { return 7; }
+            if ((*record).Last != 9.5) { return 8; }
+            delete record;
+
+            // --- varios vivos a la vez -------------------------------------------------------
+            // Dos bloques distintos no se pisan. Si `new T` devolviera siempre el mismo bloque, o
+            // reservara de menos, esto lo veria.
+            int* first = new int;
+            int* second = new int;
+            *first = 100;
+            *second = 200;
+            if (*first != 100) { return 9; }
+            if (*second != 200) { return 10; }
+            *first = *first + *second;
+            if (*first != 300) { return 11; }
+            if (*second != 200) { return 12; }
+            delete first;
+            delete second;
+
+            // --- en un bucle, reservando y liberando ------------------------------------------
+            int rounds = 0;
+            int checksum = 0;
+            while (rounds < 4)
+            {
+                int* scratch = new int;
+                *scratch = rounds * 3;
+                checksum = checksum + *scratch;
+                delete scratch;
+                rounds = rounds + 1;
+            }
+            // 0 + 3 + 6 + 9
+            if (checksum != 18) { return 13; }
+
+            return 42;
+        }
+    }
+}

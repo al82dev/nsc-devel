@@ -413,6 +413,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::MoveOwnedField: return "move-owned-field";
         case ProjectOopMirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopMirNodeKind::RawElementAddress: return "raw-element-address";
+        case ProjectOopMirNodeKind::StackAllocation: return "stack-allocation";
+        case ProjectOopMirNodeKind::RawAllocation: return "raw-allocation";
+        case ProjectOopMirNodeKind::PointerArithmetic: return "pointer-arithmetic";
         case ProjectOopMirNodeKind::ValueConstruct: return "value-construct";
         case ProjectOopMirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopMirNodeKind::AddressValue: return "address-value";
@@ -1061,6 +1064,34 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->immediate = layout->first;
             result->alignment = layout->second;
             result->kind = ProjectOopMirNodeKind::RawElementAddress;
+            break;
+        }
+        // CC1 fases 4B, 4C y 4D. Las tres necesitan LO MISMO -- cuanto mide un elemento -- y las
+        // tres lo piden por `elementLayout`, que es el mismo helper del que sale el stride de
+        // `p[i]` y el offset de un campo. Ni una tabla de tamanos nueva: dos reglas de tamano que
+        // pudieran divergir es exactamente el defecto que este milestone existe para quitar.
+        case ProjectOopHirNodeKind::StackAllocation:
+        case ProjectOopHirNodeKind::RawAllocation:
+        case ProjectOopHirNodeKind::PointerArithmetic:
+        {
+            if (nameLookup_ == nullptr || objectLayoutModel_ == nullptr)
+            {
+                error = "CC1 raw storage lowering requires name lookup and value layouts";
+                return nullptr;
+            }
+            const auto layout = elementLayout(node->elementTypeKey);
+            if (!layout.has_value() || layout->first == 0)
+            {
+                error = "CC1 cannot determine the element layout of '" + node->elementTypeKey + "'";
+                return nullptr;
+            }
+            result->immediate = layout->first;
+            result->alignment = layout->second;
+            result->kind = node->kind == ProjectOopHirNodeKind::StackAllocation
+                ? ProjectOopMirNodeKind::StackAllocation
+                : (node->kind == ProjectOopHirNodeKind::RawAllocation
+                       ? ProjectOopMirNodeKind::RawAllocation
+                       : ProjectOopMirNodeKind::PointerArithmetic);
             break;
         }
         case ProjectOopHirNodeKind::PointerLoad:

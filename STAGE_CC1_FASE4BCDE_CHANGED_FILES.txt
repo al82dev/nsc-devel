@@ -1,0 +1,146 @@
+MILESTONE CC1 -- fases 4B, 4C, 4D y 4E (tareas 47-66). CIERRA EL GATE G4.
+Archivos tocados. Ver 76_cc1_fases_4b_4c_4d_4e.md para el porque de cada cambio.
+Fecha: 2026-08-31.
+
+Estado: CERRADAS. Corrida de Windows del 2026-08-31 18:42: checklist 63/63 Failed 0 (eran 57; las
+seis nuevas son c10_stackalloc, c11_raw_new y c12_pointer_arith a -O0 y -O2, todas en 42), ctest
+242/242 (100%), triage 16/16, build con CERO AVISOS. nsc.cc1.correctness sube de 29.88 s a 33.27 s.
+
+Cierra: M-001 M-002 M-005 M-006 R-003. G4 CERRADO.
+4B 6/6, 4C 4/4, 4D 7/7 (la 62 salio como tarea 79), 4E 2/2. Milestone 70/80.
+
+POR QUE LAS CUATRO JUNTAS: stackalloc, raw new y la aritmetica de punteros son EL MISMO HUECO TRES
+VECES -- parser y semantica presentes, muerte al bajar -- y las tres atraviesan las mismas cuatro
+capas pidiendo lo mismo en la tercera: cuanto mide un elemento. Un barrido de simbolos, un juego de
+decisiones, una corrida.
+
+Barrido del backend ANTES de escribir: el unico simbolo que faltaba (LLVMBuildInBoundsGEP2) es el
+unico que NO debia usarse. Despues de escribir: 143 usados, 0 faltantes.
+
+
+================================================================================
+DOS TAREAS NO IMPLEMENTABLES COMO ESTABAN ESCRITAS
+================================================================================
+
+TAREA 47 -- misma premisa falsa que la 40. Pedia "portar las validaciones de stackalloc DEL
+PIPELINE CLASICO". Barrido completo: stackalloc solo aparece en lexer, parser, AST y un caso del
+modelo semantico. NO HAY pipeline clasico. Segunda vez que el documento de origen atribuye a un
+"pipeline clasico" algo que no esta en este arbol. Las validaciones estan ESCRITAS, no portadas.
+
+TAREA 62 -- pedia "extender el lowering de ++/-- para punteros". Ese lowering NO EXISTE PARA NINGUN
+TIPO: el HIR contesta "does not yet lower ++/--" tambien para un int. Hacerlo solo para punteros
+dejaria ++p funcionando y ++i no. Sale como TAREA 79, planteada como lo que es. En la fixture se
+escribe `p = p + 1`.
+
+
+================================================================================
+CODIGO
+================================================================================
+
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + MethodCoreOperationKind::StackAllocation, RawAllocation, PointerArithmetic.
+    + elementTypeHasTrivialLifetime(): "puede este tipo vivir en memoria cruda?" Pregunta por dos
+      cosas por separado -- destructor declarado, y campo `owned` -- porque son dos razones
+      distintas. Una CLASE como elemento se acepta: se reserva un buffer de referencias, y una
+      referencia no posee nada por si misma.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    ~ La cola compartida de stackalloc / raw new hacia DOS cosas: poner `element + '*'` y marcar
+      valido. Sin binding y sin una sola validacion. Consecuencias reales: `stackalloc
+      int[unaCadena]` tipaba sin decir nada, `stackalloc void[4]` tambien, y un elemento con
+      destructor se aceptaba. Ahora valida las tres cosas y registra binding.
+      DiagnosticId::InvalidStackalloc llevaba tiempo declarado y sin usar; ahora se usa. Segundo
+      diagnostico fantasma despertado, tras InvalidSizeof.
+    + Rama de punteros en analyzeBinary, ANTES de la rama aritmetica: commonNumericType no conoce
+      los punteros, asi que despues `p + 1` ya habria muerto en "requires compatible numeric
+      operands". Acepta p+i, i+p, p-i y p-q del mismo tipo; rechaza p+q, i-p, p-q de tipos
+      distintos y cualquier cosa sobre void*, cada uno con mensaje propio.
+    + Los tres nombres en el switch exhaustivo.
+
+include/nativesharp/Frontend/ProjectOopHirModel.h + src/Frontend/ProjectOopHirModel.cpp
+    + Tres nodos y sus nombres. Tres lowerings.
+    ~ El error "raw new remains outside this pipeline" deja de alcanzarse para el new escalar.
+    + TAREA 65: caso explicito para PointerMemberExpression con mensaje que nombra `(*p).campo`
+      como la forma equivalente soportada, en vez del generico "unsupported Stage 34 OOP
+      expression kind", que suena a fallo interno y no a lo que es.
+
+include/nativesharp/Frontend/ProjectOopMirModel.h + src/Frontend/ProjectOopMirModel.cpp
+    + Tres nodos y sus nombres, y UNA SOLA conversion compartida por los tres: las tres necesitan
+      lo mismo (el tamano del elemento) y las tres lo piden por elementLayout, el mismo helper del
+      que sale el stride de p[i] y el offset de un campo. Ni una tabla de tamanos nueva.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    + StackAllocation: `alloca i8, n * elementSize` -- en BYTES, misma regla que RawElementAddress.
+      LLVMSetAlignment con la alineacion del layout: un alloca de i8 sale alineado a 1 y un double
+      necesita 8. El alloca se emite DONDE ESTA la expresion, no en el bloque de entrada -- es lo
+      que stackalloc significa dentro de un bucle.
+    + RawAllocation: llamada al allocador con el tamano de UN elemento. Sin construccion: el nivel
+      crudo no inicializa. Se libera con `delete`, que ya existia.
+    + PointerArithmetic: el desplazamiento es EL MISMO GEP de bytes que RawElementAddress, y eso no
+      es casualidad conveniente -- `p + i` y `&p[i]` son la misma direccion. GEP SIN `inbounds`, a
+      proposito: inbounds promete quedarse dentro de una asignacion y este nivel del lenguaje no
+      hace esa promesa. La diferencia se emite explicita (ptrtoint - ptrtoint, sdiv por el paso)
+      en vez de con PtrDiff2: el paso queda visible en el IR y `sdiv` deja escrito que tiene signo.
+
+
+================================================================================
+TESTS
+================================================================================
+
+tests/cc1/c10_stackalloc/    NUEVO -- tres pasos (byte 1, int 4, double 8), struct con relleno,
+                                     contador como expresion, y dentro de un bucle.
+tests/cc1/c11_raw_new/       NUEVO -- int, byte, double, struct, varios vivos a la vez, y en bucle
+                                     con delete. Usa `(*p).campo` y NO `p->campo` (tarea 80).
+tests/cc1/c12_pointer_arith/ NUEVO -- abre con LA PROPIEDAD CENTRAL: buffer[i] == *(buffer + i) en
+                                     las ocho posiciones. Suma en los dos ordenes, resta, recorrido
+                                     adelante y atras, diferencia con signo, escritura a traves de
+                                     la aritmetica, y los tres pasos otra vez.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    + Las tres fixtures y OCHO negativos: stackalloc/raw new con elemento `owned` (los dos, para
+      que la regla no quede escrita para una sola puerta), contador no integral, elemento void,
+      aritmetica sobre void*, suma de dos punteros, entero menos puntero, y diferencia de tipos
+      distintos.
+
+run_windows_checklist.bat
+    + tres run_case.
+
+CMakeLists.txt
+    SIN CAMBIOS.
+
+
+================================================================================
+LOS CUATRO RIESGOS ANOTADOS ANTES DE LA CORRIDA -- NINGUNO SE MATERIALIZO
+================================================================================
+
+1. `(*record).First = 7` sobre memoria del monton: el comentario del backend prometia esta forma
+   sobre una local; funciona igual sobre un bloque recien reservado.
+2. `nint` comparado con literales negativos: `buffer - last != -7` se evalua como debe.
+3. `stackalloc` de un struct con relleno: paso 16 y no 13, la misma respuesta que da sizeof(Padded)
+   desde el mismo elementLayout.
+4. La alineacion del double: era el mas traicionero porque un acceso desalineado en x64 puede salir
+   como valor incorrecto en vez de como crash. LLVMSetAlignment basta.
+
+
+================================================================================
+INVENTARIO DEL `default` DEL HIR (tarea 65), MEDIDO
+================================================================================
+
+30 formas de expresion en el AST, 28 con case, 2 sin case: PointerMemberExpression y
+LambdaExpression.
+
+UNA DE LAS DOS ERA FALSO POSITIVO DE MI PROPIO BARRIDO: las lambdas SI se bajan, por binding antes
+del switch, no por un `case`. Comprobado antes de escribirlo en ningun sitio.
+
+Queda EXACTAMENTE UNA forma sin bajar: `p->campo`. Es la cuarta con la mitad delantera presente y
+la trasera ausente en este milestone, tras sizeof, stackalloc y raw new. Tarea 80.
+
+
+================================================================================
+TAREAS NUEVAS, TODAS CON ID PROPIO
+================================================================================
+
+79 -- ++/-- no se baja en el pipeline OOP, para NINGUN tipo. Fase propia, fuera de CC1.
+80 -- `p->campo` no se baja. Fase propia, fuera de CC1.
+78 -- valueLayoutForTypeKey dice 8 para un enum y layoutNamedType dice 4. Fase 4E, sin medir.
+77 -- el conteo de checks no se ve en los logs cuando la suite pasa. Fase 5.

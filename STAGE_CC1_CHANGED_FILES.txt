@@ -1,225 +1,104 @@
-MILESTONE CC1 -- fases 0, 1 y 2 (tareas 1-31)
-Archivos tocados. Ver 73_cc1_fases_0_1_2.md para el porque de cada cambio.
+MILESTONE CC1 -- desglose por capa de todo lo tocado (tareas 1-80).
+Ver 77_milestone_cc1.md para el cierre, y los 73_/74_/75_/76_ para el porque de cada fase.
 Fecha: 2026-08-31.
 
-Estado: CONFIRMADO VERDE. Corrida de Windows 2026-08-31 12:18: ctest 242/242 (100%), checklist
-45/45 Failed 0, triage 16/16, las tres fixtures CC1 en 42 a -O0 y -O2. nsc.version (#127) y
-nsc.cc1.correctness (#59) pasan. Los dos fallos de la corrida de las 12:06 eran de EXPECTATIVA
-DE TEST escrita por mi, no del compilador; las tareas 74-76 los cerraron.
-
-Cierra: C-001 C-002 C-003 C-004 C-005 F-001 F-002 F-003 F-004 F-005 R-002 R-003(parcial).
-Abiertos: M-001..M-006 (fase 4), R-001 (fase 5).
-En curso: EH-001 EH-002 EH-003 -- fase 3, codigo completo y compilado limpio, pendiente de
-corrida. Sus archivos NO estan en este manifiesto: ver STAGE_CC1_FASE3_CHANGED_FILES.txt.
+Este archivo es el INDICE. El detalle de cada fase vive en su propio manifiesto:
+    STAGE_CC1_FASE3_CHANGED_FILES.txt      fase 3   (EH)
+    STAGE_CC1_FASE4A_CHANGED_FILES.txt     fase 4A  (sizeof)
+    STAGE_CC1_FASE4BCDE_CHANGED_FILES.txt  fases 4B-4E
+Las fases 0-2 estaban descritas en la version anterior de ESTE archivo; su contenido se conserva
+en 73_cc1_fases_0_1_2.md, que es donde estaba el porque.
 
 
 ================================================================================
-FASE 0 -- IDENTIDAD DEL BUILD (tareas 1-3)
+POR CAPA
 ================================================================================
 
-include/nativesharp/Basic/BuildId.h.in                   NUEVO
-    Plantilla del header generado. `kCompilerBuildId`.
-    CMake sustituye @NSC_BUILD_ID@ en cada configure.
-    Se llama BuildId.h y NO Version.h a proposito: con el mismo nombre habria
-    dos archivos en la misma ruta logica y cual gana dependeria del orden de los
-    include paths de cada target.
+--- IDENTIDAD DEL BUILD (fase 0) --------------------------------------------
+include/nativesharp/Basic/BuildId.h.in      NUEVO -- plantilla que CMake sustituye en cada
+                                                    configure. Se llama BuildId.h y NO Version.h
+                                                    a proposito: con el mismo nombre habria dos
+                                                    archivos en la misma ruta logica y cual gana
+                                                    dependeria del orden de includes de cada target
+include/nativesharp/Basic/Version.h         stage 55 -> 57, mas el include del build id
+CMakeLists.txt                              bloque de identidad (hash del arbol + timestamp),
+                                            ProjectIntegerEvaluator.cpp, tres tests nuevos
+src/Driver/Driver.cpp                       --version imprime el build id; --help describe 56 y 57
 
-include/nativesharp/Basic/Version.h
-    + #include "nativesharp/Basic/BuildId.h"
-    ~ kCompilerStage "55" -> "57"
-    kCompilerVersion se queda en 0.1.0-dev55 A PROPOSITO: es la identidad de
-    RELEASE, no la que distingue dos builds.
+--- LEXER / PARSER / AST ------------------------------------------------------
+(sin cambios en el milestone: las cuatro formas que faltaban ya parseaban. El hueco estaba
+ siempre de la mitad hacia atras)
 
-CMakeLists.txt
-    ~ DESCRIPTION "stage 50 ownership types" -> "stage 57 -- language completion
-      and CC1 correctness"
-    + bloque de build identity: GLOB de src/ e include/, mtime mas nuevo +
-      timestamp del configure, SHA256, 16 hex, configure_file, include_directories
-      del directorio generado, y un message(STATUS) que lo imprime.
-    + src/Frontend/ProjectIntegerEvaluator.cpp a nsc_frontend
-    + registro de nsc.version.identity, nsc.cc1.integer-evaluator y
-      nsc.cc1.correctness
+--- MODELO SEMANTICO ----------------------------------------------------------
+include/nativesharp/Frontend/ProjectIntegerEvaluator.h   NUEVO -- el evaluador tipado unico
+src/Frontend/ProjectIntegerEvaluator.cpp                 NUEVO -- (bits, tipo), nunca int64 suelto
+include/nativesharp/Frontend/ProjectMethodBodyModel.h    foldIntegerConstant tipado;
+                                                         analyzeBranchState/commitBranchJoin;
+                                                         SizeofConstant, StackAllocation,
+                                                         RawAllocation, PointerArithmetic;
+                                                         elementTypeHasTrivialLifetime
+src/Frontend/ProjectMethodBodyModel.cpp                  ~115 lineas del folder viejo BORRADAS;
+                                                         ?:, &&, || y do-while sobre las ramas
+                                                         compartidas; switch normaliza la etiqueta
+                                                         ANTES de comparar; sizeof no evaluado por
+                                                         captura/restauracion de flujo; validacion
+                                                         de stackalloc y raw new; rama de punteros
+                                                         en analyzeBinary
+src/Frontend/ProjectTypeConversion.cpp                   char (8 bits) separado de ushort (16)
 
-src/Driver/Driver.cpp
-    ~ printVersion imprime `build <id>` en su propia linea.
+--- HIR -----------------------------------------------------------------------
+include/nativesharp/Frontend/ProjectOopHirModel.h  StackAllocation, RawAllocation,
+                                                   PointerArithmetic
+src/Frontend/ProjectOopHirModel.cpp                sizeof -> IntegerConstant desde
+                                                   valueLayoutForTypeKey; los tres lowerings
+                                                   nuevos; caso explicito de p->campo con mensaje
+                                                   que nombra (*p).campo
 
-tests/unit/Cc1BuildIdentityTests.cpp                     NUEVO
-    Un @NSC_BUILD_ID@ sin sustituir da string VACIO, no un error de compilacion.
-    Ese es el modo de falla que este test cubre: id no vacio, distinto del
-    placeholder, 16 caracteres, hex minuscula, y las tres constantes de version.
+--- MIR -----------------------------------------------------------------------
+include/nativesharp/Frontend/ProjectOopMirModel.h  los tres nodos
+src/Frontend/ProjectOopMirModel.cpp                UNA conversion compartida por los tres: las tres
+                                                   piden el tamano del elemento por elementLayout,
+                                                   el mismo helper del stride de p[i]
 
+--- BACKEND LLVM --------------------------------------------------------------
+src/LLVM/LlvmCApi.h                    + LLVMBuildSwitch, LLVMAddCase
+src/LLVM/ProjectOopLlvmLowerer.cpp     switch; LoopTargets con continueFuncletDepth;
+                                       ActiveCatchBody + limpieza del TLS en salidas estructuradas;
+                                       StackAllocation (alloca i8 + SetAlignment), RawAllocation,
+                                       PointerArithmetic (GEP de bytes SIN inbounds, y la
+                                       diferencia con ptrtoint/sub/sdiv)
 
-================================================================================
-FASE 1 -- CONSTANTES ENTERAS TIPADAS (tareas 4-19)
-================================================================================
+--- TESTS ---------------------------------------------------------------------
+tests/unit/Cc1BuildIdentityTests.cpp      NUEVO
+tests/unit/Cc1IntegerEvaluatorTests.cpp   NUEVO
+tests/unit/Cc1CorrectnessTests.cpp        NUEVO -- el arnes del milestone: fixtures de ejecucion,
+                                          negativos que exigen EL MENSAJE, y comprobaciones de IR
+tests/unit/ProjectTypeConversionTests.cpp +4 comprobaciones de rango de char
+tests/unit/Stage57LanguageTests.cpp       ?:, do-while, switch
+tests/language/l1_conditional, l2_dowhile, l3_switch      NUEVAS
+tests/cc1/c1_constants ... c12_pointer_arith              NUEVAS (12 fixtures de ejecucion)
 
-src/Frontend/ProjectTypeConversion.cpp
-    ~ constantFits: `builtin:char` separado de `builtin:ushort` y limitado a
-      uint8_t. C-005.
-      Era el camino por el que `switch (unChar) { case 65: case 321: }` pasaba el
-      frontend y le daba a LLVM dos casos `i8 65` identicos.
-
-tests/unit/ProjectTypeConversionTests.cpp
-    + 4 casos: 255 cabe en char, 256 y 321 no, 65535 sigue cabiendo en ushort.
-
-include/nativesharp/Frontend/ProjectIntegerEvaluator.h   NUEVO
-src/Frontend/ProjectIntegerEvaluator.cpp                 NUEVO
-    EL INVARIANTE: una constante entera es SIEMPRE el par (bits, typeKey).
-    Nunca un int64_t suelto. Toda operacion normaliza antes de devolver, asi que
-    los bits que salen son los que el backend materializara.
-
-    normalize(bits, typeKey)  trunca al ancho y extiende el signo. C-001.
-    cast                      re-normaliza al tipo destino. C-001.
-    / y %                     ramifican por signedness; nullopt si divisor 0 o si
-                              es minimo-con-signo / -1. C-002, C-003.
-    >>                        logico para sin signo (trunca al ancho ANTES de
-                              desplazar), aritmetico para con signo. C-002.
-    << y >>                   resultado con el tipo del operando IZQUIERDO;
-                              contador validado contra el ancho de ESE tipo. C-004.
-    + - * & | ^               sobre el gemelo sin signo, envuelven en vez de UB.
-
-    ProjectConstantMemberResolver: interfaz de tres metodos (resolver miembro,
-    describirlo, resolver clave de tipo). El evaluador NO conoce
-    ProjectMethodBodyModel.
-
-include/nativesharp/Frontend/ProjectMethodBodyModel.h
-    + #include ProjectIntegerEvaluator.h
-    + #include <functional>
-    ~ foldIntegerConstantExpression -> foldIntegerConstant, devuelve
-      std::optional<ProjectIntegerValue> en vez de std::optional<std::int64_t>
-    + class ConstantMemberResolver (adaptador anidado)
-
-src/Frontend/ProjectMethodBodyModel.cpp
-    - los ~115 lineas del plegador propio: BORRADAS.
-    + foldIntegerConstant() delega en ProjectIntegerEvaluator
-    + ConstantMemberResolver::resolveConstantMember / describeConstantMember /
-      resolveTypeKey
-    ~ analyzeSwitch: CC1-106/CC1-107. La etiqueta plegada se NORMALIZA al tipo
-      gobernante ANTES de entrar en seenValues y de compararse, y es el valor ya
-      canonico el que viaja al binding. Si el binding llevara el valor sin
-      normalizar, el chequeo de duplicados estaria protegiendo un numero distinto
-      del que acaba en la instruccion.
-
-tests/unit/Cc1IntegerEvaluatorTests.cpp                  NUEVO
-    37 checks. Anchos y signo de los diez tipos integrales | normalize en los
-    casos frontera (321->char, 300->byte, 0xFFFF->short con signo,
-    0x80000000->int.MinValue) | overflow envolvente | division y modulo SIN SIGNO
-    con bit 63 | division por cero y minimo/-1 rechazados | shift logico vs
-    aritmetico | shift fuera de rango | tipos por sufijo | formas no constantes.
-
-tests/cc1/c1_constants/{c1_constants.nsproj,Main.ns}     NUEVO
-    Ejecucion, 42. Gobernantes int, byte y char. Etiquetas: constantes con shift,
-    suma sobre otro const, mascara, `1 << 6`, `100 / 3`, `100 % 7`, negativa, y
-    `(byte)300` que se normaliza a 44.
+--- ARNES ---------------------------------------------------------------------
+run_windows_checklist.bat   12 run_case nuevos; limpieza previa de _logs y del arbol de build
+                            muerto build-msvc; build-clang NO se toca (sigue incremental)
+verify_manifest.py          + --write (generador; NO existia), --clean (tarea 68), --audit.
+                            La REGLA de que entra en el manifiesto queda escrita por primera vez.
+                            --clean ARCHIVA en _sandbox/ en vez de borrar: borrar es una decision
+                            que no se deshace sin git, y estos archivos son el registro de por
+                            donde paso el trabajo. _sandbox/ queda fuera del manifiesto.
+                            El manifiesto se escribe con LF explicito: sin eso, write_text en
+                            Windows mete CRLF y la verificacion falla entera fuera de Windows,
+                            porque cada RUTA queda con un \r pegado al final
 
 
 ================================================================================
-FASE 2 -- FLUJO (tareas 20-31)
+LO QUE NO SE TOCO, Y POR QUE
 ================================================================================
 
-include/nativesharp/Frontend/ProjectMethodBodyModel.h
-    + OwnershipFlowSnapshot analyzeBranchState(entry, work)
-    + void commitBranchJoin(left, right)
-      Convierten el patron capture/restore/join en algo que se LLAMA en vez de
-      algo que se RECUERDA. `case IfStatement` ya lo hacia bien; ni `?:` ni `&&`
-      ni `||` se acordaron.
+P-001/P-002 (mini-parser de type seeds) y A-001/A-002 (frontend canonico unico, frontera
+backend-neutral) siguen abiertos. Ninguno cierra un P1 y cada uno cambia la FORMA del compilador.
+Meterlos en un milestone de correccion habria significado hacerlos mal o no terminar el resto.
 
-src/Frontend/ProjectMethodBodyModel.cpp
-    + analyzeBranchState / commitBranchJoin
-    ~ case ConditionalExpression  F-001 y F-002.
-        - las dos ramas se analizan CADA UNA desde el estado tras la condicion,
-          y el estado posterior es su union.
-        - mergeOwnership(): el resultado conserva una propiedad de ownership solo
-          si AMBAS ramas coinciden. Origen concreto solo si nombran el mismo.
-    ~ analyzeBinary  F-003 y F-004.
-        - `&&` y `||` analizan el RHS como RAMA; el estado posterior une
-          "RHS evaluado" con "RHS no evaluado".
-        - el resto de operadores sigue analizando los dos operandos siempre.
-    ~ case DoWhileStatement / WhileStatement  F-005.
-        - flag isDoWhile. Dos diferencias y solo dos:
-          (1) la condicion se analiza DESPUES del cuerpo, sobre el back-edge;
-          (2) NO se incluye loopEntry en el join posterior, porque el camino de
-              cero iteraciones no existe.
-        - si el back-edge es inalcanzable, la condicion se analiza igual en una
-          sonda desechable: el HIR va a recorrer esa sintaxis y necesita su
-          binding de tipo.
-        - DESVIACION DELIBERADA de la tarea 28, que pedia dos case separados. Lo
-          unico distinto son esas dos cosas; el LoopContext, la union de estados
-          de continue y las ~60 lineas de RAII a traves del back-edge son
-          identicas. Duplicarlas daria dos copias de la parte dificil que habria
-          que mantener en paso para siempre.
-
-tests/cc1/c2_ternary_ownership/{...nsproj,Main.ns}       NUEVO
-    Ejecucion, 42. `raii string r = c ? (p + "A") : (p + "B")` -- la linea que no
-    compilaba. Anidado, y un owner elegido por ternario dentro de un bucle para
-    que la destruccion se mida al ejecutar.
-
-tests/cc1/c3_dowhile_flow/{...nsproj,Main.ns}            NUEVO
-    Ejecucion, 42. Variable asignada solo en el cuerpo y leida despues | condicion
-    que lee algo asignado en el cuerpo | `while (false)` que corre una vez |
-    continue | break.
-
-
-================================================================================
-SUITE DEL MILESTONE
-================================================================================
-
-tests/unit/Cc1CorrectnessTests.cpp                       NUEVO
-    Arnes checkFixture / checkRejected / checkAccepted.
-
-    POSITIVAS (compilan y ejecutan a -O0 y -O2, devuelven 42):
-        cc1-c1-constants  cc1-c2-ternary-ownership  cc1-c3-dowhile-flow
-
-    NEGATIVAS (fallan Y se comprueba POR QUE):
-        cc1-char-range                     char c = 321
-        cc1-switch-dup-narrowed            case 65 + case (byte)321
-        cc1-switch-dup-cast                case 44 + case (byte)300
-        cc1-ternary-definite-assignment    c ? (x = 1) : 0
-        cc1-andand-definite-assignment     c && (x = 1) == 1
-        cc1-oror-definite-assignment       c || (x = 1) == 1
-        cc1-while-flow-still-strict        el gemelo: `while` SIGUE rechazando
-        cc1-ternary-ownership-mixed        una rama owned, la otra alias
-
-    ACEPTADA (la forma que antes no compilaba):
-        cc1-ternary-ownership-both
-
-run_windows_checklist.bat
-    + seccion `--- milestone CC1 fixtures ---` con las tres positivas.
-    (CRLF preservado: 279 CRLF, 0 LF sueltos.)
-
-
-================================================================================
-CORRECCIONES TRAS LA PRIMERA CORRIDA (tareas 74, 75, 76)
-================================================================================
-
-CMakeLists.txt
-    ~ nsc.version: el regex asertaba `stage 55`. La tarea 2 subio la stage a 57 y no busque quien
-      mas afirmaba el valor viejo. Corregido a `stage 57`, y AHORA EXIGE TAMBIEN la linea
-      `build <id>` con [0-9a-f][0-9a-f]+ -- no `.*`, porque un @NSC_BUILD_ID@ sin sustituir deja
-      la linea vacia y un `.*` la aceptaria igual.
-
-tests/unit/Cc1CorrectnessTests.cpp
-    ~ cc1-ternary-ownership-mixed esperaba el fragmento "raii local". El mensaje real es
-      "RAII ownership cannot be copied or borrowed". El programa SI se rechazo -- el
-      comportamiento era correcto y la cadena estaba mal.
-      Es exactamente por esto que la mitad negativa comprueba el MENSAJE y no solo el fallo: un
-      test que solo mirara "fallo" habria pasado en verde sin revelar que yo no sabia que
-      diagnostico estaba disparando.
-
-src/Driver/Driver.cpp
-    ~ printHelp se describia a si mismo como compilador de Stage 55, sin mencion de Stage 56 ni 57.
-      Nadie lo asertaba; aparecio al barrer el arbol buscando quien afirmaba `stage 55`, que es el
-      chequeo que debi hacer ANTES de cambiar la constante.
-      Con ID propio (tarea 76) y no como arreglo "de paso": la regla de alcance del documento de
-      origen lo prohibe explicitamente.
-
-
-================================================================================
-NOTA DE HIGIENE -- borrar a mano (tarea 68, fase 5):
-================================================================================
-    68_triage_de_bugs_y_fix_b3.md
-    68_triage_de_bugs_y_cuatro_fixes.md
-    FIX_B3_CHANGED_FILES.txt
-    FIX_B2_B3_B5_B8_CHANGED_FILES.txt
-    70_roadmap_consolidado.md
-    8
+Tareas 77-80 abiertas con ID propio: el conteo de checks invisible en verde; el enum que mide 8 en
+una funcion y 4 en otra de la misma clase (SIN MEDIR); ++/-- ausente para todos los tipos; y
+p->campo sin bajar.

@@ -4885,8 +4885,91 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         expression->range(),
                         "class allocation requires object-construction syntax new C(args) in Stage 34");
                 }
+
+                // CC1 fases 4B y 4C. Hasta aqui llegan las dos formas que quedaban SIN VALIDAR y
+                // sin binding: `stackalloc T[n]` y el `new T` escalar. Las dos ponian `T*`,
+                // marcaban valido, y morian despues al bajar -- `stackalloc` en el `default` del
+                // HIR y `new T` en un error que decia literalmente que el raw new "remains outside
+                // this pipeline". Mitad delantera presente, feature ausente; la misma forma que
+                // `sizeof` en la fase 4A.
+                //
+                // AVISO SOBRE EL TEXTO DE LA TAREA 47. Pedia "portar a ProjectMethodBodyModel las
+                // validaciones de stackalloc DEL PIPELINE CLASICO". Barrido completo del arbol:
+                // `stackalloc` solo aparece en el lexer, el parser, el AST y este caso. NO HAY
+                // pipeline clasico del que portar nada, igual que no lo habia para `sizeof`. Las
+                // validaciones de abajo estan ESCRITAS, no portadas, y cada una dice por que
+                // existe. (DiagnosticId::InvalidStackalloc llevaba tiempo declarado y sin usar en
+                // ningun sitio -- ahora se usa.)
+                const bool isStackalloc = expression->kind() == ast::AstNodeKind::StackallocExpression;
+                const bool isRawNew = expression->kind() == ast::AstNodeKind::NewExpression && !classNew;
+                bool allocationValid = !isErrorType(element) && !classNew;
+
+                if (isStackalloc || isRawNew)
+                {
+                    // Sin tamano no hay reserva posible, ni en la pila ni en el monton.
+                    if (element == "builtin:void")
+                    {
+                        diagnostics.report(
+                            isStackalloc ? diagnostics::DiagnosticId::InvalidStackalloc
+                                         : diagnostics::DiagnosticId::InvalidAllocationType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            isStackalloc ? "stackalloc requires an element type with a size; void has none"
+                                         : "new requires an element type with a size; void has none");
+                        allocationValid = false;
+                    }
+
+                    // Un elemento con destructor o con campos `owned` tiene un ciclo de vida que
+                    // alguien debe cerrar. Ni la memoria cruda del monton ni un buffer de pila lo
+                    // cierran: no hay nada que llame al destructor al salir del ambito, asi que el
+                    // recurso se filtraria -- y en el caso de la pila, la memoria desaparece bajo
+                    // los pies del objeto. Se prohibe en vez de inventar una semantica de
+                    // destruccion nueva para el nivel crudo.
+                    if (allocationValid && !elementTypeHasTrivialLifetime(element))
+                    {
+                        diagnostics.report(
+                            isStackalloc ? diagnostics::DiagnosticId::InvalidStackalloc
+                                         : diagnostics::DiagnosticId::InvalidAllocationType,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            std::string(isStackalloc ? "stackalloc" : "raw new") +
+                                " requires an element type with no destructor and no owned fields; '" +
+                                element + "' owns a lifetime that raw storage cannot discharge");
+                        allocationValid = false;
+                    }
+                }
+
+                if (isStackalloc)
+                {
+                    // El contador. La forma dinamica de `new T[n]` ya lo exige arriba; esta rama
+                    // no lo hacia, asi que `stackalloc int[unaCadena]` tipaba sin una palabra.
+                    if (!count.valid || !ProjectTypeConversion::isIntegral(count.typeKey) ||
+                        count.typeKey == "builtin:bool")
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidStackalloc,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "stackalloc requires an integral element count");
+                        allocationValid = false;
+                    }
+                }
+
                 result.typeKey = element + '*';
-                result.valid = !isErrorType(element) && !classNew;
+                result.valid = allocationValid;
+
+                if (allocationValid && (isStackalloc || isRawNew))
+                {
+                    MethodCoreBinding binding;
+                    binding.kind = isStackalloc ? MethodCoreOperationKind::StackAllocation
+                                                : MethodCoreOperationKind::RawAllocation;
+                    binding.syntax = expression;
+                    binding.methodMemberOrdinal = methodMemberOrdinal;
+                    binding.scopeOrdinal = scopeOrdinal;
+                    binding.resultTypeKey = result.typeKey;
+                    binding.elementTypeKey = element;
+                    coreBindings_.push_back(std::move(binding));
+                }
             }
             break;
         case ast::AstNodeKind::DeleteExpression:
@@ -8317,6 +8400,98 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
         return result;
     }
 
+    // CC1 fase 4D -- aritmetica de punteros. VA ANTES de la rama aritmetica, y el orden importa:
+    // `commonNumericType` no conoce los punteros, asi que si esto fuera despues, `p + 1` ya habria
+    // muerto en "binary operator requires compatible numeric operands".
+    //
+    // Lo que se acepta, y nada mas: `p + i`, `i + p`, `p - i` y `p - q` con q del mismo tipo. No se
+    // acepta `p + q` (sumar dos direcciones no significa nada), ni multiplicar o dividir punteros,
+    // ni aritmetica sobre `void*` -- un paso de tamano cero no es un paso.
+    //
+    // POR QUE ESTO IMPORTA MAS DE LO QUE PARECE: `p[i]` ya funcionaba (RawElement) y `*(p + i)` no
+    // compilaba. Son la misma direccion escrita de dos formas, y el nivel crudo de este lenguaje
+    // existe justamente para expresar formas de C, donde la segunda es tan comun como la primera.
+    // La fixture c12 comprueba que las dos dan el MISMO valor, que es la unica manera de fijar que
+    // siguen siendo la misma cosa.
+    {
+        const bool leftIsPointer = left.valid && left.typeKey.ends_with("*");
+        const bool rightIsPointer = right.valid && right.typeKey.ends_with("*");
+        const bool plus = operation == lexer::TokenKind::Plus;
+        const bool minus = operation == lexer::TokenKind::Minus;
+
+        if ((leftIsPointer || rightIsPointer) && (plus || minus))
+        {
+            const bool bothPointers = leftIsPointer && rightIsPointer;
+            const std::string pointerTypeKey = leftIsPointer ? left.typeKey : right.typeKey;
+            const std::string element = pointerTypeKey.substr(0, pointerTypeKey.size() - 1);
+
+            if (element == "builtin:void")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "pointer arithmetic requires a pointer to a sized type; 'void*' has no element size");
+                return result;
+            }
+
+            if (bothPointers)
+            {
+                // Diferencia. Solo entre punteros del MISMO tipo: restar direcciones de tipos
+                // distintos no tiene un paso con el que dividir.
+                if (!minus || left.typeKey != right.typeKey)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        minus ? "pointer difference requires both operands to have the same pointer type"
+                              : "two pointers cannot be added; only pointer +/- integer and pointer - pointer are defined");
+                    return result;
+                }
+                // Con signo: q - p puede ser negativo. `nint` es del ancho del puntero, que es
+                // exactamente el rango que la diferencia puede alcanzar.
+                result.typeKey = "builtin:nint";
+            }
+            else
+            {
+                const std::string& offsetTypeKey = leftIsPointer ? right.typeKey : left.typeKey;
+                if (!ProjectTypeConversion::isIntegral(offsetTypeKey) || offsetTypeKey == "builtin:bool")
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "pointer arithmetic requires an integral offset");
+                    return result;
+                }
+                // `i - p` no existe: restarle una direccion a un entero no significa nada.
+                if (minus && !leftIsPointer)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "an integer minus a pointer is not defined; write pointer - integer");
+                    return result;
+                }
+                result.typeKey = pointerTypeKey;
+            }
+
+            MethodCoreBinding binding;
+            binding.kind = MethodCoreOperationKind::PointerArithmetic;
+            binding.syntax = expression;
+            binding.methodMemberOrdinal = methodMemberOrdinal;
+            binding.scopeOrdinal = scopeOrdinal;
+            binding.resultTypeKey = result.typeKey;
+            binding.elementTypeKey = element;
+            coreBindings_.push_back(std::move(binding));
+
+            result.valid = true;
+            return result;
+        }
+    }
+
     if (isArithmetic(operation))
     {
         const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
@@ -10208,6 +10383,45 @@ bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexc
     return false;
 }
 
+// CC1 fases 4B/4C -- ver la declaracion para el criterio.
+//
+// Se pregunta por DOS cosas, y las dos por separado porque son dos razones distintas:
+//
+//   * un destructor declarado: alguien escribio codigo que TIENE que correr al final de la vida
+//     del objeto, y en memoria cruda no hay quien lo llame;
+//   * un campo `owned`: el objeto posee otra asignacion, y liberar (o abandonar) el contenedor
+//     sin descargarla la filtra.
+//
+// Los builtins y los punteros son triviales por construccion. Un enum tambien. Una CLASE como
+// elemento tampoco es problema: lo que se reserva es un buffer de REFERENCIAS, no de objetos --
+// las referencias son punteros y no poseen nada por si mismas.
+bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view typeKey) const noexcept
+{
+    if (memberModel_ == nullptr || inheritanceModel_ == nullptr) return true;
+    if (!typeKey.starts_with("type:")) return true;
+
+    const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+    if (!typeOrdinal.has_value()) return true;
+    if (nameLookup_ != nullptr && *typeOrdinal < nameLookup_->namedTypes().size())
+    {
+        const NamedTypeDeclarationKind kind = nameLookup_->namedTypes()[*typeOrdinal].kind;
+        // Una referencia no posee nada por si misma; un enum es un entero con nombre.
+        if (kind != NamedTypeDeclarationKind::Struct) return true;
+    }
+
+    for (const ClassMemberSymbol& member : memberModel_->members())
+    {
+        if (member.declaringTypeOrdinal != *typeOrdinal) continue;
+        if (member.kind == ClassMemberKind::Destructor) return false;
+        if (member.kind == ClassMemberKind::Field && !member.isStatic &&
+            member.declaredOwnership == sema::OwnershipKind::Owned)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool ProjectMethodBodyModel::isExternCDelegateTypeKey(std::string_view typeKey) const noexcept
 {
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
@@ -10553,6 +10767,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::ObjectTypeName: return "object-type-name";
         case MethodCoreOperationKind::ObjectReferenceHash: return "object-reference-hash";
         case MethodCoreOperationKind::SizeofConstant: return "sizeof-constant";
+        case MethodCoreOperationKind::StackAllocation: return "stack-allocation";
+        case MethodCoreOperationKind::RawAllocation: return "raw-allocation";
+        case MethodCoreOperationKind::PointerArithmetic: return "pointer-arithmetic";
         case MethodCoreOperationKind::ClockQueryCounter: return "clock-query-counter";
         case MethodCoreOperationKind::ClockQueryFrequency: return "clock-query-frequency";
         case MethodCoreOperationKind::ClockQuerySystemFileTime: return "clock-query-system-filetime";

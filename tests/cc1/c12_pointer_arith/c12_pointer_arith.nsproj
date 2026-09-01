@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c12_pointer_arith</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

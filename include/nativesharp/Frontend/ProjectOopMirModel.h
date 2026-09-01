@@ -47,6 +47,15 @@ enum class ProjectOopMirNodeKind
     // C2.1 "fixed arrays" -- see ProjectOopHirNodeKind::RawElementAddress. `immediate` carries the
     // element size in bytes, `alignment` its alignment.
     RawElementAddress,
+    // CC1 fase 4B. `immediate` = tamano del elemento, `alignment` = su alineacion. Un hijo: el
+    // contador.
+    StackAllocation,
+    // CC1 fase 4C. `immediate` = tamano del elemento. Sin hijos.
+    RawAllocation,
+    // CC1 fase 4D. `immediate` = tamano del elemento (el paso). `operation` lleva `+` o `-`. Dos
+    // hijos. El tipo del nodo distingue desplazamiento (`T*`) de diferencia (`builtin:nint`), que
+    // es la misma distincion que ya hizo el frontend y no una decidida otra vez aqui.
+    PointerArithmetic,
     // C6 -- see ProjectOopHirNodeKind::ValueConstruction. `immediate` is the struct's size,
     // `alignment` its alignment, `calleeName` the constructor to run (empty for a default).
     ValueConstruct,

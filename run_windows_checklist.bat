@@ -185,6 +185,9 @@ call :run_case "%CC%\c6_catch_return\c6_catch_return.nsproj" cc1_c6_catch_return
 call :run_case "%CC%\c7_finally_switch\c7_finally_switch.nsproj" cc1_c7_finally_switch 42 "%FIXLOG%"
 call :run_case "%CC%\c8_loop_catch_switch\c8_loop_catch_switch.nsproj" cc1_c8_loop_catch_switch 42 "%FIXLOG%"
 call :run_case "%CC%\c9_sizeof\c9_sizeof.nsproj" cc1_c9_sizeof 42 "%FIXLOG%"
+call :run_case "%CC%\c10_stackalloc\c10_stackalloc.nsproj" cc1_c10_stackalloc 42 "%FIXLOG%"
+call :run_case "%CC%\c11_raw_new\c11_raw_new.nsproj" cc1_c11_raw_new 42 "%FIXLOG%"
+call :run_case "%CC%\c12_pointer_arith\c12_pointer_arith.nsproj" cc1_c12_pointer_arith 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 

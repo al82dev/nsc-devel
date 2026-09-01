@@ -417,6 +417,18 @@ enum class MethodCoreOperationKind
     // si tiene el modelo de layout y le pregunta a valueLayoutForTypeKey, el mismo servicio
     // canonico que ya comparten el stride de un arreglo y el offset de un campo.
     SizeofConstant,
+    // CC1 fase 4B -- `stackalloc T[n]`. `elementTypeKey` es T; `resultTypeKey` es "T*". Igual que
+    // SizeofConstant, el binding NO lleva el tamano: el modelo semantico corre antes que
+    // ProjectObjectLayoutModel. El tamano y la alineacion los resuelve el MIR con elementLayout.
+    StackAllocation,
+    // CC1 fase 4C -- `new T` escalar (no clase, no arreglo). Misma forma: `elementTypeKey` es T,
+    // `resultTypeKey` es "T*", el tamano lo resuelve el MIR.
+    RawAllocation,
+    // CC1 fase 4D -- `p + i`, `i + p`, `p - i` y `p - q`. `elementTypeKey` es el tipo APUNTADO, que
+    // es lo que da el paso; `resultTypeKey` es "T*" para las tres primeras y "builtin:nint" para la
+    // diferencia. La operacion concreta se deduce en el HIR del token del nodo de sintaxis, que ya
+    // esta ahi -- no hace falta un discriminante propio en el binding.
+    PointerArithmetic,
     // C8 "type root", struct half: the three root members a STRUCT gets, synthesized by the
     // compiler and resolved statically -- no vtable, no boxing, not one byte of layout change.
     // A struct that declares its own member of the same name wins; these only fill the gap.
@@ -1354,6 +1366,11 @@ private:
     // share that prefix, so the prefix alone answers nothing. Mirrors the identical predicate the
     // LLVM lowerer keeps for mapping an enum key to i32.
     bool isEnumTypeKey(std::string_view typeKey) const noexcept;
+    // CC1 fases 4B/4C. "Este tipo puede vivir en memoria cruda?" -- es decir, salir de ambito o
+    // liberarse sin que nadie tenga que llamar a nada. Un tipo con destructor, o con un campo
+    // `owned`, NO puede: su ciclo de vida necesita que alguien lo cierre, y ni un buffer de pila
+    // ni un bloque del monton crudo lo cierran.
+    bool elementTypeHasTrivialLifetime(std::string_view typeKey) const noexcept;
     static bool isRawPointerTypeKey(std::string_view typeKey) noexcept;
     static bool isPointerSizedIntegralTypeKey(std::string_view typeKey) noexcept;
     bool canRuntimeReferenceConvert(

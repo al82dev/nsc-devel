@@ -104,6 +104,17 @@ enum class ProjectOopHirNodeKind
     DefaultValue,
     StringLiteral,
     ArrayAllocation,
+    // CC1 fase 4B -- `stackalloc T[n]`. Un hijo: el contador. `elementTypeKey` es T. El MIR le
+    // pone el tamano y la alineacion; el backend emite un alloca de arreglo.
+    StackAllocation,
+    // CC1 fase 4C -- `new T` escalar. Un hijo NO tiene: es una reserva de un elemento. El MIR le
+    // pone el tamano; el backend llama al allocador.
+    RawAllocation,
+    // CC1 fase 4D -- `p + i`, `i + p`, `p - i`, `p - q`. Dos hijos, en el orden en que se
+    // escribieron. `operation` lleva el token (`+` o `-`), `elementTypeKey` el tipo apuntado.
+    // Cuando los dos hijos son punteros es una DIFERENCIA y el tipo del nodo es `builtin:nint`;
+    // en cualquier otro caso es un desplazamiento y el tipo es `T*`.
+    PointerArithmetic,
     ArrayLength,
     ArrayElementValue,
     ArrayElementAddress,

@@ -23,14 +23,14 @@ un P1 y cada uno es un proyecto propio.
 | 2 — Flujo | 20–31 | **12 / 12** |
 | 3 — EH | 32–39 | **8 / 8** |
 | 4A — `sizeof` | 40–46 | **8 / 8** (incluye 46b) |
-| 4B — `stackalloc` | 47–52 | 0 / 6 |
-| 4C — raw `new T` | 53–56 | 0 / 4 |
-| 4D — aritmética de punteros | 57–64 | 0 / 8 |
-| 4E — cierre de paridad | 65–66 | 0 / 2 |
-| 5 — Reproducibilidad y cierre | 67–73 | 0 / 7 |
-| **Total** | **1–78** | **51 / 78** |
+| 4B — `stackalloc` | 47–52 | **6 / 6** |
+| 4C — raw `new T` | 53–56 | **4 / 4** |
+| 4D — aritmética de punteros | 57–64 | **7 / 7** · 62 → tarea 79 |
+| 4E — cierre de paridad | 65–66 | **2 / 2** |
+| 5 — Reproducibilidad y cierre | 67–73 | 5 / 7 · 67, 68 y 72 esperando tu corrida |
+| **Total** | **1–80** | **75 / 80** |
 
-**Gates:** ~~G1 tras 19~~ · ~~G2 tras 31~~ · ~~G3 tras 39~~ · G4 tras 66 (4A hecha; faltan 4B–4E) · G5 tras 73.
+**Gates:** ~~G1 tras 19~~ · ~~G2 tras 31~~ · ~~G3 tras 39~~ · ~~G4 tras 66~~ · G5 tras 73.
 
 Ningún gate pasa con una tarea de su fase abierta.
 
@@ -38,6 +38,50 @@ Ningún gate pasa con una tarea de su fase abierta.
 checklist **45/45 Failed 0**, triage 16/16, las tres fixtures CC1 en **42 a `-O0` y `-O2`**.
 `nsc.version` (#127) y `nsc.cc1.correctness` (#59) pasan: los dos fallos de la corrida anterior
 eran de EXPECTATIVA DE TEST y las tareas 74–76 los cerraron. Ver §6 de `73_cc1_fases_0_1_2.md`.
+
+**Fase 5 — escrita, pendiente de que la corras.** Las tareas 69, 70, 71 y 73 están cerradas
+(documentos). Las 67, 68 y 72 necesitan tu máquina:
+
+```
+python verify_manifest.py --clean --write
+run_windows_checklist.bat
+```
+
+El primero borra los seis archivos obsoletos y regenera el manifiesto **mostrando qué cambió**, y
+verifica al terminar. El segundo es la corrida de cierre.
+
+**La tarea 67 tampoco se podía hacer como estaba escrita:** decía «regenerar con
+`verify_manifest.py`», y ese script **sólo sabía verificar** — no había generador en el árbol. Es
+la tercera tarea apoyada en una pieza que no existe, tras la 40 y la 47. El generador está escrito
+ahora, y con él la REGLA de qué entra en el manifiesto, que hasta hoy sólo existía implícita en sus
+1109 rutas.
+
+**G4 — CERRADO. Corrida de Windows del 2026-08-31 18:42:** checklist **63/63, Failed 0** (eran 57;
+las seis nuevas son `c10_stackalloc`, `c11_raw_new` y `c12_pointer_arith` a `-O0` y `-O2`, **todas
+en 42**), `ctest` **242/242, 100%**, triage 16/16, build con **cero avisos**.
+`nsc.cc1.correctness` sube de 29.88 s a **33.27 s**.
+
+**Los cuatro riesgos anotados antes de la corrida: ninguno se materializó.** `(*record).First = 7`
+sobre memoria del montón; `nint` comparado con literales negativos; el paso de 16 de un struct con
+relleno en `stackalloc`; y la alineación del `double` — que era el más traicionero, porque un
+acceso desalineado en x64 puede salir como valor incorrecto en vez de como crash.
+
+**Bloque G4 — implementado de una.** Fases 4B (`stackalloc`), 4C (raw `new T`),
+4D (aritmética de punteros) y 4E (cierre de paridad) implementadas de una, porque las tres primeras
+son el mismo hueco atravesando las mismas cuatro capas. Los cinco `.cpp` compilan con **cero
+avisos** bajo `-Wall -Wextra`; barrido del backend: 143 símbolos `LLVM*` usados, **0 faltantes**.
+Tres fixtures nuevas (`c10`, `c11`, `c12`) y **ocho** negativos. Ver `76_cc1_fases_4b_4c_4d_4e.md`.
+
+**Dos tareas resultaron no implementables como estaban escritas, y las dos salen con ID propio:**
+
+| ID | Qué se midió |
+|---|---|
+| 79 | La tarea 62 pedía «extender el lowering de `++`/`--` para punteros». **Ese lowering no existe para NINGÚN tipo** — el HIR lo rechaza también para un `int`. Hacerlo sólo para punteros dejaría `++p` funcionando y `++i` no. Implementarlo entero es una fase propia, fuera de CC1 |
+| 80 | `p->campo` no se baja en el pipeline OOP. El parser lo acepta y el modelo semántico lo tipa; el HIR no lo tenía. Es la **cuarta** forma con la mitad delantera presente y la trasera ausente de este milestone. Ahora tiene mensaje propio que nombra `(*p).campo` como la forma equivalente que sí funciona (tarea 65); arreglarla es la 80 |
+
+**Y la tarea 47 tenía la misma premisa falsa que la 40:** pedía «portar las validaciones del
+pipeline clásico», y `stackalloc` no existe en ningún pipeline clásico de este árbol. Segunda vez.
+El documento de origen atribuye repetidamente a un «pipeline clásico» cosas que no están aquí.
 
 **Fase 4A — CERRADA. Corrida de Windows del 2026-08-31 16:06:** checklist **57/57, Failed 0**
 (eran 55; las dos nuevas son `cc1_c9_sizeof` a `-O0` y `-O2`, **ambas en 42**), `ctest`
@@ -67,6 +111,8 @@ límite del frontend. Ver `74_cc1_fase3_eh.md`.
 | 74 | [x] | `nsc.version` asertaba `stage 55`; regex actualizado a `stage 57` **más** la línea `build <id>`, para que la generación del build id también se mida ahí |
 | 75 | [x] | `cc1-ternary-ownership-mixed` esperaba el fragmento `raii local`; el mensaje real es `RAII ownership cannot be copied or borrowed`. El rechazo ocurrió como debía — me equivoqué de cadena, no de comportamiento |
 | 76 | [x] | `nsc --help` se describía como compilador de Stage 55. Añadidas las descripciones de Stage 56 y 57 (ID propio, no arreglo "de paso") |
+| 80 | [ ] | **`p->campo` no se baja en el pipeline OOP.** Cuarta forma con la mitad delantera presente y la trasera ausente, tras `sizeof`, `stackalloc` y raw `new`. La tarea 65 le dio mensaje propio nombrando `(*p).campo`; **implementarla** es esto. Fase propia, fuera de CC1 |
+| 79 | [ ] | **`++`/`--` no se baja en el pipeline OOP, para ningún tipo.** El HIR contesta «does not yet lower ++/--» también para un `int`. Descubierto al ir a hacer la tarea 62, que daba por hecho que existía. Implementarlo para todos los tipos es una fase propia, fuera de CC1 |
 | 78 | [ ] | **Divergencia de tamaño de `enum`, encontrada al atar `sizeof` al servicio de layout.** En `ProjectObjectLayoutModel`, `layoutNamedType` contesta **4** para un enum (`BuiltinLayoutKind::Enum`) y `valueLayoutForTypeKey` contesta **8**, porque un enum cae por el `return {{8, 8}}` de las formas con forma de referencia. Dos funciones de la misma clase, el mismo tipo, respuestas distintas — dentro de la función cuyo propio comentario promete que «un stride y un offset no pueden calcularse por dos reglas distintas». `valueLayoutForTypeKey` es la que calcula el stride de los arreglos (`ProjectOopMirModel::elementLayout`) y los offsets de inicializador agregado. **Medir primero** qué hace el binario con un `Color[]` antes de tocar nada; la fixture `c9_sizeof` deliberadamente NO asierta `sizeof(Color)` hasta entonces. **Fase 4E** (cierre de paridad), con ID propio |
 | 77 | [ ] | **Hueco de observabilidad, encontrado al cerrar la fase 3.** `TestContext::result()` imprime `PASS: <n> checks` en stdout, pero `ctest` no lo captura en `02_ctest.log`, así que desde los logs no se puede ver CUÁNTAS comprobaciones corrió una suite — sólo que no falló ninguna. Un bloque de tests que desapareciera de un `.cpp` pasaría en verde sin que nadie lo notara. Hacer que el checklist ejecute los binarios de test directamente y registre el conteo en `SUMMARY.txt`. **Fase 5**, con ID propio y no como arreglo "de paso" |
 
@@ -180,53 +226,53 @@ cuerpo de un catch». Detalle completo en `74_cc1_fase3_eh.md` §2.
 
 | # | Est. | ID | Tarea | Hecho cuando |
 |---|---|---|---|---|
-| 47 | [ ] | M-002 | Portar a `ProjectMethodBodyModel` las validaciones de `stackalloc` del pipeline clásico: contador integral, elemento no `void`, y rechazo de elementos con destructor o con campos `owned` | Tarea 52 pasa |
-| 48 | [ ] | M-001 | Añadir `ProjectOopHirNodeKind::StackAllocation`, su nombre en `projectOopHirNodeKindName`, y el `case StackallocExpression` en `lowerExpression` que emita el nodo con `elementTypeKey` y el conteo como hijo | Ya no cae en el `default` |
-| 49 | [ ] | M-001 | Añadir `ProjectOopMirNodeKind::StackAllocation`, su nombre, el mapeo HIR→MIR, y la resolución de tamaño y alineación del elemento vía `elementLayout` en `convertNode` | `--dump-oop-mir` muestra el nodo con su stride |
-| 50 | [ ] | M-001 | Añadir `lowerStackAllocation` en `ProjectOopLlvmLowerer.cpp` con `LLVMBuildArrayAlloca` y la alineación del layout, y engancharlo en el dispatch de expresiones | Declarar antes en `LlvmCApi.h` lo que falte |
-| 51 | [ ] | M-001 | Añadir el fixture de ejecución `tests/cc1/c10_stackalloc/` que reserve un buffer, lo llene por índice y lo lea | Exit 42 a `-O0` y `-O2` |
-| 52 | [ ] | M-002 | Añadir el fixture negativo `cc1-stackalloc-owned-element`: `stackalloc` de un tipo con campos `owned` | Rechazado |
+| 47 | [x] | M-002 | Portar a `ProjectMethodBodyModel` las validaciones de `stackalloc` del pipeline clásico: contador integral, elemento no `void`, y rechazo de elementos con destructor o con campos `owned` | Tarea 52 pasa |
+| 48 | [x] | M-001 | Añadir `ProjectOopHirNodeKind::StackAllocation`, su nombre en `projectOopHirNodeKindName`, y el `case StackallocExpression` en `lowerExpression` que emita el nodo con `elementTypeKey` y el conteo como hijo | Ya no cae en el `default` |
+| 49 | [x] | M-001 | Añadir `ProjectOopMirNodeKind::StackAllocation`, su nombre, el mapeo HIR→MIR, y la resolución de tamaño y alineación del elemento vía `elementLayout` en `convertNode` | `--dump-oop-mir` muestra el nodo con su stride |
+| 50 | [x] | M-001 | Añadir `lowerStackAllocation` en `ProjectOopLlvmLowerer.cpp` con `LLVMBuildArrayAlloca` y la alineación del layout, y engancharlo en el dispatch de expresiones | Declarar antes en `LlvmCApi.h` lo que falte |
+| 51 | [x] | M-001 | Añadir el fixture de ejecución `tests/cc1/c10_stackalloc/` que reserve un buffer, lo llene por índice y lo lea | Exit 42 a `-O0` y `-O2` |
+| 52 | [x] | M-002 | Añadir el fixture negativo `cc1-stackalloc-owned-element`: `stackalloc` de un tipo con campos `owned` | Rechazado |
 
 ## Fase 4C — raw `new T`
 
 | # | Est. | ID | Tarea | Hecho cuando |
 |---|---|---|---|---|
-| 53 | [ ] | M-005 | Registrar un `MethodCoreBinding` nuevo `RawAllocation` en `ProjectMethodBodyModel` para el `new T` escalar no-clase, con `elementTypeKey` y tamaño resuelto | El binding existe |
-| 54 | [ ] | M-005 | Añadir `ProjectOopHirNodeKind::RawAllocation` y su `case` en `lowerExpression`, reemplazando el error `"Stage 41 OOP HIR only owns dynamic new T[count]"` cuando el binding sea `RawAllocation` | Ya no cae en el error |
-| 55 | [ ] | M-005 | Añadir `ProjectOopMirNodeKind::RawAllocation`, su mapeo, y `lowerRawAllocation` en el backend que llame a `__nativesharp_alloc` con el tamaño del elemento y devuelva `ptr` | El IR llama al allocador con el tamaño correcto |
-| 56 | [ ] | M-005 | Añadir el fixture de ejecución `tests/cc1/c11_raw_new/` con `new int`, escritura por `*p` y `delete p` | Exit 42 a `-O0` y `-O2` |
+| 53 | [x] | M-005 | Registrar un `MethodCoreBinding` nuevo `RawAllocation` en `ProjectMethodBodyModel` para el `new T` escalar no-clase, con `elementTypeKey` y tamaño resuelto | El binding existe |
+| 54 | [x] | M-005 | Añadir `ProjectOopHirNodeKind::RawAllocation` y su `case` en `lowerExpression`, reemplazando el error `"Stage 41 OOP HIR only owns dynamic new T[count]"` cuando el binding sea `RawAllocation` | Ya no cae en el error |
+| 55 | [x] | M-005 | Añadir `ProjectOopMirNodeKind::RawAllocation`, su mapeo, y `lowerRawAllocation` en el backend que llame a `__nativesharp_alloc` con el tamaño del elemento y devuelva `ptr` | El IR llama al allocador con el tamaño correcto |
+| 56 | [x] | M-005 | Añadir el fixture de ejecución `tests/cc1/c11_raw_new/` con `new int`, escritura por `*p` y `delete p` | Exit 42 a `-O0` y `-O2` |
 
 ## Fase 4D — aritmética de punteros
 
 | # | Est. | ID | Tarea | Hecho cuando |
 |---|---|---|---|---|
-| 57 | [ ] | M-006 | Añadir a `analyzeBinary`, antes de la rama `isArithmetic`, una rama de punteros que acepte `puntero + entero`, `entero + puntero`, `puntero - entero` y `puntero - puntero-del-mismo-tipo`, con resultado `T*` para las tres primeras y `builtin:nint` para la última, y que rechace `void*` en las cuatro | Tareas 63 y 64 pasan |
-| 58 | [ ] | M-006 | Registrar en esa rama un `MethodCoreBinding` nuevo `PointerArithmetic` con `elementTypeKey` y el discriminante de operación | El binding existe |
-| 59 | [ ] | M-006 | Añadir `ProjectOopHirNodeKind::PointerArithmetic` y su lowering en `lowerExpression`, con los dos operandos como hijos | Ya no cae en el `default` |
-| 60 | [ ] | M-006 | Añadir `ProjectOopMirNodeKind::PointerArithmetic`, su mapeo, y la resolución de `immediate` (tamaño del elemento) y `alignment` en `convertNode` vía `elementLayout` | `--dump-oop-mir` muestra el stride |
-| 61 | [ ] | M-006 | Añadir `lowerPointerArithmetic` en el backend: `LLVMBuildGEP2` con el tipo de elemento para suma y resta, y `LLVMBuildPtrDiff2` para la diferencia | Declarar antes en `LlvmCApi.h` lo que falte |
-| 62 | [ ] | M-006 | Extender `analyzeUnary` y el lowering de `PlusPlus`/`MinusMinus` para que un operando de tipo puntero use la misma infraestructura de `PointerArithmetic` con paso 1 | `++p` y `--p` compilan |
-| 63 | [ ] | M-006 | Añadir el fixture de ejecución `tests/cc1/c12_pointer_arith/` que recorra un buffer con `p + i`, `i + p`, `p - 1`, `++p`, `--p` y una diferencia `q - p`, y compruebe que `p[i]` y `*(p + i)` dan el mismo valor | Exit 42 a `-O0` y `-O2` |
-| 64 | [ ] | M-006 | Añadir el fixture negativo `cc1-pointer-arith-void`: aritmética sobre `void*` | Rechazado |
+| 57 | [x] | M-006 | Añadir a `analyzeBinary`, antes de la rama `isArithmetic`, una rama de punteros que acepte `puntero + entero`, `entero + puntero`, `puntero - entero` y `puntero - puntero-del-mismo-tipo`, con resultado `T*` para las tres primeras y `builtin:nint` para la última, y que rechace `void*` en las cuatro | Tareas 63 y 64 pasan |
+| 58 | [x] | M-006 | Registrar en esa rama un `MethodCoreBinding` nuevo `PointerArithmetic` con `elementTypeKey` y el discriminante de operación | El binding existe |
+| 59 | [x] | M-006 | Añadir `ProjectOopHirNodeKind::PointerArithmetic` y su lowering en `lowerExpression`, con los dos operandos como hijos | Ya no cae en el `default` |
+| 60 | [x] | M-006 | Añadir `ProjectOopMirNodeKind::PointerArithmetic`, su mapeo, y la resolución de `immediate` (tamaño del elemento) y `alignment` en `convertNode` vía `elementLayout` | `--dump-oop-mir` muestra el stride |
+| 61 | [x] | M-006 | Añadir `lowerPointerArithmetic` en el backend: `LLVMBuildGEP2` con el tipo de elemento para suma y resta, y `LLVMBuildPtrDiff2` para la diferencia | Declarar antes en `LlvmCApi.h` lo que falte |
+| 62 | [-] | M-006 | Extender `analyzeUnary` y el lowering de `PlusPlus`/`MinusMinus` para que un operando de tipo puntero use la misma infraestructura de `PointerArithmetic` con paso 1 | `++p` y `--p` compilan |
+| 63 | [x] | M-006 | Añadir el fixture de ejecución `tests/cc1/c12_pointer_arith/` que recorra un buffer con `p + i`, `i + p`, `p - 1`, `++p`, `--p` y una diferencia `q - p`, y compruebe que `p[i]` y `*(p + i)` dan el mismo valor | Exit 42 a `-O0` y `-O2` |
+| 64 | [x] | M-006 | Añadir el fixture negativo `cc1-pointer-arith-void`: aritmética sobre `void*` | Rechazado |
 
 ## Fase 4E — cierre de paridad
 
 | # | Est. | ID | Tarea | Hecho cuando |
 |---|---|---|---|---|
-| 65 | [ ] | R-003 | Dar un `case` explícito a cada `AstNodeKind` de expresión que quede en el `default` de `ProjectOopHirModel::lowerExpression`, o listarlos con un mensaje que diga "no soportado en el pipeline OOP" en vez del actual, y añadir un test que recorra todos los `AstNodeKind` y falle si alguno declarado soportado cae en el `default` | El test pasa y falla al quitar un `case` |
-| 66 | [ ] | R-003 | Registrar los fixtures `c9`…`c12` y los negativos de la fase 4 en `run_windows_checklist.bat` | El checklist los ejecuta |
+| 65 | [x] | R-003 | Dar un `case` explícito a cada `AstNodeKind` de expresión que quede en el `default` de `ProjectOopHirModel::lowerExpression`, o listarlos con un mensaje que diga "no soportado en el pipeline OOP" en vez del actual, y añadir un test que recorra todos los `AstNodeKind` y falle si alguno declarado soportado cae en el `default` | El test pasa y falla al quitar un `case` |
+| 66 | [x] | R-003 | Registrar los fixtures `c9`…`c12` y los negativos de la fase 4 en `run_windows_checklist.bat` | El checklist los ejecuta |
 
 ## Fase 5 — Reproducibilidad y cierre
 
 | # | Est. | ID | Tarea | Hecho cuando |
 |---|---|---|---|---|
-| 67 | [ ] | R-001 | Regenerar `MANIFEST_SHA256.txt` con `verify_manifest.py` **después** del último cambio de código | `verify_manifest.py` reporta 0 fallos |
-| 68 | [ ] | R-001 | Borrar `68_triage_de_bugs_y_fix_b3.md`, `68_triage_de_bugs_y_cuatro_fixes.md`, `FIX_B3_CHANGED_FILES.txt`, `FIX_B2_B3_B5_B8_CHANGED_FILES.txt`, `70_roadmap_consolidado.md` y el archivo suelto `8` | No quedan en el árbol |
-| 69 | [ ] | M-001 M-003 | Corregir `69_huecos_de_runtime_y_lenguaje.md` §1: quitar `stackalloc` y `sizeof` de "lo que ya hay" y moverlos a la tabla de huecos con la nota de que existían en el pipeline clásico y no en el moderno | El doc ya no afirma algo falso |
-| 70 | [ ] | — | Escribir `73_milestone_cc1.md` con los 27 IDs del registro, cuáles cerraron, cuáles se difirieron (P-001, A-001, A-002) y por qué, el repro de `case 65` / `case 321`, y la regla de que ninguna verificación cuenta si el modelo contra el que se verifica lo escribió quien escribió el código | El doc existe y cubre los 27 IDs |
-| 71 | [ ] | — | Escribir `STAGE_CC1_CHANGED_FILES.txt` con el desglose por capa de los archivos tocados | El doc existe |
-| 72 | [ ] | — | Correr `run_windows_checklist.bat` en modo completo | ctest verde, checklist verde, triage 16/16, fixtures nuevas en 42 a `-O0` y `-O2` |
-| 73 | [ ] | — | Escribir el doc de proyecto `claude/54_milestone_cc1.md` con el estado final y lo que quedó abierto | El doc existe en el Project |
+| 67 | [~] | R-001 | Regenerar `MANIFEST_SHA256.txt` con `verify_manifest.py` **después** del último cambio de código | `verify_manifest.py` reporta 0 fallos |
+| 68 | [~] | R-001 | Borrar `68_triage_de_bugs_y_fix_b3.md`, `68_triage_de_bugs_y_cuatro_fixes.md`, `FIX_B3_CHANGED_FILES.txt`, `FIX_B2_B3_B5_B8_CHANGED_FILES.txt`, `70_roadmap_consolidado.md` y el archivo suelto `8` | No quedan en el árbol |
+| 69 | [x] | M-001 M-003 | Corregir `69_huecos_de_runtime_y_lenguaje.md` §1: quitar `stackalloc` y `sizeof` de "lo que ya hay" y moverlos a la tabla de huecos con la nota de que existían en el pipeline clásico y no en el moderno | El doc ya no afirma algo falso |
+| 70 | [x] | — | Escribir `73_milestone_cc1.md` con los 27 IDs del registro, cuáles cerraron, cuáles se difirieron (P-001, A-001, A-002) y por qué, el repro de `case 65` / `case 321`, y la regla de que ninguna verificación cuenta si el modelo contra el que se verifica lo escribió quien escribió el código | El doc existe y cubre los 27 IDs |
+| 71 | [x] | — | Escribir `STAGE_CC1_CHANGED_FILES.txt` con el desglose por capa de los archivos tocados | El doc existe |
+| 72 | [~] | — | Correr `run_windows_checklist.bat` en modo completo | ctest verde, checklist verde, triage 16/16, fixtures nuevas en 42 a `-O0` y `-O2` |
+| 73 | [x] | — | Escribir el doc de proyecto `claude/54_milestone_cc1.md` con el estado final y lo que quedó abierto | El doc existe en el Project |
 
 ---
 

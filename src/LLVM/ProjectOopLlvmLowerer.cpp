@@ -4382,6 +4382,116 @@ private:
                 return LLVMBuildGEP2(
                     builder_, LLVMInt8TypeInContext(context_), base, indices, 1, "raw.element.addr");
             }
+            // CC1 fase 4B -- `stackalloc T[n]`.
+            //
+            // Se reserva en BYTES (`alloca i8, n * elementSize`) y no como `alloca <T>, n`, por la
+            // misma razon por la que RawElementAddress calcula sus direcciones con un GEP de i8:
+            // una sola regla de tamano para todo el nivel crudo. El tamano viene del MIR, que lo
+            // saco de `elementLayout` -- el mismo del que sale el stride de `p[i]`.
+            //
+            // El alloca se emite DONDE ESTA la expresion, no en el bloque de entrada. Es lo que
+            // `stackalloc` significa: si esta dentro de un bucle, cada vuelta reserva. LLVM no
+            // promociona un alloca fuera del bloque de entrada, que es justo el comportamiento
+            // correcto aqui y no una limitacion.
+            case frontend::ProjectOopMirNodeKind::StackAllocation:
+            {
+                if (node->children.size() != 1 || node->immediate == 0)
+                    return failValue(error, "CC1 stackalloc requires a count and an element size");
+                LLVMValueRef count = normalizeNativeIndex(node->children.front().get(), error);
+                if (count == nullptr) return nullptr;
+                LLVMValueRef bytes = LLVMBuildMul(
+                    builder_, count,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                    "stackalloc.bytes");
+                LLVMValueRef storage = LLVMBuildArrayAlloca(
+                    builder_, LLVMInt8TypeInContext(context_), bytes, "stackalloc.storage");
+                if (storage == nullptr)
+                    return failValue(error, "CC1 stackalloc failed to emit its array alloca");
+                // Un alloca de i8 sale con alineacion 1. El elemento puede necesitar mas -- un
+                // `double` la necesita -- y sin esto los accesos quedarian desalineados.
+                LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
+                return storage;
+            }
+
+            // CC1 fase 4C -- `new T` escalar. Un bloque del monton del tamano de UN elemento, por
+            // el mismo allocador que ya usa todo lo demas, y sin construccion: el nivel crudo no
+            // inicializa. Se libera con `delete`, que ya existia y no cambia.
+            case frontend::ProjectOopMirNodeKind::RawAllocation:
+            {
+                if (node->immediate == 0)
+                    return failValue(error, "CC1 raw allocation requires an element size");
+                LLVMValueRef size = LLVMConstInt(
+                    LLVMInt64TypeInContext(context_), node->immediate, 0);
+                LLVMValueRef arguments[] = {size};
+                LLVMValueRef block = buildNoUnwindCall(
+                    allocationFunctionType_, allocationFunction_, arguments, 1, "raw.new");
+                if (block == nullptr)
+                    return failValue(error, "CC1 raw allocation failed to emit its allocator call");
+                return block;
+            }
+
+            // CC1 fase 4D -- `p + i`, `i + p`, `p - i` y `p - q`.
+            //
+            // El desplazamiento es EL MISMO GEP de bytes que RawElementAddress, y eso no es una
+            // coincidencia que convenga: `p + i` y `&p[i]` son la misma direccion, y la fixture
+            // c12 comprueba que dan el mismo valor. Si algun dia dejan de compartir la forma,
+            // dejan de ser lo mismo.
+            case frontend::ProjectOopMirNodeKind::PointerArithmetic:
+            {
+                if (node->children.size() != 2 || node->immediate == 0)
+                    return failValue(error, "CC1 pointer arithmetic requires two operands and an element size");
+                const frontend::ProjectOopMirNode* leftNode = node->children[0].get();
+                const frontend::ProjectOopMirNode* rightNode = node->children[1].get();
+                if (leftNode == nullptr || rightNode == nullptr)
+                    return failValue(error, "CC1 pointer arithmetic has a null operand");
+
+                LLVMTypeRef i64Type = LLVMInt64TypeInContext(context_);
+                LLVMValueRef stride = LLVMConstInt(i64Type, node->immediate, 0);
+
+                // DIFERENCIA. El frontend ya decidio que esto es `p - q` dandole al nodo el tipo
+                // `builtin:nint` en vez de `T*`; aqui no se vuelve a decidir nada.
+                if (!node->typeKey.ends_with("*"))
+                {
+                    LLVMValueRef left = lowerExpression(leftNode, error);
+                    if (left == nullptr) return nullptr;
+                    LLVMValueRef right = lowerExpression(rightNode, error);
+                    if (right == nullptr) return nullptr;
+                    LLVMValueRef leftInt = LLVMBuildPtrToInt(builder_, left, i64Type, "ptrdiff.left");
+                    LLVMValueRef rightInt = LLVMBuildPtrToInt(builder_, right, i64Type, "ptrdiff.right");
+                    LLVMValueRef bytes = LLVMBuildSub(builder_, leftInt, rightInt, "ptrdiff.bytes");
+                    // Con signo: q - p puede ser negativo, y esa es la mitad del valor de la
+                    // operacion. Una division sin signo daria un numero enorme en vez de -1.
+                    return LLVMBuildSDiv(builder_, bytes, stride, "ptrdiff.elements");
+                }
+
+                // DESPLAZAMIENTO. Cual de los dos hijos es el puntero se deduce de su tipo, que ya
+                // lo trae; `i + p` es legal y pone el puntero a la derecha.
+                const bool leftIsPointer = leftNode->typeKey.ends_with("*");
+                const frontend::ProjectOopMirNode* pointerNode = leftIsPointer ? leftNode : rightNode;
+                const frontend::ProjectOopMirNode* offsetNode = leftIsPointer ? rightNode : leftNode;
+
+                LLVMValueRef pointer = lowerExpression(pointerNode, error);
+                if (pointer == nullptr) return nullptr;
+                LLVMValueRef index = normalizeNativeIndex(offsetNode, error);
+                if (index == nullptr) return nullptr;
+
+                LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "pointer.offset");
+                if (node->operation == lexer::TokenKind::Minus)
+                {
+                    // `p - i`. El frontend ya rechazo `i - p`, asi que restar siempre significa
+                    // retroceder desde el puntero.
+                    offset = LLVMBuildNeg(builder_, offset, "pointer.offset.neg");
+                }
+                LLVMValueRef indices[] = {offset};
+                // GEP SIN `inbounds`, a proposito. `inbounds` promete que el resultado se queda
+                // dentro de la misma asignacion, y este nivel del lenguaje no hace esa promesa --
+                // no hay comprobacion de rango, la semantica es la de C, y el propio comentario de
+                // RawElementAddress lo dice. Prometerlo aqui convertiria en comportamiento
+                // indefinido codigo que el lenguaje declara legal.
+                return LLVMBuildGEP2(
+                    builder_, LLVMInt8TypeInContext(context_), pointer, indices, 1, "pointer.arith");
+            }
+
             case frontend::ProjectOopMirNodeKind::PointerLoad:
             {
                 // Interop Foundation: `*pointer` as a value -- a plain typed load through a raw
