@@ -1,0 +1,149 @@
+// CC1 fase 4A -- `sizeof`, las dos formas, ejecutando.
+//
+// DE DONDE VIENE. `sizeof` parseaba, tipaba (mal) y luego moria en el `default` del HIR con
+// "unsupported Stage 34 OOP expression kind": mitad delantera presente, feature ausente. La misma
+// forma que `stackalloc`. Esta fixture es lo primero que EJECUTA un `sizeof` en este compilador.
+//
+// QUE FIJA, y por que cada cosa:
+//
+//   * Los tamanos salen de `valueLayoutForTypeKey`, el mismo servicio del que salen el stride de
+//     un arreglo y el offset de un campo. Comprobar aqui los valores concretos es lo que ata el
+//     `sizeof` a ese servicio: si alguien anadiera una segunda tabla de tamanos que divergiera,
+//     esta fixture lo veria.
+//   * El struct con padding es el caso que separa "sabe sumar campos" de "sabe alinear": los tres
+//     campos suman 13 bytes y el struct mide 16.
+//   * `sizeof(expression)` con efectos secundarios escritos dentro. El operando NO se evalua: los
+//     contadores tienen que quedarse donde estaban. Esta es la mitad ejecutable del hallazgo
+//     M-004; la mitad de analisis de flujo la mide `cc1-sizeof-unevaluated` en nsc.cc1.correctness.
+//   * `sizeof` es una constante en tiempo de compilacion, asi que puede usarse en aritmetica y
+//     compararse; no hay una llamada en tiempo de ejecucion detras.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1sizeof
+{
+    // Tres campos que suman 13 bytes: int (4) + byte (1) + double (8). El double obliga a
+    // alineacion de 8, asi que hay 3 bytes de relleno tras el byte y el total es 16, no 13.
+    public struct Padded
+    {
+        public int First;
+        public byte Middle;
+        public double Last;
+    }
+
+    // Un struct de un solo byte: el caso en que el tamano NO se redondea a nada.
+    public struct OneByte
+    {
+        public byte Only;
+    }
+
+    class Counter
+    {
+        public static int Calls;
+
+        public static int Bump()
+        {
+            Calls = Calls + 1;
+            return 7;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            // --- sizeof(T) sobre primitivos -------------------------------------------------
+            if (sizeof(byte) != 1) { return 1; }
+            if (sizeof(bool) != 1) { return 2; }
+            // `char` mide un byte en este lenguaje -- es el mismo hecho que la fase 1 tuvo que
+            // arreglar en la conversion de constantes (C-005). Si alguien lo volviera a mover a
+            // 16 bits en una capa y no en la otra, esto lo veria.
+            if (sizeof(char) != 1) { return 3; }
+            if (sizeof(short) != 2) { return 4; }
+            if (sizeof(ushort) != 2) { return 5; }
+            if (sizeof(int) != 4) { return 6; }
+            if (sizeof(uint) != 4) { return 7; }
+            if (sizeof(float) != 4) { return 8; }
+            if (sizeof(long) != 8) { return 9; }
+            if (sizeof(ulong) != 8) { return 10; }
+            if (sizeof(double) != 8) { return 11; }
+            // Los dos de ancho de puntero, que son la razon de que el resultado sea `nuint`.
+            if (sizeof(nint) != 8) { return 12; }
+            if (sizeof(nuint) != 8) { return 13; }
+
+            // --- sizeof(T) sobre punteros ------------------------------------------------------
+            if (sizeof(int*) != 8) { return 14; }
+            if (sizeof(double*) != 8) { return 15; }
+
+            // NO HAY `sizeof(Color)` AQUI, A PROPOSITO. Atar `sizeof` a `valueLayoutForTypeKey`
+            // destapo que esa funcion contesta 8 para un enum -- cae por el `return {{8, 8}}` de
+            // las formas con forma de referencia-- mientras que `layoutNamedType`, en la MISMA
+            // clase, contesta 4 (BuiltinLayoutKind::Enum). Es una divergencia real dentro de la
+            // funcion cuyo propio comentario promete que un stride y un offset no pueden salir de
+            // dos reglas distintas, y `valueLayoutForTypeKey` es justamente la que calcula el
+            // stride de los arreglos.
+            //
+            // No pongo aqui la asercion porque NO HE MEDIDO cual de las dos gana en el binario, y
+            // afirmar mi expectativa es exactamente el error que llevo tres rondas anotando.
+            // Queda como tarea 78, con ID propio, para medirla y arreglarla; no "de paso".
+
+            // --- sizeof(T) sobre structs ------------------------------------------------------
+            if (sizeof(OneByte) != 1) { return 17; }
+            // 13 bytes de campos, 16 de struct. El relleno es la parte que importa.
+            if (sizeof(Padded) != 16) { return 18; }
+
+            // --- sizeof(expression) -----------------------------------------------------------
+            int value = 5;
+            double wide = 1.5;
+            Padded record;
+            record.First = 1;
+            record.Middle = 2;
+            record.Last = 3.0;
+
+            if (sizeof(value) != 4) { return 19; }
+            if (sizeof(wide) != 8) { return 20; }
+            if (sizeof(record) != 16) { return 21; }
+            if (sizeof(record.Middle) != 1) { return 22; }
+            // El tipo de la EXPRESION, no el de sus partes: `value + 1` sigue siendo int.
+            if (sizeof(value + 1) != 4) { return 23; }
+
+            // --- el operando no se evalua ------------------------------------------------------
+            Counter.Calls = 0;
+            int sideEffect = 0;
+
+            // Una llamada dentro del operando. Si el operando se evaluara, Calls valdria 1.
+            if (sizeof(Counter.Bump()) != 4) { return 24; }
+            if (Counter.Calls != 0) { return 25; }
+
+            // Una asignacion dentro del operando, sobre una variable YA asignada -- asi el
+            // programa es valido y lo que se mide es que el valor no cambia. La forma con una
+            // variable SIN asignar tiene que ser rechazada, y eso lo mide la fixture negativa
+            // `cc1-sizeof-unevaluated`, que no puede vivir aqui porque no compila a proposito.
+            if (sizeof(sideEffect = 99) != 4) { return 26; }
+            if (sideEffect != 0) { return 27; }
+
+            // Varios efectos en una sola expresion, ninguno de los cuales debe ocurrir.
+            if (sizeof(Counter.Bump() + Counter.Bump()) != 4) { return 28; }
+            if (Counter.Calls != 0) { return 29; }
+
+            // --- es una constante, no una llamada ----------------------------------------------
+            // Si `sizeof` fuera una operacion de tiempo de ejecucion, esto seguiria funcionando;
+            // lo que fija es que el resultado se comporta como un numero cualquiera y participa en
+            // aritmetica sin conversiones raras.
+            nuint total = sizeof(int) + sizeof(double);
+            if (total != 12) { return 30; }
+
+            nuint stride = sizeof(Padded);
+            nuint four = stride / 4;
+            if (four != 4) { return 31; }
+
+            // El uso natural que motiva el tipo `nuint`: contar cuantos elementos caben.
+            nuint bytes = 64;
+            nuint count = bytes / sizeof(long);
+            if (count != 8) { return 32; }
+
+            return 42;
+        }
+    }
+}

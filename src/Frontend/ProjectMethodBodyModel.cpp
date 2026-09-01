@@ -4672,15 +4672,101 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             break;
         }
+        // CC1 fase 4A -- `sizeof`. Tres cosas cambian aqui respecto a lo que habia, y las tres
+        // eran defectos reales:
+        //
+        // 1. TIPO DEL RESULTADO: `builtin:nuint`, no `builtin:ulong`.
+        //    Aviso sobre la justificacion: el documento de origen dice que hay que unificar con
+        //    "el pipeline clasico", que ya bajaria `sizeof` a una constante `nuint`. ESO NO EXISTE
+        //    EN ESTE ARBOL -- barrido completo: `sizeof` solo aparece en el lexer, en el parser y
+        //    aqui; no hay caso en Sema ni en el HIR clasico, ni un solo test. No hay con que
+        //    comparar, asi que la razon no puede ser esa. La razon es propia: `sizeof` produce una
+        //    CUENTA DE BYTES, y el tipo sin signo del ancho del puntero es lo que consumen la
+        //    aritmetica de punteros y `stackalloc`; darle `ulong` obligaria a una conversion en
+        //    cada uso natural y ademas mentiria en un target de 32 bits.
+        //
+        // 2. OPERANDO NO EVALUADO. `sizeof(expression)` mide el TIPO de su operando; el operando no
+        //    se ejecuta. Antes se analizaba como codigo normal, asi que `sizeof(x = 1)` marcaba `x`
+        //    como asignada, `sizeof(move(o))` movia el propietario, y un borrow dentro del operando
+        //    sobrevivia. El operando se sigue analizando -- hay que resolver nombres, miembros y
+        //    tipos para saber QUE se esta midiendo, y sus errores deben seguir apareciendo -- pero
+        //    el estado de flujo se captura antes y se restaura despues, de modo que la propiedad
+        //    "el estado de flujo antes y despues es identico" se cumple POR CONSTRUCCION y no por
+        //    enumerar cada efecto que habria que suprimir. OwnershipFlowSnapshot ya lleva las tres
+        //    familias que importan: moves (must y may), borrows y `assignedLocals` (definite
+        //    assignment). Es la misma maquinaria que usan las ramas de `?:` y `&&`/`||`.
+        //    Los bindings que el analisis del operando deje registrados quedan huerfanos y son
+        //    inertes: el HIR los indexa POR NODO DE SINTAXIS y solo los consulta al bajar ese nodo,
+        //    y el operando de un `sizeof` no se baja nunca -- se baja una constante.
+        //
+        // 3. VALIDACION. `SizeofTypeExpression` no tocaba siquiera su `typeSyntax()`: `sizeof(void)`
+        //    y `sizeof(TipoQueNoExiste)` pasaban el analisis semantico sin una palabra y morian
+        //    despues en el `default` del HIR con "unsupported Stage 34 OOP expression kind". Ahora
+        //    se resuelve el tipo aqui y se rechaza lo que no tiene tamano, con DiagnosticId::
+        //    InvalidSizeof -- que estaba declarado desde hacia tiempo y no se usaba en ningun sitio.
         case ast::AstNodeKind::SizeofTypeExpression:
         case ast::AstNodeKind::SizeofExpression:
+        {
+            std::string measuredTypeKey;
             if (expression->kind() == ast::AstNodeKind::SizeofExpression)
             {
-                analyzeExpression(expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                const OwnershipFlowSnapshot beforeOperand = captureOwnershipFlow();
+                const ExpressionResult operand = analyzeExpression(
+                    expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+                    /*allowMethodGroup=*/true);
+                restoreOwnershipFlow(beforeOperand);
+                if (!operand.valid && !operand.methodGroup)
+                {
+                    break;
+                }
+                if (operand.methodGroup)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidSizeof,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "sizeof requires a value or a type; a method group has no size");
+                    break;
+                }
+                measuredTypeKey = operand.typeKey;
             }
-            result.typeKey = "builtin:ulong";
+            else
+            {
+                if (memberModel_ == nullptr || nameLookup_ == nullptr)
+                {
+                    break;
+                }
+                measuredTypeKey = memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+                if (isErrorType(measuredTypeKey))
+                {
+                    break;
+                }
+            }
+
+            if (measuredTypeKey == "builtin:void")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidSizeof,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "sizeof(void) has no size");
+                break;
+            }
+
+            MethodCoreBinding binding;
+            binding.kind = MethodCoreOperationKind::SizeofConstant;
+            binding.syntax = expression;
+            binding.methodMemberOrdinal = methodMemberOrdinal;
+            binding.scopeOrdinal = scopeOrdinal;
+            binding.resultTypeKey = "builtin:nuint";
+            // El tipo MEDIDO, no el tamano. Ver el comentario de SizeofConstant.
+            binding.elementTypeKey = measuredTypeKey;
+            coreBindings_.push_back(std::move(binding));
+
+            result.typeKey = "builtin:nuint";
             result.valid = true;
             break;
+        }
         // Stage 52: default(T) -- the zero-equivalent value of T (0/false/'\0' for a numeric
         // primitive, null for a reference type or string, an all-zero-fields instance for a
         // value-typed struct). This is what lets a generic method give an honest "nothing found"
@@ -10466,6 +10552,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::StructHashCode: return "struct-hash-code";
         case MethodCoreOperationKind::ObjectTypeName: return "object-type-name";
         case MethodCoreOperationKind::ObjectReferenceHash: return "object-reference-hash";
+        case MethodCoreOperationKind::SizeofConstant: return "sizeof-constant";
         case MethodCoreOperationKind::ClockQueryCounter: return "clock-query-counter";
         case MethodCoreOperationKind::ClockQueryFrequency: return "clock-query-frequency";
         case MethodCoreOperationKind::ClockQuerySystemFileTime: return "clock-query-system-filetime";

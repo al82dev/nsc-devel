@@ -22,15 +22,15 @@ un P1 y cada uno es un proyecto propio.
 | 1 — Constantes y `char` | 4–19 | **16 / 16** |
 | 2 — Flujo | 20–31 | **12 / 12** |
 | 3 — EH | 32–39 | **8 / 8** |
-| 4A — `sizeof` | 40–46 | 0 / 7 |
+| 4A — `sizeof` | 40–46 | **8 / 8** (incluye 46b) |
 | 4B — `stackalloc` | 47–52 | 0 / 6 |
 | 4C — raw `new T` | 53–56 | 0 / 4 |
 | 4D — aritmética de punteros | 57–64 | 0 / 8 |
 | 4E — cierre de paridad | 65–66 | 0 / 2 |
 | 5 — Reproducibilidad y cierre | 67–73 | 0 / 7 |
-| **Total** | **1–77** | **43 / 77** |
+| **Total** | **1–78** | **51 / 78** |
 
-**Gates:** ~~G1 tras 19~~ · ~~G2 tras 31~~ · ~~G3 tras 39~~ · G4 tras 66 · G5 tras 73.
+**Gates:** ~~G1 tras 19~~ · ~~G2 tras 31~~ · ~~G3 tras 39~~ · G4 tras 66 (4A hecha; faltan 4B–4E) · G5 tras 73.
 
 Ningún gate pasa con una tarea de su fase abierta.
 
@@ -38,6 +38,18 @@ Ningún gate pasa con una tarea de su fase abierta.
 checklist **45/45 Failed 0**, triage 16/16, las tres fixtures CC1 en **42 a `-O0` y `-O2`**.
 `nsc.version` (#127) y `nsc.cc1.correctness` (#59) pasan: los dos fallos de la corrida anterior
 eran de EXPECTATIVA DE TEST y las tareas 74–76 los cerraron. Ver §6 de `73_cc1_fases_0_1_2.md`.
+
+**Fase 4A — CERRADA. Corrida de Windows del 2026-08-31 16:06:** checklist **57/57, Failed 0**
+(eran 55; las dos nuevas son `cc1_c9_sizeof` a `-O0` y `-O2`, **ambas en 42**), `ctest`
+**242/242, 100%**, triage 16/16. `nsc.cc1.correctness` pasa y sube de 22.95 s a **29.88 s**.
+
+Las tres aserciones que había marcado como las más frágiles pasaron: `sizeof(int*)` (forma de la
+clave de tipo), `sizeof(record.Middle)` (acceso a campo dentro de un operando no evaluado) y la
+aritmética `nuint` sin conversiones. Ver `75_cc1_fase4a_sizeof.md`.
+
+Antes hubo dos corridas rotas, y las dos enseñan algo — §9 de ese documento: una la rompí yo
+escribiendo el `.bat` mientras corría; la otra destapó que `cc1-sizeof-unevaluated` **pasaba por la
+razón equivocada** y por tanto no medía la tarea 41.
 
 **G3 — CERRADO. Corrida de Windows del 2026-08-31 13:06:** checklist **55/55, Failed 0** (eran
 45; las diez nuevas son las cinco fixtures de EH a `-O0` y `-O2`, **todas en 42**), `ctest`
@@ -55,6 +67,7 @@ límite del frontend. Ver `74_cc1_fase3_eh.md`.
 | 74 | [x] | `nsc.version` asertaba `stage 55`; regex actualizado a `stage 57` **más** la línea `build <id>`, para que la generación del build id también se mida ahí |
 | 75 | [x] | `cc1-ternary-ownership-mixed` esperaba el fragmento `raii local`; el mensaje real es `RAII ownership cannot be copied or borrowed`. El rechazo ocurrió como debía — me equivoqué de cadena, no de comportamiento |
 | 76 | [x] | `nsc --help` se describía como compilador de Stage 55. Añadidas las descripciones de Stage 56 y 57 (ID propio, no arreglo "de paso") |
+| 78 | [ ] | **Divergencia de tamaño de `enum`, encontrada al atar `sizeof` al servicio de layout.** En `ProjectObjectLayoutModel`, `layoutNamedType` contesta **4** para un enum (`BuiltinLayoutKind::Enum`) y `valueLayoutForTypeKey` contesta **8**, porque un enum cae por el `return {{8, 8}}` de las formas con forma de referencia. Dos funciones de la misma clase, el mismo tipo, respuestas distintas — dentro de la función cuyo propio comentario promete que «un stride y un offset no pueden calcularse por dos reglas distintas». `valueLayoutForTypeKey` es la que calcula el stride de los arreglos (`ProjectOopMirModel::elementLayout`) y los offsets de inicializador agregado. **Medir primero** qué hace el binario con un `Color[]` antes de tocar nada; la fixture `c9_sizeof` deliberadamente NO asierta `sizeof(Color)` hasta entonces. **Fase 4E** (cierre de paridad), con ID propio |
 | 77 | [ ] | **Hueco de observabilidad, encontrado al cerrar la fase 3.** `TestContext::result()` imprime `PASS: <n> checks` en stdout, pero `ctest` no lo captura en `02_ctest.log`, así que desde los logs no se puede ver CUÁNTAS comprobaciones corrió una suite — sólo que no falló ninguna. Un bloque de tests que desapareciera de un `.cpp` pasaría en verde sin que nadie lo notara. Hacer que el checklist ejecute los binarios de test directamente y registre el conteo en `SUMMARY.txt`. **Fase 5**, con ID propio y no como arreglo "de paso" |
 
 Ver `73_cc1_fases_0_1_2.md` y `STAGE_CC1_CHANGED_FILES.txt`.
@@ -131,15 +144,37 @@ cuerpo de un catch». Detalle completo en `74_cc1_fase3_eh.md` §2.
 
 ## Fase 4A — `sizeof`
 
+**Tres correcciones al texto de estas tareas, hechas leyendo el código antes de escribirlo.**
+
+1. **La tarea 40 tenía un criterio que no se puede medir.** Decía «coincide con el pipeline
+   clásico». Barrido completo del árbol: `sizeof` sólo aparece en el lexer, en el parser y en
+   `ProjectMethodBodyModel`. No hay caso en Sema, no hay caso en el HIR clásico, no hay un solo
+   test. El documento de origen afirma en §15 que «el pipeline clásico los baja directamente a una
+   constante `nuint`» y en §16 que «posee tratamiento explícito de unevaluated operand y tests» —
+   **eso no está en este árbol**. El cambio a `nuint` sigue siendo correcto, con una razón propia:
+   `sizeof` produce una cuenta de bytes, y el tipo sin signo del ancho del puntero es lo que
+   consumen la aritmética de punteros (4D) y `stackalloc` (4B).
+
+2. **La tarea 44 no se puede hacer donde decía.** Pedía calcular el tamaño en
+   `ProjectMethodBodyModel`. El orden de construcción es modelo de cuerpos de método PRIMERO y
+   `ProjectObjectLayoutModel` DESPUÉS; `ProjectMethodBodyModel::build` ni siquiera recibe el modelo
+   de layout. Hacerlo ahí obligaría a reordenar el pipeline o a duplicar las reglas de tamaño en el
+   modelo semántico — la duplicación que este milestone existe para quitar. El binding lleva **el
+   type key medido**; el tamaño lo resuelve el HIR con `valueLayoutForTypeKey`.
+
+3. **Faltaba una tarea.** `SizeofTypeExpression` no tocaba siquiera su `typeSyntax()`:
+   `sizeof(void)` y `sizeof(TipoQueNoExiste)` pasaban el análisis semántico sin una palabra.
+
 | # | Est. | ID | Tarea | Hecho cuando |
 |---|---|---|---|---|
-| 40 | [ ] | M-004 | Cambiar el tipo resultado de `sizeof` en `ProjectMethodBodyModel.cpp:4528` de `"builtin:ulong"` a `"builtin:nuint"` | Coincide con el pipeline clásico |
-| 41 | [ ] | M-004 | Añadir a `ProjectMethodBodyModel` el miembro `bool unevaluatedContext_ = false` y una guarda RAII que lo active, y hacer que `analyzeExpression` no registre bindings de asignación, move, borrow ni definite-assignment mientras esté activo | Tarea 43 pasa |
-| 42 | [ ] | M-004 | Envolver con esa guarda la llamada a `analyzeExpression` del operando de `SizeofExpression` | `sizeof(x = 1)` no marca `x` como asignada |
-| 43 | [ ] | M-004 | Añadir el fixture negativo `cc1-sizeof-unevaluated`: `int x; int n = sizeof(x = 1); return x;` | Rechazado por lectura de variable no asignada |
-| 44 | [ ] | M-003 | Calcular el tamaño de `sizeof` consultando `ProjectObjectLayoutModel` para structs y la tabla de anchos de builtins para primitivos, y registrarlo como `MethodCoreBinding` nuevo `SizeofConstant` con el valor resuelto | El binding existe y lleva el valor |
-| 45 | [ ] | M-003 | Añadir en `ProjectOopHirModel::lowerExpression` los `case SizeofTypeExpression` y `case SizeofExpression`, que emitan un `IntegerConstant` con el valor del binding y tipo `builtin:nuint` | Ninguno cae ya en el `default` |
-| 46 | [ ] | M-003 | Añadir el fixture de ejecución `tests/cc1/c9_sizeof/` con `sizeof(int)`, `sizeof(double)`, `sizeof` de un struct con padding y `sizeof` de una expresión | Exit 42 a `-O0` y `-O2` |
+| 40 | [x] | M-004 | Cambiar el tipo resultado de `sizeof` de `"builtin:ulong"` a `"builtin:nuint"` | La fixture `c9_sizeof` usa el resultado en aritmética `nuint` sin conversión y ejecuta en 42 |
+| 41 | [x] | M-004 | Hacer no evaluado el operando de `sizeof(expression)` capturando `OwnershipFlowSnapshot` antes de analizarlo y restaurándolo después, en vez de suprimir efecto por efecto | El estado de flujo antes y después es idéntico **por construcción**: el snapshot ya lleva moves (must y may), borrows y `assignedLocals` |
+| 42 | [x] | M-004 | (Absorbida en la 41: la captura/restauración envuelve exactamente la llamada del operando) | — |
+| 43 | [x] | M-004 | Añadir el negativo `cc1-sizeof-unevaluated` (`int x; int n = sizeof(x = 1); return x;`) y su gemelo positivo `cc1-sizeof-unevaluated-assigned` | El primero rechazado por leer `x` sin asignar; el segundo aceptado — sin el par, «restaurar el flujo» podría haberse implementado como «rechazar todo sizeof con una asignación dentro» |
+| 44 | [x] | M-003 | Registrar `MethodCoreOperationKind::SizeofConstant` con **el type key medido** en `elementTypeKey` y `"builtin:nuint"` en `resultTypeKey` | El binding existe y lleva el tipo; el tamaño NO se calcula aquí (ver corrección 2) |
+| 45 | [x] | M-003 | Añadir en `ProjectOopHirModel::lowerExpression` los dos `case`, que emitan un `IntegerConstant` `builtin:nuint` con el tamaño que dé `valueLayoutForTypeKey` — ninguna tabla de tamaños nueva | Ninguno cae ya en el `default`; `c9_sizeof` ejecuta |
+| 46 | [x] | M-003 | Añadir el fixture de ejecución `tests/cc1/c9_sizeof/` y registrarlo en el checklist y en `nsc.cc1.correctness` | Exit 42 a `-O0` y `-O2` |
+| 46b | [x] | M-004 | Validar en el modelo semántico lo que no tiene tamaño (`void`, grupo de métodos, tipo desconocido) usando `DiagnosticId::InvalidSizeof`, que estaba declarado y **sin usar en ningún sitio** | `cc1-sizeof-void` y `cc1-sizeof-unknown-type` rechazados con su mensaje |
 
 ## Fase 4B — `stackalloc`
 

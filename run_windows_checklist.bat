@@ -26,6 +26,10 @@ REM ctest es lo unico que demuestra que no se rompio nada.
 REM
 REM Todo queda en _logs\. Leer _logs\SUMMARY.txt primero.
 REM
+REM LIMPIEZA: cada corrida BORRA _logs\ entero antes de empezar, en todos los modos, para
+REM que no pueda leerse el resumen de una corrida anterior creyendo que es el de esta.
+REM Tambien borra build-msvc\, que es un arbol de build muerto. build-clang\ NO se toca.
+REM
 REM NOTA: mantener finales de linea CRLF. cmd.exe resuelve "call :label" por
 REM offset de bytes asumiendo CRLF; con LF se desalinea y salta llamadas enteras.
 REM ---------------------------------------------------------------------------
@@ -38,10 +42,25 @@ set "SUMMARY=%LOGDIR%\SUMMARY.txt"
 set "FIXLOG=%LOGDIR%\03_fixtures.log"
 set "EXLOG=%LOGDIR%\04_examples.log"
 set "BUILDDIR=%ROOT%\build-clang"
+set "STALEDIR=%ROOT%\build-msvc"
 set "PREFIX=C:\native-sharp"
 
 set "MODE=%~1"
 if "%MODE%"=="" set "MODE=full"
+
+REM --- 0. Limpieza previa ------------------------------------------------------
+REM _logs SE BORRA ENTERO en cada corrida, a proposito. Un log viejo que sobrevive es peor
+REM que no tener log: ya paso una vez que se leyo un SUMMARY.txt de una corrida anterior
+REM creyendo que era el de la actual. Si el script muere a la mitad, lo que quede en _logs
+REM es de ESTA corrida y de ninguna otra.
+if exist "%LOGDIR%" rmdir /s /q "%LOGDIR%" 2>nul
+
+REM STALEDIR es un arbol de build MUERTO: el unico que se usa es build-clang (ver BUILDDIR
+REM arriba, y build-all.bat). build-msvc no lo referencia nada y sus targets se quedaron en
+REM Stage 52. Se borra para que nadie lo confunda con el build vivo ni lo revive por accidente.
+REM OJO: aqui NO se toca %BUILDDIR%. El build es y sigue siendo incremental -- Ninja recompila
+REM solo lo que cambio, y borrarlo convertiria cada corrida en una reconstruccion completa.
+if exist "%STALEDIR%" rmdir /s /q "%STALEDIR%" 2>nul
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 if not exist "%BINDIR%" mkdir "%BINDIR%"
@@ -53,6 +72,7 @@ set /a FAILED=0
 >> "%SUMMARY%" echo Started: %DATE% %TIME%
 >> "%SUMMARY%" echo Root   : %ROOT%
 >> "%SUMMARY%" echo Modo   : %MODE%
+>> "%SUMMARY%" echo Limpieza: _logs borrado al arrancar; build-clang intacto (incremental)
 >> "%SUMMARY%" echo.
 
 > "%FIXLOG%" echo === interop contract fixtures ===
@@ -164,6 +184,7 @@ call :run_case "%CC%\c5_catch_break\c5_catch_break.nsproj" cc1_c5_catch_break 42
 call :run_case "%CC%\c6_catch_return\c6_catch_return.nsproj" cc1_c6_catch_return 42 "%FIXLOG%"
 call :run_case "%CC%\c7_finally_switch\c7_finally_switch.nsproj" cc1_c7_finally_switch 42 "%FIXLOG%"
 call :run_case "%CC%\c8_loop_catch_switch\c8_loop_catch_switch.nsproj" cc1_c8_loop_catch_switch 42 "%FIXLOG%"
+call :run_case "%CC%\c9_sizeof\c9_sizeof.nsproj" cc1_c9_sizeof 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 

@@ -299,6 +299,10 @@ int main()
         tests, root, "tests/cc1/c8_loop_catch_switch/c8_loop_catch_switch.nsproj",
         "cc1-c8-loop-catch-switch", 42);
 
+    // Fase 4A -- `sizeof`. Primera fixture que EJECUTA un sizeof en este compilador: antes
+    // parseaba, tipaba mal y moria en el `default` del HIR.
+    checkFixture(tests, root, "tests/cc1/c9_sizeof/c9_sizeof.nsproj", "cc1-c9-sizeof", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================
@@ -627,6 +631,90 @@ namespace cc1mixed
         // no solo el fallo -- un test que solo mira "fallo" no habria detectado que yo no sabia que
         // diagnostico estaba disparando.
         "RAII ownership cannot be copied or borrowed");
+
+    // =====================================================================================
+    // sizeof -- M-004.
+    // =====================================================================================
+
+    // EL REPRO EXACTO del hallazgo. `sizeof` mide el TIPO de su operando; el operando no se
+    // ejecuta. Antes el modelo semantico lo analizaba como codigo normal, asi que la asignacion
+    // dentro del sizeof marcaba `x` como asignada y el `return x` pasaba -- leyendo una variable
+    // a la que nunca se le escribio nada. Ahora el estado de flujo se restaura despues de analizar
+    // el operando, asi que `x` sigue sin asignar y el programa se rechaza.
+    //
+    // Esta es la mitad de ANALISIS del hallazgo; la mitad de EJECUCION (que los efectos escritos
+    // dentro del operando no ocurran) la mide la fixture c9_sizeof.
+    checkRejected(
+        tests, root, "cc1-sizeof-unevaluated",
+        R"NS(
+class P
+{
+    public static int Main()
+    {
+        int x;
+        nuint n = sizeof(x = 1);
+        return x;
+    }
+}
+)NS",
+        // El fragmento nombra LA PROPIEDAD, no una letra. La primera version esperaba solo "x",
+        // y con eso el test paso por la razon equivocada: el programa se rechazaba, si, pero por
+        // el tipo del inicializador (`int n = sizeof(...)` cuando sizeof da nuint), y "x" aparece
+        // tambien en ese mensaje. Un negativo cuyo fragmento casa con cualquier error no esta
+        // midiendo nada. Es el mismo fallo que cc1-ternary-ownership-mixed en la fase 3.
+        "use of unassigned local variable 'x'");
+
+    // El mismo operando, pero sobre una variable YA asignada: aqui no hay nada que rechazar y lo
+    // que importa es que el programa siga siendo valido. Sin este par, "restaurar el estado de
+    // flujo" podria haberse implementado como "rechazar todo sizeof con una asignacion dentro".
+    checkAccepted(
+        tests, root, "cc1-sizeof-unevaluated-assigned",
+        R"NS(
+class P
+{
+    public static int Main()
+    {
+        int x = 0;
+        nuint n = sizeof(x = 1);
+        // `return n` seria nuint -> int, que es justo la conversion que NO existe y la que hizo
+        // fallar la primera version de este caso. Se compara y se devuelve el int.
+        if (n != 4) { return 1; }
+        return x;
+    }
+}
+)NS");
+
+    // `void` no tiene tamano. Antes esto pasaba el analisis semantico sin una palabra -- el caso
+    // ni siquiera miraba su typeSyntax() -- y moria despues en el HIR con "unsupported Stage 34
+    // OOP expression kind", que es un mensaje interno, no un diagnostico.
+    checkRejected(
+        tests, root, "cc1-sizeof-void",
+        R"NS(
+class P
+{
+    public static int Main()
+    {
+        nuint n = sizeof(void);
+        return 0;
+    }
+}
+)NS",
+        "sizeof(void) has no size");
+
+    // Un tipo que no existe. Mismo caso: antes tipaba como ulong y seguia.
+    checkRejected(
+        tests, root, "cc1-sizeof-unknown-type",
+        R"NS(
+class P
+{
+    public static int Main()
+    {
+        nuint n = sizeof(NoSuchType);
+        return 0;
+    }
+}
+)NS",
+        "NoSuchType");
 
     // Y la forma que SI debe aceptarse, que es la que no compilaba antes de CC1-204.
     checkAccepted(

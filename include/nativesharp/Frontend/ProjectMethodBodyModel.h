@@ -406,6 +406,17 @@ enum class MethodCoreOperationKind
     // turn a reference into an integer. See lib/NativeSharp.Core/Object.ns.
     ObjectTypeName,
     ObjectReferenceHash,
+    // CC1 fase 4A -- `sizeof(T)` y `sizeof(expression)`. La operacion NO lleva el tamano: lleva en
+    // `elementTypeKey` el TIPO QUE SE ESTA MIDIENDO, y `resultTypeKey` es siempre "builtin:nuint".
+    //
+    // El tamano se resuelve en ProjectOopHirModel, no aqui, y no por gusto: el orden de
+    // construccion del pipeline es modelo de cuerpos de metodo PRIMERO y ProjectObjectLayoutModel
+    // DESPUES -- ProjectMethodBodyModel::build ni siquiera recibe el modelo de layout. Calcular el
+    // tamano aqui exigiria reordenar el pipeline o duplicar las reglas de tamano en el modelo
+    // semantico, que es exactamente la duplicacion que el milestone CC1 existe para quitar. El HIR
+    // si tiene el modelo de layout y le pregunta a valueLayoutForTypeKey, el mismo servicio
+    // canonico que ya comparten el stride de un arreglo y el offset de un campo.
+    SizeofConstant,
     // C8 "type root", struct half: the three root members a STRUCT gets, synthesized by the
     // compiler and resolved statically -- no vtable, no boxing, not one byte of layout change.
     // A struct that declares its own member of the same name wins; these only fill the gap.

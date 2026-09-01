@@ -1,0 +1,129 @@
+MILESTONE CC1 -- fase 4A, `sizeof` (tareas 40-46 + 46b)
+Archivos tocados. Ver 75_cc1_fase4a_sizeof.md para el porque de cada cambio.
+Fecha: 2026-08-31.
+
+Estado: CERRADA. Corrida de Windows del 2026-08-31 16:06: checklist 57/57 Failed 0 (eran 55; las
+dos nuevas son cc1_c9_sizeof a -O0 y -O2, ambas en 42), ctest 242/242 (100%), triage 16/16.
+nsc.cc1.correctness pasa y sube de 22.95 s a 29.88 s.
+
+Cierra: M-003 M-004. Fase 4A 8/8, milestone 51/78.
+
+QUE ERA `sizeof` ANTES, MEDIDO: solo existia en el lexer (token), el parser (dos nodos AST) y seis
+lineas de ProjectMethodBodyModel que analizaban el operando como codigo normal y tipaban ulong.
+Ningun case en el HIR. Parseaba, tipaba mal, y moria en el default de lowerExpression.
+
+
+================================================================================
+TRES CORRECCIONES AL TEXTO DE LAS TAREAS (ver 75_..md #2)
+================================================================================
+
+1. La tarea 40 tenia un criterio NO MEDIBLE: "coincide con el pipeline clasico". No existe pipeline
+   clasico de sizeof en este arbol -- barrido completo. El documento de origen lo afirma en #15 y
+   #16 y es falso aqui. nuint sigue siendo correcto por razon propia: sizeof da una cuenta de bytes
+   y el tipo sin signo del ancho del puntero es lo que consumen stackalloc y la aritmetica de
+   punteros.
+
+2. La tarea 44 NO SE PUEDE HACER DONDE DECIA. Pedia calcular el tamano en ProjectMethodBodyModel,
+   que se construye ANTES que ProjectObjectLayoutModel y ni siquiera lo recibe. Habria exigido
+   reordenar el pipeline o duplicar las reglas de tamano en el modelo semantico -- la duplicacion
+   que el milestone existe para quitar. El binding lleva el TYPE KEY MEDIDO; el HIR resuelve el
+   tamano con valueLayoutForTypeKey.
+
+3. FALTABA UNA TAREA (46b). SizeofTypeExpression no tocaba siquiera su typeSyntax(): sizeof(void) y
+   sizeof(TipoQueNoExiste) pasaban sin una palabra. Ahora se validan con DiagnosticId::InvalidSizeof,
+   que llevaba tiempo declarado y sin usar en ningun sitio.
+
+
+================================================================================
+CODIGO
+================================================================================
+
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    + MethodCoreOperationKind::SizeofConstant, con el comentario de por que NO lleva el tamano.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    ~ El caso sizeof reescrito: resultado builtin:nuint; operando NO EVALUADO por captura y
+      restauracion de OwnershipFlowSnapshot alrededor de la llamada a analyzeExpression -- no por
+      un flag consultado caso por caso en 500 KB. El snapshot ya lleva moves (must y may), borrows
+      y assignedLocals, asi que "el estado de flujo antes y despues es identico" se cumple POR
+      CONSTRUCCION y no por acertar la lista de efectos a suprimir.
+      Validacion de void y de grupo de metodos con InvalidSizeof. Registro del binding.
+    + El case que faltaba en methodCoreOperationKindName -- sin el, -Wswitch, que con /W4 /WX en
+      MSVC es build roto. Cazado compilando con -Wall -Wextra aqui antes de entregar.
+
+src/Frontend/ProjectOopHirModel.cpp
+    + Los dos case en lowerExpression. Emiten IntegerConstant builtin:nuint con el tamano que da
+      objectLayoutModel_->valueLayoutForTypeKey -- ninguna tabla de tamanos nueva. El operando de
+      sizeof(expression) NO SE BAJA: es lo que hace que un efecto secundario escrito dentro no
+      llegue a ejecutarse, porque no hay nodo que lo represente.
+
+
+================================================================================
+TESTS
+================================================================================
+
+tests/cc1/c9_sizeof/{Main.ns,c9_sizeof.nsproj}      NUEVO
+    ~30 comprobaciones: primitivos, punteros, structs con y sin relleno, sizeof(expression),
+    operando con efectos que no deben ocurrir, y aritmetica nuint. Exit 42 a -O0 y -O2.
+    NO asierta sizeof(enum) a proposito -- ver tarea 78.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    + checkFixture cc1-c9-sizeof (42).
+    + cc1-sizeof-unevaluated            -- RECHAZADO, y el fragmento nombra la propiedad:
+                                           "use of unassigned local variable 'x'".
+    + cc1-sizeof-unevaluated-assigned   -- ACEPTADO. Sin este par, "restaurar el estado de flujo"
+                                           podria haberse implementado como "rechazar todo sizeof
+                                           con una asignacion dentro".
+    + cc1-sizeof-void                   -- RECHAZADO, "sizeof(void) has no size".
+    + cc1-sizeof-unknown-type           -- RECHAZADO, nombra el tipo.
+
+run_windows_checklist.bat
+    + un run_case nuevo. Ademas, limpieza previa: _logs se borra entero al arrancar en todos los
+      modos, y se borra build-msvc (arbol de build muerto). build-clang NO se toca.
+
+CMakeLists.txt
+    SIN CAMBIOS.
+
+
+================================================================================
+LO QUE ENSENARON LAS DOS CORRIDAS ROTAS (ver 75_..md #9)
+================================================================================
+
+1. La primera la rompi YO: escribi run_windows_checklist.bat a las 20:23:39 UTC mientras la corrida
+   iba desde las 20:20:14. cmd.exe lleva un offset de bytes dentro del .bat y reanudo a media
+   linea, partiendo -DCMAKE_BUILD_TYPE en -DCMAK | E_BUILD_TYPE. Lo delatan las dos lineas
+   contradictorias en el SUMMARY ([ OK ] y [FAIL] del mismo paso) y que el log de build se
+   escribiera DESPUES de ctest.
+   REGLA NUEVA: no se escribe nada en el arbol mientras haya una corrida en vuelo.
+
+2. La segunda destapo un fallo real y mio: sizeof da nuint y no hay conversion implicita a int; mis
+   cuatro programas de prueba decian `int n`. Y algo peor, que solo se ve tirando del hilo:
+   cc1-sizeof-unevaluated -- el UNICO test que mide la tarea 41 -- PASABA POR LA RAZON EQUIVOCADA.
+   Su fragmento esperado era "x", que casa tambien con el mensaje de conversion, asi que habria
+   pasado igual SIN la captura/restauracion del estado de flujo. Un negativo cuyo fragmento casa
+   con cualquier error no mide nada. Es el mismo fallo que cc1-ternary-ownership-mixed en la fase 3.
+
+
+================================================================================
+LOS TRES RIESGOS ANOTADOS ANTES DE LA CORRIDA -- NINGUNO SE MATERIALIZO
+================================================================================
+
+1. sizeof(int*) / sizeof(double*): la clave de tipo si termina en "*", que es lo que
+   valueLayoutForTypeKey reconoce.
+2. sizeof(record.Middle): un acceso a campo dentro de un operando no evaluado no deja nada que
+   sobreviva a la restauracion.
+3. nuint total = sizeof(int) + sizeof(double): la aritmetica nuint funciona sin conversiones, que
+   es lo que justifica el cambio de tipo de la tarea 40.
+
+
+================================================================================
+DEUDA QUE ESTA FASE NO CIERRA
+================================================================================
+
+* sizeof NO es todavia constante para el evaluador de constantes: `const int n = sizeof(int);` y
+  `case sizeof(int):` no compilan, porque foldIntegerConstant no consulta el binding. No es
+  regresion -- antes sizeof no funcionaba en absoluto -- pero CC1-404 lo pide. Depende del mismo
+  problema de orden de construccion, y pertenece a la conversacion de P-001/A-001.
+* sizeof(x) con x sin asignar sigue dando error, a proposito (ver 75_..md #3).
+* TAREA 78: valueLayoutForTypeKey contesta 8 para un enum y layoutNamedType, en la MISMA clase,
+  contesta 4. Es la funcion que calcula el stride de los arreglos. Sin medir. Fase 4E.
