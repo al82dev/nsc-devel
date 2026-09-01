@@ -1285,5 +1285,47 @@ namespace cc1promo
 }
 )NS");
 
+    // IDs 80/83 -- el limite de `->`, con SU mensaje.
+    //
+    // `nsc.project-member-model` comprueba que esto se rechaza y con que DiagnosticId; aqui se
+    // comprueba QUE DICE. Los dos hacen falta: al desazucarar `->` en el parser, la comprobacion
+    // vieja quedo muerta y `this->Value` paso a compilar -- solo se vio porque una prueba medía
+    // esa fase. Este test mide la otra mitad, el texto, que es lo que la persona lee.
+    checkRejected(
+        tests, root, "cc1-arrow-on-class-reference",
+        R"NS(
+namespace cc1arrowthis
+{
+    class Box
+    {
+        int Value;
+        public int Run() { return this->Value; }
+        public static int Main() { return 0; }
+    }
+}
+)NS",
+        "'this' is a class reference; use '.' rather than '->' for member lookup");
+
+    // Y la forma general: `->` sobre algo que no es un puntero nombra `->`, no un `*` que la
+    // persona nunca escribio.
+    checkRejected(
+        tests, root, "cc1-arrow-on-non-pointer",
+        R"NS(
+namespace cc1arrownonptr
+{
+    public struct Cell { public int Value; }
+    class P
+    {
+        public static int Main()
+        {
+            Cell c;
+            c.Value = 1;
+            return c->Value;
+        }
+    }
+}
+)NS",
+        "left side of '->' must be a non-void pointer");
+
     return tests.result();
 }

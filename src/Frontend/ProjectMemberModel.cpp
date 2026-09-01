@@ -1544,16 +1544,28 @@ void ProjectMemberModel::scanMethodBody(
         return;
     }
 
-    if (node->kind() == ast::AstNodeKind::PointerMemberExpression &&
+    // IDs 80/83. `this->x`. Este rechazo estaba escrito contra PointerMemberExpression, el nodo
+    // propio que el parser construia para `->` antes de que `p->x` pasara a construirse como
+    // `(*p).x`. Al desaparecer el nodo, la comprobacion quedo muerta y `this->Value` empezo a
+    // COMPILAR -- lo vio `nsc.project-member-model`, que es la unica prueba que mide esta fase.
+    //
+    // El mensaje se conserva palabra por palabra, y con el su DiagnosticId, porque es mejor que el
+    // generico: no dice "no es un puntero", dice QUE ESCRIBIR en su lugar. Lo unico que cambia es
+    // la forma que se reconoce: un acceso a miembro sobre el `*` SINTETIZADO que el parser marca
+    // (auxiliaryText "arrow"), sobre `this`.
+    if (node->kind() == ast::AstNodeKind::MemberExpression &&
         node->first() != nullptr &&
-        node->first()->kind() == ast::AstNodeKind::ThisExpression)
+        node->first()->kind() == ast::AstNodeKind::UnaryExpression &&
+        node->first()->auxiliaryText() == "arrow" &&
+        node->first()->first() != nullptr &&
+        node->first()->first()->kind() == ast::AstNodeKind::ThisExpression)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidMemberAccess,
             diagnostics::DiagnosticSeverity::Error,
             node->range(),
             "'this' is a class reference; use '.' rather than '->' for member lookup");
-        scanMethodBody(node->first(), typeOrdinal, methodMemberOrdinal, diagnostics);
+        scanMethodBody(node->first()->first(), typeOrdinal, methodMemberOrdinal, diagnostics);
         return;
     }
 
