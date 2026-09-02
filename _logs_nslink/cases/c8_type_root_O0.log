@@ -1,0 +1,24 @@
+--- c8_type_root -O0 ---
+proyecto: tests/interop_contract/c8_type_root/c8_type_root.nsproj
+compiler: C:\native-sharp\bin\nsc.exe
+linker  : C:\native-sharp\bin\nslink.exe   (via NSC_LLD_LINK)
+
+$ C:\native-sharp\bin\nsc.exe --emit-project-oop-obj A:\nsc-devel\tests\interop_contract\c8_type_root\c8_type_root.nsproj -O0 -o A:\nsc-devel\_logs_nslink\bin\c8_type_root_O0.obj
+project OOP object emission: ok (machine=0x8664, sections=26)
+
+$ C:\native-sharp\bin\nsc.exe --emit-project-oop-exe A:\nsc-devel\tests\interop_contract\c8_type_root\c8_type_root.nsproj -O0 -o A:\nsc-devel\_logs_nslink\bin\c8_type_root_O0.exe
+project OOP PE executable emission: ok
+entry-symbol: __nsc_method_c8_type_root__contract_Program__Main
+machine: AMD64 (0x8664)
+format: PE32+
+subsystem: Windows CUI
+optimization: O0
+sections: 7
+entry-rva: 99552
+exception-directory-rva: 126976
+exception-directory-size: 4212
+imports: KERNEL32.dll KERNELBASE.dll SHELL32.dll ucrtbase.dll
+
+$ A:\nsc-devel\_logs_nslink\bin\c8_type_root_O0.exe
+
+[exit 42]

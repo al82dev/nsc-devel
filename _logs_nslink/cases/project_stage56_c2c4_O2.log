@@ -1,0 +1,24 @@
+--- project_stage56_c2c4 -O2 ---
+proyecto: examples/project_stage56_c2c4/Stage56C2C4LanguageCompletion.nsproj
+compiler: C:\native-sharp\bin\nsc.exe
+linker  : C:\native-sharp\bin\nslink.exe   (via NSC_LLD_LINK)
+
+$ C:\native-sharp\bin\nsc.exe --emit-project-oop-obj A:\nsc-devel\examples\project_stage56_c2c4\Stage56C2C4LanguageCompletion.nsproj -O2 -o A:\nsc-devel\_logs_nslink\bin\project_stage56_c2c4_O2.obj
+project OOP object emission: ok (machine=0x8664, sections=4)
+
+$ C:\native-sharp\bin\nsc.exe --emit-project-oop-exe A:\nsc-devel\examples\project_stage56_c2c4\Stage56C2C4LanguageCompletion.nsproj -O2 -o A:\nsc-devel\_logs_nslink\bin\project_stage56_c2c4_O2.exe
+project OOP PE executable emission: ok
+entry-symbol: __nsc_method_Stage56C2C4LanguageCompletion__Stage56Example_Program__Main
+machine: AMD64 (0x8664)
+format: PE32+
+subsystem: Windows CUI
+optimization: O2
+sections: 7
+entry-rva: 4784
+exception-directory-rva: 24576
+exception-directory-size: 612
+imports: KERNEL32.dll KERNELBASE.dll SHELL32.dll ucrtbase.dll
+
+$ A:\nsc-devel\_logs_nslink\bin\project_stage56_c2c4_O2.exe
+
+[exit 0]

@@ -1,0 +1,24 @@
+--- cc1_c18_stackalloc_hardening -O2 ---
+proyecto: tests/cc1/c18_stackalloc_hardening/c18_stackalloc_hardening.nsproj
+compiler: C:\native-sharp\bin\nsc.exe
+linker  : C:\native-sharp\bin\nslink.exe   (via NSC_LLD_LINK)
+
+$ C:\native-sharp\bin\nsc.exe --emit-project-oop-obj A:\nsc-devel\tests\cc1\c18_stackalloc_hardening\c18_stackalloc_hardening.nsproj -O2 -o A:\nsc-devel\_logs_nslink\bin\cc1_c18_stackalloc_hardening_O2.obj
+project OOP object emission: ok (machine=0x8664, sections=53)
+
+$ C:\native-sharp\bin\nsc.exe --emit-project-oop-exe A:\nsc-devel\tests\cc1\c18_stackalloc_hardening\c18_stackalloc_hardening.nsproj -O2 -o A:\nsc-devel\_logs_nslink\bin\cc1_c18_stackalloc_hardening_O2.exe
+project OOP PE executable emission: ok
+entry-symbol: __nsc_method_c18_stackalloc_hardening__cc1stackallochardening_Program__Main
+machine: AMD64 (0x8664)
+format: PE32+
+subsystem: Windows CUI
+optimization: O2
+sections: 7
+entry-rva: 46816
+exception-directory-rva: 73728
+exception-directory-size: 1584
+imports: KERNEL32.dll KERNELBASE.dll SHELL32.dll ucrtbase.dll
+
+$ A:\nsc-devel\_logs_nslink\bin\cc1_c18_stackalloc_hardening_O2.exe
+
+[exit 42]
