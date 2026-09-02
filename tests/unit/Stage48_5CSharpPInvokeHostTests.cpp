@@ -458,6 +458,5 @@ int main()
     testManagedNegativeContracts(tests);
     testManagedCompilationWhenSdkExists(tests, root);
 
-    std::filesystem::remove_all(root, ec);
-    return tests.result();
+    return tests.resultKeeping(root);
 }

@@ -111,6 +111,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -120,9 +121,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# Artefactos crudos, en ESTE repo. No es `_logs\` a proposito: report.py construye el veredicto
-# oficial desde ahi, y el checklist lo borra entero al arrancar.
-OUT = ROOT / "_logs_nslink"
+# Artefactos crudos, en ESTE repo. No es el directorio de la corrida oficial a proposito:
+# report.py construye el veredicto desde ahi y el checklist lo borra entero al arrancar.
+#
+# NSLINK_OUT_DIR lo pone `nslink_solo.bat`, el ciclo corto de cuando SOLO cambio nslink.exe. Ese
+# ciclo escribe en `_logs_nslink_solo\` y NO puede tocar `_logs_nslink\`, que es la pasada 2 de la
+# ultima corrida completa: si la pisara, el par (_logs_lldlink, _logs_nslink) dejaria de ser
+# comparable -- serian dos medidas de dos momentos distintos con la misma cara.
+OUT = ROOT / os.environ.get("NSLINK_OUT_DIR", "_logs_nslink")
 CASE_LOGS = OUT / "cases"
 BINDIR = OUT / "bin"
 RESULTS = OUT / "results.json"
@@ -133,7 +139,7 @@ REPORT = OUT / "REPORTE_NSLINK.txt"
 # los seis logs numerados, TRIAGE, cases\, bin\ y su propio REPORTE.txt. No comparten un solo
 # fichero, y este script no escribe dentro de ninguno de los dos salvo su propia comparacion.
 PASS_LLD = ROOT / "_logs_lldlink"
-PASS_NSLINK = ROOT / "_logs_nslink"
+PASS_NSLINK = OUT
 
 # La corrida de referencia, SOLO PARA LEER. La escribe run_cases.py con lld-link.
 REFERENCE = PASS_LLD / "cases" / "results.json"
@@ -159,7 +165,11 @@ INBOX_NAME = "_inbox_nsc"
 # NO se copia `bin\` ni `linktemps\`: son cientos de megas de .exe y .obj por corrida, y lo que
 # de ahi hace falta para reproducir un fallo ya va al buzon, elegido caso por caso.
 LOGS_NAME = "logs-nsc-tests-with-nslink"
-LOGS_SKIP = ("bin", "linktemps")
+# `linktemps_ctest` es el de nslink_solo.bat -- se le puso otro nombre para que el paso de los
+# 84 no lo borrara, y al renombrarlo se quedo FUERA de esta lista: la primera corrida del
+# ciclo corto copio 5319 ficheros al arbol de NSLink. Cualquier directorio de temporales de
+# enlace va aqui.
+LOGS_SKIP = ("bin", "bin_triage", "linktemps", "linktemps_ctest")
 
 # Tope de lo que se copia al buzon. Un .obj de estos anda por los 100 KB; 84 fallos serian ~8 MB
 # en el arbol de otro. Se avisa en vez de llenarselo en silencio.
@@ -834,9 +844,170 @@ def write_inbox(inbox: Path, results: list[dict], reference: dict[tuple[str, str
     return len(copied), skipped
 
 
+def ctest_summary(directory: Path) -> dict:
+    """Lo que ctest dijo en una pasada. Sale de `02_ctest.log`, que es la fuente, no del REPORTE.
+
+    POR QUE HACE FALTA. La comparacion miraba SOLO `cases\results.json`, o sea los 84 trabajos.
+    El 2026-09-02 eso habria dicho "0 regresiones" con CINCO pruebas de ctest en rojo por culpa
+    de NSLink -- todas las de biblioteca de importacion -- porque ninguna de las 84 ejercita esa
+    superficie. Un buzon que dice que todo esta bien justo cuando no lo esta es peor que no tener
+    buzon.
+
+    Devuelve {"total", "failed", "names", "leido"}. `leido` en falso significa que no habia log,
+    no que la pasada fuera verde: la diferencia importa y se reporta.
+    """
+    log = directory / "02_ctest.log"
+    summary = {"total": 0, "failed": 0, "names": [], "leido": False}
+    if not log.is_file():
+        return summary
+    text = log.read_text(encoding="utf-8", errors="replace")
+    summary["leido"] = True
+
+    # "98% tests passed, 5 tests failed out of 243" / "100% tests passed out of 243"
+    counts = re.search(r"tests passed(?:, (\d+) tests? failed)? out of (\d+)", text)
+    if counts:
+        summary["failed"] = int(counts.group(1) or 0)
+        summary["total"] = int(counts.group(2))
+
+    # "The following tests FAILED:" y debajo una linea por prueba: "\t 60 - nombre (Failed)"
+    tail = text.split("The following tests FAILED:", 1)
+    if len(tail) == 2:
+        for line in tail[1].splitlines():
+            named = re.match(r"\s*\d+\s*-\s*(\S+)\s*\(", line)
+            if named:
+                summary["names"].append(named.group(1))
+    return summary
+
+
+def find_build_directory() -> Path | None:
+    """El arbol de build de donde sale ctest. NO se construye nada: solo se busca uno usable."""
+    for name in ("build-clang-lldlink", "build-clang-nslink", "build-clang"):
+        candidate = ROOT / name
+        if (candidate / "CTestTestfile.cmake").is_file():
+            return candidate
+    return None
+
+
+def reverify_ctest_serially(names: list[str], nslink: Path) -> tuple[set, str]:
+    """Vuelve a correr EN SERIE las pruebas que fallaron en paralelo.
+
+    POR QUE EXISTE ESTE PASO. Una prueba que falla con `-j 16` y pasa sola no es un defecto del
+    enlazador: es contencion entre procesos. Se demostro por construccion el 2026-09-02 con
+    `nsc.stage48_5.csharp-pinvoke-host`, que lanza un `dotnet build` -- la cache global de NuGet y
+    los nodos de MSBuild son recursos compartidos entre procesos, y dos invocaciones a la vez se
+    estorban. Sola pasa; con `-j 16` falla.
+
+    Sin este paso, esa prueba viaja al buzon de NSLink etiquetada como REGRESION y le hace perder
+    el tiempo buscando un fallo que no es suyo. Una regresion que solo se reproduce en paralelo es
+    un flake mientras no se demuestre lo contrario, y demostrarlo cuesta unos segundos.
+
+    NSC_LLD_LINK SE FIJA AQUI, y es la parte que se puede hacer mal sin notarlo: `all.bat` limpia
+    esa variable antes de llamar a la comparacion, asi que heredar el entorno significaria volver
+    a correr las pruebas con lld-link -- pasarian todas y TODO quedaria marcado como contencion.
+    El enlazador se pasa por argumento y se pone explicitamente.
+
+    Devuelve (las que TAMBIEN fallan solas, un motivo si no se pudo comprobar).
+    """
+    if not names:
+        return set(), ""
+    build = find_build_directory()
+    if build is None:
+        return set(names), "no se encontro arbol de build: no se pudo comprobar en serie"
+
+    environment = dict(os.environ)
+    environment["NSC_LLD_LINK"] = str(nslink)
+    environment.pop("NSC_KEEP_LINK_TEMPS", None)
+
+    # ctest -R toma una expresion regular; se anclan los nombres para que `stage48_4` no arrastre
+    # a `stage48_4x` si algun dia existe.
+    pattern = "^(" + "|".join(re.escape(name) for name in names) + ")$"
+    log = OUT / "02_ctest_serie.log"
+    try:
+        completed = subprocess.run(
+            ["ctest", "--test-dir", str(build), "-R", pattern, "-j", "1", "--output-on-failure"],
+            capture_output=True, text=True, env=environment, timeout=1800)
+    except (OSError, subprocess.SubprocessError) as error:
+        return set(names), f"no se pudo relanzar ctest en serie: {error}"
+
+    output = (completed.stdout or "") + (completed.stderr or "")
+    log.write_text(output, encoding="utf-8", errors="replace")
+
+    still_failing = set()
+    tail = output.split("The following tests FAILED:", 1)
+    if len(tail) == 2:
+        for line in tail[1].splitlines():
+            named = re.match(r"\s*\d+\s*-\s*(\S+)\s*\(", line)
+            if named:
+                still_failing.add(named.group(1))
+    return still_failing, ""
+
+
+def ctest_lines(reference: dict, measured: dict) -> list[str]:
+    """La seccion de ctest del reporte de comparacion."""
+    out = ["", "=" * 78, "CTEST -- LAS PRUEBAS UNITARIAS, QUE TAMBIEN ENLAZAN", "=" * 78]
+    if not measured["leido"]:
+        out.append("  No hay 02_ctest.log en la pasada con NSLink. No se puede decir nada.")
+        return out
+
+    out.append(f"  NSLink   : {measured['total'] - measured['failed']}/{measured['total']} "
+               f"({measured['failed']} en rojo)")
+    if reference["leido"]:
+        out.append(f"  lld-link : {reference['total'] - reference['failed']}/{reference['total']} "
+                   f"({reference['failed']} en rojo)")
+    else:
+        out.append("  lld-link : sin 02_ctest.log -- no hay con que comparar.")
+
+    broken = [n for n in measured["names"] if n not in reference["names"]]
+    shared = [n for n in measured["names"] if n in reference["names"]]
+
+    if not measured["names"]:
+        out.append("")
+        out.append("  Ninguna prueba en rojo con NSLink.")
+        return out
+
+    if broken:
+        confirmed = [n for n in broken if n in measured.get("confirmadas", set(broken))]
+        flaky = [n for n in broken if n not in confirmed]
+
+        if confirmed:
+            out.append("")
+            out.append("  REGRESIONES DE CTEST -- pasan con lld-link, fallan con NSLink, Y FALLAN")
+            out.append("  TAMBIEN AL CORRERLAS SOLAS:")
+            for name in confirmed:
+                out.append(f"    {name}")
+            out.append("")
+            out.append("  El detalle esta en 02_ctest.log; la corrida en serie que lo confirma, en")
+            out.append("  02_ctest_serie.log. Los dos van al buzon. Son las que hay que mirar.")
+        if flaky:
+            out.append("")
+            out.append("  SOLO FALLAN EN PARALELO -- NO son del enlazador:")
+            for name in flaky:
+                out.append(f"    {name}")
+            out.append("")
+            out.append("  Fallan con -j y pasan al correrlas solas, asi que es contencion entre")
+            out.append("  procesos por algun recurso compartido -- la cache de NuGet y los nodos de")
+            out.append("  MSBuild son los sospechosos conocidos. Es un defecto de NUESTRA suite, no")
+            out.append("  de NSLink, y no cuenta como regresion.")
+        if measured.get("motivo_sin_confirmar"):
+            out.append("")
+            out.append(f"  AVISO: {measured['motivo_sin_confirmar']}.")
+            out.append("  Las de arriba se dan por confirmadas sin haberlo comprobado.")
+    if shared:
+        out.append("")
+        out.append("  Ya fallaban con lld-link (NO es culpa de NSLink):")
+        for name in shared:
+            out.append(f"    {name}")
+    return out
+
+
 def load_pass(directory: Path) -> list[dict]:
     """Los resultados de una pasada de all.bat. Vacio si no llego a escribirlos."""
+    # Dos sitios, y los dos son legitimos: `run_cases.py` (la corrida completa) escribe en
+    # `cases\results.json`, y el modo suelto de este script en `results.json`. El ciclo corto usa
+    # el segundo, asi que la comparacion tiene que saber leer los dos o no compararia nada.
     path = directory / "cases" / "results.json"
+    if not path.is_file():
+        path = directory / "results.json"
     if not path.is_file():
         return []
     try:
@@ -903,9 +1074,14 @@ def run_compare(inbox: Path | None, nsc: Path, nslink: Path) -> int:
     """
     reference_rows = load_pass(PASS_LLD)
     results = load_pass(PASS_NSLINK)
-    if not results:
-        print(f"[NSLINK] no hay resultados en {PASS_NSLINK.name}\\cases\\results.json -- "
-              "la pasada con NSLink no llego a escribirlos.", file=sys.stderr)
+
+    # Los 84 trabajos pueden NO estar, y no es un error: `nslink_solo.bat ctest` corre solo ctest,
+    # que es donde viven los fallos del enlazador. Antes esto devolvia 2 y se saltaba la
+    # comparacion de ctest -- o sea justo lo unico que ese modo habia medido.
+    solo_ctest = not results
+    if solo_ctest and not (PASS_NSLINK / "02_ctest.log").is_file():
+        print(f"[NSLINK] {PASS_NSLINK.name}\\ no tiene ni resultados de los 84 trabajos ni "
+              "02_ctest.log: no hay nada que comparar.", file=sys.stderr)
         return 2
 
     reference = {(r["label"], r["opt"]): bool(r["ok"]) for r in reference_rows}
@@ -938,18 +1114,47 @@ def run_compare(inbox: Path | None, nsc: Path, nslink: Path) -> int:
         "Este fichero NO compila nada: lee lo que las dos pasadas ya midieron.",
         "",
     ]
-    lines = report_lines(enriched, reference, note, groups, 0.0, 0, nsc, nslink, header)
+    if solo_ctest:
+        lines = list(header)
+        lines.append("=" * 78)
+        lines.append("LOS 84 TRABAJOS -- NO MEDIDOS EN ESTE CICLO")
+        lines.append("=" * 78)
+        lines.append("  Este ciclo corrio solo ctest (`nslink_solo.bat ctest`). Los 84 trabajos no")
+        lines.append("  se midieron, asi que de ellos no se dice nada -- ni bien ni mal.")
+    else:
+        lines = report_lines(enriched, reference, note, groups, 0.0, 0, nsc, nslink, header)
+
+    # ctest APARTE de los 84 trabajos, y es la mitad que faltaba. Las dos superficies fallan por
+    # cosas distintas: los 84 ejecutan un programa enlazado; ctest ademas construye DLLs,
+    # bibliotecas de importacion y enlaza anfitriones de C y C++ contra ellas. El 2026-09-02 los
+    # 84 salieron 84/84 con los dos enlazadores y ctest 243 vs 238.
+    ctest_reference = ctest_summary(PASS_LLD)
+    ctest_measured = ctest_summary(PASS_NSLINK)
+
+    # Antes de llamar regresion a nada: las que fallaron en paralelo se vuelven a correr SOLAS.
+    # Ver reverify_ctest_serially -- una que pasa sola es contencion de nuestra suite, y mandarla
+    # al buzon como regresion le hace perder el tiempo a quien mantiene el enlazador.
+    candidates = [n for n in ctest_measured["names"] if n not in ctest_reference["names"]]
+    if candidates:
+        print(f"[NSLINK] {len(candidates)} pruebas rojas: se relanzan EN SERIE para confirmar ...")
+    confirmed, reason = reverify_ctest_serially(candidates, nslink)
+    ctest_measured["confirmadas"] = confirmed
+    ctest_measured["motivo_sin_confirmar"] = reason
+    lines.extend(ctest_lines(ctest_reference, ctest_measured))
+
     comparison = PASS_NSLINK / "COMPARACION_CON_LLD.txt"
     comparison.write_text("\n".join(lines) + "\n", encoding="ascii", errors="replace")
     print("\n".join(lines))
     print(f"[NSLINK] comparacion en {comparison}")
 
-    if inbox is not None:
+    if inbox is not None and not solo_ctest:
         copied, skipped = write_inbox(inbox, enriched, reference, note, groups,
                                       0.0, 0, nsc, nslink)
         print(f"[NSLINK] buzon: {inbox}  ({copied} ficheros copiados, {len(skipped)} omitidos)")
 
-        # Los logs de la pasada con NSLink, enteros, dentro del buzon.
+    if inbox is not None:
+        # Los logs de la pasada con NSLink, enteros, dentro del buzon. Esto SI va tambien en el
+        # ciclo de solo-ctest: es donde esta 02_ctest.log, que es lo que se acaba de medir.
         destination = inbox / LOGS_NAME
         count, error = copy_pass_logs(destination)
         if error:
@@ -958,10 +1163,26 @@ def run_compare(inbox: Path | None, nsc: Path, nslink: Path) -> int:
         else:
             print(f"[NSLINK] logs : {destination}  ({count} ficheros)")
 
+    # El codigo de salida cuenta LAS DOS superficies. Si solo contara los 84, `all.bat` habria
+    # escrito "generado" en verde con cinco pruebas de ctest rojas por culpa del enlazador.
+    # SOLO las confirmadas en serie. Una que solo falla en paralelo no puede poner en rojo el
+    # ciclo del enlazador: no es suya.
+    ctest_broken = [n for n in candidates if n in confirmed]
+    ctest_flaky = [n for n in candidates if n not in confirmed]
+    if solo_ctest:
+        regressions = 0
+        groups = {"regressions": []}
+    if ctest_flaky:
+        print(f"[NSLINK] {len(ctest_flaky)} solo fallan en paralelo (contencion, no del "
+              f"enlazador): {', '.join(ctest_flaky)}")
     regressions = len(groups["regressions"])
     if regressions:
-        print(f"[NSLINK] {regressions} REGRESIONES -- pasaban con lld-link y fallan con NSLink.")
-    return 1 if regressions else 0
+        print(f"[NSLINK] {regressions} REGRESIONES en los 84 trabajos.")
+    if ctest_broken:
+        print(f"[NSLINK] {len(ctest_broken)} REGRESIONES en ctest: {', '.join(ctest_broken)}")
+    if not regressions and not ctest_broken:
+        print("[NSLINK] sin regresiones en ninguna de las dos superficies.")
+    return 1 if (regressions or ctest_broken) else 0
 
 
 def main() -> int:

@@ -557,8 +557,22 @@ int main() { return NS484_Add(20, 22) == 42 ? 0 : 1; }
             directory / "bad_mangled_link.log"),
         "omitting generated extern-C declarations makes C++-mangled call fail to link against NativeSharp C ABI");
     const std::string mangledLog = readFile(directory / "bad_mangled_link.log");
-    tests.expect(mangledLog.find("undefined symbol") != std::string::npos &&
-            mangledLog.find("NS484_Add") != std::string::npos,
+
+    // ESTA COMPROBACION EXIGIA EL TEXTO DE lld-link, Y ESO ERA EL DEFECTO.
+    //
+    // Pedia que el log contuviera la cadena literal "undefined symbol". Eso es COMO LO DICE
+    // lld-link, no lo que tiene que pasar. Medido el 2026-09-02: con NSLink el enlace falla igual
+    // --la comprobacion de arriba, que exige el fallo, pasa-- y esta caia solo porque el otro
+    // enlazador redacta su diagnostico con otras palabras. Una prueba asi da rojo con cualquier
+    // enlazador que no sea aquel contra el que se escribio, y llama defecto suyo a una diferencia
+    // de vocabulario.
+    //
+    // LO QUE SE MIDE AHORA es la propiedad de verdad, y son dos hechos independientes:
+    //   1. el enlace FALLA sin las declaraciones extern "C"   -- la comprobacion de arriba;
+    //   2. el diagnostico NOMBRA el simbolo que no resolvio    -- esta.
+    // El nombre del simbolo en el log es la evidencia de que la causa es el decorado de nombres,
+    // y cualquier enlazador que se pueda usar en serio lo nombra. La redaccion no es contrato.
+    tests.expect(mangledLog.find("NS484_Add") != std::string::npos,
         "negative linkage test exposes C++ name mangling as the reason the C ABI symbol cannot resolve");
 }
 }
@@ -577,6 +591,5 @@ int main()
     testStaticLibraryCppHost(tests, root);
     testCppLinkageAndTypeGuards(tests, root);
 
-    std::filesystem::remove_all(root, cleanupError);
-    return tests.result();
+    return tests.resultKeeping(root);
 }

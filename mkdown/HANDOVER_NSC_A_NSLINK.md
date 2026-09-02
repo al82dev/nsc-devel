@@ -21,25 +21,23 @@ sección 1 y la 3 son las que cambian.
 vez:
 
 ```
-PASADA 1   lld-link     construye nsc + ctest (243) + 84 trabajos + triage + manifiesto -> _logs\
-PASADA 2   nslink.exe   TODO ESO OTRA VEZ, sin reconstruir nsc                  -> _logs_nslink\
+PASADA 1   lld-link     build-clang-lldlink\  --->  _logs_lldlink\    EL OFICIAL
+PASADA 2   nslink.exe   build-clang-nslink\   --->  _logs_nslink\
 ```
 
-**`nsc.exe` se construye una sola vez, con clang-cl.** NSLink no construye el compilador:
-construye **lo que el compilador emite**. Lo que se ejecuta dos veces es todo lo que *invoca* a
-`nsc.exe` — las 243 pruebas de `ctest` (muchas enlazan de verdad), los 84 trabajos (42 proyectos ×
-`-O0`/`-O2`), el triage de bugs y el manifiesto. La pasada 2 va en modo `norebuild` justamente para
-que **los dos reportes midan el mismo binario de nsc**: si se reconstruyera en medio, una
-diferencia entre pasadas podría venir del compilador y no de ti.
-
-No son «las fixtures otra vez». O sea: **si algo que emites rompe una prueba unitaria o el triage,
-ahora se ve**; antes no se veía, porque esas etapas sólo se medían con lld-link.
+**Cada pasada construye su propio compilador en su propio arbol y escribe en su propio directorio.**
+No son «las fixtures otra vez»: con NSLink se construye, se corren las pruebas de `ctest` —muchas
+enlazan de verdad—, los 84 trabajos (42 proyectos × `-O0`/`-O2`), el triage de bugs y el manifiesto.
+O sea: **si algo que emites rompe una prueba unitaria o el triage, ahora se ve**; antes no se veía,
+porque esas etapas sólo se medían con lld-link.
 
 Los dos directorios tienen la **misma forma** —los mismos nombres de log, el mismo `REPORTE.txt`—
 para que se lean igual y se comparen línea a línea. **No comparten ningún número.**
 
-La sustitución no recompila nada: `LldLinker::discover()` en nsc lee `NSC_LLD_LINK` antes de buscar
-`lld-link` en el PATH, y `all.bat` la fija —y la **limpia**— en cada pasada.
+Elegir enlazador no cuesta recompilar `nsc`: `LldLinker::discover()` lee `NSC_LLD_LINK` antes de
+buscar `lld-link` en el PATH, y `all.bat` la fija —y la **limpia**— en cada pasada. Que cada pasada
+tenga su propio árbol de build es por otra razón: así las dos son completas por sí solas y ninguna
+depende del estado en que la otra dejó nada.
 
 Después, `nslink_pipeline.py --compare` compara **caso por caso** las dos pasadas ya hechas y
 reemplaza tu buzón. Ese paso no compila nada.
@@ -55,7 +53,14 @@ _inbox_nsc\
     fallos\<caso>.log    la salida COMPLETA de nsc para ese caso
     fallos\<caso>.obj    el COFF que NSLink no supo enlazar
     corpus-oferta\       seis objetos representativos, aunque no falle nada
+    logs-nsc-tests-with-nslink\   LOS LOGS ENTEROS de la pasada con NSLink
 ```
+
+`logs-nsc-tests-with-nslink\` es la corrida completa, no un resumen: los ocho logs numerados, el
+`TRIAGE`, el `REPORTE`, la comparación con lld-link y `cases\` con un fichero por trabajo. Sirve
+para mirar cualquier cosa sin tener que pedirla. **No** van `bin\` ni `linktemps\` —cientos de megas
+por corrida—; lo que de ahí hace falta para reproducir un fallo va en `fallos\`, elegido caso por
+caso. Se reemplaza entero en cada corrida, igual que `fallos\`.
 
 **El mensaje de NSLink está dentro del `.log`.** No hace falta buscarlo en otro sitio: `nsc`
 redirige tu stdout y stderr a un fichero temporal, lo lee, y lo pega dentro de su propio error
@@ -182,18 +187,36 @@ añadir: es cuestión de decirlo, por `nsc_actions\` como hiciste con el runtime
 
 ---
 
-## 7. Sobre el 84/84 anterior: no lo cites como verde del árbol de hoy
+## 7. La primera corrida limpia, y lo que dice
 
-Dos motivos independientes, y cada uno basta:
+| | ctest | 84 trabajos | triage | manifiesto |
+|---|---|---|---|---|
+| lld-link | **243/243** | 84 OK | OK | OK |
+| **NSLink** | **238/243** | 84 OK | OK | OK |
+
+Los cinco fallos son de NSLink, y **parecen uno solo**: todos cuelgan de la biblioteca de
+importacion.
+
+```
+nsc.stage46.native-libraries   DLL generation creates the matching COFF import .lib
+nsc.stage47.host-c-abi         8 checks: C y C++ no enlazan contra ese .lib
+nsc.stage48_1.c-header         4 checks
+nsc.stage48_3.c-host           2 checks
+nsc.stage48_4.cpp-host         3 checks
+```
+
+El primero produce el `.lib`; los otros cuatro intentan enlazar anfitriones contra el. Un defecto en
+el camino `/dll /noentry /def: /implib:` explicaria los dieciocho *checks*. El detalle entero de
+cada prueba esta en `02_ctest.log` de la pasada, que va copiado al buzon.
+
+**Los 84 trabajos pasan con los dos enlazadores.** Si la segunda pasada hubiera sido solo esas 84
+—que es como estaba antes—, el reporte habria dicho *84 OK, 0 regresiones*.
+
+### Y dos avisos sobre el 84/84 de la corrida anterior: no lo cites
 
 1. **`nslink.exe` era el del 27 de agosto**, anterior al Bloque 2 y al Bloque 3 de nsc. Lo notaste
-   tú, comparando los `mtime` de los tres ficheros de esa tarde
-   (`markdowns/05_2026-09-02_contrato_con_nsc.md`, §B). Tenías razón y no lo habíamos visto.
-2. **La corrida de referencia pudo ser también NSLink.** `NSC_LLD_LINK` se heredaba de la ventana:
-   si venía puesta, la pasada «oficial» enlazaba con NSLink sin decirlo, y entonces «0 regresiones»
-   no significa nada porque se comparó una cosa consigo misma. Se vio como una contradicción —cinco
-   pruebas de biblioteca de importación en rojo **y** «0 regresiones» al mismo tiempo—. `all.bat`
-   ahora limpia la variable en cada pasada y avisa si venía puesta.
-
-La corrida nueva —la que estás esperando en tu §F— es la primera que mide el compilador de hoy
-contra el `nslink.exe` de hoy, y con las dos pasadas separadas de verdad.
+   tu, comparando los `mtime` (`markdowns/05_2026-09-02_contrato_con_nsc.md`, §B). Tenias razon.
+2. **La corrida de referencia pudo ser tambien NSLink.** `NSC_LLD_LINK` se heredaba de la ventana,
+   asi que la pasada «oficial» podia estar enlazando con NSLink sin decirlo — y entonces «0
+   regresiones» no significa nada porque se comparo una cosa consigo misma. `all.bat` ahora limpia
+   la variable en cada pasada y avisa si venia puesta.

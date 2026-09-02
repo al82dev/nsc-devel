@@ -48,6 +48,7 @@ private:
     bool consumeGenericGreater();
     static bool canAppearInTypeArgumentList(lexer::TokenKind kind) noexcept;
     bool looksLikeGenericCallTypeArguments() const noexcept;
+    bool looksLikeClosedGenericTypeReference() const noexcept;
 
     ast::AstNode* parseNamespaceMember();
     ast::AstNode* parseNamespaceDeclaration();

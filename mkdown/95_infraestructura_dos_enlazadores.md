@@ -4,8 +4,8 @@
 **Qué añade:** que **una** corrida ejecute **la batería completa dos veces** —el mismo compilador,
 un enlazador cada vez— y deje **dos reportes autocontenidos que no comparten un solo número**, más
 el material de los fallos del enlazador en el árbol de quien lo desarrolla.
-**Estado:** infraestructura entregada. **No ejecutada**: correrla es Windows, y desde aquí no hay
-shell en esa máquina. Los números los pone `all.bat`.
+**Estado:** entregada y **ejecutada**. La primera corrida limpia está en la sección 8: `nsc` verde
+con los dos enlazadores, y cinco pruebas de `ctest` que sólo fallan con NSLink.
 
 ---
 
@@ -62,43 +62,47 @@ pipeline entero **no se pueden comparar**, que era el único propósito de tener
 
 Lo que hay ahora:
 
-**`all.bat` borra `build-clang\` al arrancar.** Es LA corrida, no una iteración: lo que mide tiene
-que salir de fuentes, no de `.obj` que sobrevivieron a saber de qué ronda. Y hace cierto por
-construcción lo de abajo — la pasada 1 configura y construye desde cero, la 2 no reconstruye nada,
-así que las dos miden literalmente el mismo `nsc.exe`. Para iterar están `quick` y `norebuild`, que
-conservan el árbol porque para eso existen.
+**Dos árboles de build y dos directorios de logs, desde el primer byte.** Es lo que hace simple
+todo lo demás, y se llegó a ello por descarte. Con un solo `build-clang\` había que elegir entre
+reconstruirlo en la pasada 2 —y entonces los dos reportes medían compiladores distintos sin
+decirlo— o no reconstruirlo, y entonces la pasada 2 dependía de que la 1 hubiera dejado el árbol
+sano. Con dos árboles no hay que elegir: cada pasada construye el suyo desde cero y las dos son
+completas por sí solas.
 
-**El compilador se construye UNA sola vez.** `nsc.exe` lo produce CMake con clang-cl y `lld-link`,
-y eso no depende de `NSC_LLD_LINK`: NSLink nunca construye a nsc, **construye lo que nsc emite**.
-Lo que se ejecuta dos veces es todo lo que *invoca* a `nsc.exe` —ctest, las 84 fixtures, el triage—
-que es donde el enlazador entra en juego. Por eso la pasada 2 llama al checklist en modo
-`norebuild`: no es un ahorro, es la garantía de que **los dos reportes miden el mismo binario**. Si
-se reconstruyera en medio, una diferencia entre las dos pasadas podría venir del compilador y no
-del enlazador, y la comparación no diría nada.
+Que las dos compilen las mismas fuentes por separado **no es desperdicio**: si algún día los dos
+`nsc.exe` no se comportan igual, eso es un fallo de reproducibilidad y esta corrida es donde tiene
+que salir.
 
 ```
 all.bat
+  Limpieza: se borran los dos arboles y los dos directorios de logs.
+
   PASADA 1 -- lld-link                                  EL VEREDICTO OFICIAL
     NSC_LLD_LINK vacia
-    run_windows_checklist.bat      BUILD + install + ctest 243 + 84 casos + triage
-    verify_manifest.py             -> _logs\06_manifest.log
-    report.py                      -> _logs\REPORTE.txt        RC_LLD
-    move _logs -> _logs_lld                       (el checklist borra _logs al arrancar)
+    NSC_BUILD_DIR=build-clang-lldlink   NSC_LOG_DIR=_logs_lldlink
+    run_windows_checklist.bat      build + ctest + 84 casos + triage
+    verify_manifest.py             -> _logs_lldlink\06_manifest.log
+    report.py                      -> _logs_lldlink\REPORTE.txt      RC_LLD
 
   PASADA 2 -- NSLink                                    LA MISMA BATERIA
     NSC_LLD_LINK=<nslink.exe>
-    NSC_KEEP_LINK_TEMPS=%CD%\_logs\linktemps
-    run_windows_checklist.bat norebuild
-                                   sin build: lib\ + ctest 243 + 84 casos + triage
-    verify_manifest.py             -> _logs\06_manifest.log
-    report.py                      -> _logs\REPORTE.txt        RC_NSLINK
-    move _logs -> _logs_nslink
+    NSC_KEEP_LINK_TEMPS=%CD%\_logs_nslink\linktemps
+    NSC_BUILD_DIR=build-clang-nslink    NSC_LOG_DIR=_logs_nslink
+    run_windows_checklist.bat      build + ctest + 84 casos + triage
+    verify_manifest.py             -> _logs_nslink\06_manifest.log
+    report.py                      -> _logs_nslink\REPORTE.txt       RC_NSLINK
 
-  move _logs_lld -> _logs                       (la oficial vuelve a llamarse _logs)
-  nslink_pipeline.py --compare                  compara las dos, NO compila nada
-  veredicto combinado en consola
-  exit /b %RC_LLD%
+  nslink_pipeline.py --compare   compara las dos, NO compila nada
+  veredicto combinado ; exit /b %RC_LLD%
 ```
+
+Las variables son dos, y sin ellas cada script se comporta exactamente como antes, así que se les
+puede seguir llamando a mano:
+
+| Variable | La leen |
+|---|---|
+| `NSC_BUILD_DIR` | `run_windows_checklist.bat` |
+| `NSC_LOG_DIR` | `run_windows_checklist.bat`, `run_bug_triage.bat`, `run_cases.py`, `report.py` |
 
 Los dos directorios tienen **la misma forma**, archivo por archivo:
 
@@ -112,34 +116,22 @@ Así se leen igual, se comparan línea a línea, y **ningún número de uno pued
 
 ### 3.1 Decisiones, y ninguna es de estilo
 
-**Por qué se mueve el directorio en vez de escribir en dos sitios.** `run_windows_checklist.bat`
-hace `rmdir /s /q _logs` en su línea 58, al arrancar. Es correcto —un reporte con logs de dos
-corridas mezcladas es peor que no tener reporte— pero significa que la segunda pasada **borra la
-primera**. Renombrar el directorio entero antes de lanzar la segunda es instantáneo en el mismo
-volumen y no obliga a tocar el checklist, que es de la corrida oficial y no debe cambiar por esto.
-También es la razón por la que la versión anterior llamaba al checklist una sola vez: entonces no
-había forma de correrlo dos veces sin perder la primera.
+**Por qué no se comparte el directorio de logs.** `run_windows_checklist.bat` borra el suyo al
+arrancar. Es correcto —un reporte con logs de dos corridas mezcladas es peor que no tener reporte—
+pero significaba que la segunda pasada borraba la primera. La versión anterior lo resolvía moviendo
+`_logs\` a otro nombre y restaurándolo al final, y ese baile costó una corrida entera: al
+descarrilar, la ejecución volvió a la limpieza del principio y borró las dos pasadas. Con
+`NSC_LOG_DIR` cada una nace en su sitio y no hay nada que mover.
 
-**El modo de la pasada 2 se deriva del de la 1, no se copia.** `full` (o sin argumento) → la 2 va
-en `norebuild`, que es la misma cobertura menos el paso que no depende del enlazador: sincroniza
-`lib\`, corre ctest, los 84 trabajos y el triage. `quick` se propaga tal cual —su build es
-incremental sobre el árbol que la pasada 1 acaba de dejar al día, o sea segundos y ningún `.obj`
-distinto; no existe un modo «quick sin build» y **inventarlo aquí daría dos pasadas con cobertura
-distinta, que es lo único que no se vale**. `build` no ejecuta nada, así que no hay pasada 2.
+**El marcador de «configuración completa» era falso, y costó una corrida.**
+`run_windows_checklist.bat` decidía si `build-clang\` servía mirando si la caché tenía
+`CMAKE_CXX_COMPILER_WORKS:INTERNAL=1`. Ese marcador **no existe nunca en este árbol**: CMake omite
+la prueba del compilador y el log lo dice —*«Check for working CXX compiler: … - skipped»*—. O sea
+que la comprobación daba positivo en **todas** las corridas, borraba un árbol sano y convertía cada
+build incremental en una reconstrucción completa. La señal correcta es que exista `build.ninja`, que
+lo escribe el `Generating done`, el último paso de la configuración.
 
-**Entre pasada y pasada se comprueba la caché de CMake, y si no está sana NO HAY PASADA 2.**
-`run_windows_checklist.bat` mira `build-clang\CMakeCache.txt` al arrancar y, si le falta
-`CMAKE_CXX_COMPILER_WORKS:INTERNAL=1` —la señal de que la configuración llegó al final—, **borra el
-árbol de build y fuerza `full`**. Para él es lo correcto: correr la matriz contra un árbol de build
-que acaba de desaparecer sería peor. Para esto es la ruina, porque en la pasada 2 significa
-reconstruir el compilador, y entonces los dos reportes miden dos `nsc.exe` distintos.
-
-Pasó en la corrida del 2026-09-02: la pasada 2 imprimió *«build-clang\ quedo de una configuracion
-que no termino. Se borra. Modo forzado a `full`»*, reconstruyó entero, y el `ctest` rojo que salió
-después no se puede atribuir a nadie — puede ser de NSLink o de la reconstrucción. **Un reporte que
-falta es un dato; un reporte que compara dos compiladores distintos es una mentira**, así que
-`all.bat` mira la caché él mismo después de la pasada 1 y, si está a medias, omite la pasada 2
-diciendo por qué y remitiendo a `_logs\01_build.log`.
+Una comprobación cuyo positivo no se puede distinguir de su caso normal no es una comprobación.
 
 **`NSC_LLD_LINK` se fija en CADA pasada, nunca se hereda.** Si alguien llamó a `nslink-env.bat` en
 esa ventana, sin limpiarla la pasada «oficial» enlazaría con NSLink **sin decirlo**. No es
@@ -178,7 +170,7 @@ a otro sitio.
 
 El 2026-09-02 lo reescribí con la corrida en marcha. Al terminar el checklist de la pasada 2, cmd
 retomó ~1800 bytes desplazado, imprimió `'######...' is not recognized as an internal or external
-command`, **saltó a la limpieza del principio —que borra `_logs_lld` y `_logs_nslink`—** y volvió a
+command`, **saltó a la limpieza del principio —que borra los directorios de logs—** y volvió a
 llamar al checklist. Las dos pasadas de esa corrida se perdieron enteras.
 
 La regla es simple y no admite excepciones: mientras `all.bat` esté corriendo, no se toca ningún
@@ -286,14 +278,11 @@ checklist entero.
 Los directorios de logs están **fuera** de `_logs\` porque el checklist lo borra al arrancar. Eso
 obligó a tres cosas más, y las tres son necesarias:
 
-* `.gitignore` — `/_logs_lld` y `/_logs_nslink`, junto a `/_logs`.
-* `verify_manifest.py` — `_logs_nslink` en `EXCLUDED_DIRECTORIES`. **Hay que nombrarlo aparte**:
-  la comparación es por nombre exacto de componente de ruta, no por prefijo, y `_logs_nslink` no
-  es `_logs`. Sin esa línea entrarían al manifiesto los `.obj`, `.exe` y los temporales de enlace
-  de la segunda pasada, y cambiarían en cada corrida.
-* `_logs_lld` existe sólo **durante** la corrida: al final vuelve a ser `_logs`. Si queda uno de
-  ayer, `all.bat` lo borra al arrancar — restaurarlo al final de hoy sería el peor resultado
-  posible de todos los posibles.
+* `.gitignore` — los dos árboles de build y los dos directorios de logs.
+* `verify_manifest.py` — `_logs_lldlink` y `_logs_nslink` en `EXCLUDED_DIRECTORIES`. **Hay que
+  nombrarlos aparte**: la comparación es por nombre exacto de componente de ruta, no por prefijo, y
+  `_logs_nslink` no es `_logs`. Sin esas líneas entrarían al manifiesto los `.obj`, `.exe` y los
+  temporales de enlace de las dos pasadas, y cambiarían en cada corrida.
 
 ---
 
@@ -314,36 +303,36 @@ fixture obliga a añadirla en los dos sitios.
 
 | Archivo | Qué |
 |---|---|
-| `all.bat` | **Reescrito.** Las dos pasadas completas, el snapshot de directorios, la limpieza de variables, el veredicto combinado. **Sin bloques `if (...)`**: dentro de un bloque cmd.exe exige escapar `(`, `)` y `>`, y una omisión convierte un `echo` en una redirección silenciosa. Con etiquetas y `goto` no hay nada que escapar |
-| `nslink_pipeline.py` | Modo `--compare`: lee las dos pasadas ya hechas, compara y llena el buzón, **sin compilar** |
-| `run_cases.py` | `with_link_temp_subdirectory()` — un subdirectorio de temporales por trabajo. No hace nada si `NSC_KEEP_LINK_TEMPS` no está puesta |
-| `src/Linker/LldLinker.cpp` | `keepLinkTemporaries()`; los cuatro sitios de limpieza del `.rsp` y el `.log` quedan bajo esa guarda |
+| `all.bat` | **Reescrito.** Los dos árboles, los dos directorios, la limpieza, las dos pasadas siempre, el veredicto combinado. **Sin bloques `if (...)`**: dentro de un bloque cmd.exe exige escapar `(`, `)` y `>`, y una omisión convierte un `echo` en una redirección silenciosa. Con etiquetas y `goto` no hay nada que escapar |
+| `run_windows_checklist.bat` | `NSC_BUILD_DIR` y `NSC_LOG_DIR`; el marcador de configuración completa pasa a ser `build.ninja` |
+| `run_bug_triage.bat`, `report.py` | `NSC_LOG_DIR` |
+| `run_cases.py` | `NSC_LOG_DIR` y `with_link_temp_subdirectory()` — un subdirectorio de temporales por trabajo, porque los 84 corren en paralelo |
+| `nslink_pipeline.py` | `run_compare` —que **no existía**, ver doc 96 §3.2—, la comparación de `ctest`, y la copia de los logs al buzón |
+| `src/Linker/LldLinker.cpp` | `keepLinkTemporaries()`; los cuatro sitios de limpieza del `.rsp` y el `.log` bajo esa guarda |
 | `src/Linker/WindowsExecutableBuilder.cpp` | `linkTemporaryRootOverride()`; `TemporaryDirectory` no se destruye cuando se pidió conservarla |
-| `.gitignore` | `/_logs_lld` y `/_logs_nslink` |
-| `verify_manifest.py` | `_logs_nslink` en `EXCLUDED_DIRECTORIES`, con el porqué del nombre exacto |
+| `verify_manifest.py`, `.gitignore` | Los directorios nuevos fuera del manifiesto y de git |
 
 **No se tocó NSLink.** Ni su código, ni sus pruebas, ni su corpus. Lo único que se escribe en su
-árbol es el buzón, y la línea `Estado:` de las peticiones que nos dirigen en `nsc_actions\`.
+árbol es el buzón —y los logs dentro de él— y la línea `Estado:` de las peticiones que nos dirigen
+en `nsc_actions\`.
 
 ---
 
-## 8. Lo que esto NO dice todavía
+## 8. Qué midió, la primera vez que corrió de verdad
 
-**Nadie ha corrido esta versión.** La infraestructura está escrita y probada en seco —las etiquetas
-de `all.bat` resuelven todas, el fichero es CRLF y ASCII, los scripts compilan y su comportamiento
-se probó con árboles falsos— pero la corrida de verdad es Windows y desde el contenedor no hay
-forma de lanzarla.
+| | ctest | 84 trabajos | triage | manifiesto |
+|---|---|---|---|---|
+| **lld-link** | **243/243** | 84 OK | OK | OK |
+| **NSLink** | **238/243** | 84 OK | OK | OK |
 
-Hasta que `all.bat` corra **en una ventana limpia**, no se sabe si NSLink enlaza lo que el
-compilador emite hoy. Y el 84/84 anterior no lo dice, por dos motivos independientes que se
-descubrieron después:
+`nsc` verde. Los cinco fallos de NSLink son **uno**: todos cuelgan de la biblioteca de importación
+—`stage46.native-libraries` la produce, y `stage47`, `stage48_1`, `stage48_3` y `stage48_4` intentan
+enlazar anfitriones de C y C++ contra ella—.
 
-* La referencia contra la que se comparó **pudo ser también NSLink**, por la variable heredada.
-* El `nslink.exe` instalado entonces era del **27 de agosto**, anterior al Bloque 2 y al Bloque 3.
-  Lo notó el propio worker de NSLink comparando los `mtime` de los tres ficheros de esa tarde
-  (`markdowns/05_2026-09-02_contrato_con_nsc.md`), no nosotros.
-
-Un verde que no se sabe de qué binario es no es un verde.
+**Y es exactamente lo que esta infraestructura existe para ver.** Los 84 trabajos pasan con los
+**dos** enlazadores: si la segunda pasada hubiera sido «las fixtures otra vez», el reporte habría
+dicho *84 OK, 0 regresiones* y NSLink habría quedado en verde con un defecto real dentro. El
+detalle, en el doc 96 §2.
 
 ---
 

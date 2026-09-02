@@ -5749,8 +5749,29 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     bool typeReceiver = false;
     if (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
-        const std::optional<std::size_t> typeOrdinal = resolveTypeIdentifier(
-            methodMemberOrdinal, expression->first()->text());
+        // ID 131. `Caja<int>.Make(...)`. El parser deja el TypeSyntax del tipo CERRADO colgado del
+        // identificador cuando la forma escrita llevaba argumentos de tipo. Cuando esta, se
+        // resuelve por CLAVE DE TIPO y no por nombre suelto: `resolveTypeIdentifier` busca por
+        // `identity.name()`, que para un generico es el nombre ABIERTO, y devolveria la
+        // declaracion sin cerrar -- o sea `Caja<T>` donde se escribio `Caja<int>`, y a partir de
+        // ahi todo lo que se dedujera del miembro seria de otro tipo.
+        //
+        // `canonicalTypeKey` es el MISMO servicio que usan la declaracion de un local y el `new`,
+        // asi que la clave que sale aqui es la de la monomorfizacion que esas dos ya crearon. Si
+        // no existe --se escribio un tipo cerrado que nadie mas usa-- no se resuelve nada y el
+        // camino de abajo da el diagnostico de siempre, que es lo correcto: inventar la
+        // instanciacion desde un acceso a miembro seria monomorfizar en el sitio equivocado.
+        std::optional<std::size_t> typeOrdinal;
+        const ast::TypeSyntax* closedType = expression->first()->typeSyntax();
+        if (closedType != nullptr && memberModel_ != nullptr && nameLookup_ != nullptr)
+        {
+            typeOrdinal = namedTypeOrdinalForTypeKey(
+                memberModel_->canonicalTypeKey(closedType, *nameLookup_));
+        }
+        else
+        {
+            typeOrdinal = resolveTypeIdentifier(methodMemberOrdinal, expression->first()->text());
+        }
         if (typeOrdinal.has_value())
         {
             typeReceiver = true;

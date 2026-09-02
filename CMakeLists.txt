@@ -887,6 +887,18 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage58_view_lifetimes_tests)
     add_test(NAME nsc.stage58.view-lifetimes COMMAND nsc_stage58_view_lifetimes_tests)
 
+    # ID 131 -- miembros estaticos de un tipo generico CERRADO (`Caja<int>.Make(7)`). Va pegado a
+    # la prueba del Bloque 3 a proposito: el hueco se descubrio implementandolo, y se rodeo alli
+    # metiendo las factorias en clases no genericas. Esta prueba mide el arreglo Y, sobre todo,
+    # que la desambiguacion entre "menor que" y "lista de argumentos de tipo" siga distinguiendo
+    # las dos -- que es por donde un cambio en esto se lleva por delante la aritmetica de
+    # comparaciones sin que nadie lo note.
+    add_executable(nsc_stage59_closed_generic_member_tests tests/unit/Stage59ClosedGenericMemberTests.cpp)
+    target_link_libraries(nsc_stage59_closed_generic_member_tests PRIVATE nsc_frontend nsc_target)
+    target_compile_features(nsc_stage59_closed_generic_member_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_stage59_closed_generic_member_tests)
+    add_test(NAME nsc.stage59.closed-generic-member COMMAND nsc_stage59_closed_generic_member_tests)
+
     add_executable(nsc_stage50_8_ownership_ir_lowering_tests tests/unit/Stage50_8OwnershipIrLoweringTests.cpp)
     target_link_libraries(nsc_stage50_8_ownership_ir_lowering_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage50_8_ownership_ir_lowering_tests PRIVATE cxx_std_20)

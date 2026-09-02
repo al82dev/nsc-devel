@@ -728,6 +728,66 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
     return false;
 }
 
+// ID 131. `Caja<int>.Make(7)` -- un miembro estatico de un tipo generico CERRADO -- no parseaba.
+//
+// EL DEFECTO. `looksLikeGenericCallTypeArguments` exige que tras el `>` que cierra venga un `(`.
+// Con esa regla `Helper.Wrap<int>(1)` --argumentos de tipo de un METODO-- entra, y
+// `Caja<int>.Make(7)` --argumentos de tipo de un TIPO-- no: detras del `>` viene un `.`. El
+// parser lo leia entonces como dos comparaciones y moria con "expected expression" dos veces
+// seguidas de "expected ';', found 'Make'", ninguna de las cuales menciona genericos.
+//
+// POR QUE UN PREDICADO APARTE Y NO UN TOKEN MAS EN EL OTRO. Porque no producen lo mismo. Tras
+// `Wrap<int>` viene una LLAMADA y los argumentos de tipo se cuelgan de la CallExpression; tras
+// `Caja<int>` viene un TIPO CERRADO del que se accede a un miembro, y lo que hace falta no es una
+// lista de argumentos suelta sino un TypeSyntax completo -- el mismo que `new Caja<int>()` y
+// `Caja<int> c` ya construyen. Mezclar los dos casos en un predicado habria obligado a que el
+// bucle de sufijos adivinara cual de las dos formas tenia delante.
+//
+// LA REGLA DE DESAMBIGUACION es la de C#: se intenta leer una lista de argumentos de tipo y solo
+// se acepta si lo que sigue al `>` de cierre encaja. Aqui el conjunto es UNO -- `.` seguido de un
+// identificador -- porque es la unica forma nueva que se admite. Se reutiliza
+// `canAppearInTypeArgumentList`, que es la lista blanca que ya evita comprometerse con una
+// expresion que solo tenia comparaciones dentro.
+bool Parser::looksLikeClosedGenericTypeReference() const noexcept
+{
+    if (!at(TokenKind::Identifier)) return false;
+    std::size_t cursor = index_ + 1;
+
+    // Nombre calificado: `Espacio.Caja<int>.Make(...)`.
+    while (cursor + 1 < tokens_.size() &&
+           tokens_[cursor].kind() == TokenKind::Dot &&
+           tokens_[cursor + 1].kind() == TokenKind::Identifier)
+    {
+        cursor += 2;
+    }
+    if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Less) return false;
+
+    ++cursor;
+    int genericDepth = 1;
+    while (cursor < tokens_.size())
+    {
+        const TokenKind kind = tokens_[cursor].kind();
+        if (!canAppearInTypeArgumentList(kind))
+        {
+            return false;
+        }
+        if (kind == TokenKind::Less) ++genericDepth;
+        else if (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater)
+        {
+            genericDepth -= kind == TokenKind::GreaterGreater ? 2 : 1;
+            if (genericDepth == 0)
+            {
+                return cursor + 2 < tokens_.size() &&
+                    tokens_[cursor + 1].kind() == TokenKind::Dot &&
+                    tokens_[cursor + 2].kind() == TokenKind::Identifier;
+            }
+            if (genericDepth < 0) return false;
+        }
+        ++cursor;
+    }
+    return false;
+}
+
 ast::AstNode* Parser::parseNamespaceMember()
 {
     if (at(TokenKind::KwUsing))
@@ -3589,7 +3649,17 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwThrow)) return parseThrowStatement();
     if (at(TokenKind::KwUsing)) return parseUsingStatement();
 
-    if (at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVar) || canStartTypeAt(index_))
+    // ID 131, la otra mitad. Al principio de una sentencia, `Caja<int>` puede empezar DOS cosas:
+    // una declaracion (`Caja<int> c = ...`) o una expresion (`Caja<int>.Cuenta = 5;`). Las
+    // distingue lo que sigue al `>` de cierre: un identificador en la primera, un `.` en la
+    // segunda -- y `looksLikeClosedGenericTypeReference` exige exactamente `.` mas identificador,
+    // que no puede empezar ninguna declaracion.
+    //
+    // Sin esto, `canStartTypeAt` decia "declaracion", `parseVariableDeclaration` leia el tipo y
+    // pedia un nombre de variable, y el error era "expected variable name, found '.'": un
+    // diagnostico que no menciona ni genericos ni miembros estaticos y manda a mirar donde no es.
+    if (at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVar) ||
+        (canStartTypeAt(index_) && !looksLikeClosedGenericTypeReference()))
     {
         return parseVariableDeclaration(true);
     }
@@ -4937,7 +5007,31 @@ ast::AstNode* Parser::parseUnaryExpression()
 
 ast::AstNode* Parser::parsePostfixExpression()
 {
-    ast::AstNode* expression = parsePrimaryExpression();
+    // ID 131. `Caja<int>.Make(...)`: el receptor es un TIPO CERRADO, no una expresion. Se lee con
+    // `parseType`, que es el MISMO camino que `new Caja<int>()` y que la declaracion de un local,
+    // asi que la clave de tipo que salga de aqui es identica a la de esos dos por construccion --
+    // no una segunda forma de escribir lo mismo que haya que mantener de acuerdo con la primera.
+    //
+    // El nodo sigue siendo un IdentifierExpression para que el resto del bucle de sufijos (`.`,
+    // `[`, `(`) no tenga que saber nada nuevo; lo que lleva de mas es el TypeSyntax, que el
+    // modelo de cuerpos usa para resolver el tipo cerrado en vez del nombre suelto.
+    ast::AstNode* expression = nullptr;
+    if (looksLikeClosedGenericTypeReference())
+    {
+        const SourceRange start = current().range();
+        if (ast::TypeSyntax* closedType = parseType())
+        {
+            expression = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::IdentifierExpression,
+                join(start, tokens_[index_ - 1].range()));
+            expression->setText(closedType->baseName());
+            expression->setTypeSyntax(closedType);
+        }
+    }
+    if (expression == nullptr)
+    {
+        expression = parsePrimaryExpression();
+    }
 
     while (true)
     {

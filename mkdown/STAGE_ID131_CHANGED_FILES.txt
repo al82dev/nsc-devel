@@ -1,0 +1,39 @@
+STAGE ID 131 -- miembros estaticos de tipos genericos cerrados, y la corrida de dos enlazadores
+Fecha: 2026-09-02
+Doc:   mkdown/96_id_131_y_la_corrida_de_dos_enlazadores.md
+
+COMPILADOR
+  include/nativesharp/Parser/Parser.h            declaracion de looksLikeClosedGenericTypeReference
+  src/Parser/Parser.cpp                          el predicado; su uso en parsePostfixExpression;
+                                                 la desambiguacion declaracion-vs-expresion en
+                                                 parseStatement
+  src/Frontend/ProjectMethodBodyModel.cpp        el receptor de un acceso a miembro se resuelve por
+                                                 canonicalTypeKey cuando el identificador lleva
+                                                 argumentos de tipo
+
+PRUEBAS
+  tests/unit/Stage59ClosedGenericMemberTests.cpp NUEVO -- 12 comprobaciones
+  CMakeLists.txt                                 nsc.stage59.closed-generic-member (ctest 243 -> 244)
+
+INFRAESTRUCTURA DE LAS DOS PASADAS
+  all.bat                                        reescrito: dos arboles de build, dos directorios
+                                                 de logs, las dos pasadas siempre
+  run_windows_checklist.bat                      NSC_BUILD_DIR y NSC_LOG_DIR; el marcador de
+                                                 configuracion completa pasa a ser build.ninja
+  run_bug_triage.bat                             NSC_LOG_DIR
+  run_cases.py                                   NSC_LOG_DIR; with_link_temp_subdirectory
+  report.py                                      NSC_LOG_DIR
+  nslink_pipeline.py                             run_compare (no existia); comparacion de ctest;
+                                                 copia de los logs al buzon
+  verify_manifest.py                             _logs_lldlink en EXCLUDED_DIRECTORIES
+  .gitignore                                     los dos arboles y los dos directorios de logs
+
+ENLAZADOR (de la ronda anterior de esta sesion)
+  src/Linker/LldLinker.cpp                       NSC_KEEP_LINK_TEMPS
+  src/Linker/WindowsExecutableBuilder.cpp        raiz de temporales sustituible
+
+DOCUMENTOS
+  mkdown/96_id_131_y_la_corrida_de_dos_enlazadores.md   NUEVO
+  mkdown/95_infraestructura_dos_enlazadores.md          reescrito para la forma de dos arboles
+  mkdown/HANDOVER_NSC_A_NSLINK.md                       revision 2
+  A:/nslink-devel/docs/HANDOVER_NSC_A_NSLINK.md         copia

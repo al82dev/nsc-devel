@@ -493,6 +493,5 @@ int main()
     testTypeNameCollisions(tests, root);
     testHeaderGenerationGuards(tests, root);
 
-    std::filesystem::remove_all(root, cleanupError);
-    return tests.result();
+    return tests.resultKeeping(root);
 }
