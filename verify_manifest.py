@@ -15,7 +15,7 @@ LA REGLA, reconstruida del manifiesto existente y ahora escrita:
   * los diez directorios de DIRECTORIES, enteros y recursivos;
   * nada mas.
 
-Queda FUERA, y conviene saberlo: `.git`, los arboles de build, `_logs`, y -- esto es lo que
+Queda FUERA, y conviene saberlo: `.git`, los arboles de build, `_logs`, `_logs_nslink`, y -- esto es lo que
 sorprende -- los `.bat` de la raiz. Es decir, **el manifiesto no cubre los scripts que construyen y
 verifican el paquete**. No lo cambio aqui: ampliar la cobertura es una DECISION sobre que significa
 el manifiesto, no un arreglo del hallazgo R-001, que era simplemente que estaba desactualizado.
@@ -63,7 +63,12 @@ DIRECTORIES = (
 ROOT_SUFFIXES = (".md", ".txt", ".py")
 
 # Nunca se recorren, esten donde esten.
-EXCLUDED_DIRECTORIES = (".git", "_logs", "__pycache__", "_sandbox")
+# `_logs_nslink` esta aqui por la misma razon que `_logs`: son artefactos de una corrida, no
+# del paquete. Y hay que nombrarlo APARTE porque la comparacion es por nombre exacto de
+# componente de ruta, no por prefijo: "_logs_nslink" no es "_logs", asi que sin esta linea
+# entrarian al manifiesto los ~90 .obj y .exe de la corrida con NSLink y cambiarian en cada
+# pasada.
+EXCLUDED_DIRECTORIES = (".git", "_logs", "_logs_nslink", "__pycache__", "_sandbox")
 
 # Donde van a parar los archivos que el milestone deja atras. NO SE BORRAN: se archivan.
 #

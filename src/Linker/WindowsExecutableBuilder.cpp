@@ -12,6 +12,8 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+// <cstdlib> por getenv/_dupenv_s y free -- ver linkTemporaryRootOverride mas abajo.
+#include <cstdlib>
 #include <memory>
 #include <span>
 #include <string>
@@ -23,11 +25,57 @@ namespace nativesharp::linker
 {
 namespace
 {
+// NSL-ACT-001. `NSC_KEEP_LINK_TEMPS` -- la peticion 001 de quien desarrolla NSLink, y lo que
+// hace falta para atenderla.
+//
+// EL PROBLEMA, dicho por ellos y comprobado aqui. Un enlace de ejecutable produce TRES entradas y
+// las tres viven en este directorio temporal:
+//
+//     program.obj    el objeto del programa
+//     runtime.obj    el runtime, construido A PARTIR DEL SIMBOLO DE ENTRADA de ESE programa
+//     *.lib          las bibliotecas de importacion de ESA invocacion
+//
+// El destructor de abajo borra las tres al terminar. `corpus/llvm/` de NSLink tiene tres objetos
+// de NativeSharp y NINGUNO trae su runtime, asi que sus pruebas no pueden enlazar un ejecutable
+// completo por su cuenta: les faltan nueve simbolos (__nativesharp_alloc, memcpy, _fltused...) y
+// la unica prueba de que un ejecutable NativeSharp enlaza vive FUERA de su arbol.
+//
+// QUE LA VARIABLE SEA LA RAIZ Y NO UN BOOLEANO, y esto no es un detalle. Con un booleano habria
+// que averiguar DONDE quedo el directorio --el nombre lleva un sello de reloj-- y con dieciseis
+// trabajos en paralelo eso es adivinar. Con la variable como raiz, quien llama decide el sitio y
+// sabe exactamente donde mirar. El sello sigue puesto para que dos enlaces del mismo trabajo no
+// se pisen.
+//
+// EL EMPAREJAMIENTO ES LO QUE SE ESTABA PIDIENDO. Un `runtime.obj` de un caso y un
+// `program.obj` de otro no tienen por que enlazar juntos: el runtime se construye con
+// `build(mainSymbol, ...)`. Guardar el directorio entero conserva los tres artefactos de UNA
+// invocacion, que es justo lo que la peticion pedia y lo que un fichero suelto no puede dar.
+//
+// APAGADA POR OMISION. Sin la variable, esto es byte por byte lo de siempre: %TEMP% y borrar.
+std::string linkTemporaryRootOverride()
+{
+#ifdef _WIN32
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, "NSC_KEEP_LINK_TEMPS") != 0 || value == nullptr)
+    {
+        return {};
+    }
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    const char* value = std::getenv("NSC_KEEP_LINK_TEMPS");
+    return value != nullptr ? std::string(value) : std::string();
+#endif
+}
+
 class TemporaryDirectory final
 {
 public:
-    explicit TemporaryDirectory(std::filesystem::path path) noexcept
-        : path_(std::move(path))
+    TemporaryDirectory(std::filesystem::path path, bool keep) noexcept
+        : path_(std::move(path)),
+          keep_(keep)
     {
     }
 
@@ -36,6 +84,10 @@ public:
 
     ~TemporaryDirectory()
     {
+        if (keep_)
+        {
+            return;
+        }
         std::error_code error;
         std::filesystem::remove_all(path_, error);
     }
@@ -47,17 +99,39 @@ public:
 
 private:
     std::filesystem::path path_;
+    bool keep_ = false;
 };
 
 std::unique_ptr<TemporaryDirectory> createTemporaryDirectory(std::string& error)
 {
     error.clear();
     std::error_code filesystemError;
-    const std::filesystem::path root = std::filesystem::temp_directory_path(filesystemError);
-    if (filesystemError)
+
+    // Con la variable puesta, la raiz la elige quien llama y el directorio SOBREVIVE. Se crea el
+    // arbol si no existe: pedir que exista de antemano solo mueve el fallo de sitio.
+    const std::string keepRoot = linkTemporaryRootOverride();
+    const bool keep = !keepRoot.empty();
+    std::filesystem::path root;
+    if (keep)
     {
-        error = "could not resolve the system temporary directory: " + filesystemError.message();
-        return nullptr;
+        root = std::filesystem::path(keepRoot);
+        std::filesystem::create_directories(root, filesystemError);
+        if (filesystemError)
+        {
+            error = "could not create the NSC_KEEP_LINK_TEMPS directory '" + keepRoot +
+                "': " + filesystemError.message();
+            return nullptr;
+        }
+        filesystemError.clear();
+    }
+    else
+    {
+        root = std::filesystem::temp_directory_path(filesystemError);
+        if (filesystemError)
+        {
+            error = "could not resolve the system temporary directory: " + filesystemError.message();
+            return nullptr;
+        }
     }
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -68,7 +142,7 @@ std::unique_ptr<TemporaryDirectory> createTemporaryDirectory(std::string& error)
         filesystemError.clear();
         if (std::filesystem::create_directory(candidate, filesystemError))
         {
-            return std::make_unique<TemporaryDirectory>(candidate);
+            return std::make_unique<TemporaryDirectory>(candidate, keep);
         }
         if (filesystemError && filesystemError != std::errc::file_exists)
         {

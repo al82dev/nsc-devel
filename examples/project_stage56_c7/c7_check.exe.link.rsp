@@ -1,0 +1,14 @@
+/nodefaultlib
+/entry:__nativesharp_start
+/subsystem:console
+/machine:x64
+/dynamicbase
+/nxcompat
+/highentropyva
+/out:"A:/nsc-devel\examples\project_stage56_c7\c7_check.exe"
+"A:\nsc-devel\_logs\linktemps\nativesharp-stage20-35010859169100-0\program.obj"
+"A:\nsc-devel\_logs\linktemps\nativesharp-stage20-35010859169100-0\runtime.obj"
+"A:\nsc-devel\_logs\linktemps\nativesharp-stage20-35010859169100-0\KERNEL32.import.lib"
+"A:\nsc-devel\_logs\linktemps\nativesharp-stage20-35010859169100-0\KERNELBASE.import.lib"
+"A:\nsc-devel\_logs\linktemps\nativesharp-stage20-35010859169100-0\SHELL32.import.lib"
+"A:\nsc-devel\_logs\linktemps\nativesharp-stage20-35010859169100-0\UCRTBASE.import.lib"

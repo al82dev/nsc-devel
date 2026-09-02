@@ -62,6 +62,23 @@ std::string getEnvironmentVariable(const char* name)
 #endif
 }
 
+// NSL-ACT-001. Cuando NSC_KEEP_LINK_TEMPS esta puesta, los temporales del ENLACE no se borran.
+//
+// POR QUE EXISTE, y no es comodidad de quien depura este archivo. `nsc` escribe un fichero de
+// respuesta, se lo pasa al enlazador, lee su salida y BORRA los dos en el mismo paso. Es correcto
+// para una compilacion normal --nadie quiere basura en %TEMP%-- y deja un agujero concreto:
+// cuando el enlace falla, la invocacion exacta que fallo ya no existe. Se tiene el mensaje de
+// error y no el comando que lo produjo, asi que el fallo no es reproducible del todo.
+//
+// Quien desarrolla NSLink lo pidio por escrito (nsc_actions/001) despues de que el handover
+// dijera que no se podia dar. Se podia: solo habia que no borrarlo.
+//
+// APAGADA POR OMISION. Sin la variable, el comportamiento es byte por byte el de siempre.
+bool keepLinkTemporaries()
+{
+    return !getEnvironmentVariable("NSC_KEEP_LINK_TEMPS").empty();
+}
+
 bool containsQuote(const std::filesystem::path& path)
 {
     return path.string().find('"') != std::string::npos;
@@ -461,8 +478,11 @@ bool LldLinker::createImportLibrary(
     const bool success = runResponseFile(responsePath, logPath, error);
     std::error_code cleanupError;
     std::filesystem::remove(definitionPath, cleanupError);
-    std::filesystem::remove(responsePath, cleanupError);
-    std::filesystem::remove(logPath, cleanupError);
+    if (!keepLinkTemporaries())
+    {
+        std::filesystem::remove(responsePath, cleanupError);
+        std::filesystem::remove(logPath, cleanupError);
+    }
     std::filesystem::remove(dummyPath, cleanupError);
     if (!success)
     {
@@ -510,8 +530,11 @@ bool LldLinker::createStaticLibrary(
     std::error_code cleanupError;
     std::filesystem::remove(outputPath, cleanupError);
     const bool success = runResponseFile(responsePath, logPath, error, true);
-    std::filesystem::remove(responsePath, cleanupError);
-    std::filesystem::remove(logPath, cleanupError);
+    if (!keepLinkTemporaries())
+    {
+        std::filesystem::remove(responsePath, cleanupError);
+        std::filesystem::remove(logPath, cleanupError);
+    }
     if (!success)
     {
         std::filesystem::remove(outputPath, cleanupError);
@@ -592,8 +615,11 @@ bool LldLinker::linkDynamicLibrary(
     std::filesystem::remove(outputPath, cleanupError);
     std::filesystem::remove(importLibraryPath, cleanupError);
     const bool success = runResponseFile(responsePath, logPath, error);
-    std::filesystem::remove(responsePath, cleanupError);
-    std::filesystem::remove(logPath, cleanupError);
+    if (!keepLinkTemporaries())
+    {
+        std::filesystem::remove(responsePath, cleanupError);
+        std::filesystem::remove(logPath, cleanupError);
+    }
     if (!success)
     {
         std::filesystem::remove(outputPath, cleanupError);
@@ -656,8 +682,11 @@ bool LldLinker::linkConsoleExecutable(
     std::error_code cleanupError;
     std::filesystem::remove(outputPath, cleanupError);
     const bool success = runResponseFile(responsePath, logPath, error);
-    std::filesystem::remove(responsePath, cleanupError);
-    std::filesystem::remove(logPath, cleanupError);
+    if (!keepLinkTemporaries())
+    {
+        std::filesystem::remove(responsePath, cleanupError);
+        std::filesystem::remove(logPath, cleanupError);
+    }
     if (!success)
     {
         std::filesystem::remove(outputPath, cleanupError);

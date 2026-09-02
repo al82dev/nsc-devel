@@ -141,6 +141,26 @@ def child_environment(optimization: str) -> dict:
     return env
 
 
+def with_link_temp_subdirectory(env: dict, label: str, optimization: str) -> dict:
+    """Un subdirectorio de temporales de enlace POR TRABAJO, y solo si alguien los pidio.
+
+    `NSC_KEEP_LINK_TEMPS` hace que `nsc` conserve el directorio temporal del enlace, donde viven
+    program.obj, runtime.obj y las bibliotecas de importacion de esa invocacion. La usa la pasada
+    con NSLink de all.bat para poder entregarselos a quien desarrolla el enlazador.
+
+    El problema que resuelve esta funcion: `nsc` nombra ese directorio con un sello de reloj, asi
+    que con dieciseis trabajos en paralelo vaciandose en la MISMA raiz no hay forma de saber cual
+    es de quien. Un subdirectorio por trabajo lo vuelve deterministico.
+
+    SI LA VARIABLE NO ESTA PUESTA, ESTO NO HACE NADA. La corrida oficial no deja temporales.
+    """
+    root = env.get("NSC_KEEP_LINK_TEMPS", "")
+    if not root:
+        return env
+    env["NSC_KEEP_LINK_TEMPS"] = str(Path(root) / f"{label}_{optimization.lstrip('-')}")
+    return env
+
+
 def run_job(project: str, label: str, expected: int | None, optimization: str) -> dict:
     name = f"{label} {optimization}"
     log_path = CASE_LOGS / f"{label}_{optimization.lstrip('-')}.log"
@@ -172,7 +192,8 @@ def run_job(project: str, label: str, expected: int | None, optimization: str) -
     try:
         build = subprocess.run(
             ["cmd", "/c", str(BUILD_TOOL), str(project_path), str(exe)],
-            cwd=str(ROOT), env=child_environment(optimization),
+            cwd=str(ROOT),
+            env=with_link_temp_subdirectory(child_environment(optimization), label, optimization),
             capture_output=True, text=True, errors="replace",
             timeout=JOB_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:

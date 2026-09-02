@@ -128,8 +128,15 @@ BINDIR = OUT / "bin"
 RESULTS = OUT / "results.json"
 REPORT = OUT / "REPORTE_NSLINK.txt"
 
+# ----------------------------------------------------------------------------------------------
+# LAS DOS PASADAS DE all.bat. Cada una es un directorio COMPLETO y con la misma forma: SUMMARY,
+# los seis logs numerados, TRIAGE, cases\, bin\ y su propio REPORTE.txt. No comparten un solo
+# fichero, y este script no escribe dentro de ninguno de los dos salvo su propia comparacion.
+PASS_LLD = ROOT / "_logs"
+PASS_NSLINK = ROOT / "_logs_nslink"
+
 # La corrida de referencia, SOLO PARA LEER. La escribe run_cases.py con lld-link.
-REFERENCE = ROOT / "_logs" / "cases" / "results.json"
+REFERENCE = PASS_LLD / "cases" / "results.json"
 
 # El buzon en el arbol de NSLink. Un directorio de ENTRADA, aparte de su corpus curado: no es
 # nuestro sitio decidir que entra en `corpus\`, eso lo decide quien mantiene NSLink.
@@ -139,6 +146,36 @@ INBOX_NAME = "_inbox_nsc"
 # Tope de lo que se copia al buzon. Un .obj de estos anda por los 100 KB; 84 fallos serian ~8 MB
 # en el arbol de otro. Se avisa en vez de llenarselo en silencio.
 INBOX_MAX_BYTES = 64 * 1024 * 1024
+
+# Dos numeros y un espacio, para que `all.bat` los sume a su resumen sin parsear JSON. Es el
+# mismo truco que run_cases.py usa con su counts.txt, y por la misma razon: cmd.exe no lee JSON
+# sin pelearse.
+COUNTS = OUT / "counts.txt"
+
+# NSL-ACT-001. Donde `nsc` deja los temporales del enlace cuando NSC_KEEP_LINK_TEMPS esta puesta.
+# Un subdirectorio POR TRABAJO: con dieciseis en paralelo, una raiz compartida seria adivinar cual
+# de los `nativesharp-stage20-*` es de quien.
+LINKTEMPS = OUT / "linktemps"
+
+# LA OFERTA DE CORPUS. Cuando NSLink no falla nada, el buzon quedaria vacio y quien lo desarrolla
+# se quedaria sin nada que hacer en paralelo. Estos seis casos se copian SIEMPRE, fallen o no,
+# porque cada uno ejercita una parte distinta del enlazador y su corpus dice que le faltan
+# objetos de LLVM. Es una OFERTA: que entre en `corpus\` lo decide quien mantiene NSLink.
+CORPUS_OFFERING: list[tuple[str, str]] = [
+    ("c1_14_callback_exception_boundary_O0",
+     "Excepcion cruzando un callback de C: .pdata/.xdata, o sea PeExceptionTable."),
+    ("c1_13_two_libraries_same_symbol_O0",
+     "Dos bibliotecas definiendo el mismo simbolo: resolucion de simbolos pura."),
+    ("cc1_c16_enum_layout_O0",
+     "Layout de enum: tamanos y offsets que el enlazador tiene que respetar tal cual."),
+    ("cc1_c18_stackalloc_hardening_O0",
+     "Memoria de pila con guardias: toca __chkstk y el prologo de marco."),
+    ("cc1_c23_views_and_lifetimes_O2",
+     "El caso mas grande del arbol, a -O2: genericos monomorfizados, COMDAT y secciones "
+     "plegables. Es el que mas se parece a lo que un compilador de verdad emite."),
+    ("project_stage56_c1_O0",
+     "Interop completo: importaciones, exportaciones y ABI de C."),
+]
 
 # Un trabajo que tarda mas que esto esta colgado, no lento.
 JOB_TIMEOUT_SECONDS = 300
@@ -253,10 +290,16 @@ def locate(kind: str, env_name: str, default: Path) -> Path | None:
     return None
 
 
-def child_environment(nslink: Path) -> dict:
+def child_environment(nslink: Path, stem: str) -> dict:
     """El entorno de UN trabajo.
 
     `NSC_LLD_LINK` es la pieza entera de este pipeline -- ver la cabecera del archivo.
+
+    `NSC_KEEP_LINK_TEMPS` es la peticion 001 de NSLink: hace que `nsc` NO borre el directorio
+    temporal del enlace, donde viven `program.obj`, `runtime.obj` y las bibliotecas de
+    importacion de ESA invocacion, y de paso conserva el fichero de respuesta. Se pone en TODOS
+    los trabajos y no solo en los seis de la oferta, porque cuando un enlace falla lo que hace
+    falta es precisamente el comando que fallo, y hasta que falla no se sabe cual sera.
 
     `NSC_OPT` se BORRA a proposito: no se llama a build_project.cmd, el nivel de optimizacion va
     en la linea de comandos. Si alguien lo tiene exportado en su sesion apuntando a otra cosa,
@@ -264,6 +307,7 @@ def child_environment(nslink: Path) -> dict:
     """
     env = dict(os.environ)
     env["NSC_LLD_LINK"] = str(nslink)
+    env["NSC_KEEP_LINK_TEMPS"] = str(LINKTEMPS / stem)
     sdk = os.environ.get("NSLINK_SDK")
     if not sdk:
         guess = nslink.parent.parent / "sdk" / "win64"
@@ -314,7 +358,7 @@ def run_job(project: str, label: str, expected: int | None, optimization: str,
             lines.append(completed.stderr.rstrip())
         lines.append("")
 
-    env = child_environment(nslink)
+    env = child_environment(nslink, stem)
 
     # LOS DOS COMANDOS QUE build_project.cmd EMITE, escritos aqui directamente. Es lo unico que
     # ese .cmd hace de verdad; el resto es localizar el compilador y re-sincronizar `lib\`, y
@@ -473,8 +517,80 @@ def report_lines(results: list[dict], reference: dict[tuple[str, str], bool], no
 # ----------------------------------------------------------------------------------------------
 # EL BUZON. Lo que se le deja a quien desarrolla NSLink.
 # ----------------------------------------------------------------------------------------------
+def link_inputs(stem: str) -> dict:
+    """Las entradas REALES del enlace de un caso -- peticion 001 de NSLink.
+
+    `nsc` crea `<raiz>/nativesharp-stage20-<sello>-<n>/` y mete ahi `program.obj`, `runtime.obj` y
+    las bibliotecas de importacion de ESA invocacion. Con NSC_KEEP_LINK_TEMPS puesta ya no lo
+    borra, asi que aqui solo hay que encontrarlo.
+
+    Se coge el MAS RECIENTE si hay varios: un caso puede enlazar mas de una vez (bibliotecas antes
+    del ejecutable), y el que interesa es el ultimo, el del `.exe`.
+    """
+    # Dos sitios posibles, y ninguno se adivina: el modo --run deja sus temporales en
+    # `_logs_nslink\linktemps` (los crea el), y la pasada de all.bat los deja dentro del snapshot
+    # de esa pasada, en `_logs_nslink\linktemps` tambien -- porque all.bat le dijo a `nsc` que los
+    # pusiera en `_logs\linktemps` y despues movio `_logs` entero a `_logs_nslink`. Coinciden a
+    # proposito: un solo sitio que mirar.
+    root = LINKTEMPS / stem
+    found: dict = {"program": None, "runtime": None, "libs": [], "rsp": None, "dir": None}
+    if root.is_dir():
+        candidates = [d for d in root.iterdir() if d.is_dir()]
+        if candidates:
+            newest = max(candidates, key=lambda d: d.stat().st_mtime)
+            found["dir"] = newest
+            program = newest / "program.obj"
+            runtime = newest / "runtime.obj"
+            if program.is_file(): found["program"] = program
+            if runtime.is_file(): found["runtime"] = runtime
+            found["libs"] = sorted(newest.glob("*.lib"))
+    # El fichero de respuesta del EJECUTABLE no vive en el temporal: `nsc` lo escribe junto a la
+    # salida, como `<salida>.link.rsp`. Es la invocacion exacta, que es lo que el handover decia
+    # que no se podia dar -- se podia, solo habia que no borrarla.
+    # El .rsp del ejecutable queda junto a la salida. En el modo --run eso es `_logs_nslink\bin`;
+    # en la pasada de all.bat es `_logs\bin`, que el move convierte en `_logs_nslink\bin`. Otra
+    # vez el mismo sitio.
+    rsp = BINDIR / f"{stem}.exe.link.rsp"
+    if rsp.is_file():
+        found["rsp"] = rsp
+    return found
+
+
+def copy_link_inputs(stem: str, destination: Path) -> list[str]:
+    """Copia las entradas del enlace de un caso al buzon. Devuelve los nombres copiados."""
+    found = link_inputs(stem)
+    written: list[str] = []
+    if found["runtime"] is not None:
+        target = destination / f"{stem}.runtime.obj"
+        shutil.copy2(found["runtime"], target)
+        written.append(target.name)
+    if found["program"] is not None:
+        target = destination / f"{stem}.program.obj"
+        shutil.copy2(found["program"], target)
+        written.append(target.name)
+    if found["rsp"] is not None:
+        target = destination / f"{stem}.link.rsp"
+        shutil.copy2(found["rsp"], target)
+        written.append(target.name)
+    if found["libs"]:
+        libdir = destination / f"{stem}.libs"
+        libdir.mkdir(parents=True, exist_ok=True)
+        names = []
+        for lib in found["libs"]:
+            shutil.copy2(lib, libdir / lib.name)
+            names.append(lib.name)
+        # La lista que la peticion 001 pedia por nombre, VOLCADA de la invocacion real -- no
+        # reconstruida. Al lado van las bibliotecas mismas, que es mas de lo que se pidio.
+        (destination / f"{stem}.libs.txt").write_text(
+            "\n".join(names) + "\n", encoding="ascii", errors="replace")
+        written.append(f"{stem}.libs.txt")
+        written.append(f"{stem}.libs\\ ({len(names)} bibliotecas)")
+    return written
+
+
+
 def inbox_readme(nsc: Path, nslink: Path, groups: dict, copied: list[str],
-                 skipped: list[str]) -> str:
+                 skipped: list[str], offered: list[tuple[str, str, bool]]) -> str:
     failures = (groups["regressions"] + groups["already_failing"] + groups["unknown"])
     lines = [
         "# Buzon de NativeSharp para NSLink",
@@ -560,6 +676,54 @@ def inbox_readme(nsc: Path, nslink: Path, groups: dict, copied: list[str],
         "  resolucion de simbolos pura; se certifica **enlazando**, no ejecutando.",
         "",
     ])
+    lines.extend([
+        "## `corpus-oferta\\` -- material para trabajar en paralelo, falle o no",
+        "",
+        "Estos objetos se copian **siempre**, incluso cuando NSLink no rompe nada. Si el buzon",
+        "solo tuviera fallos, una corrida verde dejaria a quien desarrolla NSLink sin nada que",
+        "hacer -- y su `corpus/README.md` dice que lo que le falta son justamente objetos de LLVM.",
+        "",
+        "| Objeto | Que ejercita | Presente |",
+        "|---|---|:--:|",
+    ])
+    for stem, why, present in offered:
+        lines.append(f"| `{stem}.obj` | {why} | {'si' if present else 'NO'} |")
+    lines.extend([
+        "",
+        'Presente: NO quiere decir que ese caso no llego a generar objeto en esta corrida --',
+        "el fallo fue antes, al compilar. Su log esta en `fallos\\\\`.",
+        "",
+        "### NSL-ACT-001 -- ATENDIDA: el objeto de runtime, emparejado con su programa",
+        "",
+        "Junto a cada `.obj` de arriba van ahora los DEMAS artefactos de **la misma invocacion**:",
+        "",
+        "| Fichero | Que es |",
+        "|---|---|",
+        "| `<caso>.runtime.obj` | El runtime que se enlazo con ESE programa. Se construye con",
+        "`build(mainSymbol, ...)`, asi que emparejarlo con otro caso no tiene por que enlazar --",
+        "por eso se conserva el directorio entero y no un fichero suelto. |",
+        "| `<caso>.program.obj` | El objeto del programa **tal como entro al enlazador**. El",
+        "`<caso>.obj` de al lado sale de `--emit-project-oop-obj`; deberian coincidir, y se dan los",
+        "dos para que no haya que suponerlo. |",
+        "| `<caso>.link.rsp` | **La invocacion exacta.** El handover decia que esto no se podia",
+        "adjuntar porque `nsc` lo borra. Se podia: solo habia que no borrarlo. |",
+        "| `<caso>.libs.txt` | La lista de bibliotecas de importacion de esa invocacion, VOLCADA,",
+        "no reconstruida. |",
+        "| `<caso>.libs\\\\` | Y las bibliotecas mismas, que es mas de lo que se pidio. |",
+        "",
+        "Como se hizo: `nsc` gana una variable de entorno, `NSC_KEEP_LINK_TEMPS`, que le dice donde",
+        "dejar el directorio temporal del enlace y que no lo borre. **Apagada por omision** -- sin",
+        "ella el comportamiento es el de siempre. Si, hubo que tocar `nsc`; la peticion decia que se",
+        "avisara si pasaba, y esto es el aviso.",
+        "",
+        "Para los FALLOS va lo mismo, en `fallos\\\\`. Ahi el `.rsp` es lo que mas vale: es el comando",
+        "que fallo.",
+        "",
+        "Lo que sigue sin ir: el `.exe` parcial. La peticion decia que no hacia falta.",
+        "",
+        "Promoverlos a `corpus/llvm/` es decision de quien mantiene NSLink. Aqui solo se ofrecen.",
+        "",
+    ])
     if skipped:
         lines.extend([
             "## Lo que NO se copio",
@@ -595,6 +759,25 @@ def write_inbox(inbox: Path, results: list[dict], reference: dict[tuple[str, str
         shutil.rmtree(fallos, ignore_errors=True)
     fallos.mkdir(parents=True, exist_ok=True)
 
+    # LA OFERTA DE CORPUS, siempre, fallen o no. Ver CORPUS_OFFERING arriba: si NSLink no rompe
+    # nada, un buzon vacio deja a quien lo desarrolla sin material, y su propio corpus/README.md
+    # dice que le faltan objetos de LLVM.
+    oferta = inbox / "corpus-oferta"
+    if oferta.exists():
+        shutil.rmtree(oferta, ignore_errors=True)
+    oferta.mkdir(parents=True, exist_ok=True)
+    offered: list[tuple[str, str, bool]] = []
+    for stem, why in CORPUS_OFFERING:
+        source = BINDIR / f"{stem}.obj"
+        present = source.is_file()
+        if present:
+            shutil.copy2(source, oferta / source.name)
+        # NSL-ACT-001: el runtime, el program.obj REAL del enlace, el fichero de respuesta y las
+        # bibliotecas de importacion -- los tres artefactos de UNA MISMA invocacion, que es lo que
+        # la peticion subrayaba.
+        copy_link_inputs(stem, oferta)
+        offered.append((stem, why, present))
+
     copied: list[str] = []
     skipped: list[str] = []
     budget = INBOX_MAX_BYTES
@@ -612,6 +795,10 @@ def write_inbox(inbox: Path, results: list[dict], reference: dict[tuple[str, str
                 budget -= size
             else:
                 skipped.append(obj.name)
+        # Y para un FALLO, lo que de verdad hace falta es el comando que fallo. Va aqui y no solo
+        # en la oferta porque hasta que un caso falla no se sabe cual lo va a necesitar.
+        stem = f"{r['label']}_{r['opt'].lstrip('-')}"
+        copied.extend(copy_link_inputs(stem, fallos))
 
     header = [
         "NativeSharp -> NSLink -- corrida de la bateria de nsc enlazando con NSLink",
@@ -624,7 +811,8 @@ def write_inbox(inbox: Path, results: list[dict], reference: dict[tuple[str, str
                                nsc, nslink, header)) + "\n",
         encoding="utf-8", errors="replace")
     (inbox / "README.md").write_text(
-        inbox_readme(nsc, nslink, groups, copied, skipped), encoding="utf-8", errors="replace")
+        inbox_readme(nsc, nslink, groups, copied, skipped, offered),
+        encoding="utf-8", errors="replace")
     return len(copied), skipped
 
 
@@ -665,6 +853,9 @@ def main() -> int:
             print(f"[NSLINK] aviso: no existe {devel}, no se dejara buzon. "
                   "Se fija con --inbox o NSLINK_DEVEL.", file=sys.stderr)
 
+    if arguments.compare:
+        return run_compare(inbox, nsc, nslink)
+
     levels = (tuple(level if level.startswith("-") else "-" + level for level in arguments.opt)
               if arguments.opt else OPT_LEVELS)
     work = [(project, label, expected, optimization)
@@ -690,8 +881,17 @@ def main() -> int:
 
     CASE_LOGS.mkdir(parents=True, exist_ok=True)
     BINDIR.mkdir(parents=True, exist_ok=True)
+    # Se limpian LOS DOS. Dejar un .obj de la corrida anterior es peor que no tenerlo: si un caso
+    # sale de la tabla, su binario viejo se queda ahi con cara de recien hecho.
     for stale in CASE_LOGS.glob("*.log"):
         stale.unlink()
+    for stale in list(BINDIR.glob("*.obj")) + list(BINDIR.glob("*.exe")):
+        stale.unlink()
+    for stale in list(BINDIR.glob("*.rsp")) + list(BINDIR.glob("*.log")):
+        stale.unlink()
+    if LINKTEMPS.exists():
+        shutil.rmtree(LINKTEMPS, ignore_errors=True)
+    LINKTEMPS.mkdir(parents=True, exist_ok=True)
 
     print(f"[NSLINK] {len(work)} trabajos, {jobs} en paralelo")
     print(f"[NSLINK] compiler: {nsc}")
@@ -744,6 +944,11 @@ def main() -> int:
             print("[NSLINK] sin regresiones respecto a lld-link")
     else:
         print("[NSLINK] sin referencia con lld-link -- corre all.bat para poder comparar")
+    # Dos numeros y una cuenta de regresiones, para que all.bat arme su resumen combinado sin
+    # parsear JSON. Se escribe SIEMPRE, incluso en verde: un fichero que solo aparece cuando algo
+    # falla obliga a distinguir "no fallo" de "no corrio", y son cosas distintas.
+    COUNTS.write_text(f"{len(results) - failed} {failed} {regressions}\n", encoding="ascii")
+
     print(f"[NSLINK] reporte: {REPORT}")
 
     if inbox is not None:
