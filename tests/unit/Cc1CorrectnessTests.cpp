@@ -1763,12 +1763,18 @@ namespace cc1promoir
         // 122, EL LADO NEGATIVO, y es lo que la fixture c17 no pudo decir. Si estas dos fallan,
         // el mensaje imprime el modulo entero y con el el valor que el compilador SI calculo,
         // que es el dato que hace falta para saber donde se pierde el signo.
+        //
+        // EL MENSAJE LLEVA EL IR ENTERO A PROPOSITO. La primera version de estas dos aserciones no
+        // lo llevaba, fallo, y el log no dijo QUE valor habia calculado el compilador -- sin ese
+        // numero no se puede distinguir "el signo se perdio al ensanchar" (4294967296) de "el
+        // signo se ignoro" (2). Una asercion que solo dice que fallo obliga a otra corrida entera.
         tests.expect(
             foldedTo("NegativeWide", "= constant i64 0"),
-            "122: `(-1) + 1L` folds to 0 -- the sign survives the widening to long");
+            "127: `(-1) + 1L` folds to 0 -- the sign survives the widening to long\n" + text);
         tests.expect(
             foldedTo("NegativeSum", "= constant i64 5"),
-            "122: `(0 - 5) + 10L` folds to 5 -- a negative magnitude plus a wider literal");
+            "127: `(0 - 5) + 10L` folds to 5 -- a negative magnitude plus a wider literal\n" +
+                text);
     }
 
     return tests.result();

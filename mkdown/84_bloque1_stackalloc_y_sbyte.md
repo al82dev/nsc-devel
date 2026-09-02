@@ -4,7 +4,8 @@
 **Bloque:** 1 del doc 81 — Correctness del frontend.
 **Cierra:** el **1a** entero (121 ✅, 122 ✅, 123 ✅) y **la mitad mecánica del 1b** (89 ✅).
 **Queda abierto:** ID 82 y el residuo de SHR-005 — §7, con la medición de por qué.
-**Estado:** implementado y medido en el host; **falta la corrida en Windows** (`run_bloque1.bat`).
+**Estado:** **CERRADOS.** Verificados en Windows el 2026-09-02: `c18` y `c19` devuelven 42 a `-O0`
+y a `-O2`, con los 242 de la suite verdes.
 
 ---
 
@@ -282,13 +283,20 @@ Diez de esos casos quedaron escritos como aserciones en `tests/unit/Cc1Correctne
 un programa de usar y tirar, y **el bloque entero se compiló contra el `ProjectTypeConversion.cpp`
 real con `-Wall -Wextra` y pasa**.
 
-**Lo que NO está medido todavía, y hay que decirlo:** ni `c18` ni `c19` se han compilado ni
-ejecutado, y las nueve pruebas negativas tampoco se han corrido. Todo eso se mide en la corrida de
-Windows. En particular hay **un riesgo conocido**: las dos pruebas negativas del tamaño
-(`cc1-stackalloc-too-large` y `cc1-stackalloc-count-overflows-product`) esperan el texto
-*"does not fit on the stack"*, que sale por la cadena `error` del HIR; si el driver lo envuelve con
-otro formato, el fragmento a buscar hay que ajustarlo. Es una prueba que puede salir roja **por su
-propia forma** y no por un defecto — la primera cosa a mirar si sale roja.
+**Y lo que la corrida de Windows añadió:**
+
+```
+[ OK ] cc1_c18_stackalloc_hardening -O0 -- exit 42
+[ OK ] cc1_c18_stackalloc_hardening -O2 -- exit 42
+[ OK ] cc1_c19_sbyte -O0 -- exit 42
+[ OK ] cc1_c19_sbyte -O2 -- exit 42
+                                      100% tests passed out of 242
+```
+
+Las nueve pruebas negativas pasaron también — incluidas las dos del tamaño, sobre las que había un
+riesgo anotado: esperan el texto *"does not fit on the stack"*, que sale por la cadena `error` del
+HIR, y podían salir rojas **por su propia forma** si el driver lo hubiera envuelto en otro formato.
+No lo envuelve.
 
 ---
 
