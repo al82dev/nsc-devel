@@ -306,6 +306,7 @@ call :run_case "%CC%\c16_enum_layout\c16_enum_layout.nsproj" cc1_c16_enum_layout
 call :run_case "%CC%\c17_constant_promotion\c17_constant_promotion.nsproj" cc1_c17_constant_promotion 42 "%FIXLOG%"
 call :run_case "%CC%\c18_stackalloc_hardening\c18_stackalloc_hardening.nsproj" cc1_c18_stackalloc_hardening 42 "%FIXLOG%"
 call :run_case "%CC%\c19_sbyte\c19_sbyte.nsproj" cc1_c19_sbyte 42 "%FIXLOG%"
+call :run_case "%CC%\c20_property_compound\c20_property_compound.nsproj" cc1_c20_property_compound 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 

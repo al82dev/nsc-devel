@@ -370,6 +370,15 @@ int main()
     // comparacion y el cast que estrecha.
     checkFixture(tests, root, "tests/cc1/c19_sbyte/c19_sbyte.nsproj", "cc1-c19-sbyte", 42);
 
+    // ID 82 -- asignacion compuesta sobre propiedad e indexador. La fixture no comprueba solo el
+    // valor final: CUENTA las llamadas al getter y al setter, porque un desazucarado que evaluara
+    // el destino dos veces daria el mismo valor en casi todos los casos y solo se delataria en el
+    // conteo. La mitad NEGATIVA --receptores e indices que no se pueden reevaluar-- esta abajo,
+    // con checkRejected: una fixture tiene que compilar entera.
+    checkFixture(
+        tests, root, "tests/cc1/c20_property_compound/c20_property_compound.nsproj",
+        "cc1-c20-property-compound", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================
@@ -1539,6 +1548,171 @@ namespace cc1sbyteabi
             if ((int)Clamp(-128) != -100) { return 1; }
             if ((int)Clamp(7) != 7) { return 2; }
             return 0;
+        }
+    }
+}
+)NS");
+
+    // =====================================================================================
+    // ID 82 -- asignacion compuesta sobre propiedad e indexador: la MITAD NEGATIVA.
+    //
+    // La fixture c20 mide que la forma funciona y que el getter, el setter y el lado derecho
+    // corren una vez cada uno. Lo que no cabe en una fixture --que tiene que compilar entera-- es
+    // lo que el compilador tiene que RECHAZAR. Y es donde esta el riesgo real: aceptar de mas
+    // aqui no da un error, da un programa que evalua algo dos veces en silencio.
+    // =====================================================================================
+
+    // El receptor es una LLAMADA. `Get().Value += 1` tendria que llamar a Get() una vez y usar el
+    // mismo objeto para el getter y para el setter; bajarlo dos veces lo llamaria dos veces, y con
+    // un Get() que tenga efectos --o que devuelva un objeto distinto cada vez-- el incremento se
+    // perderia. Es exactamente la propiedad que la fixture c14 mide para `buffer[Probe()] += 1`.
+    checkRejected(
+        tests, root, "cc1-compound-property-receiver-is-a-call",
+        R"NS(
+namespace cc1compoundrecv
+{
+    class Box
+    {
+        private int slot;
+        public Box() { slot = 0; }
+        public int Value { get { return slot; } set { slot = value; } }
+    }
+
+    class P
+    {
+        static Box shared;
+        static Box Get() { return shared; }
+        public static int Main()
+        {
+            Get().Value += 1;
+            return 0;
+        }
+    }
+}
+)NS",
+        "assign this one to a local first");
+
+    // El INDICE es una llamada. La misma regla por el otro lado: `s[Probe()] += 1` bajaria Probe()
+    // una vez para el getter y otra para el setter.
+    checkRejected(
+        tests, root, "cc1-compound-indexer-index-is-a-call",
+        R"NS(
+namespace cc1compoundidx
+{
+    class Slots
+    {
+        private int a;
+        public Slots() { a = 0; }
+        public int this[int index] { get { return a; } set { a = value; } }
+    }
+
+    class P
+    {
+        static int Probe() { return 0; }
+        public static int Main()
+        {
+            raii Slots s = new Slots();
+            s[Probe()] += 1;
+            return 0;
+        }
+    }
+}
+)NS",
+        "assign this one to a local first");
+
+    // El receptor es un CAMPO. Parece inofensivo y no lo es: el getter corre entre las dos
+    // lecturas del campo y si alcanza los campos del objeto, asi que podria reescribirlo. C#
+    // evalua el receptor una vez y usa el valor viejo; aceptarlo aqui seria divergir en silencio.
+    checkRejected(
+        tests, root, "cc1-compound-property-receiver-is-a-field",
+        R"NS(
+namespace cc1compoundfield
+{
+    class Box
+    {
+        private int slot;
+        public Box() { slot = 0; }
+        public int Value { get { return slot; } set { slot = value; } }
+    }
+
+    class Outer
+    {
+        public Box inner;
+        public Outer() { inner = new Box(); }
+        public void Bump() { inner.Value += 1; }
+    }
+
+    class P
+    {
+        public static int Main() { return 0; }
+    }
+}
+)NS",
+        "assign this one to a local first");
+
+    // Y la regla ARITMETICA, que es la misma que la de un destino con direccion y no una segunda:
+    // el lado derecho tiene que convertir implicitamente al tipo del destino. `byte` con un `int`
+    // suelto por la derecha se rechaza y pide el cast escrito. Es la divergencia deliberada
+    // respecto de C# que escribio el ID 81; una propiedad no puede ser su excepcion.
+    checkRejected(
+        tests, root, "cc1-compound-property-narrowing-rhs",
+        R"NS(
+namespace cc1compoundnarrow
+{
+    class Box
+    {
+        private byte slot;
+        public Box() { slot = 0; }
+        public byte Narrow { get { return slot; } set { slot = value; } }
+    }
+
+    class P
+    {
+        public static int Main()
+        {
+            raii Box b = new Box();
+            int wide = 5;
+            b.Narrow += wide;
+            return 0;
+        }
+    }
+}
+)NS",
+        "write the read-modify-write with an explicit cast");
+
+    // =====================================================================================
+    // SHR-005 -- el residuo de "owned destination", y era el ARREGLO FIJO.
+    //
+    // Las dos admisiones --fuente y destino-- decidian con `isNativeArray`, que compara el sufijo
+    // "[]". Un arreglo fijo termina en "n]", asi que no era ninguna de las dos. Las destrucciones
+    // se cuentan en Stage50_11OwnershipExecutionTests, que es como este proyecto verifica
+    // ownership; aqui se mide solo que las dos formas COMPILAN, que es lo que no hacian.
+    // =====================================================================================
+    checkAccepted(
+        tests, root, "cc1-fixed-array-slot-is-an-ownership-destination",
+        R"NS(
+namespace NativeSharp.Core { public class Exception { public string Message; } }
+
+namespace cc1fixedowned
+{
+    class Resource
+    {
+        private int tag;
+        public Resource(int initial) { tag = initial; }
+        public int Tag() { return tag; }
+    }
+
+    class P
+    {
+        public static int Main()
+        {
+            raii Resource first = new Resource(7);
+            Resource[2] slots;
+            slots[0] = null;
+            slots[1] = null;
+            slots[0] = move(first);
+            raii Resource taken = move(slots[0]);
+            return taken.Tag() - 7;
         }
     }
 }

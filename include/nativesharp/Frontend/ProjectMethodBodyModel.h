@@ -1245,6 +1245,33 @@ private:
         std::string_view leftTypeKey,
         std::optional<std::string_view> rightTypeKey) const;
 
+    // ID 82. `p.X += 3` significa `set_X(p, get_X(p) + 3)`, y el receptor de esas DOS llamadas
+    // --mas los argumentos del indexador-- se baja una vez por llamada. Un destino CON direccion
+    // no tiene este problema: `CompoundStore` baja la direccion una sola vez, y por eso existe
+    // (ver su comentario en ProjectOopHirModel.h). Una propiedad NO TIENE direccion, asi que no
+    // hay nada que bajar una sola vez y hay que demostrar que bajarlo dos veces NO SE OBSERVA.
+    //
+    // Esta funcion decide exactamente eso. Contesta `true` solo para expresiones que leen
+    // almacenamiento del MARCO ACTUAL --`this`, parametros, locals-- y constantes, combinadas con
+    // operadores puros. Sobre esa clase la segunda evaluacion es identica a la primera por
+    // construccion: al getter que corre en medio no se le pasa la direccion de ningun local ni
+    // parametro del llamador, asi que no tiene via para cambiar lo que la segunda lectura vera.
+    // No es una aproximacion conservadora sobre "efectos secundarios": es la clase de expresiones
+    // para las que la doble bajada es un teorema, no una apuesta.
+    //
+    // Un CAMPO queda deliberadamente fuera aunque parezca inofensivo. `h.inner.Prop += 1` leeria
+    // `h.inner` dos veces, y el getter de `Prop` --que corre entre las dos lecturas y si alcanza
+    // los campos del objeto-- podria reescribirlo. C# evalua el receptor una vez y usa el valor
+    // viejo; nosotros usariamos el nuevo. Rechazarlo con un diagnostico que dice donde esta el
+    // problema es preferible a divergir en silencio.
+    //
+    // `offender` sale apuntando al primer subnodo que no cumple, para que el diagnostico senale
+    // el rango de fuente exacto en vez de la asignacion entera.
+    bool isAccessorDestinationReevaluable(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        const ast::AstNode*& offender) const;
+
     std::optional<ScopeName> lookupScopeName(
         std::size_t scopeOrdinal,
         std::string_view name) const;

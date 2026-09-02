@@ -1674,6 +1674,115 @@ void testMoveOutOfPropertyIsRejected(TestContext& tests, const std::filesystem::
         tests, root, "MoveOutOfPropertyRejected", source,
         "move(...) member source must be an assignable owned field");
 }
+
+// --- SHR-005: el residuo, y era el ARREGLO FIJO -----------------------------------------------
+//
+// EL HUECO, medido. `arrayElementMoveTarget` y la comprobacion de fuente de `move(...)` decidian
+// las dos con `ProjectTypeConversion::isNativeArray`, que compara el SUFIJO "[]". Un arreglo fijo
+// (`Resource[2]`) termina en "2]", asi que no era ninguna de las dos cosas:
+//
+//   * `slots[i] = move(x)`  -- rechazado, porque el destino no admitia un move
+//   * `move(slots[i])`      -- rechazado, "must be a direct native array element access"
+//
+// Y `slots[i] = alias` se aceptaba SIN comprobar nada, que es el lado silencioso del mismo hueco.
+// No era una exclusion escrita en ningun sitio: era el sufijo de una cadena. Doc 68 nombra el
+// arreglo fijo explicitamente como lo que quedaba de SHR-005.
+//
+// POR QUE ES EL MISMO CASO Y NO UNO NUEVO. Lo unico que la bajada necesita de este ligado es la
+// DIRECCION de la ranura, y el HIR ya la sabe dar para un elemento de arreglo fijo (caso
+// RawElement, "C2.1 fixed arrays"). `MoveArrayElement` recibe esa direccion y hace el
+// load-and-null de siempre, gobernado por `elementIsReferenceLike`, que sale del tipo del
+// ELEMENTO. Un arreglo fijo de un tipo por valor sigue siendo el no-op que ya era.
+//
+// EL CONTRATO ES EL DEL ARREGLO NATIVO, no el del campo `owned`: nada destruye los elementos
+// automaticamente. Un arreglo fijo es almacenamiento en linea sin longitud -- el nivel crudo del
+// lenguaje, el mismo donde viven `*p` y `&x` -- y su contenido lo gobierna quien lo escribio,
+// igual que `move(items[i])` en un `T[]` desde Stage 52. Lo que el move SI garantiza es que la
+// ranura queda en null, para que una lectura posterior no vea un valor ya transferido.
+
+void testMoveIntoAndOutOfAFixedArraySlot(TestContext& tests, const std::filesystem::path& root)
+{
+    // 71 = el objeto transferido sigue vivo y legible (tag 7) y se destruye EXACTAMENTE UNA VEZ,
+    // en su nuevo duenno. Si el move de entrada no transfiriera, `first` tambien lo destruiria y
+    // esto seria 72.
+    const std::string source = std::string(kPrelude) + R"NS(
+    class Program
+    {
+        public static int Scope()
+        {
+            raii Resource first = new Resource(7);
+            Resource[2] slots;
+            slots[0] = null;
+            slots[1] = null;
+            slots[0] = move(first);
+            raii Resource taken = move(slots[0]);
+            return taken.Tag();
+        }
+        public static int Main()
+        {
+            int surviving = Scope();
+            return surviving * 10 + Resource.Destructions();
+        }
+    }
+)NS";
+    run(tests, root, "MoveIntoAndOutOfAFixedArraySlot", source, 71);
+}
+
+void testSecondMoveOutOfAFixedArraySlotYieldsNull(TestContext& tests, const std::filesystem::path& root)
+{
+    // La ranura vaciada queda en NULL, que es lo unico que impide el doble free. Un objeto, una
+    // destruccion, por muchas veces que se drene la ranura -- la misma invariante que ya tiene el
+    // campo `owned` (SecondMoveOutOfEmptiedSlotYieldsNull).
+    const std::string source = std::string(kPrelude) + R"NS(
+    class Program
+    {
+        public static void Scope()
+        {
+            raii Resource first = new Resource(1);
+            Resource[2] slots;
+            slots[0] = null;
+            slots[1] = null;
+            slots[0] = move(first);
+            raii Resource taken = move(slots[0]);
+            raii Resource empty = move(slots[0]);
+        }
+        public static int Main() { Scope(); return Resource.Destructions(); }
+    }
+)NS";
+    run(tests, root, "SecondMoveOutOfAFixedArraySlotYieldsNull", source, 1);
+}
+
+void testRelocationBetweenTwoFixedArraySlots(TestContext& tests, const std::filesystem::path& root)
+{
+    // La operacion que el arreglo NATIVO ya tenia desde Stage 52 -- `grown[i] = move(items[i])`,
+    // reubicar un elemento de un almacenamiento a otro -- escrita sobre arreglos fijos. Dos
+    // objetos, dos destrucciones: ninguna ranura se queda con un alias del otro.
+    const std::string source = std::string(kPrelude) + R"NS(
+    class Program
+    {
+        public static void Scope()
+        {
+            raii Resource a = new Resource(1);
+            raii Resource b = new Resource(2);
+            Resource[2] source;
+            Resource[2] target;
+            source[0] = null;
+            source[1] = null;
+            target[0] = null;
+            target[1] = null;
+            source[0] = move(a);
+            source[1] = move(b);
+            target[0] = move(source[0]);
+            target[1] = move(source[1]);
+            raii Resource firstOut = move(target[0]);
+            raii Resource secondOut = move(target[1]);
+        }
+        public static int Main() { Scope(); return Resource.Destructions(); }
+    }
+)NS";
+    run(tests, root, "RelocationBetweenTwoFixedArraySlots", source, 2);
+}
+
 }
 
 int main()
@@ -1747,6 +1856,11 @@ int main()
     testDeleteOfOwnedFieldIsRejected(tests, root);
     testStringLiteralIntoOwnedStringFieldIsRejected(tests, root);
     testMoveOutOfPropertyIsRejected(tests, root);
+
+    // SHR-005 -- el residuo, y era el arreglo fijo.
+    testMoveIntoAndOutOfAFixedArraySlot(tests, root);
+    testSecondMoveOutOfAFixedArraySlotYieldsNull(tests, root);
+    testRelocationBetweenTwoFixedArraySlots(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

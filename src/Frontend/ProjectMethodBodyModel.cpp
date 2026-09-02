@@ -3890,24 +3890,46 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // extraction with a null-store into the vacated slot to prevent a later `delete`
             // from double-freeing it. It is the caller's responsibility not to also read the
             // same slot again as if it still held a live value.
+            //
+            // SHR-005 (residuo de "owned destination"). Aqui tambien entra el ARREGLO FIJO
+            // (`T[n]` en un campo). Era el unico almacenamiento con elementos que no participaba
+            // del chequeo de ownership: `isNativeArray` compara el sufijo `"[]"` y un arreglo fijo
+            // termina en `"n]"`, asi que `move(buf[i])` se rechazaba con este mismo mensaje y
+            // `buf[i] = alias` se aceptaba SIN comprobar nada. Los dos lados del mismo hueco.
+            //
+            // Por que es el MISMO caso y no uno parecido: lo unico que la bajada necesita de este
+            // ligado es una DIRECCION de ranura, y el HIR ya sabe dar la de un elemento de arreglo
+            // fijo (caso RawElement, "C2.1 fixed arrays"); `MoveArrayElement` recibe esa direccion
+            // y hace el load-and-null de siempre, gobernado por `elementIsReferenceLike`, que sale
+            // del tipo del ELEMENTO. Un arreglo fijo de un tipo por valor sigue siendo el no-op
+            // que ya era.
             if (allowMove && expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::IndexExpression)
             {
                 const ExpressionResult element = analyzeExpression(
                     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-                if (!element.valid || !element.assignable ||
-                    !ProjectTypeConversion::isNativeArray(
-                        expression->first()->first() != nullptr
-                            ? analyzeExpression(
-                                  expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics)
-                                  .typeKey
-                            : "<error>"))
+                // El analisis de la base se mantiene DENTRO del cortocircuito, igual que antes: si
+                // el elemento ya no es valido, volver a analizar la base solo duplicaria sus
+                // diagnosticos.
+                bool acceptableElementSource = element.valid && element.assignable;
+                if (acceptableElementSource)
+                {
+                    const std::string elementBaseTypeKey = expression->first()->first() != nullptr
+                        ? analyzeExpression(
+                              expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics)
+                              .typeKey
+                        : "<error>";
+                    acceptableElementSource =
+                        ProjectTypeConversion::isNativeArray(elementBaseTypeKey) ||
+                        ProjectMemberModel::fixedArrayElementTypeKey(elementBaseTypeKey).has_value();
+                }
+                if (!acceptableElementSource)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "move(...) array-element source must be a direct native array element access");
+                        "move(...) array-element source must be a direct native array or fixed array element access");
                     break;
                 }
                 MethodMoveBinding move;
@@ -8645,6 +8667,83 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     return result;
 }
 
+// ID 82. La clase de expresiones que se puede bajar DOS VECES sin que se note. El porque esta en
+// la declaracion (ProjectMethodBodyModel.h); aqui esta el que.
+//
+// La lista es corta a proposito y cada entrada se justifica sola:
+//
+//   * nullptr            -- receptor implicito (`Prop += 1` dentro de la clase). Es `this`.
+//   * this / base        -- un puntero del marco. Ninguna llamada puede reasignarlo.
+//   * literales          -- no se evaluan; son constantes en el modulo.
+//   * identificador      -- SOLO si resuelve a un LOCAL o a un PARAMETRO. Si no resuelve en el
+//                          ambito es un campo implicito (`this.x` sin escribir `this`), y los
+//                          campos quedan fuera por la razon escrita en la declaracion.
+//   * unario             -- sobre un operando aceptado, y NUNCA `++`/`--`: esos escriben.
+//   * binario            -- sobre dos operandos aceptados. `&&` y `||` incluidos: son puros si
+//                          sus operandos lo son, y su cortocircuito no cambia nada porque no hay
+//                          nada que cortocircuitar que tenga efecto.
+//
+// Todo lo demas se rechaza: llamadas, `new`, `move`, indexadores anidados, casts, ternarios,
+// accesos a campo. No porque sean necesariamente impuros --un cast no lo es-- sino porque la
+// regla que se puede DEMOSTRAR es esta, y ampliarla pide una demostracion nueva por cada forma.
+// El diagnostico dice literalmente que hay que subir el subnodo a un local, que es la
+// transformacion que el usuario haria a mano y que vuelve el caso aceptable.
+bool ProjectMethodBodyModel::isAccessorDestinationReevaluable(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    const ast::AstNode*& offender) const
+{
+    if (expression == nullptr)
+    {
+        return true;
+    }
+    switch (expression->kind())
+    {
+        case ast::AstNodeKind::ThisExpression:
+        case ast::AstNodeKind::BaseExpression:
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+        case ast::AstNodeKind::StringLiteralExpression:
+        case ast::AstNodeKind::BooleanLiteralExpression:
+        case ast::AstNodeKind::NullLiteralExpression:
+        case ast::AstNodeKind::SizeofTypeExpression:
+        case ast::AstNodeKind::DefaultValueExpression:
+            return true;
+
+        case ast::AstNodeKind::IdentifierExpression:
+        {
+            const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+            if (name.has_value() &&
+                (name->kind == ScopeNameKind::Local || name->kind == ScopeNameKind::Parameter))
+            {
+                return true;
+            }
+            offender = expression;
+            return false;
+        }
+
+        case ast::AstNodeKind::UnaryExpression:
+        {
+            if (expression->tokenKind() == TokenKind::PlusPlus ||
+                expression->tokenKind() == TokenKind::MinusMinus)
+            {
+                offender = expression;
+                return false;
+            }
+            return isAccessorDestinationReevaluable(expression->first(), scopeOrdinal, offender);
+        }
+
+        case ast::AstNodeKind::BinaryExpression:
+            return isAccessorDestinationReevaluable(expression->first(), scopeOrdinal, offender) &&
+                isAccessorDestinationReevaluable(expression->second(), scopeOrdinal, offender);
+
+        default:
+            offender = expression;
+            return false;
+    }
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignment(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
@@ -8754,7 +8853,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                   expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics)
                   .typeKey
             : "<error>";
-        arrayElementMoveTarget = ProjectTypeConversion::isNativeArray(receiverTypeKey);
+        // SHR-005: y el ARREGLO FIJO, por la misma razon y con la misma forma. La fuente
+        // `move(buf[i])` se admite unas mil lineas mas arriba con esta misma condicion doble; si
+        // solo se admitiera de un lado, `dst[i] = move(src[j])` compilaria en una direccion y no
+        // en la otra. La admision de destino es simetrica a la de fuente a proposito.
+        arrayElementMoveTarget = ProjectTypeConversion::isNativeArray(receiverTypeKey) ||
+            ProjectMemberModel::fixedArrayElementTypeKey(receiverTypeKey).has_value();
     }
 
     // Bloque 1 item 1 (owning field storage): a field declared `owned` is a legitimate move(...)
@@ -8772,6 +8876,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // string) -- the storage classes whose stores must be ownership transfers. A generic `owned T`
     // field closed over a value type keeps plain assignment: `owned` is the no-op it has always
     // been there, same rule as owned locals and owned parameters.
+    //
+    // SHR-005, mitad "agregado por valor" -- MEDIDA, y no es un hueco. Esta condicion es la misma
+    // que `requiresOwnedDestruction` en ProjectOopLlvmLowerer.cpp:
+    //
+    //     requiresOwnedDestruction(t)  ==  (t == "builtin:string" || isClassReference(t))
+    //     ownedFieldOwnsStorage        ==  (isReferenceTypeKey(t)  || t == "builtin:string")
+    //
+    // Las dos mitades de la regla --exigir una expresion de transferencia al escribir, y liberar
+    // el valor desplazado al bajar-- disparan sobre EXACTAMENTE el mismo conjunto de tipos. Para
+    // un struct por valor no dispara ninguna de las dos, que es lo coherente: no hay reserva
+    // separada que transferir ni que liberar. Se comprueba contando destrucciones en ejecucion en
+    // Stage50_11OwnershipExecutionTests, que es como este proyecto verifica ownership. Lo que
+    // quedaba de SHR-005 era el ARREGLO FIJO, y esta arriba, en arrayElementMoveTarget.
     bool ownedFieldOwnsStorage = false;
     std::string ownedFieldName;
     if (!raiiTargetLocal.has_value() && !arrayElementMoveTarget &&
@@ -9175,16 +9292,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
 
     if (getterBinding != nullptr)
     {
-        if (expression->tokenKind() != TokenKind::Equal)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "compound assignment to a Stage 38 property/indexer is deferred; use an explicit read-modify-write assignment");
-            return {};
-        }
-
         const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
         const ClassMemberSymbol& getter = memberModel_->members()[*getterBinding->selectedMemberOrdinal];
         const std::size_t accessingTypeOrdinal = caller != nullptr
@@ -9241,7 +9348,118 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 appendRecordedExpression(indexExpression->second());
             }
         }
-        setterArguments.push_back(right);
+
+        // ID 82 -- la asignacion COMPUESTA sobre propiedad e indexador. Hasta aqui esto se
+        // rechazaba con «compound assignment to a Stage 38 property/indexer is deferred».
+        //
+        // QUE SIGNIFICA. `p.X += e` es `set_X(p, get_X(p) + e)`. El getter ya esta ligado arriba
+        // (getterBinding) porque el analisis del lado izquierdo lo produjo; el setter se resuelve
+        // unas lineas mas abajo. Lo unico que falta es decir de que TIPO es el valor que se le
+        // pasa al setter, y decirlo con la MISMA regla que gobierna `x += e` sobre un destino
+        // corriente -- no con una segunda.
+        //
+        // LA REGLA, y es literalmente la de mas abajo en esta misma funcion:
+        //
+        //   1. `commonNumericType(destino, derecho)` tiene que existir: operandos compatibles.
+        //   2. el operando derecho tiene que convertir IMPLICITAMENTE al tipo del destino. Esta
+        //      es la divergencia deliberada respecto de C# que el ID 81 escribio: C# mete un cast
+        //      implicito de vuelta y TRUNCA (`byte b; int n; b += n;` compila); aqui se pide el
+        //      cast escrito. Una propiedad no puede ser la excepcion a esa regla.
+        //   3. la operacion ocurre ENTERA en el tipo del destino, que es exactamente lo que
+        //      `CompoundStore` hace para un destino con direccion (ver su bajada en
+        //      ProjectOopHirModel). Por eso el argumento del setter se anota con el tipo del
+        //      GETTER y no con el del operando derecho: asi la conversion que registra
+        //      resolveSyntheticCall es la identidad y no hay una segunda tabla de promociones.
+        //
+        // LO QUE HAY QUE DEMOSTRAR APARTE. El receptor y los argumentos del indexador se bajan
+        // dos veces --una por llamada-- porque el arbol HIR es de `unique_ptr` y un nodo no se
+        // comparte entre dos padres. Sobre la clase de expresiones que acepta
+        // isAccessorDestinationReevaluable esa segunda bajada da el mismo valor por construccion;
+        // fuera de ella se rechaza con el rango de fuente del subnodo culpable. Ver la
+        // declaracion de esa funcion para el argumento completo.
+        const bool compound = expression->tokenKind() != TokenKind::Equal;
+        ExpressionResult setterValue = right;
+        if (compound)
+        {
+            if (lexer::compoundAssignmentBaseOperator(expression->tokenKind()) == TokenKind::Invalid)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "unsupported compound assignment operator on a property/indexer");
+                return {};
+            }
+
+            const ast::AstNode* offender = nullptr;
+            bool reevaluable = isAccessorDestinationReevaluable(
+                getterBinding->receiverSyntax, scopeOrdinal, offender);
+            if (reevaluable && getter.isIndexerAccessor &&
+                expression->first()->kind() == ast::AstNodeKind::IndexExpression)
+            {
+                const ast::AstNode* indexExpression = expression->first();
+                if (!indexExpression->children().empty())
+                {
+                    for (const ast::AstNode* index : indexExpression->children())
+                    {
+                        reevaluable = reevaluable &&
+                            isAccessorDestinationReevaluable(index, scopeOrdinal, offender);
+                    }
+                }
+                else
+                {
+                    reevaluable = isAccessorDestinationReevaluable(
+                        indexExpression->second(), scopeOrdinal, offender);
+                }
+            }
+            if (!reevaluable)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                    diagnostics::DiagnosticSeverity::Error,
+                    offender != nullptr ? offender->range() : expression->first()->range(),
+                    "compound assignment to a property/indexer evaluates its receiver and index "
+                    "arguments once for the getter and once for the setter, so each has to be a "
+                    "local, a parameter, `this` or a constant expression; assign this one to a "
+                    "local first and use that local");
+                return {};
+            }
+
+            const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
+                left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+            if (!common.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "compound assignment to a property/indexer requires compatible numeric operands");
+                return {};
+            }
+
+            const ProjectImplicitConversion narrowing = classifyImplicit(
+                right.typeKey, left.typeKey, right.integerConstant);
+            if (!narrowing.exists())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->second()->range(),
+                    "compound assignment cannot implicitly convert its right-hand side from '" +
+                        right.typeKey + "' to '" + left.typeKey +
+                        "'; write the read-modify-write with an explicit cast");
+                return {};
+            }
+
+            // El valor que recibe el setter es del tipo del DESTINO, no del operando derecho.
+            // Fresco a proposito: copiar `left` arrastraria assignmentMemberOrdinal y la
+            // propiedad de ownership del getter a un valor que ya no es ese almacenamiento.
+            ExpressionResult stored;
+            stored.typeKey = left.typeKey;
+            stored.valid = true;
+            setterValue = std::move(stored);
+        }
+        setterArguments.push_back(setterValue);
 
         ExpressionResult setterResult = resolveSyntheticCall(
             expression,

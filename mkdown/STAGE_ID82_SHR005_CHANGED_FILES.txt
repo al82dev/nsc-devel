@@ -1,0 +1,123 @@
+STAGE Bloque 1 -- ID 82 (compuesta sobre propiedad/indexador) y SHR-005 (residuo owned destination)
+Fecha: 2026-09-02
+Doc: mkdown\87_id_82_y_shr_005_cierre_del_bloque_1.md
+
+Cierra el Bloque 1 entero: 121, 122, 123, 89, 127, 82, SHR-005.
+Primera corrida: 241/242. El unico fallo fue una prueba que comprobaba el TEXTO de un
+diagnostico que este cambio amplia -- ver doc 87 seccion 8. cc1.correctness y
+stage50-11.ownership-execution en verde. Falta run_windows_checklist.bat, que es la unica
+corrida que EJECUTA las fixtures.
+
+
+MODIFICADOS -- ID 82
+--------------------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    Declaracion de isAccessorDestinationReevaluable(expression, scopeOrdinal, offender), con el
+    argumento completo: `p.X += 3` es `set_X(p, get_X(p) + 3)`, el receptor y los indices se bajan
+    UNA VEZ POR LLAMADA porque el arbol es de unique_ptr, y un destino CON direccion no tiene este
+    problema porque CompoundStore baja la direccion una sola vez. Una propiedad no tiene direccion.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    - isAccessorDestinationReevaluable: la clase de expresiones para las que bajar dos veces da lo
+      mismo POR CONSTRUCCION -- this/base, literales, sizeof(T)/default(T), identificador que
+      resuelve a LOCAL o PARAMETRO, unario puro (sin ++/--), binario sobre operandos aceptados.
+      Un CAMPO queda fuera a proposito: el getter corre entre las dos lecturas y si alcanza los
+      campos del objeto.
+    - analyzeAssignment: el rechazo "compound assignment to a Stage 38 property/indexer is
+      deferred" sustituido por la resolucion real. Tres comprobaciones, y son LITERALMENTE las de
+      mas abajo en la misma funcion para un destino corriente:
+        1. commonNumericType(destino, derecho) tiene que existir
+        2. el derecho tiene que convertir implicitamente al tipo del destino -- la divergencia
+           deliberada respecto de C#, que ahi mete un cast que TRUNCA
+        3. la operacion ocurre entera en el tipo del destino
+      El argumento del setter se anota con el tipo del GETTER, no con el del derecho, para que la
+      conversion que registra resolveSyntheticCall sea la identidad y no aparezca una segunda
+      tabla de promociones.
+
+src/Frontend/ProjectOopHirModel.cpp
+    - lowerResolvedCall gana un tercer parametro por omision, preloweredLast, que SUSTITUYE la
+      bajada del ultimo argumento. Un solo llamador. Entrar por ahi en vez de armar el nodo de
+      llamada a mano mantiene receptor, conversiones seleccionadas y borrows en un solo sitio.
+    - Caso AssignmentExpression: cuando el token no es `=` y hay setter ligado, arma
+      Binary(getter, conversion(derecho)) tipado con el tipo del DESTINO y lo pasa como ultimo
+      argumento del setter. El operando izquierdo se obtiene bajando expression->first() en
+      contexto de VALOR -- los casos Identifier/Member e Index de esa misma funcion ya saben
+      convertirlo en la llamada al getter, asi que NO hay una segunda ruta de resolucion.
+      Orden emitido = el de C#: receptor, indices, getter, derecho, operacion, setter. El derecho
+      se baja UNA sola vez.
+
+MODIFICADOS -- SHR-005
+----------------------
+src/Frontend/ProjectMethodBodyModel.cpp
+    - Caso MoveExpression (fuente): la admision de `move(arr[i])` ya no es solo isNativeArray
+      --que compara el sufijo "[]"-- sino tambien fixedArrayElementTypeKey(). Un arreglo fijo
+      termina en "n]", asi que no era ninguna de las dos cosas. Mensaje actualizado: "native array
+      or fixed array element access". El analisis de la base se mantiene DENTRO del cortocircuito
+      para no duplicar diagnosticos cuando el elemento ya es invalido.
+    - arrayElementMoveTarget (destino): la misma ampliacion. Simetrica a proposito -- si solo se
+      abriera un lado, `dst[i] = move(src[j])` compilaria en una direccion y no en la otra.
+    - Comentario en ownedFieldOwnsStorage que CIERRA la mitad "agregado por valor" de SHR-005 sin
+      codigo: esa condicion y requiresOwnedDestruction del backend son el MISMO predicado
+      (referencia o builtin:string), asi que exigir transferencia y liberar el desplazado disparan
+      sobre el mismo conjunto de tipos. Para un struct por valor no dispara ninguna, que es lo
+      coherente. No era un hueco; era algo que habia que mirar.
+
+NUEVOS
+------
+tests/cc1/c20_property_compound/Main.ns
+tests/cc1/c20_property_compound/c20_property_compound.nsproj
+    Fixture de ejecucion del ID 82, salida 42. La clase CUENTA SUS PROPIAS LLAMADAS: es lo que
+    separa "da el numero correcto" de "el getter corrio una vez y el setter una vez". Cubre los
+    diez operadores, el conteo getter/setter, que una asignacion SIMPLE siga sin llamar al getter,
+    que el lado derecho corra una vez (`s.A += Probe()`), el indexador con indice literal / local /
+    parametro / expresion, que la aritmetica ocurra en el tipo del destino (byte: 200+55=255 y
+    255+1=0), y el receptor implicito dentro de la propia clase.
+
+MODIFICADOS -- pruebas
+----------------------
+tests/unit/Cc1CorrectnessTests.cpp
+    - Registro de c20.
+    - ID 82, cuatro checkRejected: receptor que es una LLAMADA, indice que es una LLAMADA,
+      receptor que es un CAMPO, y el estrechamiento del lado derecho (byte += int suelto).
+      Cada uno comprueba que falla Y POR QUE falla.
+    - SHR-005, un checkAccepted: move de entrada y de salida sobre una ranura de arreglo fijo.
+      Aqui solo se mide que COMPILA, que es lo que no hacia; las destrucciones se cuentan en
+      Stage50_11.
+
+tests/unit/Stage50_11OwnershipExecutionTests.cpp
+    Tres pruebas de SHR-005 CONTANDO DESTRUCCIONES, que es como este proyecto verifica ownership:
+      - MoveIntoAndOutOfAFixedArraySlot -> 71 (tag 7 vivo, una destruccion). Si el move de
+        entrada no transfiriera seria 72.
+      - SecondMoveOutOfAFixedArraySlotYieldsNull -> 1 (la ranura vaciada queda en null).
+      - RelocationBetweenTwoFixedArraySlots -> 2 (la operacion Stage 52 `grown[i]=move(items[i])`
+        escrita sobre arreglos fijos).
+
+tests/unit/Stage52GenericCollectionsCompilerFixesTests.cpp
+    El fragmento esperado del diagnostico de move(): SHR-005 amplia la restriccion, asi que
+    amplia la frase. La prueba sigue midiendo lo mismo -- que la negativa nombre LA restriccion
+    concreta y no un error cualquiera de mas arriba. Lo encontro la primera corrida (241/242);
+    ver doc 87 seccion 8.
+
+MODIFICADOS -- infraestructura
+------------------------------
+run_windows_checklist.bat
+    c20_property_compound en la lista de EJECUCION. La leccion del ID 127: bajo ctest en Windows
+    las fixtures compilan y enlazan pero NO se ejecutan; un nsc.cc1.correctness verde no dice que
+    la fixture de 42.
+
+verify_manifest.py
+    "mkdown" en DIRECTORIES (nueve -> diez). Sin esto el siguiente --write habria dejado ~120
+    documentos fuera del manifiesto sin decir nada.
+
+NO TOCADOS, y es deliberado
+---------------------------
+CMakeLists.txt
+    Las fixtures cc1 se registran dentro de Cc1CorrectnessTests.cpp.
+
+Ningun script nuevo
+    all.bat y run_windows_checklist.bat siguen siendo los de siempre.
+
+El valor de una asignacion a accesor como EXPRESION
+    `int r = p.X += 5;` sigue sin ser usable: la bajada devuelve el nodo de llamada al setter, que
+    es void. Es una limitacion PREEXISTENTE e identica para `=`, no algo que el ID 82 introduzca.
+    Cerrarla es su propio item.

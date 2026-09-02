@@ -1,0 +1,276 @@
+// ID 82 -- asignacion compuesta (`+=` y los otros nueve) sobre PROPIEDAD e INDEXADOR.
+//
+// DE DONDE VIENE. El modelo semantico rechazaba la forma entera con «compound assignment to a
+// Stage 38 property/indexer is deferred; use an explicit read-modify-write assignment». Parseaba,
+// tipaba, y moria antes de resolver el setter. Es la misma forma de defecto que el ID 81 cerro
+// para los destinos con direccion: la mitad delantera existia y la trasera no.
+//
+// QUE SIGNIFICA `p.X += e`. Es `set_X(p, get_X(p) + e)`. Tres piezas: una llamada al getter, una
+// operacion, y una llamada al setter. Ninguna es nueva; lo que faltaba era ligarlas.
+//
+// LA PROPIEDAD QUE HAY QUE MEDIR, y es la misma que la fixture c14 mide para
+// `buffer[Probe()] += 1`: CADA COSA SE EVALUA LAS VECES QUE DEBE.
+//
+//   * el GETTER, exactamente una vez        -- dos seria un desazucarado mal hecho
+//   * el SETTER, exactamente una vez
+//   * el LADO DERECHO, exactamente una vez  -- `p.X += Probe()` llama a Probe una sola vez
+//   * el RECEPTOR y los INDICES se bajan una vez por llamada, y por eso el compilador solo admite
+//     receptores e indices que den lo mismo las dos veces: un local, un parametro, `this` o una
+//     expresion constante sobre ellos. Fuera de esa clase lo RECHAZA con un diagnostico que dice
+//     que hay que subirlo a un local. Ese rechazo se mide en la suite y no aqui: una fixture
+//     tiene que compilar entera.
+//
+// LA SEGUNDA PROPIEDAD: la operacion ocurre ENTERA en el tipo del destino, y el lado derecho
+// tiene que convertir implicitamente a el. Es la misma regla que el ID 81 escribio para `x += e`
+// sobre un destino corriente, con su divergencia deliberada respecto de C# incluida: C# mete un
+// cast implicito de vuelta que TRUNCA, y aqui se pide el cast escrito. Una propiedad no puede ser
+// la excepcion a esa regla, y las comprobaciones de `byte` de abajo lo fijan.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1propcompound
+{
+    // Un contador que cuenta SUS PROPIAS llamadas. Es lo que convierte «compila y da el numero
+    // correcto» en «el getter corrio una vez y el setter una vez»: un desazucarado que evaluara
+    // el destino dos veces daria el mismo valor final en varios de los casos de abajo y solo se
+    // delataria en el conteo.
+    class Slots
+    {
+        private int a;
+        private int b;
+        private byte narrow;
+        private int getCalls;
+        private int setCalls;
+
+        public Slots()
+        {
+            a = 0;
+            b = 0;
+            narrow = 0;
+            getCalls = 0;
+            setCalls = 0;
+        }
+
+        public int A
+        {
+            get { getCalls = getCalls + 1; return a; }
+            set { setCalls = setCalls + 1; a = value; }
+        }
+
+        public byte Narrow
+        {
+            get { getCalls = getCalls + 1; return narrow; }
+            set { setCalls = setCalls + 1; narrow = value; }
+        }
+
+        // Indexador sobre dos ranuras. Deliberadamente SIN arreglo por medio: lo que se mide es la
+        // ruta de los accesores, y un arreglo traeria una segunda ruta de bajada a la medicion.
+        public int this[int index]
+        {
+            get
+            {
+                getCalls = getCalls + 1;
+                if (index == 0) { return a; }
+                return b;
+            }
+            set
+            {
+                setCalls = setCalls + 1;
+                if (index == 0) { a = value; }
+                else { b = value; }
+            }
+        }
+
+        // Lecturas que NO pasan por los accesores contados, para que comprobar no altere lo que
+        // se esta contando.
+        public int GetCalls { get { return getCalls; } }
+        public int SetCalls { get { return setCalls; } }
+        public int RawA { get { return a; } }
+        public int RawB { get { return b; } }
+        public int RawNarrow { get { return (int)narrow; } }
+    }
+
+    class Program
+    {
+        static int probeCalls = 0;
+
+        static int Probe()
+        {
+            probeCalls = probeCalls + 1;
+            return 7;
+        }
+
+        // LOS DIEZ OPERADORES sobre una propiedad.
+        static int TenOperatorsOnAProperty()
+        {
+            raii Slots s = new Slots();
+
+            s.A = 100;
+            s.A += 5;
+            if (s.RawA != 105) { return 0; }
+            s.A -= 15;
+            if (s.RawA != 90) { return 0; }
+            s.A *= 3;
+            if (s.RawA != 270) { return 0; }
+            s.A /= 9;
+            if (s.RawA != 30) { return 0; }
+            s.A %= 7;
+            if (s.RawA != 2) { return 0; }
+            s.A <<= 4;
+            if (s.RawA != 32) { return 0; }
+            s.A >>= 2;
+            if (s.RawA != 8) { return 0; }
+            s.A |= 5;
+            if (s.RawA != 13) { return 0; }
+            s.A &= 6;
+            if (s.RawA != 4) { return 0; }
+            s.A ^= 15;
+            if (s.RawA != 11) { return 0; }
+
+            return 1;
+        }
+
+        // EL CONTEO. Una asignacion compuesta = un getter + un setter. Ni dos getters --que es lo
+        // que daria bajar el destino dos veces-- ni cero setters.
+        static int OneGetterAndOneSetterPerOperation()
+        {
+            raii Slots s = new Slots();
+
+            s.A += 1;
+            if (s.GetCalls != 1) { return 0; }
+            if (s.SetCalls != 1) { return 0; }
+
+            s.A += 1;
+            s.A += 1;
+            if (s.GetCalls != 3) { return 0; }
+            if (s.SetCalls != 3) { return 0; }
+            if (s.RawA != 3) { return 0; }
+
+            // Una asignacion SIMPLE sigue siendo un solo setter y NINGUN getter: el cambio del ID
+            // 82 no debe haber metido una lectura donde no la habia.
+            s.A = 9;
+            if (s.GetCalls != 3) { return 0; }
+            if (s.SetCalls != 4) { return 0; }
+            if (s.RawA != 9) { return 0; }
+
+            return 1;
+        }
+
+        // EL LADO DERECHO SE EVALUA UNA VEZ. Es el equivalente exacto de `buffer[Probe()] += 1` de
+        // la c14, movido al lado que aqui SI puede tener efectos: el receptor y los indices no
+        // pueden --el compilador los rechaza-- y el operando derecho si.
+        static int RightHandSideRunsOnce()
+        {
+            raii Slots s = new Slots();
+            probeCalls = 0;
+
+            s.A = 1;
+            s.A += Probe();
+            if (probeCalls != 1) { return 0; }
+            if (s.RawA != 8) { return 0; }
+
+            s[1] = 2;
+            s[1] *= Probe();
+            if (probeCalls != 2) { return 0; }
+            if (s.RawB != 14) { return 0; }
+
+            return 1;
+        }
+
+        // EL INDEXADOR, con indices que SI se pueden bajar dos veces: un literal, un local, un
+        // parametro y una expresion sobre ellos. Todos dan el mismo valor la segunda vez, que es
+        // exactamente lo que el modelo semantico exige.
+        static int CompoundOnAnIndexer(int parameterIndex)
+        {
+            raii Slots s = new Slots();
+
+            s[0] = 10;
+            s[0] += 5;
+            if (s.RawA != 15) { return 0; }
+
+            int local = 1;
+            s[local] = 4;
+            s[local] *= 6;
+            if (s.RawB != 24) { return 0; }
+
+            s[parameterIndex] -= 4;
+            if (s.RawB != 20) { return 0; }
+
+            s[local + 0] /= 4;
+            if (s.RawB != 5) { return 0; }
+
+            return 1;
+        }
+
+        // EL TIPO DEL DESTINO MANDA. `Narrow` es `byte`: la operacion ocurre en `byte`, y la
+        // constante que cabe se adapta sin ceremonia (regla del ID 120). Un `int` suelto por la
+        // derecha se RECHAZA en compilacion; esa mitad esta en la suite.
+        static int OperationHappensInTheDestinationType()
+        {
+            raii Slots s = new Slots();
+
+            s.Narrow = 200;
+            s.Narrow += 55;
+            if (s.RawNarrow != 255) { return 0; }
+
+            // Estrechar es una operacion del tipo del destino, no un accidente: 255 + 1 en `byte`
+            // vale 0. Escrito a proposito para fijar que la aritmetica NO se hace en `int` y se
+            // guarda despues.
+            s.Narrow += 1;
+            if (s.RawNarrow != 0) { return 0; }
+
+            // Un cast escrito sigue valiendo, y es la forma exacta que pide el diagnostico.
+            int wide = 70;
+            s.Narrow += (byte)wide;
+            if (s.RawNarrow != 70) { return 0; }
+
+            return 1;
+        }
+
+        // DENTRO DE LA PROPIA CLASE, con receptor implicito (`this`). Es el caso que un contenedor
+        // escribe de verdad -- `Count += 1` dentro de Add() -- y su receptor no aparece escrito
+        // por ningun lado, asi que hay que comprobar que la regla del receptor lo admite.
+        static int CompoundThroughImplicitThis()
+        {
+            raii Accumulator acc = new Accumulator();
+            acc.Bump();
+            acc.Bump();
+            acc.Bump();
+            if (acc.Total != 30) { return 0; }
+            return 1;
+        }
+
+        public static int Main()
+        {
+            if (TenOperatorsOnAProperty() != 1) { return 1; }
+            if (OneGetterAndOneSetterPerOperation() != 1) { return 2; }
+            if (RightHandSideRunsOnce() != 1) { return 3; }
+            if (CompoundOnAnIndexer(1) != 1) { return 4; }
+            if (OperationHappensInTheDestinationType() != 1) { return 5; }
+            if (CompoundThroughImplicitThis() != 1) { return 6; }
+
+            return 42;
+        }
+    }
+
+    class Accumulator
+    {
+        private int total;
+
+        public Accumulator() { total = 0; }
+
+        public int Total
+        {
+            get { return total; }
+            set { total = value; }
+        }
+
+        // Receptor implicito: `Total` es `this.Total`, y `this` es un puntero del marco que
+        // ninguna llamada puede reasignar.
+        public void Bump()
+        {
+            Total += 10;
+        }
+    }
+}

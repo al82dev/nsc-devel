@@ -450,10 +450,18 @@ namespace MoveRejectsIndexer
     // Method-body semantic diagnostics (as opposed to the earlier load/lex/parse stages) are
     // recorded on the compilation's DiagnosticEngine rather than forwarded through the
     // `loadError` out-parameter, so the specific message is checked there.
+    //
+    // SHR-005 (2026-09-02) amplio este mensaje: la admision de fuente de move(...) dejo de ser
+    // solo el arreglo NATIVO y pasó a incluir tambien el arreglo FIJO, que quedaba fuera por un
+    // accidente --`isNativeArray` compara el sufijo "[]" y `T[n]` termina en "n]"-- y no por una
+    // decision. Lo que esta prueba mide no cambia: que la negativa nombre LA restriccion concreta
+    // y no un error cualquiera de mas arriba. Lo que cambia es que la restriccion ya no es la
+    // misma frase.
     bool foundExpectedMessage = false;
     for (const nativesharp::diagnostics::Diagnostic& diagnostic : compilation.diagnostics().diagnostics())
     {
-        if (diagnostic.message().find("move(...) array-element source must be a direct native array element access") !=
+        if (diagnostic.message().find(
+                "move(...) array-element source must be a direct native array or fixed array element access") !=
             std::string::npos)
         {
             foundExpectedMessage = true;

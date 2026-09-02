@@ -1436,9 +1436,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
     const std::string resultType = typeBinding != nullptr ? typeBinding->typeKey :
         stage42Delegate != nullptr ? stage42Delegate->resultTypeKey : "<error>";
 
+    // ID 82. `preloweredLast`, cuando no es nulo, SUSTITUYE la bajada del ultimo argumento. Tiene
+    // un solo llamador: la asignacion compuesta sobre propiedad e indexador, donde el valor que
+    // recibe el setter no es una expresion de la fuente sino `get_X(...) op derecho`, un arbol que
+    // hay que construir en el sitio. Todo lo demas --receptor, conversiones seleccionadas,
+    // borrows-- sigue siendo el mismo codigo para todas las llamadas resueltas, que es justamente
+    // el motivo de entrar por aqui en vez de armar el nodo de llamada a mano.
     const auto lowerResolvedCall = [&](
         const MethodCallBinding* binding,
-        const std::vector<const ast::AstNode*>& argumentSyntaxes)
+        const std::vector<const ast::AstNode*>& argumentSyntaxes,
+        std::unique_ptr<ProjectOopHirNode> preloweredLast = nullptr)
         -> std::unique_ptr<ProjectOopHirNode>
     {
         if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
@@ -1465,7 +1472,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
         for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
         {
             const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
-            auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
+            auto argument = preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
+                ? std::move(preloweredLast)
+                : lowerExpression(argumentSyntax, memberOrdinal, false, error);
             if (argument == nullptr) return nullptr;
             if (index < binding->selectedConversions.size() &&
                 binding->selectedConversions[index].kind != ProjectConversionKind::Identity)
@@ -2216,6 +2225,76 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                         }
                     }
                     arguments.push_back(expression->second());
+
+                    // ID 82. `p.X op= e` es `set_X(p, get_X(p) op e)`. El valor que recibe el
+                    // setter se arma AQUI, no se baja de la fuente.
+                    //
+                    // El operando izquierdo de esa operacion es la llamada al GETTER, y se obtiene
+                    // bajando `expression->first()` en contexto de VALOR: los casos
+                    // IdentifierExpression/MemberExpression e IndexExpression de esta misma
+                    // funcion ya saben convertir ese nodo en la llamada al getter, con su receptor
+                    // y sus argumentos de indice. No hay una segunda ruta de resolucion de
+                    // accesores aqui; se reusa la unica que hay.
+                    //
+                    // EL RECEPTOR Y LOS INDICES SE BAJAN DOS VECES -- una dentro de la llamada al
+                    // getter y otra para la del setter -- porque el arbol es de `unique_ptr` y un
+                    // nodo no se comparte entre dos padres. Eso NO es un descuido: el modelo
+                    // semantico ya rechazo toda forma en la que la segunda bajada pudiera dar algo
+                    // distinto (isAccessorDestinationReevaluable), asi que lo que llega hasta aqui
+                    // son locals, parametros, `this` y constantes. La diferencia con un destino
+                    // CON direccion es que aquel si tiene una direccion que bajar una sola vez, y
+                    // por eso ese caso lo resuelve `CompoundStore` unas lineas mas abajo.
+                    //
+                    // El operando derecho se baja UNA sola vez, dentro del `Binary`, DESPUES de la
+                    // llamada al getter -- el mismo orden que C#: receptor, indices, getter, lado
+                    // derecho, operacion, setter.
+                    //
+                    // La operacion ocurre entera en el tipo del destino, y la conversion del lado
+                    // derecho se clasifica con la MISMA llamada que usa `CompoundStore`. El modelo
+                    // semantico ya exigio que exista, asi que si no existe aqui es una discrepancia
+                    // entre capas y se reporta como tal, no se ignora.
+                    if (expression->tokenKind() != lexer::TokenKind::Equal)
+                    {
+                        if (addressContext)
+                        {
+                            error = "the result of a compound assignment is a value, not addressable storage";
+                            return nullptr;
+                        }
+                        const lexer::TokenKind baseOperator =
+                            lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+                        if (baseOperator == lexer::TokenKind::Invalid)
+                        {
+                            error = "unsupported compound assignment operator on a property/indexer";
+                            return nullptr;
+                        }
+                        auto current = lowerExpression(expression->first(), memberOrdinal, false, error);
+                        if (current == nullptr) return nullptr;
+                        auto operand = lowerExpression(expression->second(), memberOrdinal, false, error);
+                        if (operand == nullptr) return nullptr;
+                        const MethodExpressionTypeBinding* rhsType = expressionType(expression->second());
+                        const ProjectImplicitConversion conversion = classifyImplicit(
+                            operand->typeKey,
+                            current->typeKey,
+                            rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+                        if (!conversion.exists())
+                        {
+                            error = "compound assignment to a property/indexer cannot convert its "
+                                "right-hand side from '" + operand->typeKey + "' to '" +
+                                current->typeKey + "'";
+                            return nullptr;
+                        }
+                        if (conversion.kind != ProjectConversionKind::Identity)
+                        {
+                            operand = wrapImplicitConversion(
+                                std::move(operand), conversion, expression->second());
+                        }
+                        auto combined = makeNode(
+                            ProjectOopHirNodeKind::Binary, expression, current->typeKey);
+                        combined->operation = baseOperator;
+                        combined->children.push_back(std::move(current));
+                        combined->children.push_back(std::move(operand));
+                        return lowerResolvedCall(setterCall, arguments, std::move(combined));
+                    }
                     return lowerResolvedCall(setterCall, arguments);
                 }
             }

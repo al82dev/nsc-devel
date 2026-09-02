@@ -12,7 +12,7 @@ implicita, en la lista de 1109 rutas del propio archivo.
 LA REGLA, reconstruida del manifiesto existente y ahora escrita:
 
   * en la raiz, los archivos `.md`, `.txt` y `.py`;
-  * los nueve directorios de DIRECTORIES, enteros y recursivos;
+  * los diez directorios de DIRECTORIES, enteros y recursivos;
   * nada mas.
 
 Queda FUERA, y conviene saberlo: `.git`, los arboles de build, `_logs`, y -- esto es lo que
@@ -40,7 +40,12 @@ import sys
 ROOT = Path(__file__).resolve().parent
 MANIFEST = ROOT / "MANIFEST_SHA256.txt"
 
-# Los nueve directorios que el manifiesto cubre, enteros.
+# Los diez directorios que el manifiesto cubre, enteros.
+#
+# `mkdown` entro el 2026-09-02, cuando la documentacion y los STAGE*_CHANGED_FILES.txt dejaron de
+# vivir en la raiz. Sin esta linea el siguiente --write habria dejado ~120 documentos fuera del
+# manifiesto SIN decir nada: no faltan, es que no se recorren, y un manifiesto que no cubre lo que
+# cree cubrir es peor que no tenerlo.
 DIRECTORIES = (
     "BUGS_ENCONTRADOS",
     "book_examples",
@@ -48,6 +53,7 @@ DIRECTORIES = (
     "examples",
     "include",
     "lib",
+    "mkdown",
     "src",
     "tests",
     "tools",
