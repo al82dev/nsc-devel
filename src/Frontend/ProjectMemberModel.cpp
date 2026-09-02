@@ -59,6 +59,22 @@ const NamedTypeDeclaration* namedTypeForKey(
     return nullptr;
 }
 
+// SHR-013 "vistas y tiempo de vida": el tipo se declaro `borrowed struct`. Lee la MISMA marca
+// que el parser escribio en el texto auxiliar de la declaracion y que ProjectMethodBodyModel
+// vuelve a leer -- una marca, dos lectores, cero copias de la regla.
+bool namedTypeIsBorrowedView(const NamedTypeDeclaration* type) noexcept
+{
+    return type != nullptr && type->syntax != nullptr &&
+        type->syntax->auxiliaryText().find("borrowedview") != std::string::npos;
+}
+
+bool typeKeyIsViewLike(std::string_view typeKey, const ProjectNameLookup& nameLookup) noexcept
+{
+    std::string_view key = typeKey;
+    while (key.ends_with("[]")) key = key.substr(0, key.size() - 2);
+    return namedTypeIsBorrowedView(namedTypeForKey(key, nameLookup));
+}
+
 bool isReservedStage47CAbiExportName(std::string_view name) noexcept
 {
     if (name.starts_with("__nativesharp_") || name.starts_with("__nsc_") ||
@@ -861,6 +877,31 @@ bool ProjectMemberModel::collectTypeMembers(
                     symbol.range,
                     "borrowed field '" + symbol.name +
                         "' is rejected in Stage 50 because its lifetime may outlive its source owner");
+            }
+            // SHR-013: un CAMPO de tipo vista, o de arreglo de vistas, dentro de algo que no es
+            // una vista. Es el mismo defecto que la linea de arriba y por eso esta pegado a ella,
+            // pero llega por otro camino: alli el prestamo lo dice el calificativo de la
+            // declaracion, aqui lo dice el TIPO, y el calificativo no aparece por ningun lado.
+            //
+            // La razon por la que no hay grado intermedio: un campo vive tanto como su objeto, y
+            // ese objeto no tiene relacion alguna con el duenno de lo prestado. No hay
+            // comprobacion que hacer -- no hay dos tiempos de vida que comparar, solo uno
+            // conocido y otro cualquiera -- asi que la respuesta honesta es no dejarlo declarar.
+            //
+            // La EXCEPCION es una vista dentro de otra vista, y no es una concesion: componer
+            // dos vistas da una vista, y el valor compuesto sigue muriendo donde muera el que lo
+            // contiene, que es un local o un parametro y esta comprobado como tal.
+            if (symbol.kind == ClassMemberKind::Field &&
+                typeKeyIsViewLike(symbol.declaredTypeKey, nameLookup) &&
+                !namedTypeIsBorrowedView(&type))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "field '" + symbol.name + "' cannot have view type '" + symbol.declaredTypeKey +
+                        "': a field outlives every call, and a view borrows from something that "
+                        "does not. Store the source and build the view where it is used");
             }
             symbol.isConst = symbol.kind == ClassMemberKind::Field &&
                 memberNode->hasModifier(lexer::TokenKind::KwConst);

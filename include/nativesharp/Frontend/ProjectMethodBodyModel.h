@@ -66,6 +66,18 @@ struct MethodLocalSymbol final
     std::optional<std::size_t> localBorrowBindingOrdinal;
     std::optional<std::size_t> lambdaOrdinal;
     std::optional<std::size_t> lambdaParameterOrdinal;
+    // SHR-013 "vistas y tiempo de vida". Solo para un local de tipo vista: el NOMBRE del local
+    // de este mismo metodo del que la vista toma prestado, si lo hay. Vacio quiere decir que la
+    // vista se enraiza en algo que sobrevive a la llamada -- un parametro, un campo, un literal,
+    // o el resultado de una llamada que no menciono ningun local.
+    //
+    // Se calcula al declarar y se vuelve a calcular en cada asignacion, porque `v = otra;`
+    // cambia de que presta `v`. Es un ANALISIS SINTACTICO deliberadamente conservador: mira que
+    // nombres aparecen en la expresion, no a donde apunta el puntero en ejecucion. Un analisis
+    // exacto necesitaria parametros de tiempo de vida en las firmas, que es otro problema y no
+    // el de este bloque; este contesta la pregunta que el bloque plantea -- devolver una vista
+    // de un local -- y se equivoca siempre del lado de rechazar, nunca del de aceptar.
+    std::string viewRootLocalName;
 };
 
 enum class MethodNameBindingKind
@@ -399,6 +411,19 @@ enum class MethodCoreOperationKind
     StringConcat,
     StringEquals,
     StringSubstring,
+    // SHR-010 "StringView". La DIRECCION del caracter i-esimo de una cadena, no su valor.
+    //
+    // Por que hace falta una operacion nucleo y no basta `&texto[i]`: el operador `&` de este
+    // lenguaje exige un local, un parametro o un campo direccionable, y el elemento de una
+    // cadena no es ninguna de las tres -- una cadena nativa es longitud + bytes detras de una
+    // referencia, y sus elementos son de solo lectura a proposito (el HIR rechaza
+    // `texto[i] = c` con "Stage 41 strings are immutable"). Abrir `&` para cadenas habria dado
+    // un puntero ESCRIBIBLE a algo declarado inmutable; una operacion con nombre no.
+    //
+    // Y es lo que convierte "sin copiar" en una MEDICION en vez de una afirmacion: con esto una
+    // fixture puede comprobar que el puntero de la vista cae DENTRO del buffer de la cadena
+    // original, que es la unica prueba de que no hubo copia.
+    StringCharacterPointer,
     StringFromCharArray,
     // SHR-022. Las cuatro son LA MISMA operacion con dos bits distintos: a que descriptor se
     // escribe (salida estandar o error estandar) y si se anade el salto de linea. Se enumeran por
@@ -1370,6 +1395,25 @@ private:
     // C8 "type root": a union takes no compiler-provided Equals/GetHashCode -- see the refusal in
     // analyzeCall for why.
     bool aggregateIsUnion(std::string_view typeKey) const noexcept;
+    // SHR-013 "vistas y tiempo de vida". Las tres preguntas de un tipo vista, separadas porque
+    // NO son la misma:
+    //   * aggregateIsBorrowedView -- el tipo se declaro `borrowed struct`.
+    //   * typeKeyIsViewLike       -- el tipo ES una vista o un ARREGLO de vistas. Un arreglo no
+    //     copia a sus elementos: guardar vistas en un `T[]` es guardar vistas, y un arreglo que
+    //     sobrevive al origen es el mismo uso-despues-de-liberar con un nivel de indireccion.
+    //   * typeKeyCarriesLifetime  -- el valor lleva un tiempo de vida ajeno que puede escapar:
+    //     una referencia, una cadena, un arreglo, un puntero o una vista. NO es lo mismo que
+    //     "posee almacenamiento" (esa pregunta la contesta isReferenceTypeKey || builtin:string,
+    //     y una vista contesta NO a esa): hasta el Bloque 3 las dos coincidian, y por eso el
+    //     compilador no habia necesitado distinguirlas.
+    // SHR-013: el nombre del local de este metodo del que la expresion toma prestado, si alguno.
+    // Es la pieza que contesta "devolver una vista de un local".
+    std::optional<std::string> viewRootLocalOfExpression(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
+    bool aggregateIsBorrowedView(std::string_view typeKey) const noexcept;
+    bool typeKeyIsViewLike(std::string_view typeKey) const noexcept;
+    bool typeKeyCarriesLifetime(std::string_view typeKey) const noexcept;
     const ast::AstNode* definiteAssignmentTargetRoot(const ast::AstNode* target) const noexcept;
     void markAssignmentTarget(const ast::AstNode* target, std::size_t scopeOrdinal);
     void checkDefiniteAssignment(

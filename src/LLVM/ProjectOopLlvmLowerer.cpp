@@ -4692,6 +4692,17 @@ private:
                 return lowerStringConcat(node, error);
             case frontend::ProjectOopMirNodeKind::StringEquals:
                 return lowerStringEquals(node, error);
+            // SHR-010 "StringView": la direccion del caracter i-esimo. Es EXACTAMENTE la misma
+            // llamada que StringElementLoad hace justo arriba, sin el load -- mismo receptor,
+            // mismo indice, misma comprobacion de rango, mismo GEP con paso 1 y desplazamiento
+            // 8. No hay aritmetica nueva aqui, y eso es deliberado: si algun dia el layout de
+            // una cadena cambia, cambia en un sitio y las dos operaciones lo siguen.
+            //
+            // La comprobacion de rango SE QUEDA. Un puntero fuera de rango es peor que un
+            // caracter fuera de rango, no mejor. Una vista vacia se construye con puntero nulo
+            // en la biblioteca, no pidiendo la direccion de un caracter que no existe.
+            case frontend::ProjectOopMirNodeKind::StringCharacterPointer:
+                return lowerArrayElementAddress(node, true, error);
             case frontend::ProjectOopMirNodeKind::StringSubstring:
                 return lowerStringSubstring(node, error);
             case frontend::ProjectOopMirNodeKind::StringFromCharArray:

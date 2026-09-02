@@ -57,6 +57,28 @@ namespace NativeSharp.Core
             return null;
         }
 
+        // SHR-010 "StringView". La DIRECCION del caracter `index`, no su valor. Operacion
+        // nucleo: cuerpo vacio a proposito, el compilador la sustituye por el mismo calculo de
+        // direccion que usa `value[index]`, con la MISMA comprobacion de rango.
+        //
+        // ES LA PIEZA QUE HACE MEDIBLE "SIN COPIAR". Una vista puede afirmar que no copia; con
+        // esto se comprueba: el puntero de la vista tiene que caer dentro del buffer de la
+        // cadena original, y eso es aritmetica de punteros, no una promesa.
+        //
+        // ES CRUDA, y se dice aqui porque el tipo no lo dice: devuelve `char*`, que es
+        // escribible, sobre bytes de una cadena que este lenguaje trata como inmutable.
+        // Escribir a traves de este puntero es corromper una cadena que alguien mas puede estar
+        // leyendo. Existe para construir vistas -- StringView.ns es su unico consumidor
+        // previsto -- no para modificar texto.
+        //
+        // `index` tiene que existir: pedir la direccion del caracter `Length` (el "uno mas alla"
+        // de C) atrapa igual que leerlo. Una vista vacia se construye con puntero nulo, no
+        // pidiendo una direccion que no existe.
+        public static char* CharacterPointer(string value, int index)
+        {
+            return null;
+        }
+
         public static string ToString(string value)
         {
             return value;

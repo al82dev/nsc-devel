@@ -60,7 +60,9 @@ private:
         Struct,
         Union
     };
-    ast::AstNode* parseStructDeclaration(StructLayoutForm form = StructLayoutForm::Struct);
+    ast::AstNode* parseStructDeclaration(
+        StructLayoutForm form = StructLayoutForm::Struct,
+        bool isBorrowedView = false);
     ast::AstNode* parseClassDeclaration(bool isPartial, bool isAbstract, bool isSealed);
     ast::AstNode* parseInterfaceDeclaration(bool isPartial);
     ast::AstNode* parseDelegateDeclaration();

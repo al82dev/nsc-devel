@@ -92,6 +92,7 @@ enum class ProjectOopMirNodeKind
     StringConcat,
     StringEquals,
     StringSubstring,
+    StringCharacterPointer,
     StringFromCharArray,
     CoreConsoleWriteLine,
     // C8 -- see ProjectOopHirNodeKind::CoreObjectTypeName / CoreObjectReferenceHash.

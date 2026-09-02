@@ -123,6 +123,7 @@ enum class ProjectOopHirNodeKind
     StringConcat,
     StringEquals,
     StringSubstring,
+    StringCharacterPointer,
     StringFromCharArray,
     CoreConsoleWriteLine,
     // C8 -- see MethodCoreOperationKind::ObjectTypeName / ObjectReferenceHash. One operand each

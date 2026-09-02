@@ -117,6 +117,7 @@ CASES: list[tuple[str, str, int | None]] = [
     (f"{CC}/c20_property_compound/c20_property_compound.nsproj", "cc1_c20_property_compound", 42),
     (f"{CC}/c21_number_parsing/c21_number_parsing.nsproj", "cc1_c21_number_parsing", 42),
     (f"{CC}/c22_console_and_formatting/c22_console_and_formatting.nsproj", "cc1_c22_console_and_formatting", 42),
+    (f"{CC}/c23_views_and_lifetimes/c23_views_and_lifetimes.nsproj", "cc1_c23_views_and_lifetimes", 42),
 
     # --- ejemplos empaquetados ---
     ("examples/project_stage56_c1/Stage56C1InteropCompletion.nsproj", "project_stage56_c1", 0),

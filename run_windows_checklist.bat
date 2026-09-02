@@ -251,16 +251,21 @@ REM resumen y no tocaba los contadores, asi que la corrida del 2026-09-02 termin
 REM "Passed: 71 / Failed: 0" con 27 de 242 tests en rojo, y salio con codigo 0. El paso mas
 REM importante de los cinco era el unico que no entraba en el veredicto.
 REM
-REM Cuenta como UNA unidad y son 242 tests; el detalle esta en 02_ctest.log. Lo que importa es
-REM que un solo comando no pueda decir que todo salio bien cuando no salio bien.
+REM Cuenta como UNA unidad; el detalle -- incluido CUANTOS son -- esta en 02_ctest.log, y
+REM report.py lo lee de ahi para la seccion 3 del reporte. Lo que importa es que un solo comando
+REM no pueda decir que todo salio bien cuando no salio bien.
+REM
+REM EL NUMERO DE PRUEBAS NO SE ESCRIBE AQUI, y antes si: la etiqueta decia "242 tests" a mano y se
+REM quedo mintiendo en cuanto el Bloque 3 anadio la 243. Un numero escrito a mano en un resumen es
+REM un numero que se separa del log a la primera. El log tiene el de verdad.
 if errorlevel 1 goto :ctest_failed
->> "%SUMMARY%" echo [ OK ] ctest ^(242 tests^)
+>> "%SUMMARY%" echo [ OK ] ctest ^(el conteo, en 02_ctest.log^)
 set /a PASSED+=1
 goto :after_ctest
 
 :ctest_failed
 echo         FALLO -- ver _logs\02_ctest.log
->> "%SUMMARY%" echo [FAIL] ctest ^(242 tests^) -- ver 02_ctest.log
+>> "%SUMMARY%" echo [FAIL] ctest -- ver 02_ctest.log
 set /a FAILED+=1
 goto :after_ctest
 

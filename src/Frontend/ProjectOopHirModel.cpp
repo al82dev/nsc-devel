@@ -141,6 +141,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::StringConcat: return "string-concat";
         case ProjectOopHirNodeKind::StringEquals: return "string-equals";
         case ProjectOopHirNodeKind::StringSubstring: return "string-substring";
+        case ProjectOopHirNodeKind::StringCharacterPointer: return "string-character-pointer";
         case ProjectOopHirNodeKind::StringFromCharArray: return "string-from-char-array";
         case ProjectOopHirNodeKind::CoreConsoleWriteLine: return "core-console-writeline";
         case ProjectOopHirNodeKind::AggregateEquals: return "aggregate-equals";
@@ -2578,6 +2579,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                  core->kind == MethodCoreOperationKind::StringEquals ||
                  core->kind == MethodCoreOperationKind::StringSubstring ||
                  core->kind == MethodCoreOperationKind::StringFromCharArray ||
+                 // SHR-010: `String.CharacterPointer(texto, indice)` cae en este mismo bloque --
+                 // sin receptor, dos operandos, un gancho distinto en el backend. Es exactamente
+                 // la forma que el bloque ya cubre; anadir un camino propio habria sido copiar
+                 // la conversion implicita de operandos por tercera vez.
+                 core->kind == MethodCoreOperationKind::StringCharacterPointer ||
                  // Stage 53.2b "Environment (variables)": GetEnvironmentVariable/
                  // SetEnvironmentVariable are string intrinsics in every way this block cares
                  // about (operand count, operand lowering with implicit conversions, no
@@ -2788,6 +2794,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringConcat;
                 if (core->kind == MethodCoreOperationKind::StringEquals) kind = ProjectOopHirNodeKind::StringEquals;
                 else if (core->kind == MethodCoreOperationKind::StringSubstring) kind = ProjectOopHirNodeKind::StringSubstring;
+                else if (core->kind == MethodCoreOperationKind::StringCharacterPointer) kind = ProjectOopHirNodeKind::StringCharacterPointer;
                 else if (core->kind == MethodCoreOperationKind::StringFromCharArray) kind = ProjectOopHirNodeKind::StringFromCharArray;
                 else if (core->kind == MethodCoreOperationKind::EnvironmentGetVariable) kind = ProjectOopHirNodeKind::CoreEnvironmentGetVariable;
                 else if (core->kind == MethodCoreOperationKind::EnvironmentSetVariable) kind = ProjectOopHirNodeKind::CoreEnvironmentSetVariable;

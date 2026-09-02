@@ -876,6 +876,17 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage50_7_borrow_escape_analysis_tests)
     add_test(NAME nsc.stage50_7.borrow-escape-analysis COMMAND nsc_stage50_7_borrow_escape_analysis_tests)
 
+    # Bloque 3 / SHR-013 -- "vistas y tiempo de vida". Es el hermano del 50.7 de arriba y va
+    # pegado a el a proposito: los dos miden la MISMA propiedad --que nada prestado sobreviva a su
+    # origen-- por dos caminos distintos. Alli el prestamo lo dice el calificativo `borrowed`
+    # sobre un tipo por referencia; aqui lo dice el TIPO de un valor por valor, que es justo lo
+    # que la comprobacion de 50.7 no podia ver.
+    add_executable(nsc_stage58_view_lifetimes_tests tests/unit/Stage58ViewLifetimesTests.cpp)
+    target_link_libraries(nsc_stage58_view_lifetimes_tests PRIVATE nsc_frontend nsc_target)
+    target_compile_features(nsc_stage58_view_lifetimes_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_stage58_view_lifetimes_tests)
+    add_test(NAME nsc.stage58.view-lifetimes COMMAND nsc_stage58_view_lifetimes_tests)
+
     add_executable(nsc_stage50_8_ownership_ir_lowering_tests tests/unit/Stage50_8OwnershipIrLoweringTests.cpp)
     target_link_libraries(nsc_stage50_8_ownership_ir_lowering_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage50_8_ownership_ir_lowering_tests PRIVATE cxx_std_20)

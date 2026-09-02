@@ -143,15 +143,72 @@ un diagnóstico formateado por stderr.
 devolver una vista de un local.
 **Tamaño:** 4 tipos + 1 regla de análisis en el compilador.
 
-| SHR | Qué | Spec | Estado medido |
+> ## ✅ CERRADO — 2026-09-02
+>
+> **PENDIENTE DE LOS NÚMEROS DE WINDOWS.** Lo que está medido, y lo está en el contenedor con el
+> compilador real —frontend, MIR y **bajada a LLVM IR verificada por LLVM**—:
+>
+> ```
+> 167 de 171 .nsproj del árbol: OK, hasta IR verificado
+>   los 4+1 que faltan son los ejemplos NEGATIVOS que tienen que fallar
+> 14/14 pruebas unitarias que sólo piden nsc_frontend -- 372 comprobaciones
+> nsc.stage58.view-lifetimes: 31/31
+> todos los .cpp tocados con -Wall -Wextra: cero avisos
+> ```
+>
+> El criterio de arriba tiene **dos mitades que no caben en la misma prueba**, y eso no es un
+> detalle de forma:
+>
+> * «el lexer guarda lexemas como vistas sin copiar» → `tests/cc1/c23_views_and_lifetimes`,
+>   ejecutando, salida 42. Y **«sin copiar» no se afirma**: cada lexema se compara contra
+>   `String.CharacterPointer(fuente, desplazamiento)`, así que una copia caería fuera del buffer
+>   original y la fixture lo vería.
+> * «y el compilador rechaza devolver una vista de un local» → **no puede medirse ejecutando**: un
+>   programa rechazado no produce ejecutable. Vive en `tests/unit/Stage58ViewLifetimesTests.cpp`,
+>   que compila 12 formas prohibidas exigiendo el **diagnóstico exacto** de cada una, y 8
+>   permitidas que tienen que seguir compilando.
+>
+> **Cerrados:** SHR-010 · SHR-011/012 · SHR-017 · SHR-013 — todos en el doc 94.
+> **Encontrados de paso, medidos y anotados:** **ID 131** (un miembro estático de un genérico
+> cerrado no se puede nombrar: `Box<int>.Make(1)` no parsea), **ID 132** (dos métodos genéricos con
+> el mismo nombre y aridad no se sobrecargan), **ID 130** (`uwtable` se pide con valor 0, que en
+> LLVM significa *sin* tabla de desenrollado).
+
+| SHR | Qué | Spec | Dónde está la medición |
 |---|---|:--:|---|
-| **010** | `StringView` | **D** | ausente · **28 usos** de `<string_view>` en `nsc0` |
-| **017** | `Optional<T>` | **D** | ausente · **26 usos** de `<optional>` |
-| **011 / 012** | `Span<T>` y `ReadOnlySpan<T>` | **D** | ausentes · **25 usos** de `<span>` |
-| **013** | Escape checking para vistas — regla en el compilador, no tipo de biblioteca | **D** | Pegado a los tres anteriores |
+| ✅ **010** | `StringView` | **D** | `borrowed struct { char* start; int count; }`, 16 bytes. Necesitó **una** operación núcleo, `String.CharacterPointer`, porque `&texto[0]` no compila —y no debe: daría un puntero escribible sobre una cadena inmutable. En el backend es la misma llamada que `StringElementLoad` sin el load: **cero aritmética nueva**. Doc 94 §3 |
+| ✅ **017** | `Optional<T>` | **D** | No es vista y por eso no es `borrowed struct`: guarda una copia por valor. Mide el caso que ningún centinela cubre —buscar `-1` en un arreglo que **contiene** `-1`—. `Optional<StringView>` no compila, y eso **cae gratis** de la regla R1. Doc 94 §5 |
+| ✅ **011 / 012** | `Span<T>` y `ReadOnlySpan<T>` | **D** | Dos tipos y no uno con un `bool readOnly`: el booleano cuesta una comparación **por escritura** y mueve a ejecución lo que el sistema de tipos hace gratis en compilación. Doc 94 §4 |
+| ✅ **013** | Escape checking para vistas — regla en el compilador | **D** | `borrowed struct` + tres reglas (campo, retorno, captura) + el análisis de enraizamiento. Doc 94 §2 |
 
 **Por qué el escape checking va aquí y no después:** una vista que sobrevive a su dueño es un
 uso-después-de-liberar, y añadir la comprobación más tarde obliga a reescribir a los consumidores.
+
+**Lo que este bloque enseñó, y no estaba en el plan:**
+
+* **La comprobación de escape que ya existía no veía nada de esto, y no por descuido.** Stage 50.7
+  rechaza un `borrowed Resource` fugado, pero su regla está detrás de
+  `isReferenceTypeKey(t) || t == "builtin:string"`, y una vista es un **struct por valor**. El
+  hueco no se ve leyendo la regla vieja —es correcta para todo lo que existía cuando se escribió—:
+  se ve preguntándole por un tipo nuevo.
+* **Un modificador explícito le ganó a la inferencia, y por una razón medible.** Deducir «un struct
+  con un campo puntero es una vista» habría convertido en vista cada struct que hoy lleva un
+  puntero sin pedirlo, cambiando el significado de código ya verde.
+* **Una regla de rechazo sin su mitad positiva no dice nada.** La primera versión habría pasado los
+  cinco casos negativos prohibiendo las vistas por completo. Por eso la prueba mide también las
+  ocho formas que **tienen** que seguir compilando.
+* **Y el Bloque 2 y el Bloque 3 componen sin una línea duplicada.** La tentación era dar a `Number`
+  sobrecargas sobre `StringView` — unas 350 líneas del núcleo de parsing en dos copias que pueden
+  separarse. No hace falta: el núcleo del SHR-024 ya trabaja sobre `(texto, ref índice)`, así que un
+  lexer lee los números **en sitio** y guarda los demás lexemas como vistas.
+
+### Abierto y anotado en este bloque
+
+| ID | Qué | Spec | Dónde |
+|---|---|:--:|---|
+| **130** | `applyUwtableAttribute` pide `uwtable` con valor **0**. En LLVM el valor es un `UWTableKind`: 0 = None, 1 = Sync, 2 = Async. **Cero significa «sin tabla»**, lo contrario de lo que el nombre promete | **E** | Medido con la propia `LlvmCApi.h` sobre LLVM 18: con 0 el módulo impreso sale truncado a 65 bytes; con 2, correcto. En Windows x64 la tabla de desenrollado es lo que SEH necesita. **No se tocó**: cambiar los atributos de todas las funciones es una decisión con su propia medición en Windows. Doc 94 §6 |
+| **131** | Un miembro **estático** de un tipo genérico **cerrado** no se puede nombrar en una expresión | **D** | `Box<int>.Make(1)` → *expected expression*; `Helper.Wrap<int>(1)` compila. Pide que el modelo de nombres resuelva una instanciación genérica en posición de **expresión**. Por eso las fábricas viven en `Spans`/`Optionals`. Doc 94 §6 |
+| **132** | Dos métodos genéricos con el mismo nombre y la misma aridad de tipos **no se sobrecargan** | **E** | `duplicate generic template identity '…Spans.Of``1'`. La identidad es nombre + número de parámetros de tipo, sin la lista de parámetros. Por eso hay `OfRange`. Doc 94 §6 |
 
 ---
 

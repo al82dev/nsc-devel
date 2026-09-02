@@ -885,6 +885,18 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     // `align` as a name stops compiling.
     std::optional<std::uint64_t> layoutPack;
     std::optional<std::uint64_t> layoutAlign;
+    // SHR-013 "vistas y tiempo de vida". `borrowed struct T` declara un TIPO VISTA: un agregado
+    // por valor cuyos valores no poseen nada y viven prestados de otro. Es la misma palabra que
+    // ya califica a un local o a un parametro -- `borrowed` significa "esto no es mio" en los dos
+    // sitios -- solo que aqui la lleva el TIPO, no cada uso, porque una vista no deja de serlo
+    // segun donde se guarde.
+    //
+    // POR QUE UN MODIFICADOR EXPLICITO Y NO INFERENCIA. La alternativa medida era deducirlo:
+    // "un struct con un campo puntero es una vista". Habria convertido en vista cada struct que
+    // hoy lleva un puntero sin pedirlo, cambiando el significado de codigo ya escrito y ya verde.
+    // Un modificador que el autor escribe no rompe nada existente y dice la intencion en la
+    // declaracion, que es donde se lee.
+    bool isBorrowedView = false;
 
     while (true)
     {
@@ -963,6 +975,45 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             isPartial = true;
             continue;
         }
+        // LA GUARDA NO ES OPCIONAL, y costo una regresion descubrirlo:
+        // `borrowed` YA existe como calificativo de tipo de retorno de una FUNCION GLOBAL --
+        // `borrowed Resource Observe(owned Resource source)` es codigo valido desde Stage 50 y
+        // esta en Stage50_1OwnershipSyntaxTests. Sin la guarda, este bucle se comia ese
+        // `borrowed` como modificador de declaracion de tipo y la funcion perdia su calificativo
+        // en el AST, silenciosamente.
+        //
+        // Es la misma forma de guarda que `partial` usa tres bloques mas abajo, y por la misma
+        // razon: una palabra que significa dos cosas se desambigua mirando lo que la sigue.
+        //
+        // La lista incluye `class`, `enum`, `union` y `delegate` A PROPOSITO aunque `borrowed` no
+        // sea legal en ninguno: consumirlo ahi es lo que permite dar el diagnostico que explica
+        // POR QUE no lo es, en vez de un "expected a global declaration" que no ayuda a nadie.
+        const bool borrowedTypeModifier = at(TokenKind::KwBorrowed) &&
+            (peek().kind() == TokenKind::KwStruct ||
+             peek().kind() == TokenKind::KwClass ||
+             peek().kind() == TokenKind::KwInterface ||
+             peek().kind() == TokenKind::KwEnum ||
+             peek().kind() == TokenKind::KwDelegate ||
+             peek().kind() == TokenKind::KwPublic ||
+             peek().kind() == TokenKind::KwInternal ||
+             peek().kind() == TokenKind::KwAbstract ||
+             peek().kind() == TokenKind::KwSealed ||
+             (peek().kind() == TokenKind::Identifier && peek().lexeme() == "union") ||
+             (peek().kind() == TokenKind::Identifier && peek().lexeme() == "partial"));
+        if (borrowedTypeModifier)
+        {
+            const lexer::Token& modifier = consume();
+            if (isBorrowedView)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate 'borrowed' modifier on type declaration");
+            }
+            isBorrowedView = true;
+            continue;
+        }
         if (at(TokenKind::KwAbstract))
         {
             const lexer::Token& modifier = consume();
@@ -1026,6 +1077,17 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     else if (at(TokenKind::KwStruct) ||
              (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier))
     {
+        // SHR-013: `borrowed union` queda fuera a proposito. Una union no tiene un miembro vivo
+        // conocido, asi que no hay forma de decir de que presta -- y una vista cuyo origen no se
+        // puede nombrar es exactamente lo que la comprobacion de escape existe para impedir.
+        if (isBorrowedView && !at(TokenKind::KwStruct))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                tokens_[declarationBeginIndex].range(),
+                "'borrowed' declares a view type and applies only to struct declarations");
+        }
         if (isAbstract || isSealed)
         {
             diagnostics_.report(
@@ -1042,8 +1104,9 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 tokens_[declarationBeginIndex].range(),
                 "'partial' is supported only for class declarations");
         }
-        declaration = parseStructDeclaration(at(TokenKind::KwStruct)
-            ? StructLayoutForm::Struct : StructLayoutForm::Union);
+        declaration = parseStructDeclaration(
+            at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
+            isBorrowedView && at(TokenKind::KwStruct));
     }
     else if (at(TokenKind::KwEnum))
     {
@@ -1159,6 +1222,18 @@ ast::AstNode* Parser::parseGlobalDeclaration()
 
     if (declaration != nullptr)
     {
+        // SHR-013: la misma forma que pack/align de abajo. `borrowed` describe el TIEMPO DE VIDA
+        // de un valor, y solo un agregado por valor lo tiene sin dueno: una clase se posee por
+        // referencia (`owned`/`borrowed` en cada uso ya lo dicen), un enum y un delegate no
+        // prestan nada de nadie.
+        if (isBorrowedView && declaration->kind() != ast::AstNodeKind::StructDeclaration)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "'borrowed' declares a view type and applies only to struct declarations");
+        }
         // C2.2: pack/align describe how an aggregate's FIELDS are placed, so they mean nothing on
         // a class (heap object with its own header), an interface or an enum. Refusing them there
         // is what keeps the modifier from becoming a decoration nobody honours. The values ride
@@ -1260,7 +1335,7 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     return node;
 }
 
-ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form)
+ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form, bool isBorrowedView)
 {
     const std::size_t beginIndex = index_;
     consume();
@@ -1283,6 +1358,17 @@ ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form)
     // rippling through every switch over NamedTypeDeclarationKind, the difference is recorded
     // here as a layout marker and honoured in exactly one place: ProjectObjectLayoutModel.
     if (form == StructLayoutForm::Union) node->setAuxiliaryText("union");
+    // SHR-013: la marca de vista viaja por el MISMO canal que "union"/"pack="/"align=" -- el
+    // texto auxiliar de la declaracion, separado por comas -- porque es exactamente la misma
+    // clase de dato: una propiedad del agregado que un modelo aguas abajo vuelve a leer, sin
+    // anadir un AstNodeKind nuevo que obligue a tocar cada switch sobre declaraciones.
+    if (isBorrowedView)
+    {
+        std::string markers = node->auxiliaryText();
+        markers += (markers.empty() ? "" : ",");
+        markers += "borrowedview";
+        node->setAuxiliaryText(std::move(markers));
+    }
     parseGenericParameterList(node);
     if (atContextualKeyword("where"))
     {

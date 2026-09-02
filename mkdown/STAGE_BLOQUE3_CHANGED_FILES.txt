@@ -1,0 +1,191 @@
+STAGE Bloque 3 -- vistas y tiempo de vida
+SHR-010 (StringView) + SHR-011/012 (Span<T>/ReadOnlySpan<T>) + SHR-017 (Optional<T>)
+                     + SHR-013 (escape checking para vistas -- regla del COMPILADOR)
+Fecha: 2026-09-02
+Doc:   mkdown\94_bloque3_vistas_y_tiempo_de_vida.md
+
+MODIFICADOS -- COMPILADOR
+-------------------------
+src/Parser/Parser.cpp
+include/nativesharp/Parser/Parser.h
+    SHR-013. `borrowed struct T` declara un TIPO VISTA. Tres cosas:
+      1. `borrowed` como modificador de declaracion de tipo, CON GUARDA: solo se consume cuando
+         lo que sigue es una declaracion de tipo. Sin la guarda se comia el `borrowed` de
+         `borrowed Resource Observe(...)` -- una funcion GLOBAL con tipo de retorno prestado,
+         valida desde Stage 50 -- y la funcion perdia su calificativo EN SILENCIO. Lo cazo
+         Stage50_1OwnershipSyntaxTests en el contenedor. Misma forma de guarda que `partial`.
+      2. La marca `borrowedview` viaja por el MISMO canal que "union"/"pack="/"align=": el texto
+         auxiliar de la declaracion. Ni un AstNodeKind nuevo, ni un switch que tocar.
+      3. `borrowed` sobre class/interface/enum/union/delegate se RECHAZA con un diagnostico que
+         dice por que. Se consume ahi a proposito, para poder darlo.
+
+src/Frontend/ProjectMemberModel.cpp
+    SHR-013 REGLA R1: un CAMPO no puede tener tipo vista ni ser arreglo de vistas. Un campo vive
+    tanto como su objeto y ese objeto no tiene relacion con el duenno de lo prestado: no hay dos
+    tiempos de vida que comparar. EXCEPCION: una vista dentro de otra vista si, porque componer
+    dos vistas da una vista y muere donde muera la que la contiene.
+    Sale gratis de aqui que `Optional<StringView>` no compile: al monomorfizar, el campo
+    instanciado es de tipo vista dentro de algo que no lo es.
+
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+src/Frontend/ProjectMethodBodyModel.cpp
+    SHR-013. Tres predicados separados porque NO son la misma pregunta:
+      aggregateIsBorrowedView  -- el tipo se declaro `borrowed struct`
+      typeKeyIsViewLike        -- es vista, o arreglo de vistas de cualquier rango
+      typeKeyCarriesLifetime   -- lleva un tiempo de vida ajeno (referencia, cadena, arreglo,
+                                 puntero, vista). NO es "posee almacenamiento": hasta el Bloque 3
+                                 las dos coincidian y por eso nadie habia tenido que separarlas.
+    + viewRootLocalOfExpression -- EL ANALISIS DE ENRAIZAMIENTO. Contesta "de que local de este
+      metodo presta esta expresion". Un `int` no cuenta; un parametro y un campo tampoco, y eso es
+      el punto: los dos sobreviven a la llamada. Una vista local se CONSULTA (lleva grabado de que
+      se enraiza) en vez de asumir que contamina.
+    + REGLA R2, la linea del criterio del bloque: devolver una vista enraizada en un local se
+      rechaza. Se graba al declarar y se RECALCULA en cada asignacion, incluida la de un elemento
+      de arreglo -- `tokens[i] = vista` es la misma fuga con un nivel de indireccion.
+    + REGLA R3: capturar una vista (local o parametro) en un lambda se rechaza.
+    + SHR-010: reconocimiento de `String.CharacterPointer(string,int) -> char*` como operacion
+      nucleo, por firma exacta, junto a las otras cuatro de String.
+    + case en methodCoreOperationKindName (OBLIGATORIO: ese switch no tiene default y con /WX un
+      enumerador que falte tumba la construccion).
+
+include/nativesharp/Frontend/ProjectOopHirModel.h
+src/Frontend/ProjectOopHirModel.cpp
+include/nativesharp/Frontend/ProjectOopMirModel.h
+src/Frontend/ProjectOopMirModel.cpp
+    SHR-010. El nodo de la operacion nucleo bajando por las capas. En el HIR entra en el MISMO
+    bloque que Concat/Equals/Substring/FromCharArray -- sin receptor, dos operandos, otro gancho
+    en el backend -- en vez de abrir un camino propio que duplicara la conversion de operandos.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    SHR-010. La bajada: `lowerArrayElementAddress(node, /*string*/ true)`. NO HAY ARITMETICA
+    NUEVA. Es la misma llamada que StringElementLoad hace justo arriba, sin el load: mismo
+    receptor, mismo indice, MISMA COMPROBACION DE RANGO, mismo GEP con paso 1 y desplazamiento 8.
+    Si el layout de una cadena cambia, cambia en un sitio.
+
+MODIFICADOS -- BIBLIOTECA
+-------------------------
+lib/NativeSharp.Core/String.ns
+    SHR-010. +1 metodo: `CharacterPointer(string value, int index) -> char*`, operacion nucleo,
+    cuerpo vacio a proposito.
+    POR QUE HIZO FALTA: `&texto[0]` no compila -- `&` exige local, parametro o campo
+    direccionable, y un caracter de una cadena no es ninguno. Abrir `&` para cadenas habria dado
+    un puntero ESCRIBIBLE sobre algo declarado inmutable.
+    ES LA PIEZA QUE HACE MEDIBLE "SIN COPIAR": con ella una fixture comprueba que el puntero de la
+    vista cae dentro del buffer de la cadena original.
+    ES CRUDA y se dice en el sitio: devuelve char* escribible sobre una cadena inmutable.
+
+NUEVOS -- BIBLIOTECA
+--------------------
+lib/NativeSharp.Core/StringView.ns          (325 lineas, 23 miembros publicos)
+    SHR-010. `borrowed struct { char* start; int count; }` -- 16 bytes, cero asignaciones.
+    Of/Slice/Trim/Equals(vista,vista)/Equals(vista,cadena)/IndexOf/LastIndexOf/Contains/
+    StartsWith/EndsWith/Data/indexador comprobado/UncheckedAt/ToString.
+    ToString es LA UNICA salida que asigna, y lo dice el tipo de retorno (`owned string`).
+
+lib/NativeSharp.Core/Span.ns                (375 lineas, 34 miembros publicos)
+    SHR-011/012. Span<T> y ReadOnlySpan<T>, los dos `borrowed struct`.
+    SON DOS TIPOS A PROPOSITO. La alternativa era uno solo con un booleano `readOnly`: cuesta una
+    comparacion POR ESCRITURA y mueve a EJECUCION lo que el sistema de tipos hace gratis en
+    compilacion. Un ReadOnlySpan<T> no falla al escribirse: no compila.
+    CopyTo (hacia delante) y CopyToOverlapping (hacia atras si el destino va por delante) tienen
+    nombres distintos en vez de que uno mienta.
+    + clase `Spans` con las fabricas -- ver ID 131 abajo.
+
+lib/NativeSharp.Core/Optional.ns            (115 lineas, 10 miembros publicos)
+    SHR-017. NO es una vista y por eso NO es `borrowed struct`: guarda una copia de T por valor.
+    Value() LANZA si esta vacio, a proposito: devolver el T a cero convierte un error en un dato
+    plausible, que es justo lo que este tipo existe para eliminar. Quien no quiera la excepcion
+    tiene ValueOr.
+    + clase `Optionals` con las fabricas -- ver ID 131 abajo.
+
+NUEVOS -- PRUEBAS
+-----------------
+tests/cc1/c23_views_and_lifetimes/Main.ns                     (515 lineas)
+tests/cc1/c23_views_and_lifetimes/c23_views_and_lifetimes.nsproj
+    LA PRIMERA MITAD DEL CRITERIO DEL BLOQUE 3, ejecutando, salida 42. Nueve bloques.
+    El noveno es el criterio literal: un lexer que devuelve siete lexemas como vistas y comprueba
+    que CADA UNA apunta al desplazamiento exacto de la cadena original -- una copia caeria fuera
+    del buffer y la fixture lo veria. Medido ademas en el IR: NextToken no llama al asignador.
+
+tests/unit/Stage58ViewLifetimesTests.cpp                       (428 lineas, 31 comprobaciones)
+    LA SEGUNDA MITAD, que NO CABE en una fixture de ejecucion: un programa rechazado no produce
+    ejecutable, asi que no hay codigo de salida que mirar. Compila 12 formas prohibidas y exige el
+    DIAGNOSTICO EXACTO de cada una (no solo que falle: un proyecto puede fallar por veinte
+    razones), y 8 formas permitidas que TIENEN que seguir compilando -- sin esa mitad, una regla
+    que prohibiera las vistas por completo pasaria igual.
+    Es el hermano de Stage50_7BorrowEscapeAnalysisTests y va pegado a el en CMakeLists.
+
+MODIFICADOS -- REGISTRO
+-----------------------
+CMakeLists.txt
+    add_test(NAME nsc.stage58.view-lifetimes ...), junto al 50.7.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    Registro de la fixture c23.
+
+run_cases.py
+    c23 en la tabla CASES. Una linea.
+
+NO TOCADO, y es deliberado
+--------------------------
+lib/NativeSharp.Core/Number.ns
+    La tentacion era darle sobrecargas sobre StringView. Serian ~350 lineas del nucleo de parsing
+    duplicadas en dos copias que pueden separarse.
+    NO HACE FALTA: el nucleo del SHR-024 ya trabaja sobre (texto, ref indice), asi que un lexer
+    lee los numeros EN SITIO sobre la misma cadena y guarda los demas lexemas como vistas. Los
+    Bloques 2 y 3 componen sin una linea duplicada, y el bloque 9 de la fixture lo enseña.
+
+src/Frontend/ProjectObjectLayoutModel.cpp
+    Su lector de marcas de layout ignora lo que no reconoce a proposito ("a marker this build does
+    not know about must not turn a valid declaration into a hard error"). `borrowedview` pasa por
+    delante sin tocar nada.
+
+HUECOS DEL LENGUAJE ENCONTRADOS AL ESCRIBIR ESTO -- MEDIDOS, ANOTADOS, NO ARREGLADOS
+-----------------------------------------------------------------------------------
+ID 131  Un miembro estatico de un tipo generico CERRADO no se puede nombrar.
+            Box<int>.Make(1)     -> "expected expression" / "expected ';', found 'Make'"
+            Helper.Wrap<int>(1)  -> compila
+        Cerrarlo pide que el modelo de nombres resuelva una instanciacion generica en posicion de
+        EXPRESION y que el modelo generico la monomorfice desde ahi. Es de otro bloque.
+        CONSECUENCIA VISIBLE: las fabricas viven en `Spans` y `Optionals` en vez de dentro de los
+        structs. Cuando el ID se cierre, se mudan sin tocar nada mas.
+
+ID 132  Dos metodos genericos con el mismo nombre y la misma aridad de tipos no se sobrecargan:
+            duplicate generic template identity 'NativeSharp.Core.Spans.Of``1'
+        La identidad es nombre + numero de parametros de tipo, sin la lista de parametros. Por eso
+        hay `OfRange` y no un segundo `Of`.
+
+ID 130  `applyUwtableAttribute` pide `uwtable` con valor 0. En LLVM el valor es un UWTableKind:
+        0 = None, 1 = Sync, 2 = Async. CERO SIGNIFICA "SIN TABLA", lo contrario de lo que el
+        nombre promete. Medido con la propia LlvmCApi.h del proyecto sobre LLVM 18: con 0 el
+        modulo impreso sale TRUNCADO A 65 BYTES y con basura desde el primer atributo; con 2
+        imprime correcto. En Windows x64 la tabla de desenrollado es lo que SEH necesita.
+        NO SE TOCA AQUI: cambiar los atributos de todas las funciones es una decision del proyecto
+        con su medicion en Windows, no un efecto colateral del Bloque 3.
+
+COMO SE VERIFICO ANTES DE ESCRIBIR NADA EN LA MAQUINA
+-----------------------------------------------------
+EL CONTENEDOR AHORA COMPILA Y EJECUTA EL COMPILADOR ENTERO SALVO EL ENLAZADOR. Es lo mas
+importante de esta ronda, mas que cualquiera de los cuatro SHR.
+
+Los 74 .cpp del frontend (Lexer, Parser, AST, Sema, Compilation, Diagnostics, Frontend, Source,
+Target) mas ProjectOopLlvmLowerer, LlvmModule y WindowsRuntimeBuilder compilan con clang 18 y
+enlazan contra libLLVM-18. Dos apanos de version que NO SALEN DEL CONTENEDOR:
+LLVMConstStringInContext2 (llego en LLVM 19) y el uwtable del ID 130, subido a 2 solo para poder
+LEER el IR.
+
+  1. Los 171 .nsproj del arbol por el modelo de cuerpos, por el MIR, y por la BAJADA A LLVM IR
+     con el verificador de LLVM: 167 OK, 5 FAIL -- y los cinco son los ejemplos NEGATIVOS que
+     tienen que fallar (BorrowEscape, BorrowedToOwned, ImplicitOwnedCopy, UseAfterMove,
+     ForeachNegativeTest). Cero regresiones.
+  2. Las 14 pruebas unitarias que solo piden nsc_frontend, construidas y EJECUTADAS: 14/14,
+     372 comprobaciones. Ahi salio la regresion del `borrowed` de funcion global.
+  3. El IR concreto, leido: NextToken sin una sola llamada al asignador; los GEP de la operacion
+     nucleo con desplazamiento 8+i y su comprobacion de rango delante.
+  4. Todos los .cpp tocados con clang++ -std=c++20 -Wall -Wextra: cero avisos.
+  5. Al terminar, `diff -rq` del arbol de trabajo contra el snapshot del que salio: exactamente
+     los 20 archivos de esta lista y ninguno mas.
+
+Y la regla del cierre anterior, aplicada: SE RELEE DEL DISCO JUSTO ANTES DE CADA ESCRITURA. El
+arbol de trabajo se levanto de un snapshot y se sobrescribio con copias frescas de los ocho
+archivos con fecha posterior a el.

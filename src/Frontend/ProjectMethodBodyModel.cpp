@@ -525,6 +525,101 @@ bool ProjectMethodBodyModel::aggregateIsUnion(std::string_view typeKey) const no
     return false;
 }
 
+// SHR-013: la marca `borrowedview` que el parser escribio en el texto auxiliar de la
+// declaracion, leida igual que "union" justo arriba. Un solo sitio la escribe y un solo sitio la
+// lee, que es la razon de haberla puesto ahi y no en un AstNodeKind nuevo.
+bool ProjectMethodBodyModel::aggregateIsBorrowedView(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != identity || type.syntax == nullptr) continue;
+        return type.syntax->auxiliaryText().find("borrowedview") != std::string::npos;
+    }
+    return false;
+}
+
+// SHR-013: una vista, o un arreglo de vistas de cualquier rango. `StringView[]` es lo que un
+// lexer quiere de verdad -- una lista de lexemas sin copiar ni uno -- y precisamente por eso
+// tiene que contar como vista alla donde una vista no puede ir.
+bool ProjectMethodBodyModel::typeKeyIsViewLike(std::string_view typeKey) const noexcept
+{
+    std::string_view key = typeKey;
+    while (key.ends_with("[]")) key = key.substr(0, key.size() - 2);
+    return aggregateIsBorrowedView(key);
+}
+
+bool ProjectMethodBodyModel::typeKeyCarriesLifetime(std::string_view typeKey) const noexcept
+{
+    if (typeKey.empty() || typeKey == "<error>") return false;
+    if (typeKey.ends_with("*")) return true;
+    if (typeKey.ends_with("[]")) return true;
+    if (typeKey == "builtin:string") return true;
+    if (typeKeyIsViewLike(typeKey)) return true;
+    return isReferenceTypeKey(typeKey);
+}
+
+// SHR-013 "vistas y tiempo de vida" -- EL ANALISIS DE ENRAIZAMIENTO.
+//
+// La pregunta: esta expresion toma prestado de un local de ESTE metodo? Si la respuesta es que
+// si, el valor no puede salir del metodo, porque ese local muere al volver.
+//
+// Como contesta: recorre el arbol de la expresion y se queda con el PRIMER identificador que
+// nombre un local cuyo tipo lleve un tiempo de vida -- una cadena, un arreglo, un puntero, un
+// duenno `raii`, u otra vista ya enraizada en un local. Un `int` no cuenta: un indice no es un
+// prestamo. Un parametro, un campo y un literal tampoco cuentan, y ese es justo el punto: los
+// tres sobreviven a la llamada, asi que una vista sacada de ellos puede salir.
+//
+// POR QUE UNA VISTA LOCAL SE CONSULTA Y NO SE ASUME. `StringView v = StringView.Of(texto);
+// return v;` con `texto` de parametro es CORRECTO, y una regla que dijera "un local de tipo
+// vista contamina" lo rechazaria. Por eso cada local de tipo vista lleva grabado de que se
+// enraiza (`viewRootLocalName`), y aqui se le pregunta en vez de suponerlo.
+//
+// LO QUE NO HACE, dicho para que nadie lo lea como mas de lo que es: no sigue el puntero. Una
+// vista que pasa por una llamada cuyo argumento es un local se considera enraizada en ese local
+// aunque la llamada no lo use. Es conservador a proposito: de los dos errores posibles, rechazar
+// un programa correcto se ve al compilar y se arregla; aceptar uno incorrecto es un
+// uso-despues-de-liberar que no se ve nunca.
+std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr) return std::nullopt;
+
+    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+        if (name.has_value() && name->kind == ScopeNameKind::Local &&
+            name->semanticOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+            if (typeKeyIsViewLike(local.typeKey))
+            {
+                if (!local.viewRootLocalName.empty()) return local.viewRootLocalName;
+            }
+            else if (typeKeyCarriesLifetime(local.typeKey))
+            {
+                return local.name;
+            }
+        }
+        return std::nullopt;
+    }
+
+    const auto probe = [&](const ast::AstNode* child) -> std::optional<std::string>
+    {
+        return viewRootLocalOfExpression(child, scopeOrdinal);
+    };
+    if (auto found = probe(expression->first()); found.has_value()) return found;
+    if (auto found = probe(expression->second()); found.has_value()) return found;
+    if (auto found = probe(expression->third()); found.has_value()) return found;
+    for (const ast::AstNode* child : expression->children())
+    {
+        if (auto found = probe(child); found.has_value()) return found;
+    }
+    return std::nullopt;
+}
+
 bool ProjectMethodBodyModel::definiteAssignmentTracksLocal(std::size_t localOrdinal) const noexcept
 {
     if (localOrdinal >= locals_.size())
@@ -2518,6 +2613,15 @@ void ProjectMethodBodyModel::analyzeVariable(
         local.localBorrowBindingOrdinal = localBorrowBindings_.size();
     }
     local.lambdaOrdinal = currentLambdaOrdinal_;
+    // SHR-013: de que local presta esta vista, si presta de alguno. Se graba AQUI, al declarar,
+    // y no se recalcula al usarla: la expresion que la creo es la unica que lo sabe, y para
+    // cuando alguien la devuelve ya no esta a la vista.
+    if (typeKeyIsViewLike(typeKey))
+    {
+        const std::optional<std::string> root =
+            viewRootLocalOfExpression(variable->first(), scopeOrdinal);
+        if (root.has_value()) local.viewRootLocalName = *root;
+    }
 
     const std::optional<ScopeName> outer = lookupScopeName(scopeOrdinal, variable->text());
     if (outer.has_value())
@@ -3084,6 +3188,34 @@ void ProjectMethodBodyModel::analyzeReturn(
     // is inert for a value-typed return since there is no RAII cleanup to suppress.
     const bool returnTypeOwnable =
         isReferenceTypeKey(method->declaredTypeKey) || method->declaredTypeKey == "builtin:string";
+
+    // SHR-013 "vistas y tiempo de vida" -- EL CRITERIO DEL BLOQUE 3, y esta es su linea.
+    //
+    // Devolver una vista enraizada en un local del propio metodo es un uso-despues-de-liberar
+    // con la cara de un valor normal: el struct viaja por valor, el puntero que lleva dentro
+    // apunta a memoria que acaba de morir, y nada en el tipo de retorno lo delata.
+    //
+    // Por que NO lo atrapaba la comprobacion de prestamo que ya existia (Stage 50.7): esa mira
+    // el CALIFICATIVO `borrowed` sobre un tipo por referencia, y `returnTypeOwnable` de arriba
+    // la apaga para cualquier struct por valor. Una vista es un struct por valor. El hueco era
+    // exactamente ese, y no se ve leyendo la regla vieja: se ve preguntandole por un tipo nuevo
+    // que hasta el Bloque 3 no existia.
+    if (typeKeyIsViewLike(method->declaredTypeKey))
+    {
+        const std::optional<std::string> root =
+            viewRootLocalOfExpression(statement->first(), scopeOrdinal);
+        if (root.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "view of type '" + method->declaredTypeKey + "' borrows from local '" + *root +
+                    "' and cannot be returned: the local dies when the method returns. Take the "
+                    "view from a parameter, a field, or return a copy that owns its storage");
+            return;
+        }
+    }
     if (method->declaredOwnership == sema::OwnershipKind::Borrowed)
     {
         const bool nullBorrow = statement->first()->kind() == ast::AstNodeKind::NullLiteralExpression;
@@ -6953,6 +7085,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 {
                     coreKind = MethodCoreOperationKind::StringFromCharArray;
                 }
+                // SHR-010: `String.CharacterPointer(texto, indice)` -> `char*`. El
+                // reconocimiento es por firma EXACTA, igual que las cuatro de arriba: clase
+                // cualificada, estatico, tipo de retorno y tipos de parametros. Un metodo que se
+                // llame igual con otra firma no es esta operacion y se compila como codigo
+                // normal.
+                else if (selectedMember.name == "CharacterPointer" &&
+                    selectedMember.declaredTypeKey == "builtin:char*" &&
+                    selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey == "builtin:string" &&
+                    selectedMember.parameters[1].typeKey == "builtin:int")
+                {
+                    coreKind = MethodCoreOperationKind::StringCharacterPointer;
+                }
                 if (coreKind.has_value())
                 {
                     coreBindings_.push_back(MethodCoreBinding{
@@ -9107,6 +9252,40 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // assigned into a plain local/field/parameter whose CLOSED type never needed ownership
     // tracking (a generic T monomorphized to int, bool, a struct, ...) carries no real lifetime
     // to protect.
+    // SHR-013: `v = otra;` cambia de que presta `v`, asi que el enraizamiento grabado en la
+    // declaracion deja de valer. Se ACUMULA en vez de reemplazarse: tras dos asignaciones en
+    // ramas distintas la vista puede venir de cualquiera de las dos, y la respuesta segura es
+    // quedarse con la primera que la ate a un local.
+    // El destino puede ser el local a secas (`v = ...`) o un ELEMENTO de un arreglo local de
+    // vistas (`tokens[i] = ...`). El segundo caso importa tanto como el primero: un
+    // `StringView[]` local lleno de vistas de otro local y devuelto despues seria la misma fuga
+    // con un nivel de indireccion. El enraizamiento se acumula EN EL ARREGLO, que es el valor
+    // que puede escapar.
+    const ast::AstNode* viewAssignmentRoot = expression->first();
+    while (viewAssignmentRoot != nullptr &&
+        viewAssignmentRoot->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        viewAssignmentRoot = viewAssignmentRoot->first();
+    }
+    if (viewAssignmentRoot != nullptr &&
+        viewAssignmentRoot->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> viewTarget =
+            lookupScopeName(scopeOrdinal, viewAssignmentRoot->text());
+        if (viewTarget.has_value() && viewTarget->kind == ScopeNameKind::Local &&
+            viewTarget->semanticOrdinal < locals_.size() &&
+            typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey) &&
+            locals_[viewTarget->semanticOrdinal].viewRootLocalName.empty())
+        {
+            const std::optional<std::string> root =
+                viewRootLocalOfExpression(expression->second(), scopeOrdinal);
+            if (root.has_value())
+            {
+                locals_[viewTarget->semanticOrdinal].viewRootLocalName = *root;
+            }
+        }
+    }
+
     const bool assignmentTargetOwnable = isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
     if (right.ownership == sema::OwnershipKind::Borrowed && assignmentTargetOwnable)
     {
@@ -10271,6 +10450,20 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                 }
                 continue;
             }
+            // SHR-013: una VISTA capturada por un lambda es el mismo defecto que las dos de
+            // abajo llegando por el tipo en vez de por el calificativo. El delegate se puede
+            // guardar en un campo, devolver, o llamar horas despues; lo prestado no lo sabe.
+            if (typeKeyIsViewLike(local.typeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "view local '" + local.name + "' of type '" + local.typeKey +
+                        "' cannot be captured by a lambda because the delegate may outlive what "
+                        "the view borrows from");
+                safe = false;
+            }
             if (local.isRaii || local.ownership == sema::OwnershipKind::Borrowed)
             {
                 diagnostics.report(
@@ -10296,6 +10489,19 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
             const ClassMemberSymbol* owner = methodSymbol(methodMemberOrdinal);
             if (owner == nullptr || *name.parameterOrdinal >= owner->parameters.size()) continue;
             const MethodParameterSymbol& parameter = owner->parameters[*name.parameterOrdinal];
+            // SHR-013: y lo mismo para un PARAMETRO de tipo vista. Un parametro sobrevive a la
+            // llamada, pero no al delegate que lo captura.
+            if (typeKeyIsViewLike(parameter.typeKey))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "view parameter '" + parameter.name + "' of type '" + parameter.typeKey +
+                        "' cannot be captured by a lambda because the delegate may outlive what "
+                        "the view borrows from");
+                safe = false;
+            }
             if (parameter.ownership == sema::OwnershipKind::Borrowed ||
                 parameter.ownership == sema::OwnershipKind::Owned)
             {
@@ -11172,6 +11378,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::StringConcat: return "string-concat";
         case MethodCoreOperationKind::StringEquals: return "string-equals";
         case MethodCoreOperationKind::StringSubstring: return "string-substring";
+        case MethodCoreOperationKind::StringCharacterPointer: return "string-character-pointer";
         case MethodCoreOperationKind::StringFromCharArray: return "string-from-char-array";
         case MethodCoreOperationKind::ConsoleWriteLine: return "console-writeline";
         case MethodCoreOperationKind::ConsoleWrite: return "console-write";

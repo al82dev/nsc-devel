@@ -404,6 +404,24 @@ int main()
         tests, root, "tests/cc1/c22_console_and_formatting/c22_console_and_formatting.nsproj",
         "cc1-c22-console-and-formatting", 42);
 
+    // SHR-010 + SHR-011/012 + SHR-017 -- LA FIXTURE DE ACEPTACION DEL BLOQUE 3, y su primera
+    // mitad: "el lexer guarda lexemas como vistas sin copiar". La segunda mitad del criterio --
+    // "y el compilador rechaza devolver una vista de un local"-- NO cabe aqui, porque un programa
+    // rechazado no produce ejecutable ni codigo de salida; vive en
+    // tests/unit/Stage58ViewLifetimesTests.cpp, que exige el diagnostico exacto de cada forma
+    // prohibida.
+    //
+    // Lo que mide y no se ve en la salida: que las vistas NO copian -- cada lexema se compara
+    // contra String.CharacterPointer(fuente, desplazamiento), asi que una copia caeria fuera del
+    // buffer original y la fixture lo veria; que escribir por un Span<T> escribe el arreglo de
+    // verdad; que CopyToOverlapping va hacia atras cuando destino y origen se solapan; que
+    // Optional<int> distingue "no hay" de un -1 que SI esta en los datos; y que los indexadores
+    // comprueban el rango con una excepcion catchable.
+    // Ver mkdown\94_bloque3_vistas_y_tiempo_de_vida.md.
+    checkFixture(
+        tests, root, "tests/cc1/c23_views_and_lifetimes/c23_views_and_lifetimes.nsproj",
+        "cc1-c23-views-and-lifetimes", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================

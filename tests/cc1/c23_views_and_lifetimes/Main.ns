@@ -1,0 +1,515 @@
+// CC1 / Bloque 3 -- LA FIXTURE DE ACEPTACION DE "VISTAS Y TIEMPO DE VIDA".
+//
+// EL CRITERIO DEL BLOQUE, escrito en el doc 81 ANTES de empezar a implementarlo:
+//
+//     Terminado cuando: el lexer guarda lexemas como vistas sin copiar y el compilador rechaza
+//     devolver una vista de un local.
+//
+// Las dos mitades se miden en sitios distintos, y tienen que serlo:
+//
+//   * LA PRIMERA MITAD ES ESTE ARCHIVO. `MiniLexer` recorre una cadena y devuelve cada lexema
+//     como `StringView`. Que no copia NO SE AFIRMA: se comprueba comparando el puntero de cada
+//     vista contra `String.CharacterPointer(source, desplazamiento)`. Si alguna vista copiara,
+//     su puntero caeria fuera del buffer de la cadena original y este archivo saldria con un
+//     codigo distinto de 42.
+//
+//   * LA SEGUNDA MITAD NO PUEDE ESTAR AQUI, y merece decirse: un programa que el compilador
+//     RECHAZA no se puede ejecutar, asi que no cabe en una fixture de ejecucion. Vive en
+//     `tests/unit/Stage58ViewLifetimesTests.cpp`, que compila cada forma prohibida y comprueba
+//     que sale el diagnostico exacto. Una fixture que "documentara" el rechazo con un comentario
+//     no mediria nada.
+//
+// LO QUE ESTE ARCHIVO FIJA, bloque a bloque:
+//   1. ViewBasics            -- Of/Slice/Trim/Equals/IndexOf/StartsWith/EndsWith.
+//   2. ViewDoesNotCopy       -- la aritmetica de punteros que sostiene todo lo demas.
+//   3. ViewToStringCopies    -- y que la UNICA salida que asigna lo dice en su tipo.
+//   4. SpanOverArray         -- Span<T> sobre arreglo: indexador, Fill, Slice, CopyTo.
+//   5. SpanOverStack         -- Span<T> sobre `stackalloc`, y el solapamiento.
+//   6. ReadOnlyIsReadOnly    -- que la conversion barata va en una sola direccion.
+//   7. OptionalBasics        -- el "no hay" que no reserva ningun valor de T.
+//   8. BoundsAreChecked      -- los indexadores comprueban, y el fallo es catchable.
+//   9. LexerKeepsViews       -- EL CRITERIO: un lexer completo, sin una sola asignacion.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+using NativeSharp.Core;
+
+namespace cc1viewsandlifetimes
+{
+    // EL LEXER DEL CRITERIO.
+    //
+    // Fijarse en lo que NO tiene: ningun campo de tipo `StringView`. No es una omision -- el
+    // compilador lo RECHAZA (SHR-013), porque un campo vive tanto como su objeto y una vista
+    // presta de algo que no tiene por que durar tanto. Lo que guarda es la CADENA de origen, que
+    // es una referencia normal, y construye las vistas donde se usan.
+    //
+    // Y por eso `NextToken()` puede devolver una vista: se enraiza en el campo `source`, que
+    // sobrevive a la llamada. La misma funcion enraizada en un local no compilaria.
+    class MiniLexer
+    {
+        private string source;
+        private int position;
+
+        public MiniLexer(string text)
+        {
+            source = text;
+            position = 0;
+        }
+
+        public int Position()
+        {
+            return position;
+        }
+
+        public bool AtEnd()
+        {
+            SkipSpaces();
+            return position >= source.Length;
+        }
+
+        private void SkipSpaces()
+        {
+            while (position < source.Length && source[position] == ' ')
+            {
+                position = position + 1;
+            }
+        }
+
+        private static bool IsWordChar(char value)
+        {
+            int code = (int)value;
+            return (code >= 97 && code <= 122) || (code >= 65 && code <= 90) ||
+                (code >= 48 && code <= 57) || code == 95;
+        }
+
+        // Devuelve el siguiente lexema COMO VISTA. Cero asignaciones: ni una subcadena, ni un
+        // arreglo temporal, ni una copia de un caracter fuera del bucle de comparacion.
+        public StringView NextToken()
+        {
+            SkipSpaces();
+            if (position >= source.Length)
+            {
+                return StringView.Empty();
+            }
+            int begin = position;
+            if (IsWordChar(source[position]))
+            {
+                while (position < source.Length && IsWordChar(source[position]))
+                {
+                    position = position + 1;
+                }
+            }
+            else
+            {
+                position = position + 1;
+            }
+            return StringView.Of(source, begin, position - begin);
+        }
+    }
+
+    class Program
+    {
+        // ------------------------------------------------------------------------------------
+        // 1. Lo basico de una vista.
+        private static bool ViewBasics()
+        {
+            string text = "  hola mundo  ";
+            StringView all = StringView.Of(text);
+            if (all.Length() != 14) { return false; }
+            if (all.IsEmpty()) { return false; }
+
+            StringView trimmed = all.Trim();
+            if (trimmed.Length() != 10) { return false; }
+            if (!StringView.Equals(trimmed, "hola mundo")) { return false; }
+
+            StringView first = trimmed.Slice(0, 4);
+            if (!StringView.Equals(first, "hola")) { return false; }
+            StringView second = trimmed.Slice(5);
+            if (!StringView.Equals(second, "mundo")) { return false; }
+
+            if (trimmed[0] != 'h') { return false; }
+            if (trimmed[9] != 'o') { return false; }
+            if (trimmed.IndexOf(' ') != 4) { return false; }
+            if (trimmed.IndexOf('z') != -1) { return false; }
+            if (trimmed.LastIndexOf('o') != 9) { return false; }
+            if (!trimmed.Contains('m')) { return false; }
+            if (!trimmed.StartsWith(first)) { return false; }
+            if (!trimmed.EndsWith(second)) { return false; }
+            if (trimmed.StartsWith(second)) { return false; }
+
+            // Dos vistas del MISMO texto en dos cadenas DISTINTAS son iguales: la igualdad es de
+            // contenido, no de direccion. Es lo que permite reconocer una palabra clave sin
+            // asignar nada.
+            string other = "hola";
+            StringView elsewhere = StringView.Of(other);
+            if (!StringView.Equals(first, elsewhere)) { return false; }
+            if (first.Data() == elsewhere.Data()) { return false; }
+
+            // La vista vacia y la vista de longitud cero se comportan igual en todo lo que este
+            // tipo hace.
+            StringView empty = StringView.Empty();
+            if (!empty.IsEmpty()) { return false; }
+            if (empty.Length() != 0) { return false; }
+            if (!StringView.Equals(empty, StringView.Of(text, 3, 0))) { return false; }
+            return true;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 2. LA MEDICION QUE SOSTIENE EL BLOQUE: la vista no copia.
+        //
+        // Un comentario que diga "sin copiar" no vale nada. Esto es aritmetica de punteros: la
+        // vista tiene que apuntar DENTRO del buffer de la cadena original, en el desplazamiento
+        // exacto, y su ultimo caracter tiene que ser el que corresponde.
+        private static bool ViewDoesNotCopy()
+        {
+            string text = "abcdefghij";
+            char* origin = String.CharacterPointer(text, 0);
+
+            StringView all = StringView.Of(text);
+            if (all.Data() != origin) { return false; }
+
+            StringView middle = StringView.Of(text, 3, 4);
+            if (middle.Data() != origin + 3) { return false; }
+            if (middle.Length() != 4) { return false; }
+            if (!StringView.Equals(middle, "defg")) { return false; }
+
+            // Y un tramo de un tramo sigue dentro de la MISMA cadena: rebanar no copia tampoco.
+            StringView inner = middle.Slice(1, 2);
+            if (inner.Data() != origin + 4) { return false; }
+            if (!StringView.Equals(inner, "ef")) { return false; }
+
+            // El ultimo caracter de la vista es el que el desplazamiento dice, leido por el
+            // puntero y por el indexador. Si alguno de los dos estuviera desalineado, las dos
+            // lecturas discreparian.
+            if (*(inner.Data() + 1) != inner[1]) { return false; }
+            if (inner[1] != text[5]) { return false; }
+            return true;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 3. La unica salida que asigna, y que lo dice en su tipo.
+        private static bool ViewToStringCopies()
+        {
+            string text = "abcdefghij";
+            StringView middle = StringView.Of(text, 2, 3);
+            raii string copy = middle.ToString();
+            if (!String.Equals(copy, "cde")) { return false; }
+            // La copia tiene memoria PROPIA: su primer caracter no esta donde estaba el de la
+            // vista. Eso es lo que la distingue de la vista, y por eso hay que liberarla.
+            if (String.CharacterPointer(copy, 0) == middle.Data()) { return false; }
+
+            StringView empty = StringView.Empty();
+            raii string nothing = empty.ToString();
+            if (nothing.Length != 0) { return false; }
+            return true;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 4. Span<T> sobre un arreglo.
+        private static bool SpanOverArray()
+        {
+            int[] numbers = new int[6];
+            Span<int> all = Spans.Of<int>(numbers);
+            if (all.Length() != 6) { return false; }
+
+            all.Fill(3);
+            all[0] = 10;
+            all[5] = 20;
+            if (numbers[0] != 10 || numbers[3] != 3 || numbers[5] != 20)
+            {
+                delete[] numbers;
+                return false;
+            }
+            // Escribir por el span escribe EL ARREGLO. Si copiara, la comprobacion de arriba
+            // habria pasado y esta no.
+            numbers[1] = 99;
+            if (all[1] != 99) { delete[] numbers; return false; }
+
+            Span<int> tail = all.Slice(2);
+            if (tail.Length() != 4 || tail[0] != 3) { delete[] numbers; return false; }
+            if (tail.Data() != all.Data() + 2) { delete[] numbers; return false; }
+
+            Span<int> ranged = Spans.OfRange<int>(numbers, 1, 3);
+            if (ranged.Length() != 3 || ranged[0] != 99) { delete[] numbers; return false; }
+
+            // Recortes: un tramo entero fuera del arreglo da la vista vacia, no una excepcion.
+            Span<int> beyond = Spans.OfRange<int>(numbers, 10, 4);
+            if (!beyond.IsEmpty()) { delete[] numbers; return false; }
+            Span<int> clipped = Spans.OfRange<int>(numbers, 4, 100);
+            if (clipped.Length() != 2) { delete[] numbers; return false; }
+
+            int[] other = new int[3];
+            Span<int> destination = Spans.Of<int>(other);
+            int copied = all.CopyTo(destination);
+            // CopyTo devuelve cuantos cupieron, no falla porque el destino sea mas corto.
+            if (copied != 3 || other[0] != 10 || other[1] != 99)
+            {
+                delete[] numbers;
+                delete[] other;
+                return false;
+            }
+
+            delete[] numbers;
+            delete[] other;
+            return true;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 5. Span<T> sobre memoria de pila, y el solapamiento.
+        private static bool SpanOverStack()
+        {
+            int* buffer = stackalloc int[8];
+            Span<int> all = Spans.OfRaw<int>(buffer, 8);
+            int index = 0;
+            while (index < 8)
+            {
+                all[index] = index;
+                index = index + 1;
+            }
+            if (buffer[7] != 7) { return false; }
+
+            // Origen y destino SE SOLAPAN, con el destino por delante. Una copia hacia delante
+            // iria pisando lo que aun no ha leido; CopyToOverlapping va hacia atras en ese caso.
+            Span<int> source = all.Slice(0, 5);
+            Span<int> destination = all.Slice(2, 5);
+            int moved = source.CopyToOverlapping(destination);
+            if (moved != 5) { return false; }
+            // 0 1 2 3 4 5 6 7  ->  0 1 0 1 2 3 4 7
+            if (all[0] != 0 || all[1] != 1) { return false; }
+            if (all[2] != 0 || all[3] != 1 || all[4] != 2 || all[5] != 3 || all[6] != 4)
+            {
+                return false;
+            }
+            if (all[7] != 7) { return false; }
+            return true;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 6. La mitad de solo lectura.
+        private static bool ReadOnlyIsReadOnly()
+        {
+            int[] numbers = new int[4];
+            Span<int> writable = Spans.Of<int>(numbers);
+            writable.Fill(7);
+
+            ReadOnlySpan<int> view = writable.AsReadOnly();
+            if (view.Length() != 4 || view[0] != 7) { delete[] numbers; return false; }
+            // Misma memoria: la conversion no copia.
+            if (view.Data() != writable.Data()) { delete[] numbers; return false; }
+
+            ReadOnlySpan<int> direct = Spans.ReadOnlyOf<int>(numbers);
+            if (direct.Data() != writable.Data()) { delete[] numbers; return false; }
+            ReadOnlySpan<int> slice = direct.Slice(1, 2);
+            if (slice.Length() != 2 || slice.Data() != direct.Data() + 1)
+            {
+                delete[] numbers;
+                return false;
+            }
+
+            int[] target = new int[4];
+            Span<int> destination = Spans.Of<int>(target);
+            if (view.CopyTo(destination) != 4 || target[3] != 7)
+            {
+                delete[] numbers;
+                delete[] target;
+                return false;
+            }
+            // `view[0] = 1;` NO COMPILA, y esa es la propiedad entera del tipo. No se puede
+            // escribir aqui una comprobacion de ejecucion de algo que no llega a ejecutarse; su
+            // sitio es la prueba de compilacion, igual que el rechazo de las vistas fugadas.
+            delete[] numbers;
+            delete[] target;
+            return true;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 7. Optional<T>.
+        private static Optional<int> FindIndex(int[] items, int wanted)
+        {
+            int index = 0;
+            while (index < items.Length)
+            {
+                if (items[index] == wanted)
+                {
+                    return Optionals.Some<int>(index);
+                }
+                index = index + 1;
+            }
+            return Optionals.None<int>();
+        }
+
+        private static bool OptionalBasics()
+        {
+            int[] numbers = new int[4];
+            numbers[0] = 5; numbers[1] = -1; numbers[2] = 7; numbers[3] = 9;
+
+            Optional<int> found = FindIndex(numbers, 7);
+            if (!found.HasValue() || found.IsEmpty()) { delete[] numbers; return false; }
+            if (found.Value() != 2) { delete[] numbers; return false; }
+            if (found.ValueOr(-100) != 2) { delete[] numbers; return false; }
+
+            // EL CASO QUE NINGUN CENTINELA CUBRE: `-1` ESTA en el arreglo, en la posicion 1. Un
+            // buscador que devolviera -1 para "no encontrado" no podria distinguir este caso de
+            // un fallo. `Optional<int>` si.
+            Optional<int> minusOne = FindIndex(numbers, -1);
+            if (!minusOne.HasValue() || minusOne.Value() != 1) { delete[] numbers; return false; }
+
+            Optional<int> missing = FindIndex(numbers, 1000);
+            if (missing.HasValue() || !missing.IsEmpty()) { delete[] numbers; return false; }
+            if (missing.ValueOr(-100) != -100) { delete[] numbers; return false; }
+
+            // Vacio construido a mano: los dos campos a cero, y cero en `present` es false.
+            Optional<int> blank = new Optional<int>();
+            if (blank.HasValue()) { delete[] numbers; return false; }
+
+            Optional<int> some = Optionals.Some<int>(0);
+            // Y el valor CERO no es "vacio": el "no hay" no reserva ningun valor de T.
+            if (!some.HasValue() || some.Value() != 0) { delete[] numbers; return false; }
+
+            delete[] numbers;
+            return true;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 8. Los indexadores comprueban el rango, y el fallo es catchable.
+        //
+        // Es una decision, no una casualidad: el resto del lenguaje comprueba arreglos y cadenas,
+        // y el unico tipo que no lo hiciera seria justo el que mas aparece dentro de bucles. Para
+        // el bucle que ya comprobo, estan `UncheckedAt`/`UncheckedSet`, que lo dicen en el nombre.
+        private static bool BoundsAreChecked()
+        {
+            string text = "abc";
+            StringView view = StringView.Of(text);
+            int caught = 0;
+            try
+            {
+                char ignored = view[5];
+                if (ignored == 'z') { return false; }
+            }
+            catch (ArgumentOutOfRangeException error)
+            {
+                caught = caught + 1;
+            }
+            if (caught != 1) { return false; }
+
+            int[] numbers = new int[2];
+            Span<int> span = Spans.Of<int>(numbers);
+            try
+            {
+                span[9] = 1;
+            }
+            catch (ArgumentOutOfRangeException error)
+            {
+                caught = caught + 1;
+            }
+            if (caught != 2) { delete[] numbers; return false; }
+
+            Optional<int> empty = Optionals.None<int>();
+            try
+            {
+                int ignored = empty.Value();
+                if (ignored == 0) { delete[] numbers; return false; }
+            }
+            catch (InvalidOperationException error)
+            {
+                caught = caught + 1;
+            }
+            delete[] numbers;
+            return caught == 3;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // 9. EL CRITERIO DEL BLOQUE 3, ejecutando.
+        //
+        //     "el lexer guarda lexemas como vistas sin copiar"
+        //
+        // Siete tokens, siete vistas, cero asignaciones. Y la prueba de que no hubo copia no es
+        // que el texto coincida --una copia tambien coincidiria-- sino que CADA VISTA APUNTA AL
+        // DESPLAZAMIENTO EXACTO DE LA CADENA ORIGINAL.
+        private static bool LexerKeepsViews()
+        {
+            //                0123456789012345678
+            string source = "let x = 42 + foo ;";
+            char* origin = String.CharacterPointer(source, 0);
+
+            // Un arreglo LOCAL de vistas. Legal: el arreglo muere antes que la cadena de la que
+            // prestan sus elementos. Un CAMPO del mismo tipo no seria legal, y el compilador lo
+            // dice -- ver Stage58ViewLifetimesTests.
+            StringView[] tokens = new StringView[8];
+            int count = 0;
+
+            raii MiniLexer lexer = new MiniLexer(source);
+            while (!lexer.AtEnd() && count < 8)
+            {
+                tokens[count] = lexer.NextToken();
+                count = count + 1;
+            }
+
+            if (count != 7) { delete[] tokens; return false; }
+
+            // Los desplazamientos esperados, escritos a mano contra la cadena de arriba.
+            int[] offsets = new int[7];
+            offsets[0] = 0;  offsets[1] = 4;  offsets[2] = 6;  offsets[3] = 8;
+            offsets[4] = 11; offsets[5] = 13; offsets[6] = 17;
+            int[] lengths = new int[7];
+            lengths[0] = 3; lengths[1] = 1; lengths[2] = 1; lengths[3] = 2;
+            lengths[4] = 1; lengths[5] = 3; lengths[6] = 1;
+
+            int index = 0;
+            while (index < 7)
+            {
+                if (tokens[index].Data() != origin + offsets[index])
+                {
+                    delete[] tokens; delete[] offsets; delete[] lengths;
+                    return false;
+                }
+                if (tokens[index].Length() != lengths[index])
+                {
+                    delete[] tokens; delete[] offsets; delete[] lengths;
+                    return false;
+                }
+                index = index + 1;
+            }
+            delete[] offsets;
+            delete[] lengths;
+
+            if (!StringView.Equals(tokens[0], "let")) { delete[] tokens; return false; }
+            if (!StringView.Equals(tokens[1], "x")) { delete[] tokens; return false; }
+            if (!StringView.Equals(tokens[2], "=")) { delete[] tokens; return false; }
+            if (!StringView.Equals(tokens[3], "42")) { delete[] tokens; return false; }
+            if (!StringView.Equals(tokens[4], "+")) { delete[] tokens; return false; }
+            if (!StringView.Equals(tokens[5], "foo")) { delete[] tokens; return false; }
+            if (!StringView.Equals(tokens[6], ";")) { delete[] tokens; return false; }
+
+            // Y ASI SE COMPONE CON EL BLOQUE 2, sin una linea duplicada: el numero NO se lee de
+            // la vista sino de la CADENA por su posicion, que es exactamente la forma que
+            // `Number` recibio en el SHR-024 -- nucleo sobre `(texto, ref indice)`. El lexer
+            // avanza sobre su propio buffer, guarda los lexemas como vistas y lee los numeros en
+            // sitio. Ninguna de las dos mitades asigna nada.
+            int numberStart = 8;
+            ulong parsed = 0;
+            if (!Number.TryParseUInt64(source, ref numberStart, 10, out parsed))
+            {
+                delete[] tokens;
+                return false;
+            }
+            if (parsed != 42 || numberStart != 10) { delete[] tokens; return false; }
+
+            delete[] tokens;
+            return true;
+        }
+
+        public static int Main()
+        {
+            if (!ViewBasics()) { return 1; }
+            if (!ViewDoesNotCopy()) { return 2; }
+            if (!ViewToStringCopies()) { return 3; }
+            if (!SpanOverArray()) { return 4; }
+            if (!SpanOverStack()) { return 5; }
+            if (!ReadOnlyIsReadOnly()) { return 6; }
+            if (!OptionalBasics()) { return 7; }
+            if (!BoundsAreChecked()) { return 8; }
+            if (!LexerKeepsViews()) { return 9; }
+            return 42;
+        }
+    }
+}
