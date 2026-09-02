@@ -21,12 +21,14 @@ namespace nativesharp::cfg
 {
 namespace
 {
-template <typename T>
-bool containsPointer(const std::vector<T*>& values, const T* value)
-{
-    return std::find(values.begin(), values.end(), value) != values.end();
-}
-
+// `containsPointer` vivia aqui y no lo usaba nadie. Lo sustituyo `countPointer`, que hace la
+// comprobacion FUERTE que este verificador necesita de verdad: una arista tiene que aparecer
+// EXACTAMENTE UNA VEZ en las listas de sus dos extremos (ver verifyEdge), no "al menos una". Un
+// duplicado es un grafo mal construido, y `contains` lo habria dado por bueno.
+//
+// Se elimina en vez de silenciarse: clang 23 lo caza con -Wunused-template y clang 22 no, pero el
+// warning tiene razon en las dos versiones. `std::find` se iba con el; `<algorithm>` se queda por
+// `std::count` y `std::equal`.
 std::size_t countPointer(const std::vector<CfgEdge*>& values, const CfgEdge* value)
 {
     return static_cast<std::size_t>(std::count(values.begin(), values.end(), value));

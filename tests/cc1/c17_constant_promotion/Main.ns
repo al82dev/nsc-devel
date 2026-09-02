@@ -1,0 +1,148 @@
+// IDs 121 y 122 -- la aritmetica de constantes enteras, y el orden en que se aplica.
+//
+// DE DONDE VIENE. `ProjectTypeConversion::commonNumericType` no tenia regla de promocion entera.
+// Para dos integrales de anchos distintos con constante de por medio -- `int` y `long`, por
+// ejemplo -- las conversiones existen EN LAS DOS DIRECCIONES (int->long por ensanchamiento,
+// long->int por constante que cabe), asi que ninguna de las dos reglas unidireccionales dispara y
+// la busqueda caia al bucle de preferencia, ordenado de mas ancho a mas estrecho. Su primer
+// candidato es `builtin:double`, los dos operandos llegan a el, y el tipo comun de `1 + 1L`
+// resultaba ser **double**. Aguas abajo el evaluador entero comprueba que el tipo comun sea
+// integral, ve `double`, y se rinde: `const long A = 1 + 1L;` NO SE PLEGABA.
+//
+// El ID 122 es el prerrequisito, no un adorno. `ProjectIntegerConstant::value` esta documentado
+// como una MAGNITUD, con el signo en `isNegative`, porque `constantFits` solo compara contra cotas
+// superiores. El evaluador entero le metia `bits` -- complemento a dos con el signo ya extendido a
+// 64 -- y no ponia `isNegative` nunca. Un operando negativo llegaba como una magnitud enorme y no
+// cabia en ningun destino. No mentia: se rendia. Pero no se puede escribir una regla de promocion
+// encima de una estructura que significa dos cosas distintas segun quien la construya.
+//
+// LO QUE MIDE ESTA FIXTURE, y por que en este orden:
+//
+//   1. Que las constantes SE PLIEGAN. Un campo `const` cuyo inicializador no sea una constante de
+//      compilacion no compila, asi que la sola existencia de los campos de abajo es la prueba: si
+//      el ID 121 volviera a abrirse, este archivo deja de compilar, no de dar 42.
+//   2. Que el VALOR plegado es el correcto, comprobado en ejecucion.
+//   3. Que la regla nueva NO revierte la del ID 120 -- `short t = s + 3;` sigue compilando. Esta
+//      es la propiedad fragil: la regla de promocion va DESPUES de la del 120, y puesta delante
+//      rompe exactamente lo que el 120 cerro.
+//   4. Que el ID 119 sigue cerrado: un literal negativo conserva su constancia y cabe en un
+//      destino con signo mas estrecho. Es lo que el 122 podia romper al cambiar la representacion.
+//   5. Que CC1-103 sigue cerrado: un shift toma el tipo del operando IZQUIERDO, no un tipo comun.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+namespace cc1constantpromotion
+{
+    public class Promoted
+    {
+        // ID 121, el caso directo. Antes: el tipo comun era `double`, el evaluador se rendia, y
+        // esta linea no compilaba porque su inicializador no era constante.
+        public const long Mixed = 1 + 1L;
+
+        // La parte sin signo de la regla. `long` contra `ulong` no tiene tipo comun en C#; aqui la
+        // conversion por constante SI existe en los dos sentidos y el tipo comun es `ulong`.
+        public const ulong Unsigned = 3L + 5UL;
+
+        // Un literal escrito ANCHO no se estrecha en silencio. Este es el caso que hizo falta para
+        // que la regla del ID 120 se escribiera estrecha a proposito: si "si un lado convierte por
+        // constante, gana el otro" fuera la regla, esto se habria evaluado en `int`.
+        public const long NegativeWide = (-1) + 1L;
+
+        // El negativo del ID 122 llegando al ensanchamiento: la magnitud es 5 con `isNegative`, no
+        // 0xFFFF...FB leido como magnitud enorme.
+        public const long NegativeSum = (0 - 5) + 10L;
+
+        // Encadenado, para que el resultado de una promocion alimente a la siguiente.
+        public const long Chained = Mixed + NegativeWide + 40L;
+
+        // Sin signo de 32 bits contra 64 sin signo.
+        public const ulong WideUnsigned = 7U + 1UL;
+
+        // CC1-103: el shift toma el tipo del operando IZQUIERDO. Si volviera a pasar por el tipo
+        // comun, `1u << 28` seria `double` otra vez.
+        public const uint Shifted = 1U << 28;
+    }
+
+    class Program
+    {
+        // ID 120, la mitad que la regla nueva podia romper. `s + 3` tiene que seguir siendo
+        // `short`: el operando constante se adapta al otro, no al reves. Si la promocion entera se
+        // hubiera puesto ANTES de esa regla, esto se evaluaria en `int` y no compilaria.
+        private static int NarrowStaysNarrow()
+        {
+            short s = 10;
+            short t = s + 3;
+            short back = s - 3;
+            byte b = 5;
+            byte c = b + 1;
+            return (int)t + (int)back + (int)c;
+        }
+
+        // ID 119. Un literal negativo conserva su constancia y cabe hasta la MAGNITUD DEL MINIMO.
+        private static int NegativeConstantsFit()
+        {
+            short s = -3;
+            short low = -32768;
+            int big = -2147483648;
+            s = -1;
+            return (int)s + (int)low - (int)low + big - big;
+        }
+
+        // CC1-103 medido desde el lenguaje: el contador estrecho no arrastra el tipo del resultado.
+        private static int ShiftKeepsLeftType()
+        {
+            uint value = 1U << 28;
+            ushort narrow = 1024;
+            int shifted = (int)(narrow >> 8);
+            if (value != 268435456U) { return 0; }
+            if (shifted != 4) { return 0; }
+            return 1;
+        }
+
+        public static int Main()
+        {
+            // --- 1 y 2: las constantes se pliegan, y con el valor correcto ---------------------
+            if (Promoted.Mixed != 2L) { return 1; }
+            if (Promoted.Unsigned != 8UL) { return 2; }
+            if (Promoted.NegativeWide != 0L) { return 3; }
+            if (Promoted.NegativeSum != 5L) { return 4; }
+            if (Promoted.Chained != 42L) { return 5; }
+            if (Promoted.WideUnsigned != 8UL) { return 6; }
+            if (Promoted.Shifted != 268435456U) { return 7; }
+
+            // --- 3: regresion del ID 120 -------------------------------------------------------
+            // 13 + 7 + 6 = 26. El numero no importa; lo que importa es que compile y que el
+            // resultado sea el de una aritmetica estrecha, no el de una que paso por `double`.
+            if (NarrowStaysNarrow() != 26) { return 8; }
+
+            // --- 4: regresion del ID 119 -------------------------------------------------------
+            if (NegativeConstantsFit() != -1) { return 9; }
+
+            // --- 5: regresion de CC1-103 -------------------------------------------------------
+            if (ShiftKeepsLeftType() != 1) { return 10; }
+
+            // --- la promocion en expresiones NO constantes, que es la otra mitad ---------------
+            // `int + long` da `long`, y por tanto la suma no pierde los bits altos. El valor
+            // elegido es 2^53 + 1, el primer entero que un `double` NO puede representar: si la
+            // suma pasara por punto flotante el resultado se redondearia a 2^53 y esta
+            // comprobacion fallaria. Un numero cualquiera no separaria las dos rutas.
+            int small = 1;
+            long huge = 9007199254740993L;
+            long sum = small + huge;
+            if (sum != 9007199254740994L) { return 11; }
+
+            // La misma propiedad por el lado sin signo, con el mismo umbral.
+            uint u = 1U;
+            ulong wide = 9007199254740993UL;
+            ulong wideSum = u + wide;
+            if (wideSum != 9007199254740994UL) { return 12; }
+
+            // `int + uint` da `long`: ninguno de los dos pierde rango.
+            int signedValue = -1;
+            uint unsignedValue = 3U;
+            long mixedSum = signedValue + unsignedValue;
+            if (mixedSum != 2L) { return 13; }
+
+            return 42;
+        }
+    }
+}

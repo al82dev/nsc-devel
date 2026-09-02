@@ -22,6 +22,43 @@ constexpr std::array<std::string_view, 10> kIntegralTypes = {
     "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
     "builtin:nint", "builtin:nuint"};
 
+// ID 121. Ancho y signo de los tipos integrales, para la regla de promocion entera de mas abajo.
+//
+// DICE LO MISMO que `ProjectIntegerEvaluator::kIntegerTypes`, y esta escrita dos veces A
+// PROPOSITO: es el evaluador de constantes quien llama aqui, no al reves, asi que este archivo
+// tiene que poder contestar sin depender de el. Las dos tablas se fijan la una contra la otra en
+// `nsc.cc1.integer-evaluator` y en la fixture c17; si algun dia discrepan, discrepan ahi.
+//
+// `builtin:char` mide OCHO bits -- CC1-100, la misma decision que toma `constantFits` abajo.
+// `nint`/`nuint` son de 64 bits en este objetivo (Windows x64).
+struct IntegralInfo final
+{
+    std::string_view key;
+    unsigned width;
+    bool isSigned;
+};
+
+constexpr std::array<IntegralInfo, 10> kIntegralInfo = {{
+    {"builtin:byte", 8, false},
+    {"builtin:char", 8, false},
+    {"builtin:short", 16, true},
+    {"builtin:ushort", 16, false},
+    {"builtin:int", 32, true},
+    {"builtin:uint", 32, false},
+    {"builtin:long", 64, true},
+    {"builtin:ulong", 64, false},
+    {"builtin:nint", 64, true},
+    {"builtin:nuint", 64, false}}};
+
+const IntegralInfo* findIntegral(std::string_view typeKey) noexcept
+{
+    for (const IntegralInfo& info : kIntegralInfo)
+    {
+        if (info.key == typeKey) return &info;
+    }
+    return nullptr;
+}
+
 constexpr std::array<Pair, 53> kNumericWidenings = {{
     {"builtin:byte", "builtin:short"}, {"builtin:byte", "builtin:ushort"},
     {"builtin:byte", "builtin:int"}, {"builtin:byte", "builtin:uint"},
@@ -160,6 +197,58 @@ bool constantFits(
         return true;
     }
     return false;
+}
+
+// ID 121. LA PROMOCION ENTERA BINARIA. Devuelve el tipo en el que C# evalua `a OP b` cuando los
+// dos son integrales, o nullopt si alguno no lo es.
+//
+// EL DEFECTO QUE CIERRA, medido: `commonNumericType("builtin:int", "builtin:long", const, const)`
+// devolvia **builtin:double**. Las dos conversiones unidireccionales existen (int->long por
+// ensanchamiento, long->int por constante que cabe), asi que ninguna de las dos reglas de arriba
+// dispara; la del ID 120 exige origen `builtin:int` y destino MAS ESTRECHO que int, y `long` no lo
+// es; y el bucle de preferencia esta ordenado de mas ancho a mas estrecho, asi que su primer
+// candidato es `double` y los dos operandos llegan a el. Aguas abajo el evaluador entero ve que el
+// tipo comun no es integral y se rinde: `const long x = 1 + 1L;` NO SE PLIEGA.
+//
+// Las reglas, en este orden (C# 12.4.7 restringido a los tipos que existen aqui):
+//
+//   alguno es ulong/nuint                     -> ulong
+//   alguno es de 64 bits                      -> long
+//   alguno es uint y el otro tiene signo      -> long
+//   alguno es uint                            -> uint
+//   en otro caso                              -> int
+//
+// El caso `ulong` contra un operando CON SIGNO es error en C#. Aqui no se decide en esta funcion:
+// se devuelve `ulong` y el LLAMADOR comprueba que los dos operandos convierten de verdad a el. Con
+// un `long` no constante esa comprobacion falla -- no hay ensanchamiento long->ulong -- y la
+// expresion sigue exactamente el camino que seguia antes. Con `3L + 5UL` la conversion por
+// constante SI existe y el tipo comun es `ulong`, que es lo util y lo que la fixture c17 fija.
+std::optional<std::string> integerPromotion(std::string_view left, std::string_view right) noexcept
+{
+    const IntegralInfo* a = findIntegral(left);
+    const IntegralInfo* b = findIntegral(right);
+    if (a == nullptr || b == nullptr) return std::nullopt;
+
+    if ((a->width == 64 && !a->isSigned) || (b->width == 64 && !b->isSigned))
+    {
+        return std::string("builtin:ulong");
+    }
+    if (a->width == 64 || b->width == 64)
+    {
+        return std::string("builtin:long");
+    }
+
+    const bool leftIsUint = a->width == 32 && !a->isSigned;
+    const bool rightIsUint = b->width == 32 && !b->isSigned;
+    if ((leftIsUint && b->isSigned) || (rightIsUint && a->isSigned))
+    {
+        return std::string("builtin:long");
+    }
+    if (leftIsUint || rightIsUint)
+    {
+        return std::string("builtin:uint");
+    }
+    return std::string("builtin:int");
 }
 
 ProjectImplicitConversion makeConversion(
@@ -318,6 +407,31 @@ std::optional<std::string> ProjectTypeConversion::commonNumericType(
     if (adaptsFromDefaultLiteral(leftToRight, rightTypeKey))
     {
         return std::string(rightTypeKey);
+    }
+
+    // ID 121. VA AQUI, y el sitio es la mitad de la correccion.
+    //
+    // DESPUES de la regla del ID 120: si fuera antes, `short s; s + 3` pasaria a evaluarse en `int`
+    // y `short t = s + 3;` volveria a no compilar -- exactamente el defecto que el 120 cerro, con
+    // su razon escrita justo arriba. Esa divergencia respecto a C# es deliberada y esta regla no
+    // la revierte.
+    //
+    // ANTES del bucle de preferencia: el bucle esta ordenado de mas ancho a mas estrecho y su
+    // primera parada es `double`, asi que cualquier par de integrales que llegue ahi sale como
+    // punto flotante. Esta regla contesta primero para los pares integrales y le deja al bucle lo
+    // que de verdad es suyo: los pares donde interviene `float` o `double`.
+    //
+    // LA GUARDA NO ES CEREMONIA. `integerPromotion` da el tipo que C# usaria; las dos llamadas a
+    // `classifyImplicit` comprueban que los dos operandos LLEGAN a el de verdad con las
+    // conversiones que este compilador tiene. Si no llegan -- `long` no constante contra `ulong`,
+    // por ejemplo -- se cae al bucle de preferencia y la expresion se comporta como se comportaba
+    // antes de este cambio. La regla solo AÑADE respuestas donde no habia ninguna correcta.
+    if (const std::optional<std::string> promoted = integerPromotion(leftTypeKey, rightTypeKey);
+        promoted.has_value() &&
+        classifyImplicit(leftTypeKey, *promoted, leftIntegerConstant).exists() &&
+        classifyImplicit(rightTypeKey, *promoted, rightIntegerConstant).exists())
+    {
+        return promoted;
     }
 
     constexpr std::array<std::string_view, 12> preference = {

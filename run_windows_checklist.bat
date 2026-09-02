@@ -44,6 +44,8 @@ set "EXLOG=%LOGDIR%\04_examples.log"
 set "BUILDDIR=%ROOT%\build-clang"
 set "STALEDIR=%ROOT%\build-msvc"
 set "PREFIX=C:\native-sharp"
+set "LLVMROOT=C:\clang-llvm"
+set "LLVM=%LLVMROOT:\=/%"
 
 set "MODE=%~1"
 if "%MODE%"=="" set "MODE=full"
@@ -62,6 +64,47 @@ REM OJO: aqui NO se toca %BUILDDIR%. El build es y sigue siendo incremental -- N
 REM solo lo que cambio, y borrarlo convertiria cada corrida en una reconstruccion completa.
 if exist "%STALEDIR%" rmdir /s /q "%STALEDIR%" 2>nul
 
+REM --- Estado de build-clang\ --------------------------------------------------------
+REM Distinto de STALEDIR: aqui build-clang SI es el arbol vivo, pero puede no servir de dos
+REM formas, y las dos se borran.
+REM
+REM   AJENO. El que viajo desde D:\nsc-devel lleva "D:/nsc-devel" escrito dentro de
+REM   CMakeCache.txt, build.ninja, CTestTestfile.cmake y de cada .obj; CMake se niega a
+REM   reutilizarlo desde otro sitio y Ninja tampoco puede regenerarlo. Reemplazar la ruta a
+REM   mano dejaria un arbol de build en el que nadie puede confiar, que en este proyecto es
+REM   lo peor que puede pasar: la suite es la unica red que hay.
+REM
+REM   A MEDIAS. Una configuracion que fallo tambien deja un CMakeCache.txt, con sus valores
+REM   fallidos dentro. `CMAKE_CXX_COMPILER_WORKS:INTERNAL=1` solo aparece cuando la
+REM   configuracion llego al final, asi que su ausencia es la senal.
+REM
+REM En los dos casos se fuerza MODE=full. Sin eso, `quick`, `build` o `norebuild` se saltan
+REM la reconfiguracion y correrian la matriz entera contra un arbol que acaba de
+REM desaparecer -- la misma clase de fallo que documenta el comentario de :full_build.
+if not exist "%BUILDDIR%\CMakeCache.txt" goto :cache_ok
+set "CACHEROOT="
+for /f "tokens=2 delims==" %%A in ('findstr /B /C:"CMAKE_HOME_DIRECTORY:INTERNAL=" "%BUILDDIR%\CMakeCache.txt" 2^>nul') do set "CACHEROOT=%%A"
+set "ROOTFWD=%ROOT:\=/%"
+if /I not "%CACHEROOT%"=="%ROOTFWD%" goto :cache_alien
+findstr /B /C:"CMAKE_CXX_COMPILER_WORKS:INTERNAL=1" "%BUILDDIR%\CMakeCache.txt" >nul 2>&1
+if errorlevel 1 goto :cache_partial
+goto :cache_ok
+
+:cache_alien
+echo   build-clang\ se genero desde "%CACHEROOT%" y este arbol esta en "%ROOTFWD%".
+echo   Se borra y se reconstruye completo. Modo forzado a `full`.
+rmdir /s /q "%BUILDDIR%" 2>nul
+set "MODE=full"
+goto :cache_ok
+
+:cache_partial
+echo   build-clang\ quedo de una configuracion que no termino. Se borra.
+echo   Modo forzado a `full`.
+rmdir /s /q "%BUILDDIR%" 2>nul
+set "MODE=full"
+
+:cache_ok
+
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 if not exist "%BINDIR%" mkdir "%BINDIR%"
 
@@ -78,12 +121,39 @@ set /a FAILED=0
 > "%FIXLOG%" echo === interop contract fixtures ===
 > "%EXLOG%" echo === packaged examples ===
 
+REM --- 0b. Preflight del toolchain --------------------------------------------
+REM MEDIDO en la primera corrida en A:. El CMakeCache viejo (el de D:) tenia
+REM   CMAKE_MT:FILEPATH=C:/clang-llvm/bin/llvm-mt.exe
+REM porque en aquella maquina C:\clang-llvm\bin estaba en el PATH y CMake lo encontro solo.
+REM Aqui no lo esta: CMake dejo CMAKE_MT-NOTFOUND, el enlace del programa de prueba fallo con
+REM "no such file or directory", y la configuracion murio en `project()` con un mensaje que
+REM habla del compilador y no de la herramienta que falta. Tres segundos de corrida y un log
+REM que apunta al sitio equivocado.
+REM
+REM Por eso las rutas del toolchain se pasan TODAS explicitas mas abajo, y por eso se
+REM comprueban aqui: si falta una, el script lo dice por su nombre en vez de dejar que CMake
+REM lo descubra a su manera.
+if not exist "%LLVMROOT%\bin\clang-cl.exe" goto :no_toolchain
+if not exist "%LLVMROOT%\bin\llvm-mt.exe" goto :no_toolchain
+if not exist "%LLVMROOT%\bin\lld-link.exe" goto :no_toolchain
+if not exist "%LLVMROOT%\lib\LLVM-C.lib" goto :no_toolchain
+goto :toolchain_ok
+
+:no_toolchain
+echo         FALTA EL TOOLCHAIN en %LLVMROOT%
+>> "%SUMMARY%" echo [FAIL] toolchain -- falta algo en %LLVMROOT% ^(clang-cl, llvm-mt, lld-link, LLVM-C.lib^)
+>> "%SUMMARY%" echo.
+>> "%SUMMARY%" echo Abortado antes de compilar: no hay con que.
+goto :report
+
+:toolchain_ok
+
 REM --- 1. Build + install -----------------------------------------------------
 if /I "%MODE%"=="norebuild" goto :skip_build
 if /I "%MODE%"=="full" goto :full_build
 
 echo [1/5] Build incremental e instalacion en %PREFIX% ...
-cmake --build "%BUILDDIR%" --parallel > "%LOGDIR%\01_build.log" 2>&1
+cmake --build "%BUILDDIR%" --parallel -- -k 0 > "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
 cmake --install "%BUILDDIR%" --prefix "%PREFIX%" >> "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
@@ -99,9 +169,9 @@ REM compilacion se presentaba entonces como fixtures rojos con errores absurdos 
 REM character in source" para sintaxis que el compilador nuevo si soporta), que es la peor forma
 REM posible de reportarlo. Cada paso se comprueba por separado.
 echo [1/5] Reconstruccion completa e instalacion en %PREFIX% ...
-cmake -S "%ROOT%" -B "%BUILDDIR%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_CXX_COMPILER="C:/clang-llvm/bin/clang-cl.exe" -DCMAKE_LINKER="C:/clang-llvm/bin/lld-link.exe" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE -DNSC_LLVM_MONOLITHIC_LIBRARY="C:/clang-llvm/lib/LLVM-C.lib" -DNSC_BUILD_TESTS=ON -DNSC_WARNINGS_AS_ERRORS=ON > "%LOGDIR%\01_build.log" 2>&1
+cmake -S "%ROOT%" -B "%BUILDDIR%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="%LLVM%/bin/clang-cl.exe" -DCMAKE_LINKER="%LLVM%/bin/lld-link.exe" -DCMAKE_MT="%LLVM%/bin/llvm-mt.exe" -DCMAKE_RC_COMPILER="%LLVM%/bin/llvm-rc.exe" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE -DNSC_LLVM_MONOLITHIC_LIBRARY="%LLVM%/lib/LLVM-C.lib" -DNSC_BUILD_TESTS=ON -DNSC_WARNINGS_AS_ERRORS=ON > "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
-cmake --build "%BUILDDIR%" --parallel >> "%LOGDIR%\01_build.log" 2>&1
+cmake --build "%BUILDDIR%" --parallel -- -k 0 >> "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
 cmake --install "%BUILDDIR%" --prefix "%PREFIX%" >> "%LOGDIR%\01_build.log" 2>&1
 if errorlevel 1 goto :build_failed
@@ -122,16 +192,57 @@ echo [1/5] Build omitido.
 :after_build
 if /I "%MODE%"=="build" goto :report
 
+REM --- 1b. Sincronizar las bibliotecas de proyecto -----------------------------
+REM VA AQUI, ANTES DE CTEST, Y ESE ES EL ARREGLO.
+REM
+REM `lib\NativeSharp.Core` y `lib\NativeSharp.Core.Collections.Generic` NO son fuentes: son
+REM copias que tools\prepare_libraries.cmd borra y vuelve a traer de %NS_LIB_ROOT% en cada
+REM build de proyecto. Lo dice lib\.source.txt, que ese mismo script escribe.
+REM
+REM Hasta ahora el unico paso que las sincronizaba era el 3 (fixtures), pero 27 de los tests
+REM de ctest -- el paso 2 -- las necesitan. Es decir: ctest dependia de un directorio que un
+REM paso POSTERIOR era el responsable de crear. Mientras lib\ sobrevivia de una corrida
+REM anterior nadie lo notaba; en cuanto quedo ausente, ctest cayo con 27 rojos cuyo mensaje
+REM ("referenced project does not exist") no menciona bibliotecas por ningun lado, y el paso 3
+REM los dejo verdes acto seguido. Medido el 2026-09-02; ver 83 seccion 4.
+REM
+REM Ademas es la sincronizacion CORRECTA: se hace justo despues del install, asi que lib\
+REM corresponde al compilador que se acaba de instalar y no al de la corrida anterior.
+echo [1b/5] Sincronizando bibliotecas de proyecto desde el prefijo instalado ...
+call "%ROOT%\tools\prepare_libraries.cmd" >> "%LOGDIR%\01_build.log" 2>&1
+if errorlevel 1 goto :lib_failed
+>> "%SUMMARY%" echo [ OK ] lib/ sincronizado desde el prefijo instalado
+goto :lib_ready
+
+:lib_failed
+echo         FALLO -- no se pudieron sincronizar las bibliotecas. Ver _logs\01_build.log
+>> "%SUMMARY%" echo [FAIL] lib/ -- prepare_libraries.cmd fallo, ver 01_build.log
+>> "%SUMMARY%" echo.
+>> "%SUMMARY%" echo Abortado: sin lib/ sincronizado, ctest y las fixtures miden otra cosa.
+goto :report
+
+:lib_ready
+
 REM --- 2. ctest ---------------------------------------------------------------
 if /I "%MODE%"=="quick" goto :skip_ctest
 echo [2/5] Corriendo ctest ...
 ctest --test-dir "%BUILDDIR%" --output-on-failure > "%LOGDIR%\02_ctest.log" 2>&1
-if errorlevel 1 (
-    echo         FALLO -- ver _logs\02_ctest.log
-    >> "%SUMMARY%" echo [FAIL] ctest -- ver 02_ctest.log
-) else (
-    >> "%SUMMARY%" echo [ OK ] ctest
-)
+REM Un ctest rojo TIENE que contar en PASSED/FAILED. Antes no contaba: escribia [FAIL] en el
+REM resumen y no tocaba los contadores, asi que la corrida del 2026-09-02 termino diciendo
+REM "Passed: 71 / Failed: 0" con 27 de 242 tests en rojo, y salio con codigo 0. El paso mas
+REM importante de los cinco era el unico que no entraba en el veredicto.
+REM
+REM Cuenta como UNA unidad y son 242 tests; el detalle esta en 02_ctest.log. Lo que importa es
+REM que un solo comando no pueda decir que todo salio bien cuando no salio bien.
+if errorlevel 1 goto :ctest_failed
+>> "%SUMMARY%" echo [ OK ] ctest ^(242 tests^)
+set /a PASSED+=1
+goto :after_ctest
+
+:ctest_failed
+echo         FALLO -- ver _logs\02_ctest.log
+>> "%SUMMARY%" echo [FAIL] ctest ^(242 tests^) -- ver 02_ctest.log
+set /a FAILED+=1
 goto :after_ctest
 
 :skip_ctest

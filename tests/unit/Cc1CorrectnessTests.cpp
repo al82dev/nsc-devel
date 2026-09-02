@@ -19,16 +19,19 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 
 #include "../support/TestContext.h"
 
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -38,6 +41,8 @@ namespace
 using nativesharp::ExitCode;
 using nativesharp::driver::Driver;
 using nativesharp::frontend::ProjectCompilation;
+using nativesharp::frontend::ProjectIntegerConstant;
+using nativesharp::frontend::ProjectTypeConversion;
 using nativesharp::llvm_backend::LlvmModule;
 using nativesharp::llvm_backend::ProjectOopLlvmLowerer;
 using nativesharp::tests::TestContext;
@@ -345,6 +350,13 @@ int main()
     // tamaño (sizeof, offset de campo, paso de puntero, paso de arreglo) entre sí.
     checkFixture(
         tests, root, "tests/cc1/c16_enum_layout/c16_enum_layout.nsproj", "cc1-c16-enum-layout", 42);
+
+    // IDs 121 y 122 -- la aritmetica de constantes enteras. La fixture prueba dos cosas a la vez:
+    // que los campos `const` de anchos mezclados COMPILAN (un inicializador que no se pliega no es
+    // constante y el archivo no compilaria) y que el valor plegado es el correcto en ejecucion.
+    checkFixture(
+        tests, root, "tests/cc1/c17_constant_promotion/c17_constant_promotion.nsproj",
+        "cc1-c17-constant-promotion", 42);
 
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
@@ -1326,6 +1338,166 @@ namespace cc1arrownonptr
 }
 )NS",
         "left side of '->' must be a non-void pointer");
+
+    // =====================================================================================
+    // IDs 121 y 122 -- la aritmetica de constantes enteras.
+    //
+    // Esta seccion mide `commonNumericType` LLAMANDOLA, que es como se midio el ID 120 y como se
+    // descubrio que su primera version rompia `(-1) + 1L`. Una fixture de ejecucion no puede
+    // aislar esto: dice si el programa da 42, no que tipo eligio el frontend por el camino.
+    // =====================================================================================
+    {
+        const auto magnitude = [](std::uint64_t value, bool isUnsigned, bool isNegative)
+        {
+            return ProjectIntegerConstant{value, isUnsigned, isNegative};
+        };
+        const auto common = [](std::string_view left,
+                               std::string_view right,
+                               std::optional<ProjectIntegerConstant> leftConstant,
+                               std::optional<ProjectIntegerConstant> rightConstant)
+        {
+            const std::optional<std::string> result = ProjectTypeConversion::commonNumericType(
+                left, right, leftConstant, rightConstant);
+            return result.has_value() ? *result : std::string("<none>");
+        };
+
+        // 121, el defecto directo. Antes: builtin:double, y el evaluador entero se rendia.
+        tests.expect(
+            common("builtin:int", "builtin:long", magnitude(1, false, false),
+                   magnitude(1, false, false)) == "builtin:long",
+            "121: int and long with constants give long, not double");
+
+        // La parte sin signo. `long` contra `ulong` no tiene tipo comun en C#; con constantes que
+        // caben, aqui la conversion existe en los dos sentidos y el tipo util es ulong.
+        tests.expect(
+            common("builtin:long", "builtin:ulong", magnitude(3, false, false),
+                   magnitude(5, true, false)) == "builtin:ulong",
+            "121: long and ulong constants give ulong");
+
+        // Y sin constantes NO se inventa: no hay ensanchamiento long->ulong, la guarda de la regla
+        // falla, y la expresion sigue el camino que seguia antes de este cambio.
+        tests.expect(
+            common("builtin:long", "builtin:ulong", std::nullopt, std::nullopt) == "builtin:double",
+            "121: long and ulong without constants still fall through -- the rule only adds");
+
+        // Sin constantes de por medio: la promocion entera de C# para los pares que la necesitan.
+        tests.expect(
+            common("builtin:int", "builtin:uint", std::nullopt, std::nullopt) == "builtin:long",
+            "121: int and uint give long -- neither side loses range");
+        tests.expect(
+            common("builtin:uint", "builtin:byte", std::nullopt, std::nullopt) == "builtin:uint",
+            "121: uint and byte give uint");
+        tests.expect(
+            common("builtin:ushort", "builtin:short", std::nullopt, std::nullopt) == "builtin:int",
+            "121: two narrow types of different signedness give int");
+
+        // LA REGRESION DEL ID 120, y es la fragil: la regla nueva va DESPUES de la del 120. Puesta
+        // delante, esto devuelve `int` y `short t = s + 3;` vuelve a no compilar.
+        tests.expect(
+            common("builtin:short", "builtin:int", std::nullopt, magnitude(3, false, false)) ==
+                "builtin:short",
+            "120 regression: a fitting int constant still adapts to a short operand");
+        tests.expect(
+            common("builtin:byte", "builtin:int", std::nullopt, magnitude(1, false, false)) ==
+                "builtin:byte",
+            "120 regression: a fitting int constant still adapts to a byte operand");
+
+        // Un literal escrito ANCHO no se estrecha: la otra mitad de la razon por la que la regla
+        // del 120 se escribio estrecha a proposito.
+        tests.expect(
+            common("builtin:int", "builtin:long", magnitude(1, false, true),
+                   magnitude(1, false, false)) == "builtin:long",
+            "121: a negative int constant against 1L still gives long, not int");
+
+        // 122 MEDIDO POR SU EFECTO. Con la representacion vieja el evaluador entregaba `bits` --
+        // complemento a dos con el signo ya extendido -- en el campo documentado como magnitud.
+        // La primera llamada es lo que el evaluador entrega AHORA; la segunda es lo que entregaba
+        // antes, y las dos tienen que dar respuestas distintas o el 122 no estaba cerrado.
+        tests.expect(
+            common("builtin:short", "builtin:int", std::nullopt, magnitude(3, false, true)) ==
+                "builtin:short",
+            "122: a negative constant as magnitude+flag adapts to the narrow operand");
+        tests.expect(
+            common("builtin:short", "builtin:int", std::nullopt,
+                   magnitude(0xFFFFFFFFFFFFFFFDULL, false, false)) == "builtin:int",
+            "122: the same value as raw two's complement bits does NOT -- that was the defect");
+
+        // Los pares con punto flotante siguen siendo del bucle de preferencia, que es lo suyo.
+        tests.expect(
+            common("builtin:int", "builtin:double", std::nullopt, std::nullopt) == "builtin:double",
+            "121: an integral against double is still double");
+        tests.expect(
+            common("builtin:float", "builtin:long", std::nullopt, std::nullopt) == "builtin:float",
+            "121: float against long is still float");
+    }
+
+    // ID 121 medido en el IR -- LA SEGUNDA MITAD DE LA MEDICION.
+    //
+    // La fixture de ejecucion dice que el valor es 42. No dice si el compilador lo CALCULO o lo
+    // PLEGO: un `add` en tiempo de ejecucion tambien daria 42. Lo que separa las dos cosas es el
+    // IR, y un campo `const` plegado se materializa como una GLOBAL CONSTANTE con su valor dentro.
+    //
+    // LA PRIMERA VERSION DE ESTE TEST CONTABA `add` EN TODO EL MODULO, Y DABA UN FALSO POSITIVO.
+    // Encontro uno y fallo. Medido sobre el IR que el propio test imprimio, ese `add` era
+    //
+    //     %interface_map.next = add i64 %interface_map.index, 1
+    //
+    // el bucle del mapa de interfaces que el backend emite en TODO modulo, tenga o no aritmetica
+    // el programa. Contar instrucciones sueltas por el modulo entero mide el runtime, no el
+    // plegado. Se mide la propiedad directamente: la global existe y lleva el valor plegado.
+    {
+        const std::string text = lowerToLlvmText(
+            tests, root, "cc1-constant-promotion-folds",
+            R"NS(
+namespace cc1promoir
+{
+    public class K
+    {
+        public const long Mixed = 1 + 1L;
+        public const long Chained = Mixed + 40L;
+    }
+
+    class P
+    {
+        public static long Value()
+        {
+            return K.Chained;
+        }
+
+        public static int Main()
+        {
+            return 0;
+        }
+    }
+}
+)NS");
+        // Busca una linea que contenga las dos subcadenas. El nombre de la global lleva un indice
+        // que asigna el backend, asi que se ancla por el nombre del campo y por el valor, no por
+        // el simbolo completo.
+        const auto foldedTo = [&text](std::string_view field, std::string_view value)
+        {
+            std::size_t cursor = 0;
+            while (cursor < text.size())
+            {
+                std::size_t end = text.find('\n', cursor);
+                if (end == std::string::npos) end = text.size();
+                const std::string line = text.substr(cursor, end - cursor);
+                if (line.find(field) != std::string::npos && line.find(value) != std::string::npos)
+                {
+                    return true;
+                }
+                cursor = end + 1;
+            }
+            return false;
+        };
+
+        tests.expect(
+            foldedTo("Mixed", "= constant i64 2"),
+            "121: `1 + 1L` folds to the constant 2 in the IR, not to a runtime add");
+        tests.expect(
+            foldedTo("Chained", "= constant i64 42"),
+            "121: a const built on another folded const folds too -- 2 + 40 = 42");
+    }
 
     return tests.result();
 }

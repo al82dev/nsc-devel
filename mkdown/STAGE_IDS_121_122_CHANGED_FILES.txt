@@ -1,0 +1,63 @@
+STAGE IDs 121 / 122 -- aritmetica de constantes enteras (Bloque 1a)
+Fecha: 2026-09-01
+Doc: 82_ids_121_122_aritmetica_de_constantes.md
+
+MODIFICADOS
+-----------
+src/Frontend/ProjectIntegerEvaluator.cpp
+    ID 122. Helper `asIntegerConstant` nuevo en el namespace anonimo: convierte
+    ProjectIntegerValue (bits en complemento a dos, signo extendido) a
+    ProjectIntegerConstant (magnitud + isNegative), que es lo que la struct documenta y lo
+    que constantFits necesita. La magnitud se calcula sobre el gemelo sin signo (0 - bits)
+    para no negar INT64_MIN con signo. Sustituye las dos construcciones inline de las
+    lineas 268-269.
+
+src/Frontend/ProjectTypeConversion.cpp
+    ID 121. Tres piezas:
+      - struct IntegralInfo + tabla kIntegralInfo (ancho y signo de los 10 integrales) +
+        findIntegral, en el namespace anonimo junto a kIntegralTypes.
+      - integerPromotion(): la promocion entera binaria de C#.
+      - La llamada, en commonNumericType, DESPUES de la regla del ID 120 y ANTES del bucle
+        de preferencia, guardada por dos classifyImplicit que comprueban que los dos
+        operandos llegan de verdad al tipo promovido.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    - include de ProjectTypeConversion.h; using de ProjectIntegerConstant y
+      ProjectTypeConversion; includes <cstdint> y <optional>.
+    - Registro de la fixture c17.
+    - 17 aserciones sobre commonNumericType llamandola directamente (121, la parte sin
+      signo, la guarda, y las regresiones de los IDs 119 y 120; mas el 122 medido por su
+      efecto, comparando magnitud contra bits crudos).
+    - Medicion en el IR: en un modulo cuya unica aritmetica es constante no queda ningun
+      `= add`.
+
+NUEVOS
+------
+tests/cc1/c17_constant_promotion/Main.ns
+tests/cc1/c17_constant_promotion/c17_constant_promotion.nsproj
+    Fixture de ejecucion. Siete campos `const` de anchos mezclados (que no compilarian si
+    el plegado no funcionara) mas las tres regresiones (IDs 119, 120 y CC1-103) y la
+    promocion en expresiones no constantes con valores por encima de 2^53, elegidos para
+    que una evaluacion en double diera otro resultado. Codigo de salida esperado: 42.
+
+run_ids_121_122.bat
+    Build con -DNSC_WARNINGS_AS_ERRORS=ON, luego nsc.cc1.integer-evaluator y
+    nsc.cc1.correctness por separado, luego la suite entera. Logs en _logs\ids_121_122\.
+
+82_ids_121_122_aritmetica_de_constantes.md
+    Doc del stage: la medicion previa, la decision (a) del 122, el sitio de la regla del
+    121 y por que ahi, la tabla de los 17 casos medidos, lo que queda sin medir hasta la
+    corrida de Windows, y el hallazgo nuevo ID 126.
+
+NO TOCADOS, y es deliberado
+---------------------------
+CMakeLists.txt
+    Las fixtures cc1 no se registran ahi, se registran dentro de Cc1CorrectnessTests.cpp.
+    Comprobado antes de escribir: `grep c16_enum_layout CMakeLists.txt` da cero.
+
+include/nativesharp/Frontend/ProjectTypeConversion.h
+    La salida (a) del ID 122 no cambia la struct. La (b) si la habria cambiado.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    Sus dos construcciones de ProjectIntegerConstant (lineas 3833 y 8216) ya respetaban la
+    convencion de magnitud. El defecto estaba solo en el evaluador.

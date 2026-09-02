@@ -74,6 +74,34 @@ std::string integerLiteralTypeOf(const ast::AstNode* node)
         ? "builtin:int"
         : "builtin:long";
 }
+
+// ID 122 -- LAS DOS CONVENCIONES, unificadas aqui y no en la struct.
+//
+// `ProjectIntegerConstant::value` es una MAGNITUD y el signo va aparte en `isNegative`. Lo dice la
+// propia struct, y `constantFits` depende de ello: solo compara contra COTAS SUPERIORES, asi que un
+// patron de complemento a dos como 0xFFFF...FD no pasaria ninguna.
+//
+// `ProjectIntegerValue::bits` es lo contrario: un patron de complemento a dos de 64 bits con el
+// signo YA extendido por `normalize`. Este archivo pasaba `bits` directamente al campo documentado
+// como magnitud y no ponia `isNegative` nunca. Un operando negativo llegaba a `constantFits` como
+// una magnitud enorme y no cabia en ningun destino. No mentia -- se rendia -- pero era la
+// duplicacion semantica que impedia escribir la regla de promocion entera (ID 121) encima.
+//
+// LA MAGNITUD SE CALCULA SOBRE EL GEMELO SIN SIGNO (`0 - bits`): negar el minimo con signo en C++
+// es comportamiento indefinido, y un compilador no puede permitir que su texto de entrada lo lleve
+// ahi. Es la misma tecnica que ya usa el unario `-` de este mismo archivo.
+//
+// `isNegative` de un cero es falso, igual que en el sitio del modelo semantico que construye la
+// negacion (`negated.isNegative = negated.value != 0`). Las dos convenciones coinciden ahora.
+ProjectIntegerConstant asIntegerConstant(const ProjectIntegerValue& value) noexcept
+{
+    const bool typeIsUnsigned = !ProjectIntegerEvaluator::isSignedInteger(value.typeKey);
+    if (typeIsUnsigned || value.asSigned() >= 0)
+    {
+        return ProjectIntegerConstant{value.bits, typeIsUnsigned, false};
+    }
+    return ProjectIntegerConstant{std::uint64_t{0} - value.bits, false, true};
+}
 }
 
 unsigned ProjectIntegerEvaluator::integerWidth(std::string_view typeKey) noexcept
@@ -265,8 +293,8 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateBinary(
     const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
         left->typeKey,
         right->typeKey,
-        ProjectIntegerConstant{left->bits, !isSignedInteger(left->typeKey)},
-        ProjectIntegerConstant{right->bits, !isSignedInteger(right->typeKey)});
+        asIntegerConstant(*left),
+        asIntegerConstant(*right));
     if (!common.has_value() || !isIntegerType(*common)) return std::nullopt;
 
     const std::uint64_t a = normalize(left->bits, *common);
