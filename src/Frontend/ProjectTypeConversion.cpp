@@ -253,13 +253,35 @@ std::optional<std::string> integerPromotion(std::string_view left, std::string_v
     const IntegralInfo* b = findIntegral(right);
     if (a == nullptr || b == nullptr) return std::nullopt;
 
+    // ID 126. DOS OPERANDOS DEL MISMO TIPO cuyo rango NO es menor que `int`.
+    //
+    // En C++ la promocion integral toca solo los rangos MENORES que int: `long + long` es `long`
+    // y `size_t + size_t` es `size_t`. Aqui igual. Los cinco estrechos NO salen por aqui -- caen a
+    // las reglas de abajo y acaban en `int`, que es justamente el defecto que el ID 126 cierra.
+    if (left == right && !isIntegralPromotion(left, "builtin:int"))
+    {
+        return std::string(left);
+    }
+
+    // `nint` y `nuint` CONSERVAN SU NOMBRE, y no es cosmetica.
+    //
+    // Colapsarlos a long/ulong rompe codigo que hoy compila: `nuint size = sizeof(T);
+    // nuint total = size * 2;` daria `ulong`, y la vuelta `ulong -> nuint` NO ensancha, asi que la
+    // asignacion dejaria de compilar. C++ contesta lo mismo que esto -- `size_t + int` es `size_t`,
+    // no `unsigned long` -- porque el tipo del ancho del puntero tiene rango propio.
+    //
+    // Cuando estan los DOS de la misma signitud (`ulong` contra `nuint`), gana el de ancho
+    // GARANTIZADO: `ulong` mide 64 bits en todo target y `nuint` no, asi que elegirlo no puede
+    // perder rango en ninguna plataforma y elegir `nuint` si podria.
     if ((a->width == 64 && !a->isSigned) || (b->width == 64 && !b->isSigned))
     {
-        return std::string("builtin:ulong");
+        if (left == "builtin:ulong" || right == "builtin:ulong") return std::string("builtin:ulong");
+        return std::string("builtin:nuint");
     }
     if (a->width == 64 || b->width == 64)
     {
-        return std::string("builtin:long");
+        if (left == "builtin:long" || right == "builtin:long") return std::string("builtin:long");
+        return std::string("builtin:nint");
     }
 
     const bool leftIsUint = a->width == 32 && !a->isSigned;
@@ -375,6 +397,122 @@ std::optional<std::string> ProjectTypeConversion::commonNumericType(
     {
         return std::nullopt;
     }
+
+    // =====================================================================================
+    // IDs 126 y 120 -- UN PAR DE INTEGRALES LO CONTESTA `integerPromotion`, Y NADIE MAS.
+    //
+    // POR QUE ESTA RAMA EXISTE, y por que va la PRIMERA. El resto de esta funcion BUSCA un tipo
+    // comun: prueba conversiones en las dos direcciones y, si no concluye, recorre una lista
+    // ordenada de mas ancho a mas estrecho. Buscar es lo correcto para las mezclas con punto
+    // flotante y es lo que produjo TRES clases de respuesta equivocada para los enteros (medidas
+    // par a par en el doc 89, 31 de los 91 pares):
+    //
+    //   1. El cortocircuito de tipos iguales contestaba el tipo estrecho: `byte + byte` daba
+    //      `byte`, y el backend emitia un `add i8` que ENVUELVE sin diagnostico. 200+100 = 44.
+    //   2. La regla "si solo una conversion existe, gana ese tipo" contestaba antes de tiempo:
+    //      `byte + short` daba `short` porque byte->short ensancha y la vuelta no. Misma
+    //      truncacion, a 16 bits.
+    //   3. El bucle de preferencia empieza en `double`, y TODO entero convierte a `double`. Asi
+    //      que `int + ulong` y `long + nuint` -- pares que C# PROHIBE -- se computaban en punto
+    //      flotante: el plegado de constantes se rendia (el tipo comun no es integral) y por
+    //      encima de 2^53 el resultado ni siquiera era la suma.
+    //
+    // LA FORMA ES LA DE C++ (§7.3.6 + §7.4): promover cada operando y aplicar reglas ORDENADAS.
+    // No se busca. Y de ahi sale la propiedad que faltaba: DOS ENTEROS NUNCA DAN `double`, porque
+    // el punto flotante ya no esta en el camino.
+    //
+    // LAS RESPUESTAS SON LAS DE C# alli donde C++ muerde, que es en un solo sitio: mezclar con
+    // signo y sin signo del mismo rango. C++ colapsa al sin signo -- `int + uint` es `uint`, y por
+    // eso `-1 < 1u` es false. `integerPromotion` contesta `long`, que es lo que una persona espera.
+    //
+    // Y CUANDO LA GUARDA FALLA, ES ERROR. No se cae al bucle. `long + ulong` sin constantes no
+    // tiene tipo comun -- no hay ensanchamiento long->ulong -- y eso es exactamente lo que hay que
+    // decir, en vez de contestar `double` y computar mal. Con una constante que cabe la conversion
+    // SI existe y el par sigue funcionando, que es lo que fija la fixture c17 con `3L + 5UL`.
+    //
+    // Esta rama se traga tambien la regla del ID 120 (`adaptsFromDefaultLiteral`), que vivia mas
+    // abajo y hacia que una constante literal adoptara el tipo estrecho del otro operando:
+    // `short s; short t = s + 3;` compilaba. Era una divergencia deliberada de C# y se retira aqui
+    // -- en C# tampoco compila, y mantenerla dejaba `b + b` como error y `b + 1` truncando en
+    // silencio, que es la unica combinacion peor que no arreglar nada.
+    // =====================================================================================
+    if (isIntegral(leftTypeKey) && isIntegral(rightTypeKey))
+    {
+        // LA CONSTANTE `int` SE ADAPTA AL OTRO OPERANDO -- PERO SOLO HACIA ARRIBA.
+        //
+        // Es la «implicit constant expression conversion» de C#: una expresion constante de tipo
+        // `int` --el tipo por defecto de un literal entero-- convierte implicitamente a cualquier
+        // tipo entero en cuyo rango quepa. Aplicada al tipo comun, la constante toma el tipo del
+        // otro operando. C++ llega al mismo sitio por otro camino: `unsigned int * int` colapsa al
+        // sin signo.
+        //
+        // LA RESTRICCION «HACIA ARRIBA» ES TODA LA DIFERENCIA con la regla del ID 120 que este
+        // mismo cambio retira, y las dos direcciones no son la misma cosa:
+        //
+        //   * hacia un tipo ESTRECHO (rango < int) la adaptacion es lo que hacia que
+        //     `byte b; b + 1` se computara a 8 bits y ENVOLVIERA. Ahi manda la promocion, y por eso
+        //     el ID 120 se fue.
+        //   * hacia `uint`/`ulong`/`nuint`/`long`/`nint` no hay nada que truncar: el otro operando
+        //     ya es igual o mas ancho que `int`. Y sin esta rama se rompe codigo real --
+        //     `uint hash; hash = hash * 16777619;` en String.ns:980, y `ulong % 10` en el formateo
+        //     de enteros. Lo encontro la corrida, no una lectura: el barrido previo de `lib/` busco
+        //     tipos ESTRECHOS y `uint` no es uno.
+        //
+        // Sin ella, `integerPromotion(uint, int)` contesta `long` --correcto para dos operandos de
+        // verdad, porque ni `uint` ni `int` contienen al otro-- y `long` no vuelve a `uint`.
+        const auto constantAdaptsUpward = [](
+            std::string_view constantTypeKey,
+            const std::optional<ProjectIntegerConstant>& constant,
+            std::string_view otherTypeKey) noexcept
+        {
+            return constantTypeKey == "builtin:int" && constant.has_value() &&
+                !isIntegralPromotion(otherTypeKey, "builtin:int") &&
+                classifyImplicit(constantTypeKey, otherTypeKey, constant).exists();
+        };
+        if (constantAdaptsUpward(leftTypeKey, leftIntegerConstant, rightTypeKey))
+        {
+            return std::string(rightTypeKey);
+        }
+        if (constantAdaptsUpward(rightTypeKey, rightIntegerConstant, leftTypeKey))
+        {
+            return std::string(leftTypeKey);
+        }
+
+        const std::optional<std::string> promoted = integerPromotion(leftTypeKey, rightTypeKey);
+        if (!promoted.has_value())
+        {
+            return std::nullopt;
+        }
+        const auto bothReach = [&](std::string_view candidate) noexcept
+        {
+            return classifyImplicit(leftTypeKey, candidate, leftIntegerConstant).exists() &&
+                classifyImplicit(rightTypeKey, candidate, rightIntegerConstant).exists();
+        };
+        if (bothReach(*promoted))
+        {
+            return promoted;
+        }
+        // EL TIPO NATIVO SE PREFIERE, PERO NO SE IMPONE. `integerPromotion` contesta `nint`/`nuint`
+        // cuando uno de los operandos lo es, porque colapsarlos rompe `nuint total = size * 2`.
+        // Pero no todo operando LLEGA a un tipo nativo: `uint -> nint` no ensancha, y con razon --
+        // `nint` puede medir 32 bits en otro target y un `uint` no cabria. Ahi el tipo comun
+        // honesto es el de ancho fijo, al que los dos SI ensanchan (`uint -> long`, `nint -> long`),
+        // y no un error.
+        //
+        // MEDIDO: sin este paso, `uint + nint` --que hoy compila y da `long`-- dejaba de compilar.
+        // Fue la unica regresion que la tabla de 91 pares encontro en la primera version de este
+        // cambio, y la encontro la tabla, no una lectura.
+        if (*promoted == "builtin:nint" && bothReach("builtin:long"))
+        {
+            return std::string("builtin:long");
+        }
+        if (*promoted == "builtin:nuint" && bothReach("builtin:ulong"))
+        {
+            return std::string("builtin:ulong");
+        }
+        return std::nullopt;
+    }
+
     if (leftTypeKey == rightTypeKey)
     {
         return std::string(leftTypeKey);
@@ -393,75 +531,15 @@ std::optional<std::string> ProjectTypeConversion::commonNumericType(
         return std::string(leftTypeKey);
     }
 
-    // ID 120. EL OPERANDO CONSTANTE SE ADAPTA AL OTRO, NO AL REVES.
+    // Lo que queda de aqui abajo gobierna SOLO los pares donde interviene punto flotante (o un
+    // tipo numerico que no es integral): los pares de integrales ya contestaron arriba y no
+    // llegan. La regla del ID 120 --`adaptsFromDefaultLiteral`, que hacia que una constante
+    // literal adoptara el tipo estrecho del otro operando-- vivia aqui y se retiro con el ID 126:
+    // era una divergencia deliberada de C# y ahora seria inalcanzable, porque su unico caso de uso
+    // era un par de integrales.
     //
-    // MEDIDO, no supuesto, compilando este archivo solo y llamando a esta funcion:
-    // `commonNumericType("builtin:short", "builtin:int", -, const 3)` devolvia **builtin:double**.
-    // La razon: con una constante que cabe, las conversiones existen EN LAS DOS DIRECCIONES, asi
-    // que ninguna de las dos reglas de arriba dispara y se caia al bucle de preferencia, que esta
-    // ordenado de mas ancho a mas estrecho y por tanto acierta `double` siempre. Consecuencia:
-    // `short s; short t = s + 3;` no compilaba, y `byte b; b = b + 1;` tampoco -- la suma daba
-    // `double` y despues no habia conversion de vuelta.
-    //
-    // La regla correcta es la de C#: una expresion constante que cabe en el tipo del otro operando
-    // TOMA ese tipo. Se comprueba antes del bucle de preferencia, que a partir de aqui solo
-    // gobierna los casos sin constante de por medio.
-    // ESTRECHADA A PROPOSITO, y esto es lo que la hace segura. La primera version decia "si un
-    // lado convierte por constante, gana el otro", y MEDIDO sobre el evaluador de constantes eso
-    // rompia `(-1) + 1L`: el `1L` es explicitamente `long`, la conversion long->int por constante
-    // existe, y la regla ancha lo habria evaluado en `int`. Un literal que la persona escribio
-    // ANCHO no debe estrecharse en silencio.
-    //
-    // La regla de C# es mas concreta: la conversion implicita de expresion constante va de un
-    // literal `int` -- el tipo por defecto de un literal entero -- a un tipo MAS ESTRECHO que int.
-    // Eso es exactamente lo que hace falta para `short s; s + 3` y `byte b; b + 1`, que es lo que
-    // estaba roto, y no toca nada mas.
-    const auto adaptsFromDefaultLiteral =
-        [](const ProjectImplicitConversion& conversion, std::string_view target) noexcept
-    {
-        // ID 89: `sbyte` es un destino MAS ESTRECHO QUE INT y por tanto pertenece a esta lista.
-        // Sin el, `sbyte s = 10; sbyte t = s + 3;` no compilaria mientras que la misma linea con
-        // `short` si -- medido con el probe de este stage, que devolvia `int` para el par
-        // (sbyte, const 3). Un tipo nuevo tiene que entrar en TODAS las reglas que nombran a la
-        // familia de los estrechos, no solo en las tablas de ancho y signo.
-        return conversion.kind == ProjectConversionKind::ConstantInteger &&
-            conversion.sourceTypeKey == "builtin:int" &&
-            (target == "builtin:sbyte" || target == "builtin:byte" || target == "builtin:char" ||
-             target == "builtin:short" || target == "builtin:ushort");
-    };
-    if (adaptsFromDefaultLiteral(rightToLeft, leftTypeKey))
-    {
-        return std::string(leftTypeKey);
-    }
-    if (adaptsFromDefaultLiteral(leftToRight, rightTypeKey))
-    {
-        return std::string(rightTypeKey);
-    }
-
-    // ID 121. VA AQUI, y el sitio es la mitad de la correccion.
-    //
-    // DESPUES de la regla del ID 120: si fuera antes, `short s; s + 3` pasaria a evaluarse en `int`
-    // y `short t = s + 3;` volveria a no compilar -- exactamente el defecto que el 120 cerro, con
-    // su razon escrita justo arriba. Esa divergencia respecto a C# es deliberada y esta regla no
-    // la revierte.
-    //
-    // ANTES del bucle de preferencia: el bucle esta ordenado de mas ancho a mas estrecho y su
-    // primera parada es `double`, asi que cualquier par de integrales que llegue ahi sale como
-    // punto flotante. Esta regla contesta primero para los pares integrales y le deja al bucle lo
-    // que de verdad es suyo: los pares donde interviene `float` o `double`.
-    //
-    // LA GUARDA NO ES CEREMONIA. `integerPromotion` da el tipo que C# usaria; las dos llamadas a
-    // `classifyImplicit` comprueban que los dos operandos LLEGAN a el de verdad con las
-    // conversiones que este compilador tiene. Si no llegan -- `long` no constante contra `ulong`,
-    // por ejemplo -- se cae al bucle de preferencia y la expresion se comporta como se comportaba
-    // antes de este cambio. La regla solo AÑADE respuestas donde no habia ninguna correcta.
-    if (const std::optional<std::string> promoted = integerPromotion(leftTypeKey, rightTypeKey);
-        promoted.has_value() &&
-        classifyImplicit(leftTypeKey, *promoted, leftIntegerConstant).exists() &&
-        classifyImplicit(rightTypeKey, *promoted, rightIntegerConstant).exists())
-    {
-        return promoted;
-    }
+    // La llamada a `integerPromotion` que estaba en este punto tambien se fue, por lo mismo: era
+    // el ID 121, y ahora es lo PRIMERO que se pregunta en vez de lo penultimo.
 
     // ID 89. `sbyte` va AL FINAL, y es la posicion mas conservadora que existe: el bucle
     // devuelve el PRIMER candidato al que llegan los dos operandos, asi que anadir una entrada al

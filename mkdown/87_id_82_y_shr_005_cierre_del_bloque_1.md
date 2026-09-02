@@ -281,8 +281,11 @@ recorre campos `owned`, uno por campo, no N elementos por campo.
 
 **El Bloque 1 está cerrado.**
 
-**Sigue abierto y NO es trabajo de ingeniería, es decisión:** ID 126 (`byte + byte` → `byte`, con
-desbordamiento silencioso; cerrarlo cambia el lenguaje), ID 87 (`volatile`: el doc 60 §16 y el
+**Cerrado después, en su propia ronda:** ✅ **ID 126 + ID 120** — resultaron ser una sola superficie
+de 31 pares en `commonNumericType`, no un defecto suelto. Medidos en el doc 89 y cerrados el mismo
+día: mecanismo de C++, respuestas de C# donde C++ muerde.
+
+**Sigue abierto y NO es trabajo de ingeniería, es decisión:** ID 87 (`volatile`: el doc 60 §16 y el
 handover se contradicen), SHR-063 (condicionales de compilación: falta elegir el mecanismo),
 ID 125 (UTF-8) e ID 124 (probablemente falso).
 

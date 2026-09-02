@@ -130,17 +130,29 @@ namespace cc1sbyte
             return 1;
         }
 
-        // LA CONSTANTE QUE SE ADAPTA. `s + 3` tiene que seguir siendo `sbyte`, igual que con
-        // `short` y con `byte`: es la regla del ID 120, y un tipo estrecho nuevo tiene que entrar
-        // en ella. Medido con un probe antes de escribir esta linea: sin anadir `sbyte` a la
-        // lista de destinos de esa regla, el tipo comun salia `int` y esta funcion no compilaba.
-        private static int ConstantAdaptsToTheNarrowOperand()
+        // LA PROMOCION INTEGRAL, y `sbyte` tiene que entrar en ella como los otros cuatro
+        // estrechos. `s + 3` se evalua en `int` --promocion integral de C y C++-- y guardarlo de
+        // vuelta en un `sbyte` pide el cast escrito.
+        //
+        // ESTA FUNCION CAMBIO CON EL ID 126. Antes media la regla del ID 120, que hacia que la
+        // constante arrastrara la operacion al tipo estrecho y `sbyte t = s + 3;` compilara. Esa
+        // regla se retiro: era una divergencia deliberada de C# --alli tampoco compila-- y
+        // mantenerla dejaba `s + s` como error y `s + 3` truncando en silencio.
+        private static int NarrowArithmeticPromotesToInt()
         {
             sbyte s = 10;
-            sbyte t = s + 3;
-            sbyte back = s - 3;
+            int wide = s + 3;
+            sbyte t = (sbyte)(s + 3);
+            sbyte back = (sbyte)(s - 3);
+            if (wide != 13) { return 0; }
             if ((int)t != 13) { return 0; }
             if ((int)back != 7) { return 0; }
+
+            // Y la razon de ser de la regla, en una linea: dos `sbyte` que se suman NO envuelven a
+            // 8 bits. 100 + 100 es 200, no -56.
+            sbyte big = 100;
+            int sum = big + big;
+            if (sum != 200) { return 0; }
             return 1;
         }
 
@@ -198,7 +210,7 @@ namespace cc1sbyte
             if (ComparisonUsesTheSignedPredicate() != 1) { return 4; }
             if (NarrowingCastNormalizesWithSign() != 1) { return 5; }
             if (BoundsAreMinus128To127() != 1) { return 6; }
-            if (ConstantAdaptsToTheNarrowOperand() != 1) { return 7; }
+            if (NarrowArithmeticPromotesToInt() != 1) { return 7; }
             if (LayoutIsOneByte() != 1) { return 8; }
             if (ArraysOfSByteStep1() != 1) { return 9; }
 

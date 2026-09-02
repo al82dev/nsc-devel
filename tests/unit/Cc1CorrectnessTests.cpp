@@ -1296,10 +1296,12 @@ namespace cc1negrange
 )NS",
         "cannot initialize local 's'");
 
-    // ID 120 medido desde el lenguaje: si `short + 3` siguiera dando `double`, esto no compilaría,
-    // porque no hay conversión implícita de vuelta de double a short.
+    // ID 126, DESDE EL LENGUAJE. La aritmetica sobre tipos estrechos ocurre en `int` -- promocion
+    // integral, como en C y en C++ -- y guardarla de vuelta en el tipo estrecho pide el cast
+    // escrito. Es lo mismo que hace C#, y lo que la biblioteca de este proyecto ya escribia a mano
+    // desde el principio: `return (char)((int)value + 32);` en String.ns.
     checkAccepted(
-        tests, root, "cc1-constant-adapts-to-operand",
+        tests, root, "cc1-narrow-arithmetic-promotes-to-int",
         R"NS(
 namespace cc1promo
 {
@@ -1308,11 +1310,86 @@ namespace cc1promo
         public static int Main()
         {
             short s = 10;
-            short t = s + 3;
+            int wide = s + 3;
+            short t = (short)(s + 3);
             byte b = 5;
-            byte c = b + 1;
-            short back = s - 3;
-            return (int)t + (int)c + (int)back;
+            byte c = (byte)(b + 1);
+            short back = (short)(s - 3);
+            return wide + (int)t + (int)c + (int)back;
+        }
+    }
+}
+)NS");
+
+    // Y LA MITAD NEGATIVA, que es donde estaba el defecto: sin el cast NO compila. Antes del ID 126
+    // esta linea compilaba y el backend emitia un `add i8` que ENVUELVE -- 200+100 daba 44, sin un
+    // solo diagnostico. Es la misma clase de perdida silenciosa que el ID 81 ya rechazaba en
+    // `byte b; int n; b += n;`, aceptada aqui por una regla distinta en el mismo lenguaje.
+    checkRejected(
+        tests, root, "cc1-narrow-sum-needs-a-written-cast",
+        R"NS(
+namespace cc1narrowsum
+{
+    class P
+    {
+        public static int Main()
+        {
+            byte a = 200;
+            byte b = 100;
+            byte wraps = a + b;
+            return (int)wraps;
+        }
+    }
+}
+)NS",
+        "cannot initialize local 'wraps'");
+
+    // DOS ENTEROS NUNCA DAN `double`. `long + ulong` no tiene tipo comun -- no hay ensanchamiento
+    // long->ulong -- y ahora se dice. Hasta el ID 126 caia al bucle de preferencia, cuya primera
+    // parada es `double`, y el programa compilaba computando en punto flotante: el plegado de
+    // constantes se rendia y por encima de 2^53 el resultado dejaba de ser la suma.
+    checkRejected(
+        tests, root, "cc1-signed-and-unsigned-64-have-no-common-type",
+        R"NS(
+namespace cc1mix64
+{
+    class P
+    {
+        public static int Main()
+        {
+            long signedWide = 1;
+            ulong unsignedWide = 2;
+            long total = signedWide + (long)unsignedWide;
+            ulong bad = signedWide + unsignedWide;
+            return (int)total + (int)bad;
+        }
+    }
+}
+)NS",
+        "compatible numeric operands");
+
+    // LO QUE NO SE PUEDE ROMPER AL ARREGLAR LO ANTERIOR. `nuint` y `nint` son el ancho del puntero
+    // y su aritmetica tiene que seguir siendo suya: colapsarlos a `ulong`/`long` haria que
+    // `nuint total = size * 2;` dejara de compilar, porque la vuelta `ulong -> nuint` no ensancha.
+    // C++ contesta lo mismo -- `size_t + int` es `size_t`, no `unsigned long`.
+    checkAccepted(
+        tests, root, "cc1-native-width-arithmetic-stays-native",
+        R"NS(
+namespace cc1native
+{
+    class P
+    {
+        public static int Main()
+        {
+            nuint size = sizeof(int);
+            nuint total = size * 2;
+            nuint plusOne = total + 1;
+            nint offset = 3;
+            nint stepped = offset + 1;
+            if (total != 8) { return 1; }
+            if (plusOne != 9) { return 2; }
+            if (stepped != 4) { return 3; }
+            return 0;
         }
     }
 }
@@ -1740,6 +1817,184 @@ namespace cc1fixedowned
             return result.has_value() ? *result : std::string("<none>");
         };
 
+        // =================================================================================
+        // ID 126 -- LA TABLA ENTERA. Los 91 pares de los trece tipos numericos, sin constantes.
+        //
+        // POR QUE LA TABLA COMPLETA Y NO UNA MUESTRA. Antes del ID 126 esta funcion no tenia una
+        // especificacion: tenia tres reglas generales --cortocircuito de tipos iguales, "si solo
+        // una conversion existe gana ese tipo", y un bucle de preferencia-- aplicadas en un orden
+        // que nadie eligio para los enteros. El resultado era un mapa con TRES clases de respuesta
+        // equivocada, y ninguna se veia mirando el codigo: hubo que evaluar los 91 pares para que
+        // aparecieran. Doc 89.
+        //
+        // Ahora la tabla ES la especificacion. Cualquier cambio en las tablas de ancho, de signo o
+        // de ensanchamiento que mueva una sola de estas respuestas falla aqui, con el par escrito.
+        //
+        // LO QUE FIJA, en tres afirmaciones:
+        //
+        //   * los cinco tipos MENORES QUE INT promueven a `int` -- promocion integral de C y C++,
+        //     y ningun `add i8` que envuelva en silencio;
+        //   * DOS ENTEROS NUNCA DAN `double` -- los diez pares que mezclan 64 con signo y 64 sin
+        //     signo no tienen tipo comun, y eso es lo que se dice;
+        //   * `nint`/`nuint` conservan su nombre cuando el otro operando llega a ellos, y se caen
+        //     a `long`/`ulong` cuando no. `uint + nint` sigue dando `long`.
+        //
+        // Donde C++ y C# no coinciden mandan las respuestas de C#, y es un solo sitio: mezclar con
+        // signo y sin signo del MISMO rango. C++ colapsa al sin signo (`int + uint` es `uint`, y
+        // por eso `-1 < 1u` es false); aqui da `long`.
+        // =================================================================================
+        struct CommonTypeCase
+        {
+            std::string_view left;
+            std::string_view right;
+            std::string_view expected;
+        };
+        constexpr std::array<CommonTypeCase, 91> kCommonTypeTable = {{
+        {"builtin:sbyte", "builtin:sbyte", "builtin:int"},
+        {"builtin:sbyte", "builtin:byte", "builtin:int"},
+        {"builtin:sbyte", "builtin:char", "builtin:int"},
+        {"builtin:sbyte", "builtin:short", "builtin:int"},
+        {"builtin:sbyte", "builtin:ushort", "builtin:int"},
+        {"builtin:sbyte", "builtin:int", "builtin:int"},
+        {"builtin:sbyte", "builtin:uint", "builtin:long"},
+        {"builtin:sbyte", "builtin:long", "builtin:long"},
+        {"builtin:sbyte", "builtin:ulong", "<none>"},
+        {"builtin:sbyte", "builtin:nint", "builtin:nint"},
+        {"builtin:sbyte", "builtin:nuint", "<none>"},
+        {"builtin:sbyte", "builtin:float", "builtin:float"},
+        {"builtin:sbyte", "builtin:double", "builtin:double"},
+        {"builtin:byte", "builtin:byte", "builtin:int"},
+        {"builtin:byte", "builtin:char", "builtin:int"},
+        {"builtin:byte", "builtin:short", "builtin:int"},
+        {"builtin:byte", "builtin:ushort", "builtin:int"},
+        {"builtin:byte", "builtin:int", "builtin:int"},
+        {"builtin:byte", "builtin:uint", "builtin:uint"},
+        {"builtin:byte", "builtin:long", "builtin:long"},
+        {"builtin:byte", "builtin:ulong", "builtin:ulong"},
+        {"builtin:byte", "builtin:nint", "builtin:nint"},
+        {"builtin:byte", "builtin:nuint", "builtin:nuint"},
+        {"builtin:byte", "builtin:float", "builtin:float"},
+        {"builtin:byte", "builtin:double", "builtin:double"},
+        {"builtin:char", "builtin:char", "builtin:int"},
+        {"builtin:char", "builtin:short", "builtin:int"},
+        {"builtin:char", "builtin:ushort", "builtin:int"},
+        {"builtin:char", "builtin:int", "builtin:int"},
+        {"builtin:char", "builtin:uint", "builtin:uint"},
+        {"builtin:char", "builtin:long", "builtin:long"},
+        {"builtin:char", "builtin:ulong", "builtin:ulong"},
+        {"builtin:char", "builtin:nint", "builtin:nint"},
+        {"builtin:char", "builtin:nuint", "builtin:nuint"},
+        {"builtin:char", "builtin:float", "builtin:float"},
+        {"builtin:char", "builtin:double", "builtin:double"},
+        {"builtin:short", "builtin:short", "builtin:int"},
+        {"builtin:short", "builtin:ushort", "builtin:int"},
+        {"builtin:short", "builtin:int", "builtin:int"},
+        {"builtin:short", "builtin:uint", "builtin:long"},
+        {"builtin:short", "builtin:long", "builtin:long"},
+        {"builtin:short", "builtin:ulong", "<none>"},
+        {"builtin:short", "builtin:nint", "builtin:nint"},
+        {"builtin:short", "builtin:nuint", "<none>"},
+        {"builtin:short", "builtin:float", "builtin:float"},
+        {"builtin:short", "builtin:double", "builtin:double"},
+        {"builtin:ushort", "builtin:ushort", "builtin:int"},
+        {"builtin:ushort", "builtin:int", "builtin:int"},
+        {"builtin:ushort", "builtin:uint", "builtin:uint"},
+        {"builtin:ushort", "builtin:long", "builtin:long"},
+        {"builtin:ushort", "builtin:ulong", "builtin:ulong"},
+        {"builtin:ushort", "builtin:nint", "builtin:nint"},
+        {"builtin:ushort", "builtin:nuint", "builtin:nuint"},
+        {"builtin:ushort", "builtin:float", "builtin:float"},
+        {"builtin:ushort", "builtin:double", "builtin:double"},
+        {"builtin:int", "builtin:int", "builtin:int"},
+        {"builtin:int", "builtin:uint", "builtin:long"},
+        {"builtin:int", "builtin:long", "builtin:long"},
+        {"builtin:int", "builtin:ulong", "<none>"},
+        {"builtin:int", "builtin:nint", "builtin:nint"},
+        {"builtin:int", "builtin:nuint", "<none>"},
+        {"builtin:int", "builtin:float", "builtin:float"},
+        {"builtin:int", "builtin:double", "builtin:double"},
+        {"builtin:uint", "builtin:uint", "builtin:uint"},
+        {"builtin:uint", "builtin:long", "builtin:long"},
+        {"builtin:uint", "builtin:ulong", "builtin:ulong"},
+        {"builtin:uint", "builtin:nint", "builtin:long"},
+        {"builtin:uint", "builtin:nuint", "builtin:nuint"},
+        {"builtin:uint", "builtin:float", "builtin:float"},
+        {"builtin:uint", "builtin:double", "builtin:double"},
+        {"builtin:long", "builtin:long", "builtin:long"},
+        {"builtin:long", "builtin:ulong", "<none>"},
+        {"builtin:long", "builtin:nint", "builtin:long"},
+        {"builtin:long", "builtin:nuint", "<none>"},
+        {"builtin:long", "builtin:float", "builtin:float"},
+        {"builtin:long", "builtin:double", "builtin:double"},
+        {"builtin:ulong", "builtin:ulong", "builtin:ulong"},
+        {"builtin:ulong", "builtin:nint", "<none>"},
+        {"builtin:ulong", "builtin:nuint", "builtin:ulong"},
+        {"builtin:ulong", "builtin:float", "builtin:float"},
+        {"builtin:ulong", "builtin:double", "builtin:double"},
+        {"builtin:nint", "builtin:nint", "builtin:nint"},
+        {"builtin:nint", "builtin:nuint", "<none>"},
+        {"builtin:nint", "builtin:float", "builtin:float"},
+        {"builtin:nint", "builtin:double", "builtin:double"},
+        {"builtin:nuint", "builtin:nuint", "builtin:nuint"},
+        {"builtin:nuint", "builtin:float", "builtin:float"},
+        {"builtin:nuint", "builtin:double", "builtin:double"},
+        {"builtin:float", "builtin:float", "builtin:float"},
+        {"builtin:float", "builtin:double", "builtin:double"},
+        {"builtin:double", "builtin:double", "builtin:double"},
+        }};
+        for (const CommonTypeCase& entry : kCommonTypeTable)
+        {
+            const std::string got = common(entry.left, entry.right, std::nullopt, std::nullopt);
+            tests.expect(
+                got == entry.expected,
+                "126 table: " + std::string(entry.left) + " + " + std::string(entry.right) +
+                    " -> " + std::string(entry.expected) + " (got " + got + ")");
+            // La funcion es SIMETRICA y tiene que seguir siendolo: `a + b` y `b + a` no pueden
+            // diferir, y con tres reglas ordenadas por conversiones unidireccionales eso no es
+            // gratis -- hay que comprobarlo.
+            const std::string swapped = common(entry.right, entry.left, std::nullopt, std::nullopt);
+            tests.expect(
+                swapped == entry.expected,
+                "126 table (simetria): " + std::string(entry.right) + " + " + std::string(entry.left) +
+                    " -> " + std::string(entry.expected) + " (got " + swapped + ")");
+        }
+
+        // LA CONSTANTE `int` SE ADAPTA AL OTRO OPERANDO, PERO SOLO HACIA ARRIBA.
+        //
+        // Estas seis lineas existen porque la primera version del ID 126 rompio `lib/`. Al retirar
+        // la regla del ID 120 se fue con ella la adaptacion HACIA TIPOS ANCHOS, que no es la misma
+        // cosa: `uint hash; hash = hash * 16777619;` pasaba a evaluarse en `long` --que es la
+        // respuesta correcta para dos operandos de verdad, porque ni `uint` ni `int` contienen al
+        // otro-- y `long` no vuelve a `uint`. String.ns:980 dejo de compilar y con el, TODA la
+        // biblioteca y las 52 fixtures que la referencian.
+        //
+        // Lo encontro la corrida. El barrido previo de `lib/` busco tipos ESTRECHOS y `uint` no es
+        // uno: la medicion estaba mal hecha, no la conclusion.
+        tests.expect(
+            common("builtin:uint", "builtin:int", std::nullopt, magnitude(16777619, false, false)) ==
+                "builtin:uint",
+            "126: a fitting int constant adapts UP to a uint operand -- String.ns:980");
+        tests.expect(
+            common("builtin:ulong", "builtin:int", std::nullopt, magnitude(10, false, false)) ==
+                "builtin:ulong",
+            "126: and to a ulong operand -- `remaining % 10` in integer formatting");
+        tests.expect(
+            common("builtin:nuint", "builtin:int", std::nullopt, magnitude(2, false, false)) ==
+                "builtin:nuint",
+            "126: and to nuint -- `nuint total = size * 2`");
+        // Y NO hacia abajo, que es justo lo que el ID 126 cierra: hacia un tipo estrecho la
+        // adaptacion es lo que hacia que la operacion se computara a 8 o 16 bits y envolviera.
+        tests.expect(
+            common("builtin:byte", "builtin:int", std::nullopt, magnitude(1, false, false)) ==
+                "builtin:int",
+            "126: but NOT down to a narrow operand -- that is the wrap this closes");
+        // Un negativo no cabe en un destino sin signo, asi que la regla no dispara y manda la
+        // promocion: ni se adapta ni se envuelve en silencio.
+        tests.expect(
+            common("builtin:uint", "builtin:int", std::nullopt, magnitude(1, false, true)) ==
+                "builtin:long",
+            "126: a NEGATIVE constant does not adapt to uint -- both widen to long instead");
+
         // 121, el defecto directo. Antes: builtin:double, y el evaluador entero se rendia.
         tests.expect(
             common("builtin:int", "builtin:long", magnitude(1, false, false),
@@ -1753,11 +2008,14 @@ namespace cc1fixedowned
                    magnitude(5, true, false)) == "builtin:ulong",
             "121: long and ulong constants give ulong");
 
-        // Y sin constantes NO se inventa: no hay ensanchamiento long->ulong, la guarda de la regla
-        // falla, y la expresion sigue el camino que seguia antes de este cambio.
+        // Y sin constantes NO se inventa: no hay ensanchamiento long->ulong, la guarda falla, y
+        // ahora eso es lo que se dice -- NO HAY TIPO COMUN. Hasta el ID 126 esto caia al bucle de
+        // preferencia y contestaba `double`: dos enteros de 64 bits computados en punto flotante,
+        // con el plegado de constantes rindiendose y el resultado dejando de ser la suma por
+        // encima de 2^53. Es el mismo par que C# prohibe.
         tests.expect(
-            common("builtin:long", "builtin:ulong", std::nullopt, std::nullopt) == "builtin:double",
-            "121: long and ulong without constants still fall through -- the rule only adds");
+            common("builtin:long", "builtin:ulong", std::nullopt, std::nullopt) == "<none>",
+            "126: long and ulong without constants have NO common type -- never double");
 
         // Sin constantes de por medio: la promocion entera de C# para los pares que la necesitan.
         tests.expect(
@@ -1770,16 +2028,19 @@ namespace cc1fixedowned
             common("builtin:ushort", "builtin:short", std::nullopt, std::nullopt) == "builtin:int",
             "121: two narrow types of different signedness give int");
 
-        // LA REGRESION DEL ID 120, y es la fragil: la regla nueva va DESPUES de la del 120. Puesta
-        // delante, esto devuelve `int` y `short t = s + 3;` vuelve a no compilar.
+        // EL ID 120, RETIRADO POR EL ID 126. Su regla hacia que una constante literal adoptara el
+        // tipo estrecho del otro operando, de modo que `short s; short t = s + 3;` compilaba. Era
+        // una divergencia deliberada de C# --alli tampoco compila-- y mantenerla dejaba `b + b`
+        // como error y `b + 1` truncando en silencio, que es la unica combinacion peor que no
+        // arreglar nada. Ahora los dos dan `int` y el cast se escribe.
         tests.expect(
             common("builtin:short", "builtin:int", std::nullopt, magnitude(3, false, false)) ==
-                "builtin:short",
-            "120 regression: a fitting int constant still adapts to a short operand");
+                "builtin:int",
+            "126: a fitting int constant no longer drags the operation down to short");
         tests.expect(
             common("builtin:byte", "builtin:int", std::nullopt, magnitude(1, false, false)) ==
-                "builtin:byte",
-            "120 regression: a fitting int constant still adapts to a byte operand");
+                "builtin:int",
+            "126: nor down to byte");
 
         // Un literal escrito ANCHO no se estrecha: la otra mitad de la razon por la que la regla
         // del 120 se escribio estrecha a proposito.
@@ -1790,15 +2051,21 @@ namespace cc1fixedowned
 
         // 122 MEDIDO POR SU EFECTO. Con la representacion vieja el evaluador entregaba `bits` --
         // complemento a dos con el signo ya extendido -- en el campo documentado como magnitud.
-        // La primera llamada es lo que el evaluador entrega AHORA; la segunda es lo que entregaba
-        // antes, y las dos tienen que dar respuestas distintas o el 122 no estaba cerrado.
+        // Las dos llamadas son el MISMO -3 escrito de las dos maneras, y tienen que dar respuestas
+        // distintas o el 122 no estaba cerrado.
+        //
+        // SE MIDE EN `classifyImplicit` Y NO EN `commonNumericType`, y el sitio cambio con el ID
+        // 126: al retirarse la regla del 120, los dos pares dan ahora `int` y el par dejaba de
+        // discriminar. La pregunta de fondo --si -3 cabe en un `short`-- vive en el clasificador,
+        // que es donde `constantFits` decide, asi que este es ademas el sitio correcto.
         tests.expect(
-            common("builtin:short", "builtin:int", std::nullopt, magnitude(3, false, true)) ==
-                "builtin:short",
-            "122: a negative constant as magnitude+flag adapts to the narrow operand");
+            ProjectTypeConversion::classifyImplicit(
+                "builtin:int", "builtin:short", magnitude(3, false, true)).exists(),
+            "122: -3 as magnitude+flag fits in a short");
         tests.expect(
-            common("builtin:short", "builtin:int", std::nullopt,
-                   magnitude(0xFFFFFFFFFFFFFFFDULL, false, false)) == "builtin:int",
+            !ProjectTypeConversion::classifyImplicit(
+                "builtin:int", "builtin:short",
+                magnitude(0xFFFFFFFFFFFFFFFDULL, false, false)).exists(),
             "122: the same value as raw two's complement bits does NOT -- that was the defect");
 
         // =================================================================================
@@ -1810,11 +2077,12 @@ namespace cc1fixedowned
         // destinos estrechos de la regla del ID 120 y el tipo comun salia `int`.
         // =================================================================================
 
-        // La constante que cabe se adapta al operando estrecho, igual que con short y byte.
+        // La constante que cabe ya NO arrastra la operacion al tipo estrecho (ID 126): `sbyte` se
+        // comporta igual que `short` y `byte`, que es lo que esta linea sigue midiendo.
         tests.expect(
             common("builtin:sbyte", "builtin:int", std::nullopt, magnitude(3, false, false)) ==
-                "builtin:sbyte",
-            "89: a fitting int constant adapts to an sbyte operand, as it does to short");
+                "builtin:int",
+            "126: an sbyte operand promotes to int, as short and byte do");
 
         // Sin constante de por medio, dos estrechos dan int -- tambien si uno tiene signo.
         tests.expect(

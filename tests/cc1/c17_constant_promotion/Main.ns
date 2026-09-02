@@ -22,9 +22,10 @@
 //      compilacion no compila, asi que la sola existencia de los campos de abajo es la prueba: si
 //      el ID 121 volviera a abrirse, este archivo deja de compilar, no de dar 42.
 //   2. Que el VALOR plegado es el correcto, comprobado en ejecucion.
-//   3. Que la regla nueva NO revierte la del ID 120 -- `short t = s + 3;` sigue compilando. Esta
-//      es la propiedad fragil: la regla de promocion va DESPUES de la del 120, y puesta delante
-//      rompe exactamente lo que el 120 cerro.
+//   3. Que la aritmetica sobre los cinco tipos MENORES QUE INT ocurre en `int`. Esto se invirtio
+//      con el ID 126: la version original de esta fixture fijaba la regla del ID 120 --que
+//      `short t = s + 3;` compilara-- y esa regla se retiro. Ver NarrowPromotesToInt abajo, que
+//      lleva la historia entera escrita al lado.
 //   4. Que el ID 119 sigue cerrado: un literal negativo conserva su constancia y cabe en un
 //      destino con signo mas estrecho. Es lo que el 122 podia romper al cambiar la representacion.
 //   5. Que CC1-103 sigue cerrado: un shift toma el tipo del operando IZQUIERDO, no un tipo comun.
@@ -64,16 +65,37 @@ namespace cc1constantpromotion
 
     class Program
     {
-        // ID 120, la mitad que la regla nueva podia romper. `s + 3` tiene que seguir siendo
-        // `short`: el operando constante se adapta al otro, no al reves. Si la promocion entera se
-        // hubiera puesto ANTES de esa regla, esto se evaluaria en `int` y no compilaria.
-        private static int NarrowStaysNarrow()
+        // ID 126 -- ESTA FUNCION SE INVIRTIO, y su historia es la mitad de lo que mide.
+        //
+        // Se llamaba NarrowStaysNarrow y comprobaba la regla del ID 120: que `s + 3` siguiera
+        // siendo `short` porque el operando constante se adaptaba al otro. Esa regla era una
+        // divergencia deliberada de C# --alli `short t = s + 3;` tampoco compila-- y el ID 126 la
+        // retiro, porque mantenerla dejaba el lenguaje partido en dos: `s + s` habria pasado a ser
+        // un error y `s + 3` habria seguido truncando en silencio, que es la unica combinacion
+        // peor que no arreglar nada.
+        //
+        // Ahora la aritmetica sobre los cinco tipos MENORES QUE INT ocurre en `int` --promocion
+        // integral, la de C y la de C++-- y guardarla de vuelta pide el cast escrito. Es lo que la
+        // biblioteca de este proyecto ya escribia a mano desde el principio:
+        // `return (char)((int)value + 32);` en String.ns.
+        private static int NarrowPromotesToInt()
         {
             short s = 10;
-            short t = s + 3;
-            short back = s - 3;
+            int wide = s + 3;
+            short t = (short)(s + 3);
+            short back = (short)(s - 3);
             byte b = 5;
-            byte c = b + 1;
+            byte c = (byte)(b + 1);
+
+            // Y LA RAZON DE SER, en una linea: dos operandos estrechos que se suman NO envuelven a
+            // su ancho. 200 + 100 es 300, no 44. Antes del ID 126 esta suma se emitia como un
+            // `add i8` y el 44 salia sin un solo diagnostico.
+            byte big = 200;
+            byte other = 100;
+            int sum = big + other;
+
+            if (wide != 13) { return 0; }
+            if (sum != 300) { return 0; }
             return (int)t + (int)back + (int)c;
         }
 
@@ -112,7 +134,7 @@ namespace cc1constantpromotion
             // --- 3: regresion del ID 120 -------------------------------------------------------
             // 13 + 7 + 6 = 26. El numero no importa; lo que importa es que compile y que el
             // resultado sea el de una aritmetica estrecha, no el de una que paso por `double`.
-            if (NarrowStaysNarrow() != 26) { return 8; }
+            if (NarrowPromotesToInt() != 26) { return 8; }
 
             // --- 4: regresion del ID 119 -------------------------------------------------------
             if (NegativeConstantsFit() != -1) { return 9; }
