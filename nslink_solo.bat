@@ -112,9 +112,6 @@ set "RC_CASOS=0"
 if /I "%MODO%"=="casos" goto :casos
 
 rem =====================================================================================
-rem 1. ctest -- donde viven de verdad los fallos del enlazador
-rem =====================================================================================
-rem =====================================================================================
 rem 0. BUILD INCREMENTAL. Sin esto, ctest corre los binarios de pruebas ANTERIORES.
 rem
 rem Paso el 2026-09-02: se cambiaron seis pruebas, se lanzo este ciclo, y midio los ejecutables
@@ -132,6 +129,9 @@ if errorlevel 1 goto :build_fallo
 findstr /C:"nsc_driver" /C:"nsc_frontend" /C:"nsc_llvm" /C:"nsc_linker" "%SOLO_OUT%\00_build.log" >nul 2>&1
 if not errorlevel 1 echo       AVISO: se recompilo el COMPILADOR. La referencia es de otro nsc.exe -- corre all.bat.
 
+rem =====================================================================================
+rem 1. ctest -- donde viven de verdad los fallos del enlazador
+rem =====================================================================================
 echo.
 echo [1/3] ctest enlazando con NSLink ^(-j %CTEST_JOBS%^) ...
 ctest --test-dir "%SOLO_BUILD%" --output-on-failure -j %CTEST_JOBS% > "%SOLO_OUT%\02_ctest.log" 2>&1

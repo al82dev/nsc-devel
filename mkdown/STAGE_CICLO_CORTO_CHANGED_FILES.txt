@@ -1,0 +1,29 @@
+STAGE CICLO CORTO -- nslink_solo.bat y las tres regresiones que no eran la misma cosa
+Fecha: 2026-09-02
+Doc:   mkdown/97_tres_regresiones_y_ninguna_era_la_misma_cosa.md
+
+NUEVO
+  nslink_solo.bat                                el ciclo corto: cambio nslink.exe, no el compilador
+  mkdown/97_tres_regresiones_y_ninguna_era_la_misma_cosa.md
+
+INFRAESTRUCTURA
+  nslink_pipeline.py                             --compare funciona con solo ctest;
+                                                 reverificacion en serie de las rojas;
+                                                 NSLINK_OUT_DIR; LOGS_SKIP con los temporales
+
+PRUEBAS
+  tests/support/TestContext.h                    resultKeeping(): en rojo NO se borra la evidencia
+  tests/unit/Stage46NativeLibrariesTests.cpp     usa resultKeeping(root)
+  tests/unit/Stage47HostCAbiTests.cpp            usa resultKeeping(root)
+  tests/unit/Stage48_1CHeaderGeneratorTests.cpp  usa resultKeeping(root)
+  tests/unit/Stage48_3CHostIntegrationTests.cpp  usa resultKeeping(root)
+  tests/unit/Stage48_5CSharpPInvokeHostTests.cpp usa resultKeeping(root)
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp  ademas: el check negativo exige el SIMBOLO,
+                                                 no la redaccion de lld-link
+
+VARIOS
+  verify_manifest.py                             _logs_nslink_solo en EXCLUDED_DIRECTORIES
+  .gitignore                                     /_logs_nslink_solo
+
+RESULTADO MEDIDO
+  lld-link 244/244   NSLink 244/244   84 trabajos OK con los dos   0 regresiones
