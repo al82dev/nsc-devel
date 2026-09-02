@@ -52,7 +52,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-LOGS = ROOT / "_logs"
+
+# NSC_LOG_DIR: `all.bat` corre las dos pasadas -- una por enlazador -- en directorios separados, y
+# cada una escribe en el suyo. Sin la variable, `_logs` como siempre, asi que llamar a este script
+# a mano sigue funcionando igual.
+LOGS = ROOT / os.environ.get("NSC_LOG_DIR", "_logs")
 CASE_LOGS = LOGS / "cases"
 BINDIR = LOGS / "bin"
 SUMMARY = LOGS / "SUMMARY.txt"

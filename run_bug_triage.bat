@@ -29,7 +29,9 @@ REM ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
-set "LOGDIR=%ROOT%\_logs"
+REM NSC_LOG_DIR: `all.bat` corre las dos pasadas en directorios separados y este script
+REM escribe en el de la pasada que lo llamo. Sin la variable, _logs\ como siempre.
+if defined NSC_LOG_DIR (set "LOGDIR=%ROOT%\%NSC_LOG_DIR%") else (set "LOGDIR=%ROOT%\_logs")
 set "BINDIR=%LOGDIR%\bin_triage"
 set "REPORT=%LOGDIR%\TRIAGE.txt"
 set "TLOG=%LOGDIR%\10_triage.log"

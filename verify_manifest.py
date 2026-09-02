@@ -68,7 +68,8 @@ ROOT_SUFFIXES = (".md", ".txt", ".py")
 # componente de ruta, no por prefijo: "_logs_nslink" no es "_logs", asi que sin esta linea
 # entrarian al manifiesto los ~90 .obj y .exe de la corrida con NSLink y cambiarian en cada
 # pasada.
-EXCLUDED_DIRECTORIES = (".git", "_logs", "_logs_nslink", "__pycache__", "_sandbox")
+EXCLUDED_DIRECTORIES = (
+    ".git", "_logs", "_logs_lldlink", "_logs_nslink", "__pycache__", "_sandbox")
 
 # Donde van a parar los archivos que el milestone deja atras. NO SE BORRAN: se archivan.
 #

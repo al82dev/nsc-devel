@@ -132,7 +132,7 @@ REPORT = OUT / "REPORTE_NSLINK.txt"
 # LAS DOS PASADAS DE all.bat. Cada una es un directorio COMPLETO y con la misma forma: SUMMARY,
 # los seis logs numerados, TRIAGE, cases\, bin\ y su propio REPORTE.txt. No comparten un solo
 # fichero, y este script no escribe dentro de ninguno de los dos salvo su propia comparacion.
-PASS_LLD = ROOT / "_logs"
+PASS_LLD = ROOT / "_logs_lldlink"
 PASS_NSLINK = ROOT / "_logs_nslink"
 
 # La corrida de referencia, SOLO PARA LEER. La escribe run_cases.py con lld-link.
@@ -142,6 +142,24 @@ REFERENCE = PASS_LLD / "cases" / "results.json"
 # nuestro sitio decidir que entra en `corpus\`, eso lo decide quien mantiene NSLink.
 DEFAULT_NSLINK_DEVEL = Path(r"A:\nslink-devel")
 INBOX_NAME = "_inbox_nsc"
+
+# Los logs de la pasada con NSLink, COMPLETOS, DENTRO DEL BUZON. El buzon lleva el material de
+# los fallos, elegido caso por caso; esto es la corrida entera al lado -- los ocho logs, el
+# TRIAGE, el REPORTE y `cases\` -- para poder mirar cualquier cosa sin pedirla.
+#
+# VAN DENTRO DE `_inbox_nsc\` Y NO EN UN DIRECTORIO HERMANO A PROPOSITO. `_inbox_nsc` es el
+# UNICO sitio del arbol de NSLink donde escribe nsc: no forma parte de su construccion, no entra
+# en su manifiesto (su decision D-058) y se puede borrar entero. Un segundo directorio suelto
+# tendria que ganarse esas tres cosas otra vez, y por nada: es el mismo material, del mismo
+# emisor, con la misma vida.
+#
+# Se REEMPLAZA en cada corrida, por lo mismo que `fallos\`: un directorio donde se acumulan tres
+# corridas es peor que no tenerlo, porque nadie sabe cual sigue viva.
+#
+# NO se copia `bin\` ni `linktemps\`: son cientos de megas de .exe y .obj por corrida, y lo que
+# de ahi hace falta para reproducir un fallo ya va al buzon, elegido caso por caso.
+LOGS_NAME = "logs-nsc-tests-with-nslink"
+LOGS_SKIP = ("bin", "linktemps")
 
 # Tope de lo que se copia al buzon. Un .obj de estos anda por los 100 KB; 84 fallos serian ~8 MB
 # en el arbol de otro. Se avisa en vez de llenarselo en silencio.
@@ -816,6 +834,136 @@ def write_inbox(inbox: Path, results: list[dict], reference: dict[tuple[str, str
     return len(copied), skipped
 
 
+def load_pass(directory: Path) -> list[dict]:
+    """Los resultados de una pasada de all.bat. Vacio si no llego a escribirlos."""
+    path = directory / "cases" / "results.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:                                                     # noqa: BLE001
+        return []
+    return list(data.get("results", []))
+
+
+def copy_pass_logs(destination: Path) -> tuple[int, str]:
+    """Copia la pasada con NSLink entera al arbol de NSLink. Devuelve (ficheros, error)."""
+    if not PASS_NSLINK.is_dir():
+        return 0, f"no existe {PASS_NSLINK.name}"
+    try:
+        if destination.exists():
+            shutil.rmtree(destination, ignore_errors=True)
+        destination.mkdir(parents=True, exist_ok=True)
+        copied = 0
+        for item in sorted(PASS_NSLINK.iterdir()):
+            if item.name in LOGS_SKIP:
+                continue
+            if item.is_dir():
+                shutil.copytree(item, destination / item.name, dirs_exist_ok=True)
+                copied += sum(1 for _ in (destination / item.name).rglob("*") if _.is_file())
+            else:
+                shutil.copy2(item, destination / item.name)
+                copied += 1
+        (destination / "LEEME.txt").write_text(
+            "Los logs COMPLETOS de la pasada de nsc que enlaza con NSLink.\n"
+            "\n"
+            "Los deja A:\\nsc-devel\\all.bat en cada corrida, dentro del buzon y al lado de\n"
+            "`fallos\\`, y SE REEMPLAZAN ENTEROS: lo que hay aqui es de la ultima corrida y de\n"
+            "ninguna otra. Si necesitas conservar uno, copialo fuera.\n"
+            "\n"
+            "  REPORTE.txt          el veredicto de ESTA pasada, autocontenido\n"
+            "  SUMMARY.txt          las lineas [ OK ] / [FAIL] de cada paso\n"
+            "  01_build.log         construccion del compilador\n"
+            "  02_ctest.log         las pruebas unitarias\n"
+            "  03_fixtures.log      los 84 trabajos\n"
+            "  04_examples.log      los ejemplos empaquetados\n"
+            "  05_triage_run.log    la regresion de bugs reportados\n"
+            "  06_manifest.log      el manifiesto\n"
+            "  10_triage.log        el detalle del triage\n"
+            "  TRIAGE.txt           su resumen\n"
+            "  cases\\<caso>.log     la salida COMPLETA de nsc, un fichero por trabajo\n"
+            "\n"
+            "NO se copian bin\\ ni linktemps\\: son cientos de megas por corrida. Lo que hace falta\n"
+            "para reproducir un fallo -- el .obj, el runtime, las .lib y el fichero de respuesta --\n"
+            "va elegido caso por caso a _inbox_nsc\\.\n"
+            "\n"
+            "Esto NO forma parte de tu construccion ni de tus pruebas, y se puede borrar entero.\n",
+            encoding="ascii")
+        return copied, ""
+    except OSError as error:
+        return 0, str(error)
+
+
+def run_compare(inbox: Path | None, nsc: Path, nslink: Path) -> int:
+    """NO COMPILA NADA. Compara las dos pasadas que `all.bat` acaba de hacer.
+
+    POR QUE NO COMPILA. Las dos corridas ya existen: `all.bat` ejecuta el pipeline entero una vez
+    por enlazador, cada una en su arbol y su directorio. Volver a compilar aqui mediria una
+    TERCERA cosa y reportaria esa, no las que se acaban de medir.
+    """
+    reference_rows = load_pass(PASS_LLD)
+    results = load_pass(PASS_NSLINK)
+    if not results:
+        print(f"[NSLINK] no hay resultados en {PASS_NSLINK.name}\\cases\\results.json -- "
+              "la pasada con NSLink no llego a escribirlos.", file=sys.stderr)
+        return 2
+
+    reference = {(r["label"], r["opt"]): bool(r["ok"]) for r in reference_rows}
+    if reference:
+        note = (f"Referencia: {len(reference)} trabajos de {PASS_LLD.name}\\cases\\results.json "
+                "(lld-link).")
+    else:
+        note = (f"SIN REFERENCIA. No existe {PASS_LLD.name}\\cases\\results.json, asi que no se\n"
+                "  puede decir si algo EMPEORO, solo si pasa o no.")
+
+    # run_cases.py no guarda el .obj en su results.json -- no lo necesita. Aqui si: el buzon copia
+    # el COFF que NSLink no supo enlazar, y sin el, el fallo no es reproducible sin esta maquina.
+    # Se busca por el mismo sello con el que run_cases.py nombra todo: <etiqueta>_<O0|O2>.
+    enriched: list[dict] = []
+    for row in results:
+        stem = f"{row['label']}_{row['opt'].lstrip('-')}"
+        inputs = link_inputs(stem)
+        program = inputs.get("program")
+        enriched.append({**row, "obj": str(program) if program else "",
+                         "project": row.get("project", ""),
+                         "phase": row.get("phase", "run")})
+
+    groups = classify(enriched, reference)
+    header = [
+        "COMPARACION DE LAS DOS PASADAS DE all.bat",
+        "",
+        f"  PASADA 1  lld-link   {PASS_LLD.name}\\      {len(reference_rows)} trabajos",
+        f"  PASADA 2  NSLink     {PASS_NSLINK.name}\\   {len(results)} trabajos",
+        "",
+        "Este fichero NO compila nada: lee lo que las dos pasadas ya midieron.",
+        "",
+    ]
+    lines = report_lines(enriched, reference, note, groups, 0.0, 0, nsc, nslink, header)
+    comparison = PASS_NSLINK / "COMPARACION_CON_LLD.txt"
+    comparison.write_text("\n".join(lines) + "\n", encoding="ascii", errors="replace")
+    print("\n".join(lines))
+    print(f"[NSLINK] comparacion en {comparison}")
+
+    if inbox is not None:
+        copied, skipped = write_inbox(inbox, enriched, reference, note, groups,
+                                      0.0, 0, nsc, nslink)
+        print(f"[NSLINK] buzon: {inbox}  ({copied} ficheros copiados, {len(skipped)} omitidos)")
+
+        # Los logs de la pasada con NSLink, enteros, dentro del buzon.
+        destination = inbox / LOGS_NAME
+        count, error = copy_pass_logs(destination)
+        if error:
+            print(f"[NSLINK] aviso: no se pudieron copiar los logs a {destination}: {error}",
+                  file=sys.stderr)
+        else:
+            print(f"[NSLINK] logs : {destination}  ({count} ficheros)")
+
+    regressions = len(groups["regressions"])
+    if regressions:
+        print(f"[NSLINK] {regressions} REGRESIONES -- pasaban con lld-link y fallan con NSLink.")
+    return 1 if regressions else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Corre las fixtures enlazando con NSLink y deja los fallos en su arbol.")
@@ -836,6 +984,9 @@ def main() -> int:
                         help="no escribir nada fuera de este repo")
     parser.add_argument("--dry-run", action="store_true",
                         help="lista los trabajos y sale, sin compilar nada")
+    parser.add_argument("--compare", action="store_true",
+                        help="NO compila: compara las dos pasadas que all.bat ya hizo, "
+                             "llena el buzon y copia los logs al arbol de NSLink")
     arguments = parser.parse_args()
 
     nsc = locate("nsc.exe", "NSC_EXE", Path(r"C:\native-sharp\bin\nsc.exe"))

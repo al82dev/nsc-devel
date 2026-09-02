@@ -29,12 +29,16 @@ Asi `all.bat` puede terminar diciendo la verdad con una sola linea.
 
 from __future__ import annotations  # las anotaciones no se evaluan: corre en cualquier 3.7+
 
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-LOGS = ROOT / "_logs"
+
+# NSC_LOG_DIR: `all.bat` corre las dos pasadas -- una por enlazador -- en directorios separados, y
+# genera UN reporte por pasada leyendo el suyo. Sin la variable, `_logs` como siempre.
+LOGS = ROOT / os.environ.get("NSC_LOG_DIR", "_logs")
 REPORT = LOGS / "REPORTE.txt"
 CASE_LOGS = LOGS / "cases"
 

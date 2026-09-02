@@ -1,5 +1,7 @@
 /build-clang
+/build-clang-lldlink
+/build-clang-nslink
 /build-msvc
 /_logs
-/_logs_lld
+/_logs_lldlink
 /_logs_nslink

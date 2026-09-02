@@ -36,12 +36,28 @@ REM ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
-set "LOGDIR=%ROOT%\_logs"
+
+REM --- Arbol de build y directorio de logs, los dos sustituibles ---------------
+REM
+REM POR QUE. `all.bat` corre este checklist DOS VECES, una por enlazador, y las dos pasadas no
+REM pueden compartir ni el arbol de build ni los logs. Antes se resolvia moviendo _logs\ entre
+REM pasada y pasada y dejando UN solo build-clang\; eso obligaba a que la segunda pasada no
+REM reconstruyera -- y cuando reconstruia, los dos reportes median arboles distintos sin decirlo.
+REM
+REM Con estas dos variables cada pasada tiene lo suyo desde el principio:
+REM
+REM     NSC_BUILD_DIR=build-clang-lldlink   NSC_LOG_DIR=_logs_lldlink
+REM     NSC_BUILD_DIR=build-clang-nslink    NSC_LOG_DIR=_logs_nslink
+REM
+REM Nada se mueve, nada se restaura, nada se mezcla. Sin las variables este script se comporta
+REM exactamente como antes (build-clang\ y _logs\), asi que se sigue pudiendo llamar a mano.
+if defined NSC_BUILD_DIR (set "BUILDDIR=%ROOT%\%NSC_BUILD_DIR%") else (set "BUILDDIR=%ROOT%\build-clang")
+if defined NSC_LOG_DIR (set "LOGDIR=%ROOT%\%NSC_LOG_DIR%") else (set "LOGDIR=%ROOT%\_logs")
+
 set "BINDIR=%LOGDIR%\bin"
 set "SUMMARY=%LOGDIR%\SUMMARY.txt"
 set "FIXLOG=%LOGDIR%\03_fixtures.log"
 set "EXLOG=%LOGDIR%\04_examples.log"
-set "BUILDDIR=%ROOT%\build-clang"
 set "STALEDIR=%ROOT%\build-msvc"
 set "PREFIX=C:\native-sharp"
 set "LLVMROOT=C:\clang-llvm"
@@ -75,8 +91,16 @@ REM   mano dejaria un arbol de build en el que nadie puede confiar, que en este 
 REM   lo peor que puede pasar: la suite es la unica red que hay.
 REM
 REM   A MEDIAS. Una configuracion que fallo tambien deja un CMakeCache.txt, con sus valores
-REM   fallidos dentro. `CMAKE_CXX_COMPILER_WORKS:INTERNAL=1` solo aparece cuando la
-REM   configuracion llego al final, asi que su ausencia es la senal.
+REM   fallidos dentro. La senal de que llego al final es que EXISTA build.ninja: lo escribe el
+REM   paso "Generating done", que es el ultimo, y no existe si la configuracion murio antes.
+REM
+REM   ANTES SE MIRABA `CMAKE_CXX_COMPILER_WORKS:INTERNAL=1`, Y ESTABA MAL. En este arbol CMake
+REM   OMITE la prueba del compilador -- el log dice literalmente "Check for working CXX compiler:
+REM   C:/clang-llvm/bin/clang-cl.exe - skipped" -- y por eso nunca escribe esa entrada. El
+REM   marcador no faltaba porque la configuracion fallara: no existe NUNCA. Resultado: este
+REM   bloque daba positivo en TODAS las corridas y borraba un arbol sano, convirtiendo cada
+REM   build incremental en una reconstruccion completa sin que nadie supiera por que.
+REM   Medido el 2026-09-02 sobre _logs\01_build.log de una corrida con 417 objetivos verdes.
 REM
 REM En los dos casos se fuerza MODE=full. Sin eso, `quick`, `build` o `norebuild` se saltan
 REM la reconfiguracion y correrian la matriz entera contra un arbol que acaba de
@@ -86,8 +110,7 @@ set "CACHEROOT="
 for /f "tokens=2 delims==" %%A in ('findstr /B /C:"CMAKE_HOME_DIRECTORY:INTERNAL=" "%BUILDDIR%\CMakeCache.txt" 2^>nul') do set "CACHEROOT=%%A"
 set "ROOTFWD=%ROOT:\=/%"
 if /I not "%CACHEROOT%"=="%ROOTFWD%" goto :cache_alien
-findstr /B /C:"CMAKE_CXX_COMPILER_WORKS:INTERNAL=1" "%BUILDDIR%\CMakeCache.txt" >nul 2>&1
-if errorlevel 1 goto :cache_partial
+if not exist "%BUILDDIR%\build.ninja" goto :cache_partial
 goto :cache_ok
 
 :cache_alien

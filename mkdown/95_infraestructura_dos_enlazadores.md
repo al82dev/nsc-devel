@@ -62,6 +62,12 @@ pipeline entero **no se pueden comparar**, que era el único propósito de tener
 
 Lo que hay ahora:
 
+**`all.bat` borra `build-clang\` al arrancar.** Es LA corrida, no una iteración: lo que mide tiene
+que salir de fuentes, no de `.obj` que sobrevivieron a saber de qué ronda. Y hace cierto por
+construcción lo de abajo — la pasada 1 configura y construye desde cero, la 2 no reconstruye nada,
+así que las dos miden literalmente el mismo `nsc.exe`. Para iterar están `quick` y `norebuild`, que
+conservan el árbol porque para eso existen.
+
 **El compilador se construye UNA sola vez.** `nsc.exe` lo produce CMake con clang-cl y `lld-link`,
 y eso no depende de `NSC_LLD_LINK`: NSLink nunca construye a nsc, **construye lo que nsc emite**.
 Lo que se ejecuta dos veces es todo lo que *invoca* a `nsc.exe` —ctest, las 84 fixtures, el triage—
@@ -121,6 +127,20 @@ incremental sobre el árbol que la pasada 1 acaba de dejar al día, o sea segund
 distinto; no existe un modo «quick sin build» y **inventarlo aquí daría dos pasadas con cobertura
 distinta, que es lo único que no se vale**. `build` no ejecuta nada, así que no hay pasada 2.
 
+**Entre pasada y pasada se comprueba la caché de CMake, y si no está sana NO HAY PASADA 2.**
+`run_windows_checklist.bat` mira `build-clang\CMakeCache.txt` al arrancar y, si le falta
+`CMAKE_CXX_COMPILER_WORKS:INTERNAL=1` —la señal de que la configuración llegó al final—, **borra el
+árbol de build y fuerza `full`**. Para él es lo correcto: correr la matriz contra un árbol de build
+que acaba de desaparecer sería peor. Para esto es la ruina, porque en la pasada 2 significa
+reconstruir el compilador, y entonces los dos reportes miden dos `nsc.exe` distintos.
+
+Pasó en la corrida del 2026-09-02: la pasada 2 imprimió *«build-clang\ quedo de una configuracion
+que no termino. Se borra. Modo forzado a `full`»*, reconstruyó entero, y el `ctest` rojo que salió
+después no se puede atribuir a nadie — puede ser de NSLink o de la reconstrucción. **Un reporte que
+falta es un dato; un reporte que compara dos compiladores distintos es una mentira**, así que
+`all.bat` mira la caché él mismo después de la pasada 1 y, si está a medias, omite la pasada 2
+diciendo por qué y remitiendo a `_logs\01_build.log`.
+
 **`NSC_LLD_LINK` se fija en CADA pasada, nunca se hereda.** Si alguien llamó a `nslink-env.bat` en
 esa ventana, sin limpiarla la pasada «oficial» enlazaría con NSLink **sin decirlo**. No es
 hipotético: pasó en la primera corrida de esta infraestructura, y salió a la vista como una
@@ -149,7 +169,22 @@ respuesta de **cada** invocación — que es lo que NSLink pidió por escrito (`
 **dentro** de `_logs\` para que el `move` se lo lleve de un golpe. En la pasada oficial sería basura
 sin nadie que la lea.
 
-### 3.2 El veredicto combinado
+### 3.2 No se reescribe `all.bat` mientras corre
+
+Está dicho en la cabecera del propio archivo porque costó una corrida entera. cmd.exe lee un `.bat`
+**por offset de byte** mientras lo ejecuta: al volver de un `call` sigue leyendo donde se quedó, en
+el archivo tal como está **en ese momento**. Si alguien lo reescribió en medio, ese offset ya apunta
+a otro sitio.
+
+El 2026-09-02 lo reescribí con la corrida en marcha. Al terminar el checklist de la pasada 2, cmd
+retomó ~1800 bytes desplazado, imprimió `'######...' is not recognized as an internal or external
+command`, **saltó a la limpieza del principio —que borra `_logs_lld` y `_logs_nslink`—** y volvió a
+llamar al checklist. Las dos pasadas de esa corrida se perdieron enteras.
+
+La regla es simple y no admite excepciones: mientras `all.bat` esté corriendo, no se toca ningún
+archivo del repo.
+
+### 3.3 El veredicto combinado
 
 ```
 =====================================================================================
