@@ -6965,20 +6965,42 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            // SHR-022. Las cuatro salidas de consola. La firma es identica en las cuatro
+            // --estatica, void, un solo `string`-- asi que lo unico que las separa es el nombre, y
+            // por eso la tabla es de nombre a operacion en vez de cuatro `if` copiados.
+            //
+            // POR QUE `ErrorWriteLine` Y NO `Console.Error.WriteLine`. Lo segundo se lee mejor y
+            // pide un objeto: `Error` tendria que ser una propiedad que devuelve un TextWriter, con
+            // despacho de instancia. TextWriter es SHR-020 y vive en el Bloque 5. Adelantarlo para
+            // ganar un punto en el nombre habria arrastrado un tipo entero y su modelo de despacho
+            // dentro del Bloque 2. Cuando TextWriter exista, estas cuatro siguen siendo las
+            // primitivas de debajo y la forma con objeto se construye encima sin tocar el backend.
             if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Console" &&
-                selectedMember.isStatic && selectedMember.name == "WriteLine" &&
+                selectedMember.isStatic &&
                 selectedMember.declaredTypeKey == "builtin:void" &&
                 selectedMember.parameters.size() == 1 &&
                 selectedMember.parameters.front().typeKey == "builtin:string")
             {
-                coreBindings_.push_back(MethodCoreBinding{
-                    MethodCoreOperationKind::ConsoleWriteLine,
-                    expression,
-                    methodMemberOrdinal,
-                    scopeOrdinal,
-                    "builtin:void",
-                    "builtin:string",
-                    false, std::nullopt, std::nullopt});
+                std::optional<MethodCoreOperationKind> consoleKind;
+                if (selectedMember.name == "WriteLine")
+                    consoleKind = MethodCoreOperationKind::ConsoleWriteLine;
+                else if (selectedMember.name == "Write")
+                    consoleKind = MethodCoreOperationKind::ConsoleWrite;
+                else if (selectedMember.name == "ErrorWriteLine")
+                    consoleKind = MethodCoreOperationKind::ConsoleErrorWriteLine;
+                else if (selectedMember.name == "ErrorWrite")
+                    consoleKind = MethodCoreOperationKind::ConsoleErrorWrite;
+                if (consoleKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *consoleKind,
+                        expression,
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        "builtin:void",
+                        "builtin:string",
+                        false, std::nullopt, std::nullopt});
+                }
             }
             // C8 "type root" -- NativeSharp.Core.RuntimeHelpers' two primitives. Same recognition
             // shape as every core operation before them (exact class, exact static method name,
@@ -11152,6 +11174,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::StringSubstring: return "string-substring";
         case MethodCoreOperationKind::StringFromCharArray: return "string-from-char-array";
         case MethodCoreOperationKind::ConsoleWriteLine: return "console-writeline";
+        case MethodCoreOperationKind::ConsoleWrite: return "console-write";
+        case MethodCoreOperationKind::ConsoleErrorWriteLine: return "console-error-writeline";
+        case MethodCoreOperationKind::ConsoleErrorWrite: return "console-error-write";
         case MethodCoreOperationKind::StructToString: return "struct-to-string";
         case MethodCoreOperationKind::StructEquals: return "struct-equals";
         case MethodCoreOperationKind::StructHashCode: return "struct-hash-code";

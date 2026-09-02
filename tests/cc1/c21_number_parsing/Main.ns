@@ -113,8 +113,21 @@ namespace cc1number
             if (Number.TryParseUInt64Radix("8", 8, out value)) { return 0; }
 
             // Y una base que no existe se rechaza en vez de dividir por cero mas abajo.
+            // Las bases INVALIDAS de verdad: la 0 dividiria por cero, la 1 no termina nunca, y
+            // la 17 pediria un digito que `DigitValue` no sabe leer. Aqui estaba tambien la 3,
+            // porque SHR-024 se fijo cuatro bases (2, 8, 10, 16); SHR-023 amplio las dos
+            // direcciones a 2..16 para que formateo y parsing admitan el mismo conjunto, asi que
+            // la 3 dejo de ser invalida y pasa a comprobarse como valida justo debajo.
             if (Number.TryParseUInt64Radix("1", 0, out value)) { return 0; }
-            if (Number.TryParseUInt64Radix("1", 3, out value)) { return 0; }
+            if (Number.TryParseUInt64Radix("1", 1, out value)) { return 0; }
+            if (Number.TryParseUInt64Radix("1", 17, out value)) { return 0; }
+
+            // Y las bases que la ampliacion abrio, con su digito fuera de rango al lado: sin la
+            // segunda comprobacion, una base "admitida" que aceptara cualquier digito pasaria.
+            if (!Number.TryParseUInt64Radix("102", 3, out value)) { return 0; }
+            if (value != 11) { return 0; }
+            if (Number.TryParseUInt64Radix("3", 3, out value)) { return 0; }
+
 
             return 1;
         }

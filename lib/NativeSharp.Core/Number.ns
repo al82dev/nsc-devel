@@ -78,15 +78,24 @@ namespace NativeSharp.Core
         // no es un digito valido. Devuelve false si no habia ni un digito o si el valor no cabe en
         // `ulong`.
         //
-        // Bases admitidas: 2, 8, 10 y 16. Cualquier otra se rechaza en vez de dar un resultado
-        // silenciosamente raro -- una base 0 dividiria por cero mas abajo.
+        // Bases admitidas: 2 a 16. El limite inferior es real --una base 0 dividiria por cero mas
+        // abajo y una base 1 no termina nunca-- y el superior tambien: `DigitValue` llega hasta la
+        // 'f' y ni un digito mas.
+        //
+        // ANTES ERAN CUATRO: 2, 8, 10 y 16. La enumeracion no la pedia el algoritmo --el bucle
+        // compara `digit >= radix` y funciona para cualquier base-- sino que era el alcance que
+        // SHR-024 se habia fijado. Se amplia al cerrar SHR-023, y por una razon concreta: la
+        // direccion de salida (`String.ToString(valor, base)`) formatea de la 2 a la 16 con el
+        // mismo bucle generico, y dos mitades que dicen ser inversas no pueden admitir conjuntos
+        // distintos. La alternativa era recortar el formateo a esas cuatro, y eso habria sido
+        // inventar una limitacion que ninguno de los dos algoritmos tiene.
         //
         // `index` NO se mueve cuando la funcion devuelve false, para que quien llama pueda probar
         // otra interpretacion desde el mismo sitio.
         public static bool TryParseUInt64(string text, ref int index, int radix, out ulong value)
         {
             value = 0;
-            if (radix != 2 && radix != 8 && radix != 10 && radix != 16)
+            if (radix < 2 || radix > 16)
             {
                 return false;
             }

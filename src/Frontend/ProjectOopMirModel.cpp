@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -54,13 +56,16 @@ const ProjectOopMirStaticField* knownStaticField(
 
 bool isSignedIntegralType(std::string_view typeKey) noexcept
 {
-    return typeKey == "builtin:short" || typeKey == "builtin:int" || typeKey == "builtin:long" ||
-        typeKey == "builtin:nint";
+    // ID 89. Dice lo mismo que la tabla del modelo semantico y que la del backend, a proposito:
+    // cada capa contesta sin depender de las otras. Las tres se fijan entre si en la fixture c19.
+    return typeKey == "builtin:sbyte" || typeKey == "builtin:short" ||
+        typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:nint";
 }
 
 unsigned integerBitWidth(std::string_view typeKey) noexcept
 {
-    if (typeKey == "builtin:byte" || typeKey == "builtin:char") return 8;
+    if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
+        typeKey == "builtin:char") return 8;
     if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return 16;
     if (typeKey == "builtin:int" || typeKey == "builtin:uint") return 32;
     if (typeKey == "builtin:long" || typeKey == "builtin:ulong" ||
@@ -74,9 +79,47 @@ std::uint64_t integerMask(unsigned width) noexcept
                        : ((std::uint64_t{1} << width) - 1U);
 }
 
+// ID 127. ESTA FUNCION HACIA MEDIA OPERACION, Y ESO ES UN DEFECTO SILENCIOSO.
+//
+// Decia:
+//
+//     return value & integerMask(integerBitWidth(typeKey));
+//
+// Truncaba al ancho del tipo y NO extendia el signo. La operacion canonica del compilador --
+// `ProjectIntegerEvaluator::normalize`, cuyo propio comentario la llama "LA OPERACION CENTRAL" --
+// hace las dos cosas: trunca, y si el tipo tiene signo rellena hacia arriba desde el bit mas alto
+// del ancho real.
+//
+// QUE PRODUCIA. `integerConstantValue` (aqui abajo) es el plegado que decide el valor de TODO
+// campo `const`, y lo hace normalizando cada operando al tipo del RESULTADO. Para `(-1) + 1L`:
+//
+//     -1 como int   -> 0xFFFFFFFFFFFFFFFF & 0xFFFFFFFF  =  0x00000000FFFFFFFF   (signo perdido)
+//     ensanchado a long                                  =  4294967295
+//     + 1                                                =  4294967296
+//
+// El campo quedaba con 4294967296 en vez de 0, sin un diagnostico: la constante se plegaba, el
+// programa compilaba y enlazaba, y devolvia el numero equivocado. La fixture c17 lo destapo con
+// codigo de salida 3.
+//
+// POR QUE NUNCA SE VIO. Era inalcanzable. El defecto solo aparece cuando un valor negativo de un
+// tipo estrecho se ENSANCHA a uno mas ancho, y hasta el ID 121 `int + long` con constantes no
+// compilaba -- el tipo comun era `double` y el evaluador entero se rendia. Los `const` negativos
+// que existian eran de un solo ancho (`const int x = -5;`), donde truncar dos veces a 32 bits da
+// el mismo patron y `LLVMConstInt(..., signExtend=1)` lo interpreta bien. **El ID 121 no
+// introdujo este defecto: lo hizo alcanzable.**
+//
+// POR QUE SE DELEGA EN VEZ DE PARCHEAR. Esto era un TERCER evaluador de constantes enteras, con
+// tabla de anchos propia, tabla de signo propia y normalizacion propia -- exactamente lo que
+// CC1-105 elimino del modelo semantico despues de que produjera los defectos C-001..C-004 de una
+// sola vez. La copia se quedo sin la mitad de la operacion, que es la forma en que las
+// duplicaciones fallan: no divergen de golpe, se quedan cortas en una rama. Delegando, las dos
+// capas no pueden volver a discrepar.
+//
+// Los otros dos consumidores de esta funcion (el plegado a `double`) pasan su resultado por
+// `signedInteger()`, que vuelve a enmascarar antes de extender: para ellos el cambio es inocuo.
 std::uint64_t normalizeInteger(std::uint64_t value, std::string_view typeKey) noexcept
 {
-    return value & integerMask(integerBitWidth(typeKey));
+    return ProjectIntegerEvaluator::normalize(value, typeKey);
 }
 
 std::int64_t signedInteger(std::uint64_t bits, std::string_view typeKey) noexcept
@@ -1142,10 +1185,6 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreConsoleWriteLine:
             result->kind = ProjectOopMirNodeKind::CoreConsoleWriteLine;
-            // SHR-022: la mascara de variante viaja como `immediate`, igual que un tamano de
-            // elemento o un identificador de tipo. El MIR no la interpreta -- solo la transporta
-            // hasta el backend, que es quien sabe que un 2 significa "error estandar".
-            result->immediate = node->integerValue;
             break;
         case ProjectOopHirNodeKind::AggregateEquals:
         case ProjectOopHirNodeKind::AggregateHash:
