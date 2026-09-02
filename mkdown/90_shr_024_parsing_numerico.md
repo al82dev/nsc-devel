@@ -163,9 +163,22 @@ instalar, sincronizar— lo hace consistente.
    Comprobar sólo que el límite entra dejaría pasar una comprobación escrita demasiado ancha;
    comprobar sólo que el siguiente falla, una demasiado estrecha. Incluye la asimetría: la misma
    magnitud que falla en positivo entra en negativo.
-3. **Bases** 2, 8, 16 — y que un dígito fuera de la base **no** es un dígito (`"2"` en base 2 falla),
-   sin lo cual la base sería decorativa. Y que una base inexistente se rechaza en vez de dividir por
-   cero.
+3. **Bases** 2, 3, 8, 16 — y que un dígito fuera de la base **no** es un dígito (`"2"` en base 2 y
+   `"3"` en base 3 fallan), sin lo cual la base sería decorativa. Y que una base inexistente se
+   rechaza: la **0** dividiría por cero, la **1** no terminaría nunca y la **17** pediría un dígito
+   que `DigitValue` no sabe leer.
+
+   > **Corrección posterior (cierre de SHR-023, 2026-09-02).** Aquí la base **3** estaba del lado
+   > de las *inválidas*, porque `TryParseUInt64Radix` aceptaba únicamente `2, 8, 10, 16`. Esa
+   > enumeración no la pedía el algoritmo: el bucle es `valor * base + dígito` y funciona para
+   > cualquier base cuyos dígitos `DigitValue` sepa leer, que son **2–16**. Al escribir
+   > `String.ToString(v, base)` para 2–16 (SHR-023) las dos direcciones dejaron de admitir el mismo
+   > conjunto, y una fixture que afirma que son inversas no puede pasar con contratos distintos.
+   >
+   > **Se amplió `Number`, no se estrechó la fixture.** La guarda pasó de enumerar cuatro bases a
+   > `radix < 2 || radix > 16`, y esta prueba pasó a medir **más** que antes: la base 3 del lado
+   > positivo *con* su dígito fuera de rango, y las tres bases que sí son inválidas de verdad. El
+   > razonamiento completo está en el doc 92 §8.
 4. **Literales** con prefijo y sufijo, incluido que `-1` **no** es un literal y que `0x` sin dígitos
    tampoco, pero `0` suelto sí.
 5. **La posición** — tres números y dos comas en una sola cadena, leídos sin cortar ni una

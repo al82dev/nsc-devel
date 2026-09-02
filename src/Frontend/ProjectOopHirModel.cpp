@@ -3052,11 +3052,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 node->children.push_back(std::move(timeout));
                 return node;
             }
-            if (core != nullptr && core->kind == MethodCoreOperationKind::ConsoleWriteLine)
+            // SHR-022. AQUI ES DONDE LAS CUATRO SALIDAS DE CONSOLA VUELVEN A SER UNA.
+            //
+            // El modelo semantico las distingue por nombre y les da cuatro `MethodCoreOperationKind`
+            // distintos, porque el reconocimiento es por nombre de metodo. De aqui hacia abajo esa
+            // distincion se convierte en DOS BITS y no en cuatro caminos: bit 0 = anade CRLF,
+            // bit 1 = escribe por error estandar. Un unico nodo, un unico nodo MIR, una unica
+            // funcion de runtime.
+            //
+            // Por que no cuatro nodos: lo unico que cambia entre los cuatro es que descriptor se
+            // pide y si hay un segundo WriteFile para el salto de linea. Todo lo demas --leer la
+            // longitud del string, saltar al offset 8, llamar a WriteFile-- es identico. Cuatro
+            // copias de esa logica es exactamente como se separan: se arregla una y las otras tres
+            // se quedan atras.
+            //
+            // La mascara se fija AQUI, en compilacion, no en ejecucion: el llamador escribio
+            // `Console.ErrorWrite(...)`, asi que el valor es constante y llega al runtime como un
+            // `i32` literal.
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::ConsoleWriteLine ||
+                 core->kind == MethodCoreOperationKind::ConsoleWrite ||
+                 core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine ||
+                 core->kind == MethodCoreOperationKind::ConsoleErrorWrite))
             {
                 if (addressContext || expression->children().size() != 1)
                 {
-                    error = "Stage 41 NativeSharp.Core.Console.WriteLine requires one value argument";
+                    error = "SHR-022 NativeSharp.Core.Console output requires one value argument";
                     return nullptr;
                 }
                 const MethodCallBinding* call = callBinding(expression);
@@ -3068,7 +3089,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                     argument = wrapImplicitConversion(
                         std::move(argument), call->selectedConversions.front(), expression->children().front());
                 }
+                const bool appendNewline =
+                    core->kind == MethodCoreOperationKind::ConsoleWriteLine ||
+                    core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine;
+                const bool useStandardError =
+                    core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine ||
+                    core->kind == MethodCoreOperationKind::ConsoleErrorWrite;
                 auto node = makeNode(ProjectOopHirNodeKind::CoreConsoleWriteLine, expression, "builtin:void");
+                node->integerValue = (appendNewline ? 1u : 0u) | (useStandardError ? 2u : 0u);
                 node->children.push_back(std::move(argument));
                 return node;
             }

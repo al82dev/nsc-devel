@@ -207,18 +207,82 @@ y ahora **se puede**.
 
 ---
 
-## 8. Qué se tocó
+## 8. La fixture falló, y el que estaba mal era el contrato
+
+La primera corrida de `c22` salió con **exit 1**, en el primer bloque: `RadixRoundTrip`.
+
+La fixture afirma algo muy concreto: que `String.ToString(v, base)` y
+`Number.TryParseUInt64Radix(t, base, out v)` son **inversas**. Escribe un número en cada base y lo
+vuelve a leer. Para la base 3 no volvió.
+
+**No era un defecto de ninguna de las dos funciones. Las dos hacían exactamente lo que decían.** Lo
+que no coincidía era el conjunto de bases que cada una admite:
+
+| dirección | bases admitidas |
+|---|---|
+| `String.ToString(v, base)` — SHR-023, escrito ahora | **2 … 16** |
+| `Number.TryParseUInt64Radix` — SHR-024, escrito antes | **2, 8, 10, 16** |
+
+Dos contratos distintos para la misma operación en direcciones opuestas. La fixture no estaba
+midiendo mal: estaba diciendo la verdad sobre una biblioteca incoherente.
+
+### Había dos salidas, y sólo una es honesta
+
+**Estrechar la fixture** —quitar las bases que `Number` no admite— habría dejado la corrida verde
+en minutos. Es exactamente la clase de arreglo que este proyecto no acepta: la prueba se dobla para
+que el código pase, y la incoherencia sigue ahí esperando al primer consumidor real.
+
+**Ampliar `Number`** era lo correcto, y hay que decir por qué no es una concesión: **la enumeración
+de cuatro bases nunca la pidió el algoritmo.** El núcleo es
+
+```csharp
+accumulated = accumulated * radixValue + digitValue;
+```
+
+que funciona para cualquier base cuyos dígitos `DigitValue` sepa leer — y `DigitValue` cubre
+`0-9`, `a-f`, `A-F`, es decir **2 a 16**. Las cuatro bases estaban ahí porque son las cuatro que
+un lexer usa, no porque las otras doce fallaran. Los únicos límites reales son tres:
+
+* la base **0** dividiría por cero en la comprobación de desbordamiento,
+* la base **1** no termina nunca — un dígito nunca reduce el resto,
+* la base **17** pediría un dígito de valor 16, que no existe en el alfabeto.
+
+La guarda pasó de enumerar a acotar, que es lo que siempre debió ser:
+
+```csharp
+if (radix < 2 || radix > 16)
+{
+    return false;
+}
+```
+
+### Lo que costó, y lo que dio
+
+Costó tocar `c21_number_parsing`, que afirmaba que **la base 3 es inválida**. Esa afirmación era
+correcta cuando se escribió y dejó de serlo aquí; cambiar un contrato obliga a cambiar lo que lo
+medía, y eso se dice, no se esconde. La línea se reemplazó por las bases que sí son inválidas de
+verdad —0, 1 y 17— y la base 3 pasó al lado positivo **con su comprobación de dígito fuera de
+rango** (`"3"` en base 3 falla, igual que `"2"` en base 2).
+
+**`c21` mide más que antes, no menos.** Ese es el criterio para saber si un cambio de contrato fue
+honesto: si la prueba que se tocó quedó más débil, se estaba tapando algo.
+
+---
+
+## 9. Qué se tocó
 
 | Archivo | Qué |
 |---|---|
 | `lib/NativeSharp.Core/String.ns` | +23 métodos: bases 2–16, hexadecimal con ancho y caja, `ToString(double/float)` con y sin ancho, `ToStringFixed`. Y el comentario histórico reescrito |
+| `lib/NativeSharp.Core/Number.ns` | **SHR-024 ampliado por simetría** (§8): la guarda de base pasa de enumerar `2, 8, 10, 16` a acotar `2 … 16` |
 | `tests/cc1/c22_console_and_formatting/` | **Nueva** fixture de ejecución, salida 42 (compartida con SHR-022) |
+| `tests/cc1/c21_number_parsing/Main.ns` | La base 3 pasa de «inválida» a válida-con-dígito-fuera-de-rango; las inválidas ahora son 0, 1 y 17 |
 | `tests/unit/Cc1CorrectnessTests.cpp` | Registro de c22 |
-| `run_cases.py` | c22 en la tabla de casos — una línea, que es el punto de haber movido la lista ahí |
+| `run_cases.py` | c22 en la tabla de casos — una línea, que es el punto de haber movido la lista ahí. Y **captura de stderr**, sin la cual un caso que no compila deja un log vacío |
 
 ---
 
-## 9. Cómo está medido
+## 10. Cómo está medido
 
 Tres capas, y ninguna se fía de las otras:
 

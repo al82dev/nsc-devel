@@ -61,12 +61,41 @@ lib/NativeSharp.Core/String.ns
 tests/unit/Cc1CorrectnessTests.cpp
     Registro de la fixture c22.
 
+lib/NativeSharp.Core/Number.ns
+    SHR-024 AMPLIADO POR SIMETRIA al cerrar SHR-023. La guarda de base pasa de enumerar
+    (radix != 2 && radix != 8 && radix != 10 && radix != 16) a acotar (radix < 2 ||
+    radix > 16). Razon: c22 afirma que ToString(v, base) y TryParseUInt64Radix son INVERSAS,
+    y no pueden serlo con contratos distintos -- String admite 2-16 y Number admitia cuatro
+    bases. La enumeracion nunca la pidio el algoritmo: el bucle es valor*base + digito y
+    DigitValue cubre 0-9 a-f A-F. Los unicos limites reales son 0 (division por cero), 1 (no
+    termina) y 17 (digito inexistente). SE AMPLIO NUMBER, NO SE ESTRECHO LA FIXTURE.
+    Doc 92 seccion 8.
+
+tests/cc1/c21_number_parsing/Main.ns
+    Consecuencia de lo anterior: afirmaba que la base 3 es invalida, y dejo de serlo. La
+    base 3 pasa al lado positivo CON su comprobacion de digito fuera de rango ("3" en base 3
+    falla), y las invalidas pasan a ser 0, 1 y 17. c21 mide MAS que antes, no menos -- que
+    es el criterio para saber si un cambio de contrato fue honesto.
+
+tests/unit/Stage41ArraysStringsCoreTests.cpp
+    La expectativa del simbolo exportado, que decia __nativesharp_console_writeline. NO se
+    ablando para que pasara: se actualizo Y se reforzo -- ahora comprueba la aridad, los dos
+    bits de la mascara, el select y LOS DOS descriptores estandar (-11 y -12), que antes no
+    comprobaba ninguno.
+
 run_cases.py
     c22 en la tabla CASES. Una linea -- que es el punto de haber movido la lista ahi.
+    Y CAPTURA DE STDERR: nsc.exe manda los diagnosticos por error estandar, y sin esa rama
+    un caso que no compila dejaba un log con "[FAILED] (obj, exit 1)" y NADA mas. Costo un
+    viaje entero encontrar por que fallaba c22.
 
 mkdown/81_inventario_completo_por_bloques.md
-    Bloque 2 marcado como cerrado, con las tres SHR y sus docs, el ID 128 encontrado de paso
-    y el ID 129 abierto y anotado.
+    Bloque 2 marcado como cerrado CON LOS NUMEROS DE LA CORRIDA, las tres SHR y sus docs, el
+    ID 128 encontrado de paso y el ID 129 abierto y anotado.
+
+mkdown/90_shr_024_parsing_numerico.md
+    Seccion 8: la base 3 estaba del lado de las invalidas. Correccion anotada en el sitio,
+    no reescrita en silencio.
 
 NUEVOS
 ------
@@ -91,16 +120,44 @@ run_windows_checklist.bat
     La lista de casos vive en run_cases.py desde la paralelizacion. Anadir c22 no toca el
     .bat.
 
-lib/NativeSharp.Core/Number.ns
-    SHR-024 quedo cerrado en su propia entrega (doc 90). SHR-023 es su espejo y se mide
-    CONTRA el, no modificandolo.
-
 COMO SE VERIFICO ANTES DE ESCRIBIR NADA EN LA MAQUINA
 -----------------------------------------------------
-1. Los seis .cpp/.h del compilador: clang++ -std=c++20 -fsyntax-only, limpio.
+1. Los seis .cpp/.h del compilador: clang++ -std=c++20 -Wall -Wextra -fsyntax-only, limpio.
 2. String.ns, Console.ns y c22/Main.ns: pasados por el Parser.cpp REAL del proyecto,
    compilado en el contenedor. No es analisis semantico, pero descarta la clase entera de
    errores de sintaxis.
 3. Las funciones nuevas de formateo portadas literalmente a C++ y medidas contra printf de
    glibc: 240.000 valores por ancho para coma flotante y 3.800.000 comprobaciones para bases
    y hexadecimal (3.800.000/3.800.000 exactas). Ahi aparecio el desbordamiento de 1e-300.
+
+LA CORRIDA
+----------
+Passed: 84   Failed: 0
+ctest:  100% tests passed out of 242
+cases:  82 OK, 0 FAIL en 25.5 s con -j 16 (suma 353.6 s -- x13.9)
+build:  limpio, ni un error ni un warning, con /WX
+bug_triage: 16/16, cero vivos
+MANIFEST: 1237/1237 PASS
+cc1_c22_console_and_formatting -O0 -- exit 42
+cc1_c22_console_and_formatting -O2 -- exit 42
+
+LO QUE SALIO MAL EN ESTE CIERRE, Y ESTA DOCUMENTADO
+---------------------------------------------------
+Escribi cuatro archivos del compilador partiendo de copias del contenedor de una SESION
+ANTERIOR, anteriores al ID 82, SHR-005 y ID 127. Eso borro esas tres entregas del disco. El
+diff no lo enseñaba porque el diff se hacia contra la misma copia vieja; lo destaparon las
+marcas de tiempo del disco. Regla permanente que sale de ahi: SE RELEE DEL DISCO JUSTO ANTES
+DE CADA ESCRITURA, sin excepcion. Doc 93 seccion 5.
+
+Segundo error del mismo incidente: recomende `git checkout HEAD -- <archivo>` con trabajo
+staged y sin commit, lo que habria borrado definitivamente lo que intentabamos recuperar. La
+forma correcta era `git checkout -- <archivo>`, sin HEAD, que restaura desde el INDICE. No
+llego a ejecutarse el malo.
+
+Tercero: renombre el simbolo de runtime sin hacer grep en tests/ antes. Segunda vez que pasa
+lo mismo -- la primera fue con el texto del diagnostico de SHR-005.
+
+PENDIENTE DE LIMPIEZA EN LA RAIZ
+--------------------------------
+del run_bloque1.bat run_c17.bat run_ids_121_122.bat
+    Tres scripts creados sin que nadie los pidiera, que la paralelizacion dejo sin funcion.

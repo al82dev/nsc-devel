@@ -83,9 +83,21 @@ un diagnóstico formateado por stderr.
 
 > ## ✅ CERRADO — 2026-09-02
 >
-> **PENDIENTE DE NÚMEROS.** Las tres superficies están entregadas y el criterio del bloque es una
-> fixture que ejecuta; los números de la corrida se escriben aquí cuando `all.bat` los dé. Un
-> bloque no se cierra con una intención.
+> **LOS NÚMEROS DE LA CORRIDA, que es lo único que cierra un bloque.** `all.bat`, 2026-09-02:
+>
+> ```
+> Passed: 84   Failed: 0
+> ctest:  100% tests passed out of 242
+> cases:  82 OK, 0 FAIL en 25.5 s con -j 16 (suma 353.6 s -- x13.9)
+> build:  limpio, sin un error ni un warning, con /WX
+> bug_triage: 16/16, cero vivos
+> MANIFEST: 1237/1237 PASS
+> cc1_c22_console_and_formatting -O0 -- exit 42
+> cc1_c22_console_and_formatting -O2 -- exit 42
+> ```
+>
+> Las dos optimizaciones, no una: `-O2` es donde un formateo que depende de un desbordamiento
+> silencioso cambiaría de respuesta.
 >
 > El criterio de arriba **es** `tests/cc1/c22_console_and_formatting`, ejecutando, salida 42: lee
 > `0x1F`, `42UL` y `3.14f` de **una** cadena sin cortar subcadenas y escribe
@@ -99,7 +111,7 @@ un diagnóstico formateado por stderr.
 
 | SHR | Qué | Spec | Dónde está la medición |
 |---|---|:--:|---|
-| ✅ **024** | Parsing numérico: signed/unsigned, bases 2/10/16, float, detección de overflow | **D** | `lib/NativeSharp.Core/Number.ns` nuevo. Núcleo sobre `(texto, ref índice)` para que un lexer no corte una subcadena por token. Fixture `c21_number_parsing`, siete bloques. Doc 90 |
+| ✅ **024** | Parsing numérico: signed/unsigned, bases **2–16**, float, detección de overflow | **D** | `lib/NativeSharp.Core/Number.ns` nuevo. Núcleo sobre `(texto, ref índice)` para que un lexer no corte una subcadena por token. **Las bases se ampliaron de {2,8,10,16} a 2–16 al cerrar SHR-023**, para que las dos direcciones admitan el mismo conjunto (doc 92 §8). Fixture `c21_number_parsing`, siete bloques. Doc 90 |
 | ✅ **022** | `Console.Error` y `Console.Write` | **D** | Cuatro métodos, **un** nodo, dos bits de máscara (bit 0 salto de línea, bit 1 canal). `Console.Error.WriteLine` rechazado a propósito: pide `TextWriter`, que es SHR-020 / Bloque 5. Doc 91 |
 | ✅ **023** | Formatting de float/double, hex, vistas y enums | **D** | Bases 2–16, hexadecimal como patrón de bits (distinto de `ToString(v, base)`, que es signo+magnitud), `ToString(double)` con garantía **medida** de once cifras contra glibc. Vistas → Bloque 3 por orden; enums → **ID 129**, es del compilador. Doc 92 |
 

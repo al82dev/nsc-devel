@@ -1183,8 +1183,15 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::StringFromCharArray:
             result->kind = ProjectOopMirNodeKind::StringFromCharArray;
             break;
+        // SHR-022. La mascara de dos bits que el HIR fijo pasa a `immediate`, que es de donde el
+        // backend saca los operandos constantes. El prologo generico de esta funcion ya copia
+        // `integerValue`, pero ESE campo no lo mira nadie aguas abajo para este nodo: sin esta
+        // linea la mascara se queda en el HIR y la llamada al runtime sale con lo que hubiera en
+        // `immediate` -- cero -- asi que las cuatro salidas escribirian por salida estandar y sin
+        // salto de linea, en silencio.
         case ProjectOopHirNodeKind::CoreConsoleWriteLine:
             result->kind = ProjectOopMirNodeKind::CoreConsoleWriteLine;
+            result->immediate = node->integerValue;
             break;
         case ProjectOopHirNodeKind::AggregateEquals:
         case ProjectOopHirNodeKind::AggregateHash:

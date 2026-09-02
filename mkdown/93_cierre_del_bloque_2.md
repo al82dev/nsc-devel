@@ -1,9 +1,21 @@
-# 93 — Cierre del Bloque 2. Y las dos cosas que se hicieron sin doc
+# 93 — Cierre del Bloque 2. Lo que se hizo sin doc, y lo que salió mal
 
 **Fecha:** 2026-09-02
 **Qué cierra:** el Bloque 2 entero (SHR-024, SHR-022, SHR-023), más el **ID 128** y la
-**paralelización** de la corrida, que se entregaron sin documentar.
-**Estado:** entregado y compilado. Los números los pone `all.bat`.
+**paralelización** de la corrida, que se entregaron sin documentar. Y **§5: el incidente de este
+cierre** — escribí encima de tres entregas ya hechas, y la regla de método que sale de ahí.
+**Estado:** **cerrado y ejecutando.**
+
+```
+Passed: 84   Failed: 0
+ctest:  100% tests passed out of 242
+cases:  82 OK, 0 FAIL en 25.5 s con -j 16 (suma 353.6 s -- x13.9)
+build:  limpio, sin un error ni un warning, con /WX
+bug_triage: 16/16, cero vivos
+MANIFEST: 1237/1237 PASS
+cc1_c22_console_and_formatting -O0 -- exit 42
+cc1_c22_console_and_formatting -O2 -- exit 42
+```
 
 ---
 
@@ -187,20 +199,94 @@ cumplía nunca. **El parser habría aceptado basura, en silencio.**
 
 ---
 
-## 5. Qué se tocó, en total, en este cierre
+## 5. El incidente del cierre: escribí encima de trabajo ya entregado
+
+**Esto no es una anécdota de proceso. Es un defecto de método que destruyó código bueno, y va aquí
+por la misma razón que está el §2: lo que se aprende del error vale más que el error.**
+
+### Qué pasó
+
+Al aplicar SHR-022 escribí cuatro archivos del compilador —`ProjectMethodBodyModel.h`,
+`ProjectMethodBodyModel.cpp`, `ProjectOopHirModel.cpp`, `ProjectOopMirModel.cpp`— partiendo de
+copias que tenía en el contenedor **de una sesión anterior**. Esas copias eran anteriores a las
+entregas del **ID 82**, **SHR-005** y el **ID 127**. Al escribirlas, esas tres entregas
+desaparecieron del disco.
+
+No fue una edición mala: fue una **versión vieja completa** puesta encima de una nueva. Las
+diferencias no estaban en las líneas que yo tocaba, así que ningún diff mío las iba a enseñar.
+
+### Cómo se destapó — y el error de diagnóstico que hice encima
+
+La corrida cayó con cuatro fallos que no tenían nada que ver con la consola:
+
+| síntoma | entrega que había desaparecido |
+|---|---|
+| `c20_property_compound` no construía — `i32 55` entrando a `set_Narrow(ptr, i8)` | ID 82 |
+| `stage50-11` rechazaba `move()` a un elemento de arreglo fijo | SHR-005 |
+| `stage52` esperaba un texto de diagnóstico que ya no existía | SHR-005 |
+| `c17` salía con 3 en vez de 42 | ID 127 |
+
+**Y mi primera respuesta fue equivocarme otra vez:** hice un diff de mis archivos contra **la misma
+base vieja** de la que habían salido, vi sólo mis cambios de SHR-022, y anuncié que no había
+pisado nada. Un diff contra la copia sospechosa no puede detectar que la copia es la sospechosa.
+Lo que lo destapó fueron las **marcas de tiempo del disco**: 03:29:41 en la máquina contra 03:14:48
+en mi base — quince minutos de trabajo entregado que yo estaba tratando como punto de partida.
+
+### El segundo error, que pudo ser irreversible
+
+Le dije a Alberto que corriera `git checkout HEAD -- <archivos>`. Su trabajo estaba **en el índice,
+sin commit**. Ese comando habría restaurado desde el último commit y **habría borrado
+definitivamente** lo mismo que intentábamos recuperar. Lo dijo él —«no he guardado el commit»— y se
+corrigió a `git checkout -- <archivo>`, sin `HEAD`, que restaura desde el índice. No llegó a
+ejecutarse el malo.
+
+**La lección, que es de las que cuestan caras:** `git checkout -- x` y `git checkout HEAD -- x` no
+son variantes de lo mismo. La primera restaura desde el **índice**, la segunda desde el **commit**.
+Con trabajo staged y no commiteado, la segunda es destructiva. Recomendar un comando de git sin
+saber en qué estado está el índice es recomendar a ciegas.
+
+### La regla que sale de aquí, y que es permanente
+
+> **Se relee del disco justo antes de cada escritura. Sin excepción, y sin importar cuán reciente
+> parezca la copia que ya se tiene.**
+
+Una copia en el contenedor no es un caché: es una foto de un momento que ya pasó. Entre esa foto y
+la escritura pueden haber entrado entregas enteras, y **el diff no las ve porque el diff se hace
+contra la foto**.
+
+Es, otra vez, la regla del proyecto: *ninguna verificación cuenta si el modelo contra el que
+verifico lo construí yo.* La copia vieja era mi modelo. El disco es el único árbitro.
+
+### Y una tercera, del mismo cierre, más pequeña pero de la misma familia
+
+Renombré el símbolo de runtime a `__nativesharp_console_write` y no busqué el nombre viejo en
+`tests/` antes. `nsc.stage41.arrays-strings-core` lo esperaba y cayó. **Es la segunda vez** —la
+primera fue con el texto del diagnóstico de SHR-005—. Un `grep` en `tests/` antes de renombrar
+cualquier cosa cuesta segundos; una corrida completa para descubrirlo cuesta minutos y una entrega.
+
+La expectativa no se ablandó para que pasara: se **actualizó y se reforzó** — ahora comprueba la
+aridad, los dos bits de la máscara, el `select` y **los dos** descriptores estándar, que antes no
+comprobaba ninguno.
+
+---
+
+## 6. Qué se tocó, en total, en este cierre
 
 **SHR-022** (doc 91): `ProjectMethodBodyModel.h/.cpp`, `ProjectOopHirModel.cpp`,
 `ProjectOopMirModel.cpp`, `ProjectOopLlvmLowerer.cpp`, `WindowsRuntimeBuilder.cpp`, `LlvmCApi.h`
 (+1 símbolo), `Console.ns`.
 
-**SHR-023** (doc 92): `String.ns` (+23 métodos).
+**SHR-023** (doc 92): `String.ns` (+23 métodos). Y **`Number.ns`**, ampliado por simetría: la guarda
+de base pasa de enumerar `2, 8, 10, 16` a acotar `2 … 16`, porque la fixture afirma que las dos
+direcciones son inversas y no pueden serlo con contratos distintos. Se amplió el compilador-lado-
+biblioteca, no se estrechó la prueba. Doc 92 §8.
 
 **Compartido:** `tests/cc1/c22_console_and_formatting/` (nueva), `Cc1CorrectnessTests.cpp`,
 `run_cases.py`, `mkdown/81_inventario_completo_por_bloques.md`.
 
 ---
 
-## 6. Lo que sigue
+## 7. Lo que sigue
 
 **Bloque 3 — vistas y tiempo de vida.** `StringView` (SHR-010), `Optional<T>` (SHR-017),
 `Span<T>`/`ReadOnlySpan<T>` (SHR-011/012) y **escape checking** (SHR-013), que es una regla del
@@ -217,3 +303,7 @@ núcleo, **sin reescribir nada**. El formateo recibirá su `ToString(StringView)
 **Abierto y anotado, no olvidado:** ID 129 (enums por nombre, es del compilador). Y siguen siendo
 decisiones tuyas, no de ingeniería: ID 87 (`volatile`), SHR-063 (condicionales de compilación),
 ID 125 (UTF-8), ID 124 (probablemente falso).
+
+**Pendiente de limpieza en la raíz del repo:** `run_bloque1.bat`, `run_c17.bat` y
+`run_ids_121_122.bat` — tres scripts que creé sin que nadie los pidiera y que la paralelización
+dejó sin función. `del run_bloque1.bat run_c17.bat run_ids_121_122.bat`.
