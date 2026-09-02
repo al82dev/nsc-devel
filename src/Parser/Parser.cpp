@@ -651,6 +651,56 @@ bool Parser::consumeGenericGreater()
     return false;
 }
 
+// Un token que puede aparecer DENTRO de una lista de argumentos de tipo, y nada mas.
+//
+// EL DEFECTO QUE CIERRA, medido con un arnes que compila el lexer y el parser y les da la linea:
+//
+//     if (wide < (long)Min() || wide > (long)Max())
+//
+// no parseaba. `looksLikeGenericCallTypeArguments` avanzaba buscando el `>` que cierra, y lo
+// encontraba... pero era el `>` de la SEGUNDA comparacion. Con la profundidad en cero miraba el
+// token siguiente, que era el `(` de `(long)`, y contestaba "si, son argumentos genericos". A
+// partir de ahi `parseTypeArgumentList` exigia un tipo, encontraba `(` y reportaba
+// "generic type argument list requires a type" sin retroceder.
+//
+// La parada anterior era `;`, `=` y fin de fichero: tres tokens. Cualquier expresion con dos
+// comparaciones y un parentesis entremedias entraba en la trampa.
+//
+// LA REGLA CORRECTA ES UNA LISTA BLANCA, no una lista de paradas. Lo que `parseType` puede
+// consumir es un conjunto CERRADO: nombres, tipos primitivos, cualificadores de propiedad, el
+// punto de un nombre calificado, la coma que separa argumentos, el `*` de un puntero, los
+// corchetes de un arreglo con su contador, y los `<`/`>` del anidamiento. Cualquier otra cosa
+// --un operador, un literal de cadena, un parentesis, una llave-- significa que esto no era una
+// lista de argumentos de tipo, y se contesta que no en vez de comprometerse y morir.
+//
+// Enumerar lo que SI puede aparecer es lo que hace que el caso siguiente que nadie previo salga
+// bien por omision. Una lista de paradas hay que ampliarla cada vez que aparece un operador nuevo;
+// esta no.
+bool Parser::canAppearInTypeArgumentList(TokenKind kind) noexcept
+{
+    if (lexer::isBuiltinTypeKeyword(kind) || lexer::isOwnershipQualifierKeyword(kind))
+    {
+        return true;
+    }
+    switch (kind)
+    {
+        case TokenKind::Identifier:
+        case TokenKind::Dot:
+        case TokenKind::Comma:
+        case TokenKind::Star:
+        case TokenKind::LeftBracket:
+        case TokenKind::RightBracket:
+        // El contador de un arreglo fijo: `Foo<float[4]>(x)`.
+        case TokenKind::IntegerLiteral:
+        case TokenKind::Less:
+        case TokenKind::Greater:
+        case TokenKind::GreaterGreater:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool Parser::looksLikeGenericCallTypeArguments() const noexcept
 {
     if (!at(TokenKind::Less)) return false;
@@ -659,6 +709,10 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
     while (cursor < tokens_.size())
     {
         const TokenKind kind = tokens_[cursor].kind();
+        if (!canAppearInTypeArgumentList(kind))
+        {
+            return false;
+        }
         if (kind == TokenKind::Less) ++genericDepth;
         else if (kind == TokenKind::Greater || kind == TokenKind::GreaterGreater)
         {
@@ -668,10 +722,6 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
                 return cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == TokenKind::LeftParen;
             }
             if (genericDepth < 0) return false;
-        }
-        else if (kind == TokenKind::Semicolon || kind == TokenKind::Equal || kind == TokenKind::EndOfFile)
-        {
-            return false;
         }
         ++cursor;
     }

@@ -34,7 +34,9 @@ constexpr const char* kDeallocationFunctionName = "__nativesharp_free";
 constexpr const char* kMemsetIntrinsicName = "llvm.memset.p0.i64";
 constexpr const char* kMemcpyIntrinsicName = "llvm.memcpy.p0.p0.i64";
 constexpr const char* kTrapFunctionName = "__nativesharp_trap";
-constexpr const char* kConsoleWriteLineFunctionName = "__nativesharp_console_writeline";
+// SHR-022. Una sola funcion para las cuatro salidas de consola: el segundo parametro es una
+// mascara de dos bits -- bit 0 anade el salto de linea, bit 1 escribe por error estandar.
+constexpr const char* kConsoleWriteLineFunctionName = "__nativesharp_console_write";
 constexpr const char* kNativeThrowFunctionName = "__nativesharp_throw";
 constexpr const char* kExceptionCurrentFunctionName = "__nativesharp_exception_current";
 constexpr const char* kExceptionClearFunctionName = "__nativesharp_exception_clear";
@@ -446,8 +448,8 @@ private:
         deallocationFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), freeParams, 1, 0);
         deallocationFunction_ = LLVMAddFunction(module_, kDeallocationFunctionName, deallocationFunctionType_);
 
-        LLVMTypeRef consoleParams[] = {ptr};
-        consoleWriteLineFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), consoleParams, 1, 0);
+        LLVMTypeRef consoleParams[] = {ptr, LLVMInt32TypeInContext(context_)};
+        consoleWriteLineFunctionType_ = LLVMFunctionType(LLVMVoidTypeInContext(context_), consoleParams, 2, 0);
         consoleWriteLineFunction_ = LLVMAddFunction(module_, kConsoleWriteLineFunctionName, consoleWriteLineFunctionType_);
 
         // Stage 53.1 "Time" -- all three take zero parameters and return i64 (builtin:long).
@@ -4697,11 +4699,17 @@ private:
             case frontend::ProjectOopMirNodeKind::CoreConsoleWriteLine:
             {
                 if (node->children.size() != 1 || consoleWriteLineFunction_ == nullptr)
-                    return failValue(error, "Stage 41 Console.WriteLine requires one string argument and runtime hook");
+                    return failValue(error, "Console write requires one string argument and runtime hook");
                 LLVMValueRef value = lowerExpression(node->children.front().get(), error);
                 if (value == nullptr) return nullptr;
-                LLVMValueRef args[] = {value};
-                buildNoUnwindCall(consoleWriteLineFunctionType_, consoleWriteLineFunction_, args, 1, "");
+                // SHR-022: `immediate` trae la mascara de variante desde el MIR. Es una CONSTANTE
+                // de compilacion --el nombre del metodo la fijo-- asi que el descriptor y el salto
+                // de linea se resuelven con dos `and` en el runtime y no hay ninguna rama que el
+                // optimizador no pueda plegar.
+                LLVMValueRef mode = LLVMConstInt(
+                    LLVMInt32TypeInContext(context_), static_cast<unsigned long long>(node->immediate), 0);
+                LLVMValueRef args[] = {value, mode};
+                buildNoUnwindCall(consoleWriteLineFunctionType_, consoleWriteLineFunction_, args, 2, "");
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
 

@@ -46,6 +46,7 @@ private:
     bool parseGenericParameterList(ast::AstNode* declaration);
     bool parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments);
     bool consumeGenericGreater();
+    static bool canAppearInTypeArgumentList(lexer::TokenKind kind) noexcept;
     bool looksLikeGenericCallTypeArguments() const noexcept;
 
     ast::AstNode* parseNamespaceMember();

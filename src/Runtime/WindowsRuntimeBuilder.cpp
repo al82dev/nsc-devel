@@ -204,7 +204,25 @@ bool buildStart(
     return true;
 }
 
-bool buildConsoleWriteLine(
+// SHR-022 -- LA UNICA SALIDA DE CONSOLA, parametrizada.
+//
+// Antes era `__nativesharp_console_writeline(ptr)`: salida estandar siempre, salto de linea
+// siempre. Console tenia UN metodo y un compilador sin stderr no puede emitir diagnosticos.
+//
+// Ahora toma una mascara de dos bits y cubre las cuatro combinaciones:
+//
+//     bit 0 = anadir "\r\n" al final
+//     bit 1 = escribir por ERROR estandar (-12) en vez de por salida estandar (-11)
+//
+// POR QUE UNA FUNCION Y NO CUATRO. Las cuatro hacen exactamente lo mismo salvo el numero que le
+// pasan a GetStdHandle y si escriben dos bytes mas. Cuatro copias de la misma llamada a WriteFile
+// es la duplicacion que este arbol lleva una decada de commits quitando; y ademas la mascara la
+// fija el NOMBRE DEL METODO en compilacion, asi que llega aqui como constante y el optimizador
+// pliega las dos comparaciones sin dejar rama.
+//
+// EL HANDLE SE PIDE UNA SOLA VEZ. La version anterior llamaba a GetStdHandle dos veces --una para
+// el texto y otra para el salto de linea-- y eran dos llamadas al sistema por cada WriteLine.
+bool buildConsoleWrite(
     LLVMContextRef context,
     LLVMModuleRef module,
     LLVMValueRef getStdHandle,
@@ -217,8 +235,8 @@ bool buildConsoleWriteLine(
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
     LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
-    LLVMTypeRef type = functionType(voidType, {pointerType});
-    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_console_writeline", type);
+    LLVMTypeRef type = functionType(voidType, {pointerType, i32Type});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_console_write", type);
     if (function == nullptr)
     {
         return false;
@@ -226,26 +244,42 @@ bool buildConsoleWriteLine(
 
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
     LLVMBasicBlockRef haveString = LLVMAppendBasicBlockInContext(context, function, "have_string");
+    LLVMBasicBlockRef newlineCheck = LLVMAppendBasicBlockInContext(context, function, "newline_check");
     LLVMBasicBlockRef writeNewline = LLVMAppendBasicBlockInContext(context, function, "write_newline");
     LLVMBasicBlockRef done = LLVMAppendBasicBlockInContext(context, function, "done");
     LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
     LLVMPositionBuilderAtEnd(builder, entry);
 
     LLVMValueRef text = LLVMGetParam(function, 0);
+    LLVMValueRef mode = LLVMGetParam(function, 1);
+
+    // STD_OUTPUT_HANDLE = -11 (0xfffffff5), STD_ERROR_HANDLE = -12 (0xfffffff4).
+    LLVMValueRef errorBit = LLVMBuildAnd(builder, mode, LLVMConstInt(i32Type, 2, 0), "error_bit");
+    LLVMValueRef useError = LLVMBuildICmp(
+        builder, LLVMIntNE, errorBit, LLVMConstInt(i32Type, 0, 0), "use_stderr");
+    LLVMValueRef handleCode = LLVMBuildSelect(
+        builder,
+        useError,
+        LLVMConstInt(i32Type, 0xfffffff4ULL, 0),
+        LLVMConstInt(i32Type, 0xfffffff5ULL, 0),
+        "std_handle_code");
+    LLVMValueRef handleArguments[] = {handleCode};
+    LLVMValueRef handle = LLVMBuildCall2(
+        builder, getStdHandleType, getStdHandle, handleArguments, 1, "std_handle");
+
+    // Un `string` nulo no es un error: escribe la linea vacia, igual que antes.
     LLVMValueRef isNull = LLVMBuildICmp(
         builder, LLVMIntEQ, text, LLVMConstNull(pointerType), "text_is_null");
-    LLVMBuildCondBr(builder, isNull, writeNewline, haveString);
+    LLVMBuildCondBr(builder, isNull, newlineCheck, haveString);
 
+    // El string nativo es longitud i64 en el offset 0 y los bytes justo detras, en el 8. WriteFile
+    // toma un contador de bytes explicito, asi que no hace falta terminador nulo ni copia.
     LLVMPositionBuilderAtEnd(builder, haveString);
     LLVMValueRef length64 = LLVMBuildLoad2(builder, i64Type, text, "length64");
     LLVMValueRef length32 = LLVMBuildTrunc(builder, length64, i32Type, "length32");
     LLVMValueRef dataOffset = LLVMConstInt(i64Type, 8, 0);
     LLVMValueRef dataIndices[] = {dataOffset};
     LLVMValueRef data = LLVMBuildGEP2(builder, i8Type, text, dataIndices, 1, "string_data");
-    LLVMValueRef stdOutputCode = LLVMConstInt(i32Type, 0xfffffff5ULL, 0);
-    LLVMValueRef handleArguments[] = {stdOutputCode};
-    LLVMValueRef handle = LLVMBuildCall2(
-        builder, getStdHandleType, getStdHandle, handleArguments, 1, "stdout_handle");
     LLVMValueRef writtenSlot = LLVMBuildAlloca(builder, i32Type, "written_slot");
     LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), writtenSlot);
     LLVMValueRef writeArguments[5] = {
@@ -255,18 +289,20 @@ bool buildConsoleWriteLine(
         writtenSlot,
         LLVMConstNull(pointerType)};
     LLVMBuildCall2(builder, writeFileType, writeFile, writeArguments, 5, "");
-    LLVMBuildBr(builder, writeNewline);
+    LLVMBuildBr(builder, newlineCheck);
+
+    LLVMPositionBuilderAtEnd(builder, newlineCheck);
+    LLVMValueRef newlineBit = LLVMBuildAnd(builder, mode, LLVMConstInt(i32Type, 1, 0), "newline_bit");
+    LLVMValueRef wantNewline = LLVMBuildICmp(
+        builder, LLVMIntNE, newlineBit, LLVMConstInt(i32Type, 0, 0), "want_newline");
+    LLVMBuildCondBr(builder, wantNewline, writeNewline, done);
 
     LLVMPositionBuilderAtEnd(builder, writeNewline);
-    LLVMValueRef stdOutputCode2 = LLVMConstInt(i32Type, 0xfffffff5ULL, 0);
-    LLVMValueRef handleArguments2[] = {stdOutputCode2};
-    LLVMValueRef handle2 = LLVMBuildCall2(
-        builder, getStdHandleType, getStdHandle, handleArguments2, 1, "stdout_handle_nl");
     LLVMValueRef newline = LLVMBuildGlobalStringPtr(builder, "\r\n", "core_newline");
     LLVMValueRef newlineWrittenSlot = LLVMBuildAlloca(builder, i32Type, "newline_written_slot");
     LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), newlineWrittenSlot);
     LLVMValueRef newlineArguments[5] = {
-        handle2,
+        handle,
         newline,
         LLVMConstInt(i32Type, 2, 0),
         newlineWrittenSlot,
@@ -509,7 +545,7 @@ LLVMValueRef buildNullTerminatedCopy(
     LLVMBasicBlockRef doneBlock = LLVMAppendBasicBlockInContext(context, function, "copy_done");
 
     // sourceString's length lives in the first 8 bytes (no GEP needed, same as buildPuts/
-    // buildConsoleWriteLine reading a string's length below); its bytes start right after that,
+    // buildConsoleWrite reading a string's length below); its bytes start right after that,
     // at a flat +8 byte offset (dataOffset for a 1-byte-aligned element -- see
     // 53_1_nativesharp_time.md section on NativeSharp's array/string physical layout).
     LLVMValueRef length = LLVMBuildLoad2(builder, i64Type, sourceString, "source_length");
@@ -4790,7 +4826,7 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         buildTrap(context, module, exitProcess, exitProcessType) &&
         (!includeStart || buildStart(
             context, module, exitProcess, exitProcessType, ehInit, ehInitType, mainSymbol)) &&
-        buildConsoleWriteLine(context, module, getStdHandle, getStdHandleType, writeFile, writeFileType) &&
+        buildConsoleWrite(context, module, getStdHandle, getStdHandleType, writeFile, writeFileType) &&
         buildPuts(context, module, getStdHandle, getStdHandleType, writeFile, writeFileType) &&
         buildClockQueryCounter(context, module, queryPerformanceCounter, queryPerformanceCounterType) &&
         buildClockQueryFrequency(context, module, queryPerformanceFrequency, queryPerformanceFrequencyType) &&

@@ -36,6 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 LOGS = ROOT / "_logs"
 REPORT = LOGS / "REPORTE.txt"
+CASE_LOGS = LOGS / "cases"
 
 # Tope global. Un reporte que no cabe de una sentada vuelve a ser un log.
 MAX_LINES = 700
@@ -201,6 +202,12 @@ def main() -> int:
     summary = read(LOGS / "SUMMARY.txt")
     build = read(LOGS / "01_build.log")
     ctest = read(LOGS / "02_ctest.log")
+    # Los logs por caso los deja run_cases.py, uno por (caso, nivel de optimizacion). Antes eran
+    # dos ficheros gigantes --03_fixtures.log y 04_examples.log-- con todo concatenado, y aislar el
+    # bloque de un caso pedia parsear cabeceras. Ahora el nombre del fichero ES la clave.
+    case_logs = {path.stem: [line.rstrip() for line in read(path)]
+                 for path in sorted(CASE_LOGS.glob("*.log"))} if CASE_LOGS.is_dir() else {}
+    # Los dos ficheros viejos se siguen leyendo por si alguien corrio el checklist en serie.
     fixtures = fixture_blocks(read(LOGS / "03_fixtures.log"))
     examples = fixture_blocks(read(LOGS / "04_examples.log"))
     triage = read(LOGS / "TRIAGE.txt")
@@ -238,6 +245,22 @@ def main() -> int:
         report.add("Passed: %d   Failed: %d" % (passed, failed))
     if ctest_verdict:
         report.add("ctest:  %s" % ctest_verdict)
+    # Cuanto compro el paralelismo, medido. Si la suma de tiempos y el reloj de pared se parecen,
+    # es que algo serializo y hay que mirarlo.
+    results_path = CASE_LOGS / "results.json"
+    if results_path.is_file():
+        try:
+            import json as _json
+            data = _json.loads(results_path.read_text(encoding="utf-8", errors="replace"))
+            wall = float(data.get("wall_seconds", 0.0))
+            serial = float(data.get("serial_seconds", 0.0))
+            speedup = (serial / wall) if wall > 0 else 0.0
+            report.add("cases:  %d OK, %d FAIL en %.1f s con -j %s "
+                       "(suma de tiempos %.1f s -- x%.1f)"
+                       % (data.get("passed", 0), data.get("failed", 0), wall,
+                          data.get("jobs", "?"), serial, speedup))
+        except Exception:
+            report.add("cases:  results.json ilegible")
     if build_broke:
         report.add("BUILD:  ROTO -- nada de lo de abajo mide el arbol nuevo.")
     if spread > 900.0:
@@ -320,11 +343,23 @@ def main() -> int:
             label = line[len("[FAIL]"):].split("--")[0].strip()
             report.add()
             report.add("--- %s ---" % line.strip())
-            found = find_block(fixtures, label) or find_block(examples, label)
-            if found is None:
-                report.add("    (sin bloque en los logs de fixtures)")
+            key = label.replace(" -", "_").replace(" ", "_").replace("-O", "O")
+            body = case_logs.get(key)
+            if body is None:
+                # El nombre del log es "<etiqueta>_O0.log"; la etiqueta del SUMMARY es
+                # "<etiqueta> -O0". Si la reescritura de arriba no acerto, se busca por prefijo.
+                for name, lines in case_logs.items():
+                    if label.split(" ")[0] == name.rsplit("_", 1)[0] and label.endswith(name.rsplit("_", 1)[1]):
+                        body = lines
+                        break
+            if body is not None:
+                report.block(body, FIXTURE_TAIL, "_logs\\cases\\" + key + ".log")
             else:
-                report.block(found[1], FIXTURE_TAIL, "03_fixtures.log/04_examples.log")
+                found = find_block(fixtures, label) or find_block(examples, label)
+                if found is None:
+                    report.add("    (sin log para este caso)")
+                else:
+                    report.block(found[1], FIXTURE_TAIL, "03_fixtures.log/04_examples.log")
 
     # ---- 5. TRIAGE ---------------------------------------------------------------------
     report.section("5. TRIAGE DE BUGS REPORTADOS  (TRIAGE.txt)")

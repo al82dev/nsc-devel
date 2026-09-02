@@ -379,6 +379,31 @@ int main()
         tests, root, "tests/cc1/c20_property_compound/c20_property_compound.nsproj",
         "cc1-c20-property-compound", 42);
 
+    // SHR-024 -- parsing numerico. El PRIMER item del Bloque 2, y el que lo bloquea entero: sin
+    // esto no hay lexer. La fixture no comprueba "que parsea": comprueba la POSICION --varios
+    // numeros leidos de una sola cadena sin cortar subcadenas, que es lo que hace un lexer--, los
+    // limites EXACTOS por los dos lados, la asimetria del minimo con signo, y que lo invalido se
+    // rechaza. Ver mkdown\90_shr_024_parsing_numerico.md.
+    checkFixture(
+        tests, root, "tests/cc1/c21_number_parsing/c21_number_parsing.nsproj",
+        "cc1-c21-number-parsing", 42);
+
+    // SHR-022 + SHR-023 -- consola con stderr, y formateo. LA FIXTURE DE ACEPTACION DEL BLOQUE 2:
+    // lee 0x1F, 42UL y 3.14f de UNA cadena y escribe un diagnostico formateado por stderr, que es
+    // el criterio del bloque palabra por palabra. Mide ademas cuatro cosas que no se ven mirando
+    // la salida: que stdout y stderr son canales distintos (la mascara de dos bits llega entera
+    // hasta el runtime), que `Write` NO salta de linea, que `String.ToString(v, base)` y
+    // `Number.TryParseUInt64Radix` son inversas exactas para las catorce bases, y que
+    // `ToString(v, 16)` (signo+magnitud) y `ToHexString(v)` (patron de bits) NO son lo mismo.
+    //
+    // Clava tambien el desbordamiento que la medicion contra glibc encontro: 1e-300 exige escalar
+    // por 10^310, que no cabe en un double; con un solo factor el producto es infinito y el
+    // numero mas pequeno del rango se imprimia como 9.22e-299.
+    // Ver mkdown\91_shr_022_consola_dos_canales.md y mkdown\92_shr_023_formateo_medido.md.
+    checkFixture(
+        tests, root, "tests/cc1/c22_console_and_formatting/c22_console_and_formatting.nsproj",
+        "cc1-c22-console-and-formatting", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================

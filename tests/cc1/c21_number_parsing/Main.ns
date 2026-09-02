@@ -1,0 +1,301 @@
+// SHR-024 -- parsing numerico, ejecutando.
+//
+// DE DONDE VIENE. `String` sabia convertir un numero EN texto y no sabia hacer el camino de vuelta:
+// un barrido de `lib/` daba CERO ocurrencias de "Parse". Sin esto no hay lexer, y sin lexer no hay
+// `nsc-next`. Es el primer item del Bloque 2 y el que lo bloquea entero.
+//
+// LO QUE ESTA FIXTURE MIDE, y no es "que parsea":
+//
+//   * LA POSICION. El nucleo entra con un indice y sale apuntando al primer caracter que NO
+//     consumio. Es la propiedad que hace que un lexer no tenga que cortar una subcadena por cada
+//     literal -- decenas de miles de asignaciones por archivo. Se mide leyendo VARIOS numeros de
+//     UNA sola cadena, que es exactamente lo que hace un lexer.
+//   * EL DESBORDAMIENTO. Se detecta ANTES de multiplicar, no despues. Los limites exactos entran y
+//     el siguiente valor se rechaza, por los dos lados. Mirar el resultado despues de multiplicar
+//     no sirve: el producto ya envolvio.
+//   * LA ASIMETRIA DEL MINIMO. -9223372036854775808 es valido y +9223372036854775808 no lo es. El
+//     minimo con signo es uno mas en magnitud que el maximo, asi que la magnitud se acumula y se
+//     compara en `ulong` y solo se convierte al final.
+//   * QUE LO INVALIDO SE RECHAZA. Cadena vacia, letras, sobras al final. Un parser que devuelve
+//     `true` con un valor a medias es peor que uno que no existe.
+//
+// Y una propiedad del compilador que este archivo mide de paso: `c - '0'` da `int`. Hasta el ID 126
+// daba `char` -- ocho bits SIN signo -- asi que para cualquier caracter menor que '0' el resultado
+// no era negativo sino 247, y `if (digit < 0)` no se cumplia nunca. El parser habria aceptado
+// basura. Este archivo no compilaria correctamente sin ese cierre.
+//
+// Codigo de salida esperado cuando el compilador y la biblioteca estan sanos: 42.
+using NativeSharp.Core;
+
+namespace cc1number
+{
+    class Program
+    {
+        // --- decimal, con y sin signo ---------------------------------------------------------
+        static int DecimalRoundTrip()
+        {
+            ulong unsignedValue;
+            if (!Number.TryParseUInt64("0", out unsignedValue)) { return 0; }
+            if (unsignedValue != 0) { return 0; }
+
+            if (!Number.TryParseUInt64("1234567890", out unsignedValue)) { return 0; }
+            if (unsignedValue != 1234567890) { return 0; }
+
+            long signedValue;
+            if (!Number.TryParseInt64("-42", out signedValue)) { return 0; }
+            if (signedValue != -42) { return 0; }
+
+            if (!Number.TryParseInt64("+7", out signedValue)) { return 0; }
+            if (signedValue != 7) { return 0; }
+
+            int narrow;
+            if (!Number.TryParseInt32("-2147483648", out narrow)) { return 0; }
+            if (narrow != -2147483648) { return 0; }
+
+            uint unsignedNarrow;
+            if (!Number.TryParseUInt32("4294967295", out unsignedNarrow)) { return 0; }
+            if (unsignedNarrow != 4294967295) { return 0; }
+
+            return 1;
+        }
+
+        // --- los limites, por los dos lados ---------------------------------------------------
+        //
+        // Cada par es: el limite EXACTO entra, y el siguiente valor NO. Comprobar solo que el
+        // limite entra dejaria pasar una comprobacion escrita demasiado ancha; comprobar solo que
+        // el siguiente falla dejaria pasar una escrita demasiado estrecha.
+        static int LimitsAreExact()
+        {
+            ulong unsignedValue;
+            if (!Number.TryParseUInt64("18446744073709551615", out unsignedValue)) { return 0; }
+            if (unsignedValue != 18446744073709551615UL) { return 0; }
+            if (Number.TryParseUInt64("18446744073709551616", out unsignedValue)) { return 0; }
+
+            long signedValue;
+            if (!Number.TryParseInt64("9223372036854775807", out signedValue)) { return 0; }
+            if (signedValue != 9223372036854775807L) { return 0; }
+            if (Number.TryParseInt64("9223372036854775808", out signedValue)) { return 0; }
+
+            // LA ASIMETRIA. La misma magnitud que acaba de fallar en positivo entra en negativo.
+            if (!Number.TryParseInt64("-9223372036854775808", out signedValue)) { return 0; }
+            if (signedValue != -9223372036854775807L - 1L) { return 0; }
+            if (Number.TryParseInt64("-9223372036854775809", out signedValue)) { return 0; }
+
+            int narrow;
+            if (!Number.TryParseInt32("2147483647", out narrow)) { return 0; }
+            if (Number.TryParseInt32("2147483648", out narrow)) { return 0; }
+
+            uint unsignedNarrow;
+            if (Number.TryParseUInt32("4294967296", out unsignedNarrow)) { return 0; }
+
+            return 1;
+        }
+
+        // --- bases -----------------------------------------------------------------------------
+        static int RadixParsing()
+        {
+            ulong value;
+            if (!Number.TryParseUInt64Radix("1F", 16, out value)) { return 0; }
+            if (value != 31) { return 0; }
+
+            if (!Number.TryParseUInt64Radix("ff", 16, out value)) { return 0; }
+            if (value != 255) { return 0; }
+
+            if (!Number.TryParseUInt64Radix("1010", 2, out value)) { return 0; }
+            if (value != 10) { return 0; }
+
+            if (!Number.TryParseUInt64Radix("17", 8, out value)) { return 0; }
+            if (value != 15) { return 0; }
+
+            // Un digito fuera de la base NO es un digito: "2" no existe en base 2, y "8" no existe
+            // en base 8. Sin esta comprobacion la base seria decorativa.
+            if (Number.TryParseUInt64Radix("2", 2, out value)) { return 0; }
+            if (Number.TryParseUInt64Radix("8", 8, out value)) { return 0; }
+
+            // Y una base que no existe se rechaza en vez de dividir por cero mas abajo.
+            if (Number.TryParseUInt64Radix("1", 0, out value)) { return 0; }
+            if (Number.TryParseUInt64Radix("1", 3, out value)) { return 0; }
+
+            return 1;
+        }
+
+        // --- literales con prefijo y sufijo, que es lo que un lexer lee ------------------------
+        static int IntegerLiterals()
+        {
+            int index = 0;
+            ulong magnitude;
+            bool isUnsigned;
+            bool isLong;
+
+            index = 0;
+            if (!Number.TryParseIntegerLiteral("0x1F", ref index, out magnitude, out isUnsigned, out isLong)) { return 0; }
+            if (magnitude != 31) { return 0; }
+            if (index != 4) { return 0; }
+            if (isUnsigned) { return 0; }
+            if (isLong) { return 0; }
+
+            index = 0;
+            if (!Number.TryParseIntegerLiteral("0b1010", ref index, out magnitude, out isUnsigned, out isLong)) { return 0; }
+            if (magnitude != 10) { return 0; }
+
+            index = 0;
+            if (!Number.TryParseIntegerLiteral("42UL", ref index, out magnitude, out isUnsigned, out isLong)) { return 0; }
+            if (magnitude != 42) { return 0; }
+            if (!isUnsigned) { return 0; }
+            if (!isLong) { return 0; }
+            if (index != 4) { return 0; }
+
+            // El orden de los sufijos no importa, ni la caja.
+            index = 0;
+            if (!Number.TryParseIntegerLiteral("7lu", ref index, out magnitude, out isUnsigned, out isLong)) { return 0; }
+            if (!isUnsigned) { return 0; }
+            if (!isLong) { return 0; }
+
+            // EL SIGNO NO ES PARTE DEL LITERAL, a proposito: en `x-1` el `-` es un operador
+            // binario, y quien decide eso es el parser por posicion. Un lexer que se lo comiera
+            // dentro del numero rompe esa expresion.
+            index = 0;
+            if (Number.TryParseIntegerLiteral("-1", ref index, out magnitude, out isUnsigned, out isLong)) { return 0; }
+
+            // `0x` sin digitos no es un literal.
+            index = 0;
+            if (Number.TryParseIntegerLiteral("0x", ref index, out magnitude, out isUnsigned, out isLong)) { return 0; }
+
+            // Pero un `0` suelto si.
+            index = 0;
+            if (!Number.TryParseIntegerLiteral("0", ref index, out magnitude, out isUnsigned, out isLong)) { return 0; }
+            if (magnitude != 0) { return 0; }
+
+            return 1;
+        }
+
+        // --- LA POSICION, que es la razon de ser de la forma de esta API -----------------------
+        //
+        // Tres numeros y dos comas en UNA cadena, leidos sin cortar una sola subcadena. Es lo que
+        // hace un lexer, y lo que una API `TryParse(string)` obligaria a hacer alocando.
+        static int PositionAdvances()
+        {
+            string source = "10,20,30";
+            int index = 0;
+            ulong total = 0;
+            int count = 0;
+
+            while (index < source.Length)
+            {
+                ulong piece;
+                if (!Number.TryParseUInt64(source, ref index, 10, out piece)) { return 0; }
+                total = total + piece;
+                count = count + 1;
+                if (index < source.Length)
+                {
+                    if (source[index] != ',') { return 0; }
+                    index = index + 1;
+                }
+            }
+
+            if (count != 3) { return 0; }
+            if (total != 60) { return 0; }
+
+            // Y cuando falla, el indice NO se mueve: quien llama puede probar otra interpretacion
+            // desde el mismo sitio.
+            string letters = "abc";
+            int stuck = 0;
+            ulong ignored;
+            if (Number.TryParseUInt64(letters, ref stuck, 10, out ignored)) { return 0; }
+            if (stuck != 0) { return 0; }
+
+            return 1;
+        }
+
+        // --- coma flotante ----------------------------------------------------------------------
+        //
+        // Se compara con TOLERANCIA a proposito. Este parser NO promete redondeo IEEE exacto -- la
+        // mantisa se acumula como entero y se escala por una potencia de diez calculada en
+        // `double`, lo que deja hasta un par de ULP en los casos dificiles. Comparar por igualdad
+        // exacta seria afirmar una propiedad que el archivo dice explicitamente que no tiene.
+        static bool Near(double actual, double expected)
+        {
+            double difference = actual - expected;
+            if (difference < (double)0) { difference = -difference; }
+            double scale = expected;
+            if (scale < (double)0) { scale = -scale; }
+            if (scale < (double)1) { scale = (double)1; }
+            return difference < scale / (double)1000000000;
+        }
+
+        static int FloatingPoint()
+        {
+            double value;
+            if (!Number.TryParseDouble("0", out value)) { return 0; }
+            if (!Near(value, (double)0)) { return 0; }
+
+            if (!Number.TryParseDouble("3.5", out value)) { return 0; }
+            if (!Near(value, (double)7 / (double)2)) { return 0; }
+
+            if (!Number.TryParseDouble("-12.25", out value)) { return 0; }
+            if (!Near(value, (double)(-49) / (double)4)) { return 0; }
+
+            if (!Number.TryParseDouble("1e3", out value)) { return 0; }
+            if (!Near(value, (double)1000)) { return 0; }
+
+            if (!Number.TryParseDouble("2.5e-2", out value)) { return 0; }
+            if (!Near(value, (double)1 / (double)40)) { return 0; }
+
+            if (!Number.TryParseDouble("+0.5", out value)) { return 0; }
+            if (!Near(value, (double)1 / (double)2)) { return 0; }
+
+            // Sin un solo digito no hay numero.
+            if (Number.TryParseDouble(".", out value)) { return 0; }
+            if (Number.TryParseDouble("-", out value)) { return 0; }
+            if (Number.TryParseDouble("e5", out value)) { return 0; }
+
+            // `1e` es el numero 1 seguido de una `e` que NO es parte del numero: la sobrecarga que
+            // exige consumir la cadena entera lo rechaza, y el nucleo se para antes de la `e`.
+            if (Number.TryParseDouble("1e", out value)) { return 0; }
+            int index = 0;
+            if (!Number.TryParseDouble("1e", ref index, out value)) { return 0; }
+            if (index != 1) { return 0; }
+            if (!Near(value, (double)1)) { return 0; }
+
+            float single;
+            if (!Number.TryParseSingle("1.5", out single)) { return 0; }
+            if (!Near((double)single, (double)3 / (double)2)) { return 0; }
+
+            return 1;
+        }
+
+        // --- lo que tiene que fallar ------------------------------------------------------------
+        static int RejectsGarbage()
+        {
+            ulong value;
+            if (Number.TryParseUInt64("", out value)) { return 0; }
+            if (Number.TryParseUInt64("abc", out value)) { return 0; }
+            if (Number.TryParseUInt64("12abc", out value)) { return 0; }
+            if (Number.TryParseUInt64(" 12", out value)) { return 0; }
+            if (Number.TryParseUInt64("12 ", out value)) { return 0; }
+            if (Number.TryParseUInt64("-1", out value)) { return 0; }
+
+            long signedValue;
+            if (Number.TryParseInt64("--1", out signedValue)) { return 0; }
+            if (Number.TryParseInt64("1-", out signedValue)) { return 0; }
+
+            int narrow;
+            if (Number.TryParseInt32("", out narrow)) { return 0; }
+
+            return 1;
+        }
+
+        public static int Main()
+        {
+            if (DecimalRoundTrip() != 1) { return 1; }
+            if (LimitsAreExact() != 1) { return 2; }
+            if (RadixParsing() != 1) { return 3; }
+            if (IntegerLiterals() != 1) { return 4; }
+            if (PositionAdvances() != 1) { return 5; }
+            if (FloatingPoint() != 1) { return 6; }
+            if (RejectsGarbage() != 1) { return 7; }
+
+            return 42;
+        }
+    }
+}

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c22_console_and_formatting</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

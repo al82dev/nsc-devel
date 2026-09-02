@@ -432,6 +432,16 @@ LLVMValueRef LLVMBuildFCmp(
     LLVMValueRef right,
     const char* name);
 
+// SHR-022. Ampliacion deliberada de la frontera enumerada con LLVM: un simbolo mas, para elegir
+// entre dos constantes sin abrir un bloque basico. La alternativa era aritmetica sobre el modo
+// (`-11 - ((mode >> 1) & 1)`), que no habria anadido simbolos pero esconde la intencion.
+LLVMValueRef LLVMBuildSelect(
+    LLVMBuilderRef builder,
+    LLVMValueRef condition,
+    LLVMValueRef whenTrue,
+    LLVMValueRef whenFalse,
+    const char* name);
+
 LLVMValueRef LLVMBuildTrunc(
     LLVMBuilderRef builder,
     LLVMValueRef value,

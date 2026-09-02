@@ -1,0 +1,600 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Number -- SHR-024, "parsing numerico".
+    //
+    // POR QUE EXISTE. `String` sabe convertir un numero EN texto -- ToString(int), ToString(long),
+    // ToString(ulong), ToString(bool), ToString(char) -- y no sabe hacer el camino de vuelta. Un
+    // barrido de `lib/` antes de escribir esto dio CERO ocurrencias de "Parse": la direccion de
+    // entrada no existia. Un lexer no existe sin ella, asi que esto bloquea el Bloque 2 entero.
+    //
+    // ------------------------------------------------------------------------------------------
+    // LA DECISION DE FORMA, y decide las demas: EL NUCLEO TRABAJA SOBRE (texto, POSICION).
+    //
+    // La forma obvia seria `TryParse(string)` a la C#. Es la equivocada para el consumidor real:
+    // un lexer NUNCA tiene un `string` con el numero. Tiene el archivo entero y un desplazamiento.
+    // Con una API que toma la cadena completa habria que cortar una subcadena por cada literal
+    // numerico -- una asignacion y una liberacion por token, decenas de miles por archivo -- y
+    // ademas habria que saber donde termina el numero ANTES de parsearlo, que es precisamente lo
+    // que el parser esta averiguando.
+    //
+    // Por eso el nucleo toma `ref int index`: entra apuntando al primer caracter y sale apuntando
+    // al primero que NO consumio. El lexer avanza sobre su propio buffer y no aloca nada. Las
+    // sobrecargas de conveniencia --las que toman la cadena entera y exigen consumirla toda-- son
+    // cascara de tres lineas encima del mismo nucleo.
+    //
+    // Cuando el Bloque 3 traiga `StringView`/`Span<T>`, una vista es (puntero, longitud): recibira
+    // su propia sobrecarga sobre ESTE nucleo y no habra que reescribir nada.
+    //
+    // ------------------------------------------------------------------------------------------
+    // LO QUE ESTE ARCHIVO NO PROMETE, dicho antes de que alguien lo asuma:
+    //
+    //   * NO hay redondeo IEEE-754 exacto en el parsing de coma flotante. La mantisa se acumula en
+    //     `ulong` y se escala por una potencia de diez calculada en `double`, lo que introduce
+    //     hasta un par de ULP en los casos dificiles. El redondeo correcto necesita aritmetica de
+    //     precision extendida (Eisel-Lemire, o enteros grandes) y eso es otro item. Para leer los
+    //     literales de un compilador es suficiente; para un round-trip bit a bit NO lo es, y por
+    //     eso se escribe aqui en vez de descubrirse despues.
+    //   * NO se aceptan separadores de millares ni guiones bajos (`1_000`). Si el lenguaje los
+    //     admite algun dia, entran aqui.
+    //   * NO hay culturas ni separador decimal configurable. Punto, ASCII, y ya.
+    //
+    // ------------------------------------------------------------------------------------------
+    // EL DESBORDAMIENTO SE DETECTA ANTES DE QUE OCURRA, nunca despues.
+    //
+    // La comprobacion es `acumulado > (limite - digito) / base`, hecha SIEMPRE antes de multiplicar.
+    // Mirar el resultado despues de multiplicar no sirve: la multiplicacion ya envolvio y el valor
+    // con el que se compararia es basura. Es la misma clase de error que el ID 127 -- normalizar a
+    // medias y creerse el numero.
+    public class Number
+    {
+        // ---- clasificacion de digitos ---------------------------------------------------------
+
+        // Valor de un digito en base hasta 16, o -1 si el caracter no es un digito.
+        //
+        // Se compara por CODIGO y no con literales de caracter encadenados a proposito: son tres
+        // rangos contiguos y esta es la forma en la que un lexer lo escribe. `char` mide ocho bits
+        // SIN signo en este lenguaje, asi que `(int)c` es siempre 0..255 y ninguna resta se sale.
+        private static int DigitValue(char value)
+        {
+            int code = (int)value;
+            if (code >= 48 && code <= 57)
+            {
+                return code - 48;
+            }
+            if (code >= 97 && code <= 102)
+            {
+                return code - 97 + 10;
+            }
+            if (code >= 65 && code <= 70)
+            {
+                return code - 65 + 10;
+            }
+            return -1;
+        }
+
+        // ---- nucleo sin signo, con base explicita ---------------------------------------------
+
+        // Lee digitos en la base dada desde `index` y avanza `index` hasta el primer caracter que
+        // no es un digito valido. Devuelve false si no habia ni un digito o si el valor no cabe en
+        // `ulong`.
+        //
+        // Bases admitidas: 2, 8, 10 y 16. Cualquier otra se rechaza en vez de dar un resultado
+        // silenciosamente raro -- una base 0 dividiria por cero mas abajo.
+        //
+        // `index` NO se mueve cuando la funcion devuelve false, para que quien llama pueda probar
+        // otra interpretacion desde el mismo sitio.
+        public static bool TryParseUInt64(string text, ref int index, int radix, out ulong value)
+        {
+            value = 0;
+            if (radix != 2 && radix != 8 && radix != 10 && radix != 16)
+            {
+                return false;
+            }
+            if (index < 0 || index >= text.Length)
+            {
+                return false;
+            }
+
+            ulong limit = NumericLimits.UInt64Max();
+            ulong radixValue = (ulong)radix;
+            ulong accumulated = 0;
+            int position = index;
+            int digitsRead = 0;
+
+            while (position < text.Length)
+            {
+                int digit = DigitValue(text[position]);
+                if (digit < 0 || digit >= radix)
+                {
+                    break;
+                }
+
+                // LA COMPROBACION, y va ANTES de multiplicar. Despues seria inutil: el producto ya
+                // habria envuelto. La division entera trunca hacia abajo, y eso es justo lo que
+                // hace la comparacion exacta: si `accumulated` es como mucho el cociente, el
+                // producto cabe; si lo supera aunque sea en uno, no cabe.
+                ulong digitValue = (ulong)digit;
+                if (accumulated > (limit - digitValue) / radixValue)
+                {
+                    return false;
+                }
+                accumulated = accumulated * radixValue + digitValue;
+
+                digitsRead = digitsRead + 1;
+                position = position + 1;
+            }
+
+            if (digitsRead == 0)
+            {
+                return false;
+            }
+            index = position;
+            value = accumulated;
+            return true;
+        }
+
+        // ---- nucleo con signo ------------------------------------------------------------------
+
+        // El signo opcional, luego los digitos. El limite depende del signo, y esa asimetria es
+        // real: el minimo de un entero con signo es UNO MAS EN MAGNITUD que su maximo, asi que
+        // -9223372036854775808 es valido y +9223372036854775808 no lo es.
+        public static bool TryParseInt64(string text, ref int index, int radix, out long value)
+        {
+            value = 0;
+            if (index < 0 || index >= text.Length)
+            {
+                return false;
+            }
+
+            int position = index;
+            bool negative = false;
+            char first = text[position];
+            if (first == '-')
+            {
+                negative = true;
+                position = position + 1;
+            }
+            else if (first == '+')
+            {
+                position = position + 1;
+            }
+
+            ulong magnitude;
+            if (!TryParseUInt64(text, ref position, radix, out magnitude))
+            {
+                return false;
+            }
+
+            ulong positiveLimit = (ulong)NumericLimits.Int64Max();
+            if (negative)
+            {
+                // La magnitud del minimo: 2^63, que es el maximo mas uno y NO cabe en `long`. Por
+                // eso se compara en `ulong` y se convierte al final, nunca antes.
+                ulong negativeLimit = positiveLimit + 1;
+                if (magnitude > negativeLimit)
+                {
+                    return false;
+                }
+                if (magnitude == negativeLimit)
+                {
+                    value = NumericLimits.Int64Min();
+                }
+                else
+                {
+                    value = -((long)magnitude);
+                }
+            }
+            else
+            {
+                if (magnitude > positiveLimit)
+                {
+                    return false;
+                }
+                value = (long)magnitude;
+            }
+
+            index = position;
+            return true;
+        }
+
+        // ---- literal entero con prefijo y sufijo, que es lo que un lexer lee de verdad ----------
+
+        // `0x1F`, `0b1010`, `0o17`, `42`, `42U`, `42L`, `42UL`, `42ul`.
+        //
+        // Devuelve la MAGNITUD sin signo y las dos banderas de sufijo por separado, sin decidir el
+        // tipo: elegir entre int/uint/long/ulong es del analizador semantico, que sabe el contexto,
+        // no del lexer. Un lexer que decidiera el tipo aqui tendria que volver a decidirlo alli.
+        //
+        // El signo NO forma parte del literal, y es deliberado: en `x-1` el `-` es un operador
+        // binario, y sea unario o binario lo decide el parser por posicion. Un lexer que se comiera
+        // el `-` dentro del numero rompe esa expresion.
+        public static bool TryParseIntegerLiteral(
+            string text,
+            ref int index,
+            out ulong magnitude,
+            out bool hasUnsignedSuffix,
+            out bool hasLongSuffix)
+        {
+            magnitude = 0;
+            hasUnsignedSuffix = false;
+            hasLongSuffix = false;
+
+            if (index < 0 || index >= text.Length)
+            {
+                return false;
+            }
+
+            int position = index;
+            int radix = 10;
+
+            // El prefijo pide DOS caracteres y que el segundo sea una letra de base: un `0` suelto
+            // al final del texto sigue siendo el numero cero, y `0` seguido de `x` sin digitos no
+            // es un literal valido -- eso lo rechaza TryParseUInt64 unas lineas mas abajo, porque
+            // no encuentra ni un digito.
+            if (text[position] == '0' && position + 1 < text.Length)
+            {
+                char marker = text[position + 1];
+                if (marker == 'x' || marker == 'X')
+                {
+                    radix = 16;
+                    position = position + 2;
+                }
+                else if (marker == 'b' || marker == 'B')
+                {
+                    radix = 2;
+                    position = position + 2;
+                }
+                else if (marker == 'o' || marker == 'O')
+                {
+                    radix = 8;
+                    position = position + 2;
+                }
+            }
+
+            ulong parsed;
+            if (!TryParseUInt64(text, ref position, radix, out parsed))
+            {
+                return false;
+            }
+
+            // Los sufijos, en cualquier orden y en cualquier caja: U, L, UL, LU, ul, Lu...
+            bool seenUnsigned = false;
+            bool seenLong = false;
+            bool reading = true;
+            while (reading && position < text.Length)
+            {
+                char suffix = text[position];
+                if ((suffix == 'u' || suffix == 'U') && !seenUnsigned)
+                {
+                    seenUnsigned = true;
+                    position = position + 1;
+                }
+                else if ((suffix == 'l' || suffix == 'L') && !seenLong)
+                {
+                    seenLong = true;
+                    position = position + 1;
+                }
+                else
+                {
+                    reading = false;
+                }
+            }
+
+            index = position;
+            magnitude = parsed;
+            hasUnsignedSuffix = seenUnsigned;
+            hasLongSuffix = seenLong;
+            return true;
+        }
+
+        // ---- coma flotante ----------------------------------------------------------------------
+
+        // Diez elevado a `exponent`, por multiplicacion repetida.
+        //
+        // NO es exacto para exponentes grandes, y por eso esta escrito aqui y no escondido: cada
+        // multiplicacion redondea, y los errores se acumulan. Es suficiente para leer los literales
+        // de un programa y NO lo es para un round-trip bit a bit. Ver la cabecera del archivo.
+        private static double PowerOfTen(int exponent)
+        {
+            double result = (double)1;
+            double ten = (double)10;
+            int remaining = exponent;
+            if (remaining < 0)
+            {
+                remaining = -remaining;
+                while (remaining > 0)
+                {
+                    result = result / ten;
+                    remaining = remaining - 1;
+                }
+                return result;
+            }
+            while (remaining > 0)
+            {
+                result = result * ten;
+                remaining = remaining - 1;
+            }
+            return result;
+        }
+
+        // `-12.5e-3`, `3.14`, `42`, `.5`, `1e10`.
+        //
+        // LA MANTISA SE ACUMULA COMO ENTERO y el punto decimal se lleva aparte, como un exponente.
+        // Sumar `digito / 10^k` en coma flotante directamente pierde precision en cada paso y
+        // ademas depende del ORDEN de los digitos, que es una forma silenciosa de dar dos
+        // resultados distintos para el mismo numero.
+        //
+        // Cuando la mantisa ya no admite otro digito sin desbordar, los digitos siguientes se
+        // CUENTAN pero no se acumulan: a la izquierda del punto suben el exponente, a la derecha se
+        // descartan. Un numero con veinticinco digitos significativos no cabe en un `double` de
+        // todos modos -- son quince o dieciseis -- asi que descartarlos no pierde nada que el tipo
+        // pudiera representar.
+        public static bool TryParseDouble(string text, ref int index, out double value)
+        {
+            value = (double)0;
+            if (index < 0 || index >= text.Length)
+            {
+                return false;
+            }
+
+            int position = index;
+            bool negative = false;
+            char first = text[position];
+            if (first == '-')
+            {
+                negative = true;
+                position = position + 1;
+            }
+            else if (first == '+')
+            {
+                position = position + 1;
+            }
+
+            ulong mantissa = 0;
+            ulong limit = NumericLimits.UInt64Max();
+            int decimalExponent = 0;
+            int digitsRead = 0;
+
+            // Parte entera.
+            while (position < text.Length)
+            {
+                int digit = DigitValue(text[position]);
+                if (digit < 0 || digit >= 10)
+                {
+                    break;
+                }
+                ulong digitValue = (ulong)digit;
+                if (mantissa <= (limit - digitValue) / 10)
+                {
+                    mantissa = mantissa * 10 + digitValue;
+                }
+                else
+                {
+                    // Ya no cabe: el digito cuenta como una potencia de diez mas, no como precision.
+                    decimalExponent = decimalExponent + 1;
+                }
+                digitsRead = digitsRead + 1;
+                position = position + 1;
+            }
+
+            // Parte fraccionaria.
+            if (position < text.Length && text[position] == '.')
+            {
+                position = position + 1;
+                while (position < text.Length)
+                {
+                    int digit = DigitValue(text[position]);
+                    if (digit < 0 || digit >= 10)
+                    {
+                        break;
+                    }
+                    ulong digitValue = (ulong)digit;
+                    if (mantissa <= (limit - digitValue) / 10)
+                    {
+                        mantissa = mantissa * 10 + digitValue;
+                        decimalExponent = decimalExponent - 1;
+                    }
+                    digitsRead = digitsRead + 1;
+                    position = position + 1;
+                }
+            }
+
+            // Sin un solo digito no hay numero: ni `.`, ni `-`, ni `e5` sueltos.
+            if (digitsRead == 0)
+            {
+                return false;
+            }
+
+            // Exponente. Si hay una `e` pero lo que sigue no es un exponente valido, la `e` NO se
+            // consume y el numero termina antes: `1e` es el numero 1 seguido del identificador `e`.
+            if (position < text.Length && (text[position] == 'e' || text[position] == 'E'))
+            {
+                int exponentStart = position + 1;
+                bool exponentNegative = false;
+                if (exponentStart < text.Length &&
+                    (text[exponentStart] == '-' || text[exponentStart] == '+'))
+                {
+                    exponentNegative = text[exponentStart] == '-';
+                    exponentStart = exponentStart + 1;
+                }
+                ulong exponentDigits;
+                int exponentCursor = exponentStart;
+                if (TryParseUInt64(text, ref exponentCursor, 10, out exponentDigits))
+                {
+                    // Un exponente absurdo no se acumula: se satura. 100000 ya desborda o anula
+                    // cualquier `double`, y dejarlo crecer solo daria un desbordamiento del propio
+                    // contador.
+                    int exponentValue = 100000;
+                    if (exponentDigits < 100000)
+                    {
+                        exponentValue = (int)exponentDigits;
+                    }
+                    if (exponentNegative)
+                    {
+                        exponentValue = -exponentValue;
+                    }
+                    decimalExponent = decimalExponent + exponentValue;
+                    position = exponentCursor;
+                }
+            }
+
+            double result = (double)mantissa;
+            if (mantissa != 0)
+            {
+                if (decimalExponent > 308)
+                {
+                    return false;
+                }
+                if (decimalExponent < -340)
+                {
+                    result = (double)0;
+                }
+                else
+                {
+                    result = result * PowerOfTen(decimalExponent);
+                }
+            }
+            if (negative)
+            {
+                result = -result;
+            }
+
+            index = position;
+            value = result;
+            return true;
+        }
+
+        // ---- conveniencia: la cadena ENTERA, o nada -------------------------------------------
+        //
+        // Estas exigen que no sobre nada. `TryParseInt32("12abc", out n)` es FALSO, y tiene que
+        // serlo: quien pasa una cadena completa esta afirmando que la cadena completa es el numero.
+        // El nucleo de arriba es el que sirve para consumir un prefijo y seguir leyendo.
+
+        private static bool ConsumedEverything(string text, int index)
+        {
+            return index == text.Length;
+        }
+
+        public static bool TryParseUInt64(string text, out ulong value)
+        {
+            value = 0;
+            int index = 0;
+            ulong parsed;
+            if (!TryParseUInt64(text, ref index, 10, out parsed))
+            {
+                return false;
+            }
+            if (!ConsumedEverything(text, index))
+            {
+                return false;
+            }
+            value = parsed;
+            return true;
+        }
+
+        public static bool TryParseInt64(string text, out long value)
+        {
+            value = 0;
+            int index = 0;
+            long parsed;
+            if (!TryParseInt64(text, ref index, 10, out parsed))
+            {
+                return false;
+            }
+            if (!ConsumedEverything(text, index))
+            {
+                return false;
+            }
+            value = parsed;
+            return true;
+        }
+
+        // Los de 32 bits parsean en 64 y comprueban el rango DESPUES. Un acumulador de 32 bits
+        // seria una segunda copia de la deteccion de desbordamiento, y dos copias de una regla de
+        // rango es exactamente como se separan.
+        public static bool TryParseInt32(string text, out int value)
+        {
+            value = 0;
+            long wide;
+            if (!TryParseInt64(text, out wide))
+            {
+                return false;
+            }
+            // Esta linea no compilaba antes del ID 128, y por eso se deja escrita de la forma
+            // natural: es la regresion. El parser tomaba el `<` como apertura de argumentos
+            // genericos, encontraba el `>` de la SEGUNDA comparacion, veia el `(` de `(long)`
+            // detras y se comprometia. Arreglado en looksLikeGenericCallTypeArguments.
+            if (wide < (long)NumericLimits.Int32Min() || wide > (long)NumericLimits.Int32Max())
+            {
+                return false;
+            }
+            value = (int)wide;
+            return true;
+        }
+
+        public static bool TryParseUInt32(string text, out uint value)
+        {
+            value = 0;
+            ulong wide;
+            if (!TryParseUInt64(text, out wide))
+            {
+                return false;
+            }
+            if (wide > (ulong)NumericLimits.UInt32Max())
+            {
+                return false;
+            }
+            value = (uint)wide;
+            return true;
+        }
+
+        public static bool TryParseDouble(string text, out double value)
+        {
+            value = (double)0;
+            int index = 0;
+            double parsed;
+            if (!TryParseDouble(text, ref index, out parsed))
+            {
+                return false;
+            }
+            if (!ConsumedEverything(text, index))
+            {
+                return false;
+            }
+            value = parsed;
+            return true;
+        }
+
+        public static bool TryParseSingle(string text, out float value)
+        {
+            value = (float)0;
+            double wide;
+            if (!TryParseDouble(text, out wide))
+            {
+                return false;
+            }
+            value = (float)wide;
+            return true;
+        }
+
+        // Base explicita sobre la cadena entera: `TryParseUInt64Radix("1F", 16, out v)` da 31.
+        // Sin prefijo -- el prefijo lo lee TryParseIntegerLiteral, y mezclar las dos cosas obligaria
+        // a decidir que hacer con `0x1F` en base 10.
+        public static bool TryParseUInt64Radix(string text, int radix, out ulong value)
+        {
+            value = 0;
+            int index = 0;
+            ulong parsed;
+            if (!TryParseUInt64(text, ref index, radix, out parsed))
+            {
+                return false;
+            }
+            if (!ConsumedEverything(text, index))
+            {
+                return false;
+            }
+            value = parsed;
+            return true;
+        }
+    }
+}

@@ -1,0 +1,355 @@
+// SHR-022 + SHR-023 -- consola con stderr, y formateo. LA FIXTURE DE ACEPTACION DEL BLOQUE 2.
+//
+// EL CRITERIO DEL BLOQUE, palabra por palabra: "un programa NativeSharp lee 0x1F, 42UL y 3.14f de
+// una cadena y escribe un diagnostico formateado por stderr". Esta fixture ES esa frase, ejecutada.
+// La primera mitad la puso SHR-024 (c21); esta pone la segunda y las junta.
+//
+// LO QUE MIDE, y no es "que imprime":
+//
+//   * QUE stdout Y stderr SON CANALES DISTINTOS. Un compilador manda diagnosticos por stderr y
+//     resultados por stdout. Hasta SHR-022 `Console` tenia UN metodo y un solo canal, asi que
+//     `nsc-next` no podia emitir un diagnostico sin ensuciar su propia salida. Los cuatro metodos
+//     bajan al MISMO nodo con una mascara de dos bits: bit 0 el salto de linea, bit 1 el canal.
+//     Escribir por los dos canales en la misma corrida es lo que mide que la mascara llega entera.
+//   * QUE `Write` NO SALTA DE LINEA. Es la mitad del item: tres `Write` seguidos y un `WriteLine`
+//     tienen que producir UNA linea, no cuatro.
+//   * LA SIMETRIA CON SHR-024. `Number.TryParseUInt64(texto, base)` tiene que leer exactamente lo
+//     que `String.ToString(valor, base)` escribe, para las catorce bases. Que las dos mitades se
+//     midan UNA CONTRA LA OTRA es el punto: ninguna necesita un arbitro externo.
+//   * LA DISTINCION QUE NADIE MIDE Y TODOS SUFREN: `ToString(v, 16)` es signo+magnitud y
+//     `ToHexString(v)` es el patron de bits. Para -255 dan "-ff" y "ffffff01". Si un dia alguien
+//     "simplifica" uniendo los dos metodos, esta comprobacion lo para.
+//   * EL DESBORDAMIENTO QUE EL MODELO ENCONTRO. `1e-300` a once cifras exige escalar por 10^310,
+//     que NO CABE en un `double`: con un solo factor el producto es infinito, el casteo a `ulong`
+//     da 2^63 y el numero mas pequeno del rango se imprime como 9.22e-299. Se encontro midiendo
+//     contra `printf` de glibc, no leyendo el codigo. Aqui queda clavado.
+//   * QUE LA GARANTIA DE ONCE CIFRAS ES CIERTA EN ESTA MAQUINA. La medicion contra glibc se hizo
+//     en el contenedor; esto la vuelve a comprobar en Windows con el backend real, que es donde
+//     cuenta.
+//
+// Codigo de salida esperado cuando el compilador y la biblioteca estan sanos: 42.
+using NativeSharp.Core;
+
+namespace cc1format
+{
+    class Program
+    {
+        // --- bases: el espejo exacto de SHR-024 ------------------------------------------------
+
+        // Una ida y vuelta: `String` escribe, `Number` lee, el valor original es el arbitro.
+        // Ninguna de las dos mitades necesita un tercero que diga quien tiene razon.
+        static bool RadixTripOk(ulong value, int radix)
+        {
+            raii string text = String.ToString(value, radix);
+            if (text.Length == 0) { return false; }
+            ulong back;
+            if (!Number.TryParseUInt64Radix(text, radix, out back)) { return false; }
+            return back == value;
+        }
+
+        static int RadixRoundTrip()
+        {
+            // Catorce bases por seis valores: el cero, el uno, un byte lleno, un redondo decimal,
+            // la palabra de 32 bits llena y la de 64 llena.
+            int radix = 2;
+            while (radix <= 16)
+            {
+                if (!RadixTripOk(0, radix)) { return 0; }
+                if (!RadixTripOk(1, radix)) { return 0; }
+                if (!RadixTripOk(255, radix)) { return 0; }
+                if (!RadixTripOk(1000000, radix)) { return 0; }
+                if (!RadixTripOk(4294967295UL, radix)) { return 0; }
+                if (!RadixTripOk(18446744073709551615UL, radix)) { return 0; }
+                radix = radix + 1;
+            }
+
+            // Una base invalida da la cadena vacia, no un digito inventado ni una division por
+            // cero. Es la misma respuesta que da `Number` en la otra direccion: `false`.
+            raii string bad0 = String.ToString((ulong)10, 1);
+            if (bad0.Length != 0) { return 0; }
+            raii string bad1 = String.ToString((ulong)10, 17);
+            if (bad1.Length != 0) { return 0; }
+
+            return 1;
+        }
+
+        // --- signo+magnitud contra patron de bits ----------------------------------------------
+        static int SignedVersusBits()
+        {
+            raii string signedHex = String.ToString(-255, 16);
+            if (!String.Equals(signedHex, "-ff")) { return 0; }
+
+            raii string bitsHex = String.ToHexString(-255);
+            if (!String.Equals(bitsHex, "ffffff01")) { return 0; }
+
+            // El doble casteo de `ToHexString(int)`: con `(ulong)` a secas el signo se extenderia
+            // a 64 bits y esto diria "ffffffffffffffff".
+            raii string minusOne = String.ToHexString(-1);
+            if (!String.Equals(minusOne, "ffffffff")) { return 0; }
+
+            raii string minusOneLong = String.ToHexString((long)-1);
+            if (!String.Equals(minusOneLong, "ffffffffffffffff")) { return 0; }
+
+            raii string decimalNegative = String.ToString(-255, 10);
+            if (!String.Equals(decimalNegative, "-255")) { return 0; }
+
+            // Base 10 por el camino de la base arbitraria tiene que dar lo mismo que el
+            // `ToString` de siempre. Son dos cuerpos distintos; si divergen, uno esta mal.
+            raii string viaRadix = String.ToString((long)1234567890123, 10);
+            raii string viaPlain = String.ToString((long)1234567890123);
+            if (!String.Equals(viaRadix, viaPlain)) { return 0; }
+
+            return 1;
+        }
+
+        // --- hexadecimal con ancho y caja ------------------------------------------------------
+        static int HexWidthAndCase()
+        {
+            raii string padded = String.ToHexString((ulong)31, 4, false);
+            if (!String.Equals(padded, "001f")) { return 0; }
+
+            raii string upper = String.ToHexString((ulong)31, 4, true);
+            if (!String.Equals(upper, "001F")) { return 0; }
+
+            // El ancho es un MINIMO, no un recorte: un valor que no cabe sale entero.
+            raii string overflowing = String.ToHexString((ulong)65535, 2, false);
+            if (!String.Equals(overflowing, "ffff")) { return 0; }
+
+            raii string zero = String.ToHexString((ulong)0, 8, true);
+            if (!String.Equals(zero, "00000000")) { return 0; }
+
+            return 1;
+        }
+
+        // --- coma flotante ---------------------------------------------------------------------
+        static int FloatFormatting()
+        {
+            raii string pi = String.ToString(3.14);
+            if (!String.Equals(pi, "3.14")) { return 0; }
+
+            raii string negative = String.ToString(-2.5);
+            if (!String.Equals(negative, "-2.5")) { return 0; }
+
+            raii string integral = String.ToString(42.0);
+            if (!String.Equals(integral, "42")) { return 0; }
+
+            raii string zero = String.ToString(0.0);
+            if (!String.Equals(zero, "0")) { return 0; }
+
+            // El cero negativo imprime "0" y no "-0": el signo del cero es de la representacion,
+            // no del numero.
+            raii string negativeZero = String.ToString(-0.0);
+            if (!String.Equals(negativeZero, "0")) { return 0; }
+
+            raii string small = String.ToString(0.001);
+            if (!String.Equals(small, "0.001")) { return 0; }
+
+            // El corte a notacion cientifica: 1e-5 todavia es plano, 1e-6 ya no.
+            raii string lastPlain = String.ToString(0.00001);
+            if (!String.Equals(lastPlain, "0.00001")) { return 0; }
+            raii string firstScientific = String.ToString(0.000001);
+            if (!String.Equals(firstScientific, "1E-06")) { return 0; }
+
+            // Dos cifras minimo en el exponente, para que una columna de numeros no se desalinee.
+            raii string bigScientific = String.ToString(1.0E+20);
+            if (!String.Equals(bigScientific, "1E+20")) { return 0; }
+
+            // EL DESBORDAMIENTO QUE ENCONTRO EL MODELO. Sin la escala en dos pasos esto imprime
+            // "9.2233720368547758E-299", que es 2^63 disfrazado de numero.
+            raii string tiny = String.ToString(1.0E-300);
+            if (!String.Equals(tiny, "1E-300")) { return 0; }
+
+            raii string huge = String.ToString(1.0E+300);
+            if (!String.Equals(huge, "1E+300")) { return 0; }
+
+            // Once cifras es lo que el metodo promete, y once es lo que da.
+            raii string eleven = String.ToString(2.718281828459045);
+            if (!String.Equals(eleven, "2.7182818285")) { return 0; }
+
+            // Y con el parametro se piden menos, que siempre es seguro.
+            raii string three = String.ToString(2.718281828459045, 3);
+            if (!String.Equals(three, "2.72")) { return 0; }
+
+            // `float` a siete cifras: el ensanchamiento a `double` NO se imprime.
+            raii string singlePi = String.ToString(3.14F);
+            if (!String.Equals(singlePi, "3.14")) { return 0; }
+
+            return 1;
+        }
+
+        // --- punto fijo ------------------------------------------------------------------------
+        static int FixedPointFormatting()
+        {
+            raii string twoPlaces = String.ToStringFixed(3.14159, 2);
+            if (!String.Equals(twoPlaces, "3.14")) { return 0; }
+
+            // No recorta ceros: es lo que pide una columna alineada.
+            raii string keepsZeros = String.ToStringFixed(2.5, 4);
+            if (!String.Equals(keepsZeros, "2.5000")) { return 0; }
+
+            raii string none = String.ToStringFixed(2.5, 0);
+            if (!String.Equals(none, "3")) { return 0; }
+
+            raii string negative = String.ToStringFixed(-0.125, 3);
+            if (!String.Equals(negative, "-0.125")) { return 0; }
+
+            // Cero decimales y magnitud menor que uno: la parte entera existe y es "0".
+            raii string subUnit = String.ToStringFixed(0.25, 2);
+            if (!String.Equals(subUnit, "0.25")) { return 0; }
+
+            // Pasado el tope medido (trece cifras en total) CAE a la forma general, y la caida se
+            // VE: aparece notacion cientifica donde se pidio punto fijo.
+            raii string overflowed = String.ToStringFixed(1.0E+20, 4);
+            if (!String.Equals(overflowed, "1E+20")) { return 0; }
+
+            return 1;
+        }
+
+        // --- no finitos ------------------------------------------------------------------------
+        static int NonFinite()
+        {
+            // Se construyen en ejecucion y no como literales, para que el plegado de constantes no
+            // decida por su cuenta lo que aqui se quiere medir.
+            double big = NumericLimits.DoubleMax();
+            double positiveInfinity = big * 10.0;
+            raii string infinity = String.ToString(positiveInfinity);
+            if (!String.Equals(infinity, "Infinity")) { return 0; }
+
+            double negativeInfinity = -positiveInfinity;
+            raii string minusInfinity = String.ToString(negativeInfinity);
+            if (!String.Equals(minusInfinity, "-Infinity")) { return 0; }
+
+            double notANumber = positiveInfinity - positiveInfinity;
+            raii string nan = String.ToString(notANumber);
+            if (!String.Equals(nan, "NaN")) { return 0; }
+
+            return 1;
+        }
+
+        // --- EL CRITERIO DEL BLOQUE, ejecutado -------------------------------------------------
+        //
+        // Lee 0x1F, 42UL y 3.14f de UNA cadena, sin cortar subcadenas, y escribe un diagnostico
+        // formateado por stderr. Es la frase entera.
+        static int BlockTwoAcceptance()
+        {
+            string source = "0x1F 42UL 3.14";
+            int index = 0;
+
+            ulong first;
+            bool firstUnsigned;
+            bool firstLong;
+            if (!Number.TryParseIntegerLiteral(source, ref index, out first, out firstUnsigned, out firstLong))
+            {
+                return 0;
+            }
+            if (first != 31) { return 0; }
+            if (firstUnsigned) { return 0; }
+            if (firstLong) { return 0; }
+
+            if (index >= source.Length || source[index] != ' ') { return 0; }
+            index = index + 1;
+
+            ulong second;
+            bool secondUnsigned;
+            bool secondLong;
+            if (!Number.TryParseIntegerLiteral(source, ref index, out second, out secondUnsigned, out secondLong))
+            {
+                return 0;
+            }
+            if (second != 42) { return 0; }
+            if (!secondUnsigned) { return 0; }
+            if (!secondLong) { return 0; }
+
+            if (index >= source.Length || source[index] != ' ') { return 0; }
+            index = index + 1;
+
+            double third;
+            if (!Number.TryParseDouble(source, ref index, out third)) { return 0; }
+            if (index != source.Length) { return 0; }
+
+            // El diagnostico, armado como lo armaria un compilador: plantilla mas argumentos ya
+            // convertidos a texto. Cada pieza usa el formato que le corresponde -- hexadecimal con
+            // ancho para el primero, decimal para el segundo, coma flotante para el tercero.
+            //
+            // EL RESULTADO `owned` VA DIRECTO AL ELEMENTO DEL ARREGLO, y esto no es una eleccion
+            // de estilo: es el unico patron que el modelo de propiedad admite aqui. La primera
+            // version de esta fixture guardaba los cuatro textos en locales `raii` y los pasaba
+            // "prestados" al arreglo, y el compilador la rechazo con razon --
+            //
+            //     error: RAII owner 'firstText' cannot be copied by assignment;
+            //     Stage 49 requires ownership transfer to another RAII local with move(...)
+            //
+            // -- porque `arguments[0] = firstText` es una COPIA de un dueno, no un prestamo. El
+            // patron correcto es el que `String.Split` documenta para su `string[] destination`:
+            // el llamador reserva el arreglo, el valor `owned` entra directo en el hueco, y el
+            // llamador libera cada pieza y luego el arreglo. Esta fixture es el primer sitio del
+            // repositorio que recorre ese camino de principio a fin.
+            string[] arguments = new string[4];
+            arguments[0] = String.ToHexString(first, 4, true);
+            arguments[1] = String.ToString(second);
+            arguments[2] = String.ToString(third, 3);
+            arguments[3] = String.ToString(index);
+            raii string message = String.Format(
+                "c22.ns(1,1): nota: leidos 0x{0}, {1} y {2} en {3} caracteres", arguments);
+            int argument = 0;
+            while (argument < 4)
+            {
+                delete arguments[argument];
+                argument = argument + 1;
+            }
+            delete[] arguments;
+
+            // El texto exacto se comprueba antes de escribirlo: si `Format` o cualquiera de los
+            // tres formateos cambiara, esto lo para aqui y no en una inspeccion visual del log.
+            if (!String.Equals(message,
+                "c22.ns(1,1): nota: leidos 0x001F, 42 y 3.14 en 14 caracteres"))
+            {
+                return 0;
+            }
+
+            // Y AQUI ESTA EL ITEM ENTERO: por ERROR estandar, que es donde va un diagnostico.
+            Console.ErrorWriteLine(message);
+            return 1;
+        }
+
+        // --- los dos canales, y `Write` sin salto de linea -------------------------------------
+        static int ConsoleChannels()
+        {
+            // Tres `Write` y un `WriteLine` = UNA linea por salida estandar. Si `Write` saltara de
+            // linea saldrian cuatro, y eso se ve en el log de la corrida.
+            Console.Write("c22: ");
+            Console.Write("stdout ");
+            Console.Write("en una sola linea");
+            Console.WriteLine(".");
+
+            // Lo mismo por error estandar. Los dos canales en la misma corrida es lo que mide que
+            // la mascara de dos bits llega entera hasta el runtime.
+            Console.ErrorWrite("c22: ");
+            Console.ErrorWrite("stderr ");
+            Console.ErrorWrite("en una sola linea");
+            Console.ErrorWriteLine(".");
+
+            // Un `string` nulo escribe la linea vacia en vez de reventar, que es lo que hacia
+            // `WriteLine` desde siempre y lo que un log a medias necesita.
+            string absent = null;
+            Console.WriteLine(absent);
+            Console.ErrorWriteLine(absent);
+
+            return 1;
+        }
+
+        public static int Main()
+        {
+            if (RadixRoundTrip() != 1) { return 1; }
+            if (SignedVersusBits() != 1) { return 2; }
+            if (HexWidthAndCase() != 1) { return 3; }
+            if (FloatFormatting() != 1) { return 4; }
+            if (FixedPointFormatting() != 1) { return 5; }
+            if (NonFinite() != 1) { return 6; }
+            if (ConsoleChannels() != 1) { return 7; }
+            if (BlockTwoAcceptance() != 1) { return 8; }
+
+            return 42;
+        }
+    }
+}

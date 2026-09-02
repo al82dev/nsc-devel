@@ -400,7 +400,18 @@ enum class MethodCoreOperationKind
     StringEquals,
     StringSubstring,
     StringFromCharArray,
+    // SHR-022. Las cuatro son LA MISMA operacion con dos bits distintos: a que descriptor se
+    // escribe (salida estandar o error estandar) y si se anade el salto de linea. Se enumeran por
+    // separado porque el reconocimiento es por NOMBRE DE METODO, y una sola entrada obligaria a
+    // llevar el nombre hasta el HIR para volver a decidir alli.
+    //
+    // Aguas abajo vuelven a ser una: un unico nodo HIR/MIR y una unica funcion de runtime, con la
+    // variante en una mascara de dos bits. Cuatro caminos completos habrian sido cuatro copias de
+    // la misma llamada a WriteFile.
     ConsoleWriteLine,
+    ConsoleWrite,
+    ConsoleErrorWriteLine,
+    ConsoleErrorWrite,
     // C8 "type root": the two primitives NativeSharp.Core.Object's virtual methods need and that
     // cannot be written in NativeSharp -- read a type's name out of its runtime descriptor, and
     // turn a reference into an integer. See lib/NativeSharp.Core/Object.ns.

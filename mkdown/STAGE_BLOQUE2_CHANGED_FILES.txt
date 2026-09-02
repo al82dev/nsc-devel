@@ -1,0 +1,106 @@
+STAGE Bloque 2 -- SHR-022 (consola, dos canales) + SHR-023 (formateo medido)
+Fecha: 2026-09-02
+Docs: mkdown\91_shr_022_consola_dos_canales.md
+      mkdown\92_shr_023_formateo_medido.md
+      mkdown\93_cierre_del_bloque_2.md
+
+MODIFICADOS
+-----------
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    SHR-022. Tres enumeradores nuevos en MethodCoreOperationKind, junto a ConsoleWriteLine:
+    ConsoleWrite, ConsoleErrorWriteLine, ConsoleErrorWrite.
+
+src/Frontend/ProjectMethodBodyModel.cpp
+    SHR-022. El reconocimiento de la operacion nucleo pasa de un nombre unico a un mapeo
+    nombre->kind para los cuatro (misma clase cualificada, estatico, void, un parametro
+    builtin:string). Tres `case` nuevos en el switch de nombres del dumper.
+
+src/Frontend/ProjectOopHirModel.cpp
+    SHR-022. Los CUATRO kinds bajan al MISMO nodo CoreConsoleWriteLine, con una mascara de
+    dos bits fijada en compilacion: bit 0 = anade CRLF, bit 1 = escribe por stderr.
+
+src/Frontend/ProjectOopMirModel.cpp
+    SHR-022. La mascara viaja en `immediate`.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    SHR-022. El gancho de runtime pasa a "__nativesharp_console_write", tipo { ptr, i32 },
+    aridad 2; la llamada pasa la mascara como constante i32.
+
+src/Runtime/WindowsRuntimeBuilder.cpp
+    SHR-022. buildConsoleWriteLine -> buildConsoleWrite(texto, modo). Bloques
+    entry / have_string / newline_check / write_newline / done. El handle se pide UNA vez
+    (antes se pedia dos: una para el texto y otra para el CRLF).
+
+src/LLVM/LlvmCApi.h
+    SHR-022. +1 SIMBOLO: LLVMBuildSelect. Este header es la frontera enumerada A MANO con la
+    API C de LLVM (SHR-090); ampliarla es un acto deliberado y va comentado en el sitio. La
+    alternativa era aritmetica sobre el modo (-11 - ((mode >> 1) & 1)), que no anadia
+    simbolos pero esconde la intencion.
+
+lib/NativeSharp.Core/Console.ns
+    SHR-022. Cuatro metodos estaticos: Write, WriteLine, ErrorWrite, ErrorWriteLine. Cuerpos
+    vacios a proposito -- son operaciones nucleo. Console.Error.WriteLine RECHAZADO: pide
+    TextWriter, que es SHR-020 y vive en el Bloque 5.
+
+lib/NativeSharp.Core/String.ns
+    SHR-023. +23 metodos:
+      - FormatUnsignedRadix / RadixDigitChar (privados) y ToString(v, base) para
+        ulong/long/uint/int -- SIGNO + MAGNITUD.
+      - ToHexString(v) y ToHexString(v, ancho, mayusculas) para ulong/long/uint/int --
+        PATRON DE BITS. Dos preguntas distintas, dos nombres distintos.
+      - PowerOfTenBinary, ScalePowerOfTen, DecimalExponent, IsNotANumber,
+        TrimTrailingZeroDigits, RepeatZeros, PlaceDecimalPoint, MantissaWithPoint,
+        ScientificForm, FormatFinite (privados).
+      - ToString(double), ToString(double, cifras), ToString(float), ToString(float, cifras),
+        ToStringFixed(double, decimales), ToStringFixed(float, decimales).
+    El comentario que dejaba float/double fuera "a proposito" REESCRITO: convertia un
+    problema de precision en un hueco de capacidad.
+    ONCE cifras por defecto, y ese numero esta MEDIDO contra printf de glibc sobre 240.000
+    valores por ancho: 0.000% de desacuerdo a once, 16.584% a quince.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    Registro de la fixture c22.
+
+run_cases.py
+    c22 en la tabla CASES. Una linea -- que es el punto de haber movido la lista ahi.
+
+mkdown/81_inventario_completo_por_bloques.md
+    Bloque 2 marcado como cerrado, con las tres SHR y sus docs, el ID 128 encontrado de paso
+    y el ID 129 abierto y anotado.
+
+NUEVOS
+------
+tests/cc1/c22_console_and_formatting/Main.ns
+tests/cc1/c22_console_and_formatting/c22_console_and_formatting.nsproj
+    LA FIXTURE DE ACEPTACION DEL BLOQUE 2. Ocho bloques: ida y vuelta de las catorce bases
+    contra Number, signo+magnitud contra patron de bits, hexadecimal con ancho y caja, coma
+    flotante (incluido el desbordamiento de 1e-300 que el modelo encontro), punto fijo, no
+    finitos, los dos canales de consola, y el criterio del bloque entero -- lee 0x1F, 42UL y
+    3.14f de UNA cadena y escribe un diagnostico formateado por stderr. Salida esperada: 42.
+
+mkdown/91_shr_022_consola_dos_canales.md
+mkdown/92_shr_023_formateo_medido.md
+mkdown/93_cierre_del_bloque_2.md
+
+NO TOCADOS, y es deliberado
+---------------------------
+CMakeLists.txt
+    Las fixtures cc1 se registran dentro de Cc1CorrectnessTests.cpp, no ahi.
+
+run_windows_checklist.bat
+    La lista de casos vive en run_cases.py desde la paralelizacion. Anadir c22 no toca el
+    .bat.
+
+lib/NativeSharp.Core/Number.ns
+    SHR-024 quedo cerrado en su propia entrega (doc 90). SHR-023 es su espejo y se mide
+    CONTRA el, no modificandolo.
+
+COMO SE VERIFICO ANTES DE ESCRIBIR NADA EN LA MAQUINA
+-----------------------------------------------------
+1. Los seis .cpp/.h del compilador: clang++ -std=c++20 -fsyntax-only, limpio.
+2. String.ns, Console.ns y c22/Main.ns: pasados por el Parser.cpp REAL del proyecto,
+   compilado en el contenedor. No es analisis semantico, pero descarta la clase entera de
+   errores de sintaxis.
+3. Las funciones nuevas de formateo portadas literalmente a C++ y medidas contra printf de
+   glibc: 240.000 valores por ancho para coma flotante y 3.800.000 comprobaciones para bases
+   y hexadecimal (3.800.000/3.800.000 exactas). Ahi aparecio el desbordamiento de 1e-300.

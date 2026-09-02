@@ -372,8 +372,28 @@ void testCoreRuntimeBridge(TestContext& tests)
     std::string verifyError;
     tests.expect(runtime->verify(verifyError), "Windows runtime remains LLVM-verifier clean");
     const std::string llvm = runtime->text();
-    tests.expect(llvm.find("define void @__nativesharp_console_writeline(ptr") != std::string::npos,
-        "runtime exports __nativesharp_console_writeline");
+    // SHR-022. El simbolo se llamaba `__nativesharp_console_writeline` y ahora se llama
+    // `__nativesharp_console_write`, con DOS parametros. No es un renombre cosmetico: la funcion ya
+    // no escribe siempre una linea ni siempre por la salida estandar -- el segundo argumento es una
+    // mascara de dos bits (bit 0 = anade CRLF, bit 1 = escribe por error estandar) y las cuatro
+    // salidas de `Console` bajan a esta unica funcion. Un nombre que dijera "writeline" mentiria
+    // sobre tres de los cuatro casos.
+    //
+    // La expectativa se actualiza porque lo que este test mide --la SUPERFICIE DE EXPORTS del
+    // runtime-- es exactamente lo que el item cambio a proposito. Y se aprovecha para medir mas de
+    // lo que medía: antes solo comprobaba que el simbolo existiera, ahora comprueba tambien su
+    // ARIDAD y que el descriptor se elige con un `select` sobre el bit del canal. Un renombre que
+    // dejara la aridad vieja pasaria la comprobacion anterior.
+    tests.expect(llvm.find("define void @__nativesharp_console_write(ptr") != std::string::npos,
+        "runtime exports __nativesharp_console_write");
+    tests.expect(llvm.find("and i32 %1, 2") != std::string::npos,
+        "Console bridge reads the channel bit from the second parameter");
+    tests.expect(llvm.find("and i32 %1, 1") != std::string::npos,
+        "Console bridge reads the newline bit from the second parameter");
+    tests.expect(llvm.find("select i1") != std::string::npos,
+        "Console bridge picks STD_OUTPUT_HANDLE / STD_ERROR_HANDLE from the channel bit");
+    tests.expect(llvm.find("i32 -11") != std::string::npos && llvm.find("i32 -12") != std::string::npos,
+        "Console bridge names both standard handles, not just stdout");
     tests.expect(llvm.find("%length64 = load i64") != std::string::npos,
         "Console bridge reads the native string length header");
     tests.expect(llvm.find("getelementptr i8, ptr %0, i64 8") != std::string::npos,

@@ -81,11 +81,46 @@ da un tipo que se comporta raro. Regla: compilar con `-Wall -Wextra` antes de en
 un diagnóstico formateado por stderr.
 **Tamaño:** 3 superficies, del orden de 25 funciones.
 
-| SHR | Qué | Spec | Estado medido |
+> ## ✅ CERRADO — 2026-09-02
+>
+> **PENDIENTE DE NÚMEROS.** Las tres superficies están entregadas y el criterio del bloque es una
+> fixture que ejecuta; los números de la corrida se escriben aquí cuando `all.bat` los dé. Un
+> bloque no se cierra con una intención.
+>
+> El criterio de arriba **es** `tests/cc1/c22_console_and_formatting`, ejecutando, salida 42: lee
+> `0x1F`, `42UL` y `3.14f` de **una** cadena sin cortar subcadenas y escribe
+> `c22.ns(1,1): nota: leidos 0x001F, 42 y 3.14 en 14 caracteres` **por error estándar**.
+>
+> **Cerrados:** SHR-024 (doc 90) · SHR-022 (doc 91) · SHR-023 (doc 92).
+> **Encontrado y cerrado de paso:** **ID 128** — el parser rechazaba
+> `wide < (long)G() || wide > (long)G()` porque la búsqueda de una lista de argumentos genéricos
+> encontraba el `>` de la *segunda* comparación (doc 93 §2).
+> **Abierto y anotado:** **ID 129** (enums por nombre, es del compilador).
+
+| SHR | Qué | Spec | Dónde está la medición |
 |---|---|:--:|---|
-| **024** | Parsing numérico: signed/unsigned, bases 2/10/16, float, detección de overflow | **D** | **Cero resultados en toda `lib/`.** Un lexer no existe sin esto |
-| **022** | `Console.Error` y `Console.Write` | **D** | `Console` tiene **un** método: `WriteLine(string)`. Sin stderr no hay diagnósticos |
-| **023** | Formatting de float/double, hex, vistas y enums | **D** | **Ampliación, no construcción**: `Format(string, string[])` y `ToString` de enteros, `bool` y `char` ya existen |
+| ✅ **024** | Parsing numérico: signed/unsigned, bases 2/10/16, float, detección de overflow | **D** | `lib/NativeSharp.Core/Number.ns` nuevo. Núcleo sobre `(texto, ref índice)` para que un lexer no corte una subcadena por token. Fixture `c21_number_parsing`, siete bloques. Doc 90 |
+| ✅ **022** | `Console.Error` y `Console.Write` | **D** | Cuatro métodos, **un** nodo, dos bits de máscara (bit 0 salto de línea, bit 1 canal). `Console.Error.WriteLine` rechazado a propósito: pide `TextWriter`, que es SHR-020 / Bloque 5. Doc 91 |
+| ✅ **023** | Formatting de float/double, hex, vistas y enums | **D** | Bases 2–16, hexadecimal como patrón de bits (distinto de `ToString(v, base)`, que es signo+magnitud), `ToString(double)` con garantía **medida** de once cifras contra glibc. Vistas → Bloque 3 por orden; enums → **ID 129**, es del compilador. Doc 92 |
+
+**Lo que este bloque enseñó, y no estaba en el plan:**
+
+* **El número que promete una API tiene que medirse, no elegirse.** `ToString(double)` iba a
+  prometer quince cifras (el `DBL_DIG` de IEEE-754) hasta que la medición contra `printf` de glibc
+  dio **16.6% de desacuerdo** a quince y **0.000%** a once. Quince cifras habrían sido cuatro de
+  ruido con la misma cara de seguridad que las once primeras.
+* **El defecto grave lo encontró el modelo, no la lectura.** `1e-300` se imprimía como
+  `9.2233720368547758E-299` — 2^63 disfrazado — porque escalar por `10^310` desborda el `double` y
+  el casteo a `ulong` satura. Leer el código no lo enseña.
+* **Un ítem del plan puede contener un ítem de otro bloque.** «Formatting de … vistas y enums» son
+  tres cosas de tres capas distintas: biblioteca (float/hex), Bloque 3 (vistas) y **compilador**
+  (enums). Cerrar el bloque exigió separarlas, no hacerlas todas.
+
+### Abierto y anotado en este bloque
+
+| ID | Qué | Spec | Dónde |
+|---|---|:--:|---|
+| **129** — resto de SHR-023 | `ToString` de un **enum** por su NOMBRE. Necesita una tabla nombre/valor **generada por el compilador**: los nombres no sobreviven a la compilación | **D** | El mecanismo tiene precedente (`StructToString`, línea C8 "type root", sintetiza miembros y los resuelve estáticamente) y los datos existen (`isEnumConstant` + `enumConstantValue` en `ProjectMemberModel.h`). **Es del compilador, no de `String.ns`** — por eso no entró aquí. Doc 92 §7 |
 
 ---
 

@@ -226,7 +226,26 @@ goto :report
 REM --- 2. ctest ---------------------------------------------------------------
 if /I "%MODE%"=="quick" goto :skip_ctest
 echo [2/5] Corriendo ctest ...
-ctest --test-dir "%BUILDDIR%" --output-on-failure > "%LOGDIR%\02_ctest.log" 2>&1
+REM ctest EN PARALELO. Medido sobre 02_ctest.log de la corrida del 2026-09-02:
+REM     241 pruebas, suma de tiempos 250.4 s, wall clock 250.9 s  -> era 100%% secuencial
+REM     la mas lenta, nsc.cc1.correctness, 45.7 s
+REM El suelo con paralelismo perfecto es la prueba MAS LENTA, no la media: 45.7 s. O sea
+REM un techo de 5.5x, y todo lo que sobre de ahi lo marca esa unica prueba.
+REM
+REM ES SEGURO PORQUE LAS PRUEBAS ESTAN AISLADAS POR CONSTRUCCION: cada binario se hace su
+REM propia raiz bajo temp_directory_path() con un nombre derivado del suyo
+REM ("nsc-cc1", "nativesharp_stage50_11_ownership_execution_tests", ...) y la borra al
+REM arrancar. Lo unico compartido es nsc.exe y lib\, y los dos son de SOLO LECTURA durante
+REM la corrida.
+REM
+REM ctest guarda el coste de cada prueba entre corridas y arranca las mas largas primero,
+REM asi que la segunda corrida se acerca mas al suelo que la primera.
+REM
+REM Si alguna vez sale un rojo intermitente, los sospechosos son stage54 (hilos, mutex,
+REM monitor, semaforos): bajar CTEST_JOBS antes de culpar al codigo.
+if not defined CTEST_JOBS set "CTEST_JOBS=%NUMBER_OF_PROCESSORS%"
+echo         ctest -j %CTEST_JOBS%
+ctest --test-dir "%BUILDDIR%" --output-on-failure -j %CTEST_JOBS% > "%LOGDIR%\02_ctest.log" 2>&1
 REM Un ctest rojo TIENE que contar en PASSED/FAILED. Antes no contaba: escribia [FAIL] en el
 REM resumen y no tocaba los contadores, asi que la corrida del 2026-09-02 termino diciendo
 REM "Passed: 71 / Failed: 0" con 27 de 242 tests en rojo, y salio con codigo 0. El paso mas
@@ -252,73 +271,46 @@ echo [2/5] ctest omitido ^(modo quick^).
 :after_ctest
 >> "%SUMMARY%" echo.
 
-REM --- 3. Interop contract fixtures -------------------------------------------
-echo [3/5] Fixtures de contrato de interop ...
->> "%SUMMARY%" echo --- interop contract fixtures ---
+REM --- 3+4. Fixtures y ejemplos, EN PARALELO -----------------------------------
+REM
+REM Antes eran dos bloques de `call :run_case` en serie: 40 casos x 2 niveles de
+REM optimizacion = 80 compilaciones y enlazados, uno detras de otro, con los nucleos
+REM de la maquina parados. Cada caso es independiente --su propio .obj, su propio
+REM .exe, su propia salida-- asi que la serie no compraba nada.
+REM
+REM POR QUE EN PYTHON. cmd.exe no sabe esperar: `start /b` lanza y sigue, asi que
+REM habria que inventar ficheros centinela, un bucle de espera y otro fichero por
+REM trabajo para el codigo de salida. run_cases.py lo hace con un pool de hilos,
+REM da un log por caso, timeout por trabajo y codigos de salida fiables.
+REM
+REM EL REQUISITO QUE HACE QUE ESTO SEA SEGURO, y esta medido: build_project.cmd
+REM llama a prepare_libraries.cmd en CADA invocacion, y ese hace `rmdir /s /q` sobre
+REM lib\NativeSharp.Core. En serie solo desperdicia 80 sincronizaciones; EN PARALELO
+REM seria una carrera que corrompe la biblioteca. run_cases.py pone NS_LIB_READY=1 en
+REM el entorno de cada hijo, que es la variable con la que prepare_libraries.cmd se
+REM salta el trabajo. El paso 1b de arriba ya dejo lib\ sincronizado.
+REM
+REM La lista de casos vive en run_cases.py, no aqui. Anadir una fixture es una linea
+REM en esa tabla.
+echo [3/5] Fixtures y ejemplos ^(en paralelo^) ...
+>> "%SUMMARY%" echo --- fixtures y ejemplos ---
 
-set "IC=tests\interop_contract"
+if not defined CASE_JOBS set "CASE_JOBS=%NUMBER_OF_PROCESSORS%"
+python "%ROOT%\run_cases.py" -j %CASE_JOBS%
+set "CASES_RC=%ERRORLEVEL%"
 
-call :run_case "%IC%\c1_03_function_pointer_parameter\c1_03_function_pointer_parameter.nsproj" c1_03_function_pointer_parameter 42 "%FIXLOG%"
-call :run_case "%IC%\c1_04_function_pointer_return\c1_04_function_pointer_return.nsproj" c1_04_function_pointer_return 42 "%FIXLOG%"
-call :run_case "%IC%\c1_05_raw_pointer_cast\c1_05_raw_pointer_cast.nsproj" c1_05_raw_pointer_cast 42 "%FIXLOG%"
-call :run_case "%IC%\c2_11_fixed_field_array\c2_11_fixed_field_array.nsproj" c2_11_fixed_field_array 42 "%FIXLOG%"
-call :run_case "%IC%\c2_12_union\c2_12_union.nsproj" c2_12_union 42 "%FIXLOG%"
-call :run_case "%IC%\c4_ref_out_in\c4_ref_out_in.nsproj" c4_ref_out_in 42 "%FIXLOG%"
-call :run_case "%IC%\c6_struct_math\c6_struct_math.nsproj" c6_struct_math 42 "%FIXLOG%"
-call :run_case "%IC%\c7_definite_assignment\c7_definite_assignment.nsproj" c7_definite_assignment 42 "%FIXLOG%"
-call :run_case "%IC%\c8_type_root\c8_type_root.nsproj" c8_type_root 42 "%FIXLOG%"
-
-REM Exit 141 = 128 + LlvmTrapReason::CallbackExceptionEscape.
-REM Un 0 aqui significaria que una excepcion NativeSharp se escapo por el borde C.
-call :run_case "%IC%\c1_14_callback_exception_boundary\c1_14_callback_exception_boundary.nsproj" c1_14_callback_exception_boundary 141 "%FIXLOG%"
-
-REM Linkea a proposito contra a.dll / b.dll, que no existen. Solo build+link.
-call :build_only "%IC%\c1_13_two_libraries_same_symbol\c1_13_two_libraries_same_symbol.nsproj" c1_13_two_libraries_same_symbol "%FIXLOG%"
-
->> "%SUMMARY%" echo.
->> "%SUMMARY%" echo --- language contract fixtures ---
-
-set "LC=tests\language"
-call :run_case "%LC%\l1_conditional\l1_conditional.nsproj" l1_conditional 42 "%FIXLOG%"
-call :run_case "%LC%\l2_dowhile\l2_dowhile.nsproj" l2_dowhile 42 "%FIXLOG%"
-call :run_case "%LC%\l3_switch\l3_switch.nsproj" l3_switch 42 "%FIXLOG%"
-
->> "%SUMMARY%" echo.
->> "%SUMMARY%" echo --- milestone CC1 fixtures ---
-
-set "CC=tests\cc1"
-call :run_case "%CC%\c1_constants\c1_constants.nsproj" cc1_c1_constants 42 "%FIXLOG%"
-call :run_case "%CC%\c2_ternary_ownership\c2_ternary_ownership.nsproj" cc1_c2_ternary_ownership 42 "%FIXLOG%"
-call :run_case "%CC%\c3_dowhile_flow\c3_dowhile_flow.nsproj" cc1_c3_dowhile_flow 42 "%FIXLOG%"
-call :run_case "%CC%\c4_catch_continue\c4_catch_continue.nsproj" cc1_c4_catch_continue 42 "%FIXLOG%"
-call :run_case "%CC%\c5_catch_break\c5_catch_break.nsproj" cc1_c5_catch_break 42 "%FIXLOG%"
-call :run_case "%CC%\c6_catch_return\c6_catch_return.nsproj" cc1_c6_catch_return 42 "%FIXLOG%"
-call :run_case "%CC%\c7_finally_switch\c7_finally_switch.nsproj" cc1_c7_finally_switch 42 "%FIXLOG%"
-call :run_case "%CC%\c8_loop_catch_switch\c8_loop_catch_switch.nsproj" cc1_c8_loop_catch_switch 42 "%FIXLOG%"
-call :run_case "%CC%\c9_sizeof\c9_sizeof.nsproj" cc1_c9_sizeof 42 "%FIXLOG%"
-call :run_case "%CC%\c10_stackalloc\c10_stackalloc.nsproj" cc1_c10_stackalloc 42 "%FIXLOG%"
-call :run_case "%CC%\c11_raw_new\c11_raw_new.nsproj" cc1_c11_raw_new 42 "%FIXLOG%"
-call :run_case "%CC%\c12_pointer_arith\c12_pointer_arith.nsproj" cc1_c12_pointer_arith 42 "%FIXLOG%"
-call :run_case "%CC%\c13_increment\c13_increment.nsproj" cc1_c13_increment 42 "%FIXLOG%"
-call :run_case "%CC%\c14_compound_assign\c14_compound_assign.nsproj" cc1_c14_compound_assign 42 "%FIXLOG%"
-call :run_case "%CC%\c15_arrow_member\c15_arrow_member.nsproj" cc1_c15_arrow_member 42 "%FIXLOG%"
-call :run_case "%CC%\c16_enum_layout\c16_enum_layout.nsproj" cc1_c16_enum_layout 42 "%FIXLOG%"
-call :run_case "%CC%\c17_constant_promotion\c17_constant_promotion.nsproj" cc1_c17_constant_promotion 42 "%FIXLOG%"
-call :run_case "%CC%\c18_stackalloc_hardening\c18_stackalloc_hardening.nsproj" cc1_c18_stackalloc_hardening 42 "%FIXLOG%"
-call :run_case "%CC%\c19_sbyte\c19_sbyte.nsproj" cc1_c19_sbyte 42 "%FIXLOG%"
-call :run_case "%CC%\c20_property_compound\c20_property_compound.nsproj" cc1_c20_property_compound 42 "%FIXLOG%"
-
->> "%SUMMARY%" echo.
-
-REM --- 4. Packaged examples ---------------------------------------------------
-echo [4/5] Ejemplos empaquetados ...
->> "%SUMMARY%" echo --- packaged examples ---
-
-call :run_case "examples\project_stage56_c1\Stage56C1InteropCompletion.nsproj" project_stage56_c1 0 "%EXLOG%"
-call :run_case "examples\project_stage56_c2c4\Stage56C2C4LanguageCompletion.nsproj" project_stage56_c2c4 0 "%EXLOG%"
-call :run_case "examples\project_stage56_c6\Stage56C6StructMath.nsproj" project_stage56_c6 0 "%EXLOG%"
-call :run_case "examples\project_stage56_c7\project_stage56_c7.nsproj" project_stage56_c7 0 "%EXLOG%"
-call :run_case "examples\project_stage56_c8\project_stage56_c8.nsproj" project_stage56_c8 0 "%EXLOG%"
+REM Los contadores salen de un fichero con dos numeros, que es lo unico que cmd.exe
+REM lee sin pelearse. El detalle por caso ya esta en SUMMARY.txt y en _logs\cases\.
+if exist "%LOGDIR%\cases\counts.txt" (
+    for /f "usebackq tokens=1,2" %%a in ("%LOGDIR%\cases\counts.txt") do (
+        set /a PASSED+=%%a
+        set /a FAILED+=%%b
+    )
+) else (
+    echo         FALLO -- run_cases.py no dejo contadores
+    >> "%SUMMARY%" echo [FAIL] fixtures y ejemplos -- run_cases.py no llego a terminar
+    set /a FAILED+=1
+)
 
 REM --- 5. Regresion de bugs reportados ----------------------------------------
 REM Solo en el modo completo. Los ocho casos de tests\bug_triage tambien estan bajo ctest
@@ -355,6 +347,10 @@ if %FAILED% GTR 0 exit /b 1
 exit /b 0
 
 REM ===========================================================================
+REM ATENCION: :run_case y :build_only YA NO SE LLAMAN. Las sustituyo run_cases.py, que
+REM hace lo mismo EN PARALELO y deja un log por caso. Se conservan como la version en
+REM serie de referencia -- si algun dia hay que depurar un caso aislado sin Python, esto
+REM es lo que hacia el checklist.
 REM :run_case  <ruta .nsproj relativa a la raiz>  <etiqueta>  <exit esperado>  <log>
 REM ===========================================================================
 :run_case
