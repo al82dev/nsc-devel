@@ -90,7 +90,14 @@ bool isStage47CAbiType(
     bool allowVoid) noexcept
 {
     if (typeKey == "builtin:void") return allowVoid;
-    if (typeKey == "builtin:bool" || typeKey == "builtin:byte" || typeKey == "builtin:char" ||
+    // ID 89. `sbyte` en la lista de tipos que cruzan la ABI de C, y esta es LA razon por la que
+    // el tipo existe: `signed char` es un parametro corriente en las cabeceras de C, y sin
+    // `sbyte` no habia forma de declararlo honestamente -- habia que mentir con `byte` y dejar
+    // que el signo se perdiera en la frontera. Si el tipo estuviera en todas las tablas de ancho
+    // y signo pero no aqui, `extern C void f(sbyte x);` se rechazaria y el tipo no serviria para
+    // lo unico que se pidio.
+    if (typeKey == "builtin:bool" || typeKey == "builtin:sbyte" ||
+        typeKey == "builtin:byte" || typeKey == "builtin:char" ||
         typeKey == "builtin:short" || typeKey == "builtin:ushort" ||
         typeKey == "builtin:int" || typeKey == "builtin:uint" ||
         typeKey == "builtin:long" || typeKey == "builtin:ulong" ||

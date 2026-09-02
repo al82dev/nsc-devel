@@ -16,6 +16,13 @@ enum class TokenKind
 
     KwVoid,
     KwBool,
+    // ID 89. `sbyte` va DENTRO del rango KwVoid..KwString, y el sitio no es cosmetico:
+    // `isBuiltinTypeKeyword` es una COMPARACION DE RANGO (`kind >= KwVoid && kind <= KwString`),
+    // no una lista. Un enumerador de tipo colocado fuera de ese rango compila sin una queja y
+    // luego no se reconoce como tipo en ninguna de las ocho llamadas del parser; uno colocado
+    // dentro por accidente convertiria en tipo a lo que no lo es. Aqui, entre `byte` y `char`,
+    // queda con su familia y dentro del rango.
+    KwSByte,
     KwByte,
     KwChar,
     KwShort,

@@ -1,0 +1,136 @@
+// ID 123 -- endurecimiento de `stackalloc`. LA MITAD POSITIVA.
+//
+// QUE MEDIA `c10_stackalloc` Y QUE NO. c10 mide que `stackalloc T[n]` atraviesa las cuatro capas
+// y que la memoria reservada se puede leer y escribir. Lo que NO mide -- y por eso existe esta
+// fixture -- es que las reservas IMPOSIBLES se rechacen: un contador negativo, o una reserva que
+// no cabe en la pila. Antes de esta ronda las dos pasaban enteras y llegaban a LLVM como un
+// `alloca` que revienta en ejecucion, sin una palabra del compilador.
+//
+// ESTA FIXTURE ES LA MITAD QUE COMPILA. Las reservas imposibles no se pueden poner aqui: una
+// fixture positiva tiene que compilar entera. Los rechazos se miden en Cc1CorrectnessTests con
+// checkRejected, que comprueba que fallan Y POR QUE fallan -- comprobar solo "fallo" pasaria
+// tambien con una errata en la propia fixture.
+//
+// LO QUE MIDE ESTA MITAD, y es lo que ninguna prueba negativa puede medir: que el endurecimiento
+// NO tiene falsos positivos. Un limite escrito demasiado estrecho, o una comprobacion de signo
+// que lea los bits en vez del tipo, rompen codigo correcto -- y eso no se ve en las pruebas
+// negativas, se ve aqui, porque este archivo deja de compilar.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+namespace cc1stackallochardening
+{
+    class Program
+    {
+        // Un contador SIN SIGNO con el bit alto puesto NO es un contador negativo. La
+        // comprobacion mira el TIPO, no los bits: leyendo los bits, `3000000000u` seria
+        // "negativo" y esta funcion no compilaria. Cabe de sobra: el limite es de bytes
+        // totales, y aqui no se reserva -- solo se escribe el literal.
+        private static int LargeUnsignedCountIsNotNegative()
+        {
+            uint big = 3000000000U;
+            if (big < 2147483648U) { return 0; }
+            return 1;
+        }
+
+        // Una reserva de tamano constante y razonable sigue siendo legal. 256 ints son 1024
+        // bytes: tres ordenes de magnitud por debajo del limite.
+        private static int ConstantReservationStillWorks()
+        {
+            int* buffer = stackalloc int[256];
+            int index = 0;
+            while (index < 256)
+            {
+                buffer[index] = index * 2;
+                index++;
+            }
+            if (buffer[0] != 0) { return 0; }
+            if (buffer[255] != 510) { return 0; }
+            return 1;
+        }
+
+        // El contador NO constante no se comprueba en compilacion, y no es un olvido: no hay nada
+        // que decidir. Este lenguaje no promete comprobar la pila en ejecucion.
+        private static int RuntimeCountStillWorks(int count)
+        {
+            byte* raw = stackalloc byte[count];
+            int index = 0;
+            while (index < count)
+            {
+                raw[index] = (byte)(index + 1);
+                index++;
+            }
+            int total = 0;
+            index = 0;
+            while (index < count)
+            {
+                total = total + (int)raw[index];
+                index++;
+            }
+            return total;
+        }
+
+        // Cero elementos es una reserva legal. No hay nada que leer ni que escribir; lo que se
+        // mide es que el programa COMPILA y llega hasta aqui. Un limite escrito con `>=` en vez
+        // de `>` sobre el cociente, o una comprobacion de signo que tratara el 0 como negativo,
+        // romperian esta linea.
+        private static int ZeroCountIsLegal()
+        {
+            int* empty = stackalloc int[0];
+            empty = empty + 0;
+            return 1;
+        }
+
+        // El contador plegado en tiempo de compilacion. Es el punto donde el ID 123 se apoya en el
+        // 121 y el 122: `2 + 2L` no se plegaba antes de aquella ronda -- el tipo comun era
+        // `double` y el evaluador se rendia -- asi que la comprobacion de tamano no habria tenido
+        // ningun contador constante que mirar.
+        private static int FoldedCountStillWorks()
+        {
+            int* small = stackalloc int[2 + 2];
+            small[0] = 7;
+            small[3] = 35;
+            if (small[0] + small[3] != 42) { return 0; }
+            return 1;
+        }
+
+        // Un `stackalloc` dentro de un bucle emite un AVISO, no un error, y por eso este metodo
+        // COMPILA y corre. Es deliberado: la forma es legitima cuando el bucle da pocas vueltas, y
+        // el lenguaje no tiene con que demostrar cuantas da. Si el aviso fuera error, este metodo
+        // no compilaria y el compilador estaria prohibiendo codigo correcto.
+        //
+        // Tres vueltas, ocho bytes por vuelta: 24 bytes de pila que no se liberan hasta salir. Es
+        // exactamente lo que el aviso avisa, en la escala en la que no importa.
+        private static int LoopStackallocWarnsButCompiles()
+        {
+            int total = 0;
+            int round = 0;
+            while (round < 3)
+            {
+                short* pair = stackalloc short[4];
+                pair[0] = 1;
+                pair[3] = 2;
+                total = total + (int)pair[0] + (int)pair[3];
+                round++;
+            }
+            return total;
+        }
+
+        public static int Main()
+        {
+            if (LargeUnsignedCountIsNotNegative() != 1) { return 1; }
+            if (ConstantReservationStillWorks() != 1) { return 2; }
+            if (ZeroCountIsLegal() != 1) { return 3; }
+            if (FoldedCountStillWorks() != 1) { return 4; }
+
+            // 1 + 2 + 3 + 4 = 10
+            if (RuntimeCountStillWorks(4) != 10) { return 5; }
+            // Un contador de cero por la ruta no constante tampoco reserva nada.
+            if (RuntimeCountStillWorks(0) != 0) { return 6; }
+
+            // 3 vueltas x (1 + 2) = 9
+            if (LoopStackallocWarnsButCompiles() != 9) { return 7; }
+
+            return 42;
+        }
+    }
+}

@@ -10,6 +10,10 @@ namespace nativesharp::target
 enum class BuiltinLayoutKind
 {
     Bool,
+    // ID 89. `sbyte` mide lo mismo que `byte` -- un byte -- y se distingue de el en el SIGNO,
+    // que esta capa no modela: aqui solo viven tamano y alineacion. La distincion la hacen las
+    // tablas de signo del frontend, del MIR y del backend.
+    SByte,
     Byte,
     Char,
     Short,

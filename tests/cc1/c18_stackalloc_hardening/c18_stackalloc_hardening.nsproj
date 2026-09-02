@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c18_stackalloc_hardening</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

@@ -358,6 +358,18 @@ int main()
         tests, root, "tests/cc1/c17_constant_promotion/c17_constant_promotion.nsproj",
         "cc1-c17-constant-promotion", 42);
 
+    // ID 123 -- endurecimiento de `stackalloc`. LA MITAD POSITIVA: que el endurecimiento no tenga
+    // falsos positivos. Las reservas imposibles no caben en una fixture que tiene que compilar
+    // entera; se miden con checkRejected mas abajo.
+    checkFixture(
+        tests, root, "tests/cc1/c18_stackalloc_hardening/c18_stackalloc_hardening.nsproj",
+        "cc1-c18-stackalloc-hardening", 42);
+
+    // ID 89 -- `sbyte`. Enfrenta a `sbyte` con `byte` en cada operacion donde el SIGNO cambia el
+    // resultado y no solo su lectura: extension, division, modulo, shift a la derecha,
+    // comparacion y el cast que estrecha.
+    checkFixture(tests, root, "tests/cc1/c19_sbyte/c19_sbyte.nsproj", "cc1-c19-sbyte", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================
@@ -1340,6 +1352,199 @@ namespace cc1arrownonptr
         "left side of '->' must be a non-void pointer");
 
     // =====================================================================================
+    // ID 123 -- las reservas IMPOSIBLES. La mitad que no cabe en una fixture positiva.
+    //
+    // Cada una comprueba que falla Y POR QUE falla. Solo "falla" pasaria tambien con una errata
+    // en la propia prueba, que es como un test negativo deja de medir algo sin que nadie se
+    // entere.
+    // =====================================================================================
+
+    // Contador constante negativo. Se puede comprobar desde que el ID 119 cerro la constancia de
+    // los literales negativos: antes, `-1` ni siquiera llegaba al analisis como constante.
+    checkRejected(
+        tests, root, "cc1-stackalloc-negative-count",
+        R"NS(
+namespace cc1sanegative
+{
+    class P
+    {
+        public static int Main()
+        {
+            int* buffer = stackalloc int[-1];
+            return (int)buffer[0];
+        }
+    }
+}
+)NS",
+        "stackalloc element count is negative");
+
+    // La misma forma escrita como constante plegada, para que la comprobacion no dependa de que
+    // el contador sea un literal suelto. Se apoya en el ID 121: `2 - 5` se pliega.
+    checkRejected(
+        tests, root, "cc1-stackalloc-negative-folded",
+        R"NS(
+namespace cc1sanegfold
+{
+    class P
+    {
+        public static int Main()
+        {
+            byte* buffer = stackalloc byte[2 - 5];
+            return (int)buffer[0];
+        }
+    }
+}
+)NS",
+        "stackalloc element count is negative");
+
+    // La reserva que no cabe. Un gigabyte en una pila cuya reserva por omision es un mega.
+    checkRejected(
+        tests, root, "cc1-stackalloc-too-large",
+        R"NS(
+namespace cc1satoobig
+{
+    class P
+    {
+        public static int Main()
+        {
+            byte* buffer = stackalloc byte[1073741824];
+            return (int)buffer[0];
+        }
+    }
+}
+)NS",
+        "does not fit on the stack");
+
+    // El caso que la multiplicacion ingenua deja pasar: `1 << 62` elementos de 4 bytes. El
+    // producto envuelve a 0 en 64 bits, asi que `elements * elementSize > limite` seria FALSO y
+    // la reserva pasaria. La comprobacion divide el limite entre el tamano justamente para que
+    // este caso no exista.
+    checkRejected(
+        tests, root, "cc1-stackalloc-count-overflows-product",
+        R"NS(
+namespace cc1saoverflow
+{
+    class P
+    {
+        public static int Main()
+        {
+            int* buffer = stackalloc int[4611686018427387904L];
+            return buffer[0];
+        }
+    }
+}
+)NS",
+        "does not fit on the stack");
+
+    // Y la otra mitad: una reserva grande PERO POSIBLE sigue compilando. Si el limite se
+    // escribiera demasiado estrecho, esto dejaria de compilar y el compilador estaria prohibiendo
+    // codigo correcto. 65536 bytes son un dieciseisavo del limite.
+    checkAccepted(
+        tests, root, "cc1-stackalloc-large-but-legal",
+        R"NS(
+namespace cc1salegal
+{
+    class P
+    {
+        public static int Main()
+        {
+            byte* buffer = stackalloc byte[65536];
+            buffer[0] = 1;
+            return (int)buffer[0];
+        }
+    }
+}
+)NS");
+
+    // =====================================================================================
+    // ID 89 -- `sbyte`. Los limites del tipo, medidos por los dos lados.
+    // =====================================================================================
+
+    // 200 no cabe en un entero de 8 bits CON signo. Si `constantFits` hubiera copiado la rama de
+    // `byte`, esto compilaria y el valor seria -56 en silencio.
+    checkRejected(
+        tests, root, "cc1-sbyte-constant-out-of-range",
+        R"NS(
+namespace cc1sbyterange
+{
+    class P
+    {
+        public static int Main()
+        {
+            sbyte s = 200;
+            return (int)s;
+        }
+    }
+}
+)NS",
+        "cannot initialize local 's'");
+
+    // Y por abajo: -129 tampoco. El minimo es -128.
+    checkRejected(
+        tests, root, "cc1-sbyte-constant-below-minimum",
+        R"NS(
+namespace cc1sbytelow
+{
+    class P
+    {
+        public static int Main()
+        {
+            sbyte s = -129;
+            return (int)s;
+        }
+    }
+}
+)NS",
+        "cannot initialize local 's'");
+
+    // `sbyte` NO ensancha a un destino sin signo: sus valores negativos no caben ahi. Si la tabla
+    // de ensanchamientos lo hubiera incluido, `uint u = s;` compilaria y envolveria en silencio.
+    checkRejected(
+        tests, root, "cc1-sbyte-does-not-widen-to-unsigned",
+        R"NS(
+namespace cc1sbyteunsigned
+{
+    class P
+    {
+        public static int Main()
+        {
+            sbyte s = -1;
+            uint u = s;
+            return (int)u;
+        }
+    }
+}
+)NS",
+        "cannot initialize local 'u'");
+
+    // LA RAZON DE SER DEL TIPO: declarar `signed char` en una API de C. Si `sbyte` estuviera en
+    // todas las tablas de ancho y de signo pero no en la lista de tipos que cruzan la ABI de C,
+    // el tipo no serviria para lo unico que se pidio.
+    checkAccepted(
+        tests, root, "cc1-sbyte-crosses-the-c-abi",
+        R"NS(
+namespace cc1sbyteabi
+{
+    class P
+    {
+        public static export extern C sbyte Clamp(sbyte value)
+        {
+            if (value < -100) { return -100; }
+            if (value > 100) { return 100; }
+            return value;
+        }
+
+        public static int Main()
+        {
+            if ((int)Clamp(-128) != -100) { return 1; }
+            if ((int)Clamp(7) != 7) { return 2; }
+            return 0;
+        }
+    }
+}
+)NS");
+
+    // =====================================================================================
     // IDs 121 y 122 -- la aritmetica de constantes enteras.
     //
     // Esta seccion mide `commonNumericType` LLAMANDOLA, que es como se midio el ID 120 y como se
@@ -1422,6 +1627,57 @@ namespace cc1arrownonptr
                    magnitude(0xFFFFFFFFFFFFFFFDULL, false, false)) == "builtin:int",
             "122: the same value as raw two's complement bits does NOT -- that was the defect");
 
+        // =================================================================================
+        // ID 89 -- `sbyte` en el clasificador de conversiones, medido llamandolo.
+        //
+        // Un tipo nuevo tiene que entrar en TODAS las reglas que nombran a su familia, no solo en
+        // las tablas de ancho y signo. La primera version de este cambio pasaba la fixture de
+        // ejecucion y fallaba AQUI, en el caso (sbyte, const 3): `sbyte` no estaba en la lista de
+        // destinos estrechos de la regla del ID 120 y el tipo comun salia `int`.
+        // =================================================================================
+
+        // La constante que cabe se adapta al operando estrecho, igual que con short y byte.
+        tests.expect(
+            common("builtin:sbyte", "builtin:int", std::nullopt, magnitude(3, false, false)) ==
+                "builtin:sbyte",
+            "89: a fitting int constant adapts to an sbyte operand, as it does to short");
+
+        // Sin constante de por medio, dos estrechos dan int -- tambien si uno tiene signo.
+        tests.expect(
+            common("builtin:sbyte", "builtin:byte", std::nullopt, std::nullopt) == "builtin:int",
+            "89: sbyte and byte give int");
+        tests.expect(
+            common("builtin:sbyte", "builtin:uint", std::nullopt, std::nullopt) == "builtin:long",
+            "89: sbyte and uint give long -- neither side loses range");
+
+        // Los limites del tipo. -128 cabe y -129 no; 127 cabe y 128 no.
+        const auto fitsInSByte = [&magnitude](std::uint64_t value, bool isNegative)
+        {
+            return ProjectTypeConversion::classifyImplicit(
+                       "builtin:int", "builtin:sbyte", magnitude(value, false, isNegative))
+                .exists();
+        };
+        tests.expect(fitsInSByte(127, false), "89: 127 fits in sbyte");
+        tests.expect(!fitsInSByte(128, false), "89: 128 does NOT fit in sbyte");
+        tests.expect(fitsInSByte(128, true), "89: -128 fits in sbyte -- the minimum is one more");
+        tests.expect(!fitsInSByte(129, true), "89: -129 does NOT fit in sbyte");
+
+        // Ensancha SOLO a destinos con signo. Meterlo en los sin signo haria que `uint u = s;`
+        // compilara y envolviera en silencio.
+        const auto widens = [](std::string_view from, std::string_view to)
+        {
+            return ProjectTypeConversion::classifyImplicit(from, to).exists();
+        };
+        tests.expect(
+            widens("builtin:sbyte", "builtin:short") && widens("builtin:sbyte", "builtin:int") &&
+                widens("builtin:sbyte", "builtin:long") &&
+                widens("builtin:sbyte", "builtin:double"),
+            "89: sbyte widens to the signed types and to floating point");
+        tests.expect(
+            !widens("builtin:sbyte", "builtin:uint") && !widens("builtin:sbyte", "builtin:byte") &&
+                !widens("builtin:byte", "builtin:sbyte"),
+            "89: sbyte does NOT widen to unsigned, and byte does not widen to sbyte");
+
         // Los pares con punto flotante siguen siendo del bucle de preferencia, que es lo suyo.
         tests.expect(
             common("builtin:int", "builtin:double", std::nullopt, std::nullopt) == "builtin:double",
@@ -1455,6 +1711,12 @@ namespace cc1promoir
     {
         public const long Mixed = 1 + 1L;
         public const long Chained = Mixed + 40L;
+        // La fixture c17 salio con codigo 3 en la corrida del 2026-09-02, que es su
+        // comprobacion de NegativeWide. Estas dos constantes negativas se miden AQUI, en el
+        // IR, porque el IR imprime el VALOR y una fixture de ejecucion solo imprime el
+        // numero de la comprobacion que fallo.
+        public const long NegativeWide = (-1) + 1L;
+        public const long NegativeSum = (0 - 5) + 10L;
     }
 
     class P
@@ -1497,6 +1759,16 @@ namespace cc1promoir
         tests.expect(
             foldedTo("Chained", "= constant i64 42"),
             "121: a const built on another folded const folds too -- 2 + 40 = 42");
+
+        // 122, EL LADO NEGATIVO, y es lo que la fixture c17 no pudo decir. Si estas dos fallan,
+        // el mensaje imprime el modulo entero y con el el valor que el compilador SI calculo,
+        // que es el dato que hace falta para saber donde se pierde el signo.
+        tests.expect(
+            foldedTo("NegativeWide", "= constant i64 0"),
+            "122: `(-1) + 1L` folds to 0 -- the sign survives the widening to long");
+        tests.expect(
+            foldedTo("NegativeSum", "= constant i64 5"),
+            "122: `(0 - 5) + 10L` folds to 5 -- a negative magnitude plus a wider literal");
     }
 
     return tests.result();

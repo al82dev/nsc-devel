@@ -15,6 +15,7 @@ TypeLayout TargetDataLayout::layoutOf(BuiltinLayoutKind kind) const noexcept
     switch (kind)
     {
         case BuiltinLayoutKind::Bool:
+        case BuiltinLayoutKind::SByte:
         case BuiltinLayoutKind::Byte:
         case BuiltinLayoutKind::Char:
             return {1, 1};

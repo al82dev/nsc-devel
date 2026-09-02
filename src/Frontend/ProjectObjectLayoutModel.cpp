@@ -23,6 +23,7 @@ std::optional<BuiltinLayoutKind> builtinLayoutKind(TokenKind kind) noexcept
     switch (kind)
     {
         case TokenKind::KwBool: return BuiltinLayoutKind::Bool;
+        case TokenKind::KwSByte: return BuiltinLayoutKind::SByte;
         case TokenKind::KwByte: return BuiltinLayoutKind::Byte;
         case TokenKind::KwChar: return BuiltinLayoutKind::Char;
         case TokenKind::KwShort: return BuiltinLayoutKind::Short;
@@ -184,7 +185,8 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
     const ProjectNameLookup& nameLookup,
     std::string_view typeKey) const
 {
-    if (typeKey == "builtin:bool" || typeKey == "builtin:byte" || typeKey == "builtin:char") return {{1, 1}};
+    if (typeKey == "builtin:bool" || typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
+        typeKey == "builtin:char") return {{1, 1}};
     if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return {{2, 2}};
     if (typeKey == "builtin:int" || typeKey == "builtin:uint" || typeKey == "builtin:float") return {{4, 4}};
     if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" ||

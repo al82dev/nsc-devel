@@ -53,6 +53,7 @@ TokenKind keywordKind(std::string_view text) noexcept
     static const std::unordered_map<std::string_view, TokenKind> keywords = {
         {"void", TokenKind::KwVoid},
         {"bool", TokenKind::KwBool},
+        {"sbyte", TokenKind::KwSByte},
         {"byte", TokenKind::KwByte},
         {"char", TokenKind::KwChar},
         {"short", TokenKind::KwShort},

@@ -28,7 +28,10 @@ struct IntegerTypeInfo final
 // segunda vez aqui a proposito porque este evaluador tiene que poder responder sin depender del
 // clasificador de conversiones -- pero las dos tablas dicen lo mismo y el test
 // nsc.cc1.integer-evaluator lo fija.
-constexpr std::array<IntegerTypeInfo, 10> kIntegerTypes = {{
+constexpr std::array<IntegerTypeInfo, 11> kIntegerTypes = {{
+    // ID 89. `sbyte` es el unico entero de 8 bits CON signo. Es lo que hace que `(sbyte)200`
+    // normalice a -56 y no a 200, igual que `(byte)300` normaliza a 44.
+    {"builtin:sbyte", 8, true},
     {"builtin:byte", 8, false},
     {"builtin:char", 8, false},
     {"builtin:short", 16, true},

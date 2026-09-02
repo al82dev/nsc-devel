@@ -54,13 +54,16 @@ const ProjectOopMirStaticField* knownStaticField(
 
 bool isSignedIntegralType(std::string_view typeKey) noexcept
 {
-    return typeKey == "builtin:short" || typeKey == "builtin:int" || typeKey == "builtin:long" ||
-        typeKey == "builtin:nint";
+    // ID 89. Dice lo mismo que la tabla del modelo semantico y que la del backend, a proposito:
+    // cada capa contesta sin depender de las otras. Las tres se fijan entre si en la fixture c19.
+    return typeKey == "builtin:sbyte" || typeKey == "builtin:short" ||
+        typeKey == "builtin:int" || typeKey == "builtin:long" || typeKey == "builtin:nint";
 }
 
 unsigned integerBitWidth(std::string_view typeKey) noexcept
 {
-    if (typeKey == "builtin:byte" || typeKey == "builtin:char") return 8;
+    if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
+        typeKey == "builtin:char") return 8;
     if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return 16;
     if (typeKey == "builtin:int" || typeKey == "builtin:uint") return 32;
     if (typeKey == "builtin:long" || typeKey == "builtin:ulong" ||

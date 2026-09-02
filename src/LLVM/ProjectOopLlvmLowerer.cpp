@@ -169,15 +169,19 @@ bool isFloating(std::string_view type) noexcept
 
 bool isSignedInteger(std::string_view type) noexcept
 {
-    return type == "builtin:short" || type == "builtin:int" || type == "builtin:long" ||
-        type == "builtin:nint";
+    // ID 89. `sbyte` es lo que decide sdiv/udiv, ashr/lshr, sext/zext y el predicado de las
+    // comparaciones para un entero de 8 bits. Sin esta linea, un `sbyte` se dividiria y se
+    // extenderia como si fuera `byte` y un valor negativo daria el resultado equivocado en
+    // SILENCIO -- exactamente la clase de defecto que el C-002 fue para `ulong`.
+    return type == "builtin:sbyte" || type == "builtin:short" || type == "builtin:int" ||
+        type == "builtin:long" || type == "builtin:nint";
 }
 
 
 unsigned integerWidth(std::string_view type) noexcept
 {
     if (type == "builtin:bool") return 1;
-    if (type == "builtin:byte" || type == "builtin:char") return 8;
+    if (type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:char") return 8;
     if (type == "builtin:short" || type == "builtin:ushort") return 16;
     if (type == "builtin:int" || type == "builtin:uint") return 32;
     if (type == "builtin:long" || type == "builtin:ulong" || type == "builtin:nint" || type == "builtin:nuint") return 64;
@@ -7964,7 +7968,8 @@ private:
     {
         if (typeKey == "builtin:void") return LLVMVoidTypeInContext(context_);
         if (typeKey == "builtin:bool") return LLVMInt1TypeInContext(context_);
-        if (typeKey == "builtin:byte" || typeKey == "builtin:char") return LLVMInt8TypeInContext(context_);
+        if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
+            typeKey == "builtin:char") return LLVMInt8TypeInContext(context_);
         if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return LLVMInt16TypeInContext(context_);
         if (typeKey == "builtin:int" || typeKey == "builtin:uint") return LLVMInt32TypeInContext(context_);
         if (typeKey == "builtin:long" || typeKey == "builtin:ulong" || typeKey == "builtin:nint" || typeKey == "builtin:nuint") return LLVMInt64TypeInContext(context_);

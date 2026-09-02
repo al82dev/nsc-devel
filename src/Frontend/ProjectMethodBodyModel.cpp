@@ -74,8 +74,10 @@ bool isShift(TokenKind kind) noexcept
 // branch in analyzeBinary for what happened when it was.
 std::string shiftResultType(std::string_view leftTypeKey)
 {
-    if (leftTypeKey == "builtin:byte" || leftTypeKey == "builtin:char" ||
-        leftTypeKey == "builtin:short" || leftTypeKey == "builtin:ushort")
+    // ID 89: `sbyte` promociona a `int` en un shift igual que los otros tres estrechos.
+    if (leftTypeKey == "builtin:sbyte" || leftTypeKey == "builtin:byte" ||
+        leftTypeKey == "builtin:char" || leftTypeKey == "builtin:short" ||
+        leftTypeKey == "builtin:ushort")
     {
         return "builtin:int";
     }
@@ -178,13 +180,15 @@ struct Stage37ConstantValue final
 
 bool isSignedIntegralType(std::string_view typeKey) noexcept
 {
-    return typeKey == "builtin:short" || typeKey == "builtin:int" ||
+    // ID 89: `sbyte` entra aqui y `byte` no. Es toda la diferencia entre los dos tipos.
+    return typeKey == "builtin:sbyte" || typeKey == "builtin:short" || typeKey == "builtin:int" ||
         typeKey == "builtin:long" || typeKey == "builtin:nint";
 }
 
 unsigned integralBitWidth(std::string_view typeKey) noexcept
 {
-    if (typeKey == "builtin:byte" || typeKey == "builtin:char") return 8;
+    if (typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
+        typeKey == "builtin:char") return 8;
     if (typeKey == "builtin:short" || typeKey == "builtin:ushort") return 16;
     if (typeKey == "builtin:int" || typeKey == "builtin:uint") return 32;
     return 64;
@@ -4952,6 +4956,96 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             expression->range(),
                             "stackalloc requires an integral element count");
                         allocationValid = false;
+                    }
+
+                    // =============================================================================
+                    // ID 123 -- ENDURECIMIENTO DE `stackalloc`.
+                    //
+                    // Lo que ya se comprobaba antes de esta ronda: que el elemento tenga tamano
+                    // (no `void`), que su vida sea trivial (sin destructor y sin campos `owned`) y
+                    // que el contador sea integral. Nada mas. Un `stackalloc` con un contador
+                    // NEGATIVO, o con uno tan grande que la reserva no cabe en la pila, pasaba
+                    // entero y llegaba a LLVM como un `alloca` que revienta en ejecucion.
+                    //
+                    // Las cuatro comprobaciones NO CABEN TODAS AQUI, y el reparto no es una
+                    // preferencia: dos necesitan el TAMANO DEL ELEMENTO, y este modelo no lo
+                    // tiene. El orden de construccion del pipeline es modelo de cuerpos de metodo
+                    // PRIMERO y ProjectObjectLayoutModel DESPUES -- `build()` ni siquiera recibe
+                    // el modelo de layout, y esta escrito en el comentario de SizeofConstant en
+                    // ProjectMethodBodyModel.h por la misma razon. Duplicar aqui las reglas de
+                    // tamano seria justo la duplicacion que el milestone CC1 existe para quitar.
+                    //
+                    // Reparto, entonces:
+                    //   AQUI (necesitan solo el contador): contador constante negativo, y
+                    //        `stackalloc` dentro de un bucle.
+                    //   EN ProjectOopHirModel (necesitan el tamano): que la reserva total quepa.
+                    //
+                    // Lo que se gana teniendo estas dos aqui: salen por el motor de diagnosticos,
+                    // con el rango del codigo fuente y el texto que lee la persona. Las del HIR
+                    // salen por su cadena `error`, que habla de etapas internas -- es la
+                    // limitacion de esa capa, no una eleccion.
+                    // =============================================================================
+
+                    // ID 123 (1/3). CONTADOR CONSTANTE NEGATIVO.
+                    //
+                    // Se puede comprobar desde que el ID 119 cerro la constancia de los literales
+                    // negativos: antes de aquello `-1` ni siquiera llegaba aqui como constante, y
+                    // por eso esta comprobacion no se pudo escribir en su momento.
+                    //
+                    // Sobre el tipo, no sobre los bits: un contador `uint` con el bit alto puesto
+                    // NO es negativo, y leerlo como si lo fuera rechazaria `stackalloc byte[n]`
+                    // con n = 3000000000u, que es perfectamente legitimo escribirlo aunque luego
+                    // no quepa -- de que no quepa se encarga la comprobacion del HIR.
+                    if (allocationValid && expression->first() != nullptr)
+                    {
+                        // `declaringTypeOrdinal` va en nullopt: ese parametro solo se usa
+                        // mientras se expande el inicializador de un campo `const`, y el
+                        // contador de un `stackalloc` esta en el cuerpo de un metodo. Es lo
+                        // mismo que pasa el plegado de las etiquetas de `switch`.
+                        const std::optional<ProjectIntegerValue> foldedCount =
+                            foldIntegerConstant(expression->first(), std::nullopt);
+                        if (foldedCount.has_value() &&
+                            ProjectIntegerEvaluator::isSignedInteger(foldedCount->typeKey) &&
+                            foldedCount->asSigned() < 0)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidStackalloc,
+                                diagnostics::DiagnosticSeverity::Error,
+                                expression->range(),
+                                "stackalloc element count is negative (" +
+                                    std::to_string(foldedCount->asSigned()) +
+                                    "); a reservation cannot have fewer than zero elements");
+                            allocationValid = false;
+                        }
+                    }
+
+                    // ID 123 (2/3). `stackalloc` DENTRO DE UN BUCLE.
+                    //
+                    // Es la trampa clasica de C y merece decirse: un `alloca` dentro de un bucle
+                    // reserva OTRA VEZ en cada vuelta y NADA se libera hasta salir de la funcion.
+                    // La pila crece con las iteraciones, no con la profundidad de la llamada. Un
+                    // bucle de mil vueltas con `stackalloc int[256]` son un mega de pila, y el
+                    // programa parece correcto leyendolo.
+                    //
+                    // AVISO Y NO ERROR, y es deliberado: la forma es legitima cuando el bucle da
+                    // pocas vueltas, y este lenguaje no tiene con que demostrar cuantas da. Un
+                    // error aqui prohibiria codigo correcto; callarse deja pasar un desbordamiento
+                    // de pila con forma de programa sano. El aviso es lo unico honesto.
+                    //
+                    // ES EL PRIMER WARNING DEL COMPILADOR: `DiagnosticSeverity::Warning` existia y
+                    // `DiagnosticEngine::warningCount()` tambien, pero ningun sitio del arbol los
+                    // usaba (barrido completo: cero apariciones de `DiagnosticSeverity::Warning`
+                    // en src/). Comprobado que no rompe nada: el exito se decide con
+                    // `hasErrors()`, que solo cuenta los de severidad Error.
+                    if (allocationValid && !loopStack_.empty())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidStackalloc,
+                            diagnostics::DiagnosticSeverity::Warning,
+                            expression->range(),
+                            "stackalloc inside a loop reserves again on every iteration and "
+                            "nothing is released until the function returns; hoist it out of the "
+                            "loop or use a heap allocation");
                     }
                 }
 

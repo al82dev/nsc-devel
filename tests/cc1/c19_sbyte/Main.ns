@@ -1,0 +1,208 @@
+// ID 89 -- `sbyte`, el entero de ocho bits CON signo.
+//
+// POR QUE EL TIPO EXISTE, y no es simetria de catalogo: `signed char` es un parametro corriente en
+// las cabeceras de C, y sin `sbyte` no habia forma de declararlo honestamente. Habia que mentir
+// con `byte` y dejar que el signo se perdiera en la frontera. Este lenguaje existe, entre otras
+// cosas, para declarar APIs de C.
+//
+// POR QUE ES ARRIESGADO Y NO MECANICO. `sbyte` no es una fila mas en una tabla: es un ancho que ya
+// existia (8 bits, el de `byte`) con el signo cambiado. Cada capa que decide algo POR EL SIGNO
+// tiene que enterarse, y son varias escritas por separado a proposito -- el modelo semantico, el
+// evaluador de constantes, el clasificador de conversiones, el MIR y el backend tienen cada uno su
+// propia tabla para poder contestar sin depender de los demas. Si una sola se queda sin la fila,
+// no hay error de compilacion: hay un `sbyte` que se divide como si fuera `byte`, o que se
+// extiende con ceros donde tocaba extender el signo, y el programa da el resultado equivocado en
+// SILENCIO. Es la misma forma del defecto C-002, que dividia un `ulong` con signo.
+//
+// Por eso esta fixture no comprueba "que sbyte existe". Enfrenta a `sbyte` con `byte` en cada
+// operacion donde el signo cambia el RESULTADO y no solo su interpretacion:
+//
+//   * extension al ensanchar      -- sext contra zext
+//   * division y modulo           -- sdiv/srem contra udiv/urem
+//   * desplazamiento a la derecha -- ashr contra lshr
+//   * comparacion                 -- predicado con signo contra sin signo
+//   * el cast que estrecha        -- (sbyte)200 vale -56, (byte)200 vale 200
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42.
+namespace cc1sbyte
+{
+    public struct Pair
+    {
+        public sbyte Low;
+        public sbyte High;
+    }
+
+    class Program
+    {
+        // ENSANCHAR. Un `sbyte` negativo llega a `int` conservando su valor: -3, no 253. Con zext
+        // en vez de sext, esta funcion devuelve 253 y nada mas en el programa lo nota.
+        private static int WideningExtendsTheSign()
+        {
+            sbyte negative = -3;
+            int widened = (int)negative;
+            if (widened != -3) { return 0; }
+
+            long wider = (long)negative;
+            if (wider != -3L) { return 0; }
+
+            // El mismo patron de bits leido como `byte` es 253. Es la comparacion que separa las
+            // dos extensiones: el byte no tiene signo que extender.
+            byte unsignedTwin = 253;
+            int unsignedWidened = (int)unsignedTwin;
+            if (unsignedWidened != 253) { return 0; }
+
+            return 1;
+        }
+
+        // DIVIDIR. Es una de las dos operaciones donde el signo cambia el resultado y no solo su
+        // lectura. -8 / 2 es -4 con signo; el mismo patron de bits sin signo es 248 / 2 = 124.
+        private static int DivisionUsesTheSignedInstruction()
+        {
+            sbyte value = -8;
+            int quotient = (int)value / 2;
+            if (quotient != -4) { return 0; }
+
+            int remainder = (int)value % 3;
+            if (remainder != -2) { return 0; }
+
+            byte unsignedTwin = 248;
+            int unsignedQuotient = (int)unsignedTwin / 2;
+            if (unsignedQuotient != 124) { return 0; }
+
+            return 1;
+        }
+
+        // DESPLAZAR A LA DERECHA. Aritmetico contra logico. Un shift toma el tipo del operando
+        // IZQUIERDO promovido a `int` (CC1-103), asi que lo que se mide aqui es que la promocion
+        // de `sbyte` a `int` conserva el signo antes de desplazar.
+        private static int RightShiftIsArithmetic()
+        {
+            sbyte negative = -16;
+            int shifted = (int)negative >> 2;
+            if (shifted != -4) { return 0; }
+
+            byte unsignedTwin = 240;
+            int unsignedShifted = (int)unsignedTwin >> 2;
+            if (unsignedShifted != 60) { return 0; }
+
+            return 1;
+        }
+
+        // COMPARAR. -1 es MENOR que 1 con signo, y MAYOR sin signo (255 > 1). El predicado que
+        // elige el backend sale de la misma tabla de signo.
+        private static int ComparisonUsesTheSignedPredicate()
+        {
+            sbyte negative = -1;
+            sbyte positive = 1;
+            if (!(negative < positive)) { return 0; }
+
+            byte unsignedTwin = 255;
+            byte unsignedOne = 1;
+            if (!(unsignedTwin > unsignedOne)) { return 0; }
+
+            return 1;
+        }
+
+        // EL CAST QUE ESTRECHA. `(sbyte)200` no es 200: no cabe, y el valor normalizado es -56.
+        // Es la misma normalizacion que hace que `(byte)300` valga 44, con la tabla de signo
+        // puesta. Si `sbyte` no estuviera en esa tabla, esto daria 200 para el frontend y -56 para
+        // el backend -- la forma exacta del defecto C-001.
+        private static int NarrowingCastNormalizesWithSign()
+        {
+            int wide = 200;
+            sbyte narrowed = (sbyte)wide;
+            if ((int)narrowed != -56) { return 0; }
+
+            byte unsignedNarrowed = (byte)wide;
+            if ((int)unsignedNarrowed != 200) { return 0; }
+
+            return 1;
+        }
+
+        // LOS LIMITES. -128 y 127. El minimo es uno mas en magnitud que el maximo, igual que en
+        // `short` y en `int`, y es la rama de negativos de `constantFits` la que lo decide.
+        private static int BoundsAreMinus128To127()
+        {
+            sbyte low = -128;
+            sbyte high = 127;
+            if ((int)low != -128) { return 0; }
+            if ((int)high != 127) { return 0; }
+            return 1;
+        }
+
+        // LA CONSTANTE QUE SE ADAPTA. `s + 3` tiene que seguir siendo `sbyte`, igual que con
+        // `short` y con `byte`: es la regla del ID 120, y un tipo estrecho nuevo tiene que entrar
+        // en ella. Medido con un probe antes de escribir esta linea: sin anadir `sbyte` a la
+        // lista de destinos de esa regla, el tipo comun salia `int` y esta funcion no compilaba.
+        private static int ConstantAdaptsToTheNarrowOperand()
+        {
+            sbyte s = 10;
+            sbyte t = s + 3;
+            sbyte back = s - 3;
+            if ((int)t != 13) { return 0; }
+            if ((int)back != 7) { return 0; }
+            return 1;
+        }
+
+        // EN UN AGREGADO. Dos `sbyte` seguidos ocupan dos bytes: el tamano es el de `byte`, y lo
+        // unico que cambia entre los dos tipos es el signo. Se enfrentan `sizeof` y el paso de un
+        // puntero entre si, igual que hace la fixture c16 con `enum`.
+        private static int LayoutIsOneByte()
+        {
+            nuint size = sizeof(sbyte);
+            if (size != 1) { return 0; }
+            if (sizeof(Pair) != 2) { return 0; }
+
+            Pair pair;
+            pair.Low = -128;
+            pair.High = 127;
+
+            sbyte* first = &pair.Low;
+            sbyte* second = &pair.High;
+            if (second - first != 1) { return 0; }
+            if ((int)(*first) != -128) { return 0; }
+
+            *(first + 1) = -1;
+            if ((int)pair.High != -1) { return 0; }
+
+            return 1;
+        }
+
+        // UN ARREGLO DE sbyte. El paso es de un byte y los valores negativos sobreviven al
+        // recorrido.
+        private static int ArraysOfSByteStep1()
+        {
+            sbyte* buffer = stackalloc sbyte[4];
+            buffer[0] = -128;
+            buffer[1] = -1;
+            buffer[2] = 0;
+            buffer[3] = 127;
+
+            int total = 0;
+            int index = 0;
+            while (index < 4)
+            {
+                total = total + (int)buffer[index];
+                index++;
+            }
+            // -128 + -1 + 0 + 127 = -2
+            if (total != -2) { return 0; }
+            return 1;
+        }
+
+        public static int Main()
+        {
+            if (WideningExtendsTheSign() != 1) { return 1; }
+            if (DivisionUsesTheSignedInstruction() != 1) { return 2; }
+            if (RightShiftIsArithmetic() != 1) { return 3; }
+            if (ComparisonUsesTheSignedPredicate() != 1) { return 4; }
+            if (NarrowingCastNormalizesWithSign() != 1) { return 5; }
+            if (BoundsAreMinus128To127() != 1) { return 6; }
+            if (ConstantAdaptsToTheNarrowOperand() != 1) { return 7; }
+            if (LayoutIsOneByte() != 1) { return 8; }
+            if (ArraysOfSByteStep1() != 1) { return 9; }
+
+            return 42;
+        }
+    }
+}

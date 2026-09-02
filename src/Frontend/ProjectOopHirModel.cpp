@@ -7,8 +7,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <iterator>
+#include <optional>
 #include <sstream>
+#include <string>
 #include <utility>
 
 namespace nativesharp::frontend
@@ -3320,6 +3323,64 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             }
             auto count = lowerExpression(expression->first(), memberOrdinal, false, error);
             if (count == nullptr) return nullptr;
+
+            // =================================================================================
+            // ID 123 (3/3). QUE LA RESERVA QUEPA.
+            //
+            // Esta comprobacion vive AQUI y no en el modelo semantico porque necesita el TAMANO
+            // DEL ELEMENTO, y aquel corre antes que ProjectObjectLayoutModel -- lo dice el
+            // comentario de SizeofConstant en ProjectMethodBodyModel.h. El tamano se lo pregunta
+            // al MISMO servicio del que salen `sizeof`, el stride de un arreglo y el offset de un
+            // campo: ni una tabla de tamanos nueva.
+            //
+            // SOLO CUANDO EL CONTADOR ES CONSTANTE. Con un contador en tiempo de ejecucion no hay
+            // nada que decidir en compilacion, y este lenguaje no promete comprobar la pila.
+            //
+            // NO SE MULTIPLICA NUNCA, y esa es la parte que importa. La forma obvia
+            //
+            //     if (elements * elementSize > kLimit)
+            //
+            // desborda en 64 bits justo en los casos que quiere atrapar: `stackalloc int[1<<62]`
+            // da un producto que envuelve a 0 y pasa la comprobacion. Dividiendo el limite entre
+            // el tamano, la comparacion es exacta para todo `elements` de 64 bits y el
+            // desbordamiento del producto deja de existir por construccion, en vez de vigilarse
+            // aparte. Por eso las dos ultimas comprobaciones del ID 123 son UNA sola.
+            //
+            // EL LIMITE, y de donde sale. Nada en el arbol le pasa `/STACK` a `lld-link`
+            // (comprobado: cero apariciones en src/Linker/), asi que el PE se queda con la
+            // reserva por omision del enlazador, que en Windows x64 es 1 MiB. Una sola reserva de
+            // 1 MiB no puede caber ahi -- el marco de la funcion tambien ocupa -- asi que el
+            // limite rechaza SOLO lo que falla seguro y no opina sobre lo que quiza quepa. Si
+            // algun dia el enlazador recibe un `/STACK` mayor, este numero se mueve con el.
+            constexpr std::uint64_t kMaximumStackallocBytes = std::uint64_t{1} << 20;
+
+            if (count->kind == ProjectOopHirNodeKind::IntegerConstant)
+            {
+                if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+                {
+                    error = "CC1 stackalloc requires the object layout model to size it";
+                    return nullptr;
+                }
+                const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+                    objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, core->elementTypeKey);
+                if (!elementLayout.has_value())
+                {
+                    error = "stackalloc cannot size '" + core->elementTypeKey +
+                        "': it has no value layout";
+                    return nullptr;
+                }
+                const std::uint64_t elementSize = elementLayout->first;
+                const std::uint64_t elements = count->integerValue;
+                if (elementSize != 0 && elements > kMaximumStackallocBytes / elementSize)
+                {
+                    error = "stackalloc of " + std::to_string(elements) + " x " +
+                        std::to_string(elementSize) + " bytes does not fit on the stack; the "
+                        "default reserve is " + std::to_string(kMaximumStackallocBytes) +
+                        " bytes -- allocate it on the heap instead";
+                    return nullptr;
+                }
+            }
+
             auto node = makeNode(ProjectOopHirNodeKind::StackAllocation, expression, core->resultTypeKey);
             node->elementTypeKey = core->elementTypeKey;
             node->children.push_back(std::move(count));

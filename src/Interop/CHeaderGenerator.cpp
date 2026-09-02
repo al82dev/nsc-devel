@@ -136,7 +136,11 @@ std::string hostType(std::string_view typeKey, const HostContext& context, std::
     const auto [coreKey, pointerDepth] = splitPointerType(typeKey);
     std::string result;
     if (coreKey == "builtin:void") result = "void";
-    else if (coreKey == "builtin:bool" || coreKey == "builtin:byte" || coreKey == "builtin:char") result = "uint8_t";
+    // ID 89. `sbyte` es `int8_t`, que es la RAZON DE SER de este tipo: una API de C con
+    // `signed char` no se podia declarar honestamente sin el.
+    else if (coreKey == "builtin:sbyte") result = "int8_t";
+    else if (coreKey == "builtin:bool" || coreKey == "builtin:byte" ||
+             coreKey == "builtin:char") result = "uint8_t";
     else if (coreKey == "builtin:short") result = "int16_t";
     else if (coreKey == "builtin:ushort") result = "uint16_t";
     else if (coreKey == "builtin:int") result = "int32_t";

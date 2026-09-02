@@ -303,6 +303,9 @@ call :run_case "%CC%\c13_increment\c13_increment.nsproj" cc1_c13_increment 42 "%
 call :run_case "%CC%\c14_compound_assign\c14_compound_assign.nsproj" cc1_c14_compound_assign 42 "%FIXLOG%"
 call :run_case "%CC%\c15_arrow_member\c15_arrow_member.nsproj" cc1_c15_arrow_member 42 "%FIXLOG%"
 call :run_case "%CC%\c16_enum_layout\c16_enum_layout.nsproj" cc1_c16_enum_layout 42 "%FIXLOG%"
+call :run_case "%CC%\c17_constant_promotion\c17_constant_promotion.nsproj" cc1_c17_constant_promotion 42 "%FIXLOG%"
+call :run_case "%CC%\c18_stackalloc_hardening\c18_stackalloc_hardening.nsproj" cc1_c18_stackalloc_hardening 42 "%FIXLOG%"
+call :run_case "%CC%\c19_sbyte\c19_sbyte.nsproj" cc1_c19_sbyte 42 "%FIXLOG%"
 
 >> "%SUMMARY%" echo.
 

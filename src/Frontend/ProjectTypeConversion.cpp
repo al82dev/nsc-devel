@@ -12,12 +12,14 @@ namespace
 {
 using Pair = std::pair<std::string_view, std::string_view>;
 
-constexpr std::array<std::string_view, 12> kNumericTypes = {
+constexpr std::array<std::string_view, 13> kNumericTypes = {
+    "builtin:sbyte",
     "builtin:byte", "builtin:char", "builtin:short", "builtin:ushort",
     "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
     "builtin:nint", "builtin:nuint", "builtin:float", "builtin:double"};
 
-constexpr std::array<std::string_view, 10> kIntegralTypes = {
+constexpr std::array<std::string_view, 11> kIntegralTypes = {
+    "builtin:sbyte",
     "builtin:byte", "builtin:char", "builtin:short", "builtin:ushort",
     "builtin:int", "builtin:uint", "builtin:long", "builtin:ulong",
     "builtin:nint", "builtin:nuint"};
@@ -38,7 +40,8 @@ struct IntegralInfo final
     bool isSigned;
 };
 
-constexpr std::array<IntegralInfo, 10> kIntegralInfo = {{
+constexpr std::array<IntegralInfo, 11> kIntegralInfo = {{
+    {"builtin:sbyte", 8, true},
     {"builtin:byte", 8, false},
     {"builtin:char", 8, false},
     {"builtin:short", 16, true},
@@ -59,7 +62,14 @@ const IntegralInfo* findIntegral(std::string_view typeKey) noexcept
     return nullptr;
 }
 
-constexpr std::array<Pair, 53> kNumericWidenings = {{
+constexpr std::array<Pair, 59> kNumericWidenings = {{
+    // ID 89. `sbyte` ensancha SOLO a destinos con signo: los sin signo no pueden representar
+    // sus valores negativos, y meterlos aqui haria que `uint u = miSByte;` compilara y
+    // envolviera en silencio. Es la misma razon por la que `byte` no ensancha a `sbyte`: 200
+    // no cabe en un entero de 8 bits con signo.
+    {"builtin:sbyte", "builtin:short"}, {"builtin:sbyte", "builtin:int"},
+    {"builtin:sbyte", "builtin:long"}, {"builtin:sbyte", "builtin:nint"},
+    {"builtin:sbyte", "builtin:float"}, {"builtin:sbyte", "builtin:double"},
     {"builtin:byte", "builtin:short"}, {"builtin:byte", "builtin:ushort"},
     {"builtin:byte", "builtin:int"}, {"builtin:byte", "builtin:uint"},
     {"builtin:byte", "builtin:long"}, {"builtin:byte", "builtin:ulong"},
@@ -106,7 +116,7 @@ bool contains(std::span<const std::string_view> values, std::string_view value) 
 bool isIntegralPromotion(std::string_view source, std::string_view target) noexcept
 {
     return target == "builtin:int" &&
-        (source == "builtin:byte" || source == "builtin:char" ||
+        (source == "builtin:sbyte" || source == "builtin:byte" || source == "builtin:char" ||
          source == "builtin:short" || source == "builtin:ushort");
 }
 
@@ -134,6 +144,13 @@ bool constantFits(
     // que hace que `byte b = -1;` siga rechazandose.
     if (sourceNegative)
     {
+        // ID 89. `sbyte` llega hasta -128, uno mas que su maximo 127, igual que `short` llega a
+        // -32768 con maximo 32767. La regla es la misma para los cuatro anchos con signo.
+        if (target == "builtin:sbyte")
+        {
+            return value <=
+                static_cast<std::uint64_t>(std::numeric_limits<std::int8_t>::max()) + 1U;
+        }
         if (target == "builtin:short")
         {
             return value <= static_cast<std::uint64_t>(std::numeric_limits<std::int16_t>::max()) + 1U;
@@ -149,6 +166,13 @@ bool constantFits(
         return false;
     }
 
+    // ID 89. Un byte CON signo llega a 127, no a 255. Si esta rama faltara, `sbyte s = 200;`
+    // caeria al `return false` del final y el mensaje diria que no hay conversion en vez de que
+    // el valor no cabe; y si dijera 255, `sbyte s = 200;` compilaria y valdria -56 en silencio.
+    if (target == "builtin:sbyte")
+    {
+        return value <= static_cast<std::uint64_t>(std::numeric_limits<std::int8_t>::max());
+    }
     if (target == "builtin:byte")
     {
         return value <= std::numeric_limits<std::uint8_t>::max();
@@ -395,9 +419,14 @@ std::optional<std::string> ProjectTypeConversion::commonNumericType(
     const auto adaptsFromDefaultLiteral =
         [](const ProjectImplicitConversion& conversion, std::string_view target) noexcept
     {
+        // ID 89: `sbyte` es un destino MAS ESTRECHO QUE INT y por tanto pertenece a esta lista.
+        // Sin el, `sbyte s = 10; sbyte t = s + 3;` no compilaria mientras que la misma linea con
+        // `short` si -- medido con el probe de este stage, que devolvia `int` para el par
+        // (sbyte, const 3). Un tipo nuevo tiene que entrar en TODAS las reglas que nombran a la
+        // familia de los estrechos, no solo en las tablas de ancho y signo.
         return conversion.kind == ProjectConversionKind::ConstantInteger &&
             conversion.sourceTypeKey == "builtin:int" &&
-            (target == "builtin:byte" || target == "builtin:char" ||
+            (target == "builtin:sbyte" || target == "builtin:byte" || target == "builtin:char" ||
              target == "builtin:short" || target == "builtin:ushort");
     };
     if (adaptsFromDefaultLiteral(rightToLeft, leftTypeKey))
@@ -434,10 +463,15 @@ std::optional<std::string> ProjectTypeConversion::commonNumericType(
         return promoted;
     }
 
-    constexpr std::array<std::string_view, 12> preference = {
+    // ID 89. `sbyte` va AL FINAL, y es la posicion mas conservadora que existe: el bucle
+    // devuelve el PRIMER candidato al que llegan los dos operandos, asi que anadir una entrada al
+    // final no puede cambiar ninguna respuesta que la tabla ya daba. Solo contesta donde antes se
+    // devolvia nullopt.
+    constexpr std::array<std::string_view, 13> preference = {
         "builtin:double", "builtin:float", "builtin:ulong", "builtin:long",
         "builtin:nuint", "builtin:nint", "builtin:uint", "builtin:int",
-        "builtin:ushort", "builtin:short", "builtin:char", "builtin:byte"};
+        "builtin:ushort", "builtin:short", "builtin:char", "builtin:byte",
+        "builtin:sbyte"};
     for (const std::string_view candidate : preference)
     {
         if (classifyImplicit(leftTypeKey, candidate, leftIntegerConstant).exists() &&

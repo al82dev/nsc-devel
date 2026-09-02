@@ -1,0 +1,109 @@
+STAGE Bloque 1 -- IDs 123 (stackalloc hardening) y 89 (sbyte)
+Fecha: 2026-09-02
+Doc: mkdown\84_bloque1_stackalloc_y_sbyte.md
+
+Cierra el 1a entero (121, 122, 123) y la mitad mecanica del 1b (89).
+Quedan abiertos el ID 82 y el residuo de SHR-005; ver 84 seccion 7.
+
+MODIFICADOS -- ID 123
+---------------------
+src/Frontend/ProjectMethodBodyModel.cpp
+    Caso StackallocExpression, dentro de `if (isStackalloc)`:
+      - Contador constante NEGATIVO: se pliega con foldIntegerConstant y se mira el TIPO
+        (isSignedInteger + asSigned() < 0), no los bits. Un `uint` con el bit alto puesto
+        no es negativo. Error con rango de fuente.
+      - `stackalloc` dentro de un bucle (!loopStack_.empty()): AVISO, no error. Es el
+        PRIMER DiagnosticSeverity::Warning del compilador -- comprobado que el arbol no
+        emitia ninguno y que el exito se decide con hasErrors(), que solo cuenta Error.
+
+src/Frontend/ProjectOopHirModel.cpp
+    Caso StackallocExpression: que la reserva quepa. Solo con contador constante.
+      - kMaximumStackallocBytes = 1 MiB. Sale de que NADA en el arbol pasa /STACK a
+        lld-link (cero apariciones en src/Linker/), asi que el PE se queda con la reserva
+        por omision del enlazador.
+      - Se DIVIDE el limite entre el tamano en vez de multiplicar contador por tamano. Asi
+        la comparacion es exacta para todo contador de 64 bits y el desbordamiento del
+        producto no existe por construccion. Las comprobaciones 3 y 4 del doc 60 son UNA.
+      - Includes explicitos anadidos: <cstdint>, <optional>, <string>.
+
+MODIFICADOS -- ID 89 (sbyte)
+----------------------------
+include/nativesharp/Lexer/TokenKind.h
+    KwSByte, entre KwBool y KwByte. DENTRO del rango KwVoid..KwString, que es lo que
+    isBuiltinTypeKeyword compara. Fuera del rango compilaria y no se reconoceria como tipo.
+
+src/Lexer/Lexer.cpp                     la palabra "sbyte" en la tabla de keywords
+src/Lexer/TokenKind.cpp                 NS_TOKEN_CASE(KwSByte)
+include/nativesharp/Target/TargetDataLayout.h   BuiltinLayoutKind::SByte
+src/Target/TargetDataLayout.cpp         SByte -> {1, 1}
+src/Frontend/ProjectObjectLayoutModel.cpp
+    KwSByte -> BuiltinLayoutKind::SByte, y "builtin:sbyte" -> {1,1} en
+    valueLayoutForTypeKey.
+
+src/Frontend/ProjectTypeConversion.cpp  -- SIETE tablas
+    kNumericTypes 12->13, kIntegralTypes 10->11, kIntegralInfo 10->11 ({sbyte,8,true}),
+    kNumericWidenings 53->59 (sbyte -> short/int/long/nint/float/double, y a NINGUN
+    destino sin signo), isIntegralPromotion (sbyte -> int), constantFits (rama de
+    negativos hasta -128, rama positiva hasta 127), tabla de preferencia 12->13 con sbyte
+    AL FINAL (posicion que no puede cambiar ninguna respuesta existente), y
+    adaptsFromDefaultLiteral -- la regla del ID 120 -- que necesitaba sbyte en su lista de
+    destinos estrechos. Ese ultimo lo encontro el probe, no una lectura.
+
+src/Frontend/ProjectIntegerEvaluator.cpp   kIntegerTypes 10->11, {sbyte, 8, true}
+src/Frontend/ProjectMethodBodyModel.cpp    isSignedIntegralType, integralBitWidth,
+                                           shiftResultType (sbyte promociona a int)
+src/Frontend/ProjectOopMirModel.cpp        isSignedIntegralType, integerBitWidth
+src/LLVM/ProjectOopLlvmLowerer.cpp         isSignedInteger, integerWidth, llvmType -> i8
+src/Interop/CHeaderGenerator.cpp           "builtin:sbyte" -> "int8_t"
+
+src/Frontend/ProjectMemberModel.cpp
+    isStage47CAbiType: sbyte en la lista de tipos que cruzan la ABI de C. ES EL SITIO QUE
+    HACE QUE EL TIPO SIRVA PARA ALGO -- sin el, `extern C void f(sbyte x);` se rechaza y
+    el tipo no cubre el unico caso de uso que lo justifica. No estaba en la lista de once
+    capas del doc 60; salio de barrer "builtin:ushort" por todo src/.
+
+NUEVOS
+------
+tests/cc1/c18_stackalloc_hardening/Main.ns
+tests/cc1/c18_stackalloc_hardening/c18_stackalloc_hardening.nsproj
+    La mitad POSITIVA del ID 123: que el endurecimiento no tenga falsos positivos.
+    Contador sin signo grande, reserva constante razonable, contador de ejecucion, cero
+    elementos, contador plegado, y stackalloc en bucle que avisa y COMPILA. Salida: 42.
+
+tests/cc1/c19_sbyte/Main.ns
+tests/cc1/c19_sbyte/c19_sbyte.nsproj
+    sbyte enfrentado a byte en cada operacion donde el signo cambia el RESULTADO:
+    extension, division, modulo, shift derecho, comparacion, cast que estrecha, limites,
+    la constante que se adapta, layout en agregado y arreglo. Salida: 42.
+
+run_bloque1.bat
+    Build con warnings-as-errors primero (-Wswitch caza un case olvidado del enumerador
+    nuevo), luego integer-evaluator y cc1.correctness por separado, luego la suite.
+    Logs en _logs\bloque1\.
+
+mkdown\84_bloque1_stackalloc_y_sbyte.md
+    Doc del stage, con enfoque didactico: el defecto, la medicion, por que cada
+    comprobacion vive en la capa en la que vive, las decisiones de diseno con su razon, y
+    la medicion de lo que queda (ID 82 y SHR-005).
+
+MODIFICADO -- pruebas
+---------------------
+tests/unit/Cc1CorrectnessTests.cpp
+    - Registro de c18 y c19.
+    - ID 123, cinco pruebas: contador negativo literal, contador negativo plegado, reserva
+      de 1 GiB, contador que desborda el producto (1<<62 elementos de 4 bytes), y una
+      reserva grande PERO LEGAL que tiene que seguir compilando.
+    - ID 89, cuatro pruebas: 200 no cabe, -129 no cabe, no ensancha a sin signo, y
+      atraviesa la ABI de C (export extern C con parametro y retorno sbyte).
+    - Diez aserciones sobre commonNumericType/classifyImplicit con sbyte, llamandolas.
+
+NO TOCADOS, y es deliberado
+---------------------------
+CMakeLists.txt
+    Las fixtures cc1 se registran dentro de Cc1CorrectnessTests.cpp.
+
+El pipeline de construccion
+    Las dos comprobaciones de tamano del ID 123 NO se metieron en el modelo semantico.
+    Habria hecho falta reordenar el pipeline (el modelo de cuerpos corre antes que
+    ProjectObjectLayoutModel) o duplicar las reglas de tamano -- que es la duplicacion que
+    el milestone CC1 existe para quitar.

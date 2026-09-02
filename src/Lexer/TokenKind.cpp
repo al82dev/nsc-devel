@@ -16,6 +16,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(StringLiteral);
         NS_TOKEN_CASE(KwVoid);
         NS_TOKEN_CASE(KwBool);
+        NS_TOKEN_CASE(KwSByte);
         NS_TOKEN_CASE(KwByte);
         NS_TOKEN_CASE(KwChar);
         NS_TOKEN_CASE(KwShort);
