@@ -125,6 +125,9 @@ CASES: list[tuple[str, str, int | None]] = [
     (f"{CC}/c24_binary_file_io/c24_binary_file_io.nsproj", "cc1_c24_binary_file_io", 42),
     (f"{CC}/c25_binary_roundtrip/c25_binary_roundtrip.nsproj", "cc1_c25_binary_roundtrip", 42),
     (f"{CC}/c26_driver_minimo/c26_driver_minimo.nsproj", "cc1_c26_driver_minimo", 42),
+    (f"{CC}/c27_algoritmos/c27_algoritmos.nsproj", "cc1_c27_algoritmos", 42),
+    (f"{CC}/c28_texto/c28_texto.nsproj", "cc1_c28_texto", 42),
+    (f"{CC}/c29_arena/c29_arena.nsproj", "cc1_c29_arena", 42),
 
     # --- ejemplos empaquetados ---
     ("examples/project_stage56_c1/Stage56C1InteropCompletion.nsproj", "project_stage56_c1", 0),

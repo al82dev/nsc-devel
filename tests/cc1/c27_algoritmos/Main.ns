@@ -1,0 +1,209 @@
+// Bloque 5, fase A -- las NUEVE funciones de Algorithm (SHR-052), ejecutando.
+//
+// QUE MIDE Y POR QUE ASI. Cada funcion se prueba con sus casos de borde, no con un caso feliz:
+// rango vacio, un solo elemento, todos iguales, ya ordenado, orden inverso. Ahi es donde vive el
+// error de indice, no en el ejemplo de la documentacion.
+//
+// SORT NO SE COMPRUEBA CON "esta ordenado". Se comprueba ELEMENTO A ELEMENTO contra la posicion
+// esperada, en cinco formas de entrada distintas. Un "esta ordenado" pasaria igual con un sort que
+// perdiera elementos o los duplicara, que es justo el fallo que un heapsort mal hundido produce.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+namespace cc1algoritmos
+{
+    public class Program
+    {
+        private static bool EsPar(int v) { return (v % 2) == 0; }
+        private static bool EsNegativo(int v) { return v < 0; }
+        private static bool Siempre(int v) { return true; }
+        private static bool Nunca(int v) { return false; }
+        private static int Descendente(int a, int b) { if (a > b) { return -1; } if (a < b) { return 1; } return 0; }
+
+        private static void Llenar(int[] destino, int[] origen)
+        {
+            int i = 0;
+            while (i < origen.Length) { destino[i] = origen[i]; i = i + 1; }
+        }
+
+        public static int Main()
+        {
+            // ---------------------------------------------------------------------------------
+            // 1. Find -- presente, ausente, primera y ultima posicion, y rango vacio.
+            // ---------------------------------------------------------------------------------
+            int[] datos = new int[6];
+            datos[0] = 5; datos[1] = 3; datos[2] = 9; datos[3] = 3; datos[4] = 7; datos[5] = 1;
+            ReadOnlySpan<int> vista = Spans.ReadOnlyOf<int>(datos);
+
+            if (Algorithm.Find<int>(vista, 5) != 0) { return 1; }
+            if (Algorithm.Find<int>(vista, 1) != 5) { return 2; }
+            // Duplicado: tiene que devolver el PRIMERO, no cualquiera.
+            if (Algorithm.Find<int>(vista, 3) != 1) { return 3; }
+            if (Algorithm.Find<int>(vista, 42) != -1) { return 4; }
+
+            ReadOnlySpan<int> vacio = Spans.ReadOnlyEmpty<int>();
+            if (Algorithm.Find<int>(vacio, 5) != -1) { return 5; }
+
+            // ---------------------------------------------------------------------------------
+            // 2. FindIf, AnyOf, AllOf -- y los dos convenios sobre el rango VACIO, que es donde
+            //    una implementacion descuidada se equivoca: any_of(vacio)=false, all_of(vacio)=true.
+            // ---------------------------------------------------------------------------------
+            Predicate<int> esPar = EsPar;
+            Predicate<int> esNegativo = EsNegativo;
+            Predicate<int> siempre = Siempre;
+            Predicate<int> nunca = Nunca;
+
+            // 5 3 9 3 7 1 -- ninguno par
+            if (Algorithm.FindIf<int>(vista, esPar) != -1) { return 6; }
+            if (Algorithm.FindIf<int>(vista, siempre) != 0) { return 7; }
+            if (Algorithm.AnyOf<int>(vista, esPar)) { return 8; }
+            if (!Algorithm.AnyOf<int>(vista, siempre)) { return 9; }
+            if (Algorithm.AllOf<int>(vista, esPar)) { return 10; }
+            if (!Algorithm.AllOf<int>(vista, siempre)) { return 11; }
+
+            if (Algorithm.AnyOf<int>(vacio, siempre)) { return 12; }      // falso sobre vacio
+            if (!Algorithm.AllOf<int>(vacio, nunca)) { return 13; }       // verdad vacua
+
+            // ---------------------------------------------------------------------------------
+            // 3. Min y Max -- incluidos los empates, que el contrato fija en "devuelve a".
+            // ---------------------------------------------------------------------------------
+            if (Algorithm.Min<int>(3, 7) != 3) { return 14; }
+            if (Algorithm.Min<int>(7, 3) != 3) { return 15; }
+            if (Algorithm.Max<int>(3, 7) != 7) { return 16; }
+            if (Algorithm.Max<int>(7, 3) != 7) { return 17; }
+            if (Algorithm.Min<int>(-4, 4) != -4) { return 18; }
+            if (Algorithm.Max<int>(-4, -9) != -4) { return 19; }
+            if (Algorithm.Min<int>(5, 5) != 5) { return 20; }
+            if (Algorithm.Max<int>(5, 5) != 5) { return 21; }
+
+            // ---------------------------------------------------------------------------------
+            // 4. Reverse -- longitud PAR e IMPAR. Con impar el elemento central se queda quieto, y
+            //    ese es el caso que un bucle mal escrito rompe.
+            // ---------------------------------------------------------------------------------
+            int[] par = new int[4];
+            par[0] = 1; par[1] = 2; par[2] = 3; par[3] = 4;
+            Algorithm.Reverse<int>(Spans.Of<int>(par));
+            if (par[0] != 4 || par[1] != 3 || par[2] != 2 || par[3] != 1) { return 22; }
+
+            int[] impar = new int[5];
+            impar[0] = 1; impar[1] = 2; impar[2] = 3; impar[3] = 4; impar[4] = 5;
+            Algorithm.Reverse<int>(Spans.Of<int>(impar));
+            if (impar[0] != 5 || impar[1] != 4 || impar[2] != 3) { return 23; }
+            if (impar[3] != 2 || impar[4] != 1) { return 24; }
+
+            int[] uno = new int[1];
+            uno[0] = 7;
+            Algorithm.Reverse<int>(Spans.Of<int>(uno));
+            if (uno[0] != 7) { return 25; }
+
+            Algorithm.Reverse<int>(Spans.Empty<int>());   // no debe reventar
+
+            // ---------------------------------------------------------------------------------
+            // 5. RemoveIf -- compacta y devuelve la nueva longitud. Se comprueba QUE QUEDA y en
+            //    que orden: quitar los pares de 1..8 deja los impares en su orden original.
+            // ---------------------------------------------------------------------------------
+            int[] mezcla = new int[8];
+            int i = 0;
+            while (i < 8) { mezcla[i] = i + 1; i = i + 1; }     // 1 2 3 4 5 6 7 8
+            int quedan = Algorithm.RemoveIf<int>(Spans.Of<int>(mezcla), esPar);
+            if (quedan != 4) { return 26; }
+            if (mezcla[0] != 1 || mezcla[1] != 3 || mezcla[2] != 5 || mezcla[3] != 7) { return 27; }
+
+            // Quitar TODO y quitar NADA: los dos extremos.
+            int[] todos = new int[3];
+            todos[0] = 2; todos[1] = 4; todos[2] = 6;
+            if (Algorithm.RemoveIf<int>(Spans.Of<int>(todos), esPar) != 0) { return 28; }
+
+            int[] ninguno = new int[3];
+            ninguno[0] = 1; ninguno[1] = 3; ninguno[2] = 5;
+            if (Algorithm.RemoveIf<int>(Spans.Of<int>(ninguno), esNegativo) != 3) { return 29; }
+            if (ninguno[0] != 1 || ninguno[1] != 3 || ninguno[2] != 5) { return 30; }
+
+            // ---------------------------------------------------------------------------------
+            // 6. Sort -- CINCO formas de entrada, y cada una comprobada elemento a elemento.
+            // ---------------------------------------------------------------------------------
+            int[] fuente = new int[7];
+            int[] trabajo = new int[7];
+
+            // (a) desordenada, con duplicados
+            fuente[0] = 5; fuente[1] = 2; fuente[2] = 9; fuente[3] = 2; fuente[4] = 7; fuente[5] = 1; fuente[6] = 5;
+            Llenar(trabajo, fuente);
+            Algorithm.Sort<int>(Spans.Of<int>(trabajo));
+            if (trabajo[0] != 1 || trabajo[1] != 2 || trabajo[2] != 2) { return 31; }
+            if (trabajo[3] != 5 || trabajo[4] != 5 || trabajo[5] != 7 || trabajo[6] != 9) { return 32; }
+
+            // (b) ya ordenada -- no debe estropearla
+            fuente[0] = 1; fuente[1] = 2; fuente[2] = 3; fuente[3] = 4; fuente[4] = 5; fuente[5] = 6; fuente[6] = 7;
+            Llenar(trabajo, fuente);
+            Algorithm.Sort<int>(Spans.Of<int>(trabajo));
+            i = 0;
+            while (i < 7) { if (trabajo[i] != i + 1) { return 33; } i = i + 1; }
+
+            // (c) orden inverso -- el peor caso de una insertion sort
+            fuente[0] = 7; fuente[1] = 6; fuente[2] = 5; fuente[3] = 4; fuente[4] = 3; fuente[5] = 2; fuente[6] = 1;
+            Llenar(trabajo, fuente);
+            Algorithm.Sort<int>(Spans.Of<int>(trabajo));
+            i = 0;
+            while (i < 7) { if (trabajo[i] != i + 1) { return 34; } i = i + 1; }
+
+            // (d) todos iguales
+            i = 0;
+            while (i < 7) { trabajo[i] = 4; i = i + 1; }
+            Algorithm.Sort<int>(Spans.Of<int>(trabajo));
+            i = 0;
+            while (i < 7) { if (trabajo[i] != 4) { return 35; } i = i + 1; }
+
+            // (e) negativos mezclados con positivos
+            int[] signos = new int[6];
+            signos[0] = 3; signos[1] = -1; signos[2] = 0; signos[3] = -9; signos[4] = 8; signos[5] = -1;
+            Algorithm.Sort<int>(Spans.Of<int>(signos));
+            if (signos[0] != -9 || signos[1] != -1 || signos[2] != -1) { return 36; }
+            if (signos[3] != 0 || signos[4] != 3 || signos[5] != 8) { return 37; }
+
+            // Vacio y de un elemento: el `if (cuantos < 2) return` del principio.
+            Algorithm.Sort<int>(Spans.Empty<int>());
+            int[] solo = new int[1];
+            solo[0] = 99;
+            Algorithm.Sort<int>(Spans.Of<int>(solo));
+            if (solo[0] != 99) { return 38; }
+
+            // Un tamano que NO es potencia de dos ni pequeno: donde el indice del hijo derecho se
+            // sale del monticulo y hay que comprobarlo.
+            int[] grande = new int[13];
+            i = 0;
+            while (i < 13) { grande[i] = (i * 7) % 13; i = i + 1; }
+            Algorithm.Sort<int>(Spans.Of<int>(grande));
+            i = 0;
+            while (i < 13) { if (grande[i] != i) { return 39; } i = i + 1; }
+
+            // ---------------------------------------------------------------------------------
+            // 7. SortWith -- el mismo heapsort con comparador explicito, orden descendente.
+            // ---------------------------------------------------------------------------------
+            Comparison<int> descendente = Descendente;
+            fuente[0] = 5; fuente[1] = 2; fuente[2] = 9; fuente[3] = 2; fuente[4] = 7; fuente[5] = 1; fuente[6] = 5;
+            Llenar(trabajo, fuente);
+            Algorithm.SortWith<int>(Spans.Of<int>(trabajo), descendente);
+            if (trabajo[0] != 9 || trabajo[1] != 7 || trabajo[2] != 5) { return 40; }
+            if (trabajo[3] != 5 || trabajo[4] != 2 || trabajo[5] != 2 || trabajo[6] != 1) { return 41; }
+
+            // ---------------------------------------------------------------------------------
+            // 8. List<T>.Sort AHORA DELEGA en Algorithm. Que siga ordenando es lo que fija que la
+            //    delegacion se hizo bien -- era una insertion sort escrita a mano hasta hoy.
+            // ---------------------------------------------------------------------------------
+            raii List<int> lista = new List<int>();
+            lista.Add(4); lista.Add(1); lista.Add(3); lista.Add(1); lista.Add(2);
+            lista.Sort();
+            if (lista.Count() != 5) { return 43; }
+            if (lista[0] != 1 || lista[1] != 1 || lista[2] != 2) { return 44; }
+            if (lista[3] != 3 || lista[4] != 4) { return 45; }
+
+            lista.Sort(descendente);
+            if (lista[0] != 4 || lista[1] != 3 || lista[2] != 2) { return 46; }
+            if (lista[3] != 1 || lista[4] != 1) { return 47; }
+
+            return 42;
+        }
+    }
+}

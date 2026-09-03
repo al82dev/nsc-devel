@@ -371,40 +371,33 @@ namespace NativeSharp.Core.Collections.Generic
         // template; a T with no ordering fails to compile at the instantiation site, which is
         // the expected, honest outcome given NativeSharp has no `where T : IComparable<T>`).
         //
-        // Implemented as insertion sort: O(n^2), not real C#'s introspective sort, but simple
-        // enough to be confident is correct with no ownership hazard, which matters a great deal
-        // here since this package has no way to execute and observe the compiled binary --
-        // see the Stage 52 didactic writeup for the full reasoning.
+        // DELEGA EN Algorithm.Sort DESDE EL BLOQUE 5, y ese cambio tiene dos mitades.
+        //
+        // La primera: esto era una INSERTION SORT O(n^2) escrita a mano aqui. Su propio comentario
+        // decia que era asi "porque este paquete no tiene forma de ejecutar y observar el binario
+        // compilado". Ese motivo ya no aplica -- el corpus de cc1 ejecuta y comprueba codigos de
+        // salida -- y mantener dos ordenaciones distintas en la misma biblioteca era crear a
+        // sabiendas otra copia de una regla, que es lo que ha costado tres builds en dos dias
+        // (ver mkdown/102, 103, 105, 106).
+        //
+        // La segunda, y hay que decirla porque es un cambio OBSERVABLE: heapsort NO ES ESTABLE y
+        // la insertion sort si lo era. Real C# tampoco garantiza estabilidad en List<T>.Sort, y
+        // std::sort tampoco, asi que no se rompe ninguna promesa escrita -- pero si dos elementos
+        // comparan iguales, su orden relativo ya no se conserva.
         public void Sort()
         {
-            int i = 1;
-            while (i < count)
-            {
-                int j = i;
-                while (j > 0 && items[j] < items[j - 1])
-                {
-                    Swap(j, j - 1);
-                    j = j - 1;
-                }
-                i = i + 1;
-            }
+            Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count));
         }
 
         // Sorts in place using an explicit comparer, for a T with no natural `<` (or that needs a
         // different ordering than its natural one) -- mirrors List<T>.Sort(Comparison<T>).
+        //
+        // Se llama SortWith en Algorithm por ID 132 (las plantillas genericas chocan por nombre +
+        // aridad generica); aqui puede seguir llamandose Sort porque es un miembro NO generico de
+        // una clase generica, que es otra cosa.
         public void Sort(Comparison<T> comparer)
         {
-            int i = 1;
-            while (i < count)
-            {
-                int j = i;
-                while (j > 0 && comparer(items[j], items[j - 1]) < 0)
-                {
-                    Swap(j, j - 1);
-                    j = j - 1;
-                }
-                i = i + 1;
-            }
+            Algorithm.SortWith<T>(Spans.OfRange<T>(items, 0, count), comparer);
         }
 
         // Binary search over an ALREADY-SORTED list (natural `<` ordering, matching Sort()).

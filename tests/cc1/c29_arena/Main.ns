@@ -1,0 +1,203 @@
+// Bloque 5, fase D -- ArenaAllocator (SHR-039), ejecutando.
+//
+// QUE MIDE Y POR QUE ASI. La arena tiene UNA propiedad que la define y que ninguna otra estructura
+// de este proyecto tiene: **los punteros que reparte siguen siendo validos cuando crece**. Todo lo
+// demas de esta clase --alineacion, contadores, Reset-- es contabilidad; eso es la correccion.
+//
+// Por eso la comprobacion central no es "encadeno un bloque", sino: se pide memoria hasta forzar
+// VARIOS bloques nuevos, se guardan los punteros VIEJOS, y al final se vuelve a leer por todos
+// ellos. Si la arena realojara y copiara --como hacen List<T>, ByteBuffer o StringBuilder-- aqui es
+// donde se veria, y en ningun otro sitio.
+//
+// LA ARITMETICA DE PUNTEROS ES LA PARTE PELIGROSA. Un fallo de alineacion o de encadenado no da un
+// error: da una escritura en el sitio equivocado. Por eso los patrones que se escriben son
+// distinguibles entre si y se releen TODOS al final, no segun se escriben.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+
+namespace cc1arena
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            // ---------------------------------------------------------------------------------
+            // 1. Estado inicial y alineacion.
+            // ---------------------------------------------------------------------------------
+            raii ArenaAllocator arena = new ArenaAllocator(256);
+            if (arena.BlockSize() != 256) { return 1; }
+            if (arena.BlockCount() != 1) { return 2; }
+            if (arena.BytesUsed() != 0) { return 3; }
+            if (arena.BytesReserved() != 256) { return 4; }
+
+            // Un byte pedido consume OCHO: todo queda alineado a 8. Si esto diera 1, el siguiente
+            // puntero saldria desalineado y un `long` escrito ahi seria una lectura no alineada.
+            byte* uno = arena.Allocate(1);
+            if (uno == null) { return 5; }
+            if (arena.BytesUsed() != 8) { return 6; }
+
+            byte* nueve = arena.Allocate(9);      // 9 -> 16
+            if (nueve == null) { return 7; }
+            if (arena.BytesUsed() != 24) { return 8; }
+
+            // Y los dos punteros estan separados por exactamente lo que se cobro.
+            if (nueve != uno + 8) { return 9; }
+
+            byte* justo = arena.Allocate(8);      // ya alineado: no se redondea de mas
+            if (arena.BytesUsed() != 32) { return 10; }
+            if (justo != nueve + 16) { return 11; }
+
+            // Peticiones invalidas: null, y sin consumir nada.
+            if (arena.Allocate(0) != null) { return 12; }
+            if (arena.Allocate(-4) != null) { return 13; }
+            if (arena.BytesUsed() != 32) { return 14; }
+
+            // ---------------------------------------------------------------------------------
+            // 2. LOS PUNTEROS VIEJOS SOBREVIVEN AL CRECIMIENTO. Esta es la prueba de la arena.
+            //
+            //    Se reparten 40 bloques de 32 bytes sobre una arena de bloques de 256, o sea que
+            //    hacen falta al menos seis bloques encadenados. Se guarda CADA puntero y se escribe
+            //    un patron distinguible; solo al final se releen todos.
+            // ---------------------------------------------------------------------------------
+            raii ArenaAllocator cadena = new ArenaAllocator(256);
+            byte*[] repartidos = new byte*[40];
+
+            int i = 0;
+            while (i < 40)
+            {
+                byte* trozo = cadena.Allocate(32);
+                if (trozo == null) { return 15; }
+                repartidos[i] = trozo;
+                // Patron: primer byte el indice, ultimo byte su complemento. Dos posiciones lejanas
+                // dentro del trozo, para que un solapamiento se vea.
+                trozo[0] = (byte)i;
+                trozo[31] = (byte)(255 - i);
+                i = i + 1;
+            }
+
+            // Han hecho falta varios bloques -- si no, esta prueba no esta midiendo lo que dice.
+            if (cadena.BlockCount() < 2) { return 16; }
+            if (cadena.BytesUsed() != 40 * 32) { return 17; }
+
+            // AHORA se relee todo, con los punteros de antes de encadenar.
+            i = 0;
+            while (i < 40)
+            {
+                byte* trozo = repartidos[i];
+                if (trozo[0] != (byte)i) { return 18; }
+                if (trozo[31] != (byte)(255 - i)) { return 19; }
+                i = i + 1;
+            }
+
+            // Y ninguno se solapa con el siguiente dentro del mismo bloque: los trozos consecutivos
+            // que caen en el mismo bloque estan a exactamente 32 bytes.
+            i = 0;
+            int contiguos = 0;
+            while (i < 39)
+            {
+                if (repartidos[i + 1] == repartidos[i] + 32) { contiguos = contiguos + 1; }
+                i = i + 1;
+            }
+            if (contiguos < 30) { return 20; }
+
+            // ---------------------------------------------------------------------------------
+            // 3. Una peticion MAS GRANDE QUE UN BLOQUE no puede fallar: se encadena un bloque a la
+            //    medida. Sin esto, pedir 1000 a una arena de 256 devolveria null para siempre y el
+            //    fallo apareceria muy lejos de aqui.
+            // ---------------------------------------------------------------------------------
+            byte* enorme = cadena.Allocate(1000);
+            if (enorme == null) { return 21; }
+            enorme[0] = 7;
+            enorme[999] = 9;
+            if (enorme[0] != 7 || enorme[999] != 9) { return 22; }
+
+            // Los punteros de antes SIGUEN valiendo despues de esa peticion grande.
+            if (repartidos[0][0] != 0) { return 23; }
+            if (repartidos[39][0] != 39) { return 24; }
+
+            // ---------------------------------------------------------------------------------
+            // 4. Reset: rebobina a cero SIN soltar la memoria y SIN perder los bloques.
+            // ---------------------------------------------------------------------------------
+            int bloquesAntes = cadena.BlockCount();
+            long reservadoAntes = cadena.BytesReserved();
+
+            cadena.Reset();
+            if (cadena.BytesUsed() != 0) { return 25; }
+            // Los bloques se CONSERVAN: una arena que ya sabe cuanto ocupa el trabajo tipico no
+            // debe volver a empezar de cero cada vez.
+            if (cadena.BlockCount() != bloquesAntes) { return 26; }
+            if (cadena.BytesReserved() != reservadoAntes) { return 27; }
+
+            // Y despues de Reset se puede repartir otra vez, desde el principio del primer bloque.
+            byte* despues = cadena.Allocate(16);
+            if (despues == null) { return 28; }
+            if (cadena.BytesUsed() != 16) { return 29; }
+
+            // ---------------------------------------------------------------------------------
+            // 4b. RELLENAR OTRA VEZ DESPUES DEL Reset, PASANDO DEL PRIMER BLOQUE.
+            //
+            // ESTA ES LA COMPROBACION QUE FALTABA, y encontro un bug de verdad. La version
+            // anterior de Allocate hacia `actual.siguiente = move(nuevo)` en cuanto el bloque
+            // actual se llenaba, sin mirar si YA habia algo colgando de ahi. En la primera pasada
+            // no se notaba --`siguiente` era null-- pero despues de un Reset, al llenarse el
+            // primer bloque otra vez, esa asignacion TIRABA la cadena entera y pedia memoria
+            // nueva al sistema. O sea: Reset() no conservaba nada, justo lo contrario de lo que
+            // promete, y cuantosBloques seguia subiendo mientras los bloques se caian.
+            //
+            // Se mide asi: se rellena hasta pasar del primer bloque y se exige que el numero de
+            // bloques NO haya crecido respecto de lo que habia antes del Reset. Con el bug,
+            // crecia.
+            i = 0;
+            while (i < 40)
+            {
+                byte* otro = cadena.Allocate(32);
+                if (otro == null) { return 45; }
+                otro[0] = (byte)(i + 100);
+                i = i + 1;
+            }
+            if (cadena.BlockCount() != bloquesAntes) { return 46; }
+            if (cadena.BytesReserved() != reservadoAntes) { return 47; }
+
+            // ---------------------------------------------------------------------------------
+            // 5. AllocateSpan -- la forma en que el codigo de arriba pedira memoria de verdad.
+            // ---------------------------------------------------------------------------------
+            Span<byte> bloque = cadena.AllocateSpan(10, 4);
+            if (bloque.IsEmpty()) { return 30; }
+            if (bloque.Length() != 40) { return 31; }
+
+            bloque[0] = 200;
+            bloque[39] = 201;
+            if (bloque[0] != 200 || bloque[39] != 201) { return 32; }
+
+            // Peticiones invalidas -> span vacio, comprobable sin comparar contra null.
+            if (!cadena.AllocateSpan(0, 4).IsEmpty()) { return 33; }
+            if (!cadena.AllocateSpan(10, 0).IsEmpty()) { return 34; }
+            if (!cadena.AllocateSpan(-1, 4).IsEmpty()) { return 35; }
+            // Desbordamiento del entero de 32 bits: se detecta en 64 bits ANTES de multiplicar mal.
+            if (!cadena.AllocateSpan(100000, 100000).IsEmpty()) { return 36; }
+
+            // ---------------------------------------------------------------------------------
+            // 6. La arena por omision, con su tamano de bloque de 64 KiB.
+            // ---------------------------------------------------------------------------------
+            raii ArenaAllocator porOmision = new ArenaAllocator();
+            if (porOmision.BlockSize() != 65536) { return 37; }
+            if (porOmision.BlockCount() != 1) { return 38; }
+            byte* primero = porOmision.Allocate(64);
+            if (primero == null) { return 39; }
+            // Sesenta y cuatro bytes no fuerzan un bloque nuevo en una arena de 64 KiB.
+            if (porOmision.BlockCount() != 1) { return 40; }
+
+            // Un tamano de bloque ridiculo se sube al minimo en vez de aceptarse.
+            raii ArenaAllocator minima = new ArenaAllocator(1);
+            if (minima.BlockSize() != 64) { return 41; }
+
+            // La base Allocator no asigna: devuelve null y no cuenta nada. Es el contrato escrito.
+            raii Allocator neutro = new Allocator();
+            if (neutro.Allocate(8) != null) { return 43; }
+            if (neutro.BytesUsed() != 0) { return 44; }
+
+            return 42;
+        }
+    }
+}

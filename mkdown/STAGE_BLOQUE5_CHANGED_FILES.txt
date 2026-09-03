@@ -1,0 +1,120 @@
+STAGE_BLOQUE5 -- 2026-09-02
+Bloque 5 completo: Algorithm (SHR-052), StringBuilder (SHR-019), TextWriter (SHR-020),
+Allocator + ArenaAllocator (SHR-038/039).
+Ver mkdown/108_plan_del_bloque_5.md (el plan, escrito antes) y
+    mkdown/109_bloque5_algoritmos_texto_memoria.md (lo hecho y por que).
+
+NUEVOS -- biblioteca
+  lib/NativeSharp.Core.Collections.Generic/Algorithm.ns
+      Nueve funciones: Find, FindIf, AnyOf, AllOf, Min, Max, Reverse, RemoveIf, Sort(+SortWith).
+      Vive aqui y no en Core porque Predicate<T>/Comparison<T> estan aqui y Core no puede
+      referenciar a Collections.Generic sin un ciclo.
+  lib/NativeSharp.Core/StringBuilder.ns
+  lib/NativeSharp.Core/Allocator.ns
+  lib/NativeSharp.Core/ArenaAllocator.ns          (+ ArenaBlock)
+  lib/NativeSharp.Core.IO/TextWriter.ns           (+ ConsoleTextWriter, StringTextWriter,
+                                                     FileTextWriter)
+
+NUEVOS -- fixtures
+  tests/cc1/c27_algoritmos/{Main.ns,c27_algoritmos.nsproj}
+  tests/cc1/c28_texto/{Main.ns,c28_texto.nsproj}
+  tests/cc1/c29_arena/{Main.ns,c29_arena.nsproj}
+
+NUEVOS -- documentos
+  mkdown/108_plan_del_bloque_5.md
+  mkdown/109_bloque5_algoritmos_texto_memoria.md
+  mkdown/STAGE_BLOQUE5_CHANGED_FILES.txt
+
+MODIFICADOS
+  lib/NativeSharp.Core.Collections.Generic/List.ns
+      Sort() y Sort(Comparison<T>) DELEGAN en Algorithm. Eran una insertion sort O(n^2) escrita
+      a mano. CAMBIO OBSERVABLE: dejan de ser estables (heapsort no lo es; real C# tampoco
+      garantiza estabilidad, y el unico llamador del arbol ordena enteros).
+  run_cases.py                    + los tres casos (48 casos -> 96 trabajos)
+  nslink_pipeline.py              + los tres casos
+  tests/unit/Cc1CorrectnessTests.cpp  + checkFixture para los tres
+
+CORRECCION DE UN ERROR MIO, EN LA MISMA TANDA
+  nslink_pipeline.py -- mi commit de "un solo build" (doc 107) se hizo sobre una copia RANCIA de
+  /mnt/user-data/uploads y revirtio dos cambios anteriores del mismo fichero: el registro de c26
+  y la prosa de "los 84 trabajos". Se detecto al comprobar que las dos tablas de casos ya no
+  coincidian (48 vs 44). El fichero se reconstruyo desde la version del disco con TODO
+  reaplicado: find_build_directory con build-clang primero, c26, la prosa, y los tres del
+  Bloque 5. Comprobado despues: las dos tablas identicas caso por caso, 48 y 48.
+
+DECISIONES (el detalle y el motivo, en el doc 109)
+  - Nueve funciones, no dieciocho: la lista sale de contar los usos de src/.
+  - AnyOf(vacio)=false, AllOf(vacio)=true -- verdad vacua, la unica que compone.
+  - RemoveIf devuelve la nueva longitud, no un iterador.
+  - SortWith y no una sobrecarga de Sort: ID 132 (nombre + aridad generica).
+  - Heapsort: O(n log n) GARANTIZADO, en sitio, SIN RECURSION. No es estable, std::sort tampoco.
+  - StringBuilder.ToOwnedString y no ToString: Object.ToString() promete una constante que no
+    asigna, y sobrescribirlo haria que un llamador con referencia Object filtrara sin verlo.
+  - TextWriter con UN SOLO metodo virtual y todo lo demas encima.
+  - \n y no \r\n, tambien en Windows: las salidas se comparan byte a byte entre maquinas.
+  - FileTextWriter acumula y vuelca en Flush; si el proceso muere antes, no hay fichero.
+  - El Allocator NO tiene Free, y no hay HeapAllocator: un Free no-op es peor que no tenerlo.
+  - La arena ENCADENA y no realoja -- esa es su definicion; los punteros repartidos siguen validos.
+
+CORRECCION TRAS LA PRIMERA CORRIDA
+  94 OK, 2 FAIL -- solo cc1_c28_texto, -O0 y -O2, con exit 14. c27 y c29 en verde.
+  CAUSA: mia, y del fixture, no del compilador. String.ToString(bool) devuelve "True"/"False"
+  con MAYUSCULA (la convencion de .NET, que el proyecto sigue en todo lo demas) y yo escribi
+  "true"/"false" por costumbre de C++, sin mirar la biblioteca.
+  - La misma suposicion estaba EN DOS SITIOS: el bloque de Append numericos y la comprobacion de
+    Volcar (TextWriter.Write(bool) pasa por la misma conversion). Arreglar solo el que fallo
+    habria movido el rojo a la comprobacion 18 en la corrida siguiente.
+  - Y la comprobacion era demasiado gorda: cuatro Append en una sola comparacion de cadenas. Se
+    partio en piezas con codigos de salida propios (14, 45, 46, 47) mas la comparacion de los
+    cuatro juntos (48), para que el proximo rojo diga cual fallo.
+  Tocado solo tests/cc1/c28_texto/Main.ns. La biblioteca NO se cambio: su comportamiento es el
+  correcto.
+
+AUDITORIA ANTES DE LA SEGUNDA CORRIDA -- tres hallazgos, uno un bug de verdad
+  Repase cada expectativa literal de los tres fixtures LEYENDO la biblioteca, no suponiendola.
+
+  1) BUG EN lib/NativeSharp.Core/ArenaAllocator.ns
+     Allocate hacia `actual.siguiente = move(nuevo)` sin mirar si YA habia cadena colgando. En la
+     primera pasada no se notaba (siguiente era null). DESPUES DE UN Reset si: al llenarse el
+     primer bloque otra vez, la asignacion TIRABA la cadena entera --se liberaba, el campo es
+     owned-- y pedia memoria nueva. Reset() no conservaba nada, lo contrario de lo que promete, y
+     cuantosBloques seguia subiendo mientras los bloques se caian.
+     ARREGLO: avanzar por los bloques que ya existen antes de crear uno.
+     Y c29 NO lo cazaba: comprobaba BlockCount justo tras el Reset y luego no volvia a pasar del
+     primer bloque. Anadido el paso 4b -- rellenar otra vez pasando del primero y exigir que el
+     numero de bloques NO haya crecido (codigos 45, 46, 47).
+
+  2) c28 dependia de como acabo la corrida ANTERIOR
+     El codigo 21 comprueba que el fichero no existe todavia. Correcto y fragil: si c28 falla
+     entre el Flush y el Delete final, el fichero sobrevive y la corrida siguiente se pone roja
+     en el 21 por un motivo ajeno -- un rojo que no se reproduce dos veces. Ahora borra al entrar
+     ademas de al salir (codigo 49).
+
+  3) Dos constructores sin ejercitar en ningun sitio
+     StringBuilder(int) y StringTextWriter(int). El primero es el camino que mas facil rompe
+     --crecer desde un buffer minimo-- y la rama que sube una capacidad absurda al minimo no la
+     recorria nadie. Cubiertos capacidad 1, 0 y negativa (50-56) y StringTextWriter(2) volcando el
+     mismo productor y comparando contra la salida del constructor por omision (57).
+
+  VERIFICADO Y CORRECTO, sin cambio:
+     String.ToString(int) delega en ToString(long): -7 -> "-7", sin signo + ni relleno; el long de
+     trece digitos igual. Las dos expectativas de c28 eran correctas.
+     File.AppendAllText con cadena vacia es un WriteFile de 0 bytes, legal y sin efecto.
+     Spans.OfRange con longitud 0 da un span vacio y CopyTo no escribe: crecer desde vacio es seguro.
+     Los 35 pares contiguos de c29 salen de 5 bloques x 7; el umbral 30 tiene margen.
+     Alinear(1)=8, Alinear(8)=8, Alinear(9)=16, Alinear(1000)=1000.
+
+VERIFICADO (contenedor, frontend real)
+  Los tres paquetes de biblioteca y las tres fixtures compilan a IR.
+  ./sweep.sh llvm  ->  OK=173  FAIL=5   (el corpus pasa de 170 a 173; los 5 son los negativos)
+  Cc1CorrectnessTests.cpp con clang++-18 -std=c++20 -Wall -Wextra: sin avisos.
+  Las dos tablas de casos comprobadas identicas: 48 y 48.
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que heapsort ordene, que la aritmetica de punteros de la arena reparta donde dice, y que
+  FileTextWriter escriba el fichero. El frontend llega al IR y para. Lo mide all.bat en Windows.
+
+ESPERADO EN LA PROXIMA CORRIDA
+  ctest      244   (los tres van DENTRO de nsc.cc1.correctness)
+  trabajos    96   (eran 90)
+  triage   16/16

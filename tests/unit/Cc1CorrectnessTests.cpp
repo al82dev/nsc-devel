@@ -460,6 +460,33 @@ int main()
         tests, root, "tests/cc1/c26_driver_minimo/c26_driver_minimo.nsproj",
         "cc1-c26-driver-minimo", 42);
 
+    // Bloque 5, fase A -- Algorithm (SHR-052): las NUEVE funciones que `src/` usa de verdad, no
+    // las dieciocho de <algorithm>. Cada una con sus casos de borde (rango vacio, un elemento,
+    // todos iguales, ya ordenado, orden inverso), y el heapsort comprobado ELEMENTO A ELEMENTO en
+    // cinco formas de entrada -- un "esta ordenado" pasaria igual con un sort que perdiera o
+    // duplicara elementos. Cubre ademas que List<T>.Sort ya delega aqui en vez de tener su propia
+    // insertion sort. Ver mkdown\109_bloque5_algoritmos_texto_memoria.md.
+    checkFixture(
+        tests, root, "tests/cc1/c27_algoritmos/c27_algoritmos.nsproj",
+        "cc1-c27-algoritmos", 42);
+
+    // Bloque 5, fases B y C -- StringBuilder (SHR-019) y TextWriter (SHR-020). De StringBuilder,
+    // que al duplicar la capacidad no se pierda nada y que ToOwnedString devuelva el tamano EXACTO
+    // y no la capacidad. De TextWriter, la propiedad que justifica su diseno: el MISMO productor
+    // de texto vuelca a memoria y a fichero, y las dos salidas se comparan byte a byte.
+    checkFixture(
+        tests, root, "tests/cc1/c28_texto/c28_texto.nsproj",
+        "cc1-c28-texto", 42);
+
+    // Bloque 5, fase D -- ArenaAllocator (SHR-039). La comprobacion central no es que encadene
+    // bloques: es que los punteros REPARTIDOS ANTES de encadenar siguen siendo validos despues.
+    // Se guardan cuarenta, se fuerzan varios bloques nuevos, y se releen todos al final. Si la
+    // arena realojara y copiara --como hacen List<T>, ByteBuffer o StringBuilder-- se veria ahi y
+    // en ningun otro sitio.
+    checkFixture(
+        tests, root, "tests/cc1/c29_arena/c29_arena.nsproj",
+        "cc1-c29-arena", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================

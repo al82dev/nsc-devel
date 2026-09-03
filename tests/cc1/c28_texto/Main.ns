@@ -1,0 +1,269 @@
+// Bloque 5, fases B y C -- StringBuilder (SHR-019) y TextWriter (SHR-020), ejecutando.
+//
+// QUE MIDE Y POR QUE ASI.
+//
+// De StringBuilder, lo que de verdad puede fallar: que al DUPLICAR la capacidad no se pierda ni se
+// corrompa lo ya escrito, que Clear conserve la memoria en vez de soltarla, y que ToOwnedString
+// devuelva el tamano EXACTO y no la capacidad --que es el fallo que dejaria basura al final de cada
+// cadena--.
+//
+// De TextWriter, la propiedad que justifica su diseno: que el MISMO codigo que produce texto acabe
+// en tres destinos distintos sin una sola rama, y que los tres produzcan EXACTAMENTE lo mismo. Por
+// eso hay una funcion `Volcar(TextWriter)` que se llama tres veces con tres implementaciones y se
+// compara byte a byte lo que sale de dos de ellas.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+namespace cc1texto
+{
+    public class Program
+    {
+        // El productor de texto. NO SABE donde escribe -- ese es el punto entero de TextWriter.
+        private static void Volcar(TextWriter salida)
+        {
+            salida.Write("id=");
+            salida.Write(42);
+            salida.Write(" ok=");
+            salida.Write(true);
+            salida.WriteLine();
+            salida.WriteIndent(2, 2);
+            salida.Write("hijo");
+            salida.WriteLine();
+        }
+
+        public static int Main()
+        {
+            string[] argumentos = new string[8];
+            int cuantos = Environment.GetCommandLineArgs(argumentos);
+            if (cuantos < 1) { return 99; }
+            raii string propio = Path.GetFileNameWithoutExtension(argumentos[0]);
+
+            // ---------------------------------------------------------------------------------
+            // 1. StringBuilder: lo basico y el tamano exacto.
+            // ---------------------------------------------------------------------------------
+            raii StringBuilder constructor = new StringBuilder();
+            if (constructor.Length() != 0) { return 1; }
+            if (constructor.Capacity() != 16) { return 2; }
+
+            constructor.Append("abc");
+            constructor.Append('d');
+            if (constructor.Length() != 4) { return 3; }
+            if (constructor[0] != 'a' || constructor[3] != 'd') { return 4; }
+
+            raii string cuatro = constructor.ToOwnedString();
+            // EL TAMANO EXACTO, no la capacidad: si ToOwnedString devolviera el arreglo entero,
+            // aqui habria 16 caracteres y doce de basura.
+            if (cuatro.Length != 4) { return 5; }
+            if (!String.Equals(cuatro, "abcd")) { return 6; }
+
+            // ---------------------------------------------------------------------------------
+            // 2. CRECER. Se pasa de 16 varias veces y se comprueba que NO SE PERDIO NADA -- cada
+            //    caracter contra el que le toca, no solo la longitud.
+            // ---------------------------------------------------------------------------------
+            constructor.Clear();
+            if (constructor.Length() != 0) { return 7; }
+            // Clear NO suelta la memoria: la capacidad sigue siendo la que ya se habia pagado.
+            if (constructor.Capacity() < 16) { return 8; }
+
+            int i = 0;
+            while (i < 100)
+            {
+                constructor.Append((char)(65 + (i % 26)));
+                i = i + 1;
+            }
+            if (constructor.Length() != 100) { return 9; }
+            if (constructor.Capacity() < 100) { return 10; }
+
+            i = 0;
+            while (i < 100)
+            {
+                if (constructor[i] != (char)(65 + (i % 26))) { return 11; }
+                i = i + 1;
+            }
+            raii string cien = constructor.ToOwnedString();
+            if (cien.Length != 100) { return 12; }
+            if (cien[0] != 'A' || cien[25] != 'Z' || cien[26] != 'A' || cien[99] != 'V') { return 13; }
+
+            // ---------------------------------------------------------------------------------
+            // 3. Los Append de numeros -- que pasan por String.ToString y no por una conversion
+            //    propia.
+            // ---------------------------------------------------------------------------------
+            // "True"/"False" CON MAYUSCULA, y esto es lo que este fixture midio mal la primera
+            // vez. String.ToString(bool) devuelve Copy("True")/Copy("False") -- la convencion de
+            // .NET, que es la que el proyecto sigue en todo lo demas. Yo escribi "true"/"false"
+            // por costumbre de C++ y sin mirar la biblioteca, y la corrida lo cazo: exit 14.
+            //
+            // Y AHORA VA PARTIDO EN TROZOS, no en una sola comparacion. Con una sola, el fallo
+            // decia "no es igual" y no cual de los cuatro Append se habia equivocado -- ni
+            // siquiera si el problema era la conversion o la sobrecarga elegida. Cada pieza con su
+            // codigo de salida cuesta cuatro lineas mas y dice el nombre del culpable.
+            constructor.Clear();
+            constructor.Append(-7);
+            raii string negativo = constructor.ToOwnedString();
+            if (!String.Equals(negativo, "-7")) { return 14; }
+
+            constructor.Clear();
+            constructor.Append(1234567890123);
+            raii string largo = constructor.ToOwnedString();
+            if (!String.Equals(largo, "1234567890123")) { return 45; }
+
+            constructor.Clear();
+            constructor.Append(true);
+            raii string verdadero = constructor.ToOwnedString();
+            if (!String.Equals(verdadero, "True")) { return 46; }
+
+            constructor.Clear();
+            constructor.Append(false);
+            raii string falso = constructor.ToOwnedString();
+            if (!String.Equals(falso, "False")) { return 47; }
+
+            // Y los cuatro juntos, que es lo que de verdad se usa: appends encadenados sin que
+            // ninguno pise al anterior.
+            constructor.Clear();
+            constructor.Append(-7);
+            constructor.Append('/');
+            constructor.Append(1234567890123);
+            constructor.Append('/');
+            constructor.Append(true);
+            constructor.Append('/');
+            constructor.Append(false);
+            raii string numeros = constructor.ToOwnedString();
+            if (!String.Equals(numeros, "-7/1234567890123/True/False")) { return 48; }
+
+            // AppendLine y AppendRepeat.
+            constructor.Clear();
+            constructor.AppendRepeat('-', 5);
+            constructor.AppendLine("fin");
+            raii string relleno = constructor.ToOwnedString();
+            if (!String.Equals(relleno, "-----fin\n")) { return 15; }
+
+            constructor.Clear();
+            constructor.AppendRepeat('x', 0);
+            constructor.AppendRepeat('x', -3);
+            if (constructor.Length() != 0) { return 16; }
+
+            // Un StringBuilder vacio da una cadena vacia, no un fallo.
+            raii string nada = constructor.ToOwnedString();
+            if (nada.Length != 0) { return 17; }
+
+            // ---------------------------------------------------------------------------------
+            // 3b. EL CONSTRUCTOR CON CAPACIDAD EXPLICITA, que no se ejercitaba en ningun sitio.
+            //
+            // Y es justo el camino que mas facil rompe: con capacidad 1, el segundo Append tiene
+            // que CRECER desde `cuantos == 0`... no, desde 1, pero el primer crecimiento de un
+            // buffer casi vacio pasa por copiar un Span de longitud minima. Spans.OfRange con
+            // longitud 0 devuelve un span vacio y CopyTo no escribe nada -- comprobado leyendo
+            // Span.ns--, pero eso hay que MEDIRLO, no suponerlo.
+            //
+            // Y la capacidad pedida se sube al minimo si es absurda (`if (capacidad < 1)`), que es
+            // la otra rama que nadie recorria.
+            raii StringBuilder apretado = new StringBuilder(1);
+            if (apretado.Capacity() != 1) { return 50; }
+            apretado.Append('a');
+            apretado.Append('b');
+            apretado.Append("cde");
+            if (apretado.Length() != 5) { return 51; }
+            if (apretado.Capacity() < 5) { return 52; }
+            raii string apretadoTexto = apretado.ToOwnedString();
+            if (!String.Equals(apretadoTexto, "abcde")) { return 53; }
+
+            raii StringBuilder absurdo = new StringBuilder(0);
+            if (absurdo.Capacity() != 1) { return 54; }
+            absurdo.Append("hola");
+            raii string absurdoTexto = absurdo.ToOwnedString();
+            if (!String.Equals(absurdoTexto, "hola")) { return 55; }
+
+            raii StringBuilder negativa = new StringBuilder(-9);
+            if (negativa.Capacity() != 1) { return 56; }
+
+            // ---------------------------------------------------------------------------------
+            // 4. TextWriter: EL MISMO PRODUCTOR, TRES DESTINOS.
+            // ---------------------------------------------------------------------------------
+            raii StringTextWriter aMemoria = new StringTextWriter();
+            Volcar(aMemoria);
+            raii string enMemoria = aMemoria.ToOwnedString();
+            // "True" con mayuscula por lo mismo que arriba: TextWriter.Write(bool) pasa por
+            // String.ToString(bool). Arreglar solo el bloque de numeros habria movido el fallo
+            // aqui en la corrida siguiente en vez de arreglarlo.
+            if (!String.Equals(enMemoria, "id=42 ok=True\n    hijo\n")) { return 18; }
+            if (aMemoria.Length() != enMemoria.Length) { return 19; }
+
+            // A un fichero, con el mismo productor. Nombre derivado de args[0] porque los 90
+            // trabajos corren 16 en paralelo en el mismo directorio -- mismo criterio que c24/c25.
+            raii string rutaTexto = String.Concat(propio, ".c28.txt");
+
+            // SE BORRA ANTES, NO SOLO AL FINAL, y esa es una correccion. Mas abajo se comprueba
+            // que el fichero NO existe todavia (codigo 21), porque FileTextWriter acumula y no
+            // toca el disco hasta el Flush. Esa comprobacion es correcta y era FRAGIL: si esta
+            // fixture falla alguna vez ENTRE el Flush y el Delete del final, el fichero sobrevive
+            // y la corrida SIGUIENTE se pone roja en el 21 por un motivo que no tiene nada que ver
+            // -- un rojo que no se reproduce dos veces, que es la peor clase que hay.
+            //
+            // Borrar al entrar hace la fixture independiente de como acabo la anterior. File.Delete
+            // sobre algo que no existe no falla.
+            File.Delete(rutaTexto);
+            if (File.Exists(rutaTexto)) { return 49; }
+
+            raii FileTextWriter aFichero = new FileTextWriter(rutaTexto);
+            Volcar(aFichero);
+            // Antes del Flush NO hay fichero: acumula en memoria a proposito.
+            if (aFichero.Pending() == 0) { return 20; }
+            if (File.Exists(rutaTexto)) { return 21; }
+
+            aFichero.Flush();
+            if (aFichero.Pending() != 0) { return 22; }
+            if (!File.Exists(rutaTexto)) { return 23; }
+
+            string desdeDisco = File.ReadAllText(rutaTexto);
+            // LA COMPROBACION QUE JUSTIFICA TODO EL DISENO: dos destinos completamente distintos,
+            // el mismo productor, y el mismo texto byte a byte.
+            if (!String.Equals(desdeDisco, enMemoria)) { return 24; }
+
+            // Un segundo Flush no duplica: Flush vacia el buffer.
+            aFichero.Flush();
+            string trasSegundoFlush = File.ReadAllText(rutaTexto);
+            if (!String.Equals(trasSegundoFlush, enMemoria)) { return 25; }
+
+            // Y volcar por tramos ANEXA en vez de reemplazar -- si no, el segundo tramo borraria
+            // el primero.
+            aFichero.Write("cola");
+            aFichero.Flush();
+            string conCola = File.ReadAllText(rutaTexto);
+            if (conCola.Length != enMemoria.Length + 4) { return 26; }
+            if (!String.EndsWith(conCola, "cola")) { return 27; }
+
+            // El tercero: a la consola. No se puede comparar desde aqui --va a stdout-- pero SI se
+            // comprueba que no revienta y que la base virtual despacha a la derivada.
+            raii ConsoleTextWriter aConsola = new ConsoleTextWriter();
+            aConsola.Write("");
+
+            // ---------------------------------------------------------------------------------
+            // 5. La base NO abstracta se traga el texto en silencio, que es el comportamiento
+            //    documentado y sirve para desactivar la salida sin ramas en el productor.
+            // ---------------------------------------------------------------------------------
+            raii TextWriter aNingunSitio = new TextWriter();
+            Volcar(aNingunSitio);
+
+            // 5b. StringTextWriter con capacidad explicita -- el otro constructor sin ejercitar.
+            raii StringTextWriter conCapacidad = new StringTextWriter(2);
+            Volcar(conCapacidad);
+            raii string desdeCapacidad = conCapacidad.ToOwnedString();
+            // El mismo productor, un buffer que arranca minimo: la salida tiene que ser identica.
+            if (!String.Equals(desdeCapacidad, enMemoria)) { return 57; }
+
+            // 6. StringTextWriter.Clear reutiliza.
+            aMemoria.Clear();
+            if (aMemoria.Length() != 0) { return 28; }
+            aMemoria.Write("otra vez");
+            raii string otraVez = aMemoria.ToOwnedString();
+            if (!String.Equals(otraVez, "otra vez")) { return 29; }
+
+            File.Delete(rutaTexto);
+            if (File.Exists(rutaTexto)) { return 30; }
+
+            return 42;
+        }
+    }
+}
