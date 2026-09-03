@@ -487,6 +487,18 @@ int main()
         tests, root, "tests/cc1/c29_arena/c29_arena.nsproj",
         "cc1-c29-arena", 42);
 
+    // Fase M1 -- LO QUE LOS CONTRATOS AFIRMAN, medido. Los docs 110 (overflow) y 111 (memoria)
+    // escriben lo que el lenguaje promete; esta fixture comprueba que el compilador lo cumple, y
+    // sobre todo que lo cumple IGUAL en -O0 y en -O2.
+    //
+    // Su paso 6 es el que ninguna otra prueba del arbol hacia: la MISMA expresion evaluada por el
+    // plegado de constantes en compilacion y por el binario en ejecucion, ocho veces. Si las dos
+    // vias discrepan hay dos juegos de reglas de aritmetica -- el fallo que la unificacion de
+    // include/nativesharp/Frontend/BuiltinIntegerTypes.h existe para impedir.
+    checkFixture(
+        tests, root, "tests/cc1/c30_contratos/c30_contratos.nsproj",
+        "cc1-c30-contratos", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================

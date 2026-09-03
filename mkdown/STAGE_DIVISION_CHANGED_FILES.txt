@@ -1,0 +1,148 @@
+STAGE_DIVISION -- 2026-09-03
+El rojo de c30 en su primera corrida: MinValue / -1 daba TRES respuestas distintas.
+Ver mkdown/113_una_division_tres_respuestas.md (el analisis y las mediciones)
+    mkdown/110_contrato_de_overflow.md (contrato, §2.5 actualizado)
+
+EL ROJO
+  FAIL cc1_c30_contratos -O0 -- exit 3221225621 == 0xC0000095 == STATUS_INTEGER_OVERFLOW
+  FAIL cc1_c30_contratos -O2 -- exit 19, es decir NO aborta y devuelve otro valor
+  La misma linea del mismo programa muere de una forma en O0 y contesta mal en O2.
+
+NUEVO
+  src/LLVM/SignedDivisionCorrection.h
+      LA CORRECCION, ESCRITA UNA SOLA VEZ, incluida por los DOS bajadores. Si el caso malo se
+      da, se divide por 1: MinValue/1 == MinValue y MinValue%1 == 0, los dos exactos. Dos icmp,
+      un and y un select. SIN RAMA. Y `sdiv` deja de ser poison porque el caso que lo hacia
+      poison ya no le llega.
+
+MODIFICADOS -- compilador
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      1) Slash/Percent salen a un applyIntegerDivision nuevo con los dos casos degenerados:
+         - DIVISION POR CERO -> trampa EXPLICITA en el IR (LlvmTrapReason::DivisionByZero).
+           Antes se dejaba al hardware, y eso no cumple el contrato: en O2 `sdiv x, 0` es
+           poison y el optimizador pliega la funcion entera.
+         - MinValue / -1 -> envuelve, por la cabecera compartida.
+      2) isSignedInteger e integerWidth pasan a leer de BuiltinIntegerTypes.h. Eran la TERCERA
+         y la CUARTA copia de la tabla de enteros, y la mas peligrosa de las cuatro: es la que
+         decide sdiv/udiv, ashr/lshr y sext/zext. Un desacuerdo aqui no da error, da codigo
+         generado que hace otra cosa.
+
+  src/LLVM/LlvmLowerer.cpp
+      CAMBIO DE COMPORTAMIENTO DELIBERADO. Aqui habia una guarda que ABORTABA con
+      LlvmTrapReason::SignedDivisionOverflow. El doc 110 §2.1 dice que el desbordamiento con
+      signo envuelve, y §2.5 aplica esa regla aqui. Este bajador sigue vivo: Driver.cpp lo usa
+      para --program, --check y --dump-llvm.
+      SignedDivisionOverflow se queda en el enum: quitarlo renumeraria las razones.
+
+  src/Frontend/ProjectIntegerEvaluator.cpp
+      LA TERCERA RESPUESTA, Y LA PEOR. Devolvia nullopt para MinValue/-1, y MEDIDO EN EL IR eso
+      no era "rechazar el programa": el backend guardaba `store i32 poison` en la constante.
+      Sin diagnostico. El programa compilaba y quedaba indefinido desde esa linea.
+      Ahora devuelve el minimo (y 0 para el resto), calculado A MANO para no ejecutar el UB de
+      C++ dentro del compilador -- que es lo que la proteccion original buscaba y sigue en pie.
+      b == 0 se queda en nullopt: rechazar una constante que divide por cero es correcto.
+
+MODIFICADOS -- pruebas
+  tests/unit/Cc1IntegerEvaluatorTests.cpp
+      Dos expect CAMBIAN DE SENTIDO: exigian nullopt, ahora exigen MinValue y 0. NO es aflojar
+      una prueba para que pase -- se toco el compilador en tres ficheros y la prueba en uno.
+      La prueba fijaba un comportamiento que el contrato decidio cambiar.
+      + dos comprobaciones nuevas para 64 bits, que es el ancho que no se probaba.
+      39 de 39 en el contenedor.
+  tests/cc1/c30_contratos/Main.ns
+      + paso 5b (codigos 39, 40, 41): la constante PLEGADA contra el valor CALCULADO, y el
+      resto. Es el guardian de que las tres vias no vuelvan a separarse.
+
+MEDIDO
+  EQUIVALENCIA DE LOS PREDICADOS, antes de cambiarlos: un programa que evalua la version vieja y
+  la nueva de isSignedInteger/integerWidth sobre los 20 tipos que el compilador puede pasarles
+  (los 11 enteros, bool, float, double, string, void, object, una clase, un puntero y la cadena
+  vacia). Resultado: IDENTICAS en los 20.
+
+  EL CORPUS ENTERO volcado a IR con el compilador de ANTES y el de DESPUES y comparado contando
+  cada forma de instruccion -- no linea a linea, que es inutil cuando se insertan bloques y todo
+  se renumera. De 3,5 millones de lineas de IR, 48 formas cambian de cuenta y LAS 48 SON DE LA
+  DIVISION. Filtrando por las formas de la correccion: 0 restantes.
+      +2613  call void @__nativesharp_trap(i32 1)   guardas de cero que no existian
+      +1018  icmp eq i32 X, -2147483648             divisiones con signo corregidas (+3 en i64)
+      +1594  br i1 true, ...                        guardas con divisor constante: se pliegan
+      -535/+695  sdiv i32 X, 2 -> sdiv i32 X, X     el divisor pasa a ser el select
+
+  LA DIVISION POR CERO CONSTANTE, con un programa de cuatro lineas (const int malo = 1 / 0):
+      antes -> store i32 poison            compila, programa indefinido
+      ahora -> br i1 false, ... div.zero.trap   compila, muere con DivisionByZero
+      Sigue SIN diagnostico en compilacion: anotado, no hecho, con la condicion de reapertura
+      escrita -- un `br i1 false` hacia una trampa es demostrable en tiempo de compilacion.
+
+  ./sweep.sh llvm  ->  OK=175  FAIL=5   (los cinco negativos de siempre)
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que c30 pase EJECUTANDO. El contenedor llega al IR y para.
+  LlvmLowerer.cpp no lo compila el contenedor (no esta en srcs.txt). Compila limpio con
+  clang++ -std=c++20 -Wall -Wextra -fsyntax-only, y nada mas se puede decir desde aqui.
+
+SEGUNDA CORRIDA -- EL ROJO SE MOVIO AL PASO 7, Y ESE ERA MIO
+  FAIL cc1_c30_contratos -O0 y -O2 -- exit 31 LOS DOS.
+  El mismo codigo en las dos configuraciones = no es divergencia de optimizacion, es una
+  expectativa falsa. El paso 5 PASO: la correccion de la division funciona en Windows con LLVM 23,
+  que es justo lo que el contenedor no podia medir.
+
+  CAUSA: yo supuse la aritmetica IEEE en vez de calcularla. La comprobacion exigia que
+      (grande + pequeno) - grande   y   grande + (pequeno - grande)
+  fueran DISTINTAS con grande=1e16 y pequeno=1. LAS DOS VALEN CERO: a esa magnitud el ULP vale 2,
+  asi que 1e16+1 y 1e16-1 caen a mitad de camino entre dos dobles y el redondeo al par manda los
+  dos a 1e16. El compilador contestaba bien y la prueba exigia lo imposible.
+
+  Y LA SIGUIENTE ESTABA MAL POR LO MISMO: (1.0/3.0)*3.0 SI es exactamente 1.0 en doble precision.
+  Arreglar solo la que salio roja habria movido el rojo a la 34. La misma leccion que el c28.
+
+  PASO 7 REESCRITO, con los valores comprobados NUMERICAMENTE antes de escribirlos, y cada
+  comprobacion apuntando a una bandera concreta de fast-math:
+      7a reassoc  (g+1)+1 pierde los dos unos -> g ; g+(1+1) -> g+2      codigos 31, 32, 33
+      7b arcp     5/3 = 0x1.aaaaaaaaaaaabp+0 contra 5*(1/3) = ...aaaap+0  codigo 34
+      7c nnan     NaN == NaN, NaN < 1 y NaN >= 1: las tres falsas         codigos 43, 44, 45
+  En el IR: los dos fadd en el orden escrito, el fdiv 1.0,y seguido del fmul sin plegar, los tres
+  fcmp con predicado ORDENADO (oeq, olt, oge), y CERO banderas rapidas.
+
+  Tocado SOLO tests/cc1/c30_contratos/Main.ns. El compilador NO se cambio: su comportamiento en el
+  paso 7 era el correcto.
+
+TERCERA CORRIDA -- FIXTURES 100/100, ctest 242/244
+  Las dos que faltaban eran las que estaban previstas, y las dos del bajador de fichero unico:
+      nsc.llvm-lowering      "all six stage-17 runtime trap reasons are materialized..."
+      nsc.llvm-optimization  "aggressive LLVM optimization preserves the signed-division-overflow
+                              trap"  (x2: O2 y O3)
+  Las dos fijaban la razon de trampa 2 (SignedDivisionOverflow), que este cambio dejo de emitir A
+  PROPOSITO. No es que el arreglo rompiera algo: las pruebas decian lo contrario del contrato.
+
+  tests/unit/LlvmLoweringTests.cpp
+      Pedia SEIS razones, ahora pide CINCO (1, 3, 4, 5, 6) -- y GANA DOS comprobaciones:
+        * que la razon 2 NO aparezca
+        * que en su lugar este LA CORRECCION: icmp eq i32 %a, -2147483648 ; icmp eq i32 %b, -1 ;
+          select i1 %div.overflow, i32 1, i32 %b
+      La correccion es codigo generado y hay que verificarla igual que la trampa que sustituye.
+      MEDIDO: 39 de 39, compilando y EJECUTANDO la prueba en el contenedor.
+
+  tests/unit/LlvmOptimizationTests.cpp
+      La razon 2 pasa de exigirse a exigirse AUSENTE. Lo que esa prueba protege de verdad --que el
+      optimizador agresivo no borre lo que el compilador emitio-- lo siguen cubriendo las razones
+      1, 3 y 5 del mismo bucle, intactas.
+      NO se comprueba que el `select` sobreviva a O2/O3 a proposito: eso fija una FORMA del IR que
+      InstCombine puede reescribir legitimamente, y la prueba se pondria roja por un cambio de
+      LLVM que no rompe nada. La propiedad de verdad --que el resultado siga siendo MinValue
+      despues de optimizar-- la mide c30 EJECUTANDO en -O2.
+
+  LIMITE HONESTO: nsc.llvm-optimization NO se pudo ejecutar en el contenedor. Su optimizador usa
+  LLVMRunPassesOnFunction, API de LLVM 23 que no existe en libLLVM-18. La edicion es una linea
+  invertida y compila limpio con -Wall -Wextra; quien la mide es la corrida en Windows.
+
+  Para reproducir el rojo aqui hubo que construir lo que el arnes no construia:
+  FrontendCompilation.cpp, LlvmLowerer.cpp y los subsistemas MIR, CFG, HIR, SSA, Dominance,
+  Passes y Target.
+
+  BARRIDO: no hay ninguna otra prueba del arbol que mencione SignedDivisionOverflow ni que busque
+  sdiv/srem en texto. Son estas dos y ninguna mas.
+
+ATENCION
+  Estos cambios NO surten efecto hasta que se reconstruya nsc.exe. Una corrida norebuild mide el
+  compilador viejo.

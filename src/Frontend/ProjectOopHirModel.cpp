@@ -19,16 +19,19 @@ namespace nativesharp::frontend
 namespace
 {
 // LA UNICA TABLA de las operaciones nucleo que se bajan por el bloque compartido de "llamada
-// tipo string" de lowerExpression, y de cuantos operandos toma cada una.
+// tipo string" de lowerExpression. Contesta LAS TRES preguntas que hay que hacer sobre una de
+// ellas: si entra en el bloque, cuantos operandos toma, y en que nodo HIR se convierte.
 //
-// POR QUE EXISTE, y es la correccion del 2026-09-02. Antes esto eran DOS listas separadas dentro
-// de esa misma funcion, a cientos de lineas una de otra:
+// POR QUE EXISTE, y es la correccion del 2026-09-02 (arity) ampliada el 2026-09-03 (nodo HIR).
+// Antes esto eran TRES cosas separadas dentro de la misma funcion, a cientos de lineas unas de
+// otras:
 //
 //   1) una cadena de `core->kind == ... ||` que decidia si la operacion entraba en el bloque;
-//   2) una cadena de if/else-if que le asignaba la aridad, con un `expected = 2U` por omision.
+//   2) una cadena de if/else-if que le asignaba la aridad, con un `expected = 2U` por omision;
+//   3) una cadena de if/else-if que le asignaba el nodo HIR, con `StringConcat` por omision.
 //
-// Anadir una operacion y olvidar una de las dos NO daba ningun error, y cada olvido fallaba de
-// una forma distinta y ninguna decia el nombre de la operacion:
+// Anadir una operacion y olvidar cualquiera de las tres NO daba ningun error, y cada olvido
+// fallaba de una forma distinta -- ninguna decia el nombre de la operacion:
 //
 //   * solo en (1): la aridad caia al 2 por omision. Si la operacion no tomaba dos operandos, el
 //     resultado era "Stage 51 string intrinsic received an invalid operand count" -- un mensaje
@@ -37,32 +40,55 @@ namespace
 //     metodo NativeSharp normal -- el que devuelve -1 o "" como marcador de posicion. Compila,
 //     enlaza, ejecuta, y da una respuesta plausible y FALSA. Medido al implementar File.GetSize:
 //     el gancho aparecia declarado en el IR y sin una sola llamada.
+//   * olvidar (3) era el peor de los tres: la operacion no se quedaba sin nodo, se convertia en
+//     `StringConcat`. Es decir, `File.GetSize(ruta)` se habria bajado como una CONCATENACION DE
+//     CADENAS. Ningun mensaje, ningun aviso; codigo generado que hace otra cosa.
 //
-// Con una sola funcion las dos preguntas salen de la misma respuesta: `has_value()` es (1) y el
-// valor es (2), asi que no pueden discrepar.
+// Con una sola funcion las tres respuestas salen del mismo `case`, asi que no pueden discrepar.
 //
 // Y EL SWITCH NO TIENE `default` A PROPOSITO. Con -Wswitch (y /WX, que este proyecto usa),
 // anadir un enumerador a MethodCoreOperationKind y no tocar esta funcion es un ERROR DE
 // COMPILACION que nombra el enumerador que falta. Ese es todo el punto: la comprobacion la hace
 // el compilador y no la memoria de quien anade la operacion numero 105. Si la operacion nueva no
 // va por este bloque, se pone en el grupo de `std::nullopt` y ya esta -- pero hay que decirlo.
-// LOS COMENTARIOS POR OPERACION son los de las dos cadenas viejas, movidos aqui tal cual: son
-// la historia de por que cada operacion cae en el grupo en el que cae, y se pierden si se
-// quedan en un fichero que ya no existe.
-std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
+//
+// COMPROBADO ANTES DE FUSIONAR, para no fusionar dos cosas que ya discreparan: las 50 operaciones
+// autorizadas por (1) y las 49 mapeadas explicitamente en (3) --mas `StringConcat`, que era el
+// valor por omision-- eran exactamente el mismo conjunto. Cero codigo muerto, cero operacion sin
+// mapeo. La tabla de abajo se derivo de las dos cadenas con un script, no a mano.
+//
+// LOS COMENTARIOS POR OPERACION son los de las cadenas viejas, movidos aqui tal cual: son la
+// historia de por que cada operacion cae donde cae, y se pierden si se quedan en un fichero que ya
+// no existe.
+struct StringCallLowering final
+{
+    std::size_t operandCount;
+    ProjectOopHirNodeKind hirKind;
+};
+
+std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kind)
 {
     switch (kind)
     {
     // ---------------------------------------------------------------------------------------
-    // SIN OPERANDOS.
+    // DOS OPERANDOS. Era el valor por omision de la cadena vieja, y por eso era la trampa: una
+    // operacion nueva que se olvidara caia aqui en silencio. Ahora esta escrito.
     // ---------------------------------------------------------------------------------------
-    // Stage 54.3 "Mutex": MutexCreate (zero operands -- the first core operation in
-    // the project with none at all), MutexLock/MutexUnlock/MutexClose (one
-    // builtin:nint operand, the saved HANDLE) -- exact same shape as
-    // ThreadJoin/ThreadDetach above, no receiver, same shared machinery.
-    case MethodCoreOperationKind::MutexCreate:
-        return 0U;
-
+    case MethodCoreOperationKind::StringConcat:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::StringConcat};
+    case MethodCoreOperationKind::StringEquals:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::StringEquals};
+    // ---------------------------------------------------------------------------------------
+    // TRES OPERANDOS.
+    // ---------------------------------------------------------------------------------------
+    case MethodCoreOperationKind::StringSubstring:
+        return StringCallLowering{3U, ProjectOopHirNodeKind::StringSubstring};
+    // SHR-010: `String.CharacterPointer(texto, indice)` cae en este mismo bloque --
+    // sin receptor, dos operandos, un gancho distinto en el backend. Es exactamente
+    // la forma que el bloque ya cubre; anadir un camino propio habria sido copiar
+    // la conversion implicita de operandos por tercera vez.
+    case MethodCoreOperationKind::StringCharacterPointer:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::StringCharacterPointer};
     // ---------------------------------------------------------------------------------------
     // UN OPERANDO. El grupo grande: "una cosa entra, otra sale". Casi todas son una cadena (una
     // ruta, el nombre de una variable de entorno), pero el bloque nunca exigio que el operando
@@ -70,25 +96,35 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // aqui con un builtin:string[] sin cambiar el mecanismo.
     // ---------------------------------------------------------------------------------------
     case MethodCoreOperationKind::StringFromCharArray:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::StringFromCharArray};
     // C8 "type root": RuntimeHelpers.TypeName/ReferenceHash -- one operand each (an
     // Object reference), a string and an int out. Same shared shape as everything
     // else here; the operand type is new, the mechanism is not.
     // C8: TypeName/ReferenceHash each take exactly the object reference.
     case MethodCoreOperationKind::ObjectTypeName:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreObjectTypeName};
     case MethodCoreOperationKind::ObjectReferenceHash:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreObjectReferenceHash};
     // Stage 53.2b "Environment (variables)": GetEnvironmentVariable/
     // SetEnvironmentVariable are string intrinsics in every way this block cares
     // about (operand count, operand lowering with implicit conversions, no
     // receiver) -- they only differ in which runtime hook the LLVM lowerer calls,
     // so they slot into this exact shared block rather than duplicating it.
     case MethodCoreOperationKind::EnvironmentGetVariable:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreEnvironmentGetVariable};
+    case MethodCoreOperationKind::EnvironmentSetVariable:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreEnvironmentSetVariable};
     // Stage 53.3 "Filesystem/Paths": File.Exists/File.Delete/Directory.Exists/
     // Directory.CreateDirectory -- same story, one string operand, a different
     // runtime hook.
     case MethodCoreOperationKind::FileExists:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreFileExists};
     case MethodCoreOperationKind::FileDelete:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreFileDelete};
     case MethodCoreOperationKind::DirectoryExists:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreDirectoryExists};
     case MethodCoreOperationKind::DirectoryCreate:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreDirectoryCreate};
     // Stage 53.3b "Filesystem/Paths (contenido de archivo)": ReadAllText/
     // WriteAllText/AppendAllText -- same story again, still no receiver, still just
     // string operands (1 for ReadAllText, 2 for WriteAllText/AppendAllText).
@@ -97,12 +133,19 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // operands (path, content), so they fall through to the default `expected =
     // 2U` above, the same bucket EnvironmentSetVariable already uses.
     case MethodCoreOperationKind::FileReadAllText:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreFileReadAllText};
+    case MethodCoreOperationKind::FileWriteAllText:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreFileWriteAllText};
+    case MethodCoreOperationKind::FileAppendAllText:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreFileAppendAllText};
     // Stage 53.4 "Filesystem/Paths (cierre)": Directory.Delete/Path.GetFullPath --
     // same story again, one string operand, a different runtime hook.
     // Stage 53.4: Directory.Delete (one string in, void out) and
     // Path.GetFullPath (one string in, a string out) are both one-operand too.
     case MethodCoreOperationKind::DirectoryDelete:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreDirectoryDelete};
     case MethodCoreOperationKind::PathGetFullPath:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CorePathGetFullPath};
     // Stage 53.5 "Command-line arguments": GetCommandLineArgs -- one operand again,
     // but this time a builtin:string[] instead of a builtin:string. This block
     // never actually required its operand to BE a string -- it just lowers whatever
@@ -112,6 +155,7 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // Stage 53.5: GetCommandLineArgs is "one array in (the caller-provided
     // buffer), an int out" -- also one operand.
     case MethodCoreOperationKind::EnvironmentGetCommandLineArgs:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgs};
     // Stage 53.6 "Enumeracion de directorios": GetFileCount/GetDirectoryCount are
     // "one string in (the path), an int out" -- one operand, same bucket as
     // Directory.Delete/Path.GetFullPath. GetFiles/GetDirectories are "one string in
@@ -125,7 +169,13 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // through to the default `expected = 2U` above, the same bucket
     // EnvironmentSetVariable/WriteAllText/AppendAllText already use.
     case MethodCoreOperationKind::DirectoryGetFileCount:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreDirectoryGetFileCount};
+    case MethodCoreOperationKind::DirectoryGetFiles:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreDirectoryGetFiles};
     case MethodCoreOperationKind::DirectoryGetDirectoryCount:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreDirectoryGetDirectoryCount};
+    case MethodCoreOperationKind::DirectoryGetDirectories:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreDirectoryGetDirectories};
     // Stage 54.1 "Threads": ThreadCreate/ThreadJoin/ThreadDetach are all one operand
     // (ThreadCreate's is a ThreadStart delegate value; ThreadJoin/ThreadDetach's is a
     // builtin:nint HANDLE) -- same shared "no receiver, operands lowered via
@@ -133,24 +183,58 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // Stage 54.1: ThreadCreate (one delegate operand), ThreadJoin/ThreadDetach
     // (one nint operand) -- all three are one-operand too.
     case MethodCoreOperationKind::ThreadCreate:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreThreadCreate};
     case MethodCoreOperationKind::ThreadJoin:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreThreadJoin};
     case MethodCoreOperationKind::ThreadDetach:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreThreadDetach};
+    // ---------------------------------------------------------------------------------------
+    // SIN OPERANDOS.
+    // ---------------------------------------------------------------------------------------
+    // Stage 54.3 "Mutex": MutexCreate (zero operands -- the first core operation in
+    // the project with none at all), MutexLock/MutexUnlock/MutexClose (one
+    // builtin:nint operand, the saved HANDLE) -- exact same shape as
+    // ThreadJoin/ThreadDetach above, no receiver, same shared machinery.
+    case MethodCoreOperationKind::MutexCreate:
+        return StringCallLowering{0U, ProjectOopHirNodeKind::CoreMutexCreate};
     // Stage 54.3: MutexLock/MutexUnlock/MutexClose (one builtin:nint HANDLE
     // operand each). MutexCreate is NOT here on purpose -- see the `expected = 0U`
     // branch above.
     case MethodCoreOperationKind::MutexLock:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreMutexLock};
     case MethodCoreOperationKind::MutexUnlock:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreMutexUnlock};
     case MethodCoreOperationKind::MutexClose:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreMutexClose};
+    // Stage 54.5 "Otras primitivas de sincronizacion": Semaphore/Event, EXACTO mismo
+    // shape que Mutex arriba (sin receptor, HANDLE builtin:nint de ida y vuelta) --
+    // SemaphoreCreate/EventCreate son de DOS operandos (bucket "expected=2U" por
+    // defecto, ver mas abajo), SemaphoreWait/EventWait tambien DOS (HANDLE + timeout),
+    // SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose de UNO (el
+    // HANDLE) -- mismo bucket "expected=1U" que MutexLock/MutexUnlock/MutexClose.
+    case MethodCoreOperationKind::SemaphoreCreate:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSemaphoreCreate};
+    case MethodCoreOperationKind::SemaphoreWait:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSemaphoreWait};
     // Stage 54.5: SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose
     // (one builtin:nint HANDLE operand each). SemaphoreCreate/EventCreate (two
     // operands) and SemaphoreWait/EventWait (HANDLE + timeout, two operands) are
     // NOT here on purpose -- they fall through to the default `expected = 2U`
     // above, the same bucket EnvironmentSetVariable/WriteAllText/etc. already use.
     case MethodCoreOperationKind::SemaphoreRelease:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSemaphoreRelease};
     case MethodCoreOperationKind::SemaphoreClose:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSemaphoreClose};
+    case MethodCoreOperationKind::EventCreate:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreEventCreate};
     case MethodCoreOperationKind::EventSet:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreEventSet};
     case MethodCoreOperationKind::EventReset:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreEventReset};
+    case MethodCoreOperationKind::EventWait:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreEventWait};
     case MethodCoreOperationKind::EventClose:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreEventClose};
     // Stage 55.1/55.3: Process.SetPriorityClassRaw (one builtin:int operand) and
     // Debug.OutputStringRaw (one builtin:string operand) -- exact same "no receiver,
     // one operand lowered via lowerExpression, void result" shape as
@@ -159,7 +243,9 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // Stage 55.1/55.3: Process.SetPriorityClassRaw/Debug.OutputStringRaw -- one
     // operand each, see the top-of-block comment above.
     case MethodCoreOperationKind::ProcessSetPriorityClassRaw:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreProcessSetPriorityClass};
     case MethodCoreOperationKind::DebugOutputStringRaw:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreDebugOutputString};
     // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29): ThreadSleepRaw
     // (one builtin:int operand, void out -- same shape as ProcessSetPriorityClassRaw
     // above), FileCopyRaw (three operands -- joins StringSubstring in the
@@ -174,6 +260,14 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // they take two operands (source, dest), so they fall through to the default
     // expected=2U bucket above.
     case MethodCoreOperationKind::ThreadSleepRaw:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreThreadSleep};
+    // Pre-Stage-56 "utilidades basicas" -- File.CopyRaw(source, dest, overwrite).
+    case MethodCoreOperationKind::FileCopyRaw:
+        return StringCallLowering{3U, ProjectOopHirNodeKind::CoreFileCopy};
+    case MethodCoreOperationKind::FileMoveRaw:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreFileMove};
+    case MethodCoreOperationKind::DirectoryMoveRaw:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreDirectoryMove};
     // Bloque 4, fase A: File.GetSize -- una cadena entra, un i64 sale. Va en esta
     // lista y no en el bucket por omision porque ese es de DOS operandos: sin esta
     // linea el enlace no falla ni se queja, simplemente la llamada se queda siendo
@@ -190,55 +284,21 @@ std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
     // carga, que no menciona ni el nombre de la operacion ni cual de las dos
     // listas falta. Medido al implementar File.GetSize.
     case MethodCoreOperationKind::FileGetSize:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreFileGetSize};
     // Bloque 4, fase A: ReadAllBytes (1 operando), ReadBytes (2, y por tanto en el
     // bucket por omision) y WriteAllBytes (3, listado abajo con StringSubstring).
     // Bloque 4, fase A: ReadAllBytes es de un operando. ReadBytes es de dos y cae
     // en la omision; WriteAllBytes es de tres y va en la lista de arriba.
     case MethodCoreOperationKind::FileReadAllBytes:
-        return 1U;
-
-    // ---------------------------------------------------------------------------------------
-    // DOS OPERANDOS. Era el valor por omision de la cadena vieja, y por eso era la trampa: una
-    // operacion nueva que se olvidara caia aqui en silencio. Ahora esta escrito.
-    // ---------------------------------------------------------------------------------------
-    case MethodCoreOperationKind::StringConcat:
-    case MethodCoreOperationKind::StringEquals:
-    // SHR-010: `String.CharacterPointer(texto, indice)` cae en este mismo bloque --
-    // sin receptor, dos operandos, un gancho distinto en el backend. Es exactamente
-    // la forma que el bloque ya cubre; anadir un camino propio habria sido copiar
-    // la conversion implicita de operandos por tercera vez.
-    case MethodCoreOperationKind::StringCharacterPointer:
-    case MethodCoreOperationKind::EnvironmentSetVariable:
-    case MethodCoreOperationKind::FileWriteAllText:
-    case MethodCoreOperationKind::FileAppendAllText:
-    case MethodCoreOperationKind::DirectoryGetFiles:
-    case MethodCoreOperationKind::DirectoryGetDirectories:
-    // Stage 54.5 "Otras primitivas de sincronizacion": Semaphore/Event, EXACTO mismo
-    // shape que Mutex arriba (sin receptor, HANDLE builtin:nint de ida y vuelta) --
-    // SemaphoreCreate/EventCreate son de DOS operandos (bucket "expected=2U" por
-    // defecto, ver mas abajo), SemaphoreWait/EventWait tambien DOS (HANDLE + timeout),
-    // SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose de UNO (el
-    // HANDLE) -- mismo bucket "expected=1U" que MutexLock/MutexUnlock/MutexClose.
-    case MethodCoreOperationKind::SemaphoreCreate:
-    case MethodCoreOperationKind::SemaphoreWait:
-    case MethodCoreOperationKind::EventCreate:
-    case MethodCoreOperationKind::EventWait:
-    case MethodCoreOperationKind::FileMoveRaw:
-    case MethodCoreOperationKind::DirectoryMoveRaw:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreFileReadAllBytes};
     case MethodCoreOperationKind::FileReadBytes:
-        return 2U;
-
-    // ---------------------------------------------------------------------------------------
-    // TRES OPERANDOS.
-    // ---------------------------------------------------------------------------------------
-    case MethodCoreOperationKind::StringSubstring:
-    // Pre-Stage-56 "utilidades basicas" -- File.CopyRaw(source, dest, overwrite).
-    case MethodCoreOperationKind::FileCopyRaw:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreFileReadBytes};
     case MethodCoreOperationKind::FileWriteAllBytes:
+        return StringCallLowering{3U, ProjectOopHirNodeKind::CoreFileWriteAllBytes};
     // Bloque 4, fase C: Process.Run -- tres operandos, listado abajo con
     // StringSubstring y FileWriteAllBytes.
     case MethodCoreOperationKind::ProcessRun:
-        return 3U;
+        return StringCallLowering{3U, ProjectOopHirNodeKind::CoreProcessRun};
 
     // ---------------------------------------------------------------------------------------
     // NO PASAN POR ESTE BLOQUE, y estan listadas una por una a proposito: sin ellas el switch
@@ -1643,7 +1703,27 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
     }
 }
 
+// Ver el comentario de la declaracion en ProjectOopHirModel.h: este envoltorio existe para que
+// los 125 sitios que ponen un error dentro de lowerExpressionImpl no tengan que adjuntar la
+// ubicacion cada uno.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error)
+{
+    std::unique_ptr<ProjectOopHirNode> lowered =
+        lowerExpressionImpl(expression, memberOrdinal, addressContext, error);
+    // Solo se apunta si NO hay nada apuntado: asi gana el nodo mas interno, que es el que de
+    // verdad fallo, y no la expresion que lo contiene.
+    if (lowered == nullptr && !error.empty() && !lastErrorRange_.isValid() && expression != nullptr)
+    {
+        lastErrorRange_ = expression->range();
+    }
+    return lowered;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
     bool addressContext,
@@ -2870,11 +2950,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             }
 
             const MethodCoreBinding* core = coreBinding(expression);
-            // Las dos preguntas --entra en este bloque, y con cuantos operandos-- salen de la
-            // MISMA respuesta: ver stringCallOperandCount() al principio de este archivo.
-            const std::optional<std::size_t> coreOperandCount =
-                core != nullptr ? stringCallOperandCount(core->kind) : std::nullopt;
-            if (coreOperandCount.has_value())
+            // Las TRES preguntas --entra en este bloque, con cuantos operandos, y en que nodo
+            // HIR se convierte-- salen de la MISMA respuesta: ver stringCallLowering() al
+            // principio de este archivo.
+            const std::optional<StringCallLowering> coreLowering =
+                core != nullptr ? stringCallLowering(core->kind) : std::nullopt;
+            if (coreLowering.has_value())
             {
                 if (addressContext)
                 {
@@ -2907,62 +2988,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 // La aridad viene de la misma tabla que decidio entrar aqui, asi que no puede
                 // discrepar con ella. El `expected = 2U` por omision de la version anterior
                 // --la trampa que se tragaba cualquier operacion nueva olvidada-- ya no existe.
-                const std::size_t expected = *coreOperandCount;
+                const std::size_t expected = coreLowering->operandCount;
                 if (operands.size() != expected)
                 {
                     error = "Stage 51 string intrinsic received an invalid operand count";
                     return nullptr;
                 }
-                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringConcat;
-                if (core->kind == MethodCoreOperationKind::StringEquals) kind = ProjectOopHirNodeKind::StringEquals;
-                else if (core->kind == MethodCoreOperationKind::StringSubstring) kind = ProjectOopHirNodeKind::StringSubstring;
-                else if (core->kind == MethodCoreOperationKind::StringCharacterPointer) kind = ProjectOopHirNodeKind::StringCharacterPointer;
-                else if (core->kind == MethodCoreOperationKind::StringFromCharArray) kind = ProjectOopHirNodeKind::StringFromCharArray;
-                else if (core->kind == MethodCoreOperationKind::EnvironmentGetVariable) kind = ProjectOopHirNodeKind::CoreEnvironmentGetVariable;
-                else if (core->kind == MethodCoreOperationKind::EnvironmentSetVariable) kind = ProjectOopHirNodeKind::CoreEnvironmentSetVariable;
-                else if (core->kind == MethodCoreOperationKind::FileExists) kind = ProjectOopHirNodeKind::CoreFileExists;
-                else if (core->kind == MethodCoreOperationKind::FileDelete) kind = ProjectOopHirNodeKind::CoreFileDelete;
-                else if (core->kind == MethodCoreOperationKind::DirectoryExists) kind = ProjectOopHirNodeKind::CoreDirectoryExists;
-                else if (core->kind == MethodCoreOperationKind::DirectoryCreate) kind = ProjectOopHirNodeKind::CoreDirectoryCreate;
-                else if (core->kind == MethodCoreOperationKind::FileReadAllText) kind = ProjectOopHirNodeKind::CoreFileReadAllText;
-                else if (core->kind == MethodCoreOperationKind::FileGetSize) kind = ProjectOopHirNodeKind::CoreFileGetSize;
-                else if (core->kind == MethodCoreOperationKind::FileReadAllBytes) kind = ProjectOopHirNodeKind::CoreFileReadAllBytes;
-                else if (core->kind == MethodCoreOperationKind::FileReadBytes) kind = ProjectOopHirNodeKind::CoreFileReadBytes;
-                else if (core->kind == MethodCoreOperationKind::FileWriteAllBytes) kind = ProjectOopHirNodeKind::CoreFileWriteAllBytes;
-                else if (core->kind == MethodCoreOperationKind::ProcessRun) kind = ProjectOopHirNodeKind::CoreProcessRun;
-                else if (core->kind == MethodCoreOperationKind::FileWriteAllText) kind = ProjectOopHirNodeKind::CoreFileWriteAllText;
-                else if (core->kind == MethodCoreOperationKind::FileAppendAllText) kind = ProjectOopHirNodeKind::CoreFileAppendAllText;
-                else if (core->kind == MethodCoreOperationKind::DirectoryDelete) kind = ProjectOopHirNodeKind::CoreDirectoryDelete;
-                else if (core->kind == MethodCoreOperationKind::PathGetFullPath) kind = ProjectOopHirNodeKind::CorePathGetFullPath;
-                else if (core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgs) kind = ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgs;
-                else if (core->kind == MethodCoreOperationKind::DirectoryGetFileCount) kind = ProjectOopHirNodeKind::CoreDirectoryGetFileCount;
-                else if (core->kind == MethodCoreOperationKind::DirectoryGetFiles) kind = ProjectOopHirNodeKind::CoreDirectoryGetFiles;
-                else if (core->kind == MethodCoreOperationKind::DirectoryGetDirectoryCount) kind = ProjectOopHirNodeKind::CoreDirectoryGetDirectoryCount;
-                else if (core->kind == MethodCoreOperationKind::DirectoryGetDirectories) kind = ProjectOopHirNodeKind::CoreDirectoryGetDirectories;
-                else if (core->kind == MethodCoreOperationKind::ThreadCreate) kind = ProjectOopHirNodeKind::CoreThreadCreate;
-                else if (core->kind == MethodCoreOperationKind::ThreadJoin) kind = ProjectOopHirNodeKind::CoreThreadJoin;
-                else if (core->kind == MethodCoreOperationKind::ThreadDetach) kind = ProjectOopHirNodeKind::CoreThreadDetach;
-                else if (core->kind == MethodCoreOperationKind::MutexCreate) kind = ProjectOopHirNodeKind::CoreMutexCreate;
-                else if (core->kind == MethodCoreOperationKind::MutexLock) kind = ProjectOopHirNodeKind::CoreMutexLock;
-                else if (core->kind == MethodCoreOperationKind::MutexUnlock) kind = ProjectOopHirNodeKind::CoreMutexUnlock;
-                else if (core->kind == MethodCoreOperationKind::MutexClose) kind = ProjectOopHirNodeKind::CoreMutexClose;
-                else if (core->kind == MethodCoreOperationKind::SemaphoreCreate) kind = ProjectOopHirNodeKind::CoreSemaphoreCreate;
-                else if (core->kind == MethodCoreOperationKind::SemaphoreWait) kind = ProjectOopHirNodeKind::CoreSemaphoreWait;
-                else if (core->kind == MethodCoreOperationKind::SemaphoreRelease) kind = ProjectOopHirNodeKind::CoreSemaphoreRelease;
-                else if (core->kind == MethodCoreOperationKind::SemaphoreClose) kind = ProjectOopHirNodeKind::CoreSemaphoreClose;
-                else if (core->kind == MethodCoreOperationKind::EventCreate) kind = ProjectOopHirNodeKind::CoreEventCreate;
-                else if (core->kind == MethodCoreOperationKind::EventSet) kind = ProjectOopHirNodeKind::CoreEventSet;
-                else if (core->kind == MethodCoreOperationKind::EventReset) kind = ProjectOopHirNodeKind::CoreEventReset;
-                else if (core->kind == MethodCoreOperationKind::EventWait) kind = ProjectOopHirNodeKind::CoreEventWait;
-                else if (core->kind == MethodCoreOperationKind::EventClose) kind = ProjectOopHirNodeKind::CoreEventClose;
-                else if (core->kind == MethodCoreOperationKind::ProcessSetPriorityClassRaw) kind = ProjectOopHirNodeKind::CoreProcessSetPriorityClass;
-                else if (core->kind == MethodCoreOperationKind::DebugOutputStringRaw) kind = ProjectOopHirNodeKind::CoreDebugOutputString;
-                else if (core->kind == MethodCoreOperationKind::ThreadSleepRaw) kind = ProjectOopHirNodeKind::CoreThreadSleep;
-                else if (core->kind == MethodCoreOperationKind::FileCopyRaw) kind = ProjectOopHirNodeKind::CoreFileCopy;
-                else if (core->kind == MethodCoreOperationKind::FileMoveRaw) kind = ProjectOopHirNodeKind::CoreFileMove;
-                else if (core->kind == MethodCoreOperationKind::DirectoryMoveRaw) kind = ProjectOopHirNodeKind::CoreDirectoryMove;
-                else if (core->kind == MethodCoreOperationKind::ObjectTypeName) kind = ProjectOopHirNodeKind::CoreObjectTypeName;
-                else if (core->kind == MethodCoreOperationKind::ObjectReferenceHash) kind = ProjectOopHirNodeKind::CoreObjectReferenceHash;
+                // EL NODO HIR VIENE DE LA MISMA TABLA. Aqui habia una cadena de 49 `else if`
+                // con `StringConcat` como valor inicial, y ese valor inicial era la trampa: una
+                // operacion nueva sin su rama no se quedaba sin nodo, se convertia en una
+                // CONCATENACION DE CADENAS. `File.GetSize(ruta)` se habria bajado como
+                // `concat(ruta, ...)`, sin un solo mensaje. Ahora la tabla que autorizo la
+                // entrada es la que dice el nodo, asi que no hay omision posible.
+                const ProjectOopHirNodeKind kind = coreLowering->hirKind;
                 auto node = makeNode(kind, expression, core->resultTypeKey);
                 for (std::size_t index = 0; index < operands.size(); ++index)
                 {

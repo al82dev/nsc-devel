@@ -171,13 +171,31 @@ int main()
                     text.find("lshr i32") != std::string::npos &&
                     text.find("fptoui double") != std::string::npos,
                 "unsigned division, remainder, right shift and floating conversion use unsigned LLVM operations");
+            // ESTA COMPROBACION PEDIA SEIS RAZONES Y AHORA PIDE CINCO. El motivo, escrito porque
+            // bajarle el numero a una prueba es exactamente lo que no se hace para que pase:
+            //
+            // La razon 2 --SignedDivisionOverflow-- YA NO SE EMITE, y no porque se haya perdido
+            // sino porque `MinValue / -1` dejo de ser un fallo del programa. El doc 110 §2.1 dice
+            // que el desbordamiento con signo ENVUELVE y esta definido, y §2.5 aplica esa regla a
+            // la division; el doc 113 cuenta la medicion que lo destapo. Lo que antes abortaba
+            // ahora da MinValue, igual que `MaxValue + 1` da MinValue.
+            //
+            // Y NO SE PIERDE COBERTURA: las dos comprobaciones de abajo exigen que en su lugar
+            // este LA CORRECCION, que es codigo generado y hay que verificarlo igual que la trampa
+            // a la que sustituye. La razon 2 se queda en el enum: quitarla renumeraria las demas.
             tests.expect(text.find("@__nativesharp_trap(i32 1)") != std::string::npos &&
-                    text.find("@__nativesharp_trap(i32 2)") != std::string::npos &&
                     text.find("@__nativesharp_trap(i32 3)") != std::string::npos &&
                     text.find("@__nativesharp_trap(i32 4)") != std::string::npos &&
                     text.find("@__nativesharp_trap(i32 5)") != std::string::npos &&
                     text.find("@__nativesharp_trap(i32 6)") != std::string::npos,
-                "all six stage-17 runtime trap reasons are materialized in control flow");
+                "the five stage-17 trap reasons still reachable are materialized in control flow");
+            tests.expect(text.find("@__nativesharp_trap(i32 2)") == std::string::npos,
+                "signed-division overflow no longer traps -- it wraps, doc 110 2.5");
+            tests.expect(
+                text.find("icmp eq i32 %a, -2147483648") != std::string::npos &&
+                    text.find("icmp eq i32 %b, -1") != std::string::npos &&
+                    text.find("select i1 %div.overflow, i32 1, i32 %b") != std::string::npos,
+                "MinValue / -1 lowers to the branchless divisor correction instead of a trap");
             tests.expect(text.find("declare ptr @__nativesharp_alloc(i64)") != std::string::npos &&
                     text.find("declare void @__nativesharp_free(ptr)") != std::string::npos,
                 "heap lowering uses explicit 64-bit NativeSharp runtime allocation ABI");

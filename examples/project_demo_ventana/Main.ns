@@ -1,0 +1,179 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Core.Threading;
+
+namespace demoventana
+{
+    public struct Punto
+    {
+        public int X;
+        public int Y;
+    }
+
+    public struct Rectangulo
+    {
+        public int Izquierda;
+        public int Arriba;
+        public int Derecha;
+        public int Abajo;
+    }
+
+    public struct Mensaje
+    {
+        public void* Ventana;
+        public uint Codigo;
+        public ulong WParam;
+        public ulong LParam;
+        public uint Tiempo;
+        public Punto Donde;
+        public uint Relleno;
+    }
+
+    public class Win32
+    {
+        extern C from "user32.dll"
+        {
+            public void* CreateWindowExA(uint estiloExtendido, byte* clase, byte* titulo,
+                uint estilo, int x, int y, int ancho, int alto,
+                void* padre, void* menu, void* instancia, void* parametro);
+            public int DestroyWindow(void* ventana);
+            public int PeekMessageA(Mensaje* mensaje, void* ventana, uint minimo, uint maximo, uint quitar);
+            public int TranslateMessage(Mensaje* mensaje);
+            public long DispatchMessageA(Mensaje* mensaje);
+            public void* GetDC(void* ventana);
+            public int ReleaseDC(void* ventana, void* contexto);
+            public int FillRect(void* contexto, Rectangulo* rect, void* pincel);
+            public int SetWindowTextA(void* ventana, byte* titulo);
+        }
+
+        extern C from "gdi32.dll"
+        {
+            public void* CreateSolidBrush(uint color);
+            public int DeleteObject(void* objeto);
+            public int TextOutA(void* contexto, int x, int y, byte* texto, int cuantos);
+            public uint SetTextColor(void* contexto, uint color);
+            public uint SetBkColor(void* contexto, uint color);
+        }
+    }
+
+    public class Program
+    {
+        // NativeSharp -> cadena C con NUL, a mano.
+        //
+        // PRIMER HALLAZGO DE ESTE PROGRAMA: la biblioteca NO tiene esta conversion para codigo de
+        // usuario. Un `string` de NativeSharp es {i64 longitud; datos} y NO promete un NUL al
+        // final; Win32 lo exige. Las operaciones nucleo del runtime (File.Exists y compania) lo
+        // resuelven por dentro, pero eso no esta expuesto, asi que CUALQUIER programa que llame a
+        // una API de Windows por `extern C` tiene que escribir esto.
+        //
+        // Se escribe aqui, con el buffer que pone el llamador, porque es lo unico que se puede
+        // hacer sin tocar el compilador -- y queda anotado como consumidor medido de una funcion
+        // que la biblioteca deberia tener.
+        private static byte* ComoCadenaC(string texto, byte[] destino)
+        {
+            int i = 0;
+            int tope = destino.Length - 1;
+            while (i < texto.Length && i < tope)
+            {
+                destino[i] = (byte)texto[i];
+                i = i + 1;
+            }
+            destino[i] = 0;
+            return &destino[0];
+        }
+
+        public static int Main()
+        {
+            byte[] bufferClase = new byte[16];
+            byte* clase = ComoCadenaC("STATIC", bufferClase);
+            byte[] bufferTitulo = new byte[64];
+            byte* titulo = ComoCadenaC("NativeSharp", bufferTitulo);
+
+            // WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX|WS_VISIBLE. Se usa la clase
+            // predefinida "STATIC" del sistema A PROPOSITO: registrar una clase propia exige un
+            // WNDCLASSEXA con un puntero a funcion en un campo, y eso es una pieza mas -- se
+            // anadira cuando el programa necesite manejar mensajes de verdad. Con STATIC, el
+            // DefWindowProc del sistema pinta el marco y la ventana existe.
+            void* ventana = Win32.CreateWindowExA(0u, clase, titulo,
+                0x10CF0000u, 100, 100, 640, 360, null, null, null, null);
+            if (ventana == null) { return 1; }
+
+            // ---------------------------------------------------------------------------------
+            // EL ASSET. Se escribe y se lee con la biblioteca del Bloque 4, que es la mitad del
+            // punto de este programa: un juego no solo abre una ventana, tambien lee ficheros.
+            // ---------------------------------------------------------------------------------
+            string rutaAsset = "demo_ventana.asset.txt";
+            raii StringBuilder contenido = new StringBuilder();
+            contenido.AppendLine("NativeSharp");
+            contenido.Append("cuadros=");
+            contenido.Append(120);
+            contenido.AppendLine();
+            raii string aEscribir = contenido.ToOwnedString();
+            File.WriteAllText(rutaAsset, aEscribir);
+
+            string leido = File.ReadAllText(rutaAsset);
+            int cuadros = 120;
+            int marca = String.IndexOf(leido, "cuadros=");
+            if (marca >= 0)
+            {
+                int desde = marca + 8;
+                uint valor = 0u;
+                // Substring devuelve `owned string`, asi que se liga a un raii antes de pasarlo:
+                // pasarlo directo es "ownership-transfer argument requires an owned parameter".
+                raii string trozo = String.Substring(leido, desde, 3);
+                if (Number.TryParseUInt32(trozo, out valor))
+                {
+                    cuadros = (int)valor;
+                }
+            }
+
+            // ---------------------------------------------------------------------------------
+            // EL BUCLE. Bombea mensajes, pinta, y TERMINA -- no se queda colgado. Un programa que
+            // no termina no puede estar en el corpus, y este esta ahi para que el enlace contra
+            // user32 y gdi32 se mida en cada corrida.
+            // ---------------------------------------------------------------------------------
+            void* pincelFondo = Win32.CreateSolidBrush(0x00302010u);   // BGR: azul oscuro
+            if (pincelFondo == null) { return 2; }
+
+            byte[] bufferTexto = new byte[64];
+            byte* texto = ComoCadenaC("NativeSharp nativo, sin runtime administrado", bufferTexto);
+
+            Mensaje mensaje;
+            Rectangulo area;
+            area.Izquierda = 0;
+            area.Arriba = 0;
+            area.Derecha = 640;
+            area.Abajo = 360;
+
+            int cuadro = 0;
+            while (cuadro < cuadros)
+            {
+                // PM_REMOVE = 1. Vaciar la cola en cada cuadro: sin esto la ventana no responde.
+                while (Win32.PeekMessageA(&mensaje, null, 0u, 0u, 1u) != 0)
+                {
+                    Win32.TranslateMessage(&mensaje);
+                    Win32.DispatchMessageA(&mensaje);
+                }
+
+                void* contexto = Win32.GetDC(ventana);
+                if (contexto != null)
+                {
+                    Win32.FillRect(contexto, &area, pincelFondo);
+                    Win32.SetBkColor(contexto, 0x00302010u);
+                    Win32.SetTextColor(contexto, 0x00D0F0FFu);
+                    // La barra se mueve con el cuadro: prueba que el bucle corre de verdad.
+                    Win32.TextOutA(contexto, 40 + cuadro, 160, texto, 44);
+                    Win32.ReleaseDC(ventana, contexto);
+                }
+
+                Thread.Sleep(16);
+                cuadro = cuadro + 1;
+            }
+
+            Win32.DeleteObject(pincelFondo);
+            Win32.DestroyWindow(ventana);
+            File.Delete(rutaAsset);
+            return 0;
+        }
+    }
+}

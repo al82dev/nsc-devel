@@ -462,11 +462,41 @@ private:
         const ast::AstNode* statement,
         std::size_t memberOrdinal,
         std::string& error);
+    // EL ENVOLTORIO QUE RECUERDA DONDE FALLO, y por que es un envoltorio y no 125 ediciones.
+    //
+    // Este fichero tiene 125 sitios que hacen `error = "..."; return nullptr;`, y ninguno decia en
+    // que parte del programa del usuario estaba el problema. Adjuntar la ubicacion en cada uno
+    // seria 125 ediciones, cada una necesitando el nodo correcto a mano.
+    //
+    // En vez de eso: `lowerExpression` es el embudo por el que pasan casi todos. El envoltorio
+    // llama al trabajo real y, si vuelve en fallo y todavia no hay rango apuntado, apunta el del
+    // nodo QUE ESTABA BAJANDO. Como el fallo se propaga desde dentro hacia fuera y solo se apunta
+    // si no hay nada apuntado, el que gana es el nodo MAS INTERNO -- el que de verdad no se pudo
+    // bajar, no la expresion entera que lo contiene.
+    //
+    // Es aproximado a proposito: apunta a un nodo, no al subtermino exacto en los casos donde el
+    // error se detecta un nivel mas arriba. Eso es infinitamente mas que nada, cuesta una edicion
+    // y no toca el camino de exito.
     std::unique_ptr<ProjectOopHirNode> lowerExpression(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,
         bool addressContext,
         std::string& error);
+
+    std::unique_ptr<ProjectOopHirNode> lowerExpressionImpl(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+
+public:
+    // El rango del nodo mas interno que no se pudo bajar, o un rango invalido si el fallo no vino
+    // de una expresion. Quien reporta el error lo traduce a fichero:linea:columna con el
+    // SourceManager -- este modelo no lo tiene y no le hace falta para recordar el sitio.
+    SourceRange lastErrorRange() const noexcept { return lastErrorRange_; }
+
+private:
+    SourceRange lastErrorRange_{};
     // C6 "struct members": true when the expression denotes storage that already exists, so a
     // struct receiver can take its address directly instead of needing a temporary.
     bool isNaturallyAddressable(const ast::AstNode* expression) const noexcept;

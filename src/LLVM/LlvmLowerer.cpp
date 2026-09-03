@@ -1,6 +1,7 @@
 #include "nativesharp/LLVM/LlvmLowerer.h"
 
 #include "LlvmCApi.h"
+#include "SignedDivisionCorrection.h"
 
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
@@ -1005,26 +1006,22 @@ private:
 
         if (isSignedInteger(type))
         {
-            const unsigned width = integerWidth(type);
-            const std::uint64_t minimumBits = width == 64
-                ? (std::uint64_t{1} << 63)
-                : (std::uint64_t{1} << (width - 1));
-            const std::uint64_t minusOneBits = width == 64
-                ? std::numeric_limits<std::uint64_t>::max()
-                : ((std::uint64_t{1} << width) - 1);
-            LLVMValueRef minimum = LLVMConstInt(llvmResultType, minimumBits, 0);
-            LLVMValueRef minusOne = LLVMConstInt(llvmResultType, minusOneBits, 0);
-            LLVMValueRef isMinimum = LLVMBuildICmp(builder_, LLVMIntEQ, left, minimum, "div.is_min");
-            LLVMValueRef isMinusOne = LLVMBuildICmp(builder_, LLVMIntEQ, right, minusOne, "div.is_minus_one");
-            LLVMValueRef overflow = LLVMBuildAnd(builder_, isMinimum, isMinusOne, "div.overflow");
-            LLVMValueRef noOverflow = LLVMBuildNot(builder_, overflow, "div.no_overflow");
-            if (!guardOrTrap(noOverflow, LlvmTrapReason::SignedDivisionOverflow, "div.overflow", error))
-            {
-                return nullptr;
-            }
+            // CAMBIO DE COMPORTAMIENTO DELIBERADO, 2026-09-03. Aqui habia una guarda que ABORTABA
+            // con LlvmTrapReason::SignedDivisionOverflow cuando MinValue se dividia entre -1.
+            // El doc 110 §2.1 decide que el desbordamiento con signo esta DEFINIDO y envuelve, y
+            // §2.5 aplica esa regla a este caso: `MinValue / -1` da `MinValue`, no aborta.
+            //
+            // Y ADEMAS los dos bajadores no coincidian: este abortaba y el de proyectos --por el
+            // que pasan las fixtures-- emitia un `sdiv` desnudo. Ahora los dos llaman a la misma
+            // funcion, que esta en src/LLVM/SignedDivisionCorrection.h con el por que completo.
+            //
+            // LlvmTrapReason::SignedDivisionOverflow se queda en el enum a proposito: quitarlo
+            // renumeraria las razones, y los codigos de trampa salen en los diagnosticos.
+            LLVMValueRef divisor = correctedSignedDivisor(
+                builder_, llvmResultType, left, right, integerWidth(type), "div");
             return instruction->opcode() == mir::MirOpcode::Divide
-                ? LLVMBuildSDiv(builder_, left, right, name.c_str())
-                : LLVMBuildSRem(builder_, left, right, name.c_str());
+                ? LLVMBuildSDiv(builder_, left, divisor, name.c_str())
+                : LLVMBuildSRem(builder_, left, divisor, name.c_str());
         }
 
         return instruction->opcode() == mir::MirOpcode::Divide

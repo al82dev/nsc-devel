@@ -1,0 +1,204 @@
+// Fase M1 -- LO QUE LOS CONTRATOS DE OVERFLOW Y DE MEMORIA AFIRMAN, medido.
+//
+// QUE MIDE Y POR QUE ASI. Los docs 110 y 111 escriben lo que el lenguaje promete. Esta fixture no
+// comprueba que las promesas sean buenas ideas: comprueba que el compilador las CUMPLE, y sobre
+// todo que las cumple IGUAL en -O0 y en -O2. Cada caso corre en las dos configuraciones porque
+// run_cases.py lanza los 96 trabajos con las dos, asi que una divergencia sale como un rojo en una
+// sola de las dos -- que es exactamente la forma en que se detecta.
+//
+// LA PIEZA CENTRAL ES EL PASO 6: la misma expresion evaluada por el PLEGADO DE CONSTANTES y en
+// TIEMPO DE EJECUCION. Si las dos no coinciden, hay dos evaluadores con reglas distintas, que es
+// el fallo que el doc 100 enseno a temer y que la unificacion de BuiltinIntegerTypes.h existe para
+// impedir. Ninguna otra prueba del arbol compara esas dos vias.
+//
+// LOS VALORES DE ENTRADA NO SON LITERALES DONDE IMPORTA. Un literal puede plegarse; una variable
+// leida de la linea de comandos no. Por eso los casos de tiempo de ejecucion arrancan de
+// `Environment.GetCommandLineArgCount()`, que el compilador no puede conocer.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+
+namespace cc1contratos
+{
+    public class Program
+    {
+        // Un valor que el compilador NO puede plegar: sale de la linea de comandos.
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            // cuantos es >= 1 siempre; (cuantos - cuantos) es 0 pero el compilador no lo sabe
+            // sin propagar la llamada, que no puede.
+            return valor + (cuantos - cuantos);
+        }
+
+        public static int Main()
+        {
+            // ---------------------------------------------------------------------------------
+            // 1. WRAP CON SIGNO, DEFINIDO (doc 110 §2.1). int.MaxValue + 1 == int.MinValue.
+            // ---------------------------------------------------------------------------------
+            int maximo = Opaco(2147483647);
+            int masUno = maximo + 1;
+            if (masUno != -2147483647 - 1) { return 1; }
+
+            int minimo = Opaco(-2147483647 - 1);
+            int menosUno = minimo - 1;
+            if (menosUno != 2147483647) { return 2; }
+
+            // Multiplicacion que desborda: 65536 * 65536 == 0 en 32 bits.
+            int raiz = Opaco(65536);
+            if (raiz * raiz != 0) { return 3; }
+
+            // Y en 64 bits, el mismo patron en su propio ancho.
+            long maximoLargo = (long)Opaco(1) * 9223372036854775807;
+            if (maximoLargo + 1 != -9223372036854775807 - 1) { return 4; }
+
+            // ---------------------------------------------------------------------------------
+            // 2. WRAP SIN SIGNO (doc 110 §2.2). Modulo 2^ancho.
+            // ---------------------------------------------------------------------------------
+            uint maximoSin = (uint)Opaco(-1);            // 0xFFFFFFFF
+            if (maximoSin != 4294967295u) { return 5; }
+            if (maximoSin + 1u != 0u) { return 6; }
+
+            uint cero = (uint)Opaco(0);
+            if (cero - 1u != 4294967295u) { return 7; }
+
+            ulong maximoSinLargo = (ulong)Opaco(-1);
+            // (ulong)(int)-1 extiende con signo a 64 bits: todos los bits a uno.
+            if (maximoSinLargo != 18446744073709551615ul) { return 8; }
+            if (maximoSinLargo + 1ul != 0ul) { return 9; }
+
+            byte maximoByte = (byte)Opaco(255);
+            if (maximoByte != 255) { return 10; }
+            byte byteMasUno = (byte)(maximoByte + 1);
+            if (byteMasUno != 0) { return 11; }
+
+            // ---------------------------------------------------------------------------------
+            // 3. LA PROMOCION DECIDE EL ANCHO ANTES QUE EL DESBORDAMIENTO (doc 110 §2.3).
+            //    byte + byte se hace en int: 200 + 100 es 300, no 44.
+            // ---------------------------------------------------------------------------------
+            byte a = (byte)Opaco(200);
+            byte b = (byte)Opaco(100);
+            int suma = a + b;
+            if (suma != 300) { return 12; }
+            // Y truncar explicitamente si da 44.
+            if ((byte)(a + b) != 44) { return 13; }
+
+            // ---------------------------------------------------------------------------------
+            // 4. CONVERSIONES EXPLICITAS: TRUNCAN, SIEMPRE (doc 110 §2.4).
+            //    sbyte es el unico entero de 8 bits con signo (ID 89).
+            // ---------------------------------------------------------------------------------
+            if ((sbyte)Opaco(200) != -56) { return 14; }
+            if ((byte)Opaco(300) != 44) { return 15; }
+            if ((short)Opaco(65535) != -1) { return 16; }
+            if ((ushort)Opaco(-1) != 65535) { return 17; }
+            if ((char)Opaco(321) != (char)65) { return 18; }   // char mide 8 bits: 321 & 255 == 65
+
+            // ---------------------------------------------------------------------------------
+            // 5. MinValue / -1 ENVUELVE (doc 110 §2.5), no aborta.
+            //
+            // En x86-64 `idiv` genera una excepcion de hardware en este caso exacto, asi que si el
+            // compilador no emite la correccion, este programa MUERE aqui en vez de devolver un
+            // codigo. Un fallo por senal y no por codigo de salida es la respuesta: significa que
+            // falta la correccion.
+            // ---------------------------------------------------------------------------------
+            int divisor = Opaco(-1);
+            int minimoDiv = Opaco(-2147483647 - 1);
+            if (minimoDiv / divisor != -2147483647 - 1) { return 19; }
+            if (minimoDiv % divisor != 0) { return 20; }
+
+            long minimoLargo = (long)Opaco(-1) * 9223372036854775807 - 1;
+            if (minimoLargo != -9223372036854775807 - 1) { return 21; }
+            if (minimoLargo / (long)divisor != -9223372036854775807 - 1) { return 22; }
+
+            // 5b. EL MISMO CASO, PLEGADO CONTRA EJECUTADO -- anadido el 2026-09-03, despues de
+            // que la primera corrida de esta fixture cazara TRES respuestas distintas a esta
+            // misma pregunta:
+            //
+            //     plegado      -> el evaluador devolvia nullopt y el backend guardaba `poison`
+            //                     en la constante. SIN DIAGNOSTICO: compilaba, y el programa
+            //                     quedaba indefinido desde esa linea. Medido en el IR.
+            //     ejecucion O0 -> 0xC0000095, excepcion de hardware del idiv
+            //     ejecucion O2 -> ni aborta ni da el minimo: devuelve otra cosa
+            //
+            // Las tres se arreglaron a nivel de compilador. Esta linea es el guardian de que no
+            // vuelvan a separarse: la constante la pliega el frontend y la variable la calcula el
+            // binario, y tienen que coincidir.
+            const int plegadoMinimoEntreMenosUno = (-2147483647 - 1) / -1;
+            const int plegadoRestoMinimoEntreMenosUno = (-2147483647 - 1) % -1;
+            if (plegadoMinimoEntreMenosUno != minimoDiv / divisor) { return 39; }
+            if (plegadoRestoMinimoEntreMenosUno != minimoDiv % divisor) { return 40; }
+            if (plegadoMinimoEntreMenosUno != -2147483647 - 1) { return 41; }
+
+            // ---------------------------------------------------------------------------------
+            // 6. EL PLEGADO DE CONSTANTES Y LA EJECUCION DAN LO MISMO.
+            //
+            // ESTE ES EL PASO QUE JUSTIFICA LA FIXTURE. La izquierda la evalua
+            // ProjectIntegerEvaluator en tiempo de compilacion; la derecha la ejecuta el binario.
+            // Los dos leen los anchos de BuiltinIntegerTypes.h -- desde el 2026-09-03, de UNA sola
+            // tabla. Si algun dia discrepan, discrepan aqui y en ningun otro sitio del arbol.
+            // ---------------------------------------------------------------------------------
+            const int plegadoDesborda = 2147483647 + 1;
+            if (plegadoDesborda != maximo + 1) { return 23; }
+
+            // -2147483648 NO SE PUEDE ESCRIBIR COMO LITERAL int en NativeSharp: el menos unario
+            // se aplica a 2147483648, que no cabe en int y por tanto es long, y el resultado
+            // es long. `cannot initialize local 'plegadoResta' of type 'builtin:int' from
+            // 'builtin:long'`. C# lo trata como caso especial; aqui no. Se escribe
+            // `-2147483647 - 1`, que es aritmetica int sin ambiguedad. Anotado en el doc 110.
+            const int plegadoResta = -2147483647 - 1 - 1;
+            if (plegadoResta != minimo - 1) { return 24; }
+
+            const int plegadoProducto = 65536 * 65536;
+            if (plegadoProducto != raiz * raiz) { return 25; }
+
+            const sbyte plegadoSbyte = (sbyte)200;
+            if (plegadoSbyte != (sbyte)Opaco(200)) { return 26; }
+
+            const byte plegadoByte = (byte)300;
+            if (plegadoByte != (byte)Opaco(300)) { return 27; }
+
+            const uint plegadoSin = 0u - 1u;
+            if (plegadoSin != cero - 1u) { return 28; }
+
+            const int plegadoPromocion = 200 + 100;
+            if (plegadoPromocion != suma) { return 29; }
+
+            const long plegadoLargo = 9223372036854775807 + 1;
+            if (plegadoLargo != maximoLargo + 1) { return 30; }
+
+            // ---------------------------------------------------------------------------------
+            // 7. COMA FLOTANTE IEEE 754, SIN fast-math (doc 110 §2.6).
+            //
+            // Con reasociacion, (a + b) + c y a + (b + c) pueden diferir; sin ella tienen que dar
+            // exactamente lo mismo que da la aritmetica IEEE en ese orden. El caso clasico: un
+            // numero grande absorbe un pequeno, y el orden decide si el pequeno se pierde.
+            // ---------------------------------------------------------------------------------
+            double grande = (double)Opaco(1) * 1e16;
+            double pequeno = (double)Opaco(1);
+            double izquierda = (grande + pequeno) - grande;    // el pequeno se absorbe -> 0
+            double derecha = grande + (pequeno - grande);      // -> 1
+            // Con fast-math el compilador podria reasociar y darlas iguales. No debe.
+            if (izquierda == derecha) { return 31; }
+            if (izquierda != 0.0) { return 32; }
+            if (derecha != 1.0) { return 33; }
+
+            // x / y no se convierte en x * (1/y): 1.0/3.0*3.0 no es exactamente 1.
+            double tercio = (double)Opaco(1) / 3.0;
+            if (tercio * 3.0 == 1.0) { return 34; }
+
+            // ---------------------------------------------------------------------------------
+            // 8. DESPLAZAMIENTOS: el contador se valida contra el ancho del OPERANDO.
+            //    (El rechazo de `int << 32` es en compilacion y lo mide
+            //     nsc.cc1.integer-evaluator; aqui se mide que lo que SI compila da lo esperado.)
+            // ---------------------------------------------------------------------------------
+            int uno = Opaco(1);
+            if (uno << 31 != -2147483647 - 1) { return 35; }       // el bit de signo
+            if ((uno << 31) >> 31 != -1) { return 36; }        // desplazamiento aritmetico
+            uint unoSin = (uint)Opaco(1);
+            if (unoSin << 31 != 2147483648u) { return 37; }
+            if ((unoSin << 31) >> 31 != 1u) { return 38; }     // desplazamiento logico
+
+            return 42;
+        }
+    }
+}

@@ -202,7 +202,8 @@ int main()
 
     // -------------------------------------------------------------------------------------
     // Division por cero y minimo-con-signo / -1. C-003. Las dos salen por nullopt: el texto de
-    // entrada NO puede llevar al compilador a una operacion indefinida de C++.
+    // entrada NO puede llevar al compilador a una operacion indefinida de C++. El minimo entre -1
+    // YA NO sale por nullopt: envuelve. Ver el bloque de abajo y el doc 110 2.5.
     // -------------------------------------------------------------------------------------
     tests.expect(
         !evaluator.evaluate(binary(arena, TokenKind::Slash, literal(arena, 1), literal(arena, 0)))
@@ -215,18 +216,57 @@ int main()
     {
         // int.MinValue / -1. Se escribe como (-2147483647 - 1) / -1 porque la magnitud
         // 2147483648 sola no cabe en un `int` positivo -- el mismo truco que usa NumericLimits.ns.
+        //
+        // ESTE PAR DE COMPROBACIONES CAMBIO DE SENTIDO EL 2026-09-03, y el motivo importa porque
+        // el proyecto no toca una prueba para que pase. Antes exigian nullopt, o sea que el
+        // programa NO COMPILABA. Eso era la TERCERA respuesta distinta a la misma pregunta: el
+        // plegado rechazaba, la ejecucion en -O0 abortaba por hardware (0xC0000095) y la
+        // ejecucion en -O2 devolvia otro valor. La fixture c30 lo midio.
+        //
+        // El doc 110 §2.1 decide que el desbordamiento con signo esta DEFINIDO y envuelve, y §2.5
+        // aplica esa regla aqui: `MinValue / -1` es `MinValue` y `MinValue % -1` es 0, en el
+        // plegado y en la ejecucion. Lo que se arreglo es el COMPILADOR, en tres sitios; esta
+        // prueba solo deja de exigir lo contrario de lo que el contrato dice.
+        //
+        // Lo que NO cambia: el UB de C++ dentro del compilador se sigue evitando -- el evaluador
+        // calcula este caso a mano en vez de dejar que `signedA / signedB` lo ejecute.
         AstNode* minimum = binary(
             arena,
             TokenKind::Minus,
             unary(arena, TokenKind::Minus, literal(arena, 2147483647)),
             literal(arena, 1));
         AstNode* negativeOne = unary(arena, TokenKind::Minus, literal(arena, 1));
+        const auto quotient = evaluator.evaluate(binary(arena, TokenKind::Slash, minimum, negativeOne));
+        // Se compara con asSigned() y no con `bits`: `bits` guarda el valor YA normalizado y
+        // extendido a 64 bits, asi que int.MinValue son 0xFFFFFFFF80000000 y no 0x80000000.
         tests.expect(
-            !evaluator.evaluate(binary(arena, TokenKind::Slash, minimum, negativeOne)).has_value(),
-            "int.MinValue / -1 is refused instead of executed -- UB inside the compiler");
+            quotient.has_value() && quotient->typeKey == "builtin:int" &&
+                quotient->asSigned() == -2147483647LL - 1,
+            "int.MinValue / -1 wraps to int.MinValue -- doc 110 2.5");
+        const auto remainder = evaluator.evaluate(binary(arena, TokenKind::Percent, minimum, negativeOne));
         tests.expect(
-            !evaluator.evaluate(binary(arena, TokenKind::Percent, minimum, negativeOne)).has_value(),
-            "int.MinValue % -1 is refused instead of executed");
+            remainder.has_value() && remainder->typeKey == "builtin:int" && remainder->bits == 0ULL,
+            "int.MinValue % -1 is 0");
+    }
+    {
+        // El mismo caso en 64 bits. Va aparte porque el ancho lo decide `integerWidth` y un fallo
+        // ahi solo se ve en el tipo que NO se probo.
+        AstNode* minimumLong = binary(
+            arena,
+            TokenKind::Minus,
+            unary(arena, TokenKind::Minus, literal(arena, 9223372036854775807ULL, "L")),
+            literal(arena, 1));
+        AstNode* negativeOne = unary(arena, TokenKind::Minus, literal(arena, 1));
+        const auto quotient =
+            evaluator.evaluate(binary(arena, TokenKind::Slash, minimumLong, negativeOne));
+        tests.expect(
+            quotient.has_value() && quotient->typeKey == "builtin:long" &&
+                quotient->bits == (std::uint64_t{1} << 63),
+            "long.MinValue / -1 wraps to long.MinValue");
+        const auto remainder =
+            evaluator.evaluate(binary(arena, TokenKind::Percent, minimumLong, negativeOne));
+        tests.expect(
+            remainder.has_value() && remainder->bits == 0ULL, "long.MinValue % -1 is 0");
     }
 
     // -------------------------------------------------------------------------------------

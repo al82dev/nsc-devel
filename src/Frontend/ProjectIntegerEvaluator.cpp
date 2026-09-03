@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 
+#include "nativesharp/Frontend/BuiltinIntegerTypes.h"
+
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
@@ -17,40 +19,16 @@ using lexer::TokenKind;
 // modelo de miembros demuestre que no existe.
 constexpr std::size_t kMaximumDepth = 32;
 
-struct IntegerTypeInfo final
-{
-    std::string_view key;
-    unsigned width;
-    bool isSigned;
-};
-
-// CC1-100: `builtin:char` mide OCHO bits. Es la misma decision que `constantFits`, escrita una
-// segunda vez aqui a proposito porque este evaluador tiene que poder responder sin depender del
-// clasificador de conversiones -- pero las dos tablas dicen lo mismo y el test
-// nsc.cc1.integer-evaluator lo fija.
-constexpr std::array<IntegerTypeInfo, 11> kIntegerTypes = {{
-    // ID 89. `sbyte` es el unico entero de 8 bits CON signo. Es lo que hace que `(sbyte)200`
-    // normalice a -56 y no a 200, igual que `(byte)300` normaliza a 44.
-    {"builtin:sbyte", 8, true},
-    {"builtin:byte", 8, false},
-    {"builtin:char", 8, false},
-    {"builtin:short", 16, true},
-    {"builtin:ushort", 16, false},
-    {"builtin:int", 32, true},
-    {"builtin:uint", 32, false},
-    {"builtin:long", 64, true},
-    {"builtin:ulong", 64, false},
-    {"builtin:nint", 64, true},
-    {"builtin:nuint", 64, false}}};
-
-const IntegerTypeInfo* findIntegerType(std::string_view typeKey) noexcept
-{
-    for (const IntegerTypeInfo& info : kIntegerTypes)
-    {
-        if (info.key == typeKey) return &info;
-    }
-    return nullptr;
-}
+// LA TABLA VIVE EN include/nativesharp/Frontend/BuiltinIntegerTypes.h, y desde el 2026-09-03 hay
+// UNA SOLA. Estaba escrita aqui y otra vez en ProjectTypeConversion.cpp, con un comentario que
+// decia que la duplicacion era deliberada porque "el test nsc.cc1.integer-evaluator lo fija". La
+// direccion de dependencia era un motivo real --este evaluador llama al clasificador de
+// conversiones, no al reves-- pero la prueba NO fijaba nada: comprueba las respuestas del
+// evaluador y no toca la otra tabla en ninguna linea. Una cabecera de datos `constexpr` no tiene
+// direccion de dependencia, asi que resuelve el motivo real y elimina la copia. El detalle
+// completo, en el comentario de esa cabecera.
+using builtins::IntegerTypeInfo;
+using builtins::findIntegerType;
 
 // El tipo de un literal entero, con las mismas reglas de sufijo que usa el modelo semantico.
 // Duplicarlo aqui seria justo el error que este archivo existe para eliminar, asi que la regla se
@@ -325,8 +303,23 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateBinary(
         //
         // Y las dos son las unicas donde C++ tiene comportamiento indefinido alcanzable desde el
         // texto de entrada: division por cero, y minimo-con-signo entre -1. Un compilador no puede
-        // permitir que su input lo lleve ahi, asi que las dos salen por nullopt y el llamador emite
-        // un diagnostico.
+        // permitir que su input lo lleve ahi -- pero eso es una restriccion del lenguaje EN QUE
+        // ESTA ESCRITO EL COMPILADOR, y no puede decidir lo que significa el lenguaje compilado.
+        //
+        // POR ESO LOS DOS CASOS SE SEPARAN, y es la correccion del 2026-09-03:
+        //
+        //   * b == 0 sale por nullopt y el llamador emite un diagnostico. Es correcto: el doc 110
+        //     §2.5 dice que dividir por cero es un fallo del programa, y una constante que divide
+        //     por cero se puede rechazar en compilacion en vez de esperar a la trampa.
+        //
+        //   * minimo / -1 DEVUELVE EL MINIMO. Antes tambien salia por nullopt, o sea que el
+        //     programa NO COMPILABA -- y eso era la tercera respuesta distinta a la misma
+        //     pregunta: el plegado rechazaba, la ejecucion en -O0 abortaba por hardware y la
+        //     ejecucion en -O2 devolvia otra cosa. El doc 110 §2.1 dice que el desbordamiento con
+        //     signo envuelve, y §2.5 aplica esa regla aqui.
+        //
+        // El calculo se hace A MANO, sin llegar a la division de C++, precisamente porque en C++
+        // ese caso es UB: el resultado envuelto de `minimo / -1` es `minimo`, y `minimo % -1` es 0.
         case TokenKind::Slash:
         case TokenKind::Percent:
         {
@@ -339,7 +332,13 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateBinary(
                 const std::int64_t minimum = width == 64
                     ? std::numeric_limits<std::int64_t>::min()
                     : -(std::int64_t{1} << (width - 1U));
-                if (signedA == minimum && signedB == -1) return std::nullopt;
+                if (signedA == minimum && signedB == -1)
+                {
+                    value.bits = normalize(
+                        operation == TokenKind::Slash ? static_cast<std::uint64_t>(minimum) : 0U,
+                        *common);
+                    break;
+                }
                 value.bits = normalize(
                     static_cast<std::uint64_t>(
                         operation == TokenKind::Slash ? signedA / signedB : signedA % signedB),

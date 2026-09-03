@@ -128,6 +128,7 @@ CASES: list[tuple[str, str, int | None]] = [
     (f"{CC}/c27_algoritmos/c27_algoritmos.nsproj", "cc1_c27_algoritmos", 42),
     (f"{CC}/c28_texto/c28_texto.nsproj", "cc1_c28_texto", 42),
     (f"{CC}/c29_arena/c29_arena.nsproj", "cc1_c29_arena", 42),
+    (f"{CC}/c30_contratos/c30_contratos.nsproj", "cc1_c30_contratos", 42),
 
     # --- ejemplos empaquetados ---
     ("examples/project_stage56_c1/Stage56C1InteropCompletion.nsproj", "project_stage56_c1", 0),
@@ -135,6 +136,16 @@ CASES: list[tuple[str, str, int | None]] = [
     ("examples/project_stage56_c6/Stage56C6StructMath.nsproj", "project_stage56_c6", 0),
     ("examples/project_stage56_c7/project_stage56_c7.nsproj", "project_stage56_c7", 0),
     ("examples/project_stage56_c8/project_stage56_c8.nsproj", "project_stage56_c8", 0),
+    # EL PROGRAMA REAL (fase C de la entrega del 2026-09-03): abre una ventana Win32, lee un
+    # asset, pinta en un bucle y termina. Entra como BUILD-ONLY --expected None-- a proposito:
+    #
+    #   * Lo que hay que medir en cada corrida es que ENLAZA contra user32.dll y gdi32.dll, y eso
+    #     lo prueba el enlace. Es la primera vez que el proyecto importa de esas dos DLLs, y hasta
+    #     hoy no habia forma de saber si las bibliotecas de importacion se generaban bien para
+    #     imports declarados por el USUARIO con `extern C from`.
+    #   * Ejecutarlo abriria dos ventanas (una por nivel de optimizacion) en medio de una corrida
+    #     de 98 trabajos en paralelo. Se ejecuta a mano, que para eso es un demo.
+    ("examples/project_demo_ventana/DemoVentana.nsproj", "project_demo_ventana", None),
 ]
 
 OPT_LEVELS = ("-O0", "-O2")

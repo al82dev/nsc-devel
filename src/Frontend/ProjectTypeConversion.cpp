@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
+#include "nativesharp/Frontend/BuiltinIntegerTypes.h"
+
 #include <array>
 #include <limits>
 #include <span>
@@ -26,40 +28,18 @@ constexpr std::array<std::string_view, 11> kIntegralTypes = {
 
 // ID 121. Ancho y signo de los tipos integrales, para la regla de promocion entera de mas abajo.
 //
-// DICE LO MISMO que `ProjectIntegerEvaluator::kIntegerTypes`, y esta escrita dos veces A
-// PROPOSITO: es el evaluador de constantes quien llama aqui, no al reves, asi que este archivo
-// tiene que poder contestar sin depender de el. Las dos tablas se fijan la una contra la otra en
-// `nsc.cc1.integer-evaluator` y en la fixture c17; si algun dia discrepan, discrepan ahi.
-//
-// `builtin:char` mide OCHO bits -- CC1-100, la misma decision que toma `constantFits` abajo.
-// `nint`/`nuint` son de 64 bits en este objetivo (Windows x64).
-struct IntegralInfo final
-{
-    std::string_view key;
-    unsigned width;
-    bool isSigned;
-};
-
-constexpr std::array<IntegralInfo, 11> kIntegralInfo = {{
-    {"builtin:sbyte", 8, true},
-    {"builtin:byte", 8, false},
-    {"builtin:char", 8, false},
-    {"builtin:short", 16, true},
-    {"builtin:ushort", 16, false},
-    {"builtin:int", 32, true},
-    {"builtin:uint", 32, false},
-    {"builtin:long", 64, true},
-    {"builtin:ulong", 64, false},
-    {"builtin:nint", 64, true},
-    {"builtin:nuint", 64, false}}};
+// LA TABLA VIVE EN include/nativesharp/Frontend/BuiltinIntegerTypes.h. Estaba escrita aqui y otra
+// vez en ProjectIntegerEvaluator.cpp; el comentario que las acompanaba decia que la duplicacion
+// era deliberada porque este archivo no puede depender del evaluador --lo cual es CIERTO-- y que
+// dos pruebas las fijaban la una contra la otra --lo cual NO lo era: ninguna comparaba las dos
+// tablas--. Una cabecera de datos `constexpr` no tiene direccion de dependencia, asi que respeta
+// el motivo real y elimina la copia. El detalle, en el comentario de esa cabecera.
+using IntegralInfo = builtins::IntegerTypeInfo;
+using builtins::findIntegerType;
 
 const IntegralInfo* findIntegral(std::string_view typeKey) noexcept
 {
-    for (const IntegralInfo& info : kIntegralInfo)
-    {
-        if (info.key == typeKey) return &info;
-    }
-    return nullptr;
+    return findIntegerType(typeKey);
 }
 
 constexpr std::array<Pair, 59> kNumericWidenings = {{

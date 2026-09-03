@@ -1,0 +1,151 @@
+STAGE_M1A -- 2026-09-03
+Fase M1-A del plan de continuacion (contratos + deuda medida + diagnosticos) y EL PRIMER
+PROGRAMA REAL (ventana Win32 + bucle + asset).
+Ver mkdown/110_contrato_de_overflow.md   (contrato de overflow, M1.2)
+    mkdown/111_contrato_de_memoria.md    (memoria, atomicos y volatile, M1.3)
+    mkdown/112_m1a_y_el_primer_programa_real.md  (lo hecho, medido, y lo que falta)
+
+MODIFICADOS -- compilador
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      ID 130 ARREGLADO. applyUwtableAttribute creaba `uwtable` con VALOR 0, y el valor de ese
+      atributo es un UWTableKind donde 0 = None -- lo contrario de lo que el metodo dice hacer.
+      MEDIDO contra libLLVM-18 sin el shim del contenedor: kindId=87; 0 -> nada y el modulo
+      impreso sale degradado, 1 -> uwtable(sync), 2 -> uwtable (Async), 3 -> uwtable(async).
+      Se elige 2, que es lo que emite clang-cl en Windows x64.
+      applyFunctionAttribute NO se toca: solo se usa para nounwind/noreturn, atributos sin
+      valor donde el 0 es correcto.
+
+  src/Frontend/ProjectIntegerEvaluator.cpp
+  src/Frontend/ProjectTypeConversion.cpp
+      Las DOS copias de la tabla de tipos enteros incorporados sustituidas por la cabecera
+      nueva. Ver abajo: el comentario que justificaba la duplicacion prometia una comprobacion
+      cruzada QUE NO EXISTIA.
+
+  src/Frontend/ProjectOopHirModel.cpp
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+      1) stringCallOperandCount -> stringCallLowering: un solo switch sobre los 104
+         enumeradores de MethodCoreOperationKind que contesta LAS TRES preguntas (entra en el
+         bloque, cuantos operandos, y en QUE NODO HIR se convierte). Eran tres cadenas de
+         if/else-if separadas por cientos de lineas. La tercera era la peor: su omision por
+         defecto era StringConcat, asi que anadir una operacion y olvidar la cadena (3) bajaba
+         File.GetSize(ruta) COMO UNA CONCATENACION DE CADENAS -- sin mensaje, sin aviso, codigo
+         generado que hace otra cosa.
+         El switch NO tiene default: con -Wswitch + /WX, anadir un enumerador y no tocar esta
+         funcion es un ERROR DE COMPILACION QUE NOMBRA EL ENUMERADOR. Comprobado borrando un
+         case: "error: enumeration value 'FileGetSize' not handled in switch".
+      2) lowerExpression pasa a ser un ENVOLTORIO de lowerExpressionImpl que, si el fallo vuelve
+         sin rango apuntado, apunta el del nodo que estaba bajando. Como el fallo se propaga de
+         dentro hacia fuera y solo se apunta si no hay nada, gana el nodo MAS INTERNO. Una
+         edicion en vez de las 125 que hay en el fichero con `error = "..."; return nullptr;`.
+         La cabecera gana lastErrorRange() publico y lastErrorRange_ privado.
+         PENDIENTE, anotado y no hecho: nadie CONSUME todavia ese rango. Traducirlo a
+         fichero:linea:columna necesita el SourceManager enhebrado hasta aqui, que es otra ronda.
+
+NUEVO -- compilador
+  include/nativesharp/Frontend/BuiltinIntegerTypes.h
+      LA UNICA tabla de los tipos enteros incorporados (clave, ancho, signo), constexpr, con
+      findIntegerType/isIntegerTypeKey y cuatro static_assert que fijan en el BUILD: char = 8
+      bits sin signo (CC1-100), sbyte = el unico entero de 8 bits con signo (ID 89), nint = 64
+      bits, y que bool NO es un entero incorporado.
+      POR QUE. La tabla estaba escrita DOS VECES y las dos copias llevaban un comentario
+      diciendo que la duplicacion era deliberada porque "las dos tablas se fijan la una contra
+      la otra en nsc.cc1.integer-evaluator y en la fixture c17".
+      LA MITAD ERA CIERTA: la direccion de dependencia (el evaluador llama al clasificador, no
+      al reves) -- y es exactamente lo que una cabecera de datos constexpr resuelve, porque una
+      cabecera no tiene direccion.
+      LA OTRA ERA FALSA: ese test comprueba las respuestas del EVALUADOR y no toca la tabla del
+      clasificador en ninguna linea. No habia comprobacion cruzada. Coincidian byte a byte por
+      vigilancia, no porque algo lo impidiera. Es la misma clase de fallo que las cinco copias
+      de la tabla de imports (docs 102 y 103) y que la busqueda del enlazador reimplementada en
+      Python (doc 105): un comentario que promete un guardian que no esta.
+
+NUEVO -- fixture
+  tests/cc1/c30_contratos/{Main.ns,c30_contratos.nsproj}     esperado 42
+      Ocho pasos que miden lo que los docs 110 y 111 AFIRMAN: wrap con signo, wrap sin signo,
+      promocion, conversiones que truncan, MinValue / -1, PLEGADO DE CONSTANTES CONTRA
+      EJECUCION (ocho pares de la misma expresion), IEEE 754 sin fast-math, desplazamientos.
+      El paso 6 es el que ninguna otra prueba del arbol hacia, y es el motivo de que
+      BuiltinIntegerTypes.h exista: si el plegado y la ejecucion discrepan, hay dos juegos de
+      reglas de aritmetica.
+      Usa una fuente OPACA que el compilador no puede plegar (Environment.GetCommandLineArgCount
+      con `+ (cuantos - cuantos)`) para forzar el camino de ejecucion.
+
+NUEVO -- el primer programa real (fase C)
+  examples/project_demo_ventana/{Main.ns,DemoVentana.nsproj}
+      CERO cambios en el compilador. Declara sus propios imports con `extern C from`:
+      user32.dll (9 funciones) y gdi32.dll (5). Registra clase, crea ventana, bucle de 120
+      cuadros con PeekMessageA + GetDC/FillRect/SetBkColor/SetTextColor/TextOutA/ReleaseDC +
+      Thread.Sleep(16), y limpia con DeleteObject/DestroyWindow.
+      Estructuras (Punto, Rectangulo, Mensaje) pasadas POR PUNTERO, una llamada de DOCE
+      argumentos (CreateWindowExA) y la clase predefinida "STATIC".
+      El numero de cuadros se LEE de un asset en disco con Number.TryParseUInt32.
+      Es la primera vez que el proyecto importa de user32/gdi32, y por tanto la primera
+      medicion de que createWindowsImportLibraries genera bien bibliotecas de importacion para
+      imports declarados por el USUARIO.
+
+MODIFICADOS -- corpus
+  run_cases.py                        + c30 (42) + demo_ventana (build-only)   -> 50 casos
+  nslink_pipeline.py                  + los dos                                -> 50 casos
+  tests/unit/Cc1CorrectnessTests.cpp  + checkFixture de c30
+      demo_ventana entra como BUILD-ONLY a proposito: lo que hay que medir en cada corrida es
+      que ENLAZA contra user32/gdi32, y eso lo prueba el enlace. Ejecutarlo abriria dos ventanas
+      (una por nivel de optimizacion) en medio de una corrida de 98 trabajos en paralelo.
+
+CONTRATOS ESCRITOS (sin sintaxis nueva, a proposito)
+  Doc 110 -- overflow: wrap DEFINIDO en complemento a dos, con y sin signo; conversiones
+  explicitas truncan siempre; no hay conversiones implicitas que estrechen; x/0 es trap;
+  MinValue/-1 envuelve; IEEE 754 sin fast-math; O0 y O2 identicos.
+  NO hay checked/unchecked y puede que nunca haya: una sola politica no necesita seleccionarse.
+  Lo que si puede hacer falta es un MODO DE DIAGNOSTICO en Debug, que es otra cosa -- checked
+  cambia lo que el programa SIGNIFICA, un check de Debug cambia solo cuando te enteras.
+
+  Doc 111 -- memoria: accesos ordinarios reordenables; una carrera es un ERROR DEL PROGRAMA y
+  el compilador NO razona hacia atras desde ella (a diferencia de C++); AtomicInt32/64 son
+  seq_cst; mutex/monitor release-acquire; Thread.Join es acquire.
+  volatile NO es sincronizacion: no ordena, no es atomico, no publica. Es lo contrario de lo
+  que hacen Java y C#, y esa diferencia esta escrita y razonada. ID 87 queda DESBLOQUEADO pero
+  sin consumidor: se implementa cuando aparezca MMIO o un binding que lo pida.
+  Y dicho antes que nada en el propio doc: un modelo de memoria NO se verifica con fixtures.
+
+MEDIDO EN EL IR, y las dos salieron A FAVOR del contrato
+  nsw/nuw: NO se emiten en ninguna parte. 313 add i64, 207 add i32, 114 sub i32, 239 mul i64,
+  47 sub i64, 7 mul i32 -- todas desnudas. El compilador no afirma "esto no desborda", asi que
+  el optimizador no puede deducir nada del desbordamiento.
+  Banderas rapidas de coma flotante: NINGUNA. 5 fadd double, 3 fsub, 17 fmul, 10 fdiv, 1 fadd
+  float, 1 fmul float -- sin fast, reassoc, contract, nnan ni ninf. La garantia de once cifras
+  de String.ToString(double) (doc 92) no esta en riesgo por esta via.
+  CLASIFICACION, que es lo que M1-A pide: las dos son COMPORTAMIENTO PERMITIDO Y YA CORRECTO.
+  No habia bug que arreglar en la aritmetica emitida. Lo que faltaba era el contrato escrito y
+  una prueba que lo fije.
+
+VERIFICADO (contenedor, frontend real)
+  Los cuatro refactores del compilador dan IR BYTE A BYTE IDENTICO al de antes:
+      790995f5cf2b233850edf69e22c3772a288951a61e237b376bb4ab8c44b30711
+  (ID 130 no cambia el IR del contenedor porque el shim ya forzaba 2 -- por eso hay que mirar
+  el IR EN WINDOWS.)
+  Prueba negativa del guardian del HIR: borrar un case da error nombrando el enumerador.
+  ./sweep.sh llvm  ->  OK=175  FAIL=5   (de 173 a 175; los 5 son los negativos de siempre)
+  Las dos tablas de casos comprobadas identicas caso por caso: 50 y 50.
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que el arreglo de ID 130 cambie algo en Windows con LLVM 23.
+  Los ocho pasos de c30 EJECUTANDO -- wrap, MinValue/-1, y el plegado contra la ejecucion.
+  Que demo_ventana ENLACE contra user32/gdi32. Esa es la medicion nueva del corpus.
+  Que la ventana se vea. Eso se ejecuta a mano.
+
+HUECOS DEL LENGUAJE ENCONTRADOS AL ESCRIBIR ESTO (anotados, no hechos)
+  -2147483648 no se puede escribir como literal int: el menos unario se aplica a 2147483648,
+  que es long. Rodeado con `-2147483647 - 1` en c30. Reapertura: cuando alguien necesite el
+  minimo sin el rodeo, o cuando el rodeo aparezca en mas de dos sitios de la biblioteca.
+  No hay conversion de `string` a cadena C terminada en NUL para codigo de usuario:
+  demo_ventana la escribe a mano (ComoCadenaC, byte a byte). Es lo que un binding real
+  necesitaria primero.
+  x / 0 entero SIN fixture a proposito: es un trap, y una fixture que aborte no distingue
+  "trap correcto" de "fallo". Necesita un caso negativo con codigo de salida esperado.
+
+ESPERADO EN LA PROXIMA CORRIDA
+  ctest      244   (c30 va DENTRO de nsc.cc1.correctness)
+  trabajos   100   (50 casos x 2, eran 96; uno de ellos build-only)
+  triage   16/16
+  ATENCION: los cambios de C++ NO SURTEN EFECTO hasta que se reconstruya nsc.exe. Una corrida
+  en modo norebuild mide el compilador VIEJO con las fixtures NUEVAS.

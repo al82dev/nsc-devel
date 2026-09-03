@@ -221,8 +221,23 @@ int main()
             const std::string text = module->text();
             tests.expect(text.find("__nativesharp_trap(i32 1)") != std::string::npos,
                 "aggressive LLVM optimization preserves the division-by-zero trap");
-            tests.expect(text.find("__nativesharp_trap(i32 2)") != std::string::npos,
-                "aggressive LLVM optimization preserves the signed-division-overflow trap");
+            // LA RAZON 2 YA NO SE EMITE, asi que esta comprobacion pasa de exigirla a exigir que
+            // NO este. `MinValue / -1` dejo de ser un fallo del programa: envuelve, por el doc 110
+            // §2.1 y §2.5, y el bajador emite la correccion sin rama en vez de la trampa. El doc
+            // 113 tiene la medicion completa.
+            //
+            // LO QUE ESTA COMPROBACION PROTEGIA --que el optimizador agresivo no borre lo que el
+            // compilador emitio-- lo siguen protegiendo las razones 1, 3 y 5 de este mismo bucle,
+            // que no han cambiado.
+            //
+            // Y QUE LA CORRECCION SOBREVIVA A -O2/-O3 NO SE COMPRUEBA AQUI a proposito. Se podria
+            // buscar el `select` en el texto optimizado, pero eso fija una FORMA del IR que
+            // InstCombine puede reescribir legitimamente sin cambiar el resultado, y una prueba
+            // asi se pone roja por un cambio de LLVM que no rompe nada. La propiedad de verdad
+            // --que el resultado sea MinValue despues de optimizar-- la mide la fixture
+            // tests/cc1/c30_contratos EJECUTANDO en -O2, que es donde el fallo original aparecio.
+            tests.expect(text.find("__nativesharp_trap(i32 2)") == std::string::npos,
+                "signed-division overflow is no longer a trap after aggressive optimization");
             tests.expect(text.find("__nativesharp_trap(i32 3)") != std::string::npos,
                 "aggressive LLVM optimization preserves the invalid-shift-count trap");
             tests.expect(text.find("__nativesharp_trap(i32 5)") != std::string::npos,

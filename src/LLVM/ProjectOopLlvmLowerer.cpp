@@ -1,7 +1,9 @@
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 
 #include "LlvmCApi.h"
+#include "SignedDivisionCorrection.h"
 
+#include "nativesharp/Frontend/BuiltinIntegerTypes.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
@@ -175,25 +177,28 @@ bool isFloating(std::string_view type) noexcept
     return type == "builtin:float" || type == "builtin:double";
 }
 
+// LA TERCERA Y LA CUARTA COPIA de la tabla de tipos enteros, encontradas al arreglar la division
+// el 2026-09-03 y quitadas en el mismo sitio. Estas dos funciones repetian los anchos y los
+// signos que ya estaban en include/nativesharp/Frontend/BuiltinIntegerTypes.h -- y esta copia era
+// la mas peligrosa de todas, porque es la que decide sdiv contra udiv, ashr contra lshr y sext
+// contra zext. Un desacuerdo aqui no da un error: da CODIGO GENERADO QUE HACE OTRA COSA.
+//
+// ID 89 sigue siendo el motivo de que `sbyte` este en la tabla como el unico entero de 8 bits con
+// signo; ahora esa decision se lee de un solo sitio en vez de estar escrita cuatro veces.
 bool isSignedInteger(std::string_view type) noexcept
 {
-    // ID 89. `sbyte` es lo que decide sdiv/udiv, ashr/lshr, sext/zext y el predicado de las
-    // comparaciones para un entero de 8 bits. Sin esta linea, un `sbyte` se dividiria y se
-    // extenderia como si fuera `byte` y un valor negativo daria el resultado equivocado en
-    // SILENCIO -- exactamente la clase de defecto que el C-002 fue para `ulong`.
-    return type == "builtin:sbyte" || type == "builtin:short" || type == "builtin:int" ||
-        type == "builtin:long" || type == "builtin:nint";
+    const frontend::builtins::IntegerTypeInfo* info = frontend::builtins::findIntegerType(type);
+    return info != nullptr && info->isSigned;
 }
 
 
 unsigned integerWidth(std::string_view type) noexcept
 {
+    // `bool` no es un entero incorporado a efectos de promocion ni de plegado -- la tabla lo deja
+    // fuera a proposito y lo fija con un static_assert-- pero SI tiene un ancho LLVM: i1.
     if (type == "builtin:bool") return 1;
-    if (type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:char") return 8;
-    if (type == "builtin:short" || type == "builtin:ushort") return 16;
-    if (type == "builtin:int" || type == "builtin:uint") return 32;
-    if (type == "builtin:long" || type == "builtin:ulong" || type == "builtin:nint" || type == "builtin:nuint") return 64;
-    return 0;
+    const frontend::builtins::IntegerTypeInfo* info = frontend::builtins::findIntegerType(type);
+    return info != nullptr ? info->width : 0;
 }
 
 bool isComparison(lexer::TokenKind kind) noexcept
@@ -7156,9 +7161,8 @@ private:
             case lexer::TokenKind::Minus: return LLVMBuildSub(builder_, left, right, "sub");
             case lexer::TokenKind::Star: return LLVMBuildMul(builder_, left, right, "mul");
             case lexer::TokenKind::Slash:
-                return isSignedInteger(operandType) ? LLVMBuildSDiv(builder_, left, right, "sdiv") : LLVMBuildUDiv(builder_, left, right, "udiv");
             case lexer::TokenKind::Percent:
-                return isSignedInteger(operandType) ? LLVMBuildSRem(builder_, left, right, "srem") : LLVMBuildURem(builder_, left, right, "urem");
+                return applyIntegerDivision(operation, left, right, operandType, error);
             case lexer::TokenKind::Amp: return LLVMBuildAnd(builder_, left, right, "and");
             case lexer::TokenKind::Pipe: return LLVMBuildOr(builder_, left, right, "or");
             case lexer::TokenKind::Caret: return LLVMBuildXor(builder_, left, right, "xor");
@@ -7167,6 +7171,54 @@ private:
                 return isSignedInteger(operandType) ? LLVMBuildAShr(builder_, left, right, "ashr") : LLVMBuildLShr(builder_, left, right, "lshr");
             default: return failValue(error, "unsupported integer binary operation in Stage 34");
         }
+    }
+
+    // LA DIVISION ENTERA, CON SUS DOS CASOS DEGENERADOS. Sacada de applyBinaryOperation porque
+    // ya no cabe en una linea, y porque los dos casos son decisiones del contrato (doc 110 §2.5)
+    // y no detalles de emision:
+    //
+    //   * DIVISION POR CERO -> trampa explicita. Antes se dejaba al hardware, y eso NO cumple el
+    //     contrato: en -O0 el `idiv` falla con 0xC0000094, pero en -O2 `sdiv x, 0` es POISON en
+    //     el IR y el optimizador pliega la funcion entera a lo que le convenga. El contrato dice
+    //     "trampa en -O0 y en -O2", asi que la trampa tiene que estar EN EL IR. Ademas ahora
+    //     llega con su razon (LlvmTrapReason::DivisionByZero) en vez de como fallo de hardware.
+    //
+    //   * MinValue / -1 -> ENVUELVE, dividiendo por 1. La regla vive en
+    //     src/LLVM/SignedDivisionCorrection.h, compartida con el bajador de fichero unico, y
+    //     alli esta escrito el por que con la medicion de la fixture c30.
+    //
+    // Lo sin signo no necesita nada mas que la guarda del cero: `udiv`/`urem` no tienen caso
+    // degenerado de desbordamiento.
+    LLVMValueRef applyIntegerDivision(
+        lexer::TokenKind operation,
+        LLVMValueRef left,
+        LLVMValueRef right,
+        const std::string& operandType,
+        std::string& error)
+    {
+        LLVMTypeRef integerType = llvmType(operandType, error);
+        if (integerType == nullptr) return nullptr;
+
+        const bool remainder = operation == lexer::TokenKind::Percent;
+        LLVMValueRef zero = LLVMConstInt(integerType, 0, 0);
+        LLVMValueRef nonZero = LLVMBuildICmp(builder_, LLVMIntNE, right, zero, "div.nonzero");
+        if (!emitGuard(nonZero, LlvmTrapReason::DivisionByZero, "div.zero", error))
+        {
+            return nullptr;
+        }
+
+        if (!isSignedInteger(operandType))
+        {
+            return remainder
+                ? LLVMBuildURem(builder_, left, right, "urem")
+                : LLVMBuildUDiv(builder_, left, right, "udiv");
+        }
+
+        LLVMValueRef divisor = correctedSignedDivisor(
+            builder_, integerType, left, right, integerWidth(operandType), "div");
+        return remainder
+            ? LLVMBuildSRem(builder_, left, divisor, "srem")
+            : LLVMBuildSDiv(builder_, left, divisor, "sdiv");
     }
 
     // `c ? a : b`. Both branches are LAZILY evaluated -- only the taken one runs -- so this is
@@ -8403,12 +8455,41 @@ private:
         LLVMAddAttributeAtIndex(function, static_cast<LLVMAttributeIndex>(~0U), attribute);
     }
 
+    // ID 130, ARREGLADO EL 2026-09-03. `uwtable` NO es un atributo booleano: su valor es un
+    // UWTableKind, y el 0 que habia aqui significa None -- es decir, "esta funcion NO tiene tabla
+    // de desenrollado", que es exactamente lo contrario de lo que este metodo dice hacer.
+    //
+    // MEDIDO contra libLLVM-18 con la propia src/LLVM/LlvmCApi.h de este proyecto y SIN el shim
+    // del contenedor (que reescribia 0 -> 2 y por tanto tapaba el sintoma). kindId de `uwtable`
+    // es 87, y lo que imprime cada valor:
+    //
+    //     valor 0  ->  NADA. Ni linea `attributes #0`, ni `#0` en el `define`. El modulo impreso
+    //                  sale degradado: LLVMPrintModuleToString devuelve un texto en el que no
+    //                  aparece ni la definicion de la funcion.
+    //     valor 1  ->  attributes #0 = { uwtable(sync) }
+    //     valor 2  ->  attributes #0 = { uwtable }          <- Async, la forma por omision
+    //     valor 3  ->  attributes #0 = { uwtable(async) }
+    //
+    // SE ELIGE 2, que es Async y se imprime como `uwtable` a secas. Es lo que clang-cl emite en
+    // Windows x64, donde las tablas de desenrollado asincronas son el comportamiento por omision.
+    //
+    // UNA ADVERTENCIA SOBRE LA MEDICION, porque importa: el contenedor usa LLVM 18 y el `nsc` de
+    // Windows enlaza LLVM-C.lib de C:\clang-llvm, que es LLVM 23. La correspondencia
+    // valor->UWTableKind es del formato del IR y no cambia entre versiones, pero como cada una
+    // trata el 0 a su manera, el efecto OBSERVABLE puede diferir -- y eso explica que en el
+    // contenedor el modulo saliera roto y en Windows el binario construido pareciera correcto.
+    // Por eso el arreglo se hace igual y por eso la prueba tiene que mirar el IR EN WINDOWS
+    // ademas de ejecutar EH.
+    //
+    // Y NO se toca applyFunctionAttribute: ese solo se usa para `nounwind`, `noreturn` y
+    // `nounwind` de los thunks de carga, que son atributos SIN valor, donde el 0 es lo correcto.
     void applyUwtableAttribute(LLVMValueRef function)
     {
         if (function == nullptr || context_ == nullptr) return;
         static const unsigned kindId = LLVMGetEnumAttributeKindForName("uwtable", 7);
         if (kindId == 0) return;
-        LLVMAttributeRef attribute = LLVMCreateEnumAttribute(context_, kindId, 0);
+        // 2 = UWTableKind::Async. Ver la medicion de arriba.
+        LLVMAttributeRef attribute = LLVMCreateEnumAttribute(context_, kindId, 2);
         if (attribute == nullptr) return;
         LLVMAddAttributeAtIndex(function, static_cast<LLVMAttributeIndex>(~0U), attribute);
     }
