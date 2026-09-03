@@ -3,9 +3,9 @@ setlocal EnableExtensions
 rem =====================================================================================
 rem NativeSharp -- CICLO CORTO: SOLO CAMBIO nslink.exe.
 rem
-rem     nslink_solo.bat            todo: ctest + los trabajos del corpus
+rem     nslink_solo.bat            todo: ctest + los 84 trabajos
 rem     nslink_solo.bat ctest      solo ctest    (donde viven los fallos del enlazador)
-rem     nslink_solo.bat casos      solo los trabajos del corpus
+rem     nslink_solo.bat casos      solo los 84 trabajos
 rem
 rem QUE HACE, Y SOBRE TODO QUE NO HACE.
 rem
@@ -28,18 +28,17 @@ rem LO QUE SI HACE:
 rem
 rem     0. build INCREMENTAL del arbol de pruebas   -> _logs_nslink_solo\00_build.log
 rem     1. ctest ENTERO enlazando con nslink.exe   -> _logs_nslink_solo\02_ctest.log
-rem     2. los trabajos del corpus con nslink.exe          -> _logs_nslink_solo\cases\
+rem     2. los 84 trabajos con nslink.exe          -> _logs_nslink_solo\cases\
 rem     3. la comparacion contra _logs_lldlink     -> _logs_nslink_solo\COMPARACION_CON_LLD.txt
 rem                                                -> A:\nslink-devel\_inbox_nsc\
 rem
-rem POR QUE ctest Y NO SOLO LOS TRABAJOS. Porque los trabajos del corpus PASAN con los dos
-rem enlazadores, y han
+rem POR QUE ctest Y NO SOLO LOS 84. Porque los 84 trabajos PASAN con los dos enlazadores, y han
 rem pasado siempre. Los fallos del enlazador --los dieciocho checks de biblioteca de importacion
 rem del 2026-09-02, y los dos que quedan-- viven en ctest, que ademas de ejecutar CONSTRUYE DLLs,
 rem bibliotecas de importacion y enlaza anfitriones de C y C++ contra ellas. Un ciclo corto que
-rem mirara solo los trabajos del corpus diria "todo bien" siempre.
+rem mirara solo los 84 diria "todo bien" siempre.
 rem
-rem SIN REFERENCIA NO HAY CICLO. Si no existe `_logs_lldlink\`, este script se para. "todo OK" sin
+rem SIN REFERENCIA NO HAY CICLO. Si no existe `_logs_lldlink\`, este script se para. "84 OK" sin
 rem nada contra que compararlo no dice si algo EMPEORO, que es lo unico que se quiere saber aqui.
 rem
 rem CRLF OBLIGATORIO -- cmd.exe resuelve los saltos por posicion de byte.
@@ -73,8 +72,11 @@ if not exist "%NSLINK%" goto :sin_nslink
 if not exist "%REFDIR%\cases\results.json" goto :sin_referencia
 
 rem El arbol de build de donde sale ctest. NO se reconstruye: se usa el que dejo la ultima
-rem corrida completa. Se prefiere el de la pasada oficial porque es el que se midio en verde.
-set "SOLO_BUILD=build-clang-lldlink"
+rem corrida completa. Desde el 2026-09-02 hay UNO SOLO -- all.bat construye el compilador una
+rem vez y las dos pasadas lo comparten. Los dos nombres viejos se siguen aceptando por si queda
+rem un arbol de antes del cambio.
+set "SOLO_BUILD=build-clang"
+if not exist "%SOLO_BUILD%\CTestTestfile.cmake" set "SOLO_BUILD=build-clang-lldlink"
 if not exist "%SOLO_BUILD%\CTestTestfile.cmake" set "SOLO_BUILD=build-clang-nslink"
 if not exist "%SOLO_BUILD%\CTestTestfile.cmake" goto :sin_build
 
@@ -134,13 +136,7 @@ rem ============================================================================
 rem 1. ctest -- donde viven de verdad los fallos del enlazador
 rem =====================================================================================
 echo.
-rem Evidencia de los rojos DENTRO del repositorio y no en %%TEMP%%: mismo motivo que en
-rem run_windows_checklist.bat -- una prueba de host que falla deja aqui su link_host.log y sus
-rem objetos, y ahi se pueden leer. Nombre propio para no pisar la evidencia de all.bat.
-set "NSC_TEST_EVIDENCE_DIR=%CD%\_evidencia\%SOLO_OUT%"
-if not exist "%NSC_TEST_EVIDENCE_DIR%" mkdir "%NSC_TEST_EVIDENCE_DIR%" 2>nul
 echo [1/3] ctest enlazando con NSLink ^(-j %CTEST_JOBS%^) ...
-echo       evidencia de los rojos en %NSC_TEST_EVIDENCE_DIR%
 ctest --test-dir "%SOLO_BUILD%" --output-on-failure -j %CTEST_JOBS% > "%SOLO_OUT%\02_ctest.log" 2>&1
 set "RC_CTEST=%ERRORLEVEL%"
 if "%RC_CTEST%"=="0" echo       verde
@@ -149,10 +145,10 @@ if /I "%MODO%"=="ctest" goto :comparar
 
 :casos
 rem =====================================================================================
-rem 2. Los trabajos del corpus
+rem 2. Los 84 trabajos
 rem =====================================================================================
 echo.
-echo [2/3] Los trabajos del corpus con NSLink ...
+echo [2/3] Los 84 trabajos con NSLink ...
 python nslink_pipeline.py
 set "RC_CASOS=%ERRORLEVEL%"
 
@@ -182,10 +178,10 @@ echo   ctest con NSLink   : VERDE
 :v_casos
 if /I "%MODO%"=="ctest" goto :v_cmp
 if "%RC_CASOS%"=="0" goto :v_casos_verde
-echo   trabajos del corpus        : CON FALLOS   -^> %SOLO_OUT%\REPORTE_NSLINK.txt
+echo   84 trabajos        : CON FALLOS   -^> %SOLO_OUT%\REPORTE_NSLINK.txt
 goto :v_cmp
 :v_casos_verde
-echo   trabajos del corpus        : VERDE
+echo   84 trabajos        : VERDE
 :v_cmp
 echo   Comparacion        : %SOLO_OUT%\COMPARACION_CON_LLD.txt
 echo   Buzon              : A:\nslink-devel\_inbox_nsc\
@@ -228,7 +224,7 @@ endlocal & exit /b 2
 :sin_build
 echo.
 echo [nslink_solo] NO HAY ARBOL DE BUILD con pruebas registradas.
-echo [nslink_solo] Se busco CTestTestfile.cmake en build-clang-lldlink\ y build-clang-nslink\.
+echo [nslink_solo] Se busco CTestTestfile.cmake en build-clang\ ^(y en los dos nombres viejos^).
 echo [nslink_solo] Corre all.bat una vez para tenerlo.
 popd
 endlocal & exit /b 2

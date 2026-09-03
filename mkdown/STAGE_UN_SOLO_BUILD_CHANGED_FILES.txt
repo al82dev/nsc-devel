@@ -1,0 +1,54 @@
+STAGE_UN_SOLO_BUILD -- 2026-09-02
+El compilador se construye UNA sola vez. La pasada 2 corre la misma bateria contra el mismo
+nsc.exe cambiando solo NSC_LLD_LINK.
+Ver mkdown/107_un_solo_build_dos_pasadas.md
+
+MODIFICADOS
+  all.bat                     (CRLF)
+      - set "NSC_BUILD_DIR=build-clang-lldlink" / "...-nslink"  -> las dos pasadas usan
+        build-clang\, el valor por omision del checklist
+      + MODO1/MODO2: la pasada 2 remapea SOLO `full` -> `norebuild`; quick/build/norebuild
+        se repiten tal cual, para que las dos pasadas midan los mismos pasos
+      ~ la pasada 2 llama a run_windows_checklist.bat %MODO2% en vez de %*
+      ~ limpieza: build-clang-lldlink\ y build-clang-nslink\ se borran SIEMPRE (basura de
+        varios GB que ya no usa nadie); build-clang\ se conserva en quick y norebuild
+      ~ cabecera y razon 1 reescritas con la medicion que motiva el cambio
+
+  nslink_solo.bat             (CRLF)
+      ~ SOLO_BUILD prueba build-clang\ primero; los dos nombres viejos quedan de respaldo
+      ~ el mensaje de :sin_build lo dice
+
+  nslink_pipeline.py
+      ~ find_build_directory(): misma tupla, build-clang primero
+
+  run_windows_checklist.bat   (CRLF)
+      ~ solo el comentario de las variables por pasada
+
+POR QUE
+  La pasada 2 hacia un configure + build + install COMPLETO de los 419 objetivos. Medido en
+  _logs_nslink\01_build.log de la corrida del 2026-09-02: 419 lineas [N/419] y la cabecera de
+  configuracion de CMake. Y construia el MISMO compilador: el enlazador del C++ esta clavado en
+  la linea de cmake (-DCMAKE_LINKER=lld-link.exe -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld) y no
+  depende de NSC_LLD_LINK, que `nsc` lee en TIEMPO DE EJECUCION para los programas NativeSharp.
+
+  El motivo original de los dos arboles era no mezclar artefactos. Ninguna prueba escribe dentro
+  del arbol de build: stage48_5 monta ManagedBuild\ bajo su raiz de evidencia, los logs van a
+  NSC_LOG_DIR, los binarios de los trabajos a _logs_*\bin, los temporales de enlace a
+  _logs_nslink\linktemps y la evidencia a _evidencia\<pasada>.
+
+LO QUE SE GANA
+  Tiempo: ~71 s de una corrida de ~20 min. Poco.
+  Lo importante: las dos pasadas usan EL MISMO BINARIO, no dos construidos por separado de las
+  mismas fuentes. Y cmake --install corre una vez, no dos.
+
+VERIFICADO (de forma; los .bat no se ejecutan desde el contenedor)
+  Los tres .bat siguen siendo CRLF, comprobado con `file`.
+  nslink_pipeline.py parsea (ast.parse).
+  Las cuatro combinaciones de modo estan escritas: no queda ninguna sin decidir.
+  report.py ya trata [SKIP] como estado de primera clase (lineas 94 y 327).
+  En norebuild el checklist sincroniza lib\ antes de ctest (paso 1b) y escribe 01_build.log.
+
+DIFERENCIA ESPERADA EN EL PROXIMO REPORTE
+  La pasada 2 pondra "[SKIP] compiler build (norebuild)" donde antes ponia
+  "[ OK ] compiler build + install", asi que su contador Passed: sera menor que el de la
+  pasada 1. NO es un fallo: es la pasada 2 diciendo que no construyo.

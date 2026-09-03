@@ -6,12 +6,13 @@ rem
 rem     all.bat            corrida completa
 rem     all.bat quick      lo que run_windows_checklist.bat entienda por rapido
 rem
-rem     PASADA 1   lld-link      build-clang-lldlink\   ->  _logs_lldlink\    EL OFICIAL
-rem     PASADA 2   nslink.exe    build-clang-nslink\    ->  _logs_nslink\
+rem     PASADA 1   lld-link      ->  _logs_lldlink\    EL OFICIAL
+rem     PASADA 2   nslink.exe    ->  _logs_nslink\
 rem
-rem CADA PASADA TIENE SU PROPIO ARBOL DE BUILD Y SU PROPIO DIRECTORIO DE LOGS, desde el primer
-rem byte. No se mueve nada, no se restaura nada, no se comparte nada. Las dos construyen su
-rem compilador, corren ctest, los trabajos del corpus, el triage, el manifiesto y su reporte.
+rem EL COMPILADOR SE CONSTRUYE UNA SOLA VEZ, en la pasada 1, en build-clang\. La pasada 2 NO
+rem reconstruye nada: corre la misma bateria contra EL MISMO nsc.exe cambiando una variable de
+rem entorno. Cada pasada tiene su propio directorio de logs desde el primer byte -- eso no se
+rem comparte y no se mueve nada.
 rem
 rem LAS DOS SE CORREN SIEMPRE. Un fallo de la 1 no cancela la 2: los dos reportes juntos son lo
 rem que dice de quien es el fallo, y tener solo uno es justo lo que no sirve.
@@ -35,15 +36,37 @@ rem
 rem -------------------------------------------------------------------------------------
 rem POR QUE ESTE ARCHIVO ES ASI, Y NO COMO ESTABA
 rem
-rem   1. DOS ARBOLES DE BUILD, NO UNO. Es lo que hace que todo lo demas sea simple. Con un solo
-rem      build-clang\ habia que elegir entre reconstruirlo en la pasada 2 -- y entonces los dos
-rem      reportes median compiladores distintos sin decirlo -- o no reconstruirlo, y entonces la
-rem      pasada 2 dependia de que la 1 hubiera dejado el arbol sano. Con dos arboles no hay que
-rem      elegir: cada pasada construye el suyo desde cero y las dos son completas por si solas.
+rem   1. UN SOLO ARBOL DE BUILD, Y EL COMPILADOR SE CONSTRUYE UNA VEZ.
 rem
-rem      Que las dos compilen las mismas fuentes por separado NO es desperdicio: si alguna vez
-rem      los dos nsc.exe no se comportan igual, eso es un fallo de reproducibilidad y esta
-rem      corrida es donde tiene que salir.
+rem      Esto estuvo al reves hasta el 2026-09-02: habia un build-clang-lldlink\ y un
+rem      build-clang-nslink\, y la pasada 2 volvia a configurar, compilar los 419 objetivos e
+rem      instalar. Medido en el log de esa corrida: `_logs_nslink\01_build.log` tiene las 419
+rem      lineas [N/419] y la cabecera de configuracion de CMake. Un build entero, desde cero.
+rem
+rem      Y CONSTRUIA EXACTAMENTE EL MISMO COMPILADOR. El enlazador del C++ no depende de
+rem      NSC_LLD_LINK: esta clavado en la linea de configuracion de run_windows_checklist.bat
+rem      (-DCMAKE_LINKER=lld-link.exe -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld), asi que las dos
+rem      pasadas compilaban con clang-cl y enlazaban con lld-link, las dos.
+rem
+rem      NSC_LLD_LINK lo lee `nsc` EN TIEMPO DE EJECUCION (findLldLink, src/Linker/LldLinker.cpp)
+rem      para decidir con que enlaza los programas NativeSharp que compila. Eso es lo unico que
+rem      distingue a las dos pasadas, y no necesita recompilar una sola linea de C++.
+rem
+rem      LO QUE SE GANA NO ES SOBRE TODO TIEMPO -- aquel build eran ~71 s de una corrida de ~20
+rem      minutos. Lo que se gana es que las dos pasadas usan EL MISMO BINARIO y no dos binarios
+rem      construidos por separado de las mismas fuentes. Para un pipeline cuyo trabajo entero es
+rem      aislar una variable, "mismo fichero" es mejor que "mismo codigo".
+rem
+rem      Y NO SE PIERDE NINGUNA SEPARACION, que era el motivo original de los dos arboles.
+rem      Ninguna prueba escribe dentro del arbol de build: stage48_5 monta su ManagedBuild\ bajo
+rem      su raiz de evidencia, los logs van a NSC_LOG_DIR, los binarios de los trabajos a
+rem      _logs_*\bin, los temporales de enlace a _logs_nslink\linktemps y la evidencia de los
+rem      rojos a _evidencia\<pasada>. Todo lo que habia que separar ya lo separan otras
+rem      variables; el arbol de build no aportaba separacion, aportaba un build repetido.
+rem
+rem      La contrapartida honesta: la pasada 2 depende de que la 1 dejara el arbol sano. Si la 1
+rem      no construye, la 2 no mide -- que es exactamente lo que ya pasaba antes, porque las dos
+rem      construyen las mismas fuentes y fallarian igual.
 rem
 rem   2. DOS DIRECTORIOS DE LOGS, TAMPOCO UNO. El checklist borra su directorio de logs al
 rem      arrancar, asi que compartirlo obligaba a mover la pasada 1 a otro nombre y restaurarla
@@ -51,8 +74,9 @@ rem      al final. Ese baile costo una corrida entera: al descarrilar, la ejecuc
 rem      limpieza de arriba y borro las dos pasadas. Ahora cada una nace en su sitio.
 rem
 rem      run_windows_checklist.bat, run_bug_triage.bat, run_cases.py y report.py leen
-rem      NSC_LOG_DIR; el checklist lee ademas NSC_BUILD_DIR. Sin esas variables se comportan
-rem      exactamente como antes, asi que se les puede seguir llamando a mano.
+rem      NSC_LOG_DIR. El checklist sigue leyendo NSC_BUILD_DIR, pero este archivo YA NO LA PONE:
+rem      las dos pasadas usan build-clang\, que es el valor por omision. La variable se queda
+rem      porque sirve para llamar al checklist a mano contra otro arbol.
 rem
 rem   3. `call`. Un .bat que invoca otro .bat SIN `call` transfiere el control y NO VUELVE.
 rem
@@ -116,11 +140,16 @@ if exist "_logs_lldlink" rmdir /s /q "_logs_lldlink" 2>nul
 if exist "_logs_nslink" rmdir /s /q "_logs_nslink" 2>nul
 if exist "_evidencia" rmdir /s /q "_evidencia" 2>nul
 
-if /I "%~1"=="quick" goto :sin_borrar_build
-if /I "%~1"=="norebuild" goto :sin_borrar_build
-echo [all.bat] Borrando los dos arboles de build -- esta corrida se construye desde cero.
+rem Los dos arboles de la epoca de "un build por pasada" ya no los usa nadie. Se borran SIEMPRE
+rem --tambien en quick y norebuild-- porque no son un arbol que conservar, son basura de varios
+rem GB que ningun script vuelve a mirar.
 if exist "build-clang-lldlink" rmdir /s /q "build-clang-lldlink" 2>nul
 if exist "build-clang-nslink" rmdir /s /q "build-clang-nslink" 2>nul
+
+if /I "%~1"=="quick" goto :sin_borrar_build
+if /I "%~1"=="norebuild" goto :sin_borrar_build
+echo [all.bat] Borrando build-clang\ -- esta corrida se construye desde cero.
+if exist "build-clang" rmdir /s /q "build-clang" 2>nul
 goto :build_limpio
 
 :sin_borrar_build
@@ -129,16 +158,34 @@ echo [all.bat] Los arboles de build se conservan ^(modo %~1^).
 :build_limpio
 
 rem =====================================================================================
-rem PASADA 1 de 2 -- lld-link. EL VEREDICTO OFICIAL.
+rem EL MODO DE LA PASADA 2.
+rem
+rem La pasada 2 no construye: el compilador ya lo hizo la 1. Pero tiene que medir EXACTAMENTE
+rem los mismos pasos, o los dos reportes no se pueden comparar. Por eso solo se remapea `full`:
+rem
+rem     full      ->  norebuild    (sin build; ctest + trabajos + ejemplos, igual que la 1)
+rem     quick     ->  quick        (el build es incremental y no hace nada; mismos pasos)
+rem     build     ->  build        (ninguna de las dos mide nada; simetrico)
+rem     norebuild ->  norebuild
+rem
+rem Si la pasada 2 usara `norebuild` siempre, un `all.bat quick` --que se salta ctest-- lo
+rem correria en la 2 y no en la 1, y la comparacion mediria dos cosas distintas.
+rem =====================================================================================
+set "MODO1=%~1"
+if "%MODO1%"=="" set "MODO1=full"
+set "MODO2=%MODO1%"
+if /I "%MODO1%"=="full" set "MODO2=norebuild"
+
+rem =====================================================================================
+rem PASADA 1 de 2 -- lld-link. EL VEREDICTO OFICIAL. AQUI SE CONSTRUYE EL COMPILADOR.
 rem =====================================================================================
 echo.
 echo #####################################################################################
 echo # PASADA 1 de 2 -- lld-link   ^(veredicto oficial^)
-echo #        build-clang-lldlink\  ---^>  _logs_lldlink\
+echo #        build-clang\  ---^>  _logs_lldlink\
 echo #####################################################################################
 set "NSC_LLD_LINK="
 set "NSC_KEEP_LINK_TEMPS="
-set "NSC_BUILD_DIR=build-clang-lldlink"
 set "NSC_LOG_DIR=_logs_lldlink"
 
 call run_windows_checklist.bat %*
@@ -150,7 +197,7 @@ python report.py
 set "RC_LLD=%ERRORLEVEL%"
 
 rem =====================================================================================
-rem PASADA 2 de 2 -- NSLink. La misma bateria, su propio arbol, su propio directorio.
+rem PASADA 2 de 2 -- NSLink. La misma bateria, el MISMO nsc.exe, su propio directorio.
 rem =====================================================================================
 set "RC_NSLINK=-"
 if not exist "%NSLINK%" goto :sin_nslink
@@ -158,10 +205,9 @@ if not exist "%NSLINK%" goto :sin_nslink
 echo.
 echo #####################################################################################
 echo # PASADA 2 de 2 -- NSLink   ^(%NSLINK%^)
-echo #        build-clang-nslink\  ---^>  _logs_nslink\
+echo #        el mismo build-clang\ de la pasada 1  ---^>  _logs_nslink\
 echo #####################################################################################
 set "NSC_LLD_LINK=%NSLINK%"
-set "NSC_BUILD_DIR=build-clang-nslink"
 set "NSC_LOG_DIR=_logs_nslink"
 
 rem NSC_KEEP_LINK_TEMPS: `nsc` deja el directorio temporal del enlace en vez de borrarlo. Ahi
@@ -171,7 +217,8 @@ rem (nsc_actions/001) para poder reproducir un fallo sin depender de esta maquin
 rem Solo en esta pasada: en la oficial seria basura sin nadie que la lea.
 set "NSC_KEEP_LINK_TEMPS=%CD%\_logs_nslink\linktemps"
 
-call run_windows_checklist.bat %*
+rem Sin build: el compilador es el que dejo la pasada 1. Ver el bloque "EL MODO DE LA PASADA 2".
+call run_windows_checklist.bat %MODO2%
 
 if not exist "_logs_nslink" mkdir "_logs_nslink"
 python verify_manifest.py --clean --write > "_logs_nslink\06_manifest.log" 2>&1
