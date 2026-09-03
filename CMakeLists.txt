@@ -775,7 +775,45 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_cc1_correctness_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_cc1_correctness_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_cc1_correctness_tests)
-    add_test(NAME nsc.cc1.correctness COMMAND nsc_cc1_correctness_tests)
+
+    # UNA PRUEBA DE ctest POR FIXTURE -- 2026-09-03.
+    #
+    # POR QUE. En la corrida del 2026-09-03, `ctest -j 16` tardo 274.47 s de reloj y esta suite
+    # tardo 273.97 s de esos: el reloj de ctest ERA esta prueba, con las otras quince CPU paradas.
+    # Compilaba y ejecutaba treinta y seis fixtures EN SERIE dentro de un solo proceso. Repartidas,
+    # el techo pasa a ser la siguiente prueba mas lenta (nsc.stage56.c8-type-root, 90.8 s).
+    #
+    # Y el segundo motivo, que no es velocidad: un rojo decia `nsc.cc1.correctness` y habia que
+    # abrir el log para saber QUE fixture fallo. Ahora lo dice el nombre de la prueba.
+    #
+    # LA LISTA SE LEE DEL PROPIO .cpp, no se escribe aqui. Escribirla seria la quinta copia de una
+    # lista en este proyecto, y las cuatro anteriores costaron un documento cada una: la tabla de
+    # imports (docs 102/103), las tablas de enteros (112), las cadenas del HIR (106) y las dos
+    # tablas de casos (115). Anadir una fixture sigue siendo UNA linea, en el .cpp, como siempre.
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/Cc1CorrectnessTests.cpp" _cc1_source)
+    string(REGEX MATCHALL "checkFixture\\([^;]*;" _cc1_calls "${_cc1_source}")
+    set(_cc1_labels "")
+    foreach(_cc1_call IN LISTS _cc1_calls)
+        if(_cc1_call MATCHES "\"(cc1-[a-z0-9-]+)\"")
+            list(APPEND _cc1_labels "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _cc1_labels)
+    list(LENGTH _cc1_labels _cc1_count)
+    if(_cc1_count LESS 30)
+        # Si el regex deja de encontrar las llamadas --porque alguien cambio la forma de
+        # checkFixture-- esto NO puede quedarse en silencio registrando tres pruebas: seria una
+        # corrida verde que mide una decima parte. Se para el configure.
+        message(FATAL_ERROR
+            "Cc1CorrectnessTests.cpp: solo se reconocieron ${_cc1_count} fixtures; el patron de "
+            "checkFixture cambio y esta lista dejaria de medir el corpus entero")
+    endif()
+    foreach(_cc1_label IN LISTS _cc1_labels)
+        add_test(NAME nsc.cc1.correctness.${_cc1_label}
+                 COMMAND nsc_cc1_correctness_tests ${_cc1_label})
+    endforeach()
+    # Y las comprobaciones de IR, que no compilan fixtures del arbol.
+    add_test(NAME nsc.cc1.correctness COMMAND nsc_cc1_correctness_tests --rest)
 
     add_executable(nsc_stage46_native_libraries_tests tests/unit/Stage46NativeLibrariesTests.cpp)
     target_link_libraries(nsc_stage46_native_libraries_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)

@@ -1,0 +1,131 @@
+STAGE_DEUDA -- 2026-09-03
+La deuda anotada, cerrada. Ver mkdown/115_deuda_cerrada.md (el analisis y las mediciones)
+                              mkdown/114_decisiones_pendientes.md (SHR-063, ID 125, ID 87)
+
+CERRADO SIN ESCRIBIR CODIGO
+  ID 124 -- pedia la fixture profunda de catch -> switch -> continue. YA EXISTE:
+  tests/cc1/c8_loop_catch_switch la cubre entera y mejor de lo que el ID pedia (mide lo que se
+  ejecuta DESPUES del switch, y repite la forma con los destinos intercambiados). c7 cubre el
+  caso hermano dentro de un finally. Escribir una tercera habria sido trabajo que parece progreso.
+
+NUEVO -- compilador
+  include/nativesharp/Frontend/IntegerLiteralTyping.h
+      LA UNICA regla del tipo de un literal entero. Estaba escrita DOS VECES, y la segunda copia
+      llevaba un comentario diciendo "duplicarlo aqui seria justo el error que este archivo existe
+      para eliminar, asi que la regla se mantiene deliberadamente identica". Reconocia el problema
+      y lo cometia: "se mantiene identica" es una promesa, no un guardian.
+      + la regla nueva: el menos unario sobre un literal se tipa JUNTO CON EL (la de C#), que es
+      la unica forma de escribir el minimo de un ancho -- uno mas que su maximo en magnitud.
+      Cuatro static_assert fijan lo que cambia Y LO QUE NO (2147483648 a secas sigue siendo long).
+
+MODIFICADOS -- compilador
+  src/Frontend/ProjectMethodBodyModel.cpp
+      1) integerLiteralType delega en la cabecera nueva; + el caso del menos unario en
+         analyzeUnary, CON RE-REGISTRO en expressionTypes_.
+         EL RE-REGISTRO ES LA MITAD QUE CASI SE ME ESCAPA: sin el, el modelo semantico decia `int`
+         y el backend seguia diciendo `long`, y el IR emitia `store i64` sobre un `alloca i32` --
+         ocho bytes en una ranura de cuatro. No lo cazo ningun rojo: lo cazo mirar el IR.
+      2) DIAGNOSTICO de division/modulo por la constante cero. Es la otra mitad del arreglo del
+         doc 113: con el divisor constante el compilador YA SABE que el programa muere siempre y
+         emitia `br i1 false` hacia la trampa. Un fallo demostrado, compilado en silencio.
+         SOLO ENTEROS: en coma flotante x/0.0 es infinito y 0.0/0.0 es NaN, valores legitimos de
+         IEEE 754. SOLO CON EL CERO CONSTANTE: un divisor variable no se toca.
+         LIMITE: un `const int cero = 0;` como divisor todavia no se diagnostica.
+
+  src/Frontend/ProjectIntegerEvaluator.cpp
+      integerLiteralTypeOf delega en la cabecera + el mismo caso del menos unario. Tiene que estar
+      en los dos sitios: si el plegado dijera `long` y el modelo `int`, el valor plegado tendria
+      otro tipo que el declarado -- justo lo que el paso 6 de c30 existe para cazar.
+
+  src/Frontend/ProjectCompilation.cpp
+      CONSUME lastErrorRange(). El envoltorio del doc 112 apuntaba el nodo mas interno que fallaba
+      y NADIE lo leia. Ahora los errores del HIR salen como fichero:linea:columna.
+      Va aqui y no en el modelo: recordar un rango es barato, TRADUCIRLO necesita el SourceManager
+      y los ficheros, y ProjectCompilation ya tiene los dos. Enhebrarlo hasta el modelo habria
+      sido pasarlo por seis constructores para hacer alli lo mismo.
+      VERIFICADO inyectando un fallo en el HIR: senalo NumericLimits.ns:120:21, la columna exacta
+      donde empieza el literal. Revertido despues.
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      EL SEPTIMO SITIO DE LA CADENA DEL DOC 100, el ultimo con una caida silenciosa de verdad.
+      lowerExpression tenia 146 casos sobre ProjectOopMirNodeKind Y UN `default:`. Anadir un
+      enumerador y olvidarse de bajarlo no daba error: caia ahi y fallaba en ejecucion con un
+      mensaje que decia "no es una expresion" sobre algo que si lo era. Un enumerador olvidado se
+      parecia exactamente a uno mal colocado.
+      Los VEINTE que caian ahi son sentencias y ahora estan escritos uno a uno.
+      PRUEBA NEGATIVA: borrando un case ->
+        error: enumeration value 'Rethrow' not handled in switch [-Werror,-Wswitch]
+      lowerStatement CONSERVA su default a proposito: el suyo es una regla de verdad ("lo que no
+      es sentencia se baja como expresion") y encamina hacia lowerExpression, que ahora si esta
+      guardado. La cadena queda protegida de punta a punta.
+
+NUEVO -- biblioteca
+  lib/NativeSharp.Core/CString.ns
+      `string` -> cadena C terminada en NUL. El consumidor medido lo pidio: demo_ventana la
+      escribio a mano, byte a byte (doc 112 §C.3).
+      CLASE Y NO FUNCION: la memoria tiene que sobrevivir a la llamada y morir cuando alguien lo
+      decida. Una funcion que devolviera un byte* recien reservado obligaria a cada llamador a
+      ACORDARSE de liberarlo, que es lo que este modelo existe para no necesitar.
+      El puntero vale mientras viva el objeto y ni un instante mas -- la misma regla que Span/View.
+      Un cero en medio del texto NO se rechaza ni se sustituye: Length() sigue dando el texto
+      entero y la cadena C acaba ahi. Las dos mitades del contrato.
+
+MODIFICADOS -- biblioteca y ejemplos
+  lib/NativeSharp.Core/NumericLimits.ns
+      Int32Min/Int64Min con SU LITERAL. Se quita el rodeo `-2147483647 - 1` y el parrafo que lo
+      explicaba. Emite `ret i32 -2147483648`.
+  examples/project_demo_ventana/Main.ns
+      Fuera la funcion ComoCadenaC escrita a mano; entra `raii CString`. Y el `44` de la llamada
+      a TextOutA sale ahora de textoC.Length() en vez de estar contado a mano.
+
+NUEVAS -- fixtures
+  tests/cc1/c31_cadena_c/            esperado 42
+      La comprobacion que vale es la que le pasa la cadena a lstrlenA de kernel32: quien decide si
+      el NUL esta bien puesto es EL SISTEMA OPERATIVO, no el programa contandose sus bytes.
+      Cubre el cero interior, la cadena vacia, la estabilidad del puntero y un texto construido en
+      ejecucion que el compilador no puede plegar.
+  tests/cc1/c32_division_por_cero/   esperado 129   <-- NO 42, y es el punto
+      ExitProcess(128 + razon), DivisionByZero es la razon 1. Es el caso negativo que el doc 110
+      §4 dejo anotado y que ninguna otra fixture podia cubrir: todas certifican devolviendo 42 y
+      un programa que aborta no devuelve nada.
+      MIDE QUE LA TRAMPA ESTE EN EL IR: dejarselo al idiv da 0xC0000094 en -O0 y nada en -O2
+      (sdiv x,0 es poison). Un 129 en LOS DOS niveles es la prueba.
+  tests/cc1/c33_hilos_join/          esperado 42
+      Thread.Join como punto acquire (doc 111 §2.3). Ocho hilos, DIECISEIS ranuras cada uno,
+      treinta rondas, ranuras a cero entre rondas Y COMPROBADAS. El trabajo es largo a proposito:
+      un hilo que acaba antes de que el principal llegue al Join no mide nada.
+      Y la advertencia del propio doc 111, repetida en la fixture: un modelo de memoria NO se
+      verifica con fixtures. Si el contrato es cierto pasa siempre; si es falso falla A VECES.
+
+NUEVO -- corpus
+  cases_table.py
+      LA UNICA tabla de casos. Estaba en run_cases.py y otra vez en nslink_pipeline.py, con un
+      aviso al final del informe pidiendo que alguien se acordara de las dos. Un aviso impreso no
+      es un guardian; es una nota adhesiva. Y ya habia mordido: el doc 109 cuenta la vez que
+      quedaron en 48 y 44 y la corrida de NSLink salio VERDE midiendo cuatro casos menos.
+      El motivo real de la duplicacion era el AISLAMIENTO, y un modulo de DATOS lo respeta entero:
+      no importa codigo, no ejecuta nada, no tiene dependencias.
+      El aviso de conteos NO se quita: sigue comparando contra la OTRA pasada, que es otra cosa.
+  run_cases.py, nslink_pipeline.py   -- importan la tabla
+  tests/unit/Cc1CorrectnessTests.cpp -- + c31, c32 (129) y c33
+
+MEDIDO
+  ./sweep.sh llvm  ->  OK=178  FAIL=5   (eran 175; los 5 son los negativos de siempre)
+  CORPUS ENTERO volcado a IR antes y despues del cambio de literal: LA DIFERENCIA ENTERA SON DOS
+  LINEAS, en c21 -- una extension de signo que sobraba. Ni un cambio mas en 180 proyectos.
+  nsc.cc1.integer-evaluator: 39/39.
+  El guardian nuevo del bajador, comprobado borrando un case.
+  fichero:linea:columna, comprobado inyectando un fallo y revertido.
+  Las tablas de casos: UNA, 53 casos -> 106 trabajos.
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que c31, c32 y c33 pasen EJECUTANDO. El frontend llega al IR y para.
+  c32 en particular solo significa algo ejecutando: su exito es SALIR CON 129.
+
+ESPERADO EN LA PROXIMA CORRIDA
+  ctest      247   (c31, c32 y c33 van DENTRO de nsc.cc1.correctness)
+  trabajos   106   (53 casos x 2; eran 100)
+  triage   16/16
+
+ATENCION
+  Los cambios de C++ NO surten efecto hasta que se reconstruya nsc.exe.

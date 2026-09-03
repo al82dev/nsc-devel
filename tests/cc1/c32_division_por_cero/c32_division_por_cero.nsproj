@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c32_division_por_cero</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

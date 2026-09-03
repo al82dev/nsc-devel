@@ -1,0 +1,112 @@
+// ID 132 -- DOS METODOS GENERICOS CON EL MISMO NOMBRE Y DISTINTA LISTA DE PARAMETROS.
+//
+// QUE PASABA ANTES. La identidad de una plantilla generica era `nombre + aridad de TIPOS` y nada
+// mas, asi que `Cuenta<T>(T[])` y `Cuenta<T>(T[], int, int)` eran el mismo simbolo:
+//
+//     duplicate generic template identity 'pz.Utiles.Cuenta``1'
+//
+// El rodeo era renombrar, y esta escrito en dos sitios de la biblioteca: `Spans.OfRange` en vez de
+// `Spans.Of`, y `Algorithm.SortWith` en vez de una sobrecarga de `Sort`. Dos nombres peores puestos
+// a proposito, con su motivo anotado en el codigo.
+//
+// QUE CAMBIO. La identidad incluye ahora la CUENTA DE PARAMETROS DE VALOR, y la resolucion de una
+// llamada generica filtra por cuantos argumentos trae. `Algorithm.Sort` ya es una sobrecarga de
+// verdad, y esta fixture es el consumidor que lo fija.
+//
+// LO QUE SIGUE SIN PODERSE, medido abajo por omision y dicho aqui para que nadie lo herede como
+// cubierto: dos sobrecargas genericas con la MISMA cuenta de parametros y tipos distintos. Elegir
+// entre ellas necesita los tipos de los argumentos, y la pasada generica corre ANTES del modelo
+// semantico -- alli solo hay sintaxis.
+//
+// Codigo de salida esperado: 42.
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+namespace cc1sobrecargagenerica
+{
+    public class Utiles
+    {
+        // Uno, dos y tres parametros de valor, con la MISMA aridad generica.
+        public static int Cuenta<T>(T[] datos)
+        {
+            return datos.Length;
+        }
+
+        public static int Cuenta<T>(T[] datos, int desde)
+        {
+            if (desde < 0) { return -1; }
+            if (desde > datos.Length) { return -1; }
+            return datos.Length - desde;
+        }
+
+        public static int Cuenta<T>(T[] datos, int desde, int tope)
+        {
+            if (desde < 0 || tope > datos.Length || tope < desde) { return -1; }
+            return tope - desde;
+        }
+
+        // Y con DOS parametros de tipo, para que la aridad generica siga contando.
+        public static int Par<A, B>(A primero)
+        {
+            return 1;
+        }
+
+        public static int Par<A, B>(A primero, B segundo)
+        {
+            return 2;
+        }
+    }
+
+    public class Program
+    {
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return valor + (cuantos - cuantos);
+        }
+
+        public static int Main()
+        {
+            int[] v = new int[7];
+            if (Utiles.Cuenta<int>(v) != 7) { return 1; }
+            if (Utiles.Cuenta<int>(v, 2) != 5) { return 2; }
+            if (Utiles.Cuenta<int>(v, 2, 6) != 4) { return 3; }
+
+            // Con argumentos que el compilador no puede plegar: las tres se instancian de verdad.
+            if (Utiles.Cuenta<int>(v, Opaco(1)) != 6) { return 4; }
+            if (Utiles.Cuenta<int>(v, Opaco(1), Opaco(5)) != 4) { return 5; }
+
+            // Otro tipo de elemento: cada sobrecarga se monomorfiza por su cuenta.
+            string[] textos = new string[3];
+            if (Utiles.Cuenta<string>(textos) != 3) { return 6; }
+            if (Utiles.Cuenta<string>(textos, 1) != 2) { return 7; }
+            if (Utiles.Cuenta<string>(textos, 0, 2) != 2) { return 8; }
+
+            // Dos parametros de tipo.
+            if (Utiles.Par<int, string>(3) != 1) { return 9; }
+            if (Utiles.Par<int, string>(3, "x") != 2) { return 10; }
+
+            // EL CONSUMIDOR DE VERDAD: Algorithm.Sort con y sin comparador, que hasta hoy eran
+            // Sort y SortWith porque no podian compartir nombre.
+            int[] datos = new int[5];
+            datos[0] = 5; datos[1] = 1; datos[2] = 4; datos[3] = 2; datos[4] = 3;
+            Algorithm.Sort<int>(Spans.Of<int>(datos));
+            if (datos[0] != 1) { return 11; }
+            if (datos[4] != 5) { return 12; }
+
+            Comparison<int> descendente = Mayor;
+            Algorithm.Sort<int>(Spans.Of<int>(datos), descendente);
+            if (datos[0] != 5) { return 13; }
+            if (datos[4] != 1) { return 14; }
+
+            return 42;
+        }
+
+        private static int Mayor(int a, int b)
+        {
+            if (a > b) { return -1; }
+            if (a < b) { return 1; }
+            return 0;
+        }
+    }
+}

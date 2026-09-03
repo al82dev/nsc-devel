@@ -1,0 +1,101 @@
+// ID 129 -- `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador.
+//
+// POR QUE ES DEL COMPILADOR. Los nombres de los enumeradores NO SOBREVIVEN A LA COMPILACION: un
+// enum es un entero con nombres en el codigo fuente y nada mas en el binario. Ninguna cantidad de
+// codigo en String.ns los recupera. Este ID llevaba anotado desde el doc 92 §7 por eso mismo.
+//
+// COMO SE BAJA, y por que importa para lo que esta fixture mide: la llamada se convierte en una
+// cadena de `valor == A ? "A" : (valor == B ? "B" : ... : "<nombre del tipo>")`, construida con
+// nodos que ya existian. No hay tabla en el binario, no hay operacion del runtime, no hay import.
+// Cuando el valor es una constante, el optimizador pliega la cadena entera y queda un literal.
+//
+// LO QUE MIDE ESTA FIXTURE, y cada punto responde a una decision:
+//
+//   1. el caso corriente, con valores automaticos;
+//   2. valores EXPLICITOS y no consecutivos -- la cadena compara contra el valor, no contra la
+//      posicion, y un enum con `= 4` lo demuestra;
+//   3. un ALIAS (dos enumeradores con el mismo valor): gana el PRIMERO DECLARADO, porque la
+//      cadena se construye en orden de fuente y es el orden que un lector espera;
+//   4. un valor FUERA DE RANGO: devuelve el nombre del TIPO, no una cadena vacia. `(Color)99` es
+//      legal y un diagnostico que lo imprima tiene que decir algo;
+//   5. un valor que el compilador NO PUEDE PLEGAR, para que la cadena se recorra de verdad en
+//      ejecucion y no salga de una constante del modulo.
+//
+// Codigo de salida esperado: 42.
+using NativeSharp.Core;
+
+namespace cc1enumnombre
+{
+    public enum Color
+    {
+        Rojo,
+        Verde,
+        Azul
+    }
+
+    public enum Bandera
+    {
+        Ninguna = 0,
+        Lectura = 1,
+        Escritura = 2,
+        Ejecucion = 4,
+        // ALIAS: mismo valor que Lectura. La cadena se construye en orden de fuente, asi que la
+        // comparacion de Lectura va antes y gana. Que gane el primero es la decision; que sea
+        // ESTABLE es lo que esta fixture fija.
+        Solo = 1
+    }
+
+    public class Program
+    {
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return valor + (cuantos - cuantos);
+        }
+
+        public static int Main()
+        {
+            // 1. El caso corriente.
+            Color a = Color.Rojo;
+            if (!String.Equals(a.ToString(), "Rojo")) { return 1; }
+            Color b = Color.Verde;
+            if (!String.Equals(b.ToString(), "Verde")) { return 2; }
+            Color c = Color.Azul;
+            if (!String.Equals(c.ToString(), "Azul")) { return 3; }
+
+            // 2. Valores explicitos y no consecutivos.
+            Bandera n = Bandera.Ninguna;
+            if (!String.Equals(n.ToString(), "Ninguna")) { return 4; }
+            Bandera e = Bandera.Ejecucion;
+            if (!String.Equals(e.ToString(), "Ejecucion")) { return 5; }
+
+            // 3. El alias: Solo vale 1, igual que Lectura, y sale "Lectura".
+            Bandera l = Bandera.Lectura;
+            if (!String.Equals(l.ToString(), "Lectura")) { return 6; }
+            Bandera s = Bandera.Solo;
+            if (!String.Equals(s.ToString(), "Lectura")) { return 7; }
+
+            // 4. Fuera de rango: el nombre del TIPO.
+            Color fuera = (Color)99;
+            if (!String.Equals(fuera.ToString(), "Color")) { return 8; }
+            Bandera fuera2 = (Bandera)77;
+            if (!String.Equals(fuera2.ToString(), "Bandera")) { return 9; }
+
+            // 5. UN VALOR QUE EL COMPILADOR NO PUEDE PLEGAR. Aqui la cadena de condicionales se
+            //    recorre de verdad; en todo lo de arriba el optimizador puede haberla plegado.
+            Color dinamico = (Color)Opaco(1);
+            if (!String.Equals(dinamico.ToString(), "Verde")) { return 10; }
+            Color dinamicoFuera = (Color)Opaco(50);
+            if (!String.Equals(dinamicoFuera.ToString(), "Color")) { return 11; }
+
+            // Y el mismo valor dinamico leido dos veces da lo mismo: la cadena no consume nada.
+            if (!String.Equals(dinamico.ToString(), dinamico.ToString())) { return 12; }
+
+            // 6. Concatenar el nombre, que es para lo que sirve de verdad.
+            raii string mensaje = String.Concat("color=", b.ToString());
+            if (!String.Equals(mensaje, "color=Verde")) { return 13; }
+
+            return 42;
+        }
+    }
+}

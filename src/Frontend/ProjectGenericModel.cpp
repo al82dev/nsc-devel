@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -34,6 +35,25 @@ GenericTemplateKind genericTypeTemplateKind(const ast::AstNode* node) noexcept
     if (node->kind() == ast::AstNodeKind::ClassDeclaration) return GenericTemplateKind::Class;
     if (node->kind() == ast::AstNodeKind::DelegateDeclaration) return GenericTemplateKind::Delegate;
     return GenericTemplateKind::Struct;
+}
+
+// ID 132. Cuantos parametros DE VALOR declara un metodo. La identidad de una plantilla generica
+// era `nombre + numero de parametros de TIPO` y nada mas, asi que dos metodos genericos con el
+// mismo nombre y la misma aridad generica chocaban aunque tomaran cosas distintas:
+//
+//     duplicate generic template identity 'NativeSharp.Core.Spans.Of``1'
+//
+// Eso obligo a `Spans.OfRange` en vez de `Spans.Of` y a `Algorithm.SortWith` en vez de una
+// sobrecarga de `Sort` -- dos nombres peores, escritos a proposito y anotados en el codigo.
+std::size_t valueParameterCount(const ast::AstNode* node) noexcept
+{
+    if (node == nullptr) return 0;
+    std::size_t count = 0;
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration) ++count;
+    }
+    return count;
 }
 
 bool isGenericMethodTemplateNode(const ast::AstNode* node) noexcept
@@ -90,6 +110,35 @@ bool ProjectGenericModel::build(
         collectTemplates(unit, unit.syntaxTree(), nullptr, "", "", false, diagnostics);
     }
 
+    // ID 132. LA DESAMBIGUACION SE APLICA SOLO DONDE HAY COLISION, y esto no es una optimizacion:
+    // es lo que evita cambiar una cadena que YA ES PUBLICA.
+    //
+    // La primera version de este arreglo metia la cuenta de parametros en la clave SIEMPRE, y esa
+    // clave sale del compilador por tres sitios: el volcado de HIR, el de MIR y los METADATOS DE
+    // BIBLIOTECA que lee un host. Cuatro pruebas se pusieron rojas y tenian razon: cambiar el
+    // formato de una identidad publica por un problema interno rompe a quien la lea.
+    //
+    // Asi que la clave de un metodo generico se queda EXACTAMENTE como estaba mientras sea unica.
+    // Solo cuando dos plantillas comparten `nombre``aridad` se les anade `#<parametros de valor>`
+    // a las dos, que es el unico caso donde antes habia un error y por tanto el unico donde no
+    // puede haber nada escrito que dependa del formato anterior.
+    {
+        std::unordered_map<std::string, std::size_t> baseCounts;
+        for (const TemplateState& state : templateStates_)
+        {
+            if (state.record.kind != GenericTemplateKind::Method) continue;
+            ++baseCounts[state.record.canonicalKey];
+        }
+        for (TemplateState& state : templateStates_)
+        {
+            if (state.record.kind != GenericTemplateKind::Method) continue;
+            const auto found = baseCounts.find(state.record.canonicalKey);
+            if (found == baseCounts.end() || found->second < 2) continue;
+            state.record.canonicalKey +=
+                "#" + std::to_string(valueParameterCount(state.syntax));
+        }
+    }
+
     std::unordered_set<std::string> templateKeys;
     for (const TemplateState& state : templateStates_)
     {
@@ -99,7 +148,14 @@ bool ProjectGenericModel::build(
                 diagnostics::DiagnosticId::DuplicateSymbol,
                 diagnostics::DiagnosticSeverity::Error,
                 state.syntax != nullptr ? state.syntax->range() : SourceRange{},
-                "duplicate generic template identity '" + state.record.canonicalKey + "'");
+                // ID 132. El mensaje dice POR QUE chocan, porque desde que la cuenta de
+                // parametros desambigua, llegar aqui significa que dos plantillas comparten
+                // nombre, aridad generica Y cuenta de parametros -- y eso el compilador no lo
+                // puede separar: elegir entre ellas necesita los TIPOS de los argumentos, y esta
+                // pasada corre antes del modelo semantico.
+                "duplicate generic template identity '" + state.record.canonicalKey +
+                    "'; two generic methods can differ by how many parameters they take, but not "
+                    "by their types alone -- rename one");
         }
     }
 
@@ -341,11 +397,15 @@ bool ProjectGenericModel::processGenericCall(
         requestedOwner = callee->first()->text();
     }
 
+    // ID 132. Los argumentos de VALOR de la llamada. Los hijos de un nodo de llamada son sus
+    // argumentos; el receptor viaja en el callee, no aqui.
+    const std::size_t argumentCount = call->children().size();
     TemplateState* state = resolveMethodTemplate(
-        unit, requestedOwner, methodName, call->typeSyntaxes().size());
+        unit, requestedOwner, methodName, call->typeSyntaxes().size(), argumentCount);
     if (state == nullptr)
         state = resolveMethodTemplate(
-            unit, requestedOwner, methodName, std::numeric_limits<std::size_t>::max());
+            unit, requestedOwner, methodName, std::numeric_limits<std::size_t>::max(),
+            argumentCount);
     if (state == nullptr)
     {
         diagnostics.report(
@@ -409,30 +469,46 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     const ProjectSyntaxUnit& unit,
     std::string_view ownerName,
     std::string_view methodName,
-    std::size_t arity)
+    std::size_t arity,
+    std::size_t argumentCount)
 {
-    TemplateState* result = nullptr;
-    for (TemplateState& state : templateStates_)
+    // ID 132. `argumentCount` es cuantos argumentos de VALOR trae la llamada, y sirve para elegir
+    // entre sobrecargas genericas que antes eran el mismo simbolo. `max()` significa "no filtres
+    // por eso" y es lo que usan los reintentos de abajo.
+    const auto sinFiltro = std::numeric_limits<std::size_t>::max();
+    const auto coincide = [&](const TemplateState& state, bool exigirDueno, bool exigirArgumentos)
     {
-        if (state.record.kind != GenericTemplateKind::Method || !projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) continue;
-        if (arity != std::numeric_limits<std::size_t>::max() && state.record.parameters.size() != arity) continue;
-        if (state.record.name != methodName) continue;
-        if (!ownerName.empty() && state.record.ownerName != ownerName) continue;
-        if (result != nullptr) return nullptr;
-        result = &state;
-    }
-    if (result != nullptr) return result;
+        if (state.record.kind != GenericTemplateKind::Method ||
+            !projectVisible(unit.projectOrdinal(), state.record.projectOrdinal))
+            return false;
+        if (arity != sinFiltro && state.record.parameters.size() != arity) return false;
+        if (state.record.name != methodName) return false;
+        if (exigirDueno && !ownerName.empty() && state.record.ownerName != ownerName) return false;
+        if (exigirArgumentos && argumentCount != sinFiltro &&
+            valueParameterCount(state.syntax) != argumentCount)
+            return false;
+        return true;
+    };
 
-    // Unqualified fallback is allowed only when exactly one template of that name exists.
-    for (TemplateState& state : templateStates_)
+    const auto unico = [&](bool exigirDueno, bool exigirArgumentos) -> TemplateState*
     {
-        if (state.record.kind != GenericTemplateKind::Method || !projectVisible(unit.projectOrdinal(), state.record.projectOrdinal) ||
-            (arity != std::numeric_limits<std::size_t>::max() && state.record.parameters.size() != arity) ||
-            state.record.name != methodName) continue;
-        if (result != nullptr) return nullptr;
-        result = &state;
-    }
-    return result;
+        TemplateState* result = nullptr;
+        for (TemplateState& state : templateStates_)
+        {
+            if (!coincide(state, exigirDueno, exigirArgumentos)) continue;
+            if (result != nullptr) return nullptr;
+            result = &state;
+        }
+        return result;
+    };
+
+    // Con dueno y con cuenta de argumentos: lo mas especifico. Luego se va aflojando, en el mismo
+    // orden que antes tenia este metodo -- lo unico nuevo es el primer intento.
+    if (TemplateState* result = unico(true, true); result != nullptr) return result;
+    if (TemplateState* result = unico(true, false); result != nullptr) return result;
+    // Unqualified fallback is allowed only when exactly one template of that name exists.
+    if (TemplateState* result = unico(false, true); result != nullptr) return result;
+    return unico(false, false);
 }
 
 std::string ProjectGenericModel::ensureTypeSpecialization(

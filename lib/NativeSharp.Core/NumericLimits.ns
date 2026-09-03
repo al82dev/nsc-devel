@@ -19,22 +19,19 @@ namespace NativeSharp.Core
     // literalmente una constante devuelta tal cual, el tipo de pieza mas simple que este proyecto
     // puede agregar.
     //
-    // == Por que Int32Min()/Int64Min() NO se escriben como "-2147483648"/"-9223372036854775808L"
-    //    directamente ==
+    // == Int32Min()/Int64Min() YA SE ESCRIBEN CON SU LITERAL, desde el 2026-09-03 ==
     //
-    // Un literal entero SIN signo se lexea primero como su magnitud positiva, y RECIEN despues el
-    // operador unario `-` lo niega -- exactamente como en C/C++/C# real. El problema:
-    // `2147483648` (la magnitud de int.MinValue) es UN MAS que `2147483647` (int.MaxValue), asi
-    // que la magnitud positiva sola YA NO CABE en un `int` de 32 bits con signo -- el lexer/
-    // analizador semantico la tipa como un tipo mas ancho (`uint` o `long`, segun cual sea la
-    // primer opcion que la magnitud SI quepa, ver `constantFits` en
-    // src/Frontend/ProjectTypeConversion.cpp) ANTES de que el `-` unario tenga oportunidad de
-    // actuar, produciendo un tipo que no coincide con el `int` que este metodo debe devolver. La
-    // solucion estandar (la misma que el propio C# usa internamente para `int.MinValue`): escribir
-    // el valor como `-2147483647 - 1` -- `2147483647` SI cabe como `int` positivo normal, la resta
-    // de una unidad ocurre en aritmetica de `int` normal, y el resultado final es exactamente
-    // `int.MinValue` sin que ningun paso intermedio necesite una magnitud que no entre en 32 bits
-    // con signo. `Int64Min()` usa exactamente el mismo truco, una unidad mas abajo.
+    // Aqui habia un rodeo --`-2147483647 - 1`-- y una explicacion larga de por que hacia falta:
+    // un literal entero se lexea como su MAGNITUD positiva y el `-` unario la niega despues, asi
+    // que `2147483648` (la magnitud de int.MinValue) es uno mas que int.MaxValue, no cabia en un
+    // `int` positivo, se tipaba `long`, y arrastraba a la expresion entera.
+    //
+    // El diagnostico era correcto y la solucion era un parche. El compilador ahora tipa el menos
+    // unario JUNTO CON el literal que tiene directamente debajo --la regla de C#, y la unica forma
+    // de escribir el minimo de un ancho, que es uno mas que su maximo en magnitud-- asi que el
+    // rodeo sobra. La regla vive en include/nativesharp/Frontend/IntegerLiteralTyping.h.
+    //
+    // `2147483648` A SECAS, sin menos delante, sigue siendo `long`. Solo cambia el par.
     public class NumericLimits
     {
         public static byte ByteMin()
@@ -76,7 +73,7 @@ namespace NativeSharp.Core
 
         public static int Int32Min()
         {
-            return -2147483647 - 1;
+            return -2147483648;
         }
 
         public static int Int32Max()
@@ -96,7 +93,7 @@ namespace NativeSharp.Core
 
         public static long Int64Min()
         {
-            return -9223372036854775807L - 1L;
+            return -9223372036854775808L;
         }
 
         public static long Int64Max()

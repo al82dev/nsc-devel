@@ -324,6 +324,10 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::StructToString:
     case MethodCoreOperationKind::StructEquals:
     case MethodCoreOperationKind::StructHashCode:
+    // ID 129. No pasa por el bloque de "llamada de tipo string": no toma operandos de cadena y no
+    // se convierte en un nodo HIR unico, sino en una cadena de condicionales. Se baja antes, en
+    // el mismo sitio que StructToString.
+    case MethodCoreOperationKind::EnumToString:
     case MethodCoreOperationKind::ClockQueryCounter:
     case MethodCoreOperationKind::ClockQueryFrequency:
     case MethodCoreOperationKind::ClockQuerySystemFileTime:
@@ -3272,6 +3276,116 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(argument));
                 return node;
             }
+            // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador.
+            //
+            // POR QUE UNA CADENA DE CONDICIONALES Y NO UN NODO NUEVO. La respuesta depende del
+            // VALOR, asi que no es una constante como la del struct de abajo; pero tampoco hace
+            // falta inventar un nodo, ni una tabla en el binario, ni una operacion del runtime.
+            // `v == A ? "A" : (v == B ? "B" : ...)` se construye con nodos que YA existen, baja a
+            // control de flujo ordinario, y el optimizador la pliega entera cuando el valor es
+            // constante -- que es el caso comun. Cero sitios nuevos en la cadena del doc 100:
+            // ni MIR, ni LLVM, ni runtime, ni imports.
+            //
+            // EL FONDO DE LA CADENA es el nombre del TIPO, no una cadena vacia ni el numero. Un
+            // valor que no es ninguno de los enumeradores existe --nada impide `(Color)99`-- y
+            // devolver "" haria que un diagnostico que lo imprima no dijera nada. C# devuelve el
+            // numero; hacerlo aqui exigiria convertir un entero a cadena EN EJECUCION, que es una
+            // operacion nucleo mas y una llamada mas por cada ToString. Queda anotado con su
+            // condicion de reapertura: cuando alguien necesite ver el numero de un valor fuera de
+            // rango, y no le baste con saber de que enum era.
+            //
+            // EL RECEPTOR SE BAJA UNA VEZ POR COMPARACION, que es la unica limitacion real de
+            // esta forma. Por eso se exige que sea RE-EVALUABLE con la misma regla que ya usa la
+            // asignacion compuesta sobre propiedades (ID 82): un local, un parametro, `this`, una
+            // constante. `Dame().ToString()` se rechaza con un mensaje que dice que hay que
+            // ligarlo a un local -- en vez de llamar a `Dame()` una vez por enumerador, que seria
+            // un fallo silencioso y caro.
+            if (core != nullptr && core->kind == MethodCoreOperationKind::EnumToString)
+            {
+                if (addressContext)
+                {
+                    error = "ID 129 enum ToString() has no address";
+                    return nullptr;
+                }
+                const ast::AstNode* receiverSyntax = expression->first() != nullptr
+                    ? expression->first()->first() : nullptr;
+                if (receiverSyntax == nullptr)
+                {
+                    error = "ID 129 enum ToString() has no receiver";
+                    return nullptr;
+                }
+                if (memberModel_ == nullptr || nameLookup_ == nullptr)
+                {
+                    error = "ID 129 enum ToString() needs the member model";
+                    return nullptr;
+                }
+
+                // Los enumeradores del tipo, en el orden en que se declararon.
+                std::optional<std::size_t> enumOrdinal;
+                if (core->elementTypeKey.starts_with("type:"))
+                {
+                    const std::string_view identity =
+                        std::string_view(core->elementTypeKey).substr(5);
+                    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size();
+                         ++ordinal)
+                    {
+                        if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
+                        {
+                            enumOrdinal = ordinal;
+                            break;
+                        }
+                    }
+                }
+                if (!enumOrdinal.has_value())
+                {
+                    error = "ID 129 enum ToString() cannot find the enum type";
+                    return nullptr;
+                }
+
+                std::vector<std::pair<std::int64_t, std::string>> enumerators;
+                for (const ClassMemberSymbol& member : memberModel_->members())
+                {
+                    if (member.isEnumConstant && member.declaringTypeOrdinal == *enumOrdinal)
+                    {
+                        enumerators.emplace_back(member.enumConstantValue, member.name);
+                    }
+                }
+
+                // El fondo: el nombre corto del tipo. Se construye primero y la cadena se va
+                // envolviendo hacia atras, asi que el PRIMER enumerador declarado queda arriba y
+                // se comprueba antes -- el orden del codigo fuente, que es el que el lector
+                // espera cuando dos enumeradores comparten valor (un alias).
+                std::unique_ptr<ProjectOopHirNode> chain =
+                    makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
+                chain->stringValue = shortTypeName(core->elementTypeKey);
+
+                for (auto iterator = enumerators.rbegin(); iterator != enumerators.rend();
+                     ++iterator)
+                {
+                    auto receiverNode = lowerExpression(receiverSyntax, memberOrdinal, false, error);
+                    if (receiverNode == nullptr) return nullptr;
+                    auto constant =
+                        makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, core->elementTypeKey);
+                    constant->integerValue = static_cast<std::uint64_t>(iterator->first);
+
+                    auto comparison = makeNode(ProjectOopHirNodeKind::Binary, expression, "builtin:bool");
+                    comparison->operation = lexer::TokenKind::EqualEqual;
+                    comparison->children.push_back(std::move(receiverNode));
+                    comparison->children.push_back(std::move(constant));
+
+                    auto name = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
+                    name->stringValue = iterator->second;
+
+                    auto conditional =
+                        makeNode(ProjectOopHirNodeKind::Conditional, expression, "builtin:string");
+                    conditional->children.push_back(std::move(comparison));
+                    conditional->children.push_back(std::move(name));
+                    conditional->children.push_back(std::move(chain));
+                    chain = std::move(conditional);
+                }
+                return chain;
+            }
+
             // C8 "type root", struct half. ToString on a struct is a COMPILE-TIME constant -- a
             // struct is resolved on its static type, so the answer is known here -- and therefore
             // lowers to an ordinary string literal rather than to a node of its own.

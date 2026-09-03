@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 
 #include "nativesharp/Frontend/BuiltinIntegerTypes.h"
+#include "nativesharp/Frontend/IntegerLiteralTyping.h"
 
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
@@ -30,30 +31,15 @@ constexpr std::size_t kMaximumDepth = 32;
 using builtins::IntegerTypeInfo;
 using builtins::findIntegerType;
 
-// El tipo de un literal entero, con las mismas reglas de sufijo que usa el modelo semantico.
-// Duplicarlo aqui seria justo el error que este archivo existe para eliminar, asi que la regla se
-// mantiene deliberadamente identica y el test la fija contra casos concretos.
-std::string integerLiteralTypeOf(const ast::AstNode* node)
+// El tipo de un literal entero. LA REGLA YA NO ESTA AQUI: vive en
+// include/nativesharp/Frontend/IntegerLiteralTyping.h y la comparte con el modelo semantico.
+//
+// Aqui habia una copia, con un comentario que decia "duplicarlo aqui seria justo el error que este
+// archivo existe para eliminar, asi que la regla se mantiene deliberadamente identica". Reconocia
+// el problema y lo cometia: "se mantiene identica" es una promesa, no un guardian.
+std::string integerLiteralTypeOf(const ast::AstNode* node, bool negated = false)
 {
-    bool unsignedSuffix = false;
-    bool longSuffix = false;
-    for (const char value : node->text())
-    {
-        if (value == 'u' || value == 'U') unsignedSuffix = true;
-        if (value == 'l' || value == 'L') longSuffix = true;
-    }
-
-    if (unsignedSuffix && longSuffix) return "builtin:ulong";
-    if (unsignedSuffix)
-    {
-        return node->integerValue() <= std::numeric_limits<std::uint32_t>::max()
-            ? "builtin:uint"
-            : "builtin:ulong";
-    }
-    if (longSuffix) return "builtin:long";
-    return node->integerValue() <= static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())
-        ? "builtin:int"
-        : "builtin:long";
+    return std::string(builtins::integerLiteralTypeKey(node->text(), node->integerValue(), negated));
 }
 
 // ID 122 -- LAS DOS CONVENCIONES, unificadas aqui y no en la struct.
@@ -199,6 +185,22 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateUnary(
 
     ProjectIntegerValue value;
     value.typeKey = operand->typeKey;
+
+    // EL MENOS UNARIO SOBRE UN LITERAL SE TIPA JUNTO CON EL -- la misma regla que aplica
+    // ProjectMethodBodyModel::analyzeUnary, y por el mismo motivo: `int.MinValue` tiene magnitud
+    // 2147483648, uno mas que el maximo de `int`, asi que tipar el literal por su cuenta lo hace
+    // `long` y arrastra la expresion entera.
+    //
+    // TIENE QUE ESTAR EN LOS DOS SITIOS. Si el plegado dijera `long` y el modelo semantico `int`,
+    // `const int x = -2147483648;` compilaria y el valor plegado tendria otro tipo que el
+    // declarado -- exactamente la clase de discrepancia que el paso 6 de la fixture c30 existe
+    // para cazar. La REGLA es una sola (IntegerLiteralTyping.h); lo que se repite es la pregunta
+    // "¿este nodo es un literal debajo de un menos?", que es sintaxis y no semantica.
+    if (expression->tokenKind() == TokenKind::Minus && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression)
+    {
+        value.typeKey = integerLiteralTypeOf(expression->first(), true);
+    }
 
     switch (expression->tokenKind())
     {

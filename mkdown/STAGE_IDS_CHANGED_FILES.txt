@@ -1,0 +1,141 @@
+STAGE_IDS -- 2026-09-03
+ID 129, ID 132, la ventana de verdad y ctest repartido.
+Ver mkdown/116_ids_129_132_y_el_reparto.md
+
+CON ESTO LA LISTA DE DEUDA ANOTADA QUEDA VACIA.
+
+ID 129 -- ToString() de un enum devuelve el NOMBRE
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h   + MethodCoreOperationKind::EnumToString
+  src/Frontend/ProjectMethodBodyModel.cpp
+      Reconocimiento del receptor de tipo enum (kEnumRootFacadeTypeKey), misma forma exacta que la
+      del struct: se sintetiza SOLO despues de que la busqueda ordinaria haya fallado, asi que un
+      enum con su propio ToString gana.
+      + el rechazo del receptor no re-evaluable, con la MISMA regla del ID 82.
+  src/Frontend/ProjectOopHirModel.cpp
+      La bajada: una CADENA DE CONDICIONALES sobre los enumeradores, construida con nodos que ya
+      existian. Cero sitios nuevos de la cadena del doc 100: ni MIR, ni LLVM, ni runtime, ni
+      imports. Con el valor constante, el optimizador la pliega entera.
+
+  LOS GUARDIANES DE LAS RONDAS ANTERIORES HICIERON SU TRABAJO. Anadir el enumerador dio, al
+  instante, los DOS sitios exactos que habia que tocar, nombrados por el compilador:
+      warning: enumeration value 'EnumToString' not handled in switch [-Wswitch]   (x2)
+
+  EL FONDO DE LA CADENA es el nombre del TIPO. (Color)99 es legal y tiene que imprimir algo. C#
+  devuelve el numero; eso exigiria convertir un entero a cadena EN EJECUCION -- una operacion
+  nucleo mas y una llamada mas por cada ToString. Anotado con su condicion de reapertura.
+
+  LA LIMITACION, y se rechaza en vez de hacerse: el receptor se baja UNA VEZ POR ENUMERADOR. La
+  primera version que escribi lo hacia EN SILENCIO y compilaba; lo vi probando ese caso, no porque
+  fallara nada. Ahora `Dame().ToString()` da un mensaje que dice que hay que ligarlo a un local.
+
+  tests/cc1/c34_enum_nombre/    esperado 42
+      Valores automaticos y explicitos, un ALIAS (gana el primero declarado, y que sea ESTABLE es
+      lo que se fija), el valor fuera de rango, y un valor que el compilador NO puede plegar --
+      ahi la cadena se recorre de verdad.
+
+ID 132 -- sobrecargas genericas por lista de parametros
+  src/Frontend/ProjectGenericModel.cpp
+  include/nativesharp/Frontend/ProjectGenericModel.h
+      La identidad de una plantilla generica era `nombre + aridad de TIPOS` y nada mas, asi que
+      Cuenta<T>(T[]) y Cuenta<T>(T[], int, int) eran el mismo simbolo:
+          duplicate generic template identity 'pz.Utiles.Cuenta``1'
+      Ahora incluye la CUENTA DE PARAMETROS DE VALOR, y resolveMethodTemplate filtra por cuantos
+      argumentos trae la llamada, de lo mas especifico a lo mas general.
+      LO QUE SIGUE SIN PODERSE, escrito donde se arreglo: dos sobrecargas con la MISMA cuenta y
+      tipos distintos. Elegir entre ellas necesita los TIPOS de los argumentos, y esta pasada corre
+      ANTES del modelo semantico -- alli solo hay sintaxis.
+
+  EL CONSUMIDOR, que es la mitad que importa:
+  lib/NativeSharp.Core.Collections.Generic/Algorithm.ns
+      SortWith -> SOBRECARGA DE Sort. El comentario que justificaba el nombre peor esta citado y
+      sustituido: un nombre peor que sobrevive al motivo que lo justificaba es deuda disfrazada de
+      decision.
+  lib/NativeSharp.Core.Collections.Generic/List.ns   -- llama a Algorithm.Sort
+  tests/cc1/c27_algoritmos/Main.ns                   -- idem, y lo dice
+      Spans.OfRange SE QUEDA con su nombre: 51 llamadas, y OfRange describe bien lo que hace. Lo
+      que si se corrigio es su comentario, que decia que el nombre era un rodeo obligado.
+
+  tests/cc1/c35_sobrecarga_generica/   esperado 42
+      Tres sobrecargas con la misma aridad generica y uno, dos y tres parametros; dos parametros de
+      tipo; argumentos que el compilador no puede plegar; y al final Algorithm.Sort con y sin
+      comparador, que es el consumidor de verdad.
+
+LA VENTANA DE VERDAD
+  examples/project_demo_ventana/Main.ns
+      + extern C delegate VentanaProc y struct ClaseVentana (WNDCLASSEXA, doce campos, 80 bytes en
+        x64 con sus huecos, porque quien la lee es el sistema).
+      + RegisterClassExA, DefWindowProcA, LoadCursorA, UnregisterClassA, GetModuleHandleA.
+      + Procedimiento de ventana escrito en NativeSharp: WM_KEYDOWN (ESCAPE sale),
+        WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_CLOSE/WM_DESTROY.
+      + Los contadores se PINTAN cada cuadro; sin eso no habria forma de saber si el procedimiento
+        se llama.
+      Es UN PUNTERO A FUNCION DENTRO DE UNA STRUCT que cruza a Win32: la frontera en la direccion
+      dificil, C llamando a NativeSharp.
+
+  LO QUE EL IR ENSENO, y no lo esperaba: el compilador envuelve el procedimiento en un THUNK DE
+  FRONTERA automaticamente, con personality __C_specific_handler. Es la guarda C1.3
+  (CallbackExceptionEscape). El procedimiento de ventana la recibe GRATIS, sin declarar nada.
+
+  COMPROBADO que ninguna de las cinco funciones nuevas choca con la tabla de imports del runtime:
+  las 73 de kernel32 no incluyen GetModuleHandleA.
+
+CORRECCION TRAS LA CORRIDA -- CUATRO ROJOS, Y TENIAN RAZON
+  nsc.stage44.generics-monomorphization, nsc.stage48_2.library-metadata, nsc.stage44.hir-dump y
+  nsc.stage44.mir-dump. Los cuatro por lo mismo: la primera version del ID 132 metia la cuenta de
+  parametros en la clave canonica SIEMPRE, y esa clave SALE DEL COMPILADOR por tres sitios -- el
+  volcado de HIR, el de MIR y los METADATOS DE BIBLIOTECA que lee un host.
+  No era un problema de texto de prueba: cambiar el formato de una identidad PUBLICA por un
+  problema interno rompe a quien la lea.
+  ARREGLO: el sufijo se aplica SOLO DONDE HAY COLISION. Toda clave que era unica se queda byte a
+  byte como estaba.
+  Y se demuestra sin medir: antes de este cambio una colision ERA UN ERROR DE COMPILACION, el
+  corpus compilaba limpio, luego no hay ninguna colision en el salvo la fixture nueva.
+  + el diagnostico de duplicado dice ahora POR QUE chocan y que hacer.
+
+ctest REPARTIDO
+  CMakeLists.txt
+      35 add_test, uno por fixture, mas uno con --rest para las comprobaciones de IR.
+      MOTIVO MEDIDO: en la corrida del 2026-09-03 ctest tardo 274.47 s de reloj y esta suite 273.97
+      de esos. El reloj de ctest ERA esta prueba, con quince CPU paradas. Repartida, el techo pasa
+      a ser nsc.stage56.c8-type-root (90.8 s): ~3 min por pasada, ~6 por corrida.
+      Y un rojo ahora DICE QUE FIXTURE fallo en el nombre de la prueba.
+
+      LA LISTA SE LEE DEL .cpp, no se escribe aqui. Escribirla seria la QUINTA copia de una lista
+      en este proyecto, y las cuatro anteriores costaron un documento cada una (docs 102/103, 106,
+      112, 115). Anadir una fixture sigue siendo UNA linea, en el .cpp.
+      CON GUARDIAN: si el regex reconoce menos de 30, FATAL_ERROR. Sin eso, cambiar la forma de
+      checkFixture daria una corrida VERDE que mide una decima parte, que es peor que un rojo.
+      VERIFICADO ejecutando el bloque real de CMake: 35 fixtures reconocidas.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      + el selector por argumento: sin argumento todo (correr el binario a mano no cambia), una
+        etiqueta ejecuta SOLO esa fixture, --rest ejecuta todo menos las fixtures.
+      + LA RAIZ TEMPORAL LLEVA EL SELECTOR EN EL NOMBRE. No es cosmetico: las 35 pruebas corren EN
+        PARALELO y hasta ahora todas borraban y reescribian el mismo directorio. Dos procesos
+        vaciando la misma carpeta mientras el otro compila dentro es una carrera que se manifiesta
+        como un fallo de enlace intermitente y no como lo que es.
+      + c34 y c35.
+
+  cases_table.py    + c34 y c35   -> 55 casos, 110 trabajos
+
+MEDIDO
+  ./sweep.sh llvm  ->  OK=180  FAIL=5   (eran 178)
+  nsc.cc1.integer-evaluator: 39/39
+  nsc.llvm-lowering: 39/39
+  Equivalencia de los predicados de tipo: identicas en los 20 tipos
+  Extraccion de etiquetas por CMake: 35, ejecutando el bloque real
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que c34 y c35 pasen EJECUTANDO.
+  Que el reparto de ctest funcione -- necesita configurar CMake en Windows.
+  nsc.llvm-optimization sigue sin poder ejecutarse aqui (usa API de LLVM 23).
+
+ESPERADO EN LA PROXIMA CORRIDA
+  ctest      281   nsc.cc1.correctness pasa de UNA prueba a TREINTA Y SEIS. No hay mas
+                   comprobaciones: son las mismas, repartidas.
+  trabajos   110
+  triage   16/16
+
+ATENCION
+  Los cambios de C++ NO surten efecto hasta que se reconstruya nsc.exe.
+  Y CMakeLists.txt cambio, asi que hace falta RECONFIGURAR cmake, no solo recompilar.

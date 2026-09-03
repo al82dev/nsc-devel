@@ -3,6 +3,8 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/IntegerLiteralTyping.h"
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -42,6 +44,8 @@ sema::OwnershipKind ownershipKindFromSyntax(const ast::TypeSyntax* syntax) noexc
 // resolved to one of the three members the compiler synthesizes for a struct. It never escapes
 // analyzeCall, which is where the core binding is recorded -- see the facade in analyzeMember.
 constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
+// ID 129. El gemelo del de arriba para el `ToString()` sintetizado de un enum.
+constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 
 bool isComparison(TokenKind kind) noexcept
 {
@@ -115,39 +119,12 @@ bool isErrorType(std::string_view key) noexcept
     return key.empty() || key == "<error>";
 }
 
-std::string integerLiteralType(const ast::AstNode* node)
+// La REGLA vive en include/nativesharp/Frontend/IntegerLiteralTyping.h, compartida con el
+// evaluador de constantes; aqui solo queda sacarle el texto y el valor al nodo. `negated` es true
+// cuando este literal es el operando directo de un menos unario -- ver analyzeUnary.
+std::string integerLiteralType(const ast::AstNode* node, bool negated = false)
 {
-    bool unsignedSuffix = false;
-    bool longSuffix = false;
-    for (const char value : node->text())
-    {
-        if (value == 'u' || value == 'U')
-        {
-            unsignedSuffix = true;
-        }
-        if (value == 'l' || value == 'L')
-        {
-            longSuffix = true;
-        }
-    }
-
-    if (unsignedSuffix && longSuffix)
-    {
-        return "builtin:ulong";
-    }
-    if (unsignedSuffix)
-    {
-        return node->integerValue() <= std::numeric_limits<std::uint32_t>::max()
-            ? "builtin:uint"
-            : "builtin:ulong";
-    }
-    if (longSuffix)
-    {
-        return "builtin:long";
-    }
-    return node->integerValue() <= static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())
-        ? "builtin:int"
-        : "builtin:long";
+    return std::string(builtins::integerLiteralTypeKey(node->text(), node->integerValue(), negated));
 }
 
 bool isUnsignedIntegerLiteral(const ast::AstNode* node) noexcept
@@ -5968,8 +5945,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     const bool receiverIsEnum = typeReceiver && receiverType.has_value() && nameLookup_ != nullptr &&
         *receiverType < nameLookup_->namedTypes().size() &&
         nameLookup_->namedTypes()[*receiverType].kind == NamedTypeDeclarationKind::Enum;
+    // ID 129. Un VALOR de enum, no la referencia al tipo. `receiverIsEnum` de arriba es
+    // `Color.Rojo` -- el tipo como receptor estatico; esto es `c.ToString()` con `c` un valor.
+    const bool receiverIsEnumValue = !typeReceiver && receiverType.has_value() &&
+        nameLookup_ != nullptr && *receiverType < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*receiverType].kind == NamedTypeDeclarationKind::Enum;
     if (!receiverType.has_value() ||
         (!inheritanceModel_->isClass(*receiverType) && !receiverIsStruct && !receiverIsEnum &&
+         !receiverIsEnumValue &&
          (interfaceModel_ == nullptr || !interfaceModel_->isInterface(*receiverType))))
     {
         diagnostics.report(
@@ -6212,6 +6195,46 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     //
     // This runs only after ordinary member lookup has already failed, so a struct that declares
     // its own ToString/Equals/GetHashCode simply wins; these fill a gap, they never shadow.
+    // ID 129, la mitad de los ENUMS. Misma forma exacta que la del struct de abajo y por el mismo
+    // motivo: se sintetiza SOLO despues de que la busqueda ordinaria haya fallado, asi que un enum
+    // con su propio ToString gana y esto solo rellena el hueco.
+    //
+    // Solo `ToString`. `Equals` y `GetHashCode` sobre un enum son la comparacion y el hash del
+    // entero que hay debajo, y eso ya funciona sin sintetizar nada.
+    if (receiverIsEnumValue && !inaccessibleFound && expression->text() == "ToString")
+    {
+        result.methodGroup = true;
+        result.methodCandidates.clear();
+        result.valid = allowMethodGroup;
+        result.receiverSyntax = expression->first();
+        result.receiverTypeKey = receiver.typeKey;
+        result.receiverTypeOrdinal = receiverType;
+        result.typeKey = kEnumRootFacadeTypeKey;
+        nameBindings_.push_back(MethodNameBinding{
+            MethodNameBindingKind::ExplicitObjectMethodGroup,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            expression->text(),
+            kEnumRootFacadeTypeKey,
+            std::nullopt,
+            std::nullopt,
+            {},
+            expression->first(),
+            receiver.typeKey,
+            receiverType,
+            false});
+        if (!allowMethodGroup)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "enum ToString can only be used as a call target");
+        }
+        return result;
+    }
+
     if (!typeReceiver && receiverIsStruct && !inaccessibleFound &&
         (expression->text() == "ToString" || expression->text() == "Equals" ||
          expression->text() == "GetHashCode"))
@@ -6297,6 +6320,56 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     // C8 "type root", struct half. The member access above resolved to a synthesized struct
     // member (see the facade at the end of analyzeMember); this is where its arity and argument
     // are checked and the core binding is recorded. Everything downstream -- HIR, MIR, LLVM --
+    // ID 129. La llamada al `ToString()` sintetizado de un enum. Cero argumentos, y el tipo del
+    // enum viaja en `elementTypeKey` para que el HIR pueda buscar sus enumeradores.
+    if (callee.methodGroup && callee.typeKey == kEnumRootFacadeTypeKey)
+    {
+        if (!expression->children().empty())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "the compiler-provided 'ToString' on an enum takes no arguments");
+            return {};
+        }
+        // EL RECEPTOR SE BAJA UNA VEZ POR ENUMERADOR, porque el `ToString` de un enum se convierte
+        // en una cadena de `valor == A ? "A" : ...` (el porque, en ProjectOopHirModel.cpp). Con un
+        // receptor que tenga efectos, eso los repetiria: `Dame().ToString()` llamaria a `Dame()`
+        // una vez por enumerador.
+        //
+        // SE RECHAZA EN VEZ DE HACERLO, con la MISMA regla que ya usa la asignacion compuesta
+        // sobre propiedades e indexadores (ID 82): un local, un parametro, `this`, una constante,
+        // o una operacion sobre esos. Es la lista que ya esta escrita y demostrada en
+        // isAccessorDestinationReevaluable, y reutilizarla es mejor que inventar una segunda con
+        // los mismos casos y otro nombre.
+        //
+        // El mensaje dice QUE HACER, no solo que no se puede.
+        const ast::AstNode* offender = nullptr;
+        if (!isAccessorDestinationReevaluable(callee.receiverSyntax, scopeOrdinal, offender))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                (offender != nullptr ? offender : expression)->range(),
+                "the compiler-provided 'ToString' on an enum needs a receiver it can read more "
+                "than once; bind this value to a local first");
+            return {};
+        }
+        coreBindings_.push_back(MethodCoreBinding{
+            MethodCoreOperationKind::EnumToString,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            "builtin:string",
+            callee.receiverTypeKey,
+            false, std::nullopt, std::nullopt});
+        ExpressionResult enumResult;
+        enumResult.typeKey = "builtin:string";
+        enumResult.valid = true;
+        return enumResult;
+    }
+
     // then treats it exactly like any other core operation.
     if (callee.methodGroup && callee.typeKey == kStructRootFacadeTypeKey)
     {
@@ -8419,6 +8492,35 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
         return {};
     }
 
+    // EL MENOS UNARIO SOBRE UN LITERAL SE TIPA JUNTO CON EL, y es la unica forma de escribir el
+    // minimo de un ancho: `int.MinValue` vale 2147483648 en magnitud, uno mas que el maximo de
+    // `int`, asi que tipar el literal por su cuenta lo hace `long` y arrastra a toda la expresion.
+    // Antes habia que escribir `-2147483647 - 1`; ese rodeo estaba en la fixture c30 y en
+    // NumericLimits.ns.
+    //
+    // Es el caso especial de C#, y con su mismo limite: se aplica al literal que esta
+    // DIRECTAMENTE debajo del menos. `-(2147483648)` con parentesis no es este caso y sigue
+    // siendo `long`.
+    //
+    // Se re-tipa despues de analizar en vez de pasar la bandera hacia abajo porque el literal es
+    // una hoja: analizarlo no tiene efectos que rehacer, y una bandera de contexto tendria que
+    // cruzar todo analyzeExpression para servir a un solo nodo.
+    if (expression->kind() == ast::AstNodeKind::UnaryExpression &&
+        expression->tokenKind() == TokenKind::Minus && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IntegerLiteralExpression)
+    {
+        operand.typeKey = integerLiteralType(expression->first(), true);
+        // Y HAY QUE RE-REGISTRARLO, no solo corregir la copia local. El backend no lee este
+        // `ExpressionResult`: lee `expressionTypes_`, donde el literal quedo anotado como `long`
+        // cuando se analizo por su cuenta. Sin esta linea el modelo semantico dice `int` y el HIR
+        // dice `long`, y lo que sale es un `store i64` sobre un `alloca i32` -- ocho bytes en una
+        // ranura de cuatro. Se vio en el IR, no en un rojo.
+        //
+        // El mapa del HIR se construye con `expressionTypeBySyntax_[syntax] = &binding`, asi que
+        // la ANOTACION MAS RECIENTE gana. Por eso basta con volver a anotar.
+        recordExpressionType(expression->first(), methodMemberOrdinal, scopeOrdinal, operand);
+    }
+
     ExpressionResult result;
     const TokenKind operation = expression->tokenKind();
 
@@ -8915,6 +9017,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
         }
         result.typeKey = *common;
         result.valid = true;
+
+        // DIVISION POR CERO CON UNA CONSTANTE: se rechaza AQUI, en compilacion.
+        //
+        // POR QUE, y es la mitad que faltaba del arreglo de la division (doc 113). El contrato
+        // (doc 110 §2.5) dice que `x / 0` es una TRAMPA, y desde ese arreglo lo es de verdad: el
+        // bajador emite la guarda en el IR en vez de dejarselo al `idiv`. Pero cuando el divisor
+        // es una constante CERO, el compilador ya sabe --en compilacion, sin ejecutar nada-- que
+        // ese programa muere siempre. Lo que emitia era `br i1 false` hacia el bloque de trampa:
+        // un fallo demostrado, compilado en silencio.
+        //
+        // Que se sepa y no se diga es la parte mala. Un diagnostico aqui convierte "tu programa
+        // aborta cuando llegue a esa linea" en "tu programa no compila, y esta es la linea".
+        //
+        // SOLO ENTEROS. En coma flotante `x / 0.0` es INFINITO y `0.0 / 0.0` es NaN: los dos son
+        // valores legitimos de IEEE 754 (doc 110 §2.6), no fallos, y rechazarlos seria romper el
+        // contrato de arriba.
+        //
+        // Y SOLO CUANDO EL CERO ES CONSTANTE. Un divisor que sale de una variable no se toca: ahi
+        // el compilador no sabe nada y la guarda en tiempo de ejecucion es la respuesta correcta.
+        if ((operation == TokenKind::Slash || operation == TokenKind::Percent) &&
+            ProjectIntegerEvaluator::isIntegerType(result.typeKey) &&
+            right.integerConstant.has_value() && right.integerConstant->value == 0)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                operation == TokenKind::Slash
+                    ? "division by the constant zero"
+                    : "remainder by the constant zero");
+            result.valid = false;
+            return result;
+        }
         return result;
     }
 
@@ -11472,6 +11607,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::ConsoleErrorWriteLine: return "console-error-writeline";
         case MethodCoreOperationKind::ConsoleErrorWrite: return "console-error-write";
         case MethodCoreOperationKind::StructToString: return "struct-to-string";
+        case MethodCoreOperationKind::EnumToString: return "enum-to-string";
         case MethodCoreOperationKind::StructEquals: return "struct-equals";
         case MethodCoreOperationKind::StructHashCode: return "struct-hash-code";
         case MethodCoreOperationKind::ObjectTypeName: return "object-type-name";

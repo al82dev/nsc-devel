@@ -392,12 +392,14 @@ namespace NativeSharp.Core.Collections.Generic
         // Sorts in place using an explicit comparer, for a T with no natural `<` (or that needs a
         // different ordering than its natural one) -- mirrors List<T>.Sort(Comparison<T>).
         //
-        // Se llama SortWith en Algorithm por ID 132 (las plantillas genericas chocan por nombre +
-        // aridad generica); aqui puede seguir llamandose Sort porque es un miembro NO generico de
-        // una clase generica, que es otra cosa.
+        // En Algorithm esto se llamaba SortWith por el ID 132 (las plantillas genericas chocaban
+        // por nombre + aridad generica, sin mirar la lista de parametros). Ese ID se cerro el
+        // 2026-09-03 y ahora es una sobrecarga de Sort de verdad.
+        // Aqui siempre pudo llamarse Sort: es un miembro NO generico de una clase generica, que
+        // es otra cosa y nunca choco.
         public void Sort(Comparison<T> comparer)
         {
-            Algorithm.SortWith<T>(Spans.OfRange<T>(items, 0, count), comparer);
+            Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count), comparer);
         }
 
         // Binary search over an ALREADY-SORTED list (natural `<` ordering, matching Sort()).

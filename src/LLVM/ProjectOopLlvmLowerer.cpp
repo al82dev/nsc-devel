@@ -5844,7 +5844,41 @@ private:
             case frontend::ProjectOopMirNodeKind::Deallocate:
                 return lowerDeallocation(node, error);
 
-            default:
+            // LOS VEINTE QUE NO SON EXPRESIONES, escritos uno a uno en vez de un `default:`.
+            //
+            // POR QUE, y es el septimo sitio de la cadena del doc 100 -- el que faltaba por
+            // guardar. Aqui habia `default: return failValue(...)`. Con el `default`, anadir un
+            // enumerador nuevo a ProjectOopMirNodeKind y olvidarse de bajarlo NO daba ningun
+            // error: caia aqui y el programa fallaba en tiempo de ejecucion con un mensaje que
+            // decia "no es una expresion" sobre algo que si lo era. Un enumerador olvidado se
+            // parecia exactamente a un enumerador mal colocado.
+            //
+            // Sin `default`, con -Wswitch y /WX, olvidarse es un ERROR DE COMPILACION QUE NOMBRA
+            // EL ENUMERADOR. Es el mismo guardian que ya protege stringCallLowering en el HIR
+            // (doc 106) y por el mismo motivo.
+            //
+            // Estos veinte son SENTENCIAS. Llegar aqui con una es un fallo interno del compilador,
+            // no un programa malo del usuario, y por eso comparten un solo mensaje.
+            case frontend::ProjectOopMirNodeKind::Block:
+            case frontend::ProjectOopMirNodeKind::LocalDeclaration:
+            case frontend::ProjectOopMirNodeKind::ExpressionStatement:
+            case frontend::ProjectOopMirNodeKind::If:
+            case frontend::ProjectOopMirNodeKind::While:
+            case frontend::ProjectOopMirNodeKind::DoWhile:
+            case frontend::ProjectOopMirNodeKind::For:
+            case frontend::ProjectOopMirNodeKind::Switch:
+            case frontend::ProjectOopMirNodeKind::SwitchSection:
+            case frontend::ProjectOopMirNodeKind::Break:
+            case frontend::ProjectOopMirNodeKind::Continue:
+            case frontend::ProjectOopMirNodeKind::Return:
+            case frontend::ProjectOopMirNodeKind::TryRegion:
+            case frontend::ProjectOopMirNodeKind::CatchRegion:
+            case frontend::ProjectOopMirNodeKind::FinallyRegion:
+            case frontend::ProjectOopMirNodeKind::UsingRegion:
+            case frontend::ProjectOopMirNodeKind::Throw:
+            case frontend::ProjectOopMirNodeKind::Rethrow:
+            case frontend::ProjectOopMirNodeKind::CleanupContinuation:
+            case frontend::ProjectOopMirNodeKind::OwnedParameterCleanup:
                 return failValue(error, "non-expression Stage 34 MIR node reached expression lowering");
         }
     }

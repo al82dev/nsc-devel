@@ -107,11 +107,15 @@ private:
         std::string_view namespaceName,
         std::string_view writtenName,
         std::size_t arity);
+    // ID 132. `argumentCount` es cuantos argumentos de VALOR trae la llamada. Sirve para elegir
+    // entre dos plantillas genericas con el mismo nombre y la misma aridad de TIPOS -- que antes
+    // eran el mismo simbolo y daban "duplicate generic template identity".
     TemplateState* resolveMethodTemplate(
         const ProjectSyntaxUnit& unit,
         std::string_view ownerName,
         std::string_view methodName,
-        std::size_t arity);
+        std::size_t arity,
+        std::size_t argumentCount);
 
     std::string ensureTypeSpecialization(
         TemplateState& state,

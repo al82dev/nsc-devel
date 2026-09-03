@@ -123,11 +123,27 @@ namespace cc1contratos
             // Las tres se arreglaron a nivel de compilador. Esta linea es el guardian de que no
             // vuelvan a separarse: la constante la pliega el frontend y la variable la calcula el
             // binario, y tienen que coincidir.
-            const int plegadoMinimoEntreMenosUno = (-2147483647 - 1) / -1;
-            const int plegadoRestoMinimoEntreMenosUno = (-2147483647 - 1) % -1;
+            const int plegadoMinimoEntreMenosUno = -2147483648 / -1;
+            const int plegadoRestoMinimoEntreMenosUno = -2147483648 % -1;
             if (plegadoMinimoEntreMenosUno != minimoDiv / divisor) { return 39; }
             if (plegadoRestoMinimoEntreMenosUno != minimoDiv % divisor) { return 40; }
-            if (plegadoMinimoEntreMenosUno != -2147483647 - 1) { return 41; }
+            if (plegadoMinimoEntreMenosUno != -2147483648) { return 41; }
+
+            // 5c. EL MINIMO SE ESCRIBE CON SU LITERAL. Antes esto no compilaba: el menos unario se
+            // aplicaba a 2147483648, que no cabe en un `int` positivo y por tanto era `long`, asi
+            // que la expresion entera era `long`. Habia que escribir `-2147483647 - 1`, y ese
+            // rodeo estaba aqui, en NumericLimits.ns y en el evaluador entero.
+            //
+            // Ahora el menos y el literal se tipan JUNTOS -- la regla de C#. Se comprueba en las
+            // dos direcciones: que el literal valga el minimo, y que `2147483648` A SECAS siga
+            // siendo `long`, que es lo que NO debia cambiar.
+            int minimoLiteral = -2147483648;
+            long minimoLargoLiteral = -9223372036854775808;
+            if (minimoLiteral != minimoDiv) { return 46; }
+            if (minimoLiteral - 1 != 2147483647) { return 47; }
+            if (minimoLargoLiteral != minimoLargo) { return 48; }
+            long sinMenosDelante = 2147483648;
+            if (sinMenosDelante != 2147483647L + 1L) { return 49; }
 
             // ---------------------------------------------------------------------------------
             // 6. EL PLEGADO DE CONSTANTES Y LA EJECUCION DAN LO MISMO.

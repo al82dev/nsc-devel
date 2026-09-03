@@ -179,12 +179,14 @@ namespace cc1algoritmos
             while (i < 13) { if (grande[i] != i) { return 39; } i = i + 1; }
 
             // ---------------------------------------------------------------------------------
-            // 7. SortWith -- el mismo heapsort con comparador explicito, orden descendente.
+            // 7. Sort con comparador -- el mismo heapsort, orden descendente. Era SortWith hasta
+            //    que se cerro el ID 132; ahora es una sobrecarga de verdad, y esta linea es el
+            //    consumidor que lo demuestra.
             // ---------------------------------------------------------------------------------
             Comparison<int> descendente = Descendente;
             fuente[0] = 5; fuente[1] = 2; fuente[2] = 9; fuente[3] = 2; fuente[4] = 7; fuente[5] = 1; fuente[6] = 5;
             Llenar(trabajo, fuente);
-            Algorithm.SortWith<int>(Spans.Of<int>(trabajo), descendente);
+            Algorithm.Sort<int>(Spans.Of<int>(trabajo), descendente);
             if (trabajo[0] != 9 || trabajo[1] != 7 || trabajo[2] != 5) { return 40; }
             if (trabajo[3] != 5 || trabajo[4] != 2 || trabajo[5] != 2 || trabajo[6] != 1) { return 41; }
 

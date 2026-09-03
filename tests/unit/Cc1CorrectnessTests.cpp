@@ -78,6 +78,33 @@ int runUnderWine(const std::string& wine, const std::filesystem::path& exePath)
 #endif
 }
 
+// PARTIR ESTA SUITE EN VARIAS PRUEBAS DE ctest -- 2026-09-03.
+//
+// POR QUE. En la corrida del 2026-09-03, `ctest -j 16` tardo 274.47 s de reloj y la prueba mas
+// lenta, `nsc.cc1.correctness`, tardo 273.97 s. Es decir: el reloj de ctest ERA esta prueba, y las
+// otras quince CPU estaban paradas casi todo ese rato. La causa es que aqui dentro se compilan y
+// ejecutan treinta y seis fixtures EN SERIE dentro de un solo proceso.
+//
+// Y HAY UN SEGUNDO MOTIVO, que no es velocidad: cuando una fixture se ponia roja, el nombre de la
+// prueba que fallaba era `nsc.cc1.correctness` y habia que abrir el log para saber CUAL. Con una
+// prueba por fixture, el nombre lo dice.
+//
+// COMO. Un argumento opcional selecciona que se ejecuta:
+//
+//     (sin argumento)     todo, como siempre -- correr el binario a mano no cambia
+//     <etiqueta>          SOLO esa fixture
+//     --rest              todo MENOS las fixtures (las comprobaciones de IR de mas abajo)
+//
+// CMakeLists registra un `add_test` por fixture mas uno con `--rest`, y ctest los reparte entre
+// los dieciseis nucleos como cualquier otra prueba.
+std::string gSelectedFixture;
+
+bool fixtureSelected(std::string_view label)
+{
+    if (gSelectedFixture.empty()) return true;
+    return gSelectedFixture == label;
+}
+
 void checkFixture(
     TestContext& tests,
     const std::filesystem::path& outputRoot,
@@ -85,6 +112,7 @@ void checkFixture(
     std::string_view label,
     int expected)
 {
+    if (!fixtureSelected(label)) return;
     const std::filesystem::path projectPath =
         std::filesystem::path(NSC_SOURCE_DIR) / std::filesystem::path(relativeProject);
 
@@ -285,10 +313,18 @@ std::size_t countCatchLeaveBlocksThatClear(const std::string& text)
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    // El selector. Sin argumento se ejecuta todo, que es lo que hace correr el binario a mano.
+    if (argc > 1 && argv[1] != nullptr) gSelectedFixture = argv[1];
+
     TestContext tests;
-    const auto root = std::filesystem::temp_directory_path() / "nsc-cc1";
+    // LA RAIZ TEMPORAL LLEVA EL SELECTOR EN EL NOMBRE, y esto NO es cosmetico: ctest lanza estas
+    // pruebas EN PARALELO, y hasta ahora todas habrian borrado y reescrito el mismo directorio.
+    // Dos procesos vaciando la misma carpeta mientras el otro compila dentro es una carrera que
+    // se manifiesta como un fallo de enlace intermitente y no como lo que es.
+    const auto root = std::filesystem::temp_directory_path() /
+        ("nsc-cc1" + (gSelectedFixture.empty() ? std::string() : "-" + gSelectedFixture));
     std::error_code cleanup;
     std::filesystem::remove_all(root, cleanup);
     std::filesystem::create_directories(root);
@@ -498,6 +534,61 @@ int main()
     checkFixture(
         tests, root, "tests/cc1/c30_contratos/c30_contratos.nsproj",
         "cc1-c30-contratos", 42);
+
+    // CString -- `string` a cadena C terminada en NUL. La pieza que faltaba para que un programa
+    // NativeSharp pueda llamar a la API `A` de Win32 sin escribir la conversion a mano, y la
+    // escribio a mano el primer programa real del proyecto (doc 112 §C.3).
+    //
+    // Su comprobacion util es la que le pasa la cadena a `lstrlenA` de kernel32: quien decide si
+    // el NUL esta bien puesto es EL SISTEMA OPERATIVO, no este programa contandose los bytes.
+    checkFixture(
+        tests, root, "tests/cc1/c31_cadena_c/c31_cadena_c.nsproj",
+        "cc1-c31-cadena-c", 42);
+
+    // LA DIVISION POR CERO. No devuelve 42 y no puede: es una TRAMPA, y el runtime sale con
+    // ExitProcess(128 + razon). DivisionByZero es la razon 1, asi que el exito es SALIR CON 129.
+    // Es el caso negativo que el doc 110 §2.5 dejo anotado y que ninguna otra fixture podia
+    // cubrir, porque todas las demas certifican devolviendo 42.
+    checkFixture(
+        tests, root, "tests/cc1/c32_division_por_cero/c32_division_por_cero.nsproj",
+        "cc1-c32-division-por-cero", 129);
+
+    // Thread.Join como punto acquire (doc 111 §2.3). Un modelo de memoria NO se verifica con
+    // fixtures --lo dice el propio documento-- pero si el contrato es falso esto falla A VECES, y
+    // "a veces" ya es informacion que hoy no existe. Ocho hilos, dieciseis ranuras cada uno,
+    // treinta rondas.
+    checkFixture(
+        tests, root, "tests/cc1/c33_hilos_join/c33_hilos_join.nsproj",
+        "cc1-c33-hilos-join", 42);
+
+    // ID 129 -- `ToString()` de un enum da el NOMBRE del enumerador. Es del compilador y no de
+    // String.ns porque los nombres NO sobreviven a la compilacion: un enum es un entero con
+    // nombres en el codigo fuente y nada mas en el binario.
+    //
+    // Mide el alias (dos enumeradores con el mismo valor: gana el primero declarado), el valor
+    // fuera de rango (devuelve el nombre del TIPO, no una cadena vacia) y, sobre todo, un valor
+    // que el compilador NO puede plegar -- ahi la cadena de condicionales se recorre de verdad.
+    checkFixture(
+        tests, root, "tests/cc1/c34_enum_nombre/c34_enum_nombre.nsproj",
+        "cc1-c34-enum-nombre", 42);
+
+    // ID 132 -- dos metodos genericos con el mismo nombre y distinta lista de parametros. La
+    // identidad de una plantilla generica era nombre + aridad de TIPOS, asi que `Cuenta<T>(T[])` y
+    // `Cuenta<T>(T[], int, int)` eran el mismo simbolo y chocaban. El rodeo era renombrar, y esta
+    // escrito en dos sitios de la biblioteca (Spans.OfRange, Algorithm.SortWith).
+    //
+    // El consumidor de verdad esta al final de la fixture: Algorithm.Sort con y sin comparador.
+    checkFixture(
+        tests, root, "tests/cc1/c35_sobrecarga_generica/c35_sobrecarga_generica.nsproj",
+        "cc1-c35-sobrecarga-generica", 42);
+
+    // A PARTIR DE AQUI, LAS COMPROBACIONES DE IR. No compilan fixtures del arbol: construyen
+    // programas pequenos en memoria y miran el IR emitido. Se ejecutan cuando no hay selector
+    // (correr el binario a mano) o con `--rest`, que es como las registra CMakeLists.
+    if (!gSelectedFixture.empty() && gSelectedFixture != "--rest")
+    {
+        return tests.result();
+    }
 
     // =====================================================================================
     // EH -- EH-001, medido en el IR.

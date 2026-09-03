@@ -471,6 +471,24 @@ enum class MethodCoreOperationKind
     StructToString,
     StructEquals,
     StructHashCode,
+    // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador, no su numero.
+    //
+    // POR QUE ES DEL COMPILADOR Y NO DE String.ns, que es lo que este ID lleva anotado desde el
+    // doc 92 §7: los nombres de los enumeradores NO SOBREVIVEN A LA COMPILACION. Un enum es un
+    // entero con nombres en el codigo fuente y nada mas en el binario, asi que ninguna cantidad
+    // de codigo en la biblioteca puede recuperarlos. Los datos existen aqui --`isEnumConstant` y
+    // `enumConstantValue` en ProjectMemberModel.h-- y en ningun otro sitio.
+    //
+    // MISMO SITIO Y MISMA FORMA QUE StructToString, que es su precedente exacto: se sintetiza
+    // cuando la busqueda ordinaria de miembros ya ha fallado, asi que un enum no puede tener un
+    // ToString propio que esto pisara.
+    //
+    // LA DIFERENCIA CON StructToString, y es la que decide la implementacion: la respuesta del
+    // struct es una CONSTANTE DE COMPILACION --el nombre de su tipo estatico-- y la del enum
+    // depende del VALOR, que en general solo se conoce ejecutando. Por eso no baja a un literal
+    // sino a una cadena de condicionales sobre los enumeradores. El detalle, en el sitio donde se
+    // baja (ProjectOopHirModel.cpp).
+    EnumToString,
     // Stage 53.1 "Time" -- NativeSharp.Core.Diagnostics.NativeClock's three zero-argument raw
     // Win32 wrappers. See NativeClock.ns for why these three and not a higher-level API
     // directly: everything else in Stage 53.1 (Stopwatch/TimeSpan/DateTime) is ordinary

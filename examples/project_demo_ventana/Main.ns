@@ -29,8 +29,42 @@ namespace demoventana
         public uint Relleno;
     }
 
+    // EL PROCEDIMIENTO DE VENTANA. `extern C delegate` es la forma que ya tiene el lenguaje para
+    // un puntero a funcion de C, y un metodo estatico se le asigna directamente -- es lo mismo que
+    // mide tests/interop_contract/c1_03. En x64 `CALLBACK` es la convencion por omision, asi que
+    // no hace falta nada mas.
+    public extern C delegate long VentanaProc(void* ventana, uint mensaje, ulong wParam, long lParam);
+
+    // WNDCLASSEXA. El campo que hacia falta y que no se podia escribir hasta ahora es
+    // `Procedimiento`: UN PUNTERO A FUNCION DENTRO DE UNA STRUCT que cruza a Win32.
+    //
+    // El orden y los huecos son los de Windows, y hay que respetarlos byte a byte porque quien la
+    // lee es el sistema:
+    //   0 Tamano  4 Estilo  8 Procedimiento  16 ExtraClase  20 ExtraVentana  24 Instancia
+    //   32 Icono  40 Cursor  48 PincelFondo  56 NombreMenu  64 NombreClase  72 IconoPequeno = 80
+    public struct ClaseVentana
+    {
+        public uint Tamano;
+        public uint Estilo;
+        public VentanaProc Procedimiento;
+        public int ExtraClase;
+        public int ExtraVentana;
+        public void* Instancia;
+        public void* Icono;
+        public void* Cursor;
+        public void* PincelFondo;
+        public byte* NombreMenu;
+        public byte* NombreClase;
+        public void* IconoPequeno;
+    }
+
     public class Win32
     {
+        extern C from "kernel32.dll"
+        {
+            public void* GetModuleHandleA(byte* nombre);
+        }
+
         extern C from "user32.dll"
         {
             public void* CreateWindowExA(uint estiloExtendido, byte* clase, byte* titulo,
@@ -44,6 +78,10 @@ namespace demoventana
             public int ReleaseDC(void* ventana, void* contexto);
             public int FillRect(void* contexto, Rectangulo* rect, void* pincel);
             public int SetWindowTextA(void* ventana, byte* titulo);
+            public ushort RegisterClassExA(ClaseVentana* clase);
+            public int UnregisterClassA(byte* nombre, void* instancia);
+            public long DefWindowProcA(void* ventana, uint mensaje, ulong wParam, long lParam);
+            public void* LoadCursorA(void* instancia, ulong nombre);
         }
 
         extern C from "gdi32.dll"
@@ -58,45 +96,99 @@ namespace demoventana
 
     public class Program
     {
-        // NativeSharp -> cadena C con NUL, a mano.
+        // LOS CONTADORES DE ENTRADA. Estan aqui, estaticos, porque el procedimiento de ventana lo
+        // llama WINDOWS: no hay forma de pasarle un `this`, y el `lParam` de CreateWindowEx es el
+        // sitio donde un programa mas grande metería un puntero a su propio estado. Para contar
+        // teclas y clics, estaticos bastan y se lee mejor.
+        private static int teclasPulsadas;
+        private static int clicsIzquierdos;
+        private static int movimientosDeRaton;
+        private static int ultimaTecla;
+        private static bool salirPedido;
+
+        // EL PROCEDIMIENTO DE VENTANA, escrito en NativeSharp y llamado por el sistema.
         //
-        // PRIMER HALLAZGO DE ESTE PROGRAMA: la biblioteca NO tiene esta conversion para codigo de
-        // usuario. Un `string` de NativeSharp es {i64 longitud; datos} y NO promete un NUL al
-        // final; Win32 lo exige. Las operaciones nucleo del runtime (File.Exists y compania) lo
-        // resuelven por dentro, pero eso no esta expuesto, asi que CUALQUIER programa que llame a
-        // una API de Windows por `extern C` tiene que escribir esto.
+        // Es la pieza que faltaba del programa: hasta ahora se usaba la clase predefinida "STATIC"
+        // porque registrar una propia exige un WNDCLASSEXA con UN PUNTERO A FUNCION EN UN CAMPO, y
+        // eso cruza la frontera en la direccion dificil -- codigo de C llamando a codigo de
+        // NativeSharp, no al reves.
         //
-        // Se escribe aqui, con el buffer que pone el llamador, porque es lo unico que se puede
-        // hacer sin tocar el compilador -- y queda anotado como consumidor medido de una funcion
-        // que la biblioteca deberia tener.
-        private static byte* ComoCadenaC(string texto, byte[] destino)
+        // Cada mensaje que no se atiende va a DefWindowProcA, que es lo que dibuja el marco, mueve
+        // la ventana y cierra al pulsar la X. Devolver 0 a todo daria una ventana muerta.
+        private static long Procedimiento(void* ventana, uint mensaje, ulong wParam, long lParam)
         {
-            int i = 0;
-            int tope = destino.Length - 1;
-            while (i < texto.Length && i < tope)
+            // WM_KEYDOWN. wParam es el codigo de tecla virtual; 0x1B es ESCAPE.
+            if (mensaje == 0x0100u)
             {
-                destino[i] = (byte)texto[i];
-                i = i + 1;
+                teclasPulsadas = teclasPulsadas + 1;
+                ultimaTecla = (int)wParam;
+                if (wParam == 0x1Bul) { salirPedido = true; }
+                return 0;
             }
-            destino[i] = 0;
-            return &destino[0];
+            // WM_LBUTTONDOWN.
+            if (mensaje == 0x0201u)
+            {
+                clicsIzquierdos = clicsIzquierdos + 1;
+                return 0;
+            }
+            // WM_MOUSEMOVE. Las coordenadas van EMPAQUETADAS en lParam: x en los 16 bits bajos,
+            // y en los altos. Se cuenta el movimiento y nada mas, pero desempaquetarlas aqui es
+            // lo que haria un programa de verdad.
+            if (mensaje == 0x0200u)
+            {
+                movimientosDeRaton = movimientosDeRaton + 1;
+                return 0;
+            }
+            // WM_CLOSE y WM_DESTROY: el usuario cerro la ventana.
+            if (mensaje == 0x0010u || mensaje == 0x0002u)
+            {
+                salirPedido = true;
+                return 0;
+            }
+            return Win32.DefWindowProcA(ventana, mensaje, wParam, lParam);
         }
 
         public static int Main()
         {
-            byte[] bufferClase = new byte[16];
-            byte* clase = ComoCadenaC("STATIC", bufferClase);
-            byte[] bufferTitulo = new byte[64];
-            byte* titulo = ComoCadenaC("NativeSharp", bufferTitulo);
+            teclasPulsadas = 0;
+            clicsIzquierdos = 0;
+            movimientosDeRaton = 0;
+            ultimaTecla = 0;
+            salirPedido = false;
 
-            // WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX|WS_VISIBLE. Se usa la clase
-            // predefinida "STATIC" del sistema A PROPOSITO: registrar una clase propia exige un
-            // WNDCLASSEXA con un puntero a funcion en un campo, y eso es una pieza mas -- se
-            // anadira cuando el programa necesite manejar mensajes de verdad. Con STATIC, el
-            // DefWindowProc del sistema pinta el marco y la ventana existe.
+            // LAS CADENAS C, con la clase de la biblioteca. Esto se escribia A MANO aqui --byte
+            // a byte, con su propio buffer-- y ese fue el hallazgo que hizo falta para anadir
+            // CString a NativeSharp.Core (doc 112 §C.3). Un `raii` se limpia al salir del ambito;
+            // el puntero vale mientras viva el objeto y ni un instante mas.
+            raii CString claseC = new CString("NativeSharpDemo");
+            raii CString tituloC = new CString("NativeSharp");
+            byte* clase = claseC.Pointer();
+            byte* titulo = tituloC.Pointer();
+
+            void* instancia = Win32.GetModuleHandleA(null);
+
+            // LA CLASE DE VENTANA PROPIA. El campo `Procedimiento` es un metodo de NativeSharp
+            // asignado a un `extern C delegate`, y de ahi a un campo de struct que lee Windows.
+            ClaseVentana claseVentana;
+            claseVentana.Tamano = 80u;          // sizeof(WNDCLASSEXA) en x64
+            claseVentana.Estilo = 0x0003u;      // CS_VREDRAW|CS_HREDRAW
+            claseVentana.Procedimiento = Procedimiento;
+            claseVentana.ExtraClase = 0;
+            claseVentana.ExtraVentana = 0;
+            claseVentana.Instancia = instancia;
+            claseVentana.Icono = null;
+            claseVentana.Cursor = Win32.LoadCursorA(null, 32512ul);   // IDC_ARROW
+            claseVentana.PincelFondo = null;
+            claseVentana.NombreMenu = null;
+            claseVentana.NombreClase = clase;
+            claseVentana.IconoPequeno = null;
+
+            if (Win32.RegisterClassExA(&claseVentana) == 0) { return 1; }
+
+            // WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX|WS_VISIBLE.
             void* ventana = Win32.CreateWindowExA(0u, clase, titulo,
-                0x10CF0000u, 100, 100, 640, 360, null, null, null, null);
-            if (ventana == null) { return 1; }
+                0x10CF0000u, 100, 100, 640, 360, null, null, instancia, null);
+            if (ventana == null) { return 2; }
 
             // ---------------------------------------------------------------------------------
             // EL ASSET. Se escribe y se lee con la biblioteca del Bloque 4, que es la mitad del
@@ -133,10 +225,10 @@ namespace demoventana
             // user32 y gdi32 se mida en cada corrida.
             // ---------------------------------------------------------------------------------
             void* pincelFondo = Win32.CreateSolidBrush(0x00302010u);   // BGR: azul oscuro
-            if (pincelFondo == null) { return 2; }
+            if (pincelFondo == null) { return 3; }
 
-            byte[] bufferTexto = new byte[64];
-            byte* texto = ComoCadenaC("NativeSharp nativo, sin runtime administrado", bufferTexto);
+            raii CString textoC = new CString("NativeSharp nativo, sin runtime administrado");
+            byte* texto = textoC.Pointer();
 
             Mensaje mensaje;
             Rectangulo area;
@@ -145,8 +237,11 @@ namespace demoventana
             area.Derecha = 640;
             area.Abajo = 360;
 
+            raii StringBuilder linea = new StringBuilder();
+            raii CString marcador = new CString("teclas/clics/mov");
+
             int cuadro = 0;
-            while (cuadro < cuadros)
+            while (cuadro < cuadros && !salirPedido)
             {
                 // PM_REMOVE = 1. Vaciar la cola en cada cuadro: sin esto la ventana no responde.
                 while (Win32.PeekMessageA(&mensaje, null, 0u, 0u, 1u) != 0)
@@ -162,7 +257,23 @@ namespace demoventana
                     Win32.SetBkColor(contexto, 0x00302010u);
                     Win32.SetTextColor(contexto, 0x00D0F0FFu);
                     // La barra se mueve con el cuadro: prueba que el bucle corre de verdad.
-                    Win32.TextOutA(contexto, 40 + cuadro, 160, texto, 44);
+                    Win32.TextOutA(contexto, 40 + cuadro, 160, texto, textoC.Length());
+
+                    // LA ENTRADA, PINTADA. Sin esto los contadores serian invisibles y no habria
+                    // forma de saber si el procedimiento de ventana se esta llamando.
+                    linea.Clear();
+                    linea.Append("teclas=");
+                    linea.Append(teclasPulsadas);
+                    linea.Append("  clics=");
+                    linea.Append(clicsIzquierdos);
+                    linea.Append("  mov=");
+                    linea.Append(movimientosDeRaton);
+                    linea.Append("  ultima=");
+                    linea.Append(ultimaTecla);
+                    raii string estado = linea.ToOwnedString();
+                    raii CString estadoC = new CString(estado);
+                    Win32.TextOutA(contexto, 40, 200, estadoC.Pointer(), estadoC.Length());
+
                     Win32.ReleaseDC(ventana, contexto);
                 }
 
@@ -170,8 +281,26 @@ namespace demoventana
                 cuadro = cuadro + 1;
             }
 
+            // EL RESUMEN, por la consola: un demo que solo pinta no deja rastro de si funciono.
+            // `String.ToString(int)` devuelve `owned string`, asi que se liga a un `raii` antes
+            // de pasarlo: pasarlo directo es "ownership-transfer argument requires an owned
+            // parameter". Es el segundo hallazgo de ownership de este programa (doc 112 §C.3) y
+            // sigue siendo el diagnostico correcto.
+            raii StringBuilder resumen = new StringBuilder();
+            resumen.Append("demo_ventana: teclas=");
+            resumen.Append(teclasPulsadas);
+            resumen.Append(" clics=");
+            resumen.Append(clicsIzquierdos);
+            resumen.Append(" movimientos=");
+            resumen.Append(movimientosDeRaton);
+            raii string resumenTexto = resumen.ToOwnedString();
+            Console.WriteLine(resumenTexto);
+
             Win32.DeleteObject(pincelFondo);
             Win32.DestroyWindow(ventana);
+            // Y se da de baja la clase: registrar una y no quitarla deja basura en el proceso, y
+            // este programa esta pensado para ejecutarse muchas veces seguidas.
+            Win32.UnregisterClassA(clase, instancia);
             File.Delete(rutaAsset);
             return 0;
         }

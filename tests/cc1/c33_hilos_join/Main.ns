@@ -1,0 +1,194 @@
+// Thread.Join COMO PUNTO DE SINCRONIZACION -- lo unico del contrato de memoria que podia ser falso.
+//
+// QUE DICE EL CONTRATO. El doc 111 §2.3: "Thread.Join: ACQUIRE respecto de todo lo que el hilo
+// unido escribio. Es lo que hace que <lanzar N hilos, unirlos, leer los resultados> sea correcto
+// sin mas sincronizacion -- y es el patron que un juego usa el 90 % de las veces."
+//
+// Y LA ADVERTENCIA DEL MISMO DOCUMENTO, que hay que repetir aqui porque limita lo que esta
+// fixture significa: UN MODELO DE MEMORIA NO SE VERIFICA CON FIXTURES. Un programa con una carrera
+// pasa mil veces y falla la mil una, en otra maquina, con otro planificador. Lo que esto puede
+// entregar es mucho menos, y aun asi vale: si el contrato es cierto pasa siempre; si es falso
+// falla A VECES, y "a veces" ya es informacion que hoy no existe.
+//
+// POR QUE ESTE Y NO OTRO. De las cinco mediciones que el doc 111 pide, esta es la unica que el
+// proyecto USA SIN PENSARLO y que nadie habia comprobado. Las demas (que los Interlocked lleven
+// seq_cst, que los accesos ordinarios no lleven ordenamiento) son inspeccion del IR y salieron a
+// favor solas.
+//
+// COMO ESTA CONSTRUIDA PARA QUE UN FALLO SE VEA:
+//
+//   * OCHO HILOS, cada uno con SU PROPIA ranura. Sin ranura compartida no hay carrera entre los
+//     trabajadores, asi que lo unico que se mide es la visibilidad ENTRE el trabajador y el hilo
+//     principal -- que es exactamente lo que Join promete.
+//   * CADA UNO ESCRIBE DIECISEIS VALORES, no uno. Una publicacion parcial --que se vea el ultimo
+//     pero no los anteriores-- es un fallo distinto de no ver nada, y con un solo valor no se
+//     distinguirian.
+//   * EL TRABAJO ES LARGO A PROPOSITO (un bucle de miles de vueltas): un hilo que termina antes
+//     de que el principal llegue al Join no mide nada, porque la escritura ya estaba hecha. El
+//     bucle hace probable que el Join tenga que esperar de verdad.
+//   * TREINTA RONDAS, con las ranuras puestas a cero entre una y otra Y COMPROBADAS. Si el
+//     borrado no se viera, el fallo se disfrazaria de exito en la ronda siguiente.
+//
+// Codigo de salida esperado: 42.
+using NativeSharp.Core;
+using NativeSharp.Core.Threading;
+
+namespace cc1hilosjoin
+{
+    public class Program
+    {
+        private const int Ranuras = 16;
+
+        private static int[] r0;
+        private static int[] r1;
+        private static int[] r2;
+        private static int[] r3;
+        private static int[] r4;
+        private static int[] r5;
+        private static int[] r6;
+        private static int[] r7;
+
+        // El trabajo de un hilo: calcular algo que cuesta y volcarlo en las dieciseis ranuras.
+        // `semilla` distingue a los ocho, asi que un hilo que escribiera en la ranura de otro
+        // daria un valor equivocado y no solo un cero.
+        private static void Trabajar(int[] destino, int semilla)
+        {
+            int acumulado = semilla;
+            int vuelta = 0;
+            while (vuelta < 20000)
+            {
+                acumulado = acumulado + (vuelta % 7);
+                vuelta = vuelta + 1;
+            }
+            int i = 0;
+            while (i < Ranuras)
+            {
+                destino[i] = acumulado + i;
+                i = i + 1;
+            }
+        }
+
+        private static void Trabajo0() { Trabajar(r0, 100); }
+        private static void Trabajo1() { Trabajar(r1, 200); }
+        private static void Trabajo2() { Trabajar(r2, 300); }
+        private static void Trabajo3() { Trabajar(r3, 400); }
+        private static void Trabajo4() { Trabajar(r4, 500); }
+        private static void Trabajo5() { Trabajar(r5, 600); }
+        private static void Trabajo6() { Trabajar(r6, 700); }
+        private static void Trabajo7() { Trabajar(r7, 800); }
+
+        // El mismo calculo que hace el hilo, hecho aqui. Si Join publica bien, los dos coinciden.
+        private static int Esperado(int semilla)
+        {
+            int acumulado = semilla;
+            int vuelta = 0;
+            while (vuelta < 20000)
+            {
+                acumulado = acumulado + (vuelta % 7);
+                vuelta = vuelta + 1;
+            }
+            return acumulado;
+        }
+
+        private static void Borrar(int[] destino)
+        {
+            int i = 0;
+            while (i < Ranuras)
+            {
+                destino[i] = 0;
+                i = i + 1;
+            }
+        }
+
+        private static bool EstaBorrado(int[] destino)
+        {
+            int i = 0;
+            while (i < Ranuras)
+            {
+                if (destino[i] != 0) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        private static bool Coincide(int[] destino, int semilla)
+        {
+            int esperado = Esperado(semilla);
+            int i = 0;
+            while (i < Ranuras)
+            {
+                if (destino[i] != esperado + i) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static int Main()
+        {
+            r0 = new int[Ranuras];
+            r1 = new int[Ranuras];
+            r2 = new int[Ranuras];
+            r3 = new int[Ranuras];
+            r4 = new int[Ranuras];
+            r5 = new int[Ranuras];
+            r6 = new int[Ranuras];
+            r7 = new int[Ranuras];
+
+            ThreadStart t0 = Trabajo0;
+            ThreadStart t1 = Trabajo1;
+            ThreadStart t2 = Trabajo2;
+            ThreadStart t3 = Trabajo3;
+            ThreadStart t4 = Trabajo4;
+            ThreadStart t5 = Trabajo5;
+            ThreadStart t6 = Trabajo6;
+            ThreadStart t7 = Trabajo7;
+
+            int ronda = 0;
+            while (ronda < 30)
+            {
+                Borrar(r0); Borrar(r1); Borrar(r2); Borrar(r3);
+                Borrar(r4); Borrar(r5); Borrar(r6); Borrar(r7);
+
+                // El borrado tiene que verse ANTES de lanzar. Si no, una ronda podria pasar con
+                // los valores de la anterior y el fallo quedaria escondido.
+                if (!EstaBorrado(r0)) { return 1; }
+                if (!EstaBorrado(r7)) { return 2; }
+
+                raii Thread h0 = new Thread(t0);
+                raii Thread h1 = new Thread(t1);
+                raii Thread h2 = new Thread(t2);
+                raii Thread h3 = new Thread(t3);
+                raii Thread h4 = new Thread(t4);
+                raii Thread h5 = new Thread(t5);
+                raii Thread h6 = new Thread(t6);
+                raii Thread h7 = new Thread(t7);
+
+                h0.Join();
+                h1.Join();
+                h2.Join();
+                h3.Join();
+                h4.Join();
+                h5.Join();
+                h6.Join();
+                h7.Join();
+
+                // A PARTIR DE AQUI el contrato dice que TODO lo que escribieron los ocho es
+                // visible. Un cero en cualquier ranura significa que la escritura no se publico;
+                // un valor de otra semilla, que se escribio donde no tocaba.
+                if (!Coincide(r0, 100)) { return 10; }
+                if (!Coincide(r1, 200)) { return 11; }
+                if (!Coincide(r2, 300)) { return 12; }
+                if (!Coincide(r3, 400)) { return 13; }
+                if (!Coincide(r4, 500)) { return 14; }
+                if (!Coincide(r5, 600)) { return 15; }
+                if (!Coincide(r6, 700)) { return 16; }
+                if (!Coincide(r7, 800)) { return 17; }
+
+                ronda = ronda + 1;
+            }
+
+            if (ronda != 30) { return 18; }
+            return 42;
+        }
+    }
+}

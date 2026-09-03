@@ -1,0 +1,55 @@
+// LA DIVISION POR CERO ES UNA TRAMPA, y esta fixture es la que lo fija.
+//
+// POR QUE HACIA FALTA UNA FIXTURE APARTE. El doc 110 §2.5 dice que `x / 0` con enteros es un fallo
+// del programa, en -O0 y en -O2. Todas las demas fixtures del arbol comprueban su contrato
+// DEVOLVIENDO 42, y un programa que aborta no puede devolver nada -- por eso este caso se quedo
+// fuera de c30 y quedo anotado como "necesita un caso negativo con codigo de salida esperado".
+//
+// Este es ese caso. La trampa del runtime hace `ExitProcess(128 + razon)` y la razon de division
+// por cero es 1, asi que EL EXITO DE ESTA FIXTURE ES SALIR CON 129. Un 42 aqui seria el fallo: la
+// division habria devuelto un valor.
+//
+// LO QUE DE VERDAD MIDE, y no es obvio: que la trampa este EN EL IR. Antes del 2026-09-03 el
+// bajador emitia un `sdiv` desnudo y dejaba que fallara el `idiv` del procesador. Eso da
+// 0xC0000094 en -O0 -- un codigo de Windows, no del programa -- y en -O2 no da nada, porque
+// `sdiv x, 0` es poison en LLVM y el optimizador pliega la funcion entera. Un 129 EN LOS DOS
+// NIVELES es la prueba de que la trampa la emite el compilador y no el hardware.
+//
+// EL CERO TIENE QUE SER OPACO. Escrito como literal, `1 / 0` ya no compila --el compilador lo
+// diagnostica-- que es la otra mitad del contrato y se mide sola: si alguien quitara el
+// diagnostico, esta fixture seguiria pasando, pero el programa de abajo no compilaria si el cero
+// fuera literal. Por eso sale de la linea de comandos.
+//
+// Codigo de salida esperado: 129.
+using NativeSharp.Core;
+
+namespace cc1divisioncero
+{
+    public class Program
+    {
+        // El compilador no puede saber cuantos argumentos habra, asi que no puede plegar esto.
+        private static int CeroOpaco()
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return cuantos - cuantos;
+        }
+
+        public static int Main()
+        {
+            int divisor = CeroOpaco();
+            int numerador = 7 + CeroOpaco();
+
+            // Antes de la division, una senal de vida: si el programa muriera ANTES de llegar
+            // aqui, el codigo de salida seria otro y no una trampa de division.
+            Console.WriteLine("C32-ANTES-DE-DIVIDIR");
+
+            int resultado = numerador / divisor;
+
+            // INALCANZABLE. Si se ejecuta, la division devolvio un valor en vez de abortar, y eso
+            // es el fallo que esta fixture existe para cazar. Se devuelve un codigo distinto de
+            // 129 A PROPOSITO para que el rojo diga exactamente eso.
+            Console.WriteLine("C32-LA-DIVISION-DEVOLVIO-UN-VALOR");
+            return resultado + 1;
+        }
+    }
+}

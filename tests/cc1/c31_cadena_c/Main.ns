@@ -1,0 +1,121 @@
+// CString -- la conversion de `string` a cadena C terminada en NUL, medida.
+//
+// QUE MIDE Y POR QUE ASI. Un `string` de NativeSharp es `{ i64 longitud; bytes }` y no promete un
+// cero al final; toda la API `A` de Win32 lo exige. Hasta el 2026-09-03 no habia forma de hacer
+// esa conversion desde codigo de usuario, y el primer programa real del proyecto
+// (examples/project_demo_ventana) la escribio a mano. Esta fixture comprueba la clase que la
+// sustituye.
+//
+// LA COMPROBACION QUE VALE MAS ES LA ULTIMA: la cadena se le pasa a `lstrlenA` de kernel32, o sea
+// que quien decide si el NUL esta bien puesto es EL SISTEMA OPERATIVO y no este programa. Contar
+// bytes uno mismo y darse por bueno es verificar contra el propio modelo -- justo lo que el
+// criterio del proyecto prohibe.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+
+namespace cc1cadenac
+{
+    public class Program
+    {
+        // lstrlenA cuenta bytes hasta el primer cero. Es la definicion de "cadena C", aplicada por
+        // el sistema y no por nosotros.
+        extern C from "kernel32.dll"
+        {
+            public int lstrlenA(byte* texto);
+        }
+
+        // Un valor que el compilador no puede plegar.
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return valor + (cuantos - cuantos);
+        }
+
+        public static int Main()
+        {
+            // -----------------------------------------------------------------------------
+            // 1. El caso corriente: los bytes del texto, y un cero detras.
+            // -----------------------------------------------------------------------------
+            raii CString basico = new CString("STATIC");
+            if (basico.Length() != 6) { return 1; }
+            if (basico.SizeWithNul() != 7) { return 2; }
+
+            byte* p = basico.Pointer();
+            if (p == null) { return 3; }
+            if (*p != (byte)'S') { return 4; }
+            if (*(p + 1) != (byte)'T') { return 5; }
+            if (*(p + 5) != (byte)'C') { return 6; }
+            // EL NUL. Es la razon de ser de la clase entera.
+            if (*(p + 6) != 0) { return 7; }
+
+            // At() da lo mismo que el puntero, y no se sale del texto.
+            if (basico.At(0) != (byte)'S') { return 8; }
+            if (basico.At(5) != (byte)'C') { return 9; }
+            if (basico.At(6) != 0) { return 10; }     // fuera de rango, no el NUL
+            if (basico.At(-1) != 0) { return 11; }
+
+            // -----------------------------------------------------------------------------
+            // 2. LA CADENA VACIA. `new byte[0]` no daria donde poner el NUL, y "" tiene que
+            //    producir un puntero valido a un solo cero: es lo que Win32 espera.
+            // -----------------------------------------------------------------------------
+            raii CString vacia = new CString("");
+            if (vacia.Length() != 0) { return 12; }
+            if (vacia.SizeWithNul() != 1) { return 13; }
+            byte* pv = vacia.Pointer();
+            if (pv == null) { return 14; }
+            if (*pv != 0) { return 15; }
+
+            // -----------------------------------------------------------------------------
+            // 3. EL SISTEMA OPERATIVO CUENTA LOS BYTES. Si el NUL faltara o estuviera de mas,
+            //    lstrlenA daria otro numero -- o leeria memoria ajena hasta encontrar un cero.
+            // -----------------------------------------------------------------------------
+            if (lstrlenA(basico.Pointer()) != 6) { return 16; }
+            if (lstrlenA(vacia.Pointer()) != 0) { return 17; }
+
+            // 44, contados. La primera version de esta linea decia 43 porque escribi el numero a
+            // ojo en vez de contarlo, y la fixture salio roja en el 18 -- el mismo error que ya
+            // habia cometido dos veces con la aritmetica de coma flotante del c30. La longitud la
+            // dice ahora la propia cadena en la segunda comprobacion: lstrlenA cuenta los bytes
+            // que hay, y si las dos no coincidieran el fallo seria del compilador y no mio.
+            raii CString larga = new CString("NativeSharp nativo, sin runtime administrado");
+            if (larga.Length() != 44) { return 18; }
+            if (lstrlenA(larga.Pointer()) != larga.Length()) { return 19; }
+
+            // -----------------------------------------------------------------------------
+            // 4. UN CERO EN MEDIO DEL TEXTO. La clase NO lo rechaza ni lo sustituye: copia lo
+            //    que hay. La consecuencia es la de cualquier cadena C -- el sistema deja de leer
+            //    ahi -- y `Length()` sigue devolviendo el texto completo para que el llamador
+            //    pueda notarlo. Las dos mitades del contrato, medidas a la vez.
+            // -----------------------------------------------------------------------------
+            raii CString conCero = new CString("AB\0CD");
+            if (conCero.Length() != 5) { return 20; }
+            if (conCero.SizeWithNul() != 6) { return 21; }
+            if (conCero.At(2) != 0) { return 22; }
+            if (conCero.At(3) != (byte)'C') { return 23; }
+            // El sistema para en el cero interior: dos, no cinco.
+            if (lstrlenA(conCero.Pointer()) != 2) { return 24; }
+
+            // -----------------------------------------------------------------------------
+            // 5. EL PUNTERO ES ESTABLE mientras viva el objeto: dos llamadas dan lo mismo.
+            //    Si CString reasignara por dentro, un puntero guardado antes quedaria colgando.
+            // -----------------------------------------------------------------------------
+            byte* primera = larga.Pointer();
+            byte* segunda = larga.Pointer();
+            if (primera != segunda) { return 25; }
+
+            // -----------------------------------------------------------------------------
+            // 6. Y CON UN TEXTO QUE EL COMPILADOR NO PUEDE PLEGAR, para que la conversion se
+            //    haga de verdad en tiempo de ejecucion y no salga de una constante del modulo.
+            // -----------------------------------------------------------------------------
+            raii string construido = String.Concat("Nativ", "eSharp");
+            raii CString dinamica = new CString(construido);
+            if (dinamica.Length() != 11) { return 26; }
+            if (lstrlenA(dinamica.Pointer()) != 11) { return 27; }
+            if (dinamica.At(Opaco(0)) != (byte)'N') { return 28; }
+            if (dinamica.At(Opaco(10)) != (byte)'p') { return 29; }
+
+            return 42;
+        }
+    }
+}

@@ -274,15 +274,20 @@ namespace NativeSharp.Core
     // Cuando ese ID se cierre, estas fabricas pueden mudarse a los structs sin tocar nada mas.
     //
     // Y UN SEGUNDO HUECO, encontrado al escribir esto y medido igual (ID 132): DOS METODOS
-    // GENERICOS CON EL MISMO NOMBRE Y LA MISMA ARIDAD DE TIPOS NO SE PUEDEN SOBRECARGAR, aunque
-    // sus parametros sean distintos. La identidad de una plantilla generica es nombre + numero de
-    // parametros de tipo, sin la lista de parametros:
+    // GENERICOS CON EL MISMO NOMBRE Y LA MISMA ARIDAD DE TIPOS NO SE PODIAN SOBRECARGAR, aunque
+    // sus parametros fueran distintos. La identidad de una plantilla generica era nombre + numero
+    // de parametros de tipo, sin la lista de parametros:
     //
     //     duplicate generic template identity 'NativeSharp.Core.Spans.Of``1'
     //
-    // Por eso el tramo se llama `OfRange` y no `Of`. Es un nombre peor, y esta aqui a proposito
-    // en vez de escondido: la alternativa era una firma con parametros opcionales que el lenguaje
-    // tampoco tiene, o dos clases con el mismo metodo, que es peor todavia.
+    // ESE ID SE CERRO EL 2026-09-03: la identidad incluye ahora la cuenta de parametros de valor,
+    // asi que `Of<T>(T[])` y un `Of<T>(T[], int, int)` podrian convivir. El sitio donde el rodeo
+    // SI se deshizo es Algorithm.SortWith, que paso a ser una sobrecarga de Sort.
+    //
+    // AQUI EL NOMBRE SE QUEDA, y no por inercia: `OfRange` describe lo que hace mejor que un `Of`
+    // sobrecargado, y son 51 llamadas repartidas por la biblioteca y las fixtures. Renombrar
+    // seria mover cincuenta y una lineas para empeorar el nombre. Lo que si cambia es este
+    // comentario: decir que es un rodeo obligado, cuando ya no lo es, seria una deuda inventada.
     public class Spans
     {
         public static Span<T> Empty<T>()

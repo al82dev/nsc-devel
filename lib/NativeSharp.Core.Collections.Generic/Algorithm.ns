@@ -160,12 +160,20 @@ namespace NativeSharp.Core.Collections.Generic
         // NO ES ESTABLE, y std::sort tampoco, asi que no se pierde ninguna garantia que el codigo
         // de origen tuviera.
         //
-        // SortWith Y NO UNA SOBRECARGA DE Sort. ID 132: las plantillas genericas se identifican por
-        // nombre + ARIDAD GENERICA, no por lista de parametros, asi que Sort<T>(span) y
-        // Sort<T>(span, cmp) chocarian con "duplicate generic template identity". Se rodea
-        // renombrando, igual que en el Bloque 3 (Of -> OfRange). (List<T>.Sort() y
-        // List<T>.Sort(Comparison<T>) si conviven porque son miembros NO genericos de una clase
-        // generica -- otra cosa.)
+        // SOBRECARGA DE Sort, desde el 2026-09-03. Aqui hubo un `SortWith` con este comentario:
+        //
+        //     "SortWith Y NO UNA SOBRECARGA DE Sort. ID 132: las plantillas genericas se
+        //      identifican por nombre + ARIDAD GENERICA, no por lista de parametros, asi que
+        //      Sort<T>(span) y Sort<T>(span, cmp) chocarian con duplicate generic template
+        //      identity. Se rodea renombrando."
+        //
+        // El ID 132 se cerro: la identidad de una plantilla generica incluye ahora la CUENTA DE
+        // PARAMETROS DE VALOR, asi que las dos conviven y el rodeo sobra. Un nombre peor que
+        // sobrevive al motivo que lo justificaba es deuda disfrazada de decision.
+        //
+        // LO QUE SIGUE SIN PODERSE, y esta escrito donde se arreglo: dos sobrecargas genericas con
+        // la MISMA cuenta de parametros y tipos distintos. Elegir entre ellas necesita los tipos
+        // de los argumentos, y la pasada generica corre antes del modelo semantico.
         public static void Sort<T>(Span<T> datos)
         {
             int cuantos = datos.Length();
@@ -193,7 +201,7 @@ namespace NativeSharp.Core.Collections.Generic
             }
         }
 
-        public static void SortWith<T>(Span<T> datos, Comparison<T> comparador)
+        public static void Sort<T>(Span<T> datos, Comparison<T> comparador)
         {
             int cuantos = datos.Length();
             if (cuantos < 2) { return; }

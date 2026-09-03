@@ -3,8 +3,10 @@
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Source/SourceFile.h"
+#include "nativesharp/Source/SourcePosition.h"
 
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -442,9 +444,36 @@ bool ProjectCompilation::compileProjectOopHir(
     }
 
     oopHirModel_ = std::make_unique<ProjectOopHirModel>();
-    return oopHirModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
-        *constructionModel_, *objectLayoutModel_, loadError);
+    if (oopHirModel_->build(
+            *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
+            *constructionModel_, *objectLayoutModel_, loadError))
+    {
+        return true;
+    }
+
+    // EL SITIO DONDE FALLO, delante del mensaje. Es la otra mitad del envoltorio de
+    // `lowerExpression` (doc 112 §A.4): aquel apunta el rango del nodo MAS INTERNO que no se pudo
+    // bajar, y hasta hoy NADIE LO CONSUMIA -- se guardaba y se tiraba.
+    //
+    // POR QUE AQUI Y NO EN EL MODELO. `ProjectOopHirModel` no tiene `SourceManager` y no le hace
+    // falta para recordar un rango: recordar es barato, traducir necesita los ficheros. Esta
+    // clase ya tiene los dos. Enhebrar el `SourceManager` hasta el modelo habria sido pasarlo por
+    // seis constructores para hacer aqui mismo lo que ya se puede hacer.
+    //
+    // El formato es `fichero:linea:columna: mensaje`, el de siempre en compiladores de C, para que
+    // un editor pueda saltar al sitio.
+    const SourceRange range = oopHirModel_->lastErrorRange();
+    if (range.isValid() && !loadError.empty())
+    {
+        const source::SourcePosition position = sourceManager_.getPosition(range.begin());
+        const std::string_view path = sourceManager_.getPath(range.begin());
+        if (!path.empty())
+        {
+            loadError = std::string(path) + ':' + std::to_string(position.line) + ':' +
+                std::to_string(position.column) + ": " + loadError;
+        }
+    }
+    return false;
 }
 
 bool ProjectCompilation::compileProjectOopMir(
