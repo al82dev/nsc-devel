@@ -1,0 +1,387 @@
+// Bloque 4 -- EL CRITERIO DE CIERRE. Doc 69, escrito antes de empezar el bloque:
+//
+//     "un programa NativeSharp encuentra fuentes, las lee, escribe un binario y llama al
+//      enlazador"
+//
+// Eso es lo que hace este programa, en ese orden, y por eso existe. Las fases A, B y C ya
+// tienen sus fixtures por separado (c24, c25); este mide LO QUE NINGUNO DE LOS DOS PUEDE
+// medir: que las cuatro capas componen en un solo programa que se comporta como un driver de
+// compilador. Un fallo aqui con c24 y c25 en verde significa que las piezas estan bien y la
+// composicion no.
+//
+// Y es ademas el UNICO sitio donde Process.Run se ejecuta de verdad. Hasta hoy sus diez
+// argumentos de CreateProcessA existian solo como IR.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto, para que el log diga
+// que paso sin tener que reproducirlo.
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Core.Diagnostics;
+
+namespace cc1driverminimo
+{
+    public class Program
+    {
+        // Cuantos caracteres ocupa el nombre de una fuente dentro del objeto binario. Ancho fijo,
+        // como los nombres de seccion de COFF, y por el mismo motivo: un registro de tamano
+        // constante se puede saltar sin leerlo.
+        private static int NombreAncho() { return 24; }
+
+        // Suma de los bytes del texto mas su longitud. No pretende ser un hash: pretende cambiar
+        // si el texto cambia, y ser calculable identico en las dos direcciones del viaje. Un hash
+        // de verdad aqui solo anadiria codigo que no mide nada mas.
+        private static uint Checksum(string texto)
+        {
+            uint suma = (uint)texto.Length;
+            int i = 0;
+            while (i < texto.Length)
+            {
+                suma = suma + (uint)(byte)texto[i];
+                i = i + 1;
+            }
+            return suma;
+        }
+
+        public static int Main()
+        {
+            string[] argumentos = new string[8];
+            int cuantos = Environment.GetCommandLineArgs(argumentos);
+            if (cuantos < 1) { return 99; }
+
+            // MODO HIJO, Y ES LO PRIMERO QUE SE MIRA A PROPOSITO.
+            //
+            // El paso 5 lanza ESTE MISMO EJECUTABLE como proceso hijo. Un programa que se lanza a
+            // si mismo es una bomba de procesos si la condicion de parada esta mal, asi que la
+            // parada no depende de leer bien un argumento: depende de CUANTOS hay. El padre solo
+            // existe con cuantos == 1, y todo hijo recibe uno mas, de modo que un hijo NO PUEDE
+            // llegar al paso 5 aunque no reconozca su propio argumento. Por eso el `return 98`
+            // esta aqui y no hay ninguna rama que siga adelante con argumentos de mas.
+            //
+            // Por que lanzarse a si mismo y no otra cosa: es el unico ejecutable que este programa
+            // sabe seguro que existe, con un codigo de salida y una salida de texto que decide el
+            // mismo. Cualquier herramienta externa haria que la prueba midiera la CLI de esa
+            // herramienta ademas de Process.Run.
+            if (cuantos >= 2)
+            {
+                if (String.Equals(argumentos[1], "--hijo"))
+                {
+                    Console.WriteLine("C26-HIJO-VIVO");
+                    return 23;
+                }
+                return 98;
+            }
+
+            // Nombres unicos por trabajo. run_cases.py lanza los 88 trabajos con cwd en la raiz
+            // del repositorio y 16 en paralelo, asi que -O0 y -O2 de esta misma fixture corren a
+            // la vez en el mismo directorio; con nombres fijos se pisarian y el rojo seria
+            // intermitente. args[0] los separa -- mismo criterio que c24 y c25.
+            raii string propio = Path.GetFileNameWithoutExtension(argumentos[0]);
+            raii string dirFuentes = String.Concat(propio, ".c26.src");
+            raii string rutaObjeto = String.Concat(propio, ".c26.obj");
+            raii string rutaSalidaHijo = String.Concat(propio, ".c26.hijo.txt");
+            raii string rutaSalidaEnlazador = String.Concat(propio, ".c26.link.txt");
+
+            // -------------------------------------------------------------------------------
+            // 1. PREPARAR UN ARBOL DE FUENTES.
+            //
+            // El programa escribe sus propias entradas en vez de leer las del repositorio, y eso
+            // es deliberado: bajo run_cases.py el directorio de trabajo es la raiz del repo, pero
+            // bajo ctest (nsc.cc1.correctness) no tiene por que serlo, y una fixture que dependa
+            // del cwd falla en un runner y pasa en el otro. Escribiendo lo que va a leer, el
+            // programa mide la cadena entera sin depender de donde lo lancen.
+            // -------------------------------------------------------------------------------
+            if (Directory.Exists(dirFuentes))
+            {
+                if (!LimpiarDirectorio(dirFuentes)) { return 1; }
+            }
+            Directory.CreateDirectory(dirFuentes);
+            if (!Directory.Exists(dirFuentes)) { return 2; }
+
+            string[] nombres = new string[3];
+            nombres[0] = "alfa.ns";
+            nombres[1] = "beta.ns";
+            nombres[2] = "gamma.ns";
+
+            string[] textos = new string[3];
+            textos[0] = "namespace uno { public class A { public static int F() { return 1; } } }";
+            textos[1] = "namespace dos { public class B { public static int G() { return 22; } } }";
+            textos[2] = "namespace tres { public class C { public static int H() { return 333; } } }";
+
+            int k = 0;
+            while (k < 3)
+            {
+                raii string destino = Path.Combine(dirFuentes, nombres[k]);
+                File.WriteAllText(destino, textos[k]);
+                if (!File.Exists(destino)) { return 3; }
+                k = k + 1;
+            }
+
+            // -------------------------------------------------------------------------------
+            // 2. ENCONTRARLAS. Directory.GetFileCount primero para saber que tamano pedir, que es
+            //    exactamente el contrato de la API, y GetFiles despues.
+            // -------------------------------------------------------------------------------
+            int cuantasFuentes = Directory.GetFileCount(dirFuentes);
+            if (cuantasFuentes != 3) { return 4; }
+
+            string[] encontradas = new string[cuantasFuentes];
+            int llenadas = Directory.GetFiles(dirFuentes, encontradas);
+            if (llenadas != 3) { return 5; }
+
+            // -------------------------------------------------------------------------------
+            // 3. LEERLAS Y MEDIRLAS.
+            //
+            // El orden de FindFirstFile/FindNextFile no esta garantizado por Win32, asi que NADA
+            // de aqui en adelante depende de el: los registros se escriben en el orden en que
+            // llegaron y se vuelven a comprobar contra ese mismo array. La propiedad que se mide
+            // es que el viaje de ida y vuelta conserva lo escrito, no que el sistema de archivos
+            // ordene alfabeticamente.
+            // -------------------------------------------------------------------------------
+            uint[] checksums = new uint[3];
+            uint[] longitudes = new uint[3];
+            uint totalLongitud = 0u;
+
+            int i = 0;
+            while (i < llenadas)
+            {
+                raii string ruta = Path.Combine(dirFuentes, encontradas[i]);
+                string contenido = File.ReadAllText(ruta);
+                if (contenido.Length == 0) { return 6; }
+
+                // La fuente leida tiene que ser una de las tres escritas, y con su texto entero.
+                int cual = IndiceDe(nombres, encontradas[i]);
+                if (cual < 0) { return 7; }
+                if (!String.Equals(contenido, textos[cual])) { return 8; }
+
+                longitudes[i] = (uint)contenido.Length;
+                checksums[i] = Checksum(contenido);
+                totalLongitud = totalLongitud + longitudes[i];
+                i = i + 1;
+            }
+
+            // -------------------------------------------------------------------------------
+            // 4. ESCRIBIR UN OBJETO BINARIO Y VOLVER A LEERLO.
+            //
+            //    magia  u32   0x4E533236  "NS26"
+            //    version u16  1
+            //    cuenta  u16  3
+            //    por fuente: nombre en 24 bytes de ancho fijo, u32 longitud, u32 checksum
+            //    total   u32  suma de longitudes
+            //    fin     u8   255
+            // -------------------------------------------------------------------------------
+            ByteBuffer buffer = new ByteBuffer();
+            BinaryWriter w = new BinaryWriter(buffer);
+
+            w.WriteUInt32(1313359414u);            // 0x4E533236
+            w.WriteUInt16(1);
+            w.WriteUInt16((ushort)llenadas);
+
+            int j = 0;
+            while (j < llenadas)
+            {
+                int escritos = w.WriteFixedAscii(encontradas[j], NombreAncho());
+                if (escritos != encontradas[j].Length) { return 9; }   // truncado: nombre largo
+                w.WriteUInt32(longitudes[j]);
+                w.WriteUInt32(checksums[j]);
+                j = j + 1;
+            }
+
+            w.WriteUInt32(totalLongitud);
+            w.WriteByte(255);
+
+            int esperadoTamano = 4 + 2 + 2 + llenadas * (NombreAncho() + 4 + 4) + 4 + 1;
+            if (buffer.Count() != esperadoTamano) { return 10; }
+
+            byte[] bytes = buffer.ToArray();
+            if (!File.WriteAllBytes(rutaObjeto, bytes, bytes.Length)) { return 11; }
+            if (File.GetSize(rutaObjeto) != (long)esperadoTamano) { return 12; }
+
+            // Se relee con ReadBytes --el que llena un buffer del llamador-- y no con
+            // ReadAllBytes, para que la lectura de este fixture no repita exactamente la de c25.
+            byte[] leido = new byte[esperadoTamano];
+            int cuantosBytes = File.ReadBytes(rutaObjeto, leido);
+            if (cuantosBytes != esperadoTamano) { return 13; }
+
+            ReadOnlySpan<byte> vista = Spans.ReadOnlyOf<byte>(leido);
+            BinaryReader r = new BinaryReader(vista);
+
+            Optional<uint> magia = r.ReadUInt32();
+            if (magia.IsEmpty()) { return 14; }
+            if (magia.Value() != 1313359414u) { return 15; }
+
+            Optional<ushort> version = r.ReadUInt16();
+            if (version.Value() != 1) { return 16; }
+
+            Optional<ushort> cuenta = r.ReadUInt16();
+            if (cuenta.Value() != (ushort)llenadas) { return 17; }
+
+            int m = 0;
+            while (m < llenadas)
+            {
+                ReadOnlySpan<byte> campoNombre = r.ReadSpan(NombreAncho());
+                if (campoNombre.Length() != NombreAncho()) { return 18; }
+                if (!NombreCoincide(campoNombre, encontradas[m])) { return 19; }
+
+                Optional<uint> longitud = r.ReadUInt32();
+                if (longitud.IsEmpty()) { return 20; }
+                if (longitud.Value() != longitudes[m]) { return 21; }
+
+                Optional<uint> suma = r.ReadUInt32();
+                if (suma.Value() != checksums[m]) { return 22; }
+                m = m + 1;
+            }
+
+            Optional<uint> total = r.ReadUInt32();
+            if (total.Value() != totalLongitud) { return 23; }
+
+            Optional<byte> fin = r.ReadByte();
+            if (fin.Value() != 255) { return 24; }
+            if (!r.IsAtEnd()) { return 25; }
+
+            // -------------------------------------------------------------------------------
+            // 5. LANZAR UN PROCESO HIJO Y LEER SU CODIGO DE SALIDA.
+            //
+            // La linea de comandos incluye el argv[0], porque asi lo espera Windows, y va entre
+            // comillas porque la ruta puede tener espacios. Esto es exactamente la forma en que
+            // src/Linker/LldLinker.cpp invoca al enlazador desde C++.
+            // -------------------------------------------------------------------------------
+            string comillas = "\"";
+            raii string abierto = String.Concat(comillas, argumentos[0]);
+            raii string cerrado = String.Concat(abierto, comillas);
+            raii string lineaHijo = String.Concat(cerrado, " --hijo");
+
+            int codigoHijo = Process.Run(argumentos[0], lineaHijo, rutaSalidaHijo);
+            if (codigoHijo == -1) { return 26; }      // no se pudo lanzar
+            if (codigoHijo != 23) { return 27; }      // llego, pero no es el hijo que esperabamos
+
+            // Y su salida de texto: redirigir stdout es la mitad del contrato de Process.Run, y
+            // sin comprobarla un hijo que no imprimiera nada pasaria igual.
+            string salidaHijo = File.ReadAllText(rutaSalidaHijo);
+            if (!String.Contains(salidaHijo, "C26-HIJO-VIVO")) { return 28; }
+
+            // -------------------------------------------------------------------------------
+            // 6. LANZAR EL ENLAZADOR DE VERDAD.
+            //
+            // Esta es la frase literal del criterio del doc 69, y es distinta del paso 5: el paso
+            // 5 demuestra el mecanismo con un hijo que controlamos; este demuestra que el
+            // mecanismo sirve para la herramienta real del compilador.
+            //
+            // DE DONDE SALE LA RUTA. De NSC_CC1_LINKER, que pone el arnes (run_cases.py) con el
+            // mismo enlazador que uso nsc para construir este ejecutable, y si no, de
+            // NSC_LLD_LINK, que es la variable que el propio compilador consulta
+            // (src/Linker/LldLinker.cpp, findLldLink). No se busca en el PATH porque NativeSharp
+            // no tiene todavia con que buscar en el PATH, y adivinar una ruta seria peor que no
+            // intentarlo.
+            //
+            // QUE SE COMPRUEBA, Y QUE NO. Se comprueba que el proceso ARRANCO, que se espero a
+            // que terminara y que devolvio un codigo -- es decir, todo lo que Process.Run
+            // promete. NO se comprueba un codigo de salida concreto, y eso es a proposito: en la
+            // pasada 1 el enlazador es lld-link y en la pasada 2 es nslink.exe, dos programas
+            // distintos con dos CLI distintas. Exigir un codigo concreto convertiria esta fixture
+            // en una prueba de la linea de comandos del enlazador -- y encima de uno que escribe
+            // otra persona -- en vez de una prueba de Process.Run.
+            //
+            // SI LA VARIABLE NO ESTA, se avisa por la salida y no se falla. Una fixture que se
+            // pusiera roja en una maquina sin enlazador estaria midiendo la maquina. El aviso
+            // sale en el log del caso, que es donde alguien lo va a ver.
+            // -------------------------------------------------------------------------------
+            string rutaEnlazador = Environment.GetEnvironmentVariable("NSC_CC1_LINKER");
+            if (String.IsNullOrEmpty(rutaEnlazador))
+            {
+                rutaEnlazador = Environment.GetEnvironmentVariable("NSC_LLD_LINK");
+            }
+
+            if (String.IsNullOrEmpty(rutaEnlazador))
+            {
+                Console.WriteLine("c26 AVISO: sin NSC_CC1_LINKER ni NSC_LLD_LINK, no se lanzo el enlazador");
+            }
+            else
+            {
+                if (!File.Exists(rutaEnlazador)) { return 29; }
+
+                raii string abiertoL = String.Concat(comillas, rutaEnlazador);
+                raii string cerradoL = String.Concat(abiertoL, comillas);
+
+                int codigoEnlazador = Process.Run(rutaEnlazador, cerradoL, rutaSalidaEnlazador);
+                if (codigoEnlazador == -1) { return 30; }
+
+                // El fichero de salida tiene que existir: Process.Run lo crea antes de lanzar
+                // nada, asi que su ausencia significaria que la redireccion no se monto.
+                if (!File.Exists(rutaSalidaEnlazador)) { return 31; }
+
+                raii string codigoTexto = String.ToString(codigoEnlazador);
+                raii string aviso = String.Concat("c26: enlazador lanzado, codigo ", codigoTexto);
+                Console.WriteLine(aviso);
+            }
+
+            // -------------------------------------------------------------------------------
+            // 7. LIMPIAR. Un trabajo que deja basura en la raiz del repositorio la deja para los
+            //    otros 87.
+            // -------------------------------------------------------------------------------
+            if (!LimpiarDirectorio(dirFuentes)) { return 32; }
+            File.Delete(rutaObjeto);
+            File.Delete(rutaSalidaHijo);
+            if (!String.IsNullOrEmpty(rutaEnlazador)) { File.Delete(rutaSalidaEnlazador); }
+
+            if (File.Exists(rutaObjeto)) { return 33; }
+            if (Directory.Exists(dirFuentes)) { return 34; }
+
+            return 42;
+        }
+
+        // Borra los archivos de un directorio y despues el directorio. Directory.Delete envuelve
+        // RemoveDirectoryA, que exige el directorio VACIO -- por eso los dos pasos.
+        private static bool LimpiarDirectorio(string ruta)
+        {
+            if (!Directory.Exists(ruta)) { return true; }
+
+            int cuantos = Directory.GetFileCount(ruta);
+            if (cuantos > 0)
+            {
+                string[] dentro = new string[cuantos];
+                int llenados = Directory.GetFiles(ruta, dentro);
+                int i = 0;
+                while (i < llenados)
+                {
+                    raii string completo = Path.Combine(ruta, dentro[i]);
+                    File.Delete(completo);
+                    i = i + 1;
+                }
+            }
+
+            Directory.Delete(ruta);
+            return !Directory.Exists(ruta);
+        }
+
+        private static int IndiceDe(string[] donde, string que)
+        {
+            int i = 0;
+            while (i < donde.Length)
+            {
+                if (String.Equals(donde[i], que)) { return i; }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        // Un campo de nombre de ancho fijo coincide si sus primeros caracteres son los del nombre
+        // y el resto son ceros. Comprobar tambien el relleno importa: si WriteFixedAscii dejara
+        // basura detras, un lector que solo mirara los primeros bytes no lo veria nunca.
+        private static bool NombreCoincide(ReadOnlySpan<byte> campo, string nombre)
+        {
+            if (nombre.Length > campo.Length()) { return false; }
+
+            int i = 0;
+            while (i < nombre.Length)
+            {
+                if (campo[i] != (byte)nombre[i]) { return false; }
+                i = i + 1;
+            }
+            while (i < campo.Length())
+            {
+                if (campo[i] != 0) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+    }
+}

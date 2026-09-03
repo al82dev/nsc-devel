@@ -6,9 +6,9 @@
 /nxcompat
 /highentropyva
 /out:"A:/nsc-devel\tests\interop_contract\c7_definite_assignment\c7_check.exe"
-"A:\nsc-devel\_logs_nslink_solo\linktemps_ctest\nativesharp-stage20-44284224717100-0\program.obj"
-"A:\nsc-devel\_logs_nslink_solo\linktemps_ctest\nativesharp-stage20-44284224717100-0\runtime.obj"
-"A:\nsc-devel\_logs_nslink_solo\linktemps_ctest\nativesharp-stage20-44284224717100-0\KERNEL32.import.lib"
-"A:\nsc-devel\_logs_nslink_solo\linktemps_ctest\nativesharp-stage20-44284224717100-0\KERNELBASE.import.lib"
-"A:\nsc-devel\_logs_nslink_solo\linktemps_ctest\nativesharp-stage20-44284224717100-0\SHELL32.import.lib"
-"A:\nsc-devel\_logs_nslink_solo\linktemps_ctest\nativesharp-stage20-44284224717100-0\UCRTBASE.import.lib"
+"A:\nsc-devel\_logs_nslink\linktemps\nativesharp-stage20-71524134104500-0\program.obj"
+"A:\nsc-devel\_logs_nslink\linktemps\nativesharp-stage20-71524134104500-0\runtime.obj"
+"A:\nsc-devel\_logs_nslink\linktemps\nativesharp-stage20-71524134104500-0\KERNEL32.import.lib"
+"A:\nsc-devel\_logs_nslink\linktemps\nativesharp-stage20-71524134104500-0\KERNELBASE.import.lib"
+"A:\nsc-devel\_logs_nslink\linktemps\nativesharp-stage20-71524134104500-0\SHELL32.import.lib"
+"A:\nsc-devel\_logs_nslink\linktemps\nativesharp-stage20-71524134104500-0\UCRTBASE.import.lib"

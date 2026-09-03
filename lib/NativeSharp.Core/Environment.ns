@@ -65,6 +65,18 @@ namespace NativeSharp.Core
             return 0;
         }
 
+        // Bloque 4, fase A. Operacion nucleo: GetCurrentDirectoryA, dos llamadas -- la primera
+        // pregunta el tamano, la segunda llena. Cierra `current_path`, la ultima de las siete
+        // operaciones de filesystem que el arbol de nsc usa de verdad (doc 81).
+        //
+        // Devuelve la cadena vacia si Win32 falla, misma simplificacion que
+        // GetEnvironmentVariable y Path.GetFullPath: los codigos de error de Win32 no estan
+        // cableados a excepciones de NativeSharp, y eso es su propio trabajo de diseno.
+        public static string CurrentDirectory()
+        {
+            return "";
+        }
+
         // Core operation: ExitProcess. Termina el proceso INMEDIATAMENTE con el codigo de
         // salida dado -- no vuelve, no ejecuta mas codigo NativeSharp despues de esta llamada
         // (ni siquiera cleanup de raii pendiente: es una terminacion abrupta del proceso

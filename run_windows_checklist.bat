@@ -267,7 +267,25 @@ REM
 REM Si alguna vez sale un rojo intermitente, los sospechosos son stage54 (hilos, mutex,
 REM monitor, semaforos): bajar CTEST_JOBS antes de culpar al codigo.
 if not defined CTEST_JOBS set "CTEST_JOBS=%NUMBER_OF_PROCESSORS%"
+REM DONDE DEJAN LA EVIDENCIA LAS PRUEBAS QUE FALLAN. Las que construyen algo de verdad --DLLs,
+REM bibliotecas de importacion, anfitriones de C, C++ y .NET-- trabajan en su propia raiz y,
+REM desde resultKeeping(), la CONSERVAN cuando el resultado es rojo. Por defecto esa raiz cuelga
+REM de %%TEMP%%, y ahi es ilegible para cualquiera que no este sentado delante de esta maquina.
+REM
+REM Medido el 2026-09-02: tres pruebas de host en rojo, la evidencia conservada como debia en
+REM %%TEMP%%\nativesharp_stage48_3_c_host_integration\... y sin forma de leerla desde fuera del
+REM repositorio. El diagnostico salio por eliminacion y costo una corrida de comprobacion que el
+REM link_host.log habria resuelto en dos segundos.
+REM
+REM Con NSC_TEST_EVIDENCE_DIR las raices cuelgan de %ROOT%\_evidencia\<log dir de esta pasada>,
+REM asi que cada pasada de all.bat deja la suya dentro del repositorio, separada de la otra. Va
+REM FUERA de %LOGDIR% a proposito: nslink_pipeline.py copia %LOGDIR% entero al buzon de NSLink y
+REM ya se comio 5319 ficheros una vez por meter temporales dentro de un directorio de logs.
+REM all.bat borra `_evidencia` al arrancar, igual que los logs.
+if defined NSC_LOG_DIR (set "NSC_TEST_EVIDENCE_DIR=%ROOT%\_evidencia\%NSC_LOG_DIR%") else (set "NSC_TEST_EVIDENCE_DIR=%ROOT%\_evidencia\_logs")
+if not exist "%NSC_TEST_EVIDENCE_DIR%" mkdir "%NSC_TEST_EVIDENCE_DIR%" 2>nul
 echo         ctest -j %CTEST_JOBS%
+echo         evidencia de los rojos en %NSC_TEST_EVIDENCE_DIR%
 ctest --test-dir "%BUILDDIR%" --output-on-failure -j %CTEST_JOBS% > "%LOGDIR%\02_ctest.log" 2>&1
 REM Un ctest rojo TIENE que contar en PASSED/FAILED. Antes no contaba: escribia [FAIL] en el
 REM resumen y no tocaba los contadores, asi que la corrida del 2026-09-02 termino diciendo

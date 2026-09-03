@@ -1,0 +1,52 @@
+STAGE BLOQUE 4, FASE A -- E/S binaria de archivos  [FASE CERRADA]
+Fecha: 2026-09-02
+Doc:   mkdown/100_bloque4_fase_a_io_binaria.md
+Plan:  mkdown/98_plan_del_bloque_4.md
+
+CINCO OPERACIONES NUCLEO NUEVAS
+  File.GetSize(string) -> long                      SHR-030   -1 si no se pudo abrir (0 es un
+                                                              archivo vacio, que es otra cosa)
+  File.ReadAllBytes(string) -> byte[]               SHR-028   asigna; arreglo vacio si falla
+  File.ReadBytes(string, byte[]) -> int             SHR-028   NO asigna: buffer del llamador
+  File.WriteAllBytes(string, byte[], int) -> bool   SHR-029   contador explicito; comprueba
+                                                              que se escribio TODO
+  Environment.CurrentDirectory() -> string                    cierra `current_path`
+
+COMPILADOR
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h   5 MethodCoreOperationKind
+  src/Frontend/ProjectMethodBodyModel.cpp                 reconocimiento y nombres
+  include/nativesharp/Frontend/ProjectOopHirModel.h       5 nodos HIR
+  src/Frontend/ProjectOopHirModel.cpp                     nombres, LAS DOS listas (doc 100 s4),
+                                                          bucket de cero argumentos, mapeos
+  include/nativesharp/Frontend/ProjectOopMirModel.h       5 nodos MIR
+  src/Frontend/ProjectOopMirModel.cpp                     nombres y mapeos
+  src/LLVM/ProjectOopLlvmLowerer.cpp                      5 hooks completos
+  src/Runtime/WindowsRuntimeBuilder.cpp                   5 builders + import GetCurrentDirectoryA
+                                                          (el UNICO import nuevo de la fase)
+
+BIBLIOTECA
+  lib/NativeSharp.Core.IO/File.ns                         GetSize, ReadAllBytes, ReadBytes,
+                                                          WriteAllBytes
+  lib/NativeSharp.Core/Environment.ns                     CurrentDirectory
+
+PRUEBAS
+  tests/cc1/c24_binary_file_io/c24_binary_file_io.nsproj  NUEVO
+  tests/cc1/c24_binary_file_io/Main.ns                    NUEVO -- 11 pasos, salida 42
+  tests/unit/Cc1CorrectnessTests.cpp                      la fixture bajo nsc.cc1.correctness
+  run_cases.py                                            la fixture en la tabla (84 -> 86 trabajos)
+  nslink_pipeline.py                                      su copia de la tabla (doc 95 s6)
+
+MEDIDO EN EL CONTENEDOR
+  c24 --stage=llvm  OK
+  c24 --stage=ir    los CINCO hooks llamados, CERO llamadas a los metodos de la biblioteca
+  c24 --stage=runtime  las cinco definiciones presentes
+  barrido bodies y llvm: 168 OK / 5 FAIL  (uno mas que antes: c24; los 5 son los negativos)
+
+NO MEDIDO
+  La ejecucion real en Windows. GetFileSizeEx, ReadFile, WriteFile y GetCurrentDirectoryA no se
+  han llamado nunca desde aqui. Eso lo mide all.bat.
+
+SIGUE
+  Fase B -- ByteBuffer / BinaryReader / BinaryWriter sobre Span<byte>.
+  Decision tomada y escrita antes de la primera firma: leer mas alla del final devuelve
+  Optional<T>, no lanza.

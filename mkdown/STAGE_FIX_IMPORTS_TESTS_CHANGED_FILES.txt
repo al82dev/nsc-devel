@@ -1,0 +1,42 @@
+STAGE_FIX_IMPORTS_TESTS -- 2026-09-02
+Las tres pruebas de host tenian su propia copia pegada a mano de las cuatro tablas de imports
+del runtime (kernel32Symbols entre ellas, con 62 entradas). Congeladas antes del Bloque 4, sin
+GetCurrentDirectoryA / CreateProcessA / GetExitCodeProcess, rompian el enlace del host estatico.
+Ver mkdown/103_la_quinta_copia_de_la_tabla_de_imports.md
+
+MODIFICADOS
+  tests/unit/Stage47HostCAbiTests.cpp
+  tests/unit/Stage48_3CHostIntegrationTests.cpp
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp
+
+      En los tres, el mismo cambio:
+      - createRuntimeImports() deja de tener sus cuatro tablas de simbolos y llama a
+        nativesharp::linker::createWindowsImportLibraries(), que es la unica fuente de verdad.
+      - +#include "nativesharp/Linker/WindowsRuntimeImports.h"
+      - +using nativesharp::linker::createWindowsImportLibraries;
+      - comentario nuevo encima del helper: por que llama al compilador, que costo la copia,
+        y por que pedir la superficie entera es correcto y gratis.
+
+NUEVOS
+  mkdown/103_la_quinta_copia_de_la_tabla_de_imports.md
+  mkdown/STAGE_FIX_IMPORTS_TESTS_CHANGED_FILES.txt
+
+NO SE TOCO
+  Ni un expect(). Ninguna comprobacion borrada, ninguna condicion relajada, ningun valor
+  esperado cambiado. Mismas cuatro bibliotecas, mismo orden, mismo `if (imports.size() != 4)`.
+  Lo unico que cambia es de donde sale la lista de simbolos.
+
+VERIFICADO
+  clang++-18 -std=c++20 -Wall -Wextra -fsyntax-only contra las cabeceras reales del arbol:
+  los tres ficheros, sin una sola linea de salida.
+  Comprobado que include/nativesharp/Linker/WindowsRuntimeImports.h en el contenedor es
+  identico byte a byte al del arbol.
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que el enlace del host estatico resuelva. Eso lo mide all.bat en Windows.
+
+MEDICION QUE ORIGINA ESTE CAMBIO -- pasada 1 (lld-link), 2026-09-02
+  Passed: 89  Failed: 1
+  ctest 241/244  (rojos: stage47.host-c-abi, stage48_3.c-host, stage48_4.cpp-host)
+  cases 88 OK, 0 FAIL     <-- c24 y c25 pasan en -O0 y -O2
+  build limpio con /WX    triage 16/16 arreglados, 0 vivos

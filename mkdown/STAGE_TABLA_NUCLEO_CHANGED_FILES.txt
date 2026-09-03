@@ -1,0 +1,50 @@
+STAGE_TABLA_NUCLEO -- 2026-09-02
+Las dos listas de operaciones nucleo de ProjectOopHirModel.cpp pasan a ser UNA, y el compilador
+obliga a mantenerla. Era la comprobacion mecanica anotada y no hecha desde el Bloque 4 fase A.
+Ver mkdown/106_una_sola_tabla_de_operaciones_nucleo.md
+
+MODIFICADO
+  src/Frontend/ProjectOopHirModel.cpp
+      + stringCallOperandCount(MethodCoreOperationKind) -> std::optional<std::size_t>
+        en el espacio de nombres anonimo. switch sobre LOS 104 enumeradores, SIN default:
+          1 con cero operandos, 30 con uno, 15 con dos, 4 con tres, 54 -> std::nullopt.
+      - la cadena `core->kind == ... ||` que decidia si la operacion entraba al bloque
+      - la cadena if/else-if de aridad, con su `expected = 2U` por omision
+      ~ los dos sitios de uso leen ahora la misma std::optional
+      ~ los 29 bloques de comentario por operacion de las dos cadenas: movidos encima de su
+        `case`, tal cual. No se ha perdido ninguno.
+
+POR QUE
+  Anadir una operacion y olvidar una de las dos listas no daba ningun error.
+  Solo en la primera -> aridad 2 por omision -> "invalid operand count", que no nombra ni la
+  operacion ni la lista.
+  Solo en la segunda  -> la llamada se queda siendo el metodo NativeSharp, que devuelve -1 o "".
+  Compila, enlaza, ejecuta, y da una respuesta plausible y FALSA.
+  Quinta copia de una regla en esta ronda (docs 102, 103, 105 x2).
+
+EL GUARDIAN
+  El switch no tiene default a proposito. Con -Wswitch (clang lo enciende por omision; el
+  proyecto lo hace error con /WX en Windows y -Werror fuera), anadir un enumerador y no tocar
+  esta funcion es un ERROR DE COMPILACION QUE NOMBRA EL ENUMERADOR.
+
+VERIFICADO
+  1. EL IR DE TODO EL CORPUS ES IDENTICO BYTE A BYTE.
+     Se compilo el arbol ANTERIOR, se volco el IR de los 146 proyectos; se compilo el NUEVO y
+     se volco otra vez.
+       sha256 corpus, compilador anterior: 80a19aa48609adda133f949579e79ba5c5714525338afa84d8dfde70d117126d
+       sha256 corpus, compilador nuevo   : 80a19aa48609adda133f949579e79ba5c5714525338afa84d8dfde70d117126d
+       diff -rq: 0 ficheros distintos
+     No se compara contra un modelo mio de lo que las cadenas hacian: contra el compilador que
+     las tenia. La tabla se derivo leyendo las dos cadenas con un script, no a mano.
+  2. PRUEBA NEGATIVA: borrando un case,
+       error: enumeration value 'FileGetSize' not handled in switch [-Werror,-Wswitch]
+     y lo mismo con ProcessRun. Es error, no aviso, y dice el nombre.
+  3. ./sweep.sh llvm  ->  OK=170  FAIL=5  (los cinco negativos intencionados)
+
+NO VERIFICADO
+  Que clang-cl con /W4 /WX de el mismo error en Windows. clang enciende -Wswitch por omision,
+  asi que deberia; lo confirma la proxima corrida.
+
+ANOTADO, NO HECHO
+  De los diez sitios del doc 100 esto une dos. Quedan ocho sin nada que los ate. La forma de
+  atarlos es la misma y esta demostrada: un switch sin default sobre el enum.

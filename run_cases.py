@@ -122,6 +122,9 @@ CASES: list[tuple[str, str, int | None]] = [
     (f"{CC}/c21_number_parsing/c21_number_parsing.nsproj", "cc1_c21_number_parsing", 42),
     (f"{CC}/c22_console_and_formatting/c22_console_and_formatting.nsproj", "cc1_c22_console_and_formatting", 42),
     (f"{CC}/c23_views_and_lifetimes/c23_views_and_lifetimes.nsproj", "cc1_c23_views_and_lifetimes", 42),
+    (f"{CC}/c24_binary_file_io/c24_binary_file_io.nsproj", "cc1_c24_binary_file_io", 42),
+    (f"{CC}/c25_binary_roundtrip/c25_binary_roundtrip.nsproj", "cc1_c25_binary_roundtrip", 42),
+    (f"{CC}/c26_driver_minimo/c26_driver_minimo.nsproj", "cc1_c26_driver_minimo", 42),
 
     # --- ejemplos empaquetados ---
     ("examples/project_stage56_c1/Stage56C1InteropCompletion.nsproj", "project_stage56_c1", 0),
@@ -134,6 +137,64 @@ CASES: list[tuple[str, str, int | None]] = [
 OPT_LEVELS = ("-O0", "-O2")
 
 
+_LINKER_PATH_CACHE: str | None = None
+
+
+def linker_path() -> str:
+    """La ruta del enlazador que este arnes esta usando, para el fixture c26_driver_minimo.
+
+    POR QUE EXISTE. El criterio de cierre del Bloque 4 (doc 69) es que un programa NativeSharp
+    "llame al enlazador", y c26 lo hace con Process.Run. Pero un programa NativeSharp no sabe
+    buscar en el PATH -- no hay API para eso todavia -- asi que la ruta se la tiene que dar
+    quien la conoce.
+
+    SE LA PREGUNTAMOS AL COMPILADOR, Y ESA ES LA CORRECCION DEL 2026-09-02. La primera version
+    de esta funcion reimplementaba la busqueda en Python: NSC_LLD_LINK, y si no,
+    shutil.which("lld-link"). Parecia "la misma regla que findLldLink()" y no lo era: en la
+    corrida de esa noche `nsc` enlazo los 90 trabajos sin problema y shutil.which no encontro
+    nada, asi que c26 imprimio "sin NSC_CC1_LINKER ni NSC_LLD_LINK, no se lanzo el enlazador" --
+    el paso 6, que es LITERALMENTE el criterio de cierre del bloque, no se ejecuto, y la corrida
+    salio verde igual.
+
+    Otra copia de una regla que se desincroniza en silencio, la cuarta de la ronda (docs 102,
+    103, 105). `nsc --print-linker` ya existia y llama a LldLinker::discover(), que es LA
+    funcion: preguntarselo a el no puede desincronizarse por construccion.
+
+    Si `nsc` no encuentra enlazador, se devuelve cadena vacia y c26 avisa por su salida sin
+    fallar -- una fixture que se pusiera roja en una maquina sin enlazador estaria midiendo la
+    maquina.
+
+    (En la pasada 2 esto ni hace falta: nslink_pipeline.py pone NSC_LLD_LINK apuntando a
+    nslink.exe, que es el segundo sitio donde c26 mira. Pero conviene que las dos pasadas
+    lleguen por el mismo camino.)
+    """
+    global _LINKER_PATH_CACHE
+    if _LINKER_PATH_CACHE is not None:
+        return _LINKER_PATH_CACHE
+
+    nsc = os.environ.get("NSC_EXE", "")
+    if not nsc:
+        nsc = str(Path(os.environ.get("NS_ROOT", r"C:\native-sharp")) / "bin" / "nsc.exe")
+
+    resolved = ""
+    if Path(nsc).is_file():
+        try:
+            probe = subprocess.run([nsc, "--print-linker"], capture_output=True, text=True,
+                                   errors="replace", timeout=60)
+            for line in probe.stdout.splitlines():
+                # `nsc --print-linker` imprime "linker: <ruta>" y despues flavor/target.
+                if line.startswith("linker:"):
+                    candidate = line.split(":", 1)[1].strip()
+                    if candidate and Path(candidate).is_file():
+                        resolved = candidate
+                    break
+        except (OSError, subprocess.SubprocessError):
+            resolved = ""
+
+    _LINKER_PATH_CACHE = resolved
+    return resolved
+
+
 def child_environment(optimization: str) -> dict:
     """El entorno de UN trabajo. Cada hijo tiene el suyo: en serie `set NSC_OPT` era global y
     funcionaba por accidente; en paralelo dos trabajos con distinto -O se pisarian."""
@@ -142,6 +203,10 @@ def child_environment(optimization: str) -> dict:
     # Ver la cabecera: sin esto, cada build_project.cmd re-sincroniza lib\ con un rmdir, y en
     # paralelo eso es una carrera que corrompe la biblioteca.
     env["NS_LIB_READY"] = "1"
+    # Para c26_driver_minimo -- ver linker_path() justo arriba.
+    linker = linker_path()
+    if linker:
+        env["NSC_CC1_LINKER"] = linker
     return env
 
 
@@ -259,6 +324,22 @@ def main() -> int:
             print(f"{label} {optimization} -> {expected if expected is not None else 'build-only'}")
         print(f"{len(work)} trabajos, {jobs} en paralelo")
         return 0
+
+    # El enlazador se resuelve UNA VEZ, aqui, y no dentro de los hilos: la llamada a
+    # `nsc --print-linker` es un subproceso, y hacerlo 90 veces en paralelo seria absurdo ademas
+    # de una carrera sobre la cache.
+    #
+    # Y SE IMPRIME. Sin esta linea, que c26 no encuentre enlazador se ve solo dentro del log de
+    # ese caso -- que es exactamente como la corrida del 2026-09-02 salio VERDE con el paso 6 del
+    # criterio de cierre del Bloque 4 sin ejecutarse. Un aviso que hay que ir a buscar no es un
+    # aviso.
+    linker = linker_path()
+    if linker:
+        print(f"[CASOS] enlazador para c26_driver_minimo: {linker}")
+    else:
+        print("[CASOS] AVISO: `nsc --print-linker` no devolvio ningun enlazador.")
+        print("[CASOS] c26_driver_minimo NO va a lanzar el enlazador -- el paso 6 de su")
+        print("[CASOS] criterio de cierre se saltara, y el caso saldra verde igualmente.")
 
     CASE_LOGS.mkdir(parents=True, exist_ok=True)
     BINDIR.mkdir(parents=True, exist_ok=True)

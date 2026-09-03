@@ -66,6 +66,75 @@ namespace NativeSharp.Core.IO
             return "";
         }
 
+        // Bloque 4, fase A -- SHR-030. Operacion nucleo: CreateFileA (OPEN_EXISTING, solo
+        // lectura) + GetFileSizeEx + CloseHandle. Devuelve cuanto ocupa el archivo, SIN leerlo.
+        //
+        // POR QUE ESTA CLASE LO NECESITA. El driver decide con este numero: cuanto buffer
+        // reservar para leer un .obj, si saltarse un archivo vacio, si algo no cabe en memoria.
+        // Sacarlo leyendo el archivo entero seria exactamente lo contrario de lo que se busca.
+        //
+        // DEVUELVE -1 si el archivo no se pudo abrir -- no existe, no hay permiso, esta
+        // bloqueado. Y aqui el criterio se separa a proposito del resto de esta clase: Exists
+        // devuelve false y ReadAllText la cadena vacia porque ahi el valor de fallo no estorba,
+        // pero **0 es el tamano de un archivo vacio**, que es un caso perfectamente normal.
+        // Devolver 0 para "no se pudo" haria indistinguible un archivo vacio de uno ausente, y
+        // esa es justo la distincion que hace falta. -1 no puede ser el tamano de nada.
+        //
+        // long y no int: un .obj de LLVM pasa de los 2 GiB sin esfuerzo en un proyecto grande, y
+        // GetFileSizeEx devuelve 64 bits de verdad. Truncar aqui seria inventar un limite que ni
+        // Windows ni el formato tienen.
+        public static long GetSize(string path)
+        {
+            return -1;
+        }
+
+        // Bloque 4, fase A -- SHR-028. Operacion nucleo: CreateFileA + GetFileSizeEx + ReadFile +
+        // CloseHandle. Lee el archivo ENTERO a un arreglo recien asignado.
+        //
+        // Un byte[] y un string comparten layout --{ i64 longitud; los datos detras }-- asi que
+        // esto es el mismo trabajo que ReadAllText con otro tipo de salida.
+        //
+        // Devuelve un arreglo VACIO si el archivo no se pudo abrir, no nulo: devolver nulo
+        // obligaria a comprobarlo antes de mirar .Length en cada uso. Para distinguir "vacio" de
+        // "no existe" estan Exists y GetSize, que para eso devuelve -1.
+        public static byte[] ReadAllBytes(string path)
+        {
+            return new byte[0];
+        }
+
+        // Bloque 4, fase A -- SHR-028, la variante que NO asigna. Lee dentro del arreglo que le
+        // das y devuelve cuantos bytes leyo.
+        //
+        // ES LA QUE USARA EL DRIVER. Leer cien .obj con ReadAllBytes son cien asignaciones; con un
+        // buffer reutilizado, ninguna. Es el mismo patron "buffer provisto por el llamador" de
+        // Directory.GetFiles.
+        //
+        // Si el archivo es mas grande que el destino, se lee el principio y se devuelve la
+        // longitud del destino -- no es un error. Comparar lo devuelto con GetSize dice si se
+        // quedo corto. Devuelve 0 si no se pudo abrir.
+        public static int ReadBytes(string path, byte[] destination)
+        {
+            return 0;
+        }
+
+        // Bloque 4, fase A -- SHR-029. Operacion nucleo: CreateFileA (CREATE_ALWAYS) + WriteFile +
+        // CloseHandle. Escribe los primeros `count` bytes de `data`, REEMPLAZANDO el contenido
+        // anterior por completo -- mismo significado que WriteAllText.
+        //
+        // EL CONTADOR ES EXPLICITO y no la longitud del arreglo, porque quien construye un buffer
+        // casi siempre lo tiene mas grande que lo que ha llenado, y obligarle a recortarlo seria
+        // una copia entera por escritura. Se recorta a la longitud real del arreglo: pedir mas es
+        // pedir que se lea memoria ajena.
+        //
+        // DEVUELVE bool, a diferencia de WriteAllText que devuelve void. Escribir un .obj a
+        // medias y seguir produce un enlace que falla mucho despues con un error que no menciona
+        // la escritura. Es verdadero solo si la API dijo que si Y se escribio todo lo pedido: un
+        // disco que se llena a mitad devuelve TRUE con menos bytes escritos.
+        public static bool WriteAllBytes(string path, byte[] data, int count)
+        {
+            return false;
+        }
+
         // Core operation: CreateFileA (modo escritura, CREATE_ALWAYS) + WriteFile + CloseHandle.
         // Escribe "content" en "path", REEMPLAZANDO cualquier contenido anterior por completo
         // (CREATE_ALWAYS trunca el archivo a longitud cero si ya existia, antes de escribir) --

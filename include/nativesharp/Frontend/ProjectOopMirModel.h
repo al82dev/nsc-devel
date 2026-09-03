@@ -125,6 +125,15 @@ enum class ProjectOopMirNodeKind
     CoreFileReadAllText,
     CoreFileWriteAllText,
     CoreFileAppendAllText,
+    // Bloque 4, fase A -- ver ProjectOopHirNodeKind::CoreFileGetSize.
+    CoreFileGetSize,
+    // Bloque 4, fase A -- ver ProjectOopHirNodeKind::CoreFileReadAllBytes y siguientes.
+    CoreFileReadAllBytes,
+    CoreFileReadBytes,
+    CoreFileWriteAllBytes,
+    CoreEnvironmentCurrentDirectory,
+    // Bloque 4, fase C -- ver MethodCoreOperationKind::ProcessRun.
+    CoreProcessRun,
     // Stage 53.4 "Filesystem/Paths (cierre)" -- see ProjectOopHirNodeKind::CoreDirectoryDelete/
     // CorePathGetFullPath above.
     CoreDirectoryDelete,

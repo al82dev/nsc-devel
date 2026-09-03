@@ -1,0 +1,168 @@
+// Bloque 4, fase B -- ByteBuffer, BinaryWriter y BinaryReader, medidos IDA Y VUELTA.
+//
+// QUE MIDE Y POR QUE ASI. Se construye una cabecera con la forma de una de COFF, se vuelca a
+// disco, se vuelve a leer, y se exige que TODOS los campos coincidan. Lo que se compara no es
+// contra numeros escritos a mano sino contra lo que se escribio: si el lector y el escritor se
+// desalinean --un orden de bytes, un desplazamiento, un tamano-- se desalinean aqui y en ningun
+// otro sitio.
+//
+// LA PROPIEDAD CENTRAL es esa: escribir y leer son inversas. Una prueba que comprobara el lector
+// contra bytes literales pasaria igual si los DOS estuvieran mal del mismo modo.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+namespace cc1binaryroundtrip
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            // EL NOMBRE DEL FICHERO SALE DEL PROPIO EJECUTABLE, Y NO ES UN DETALLE.
+            //
+            // run_cases.py lanza los 88 trabajos con `cwd` en la RAIZ DEL REPO y 16 en paralelo,
+            // asi que `-O0` y `-O2` de esta misma fixture corren A LA VEZ en el mismo directorio.
+            // Con un nombre fijo los dos escribirian, leerian y borrarian el MISMO fichero, y el
+            // fallo seria intermitente: uno borra mientras el otro lee, y el caso rojo cambia de
+            // corrida en corrida. Esa es la peor clase de prueba que hay -- una que falla a veces
+            // y por un motivo que no esta en el codigo que se estaba tocando.
+            //
+            // args[0] es la ruta del ejecutable, que run_cases.py nombra `<etiqueta>_<opt>.exe`.
+            // Derivar de ahi da un nombre distinto por trabajo sin que el programa tenga que saber
+            // con que optimizacion se compilo.
+            string[] argumentos = new string[8];
+            int cuantos = Environment.GetCommandLineArgs(argumentos);
+            if (cuantos < 1) { return 99; }
+            raii string propio = Path.GetFileNameWithoutExtension(argumentos[0]);
+            raii string ruta = String.Concat(propio, ".c25.bin");
+
+            // ---------------------------------------------------------------------------------
+            // 1. ESCRIBIR. Una cabecera con la forma de la de COFF: maquina, numero de secciones,
+            //    sello de tiempo, punteros, y un nombre de seccion de ancho fijo.
+            // ---------------------------------------------------------------------------------
+            ByteBuffer buffer = new ByteBuffer();
+            BinaryWriter w = new BinaryWriter(buffer);
+
+            w.WriteUInt16(34404);              // 0x8664, AMD64
+            w.WriteUInt16(3);                  // secciones
+            w.WriteUInt32(1788000000u);        // sello de tiempo
+            w.WriteUInt32(0u);                 // puntero a la tabla de simbolos
+            w.WriteUInt32(0u);                 // numero de simbolos
+            w.WriteUInt16(0);                  // tamano de la cabecera opcional
+            w.WriteUInt16(0);                  // caracteristicas
+            w.WriteFixedAscii(".text", 8);     // nombre de seccion, ancho fijo
+            w.WriteUInt64(18446744073709551615ul);  // el maximo de 64 bits: todos los bits a uno
+            w.WriteInt32(-1);                  // y un negativo, que es donde el signo se rompe
+            w.WriteByte(255);
+
+            if (buffer.Count() != 20 + 8 + 8 + 4 + 1) { return 1; }
+
+            // 2. VOLCAR A DISCO. Aqui es donde la fase B se enfrenta a la fase A.
+            byte[] bytes = buffer.ToArray();
+            if (!File.WriteAllBytes(ruta, bytes, bytes.Length)) { return 2; }
+            if (File.GetSize(ruta) != (long)bytes.Length) { return 3; }
+
+            // ---------------------------------------------------------------------------------
+            // 3. LEER DE VUELTA, campo por campo, en el mismo orden.
+            // ---------------------------------------------------------------------------------
+            byte[] leido = File.ReadAllBytes(ruta);
+            ReadOnlySpan<byte> vista = Spans.ReadOnlyOf<byte>(leido);
+            BinaryReader r = new BinaryReader(vista);
+
+            Optional<ushort> maquina = r.ReadUInt16();
+            if (maquina.IsEmpty()) { return 4; }
+            if (maquina.Value() != 34404) { return 5; }
+
+            Optional<ushort> secciones = r.ReadUInt16();
+            if (secciones.Value() != 3) { return 6; }
+
+            Optional<uint> sello = r.ReadUInt32();
+            if (sello.Value() != 1788000000u) { return 7; }
+
+            r.Skip(4);                          // puntero a simbolos
+            r.Skip(4);                          // numero de simbolos
+            r.Skip(2);                          // cabecera opcional
+            r.Skip(2);                          // caracteristicas
+
+            // El nombre de ancho fijo: los cinco caracteres y despues tres ceros.
+            Optional<byte> punto = r.ReadByte();
+            if (punto.Value() != 46) { return 8; }     // '.'
+            Optional<byte> te = r.ReadByte();
+            if (te.Value() != 116) { return 9; }       // 't'
+            r.Skip(3);                                  // 'e' 'x' 't'
+            Optional<byte> relleno = r.ReadByte();
+            if (relleno.Value() != 0) { return 10; }
+            r.Skip(2);
+
+            // El maximo de 64 bits: si algun paso trata el valor como con signo, aqui se ve.
+            Optional<ulong> maximo = r.ReadUInt64();
+            if (maximo.IsEmpty()) { return 11; }
+            if (maximo.Value() != 18446744073709551615ul) { return 12; }
+
+            Optional<int> negativo = r.ReadInt32();
+            if (negativo.Value() != -1) { return 13; }
+
+            Optional<byte> ultimo = r.ReadByte();
+            if (ultimo.Value() != 255) { return 14; }
+
+            // ---------------------------------------------------------------------------------
+            // 4. EL FINAL DEL BUFFER: leer de mas devuelve None y NO mueve la posicion.
+            // ---------------------------------------------------------------------------------
+            if (!r.IsAtEnd()) { return 15; }
+            int antes = r.Position();
+            Optional<uint> pasado = r.ReadUInt32();
+            if (!pasado.IsEmpty()) { return 16; }
+            if (r.Position() != antes) { return 17; }
+            Optional<byte> pasadoByte = r.ReadByte();
+            if (!pasadoByte.IsEmpty()) { return 18; }
+
+            // 5. Seek fuera de rango: false, y la posicion intacta.
+            if (r.Seek(-1)) { return 19; }
+            if (r.Seek(r.Length() + 1)) { return 20; }
+            if (r.Position() != antes) { return 21; }
+            if (!r.Seek(0)) { return 22; }
+            if (r.Position() != 0) { return 23; }
+
+            // ---------------------------------------------------------------------------------
+            // 6. ByteBuffer: crecer no pierde nada, y Clear reutiliza sin soltar la memoria.
+            // ---------------------------------------------------------------------------------
+            ByteBuffer crece = new ByteBuffer(2);
+            int i = 0;
+            while (i < 300)
+            {
+                crece.Add((byte)(i & 255));
+                i = i + 1;
+            }
+            if (crece.Count() != 300) { return 24; }
+            if (crece.Capacity() < 300) { return 25; }
+            if (crece[0] != 0) { return 26; }
+            if (crece[255] != 255) { return 27; }
+            if (crece[256] != 0) { return 28; }
+
+            int capacidadAntes = crece.Capacity();
+            crece.Clear();
+            if (crece.Count() != 0) { return 29; }
+            if (crece.Capacity() != capacidadAntes) { return 30; }
+
+            // 7. AddRange recorta cuando se le pide mas de lo que hay.
+            byte[] tres = new byte[3];
+            tres[0] = 10; tres[1] = 20; tres[2] = 30;
+            int anadidos = crece.AddRange(tres, 1, 99);
+            if (anadidos != 2) { return 31; }
+            if (crece[0] != 20) { return 32; }
+            if (crece[1] != 30) { return 33; }
+
+            File.Delete(ruta);
+            delete r;
+            delete crece;
+            delete w;
+            delete buffer;
+            delete[] bytes;
+            delete[] leido;
+            delete[] tres;
+            delete[] argumentos;
+            return 42;
+        }
+    }
+}

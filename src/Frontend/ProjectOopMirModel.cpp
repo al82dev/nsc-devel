@@ -508,6 +508,12 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreDirectoryExists: return "core-directory-exists";
         case ProjectOopMirNodeKind::CoreDirectoryCreate: return "core-directory-create";
         case ProjectOopMirNodeKind::CoreFileReadAllText: return "core-file-read-all-text";
+        case ProjectOopMirNodeKind::CoreFileGetSize: return "core-file-get-size";
+        case ProjectOopMirNodeKind::CoreFileReadAllBytes: return "core-file-read-all-bytes";
+        case ProjectOopMirNodeKind::CoreFileReadBytes: return "core-file-read-bytes";
+        case ProjectOopMirNodeKind::CoreFileWriteAllBytes: return "core-file-write-all-bytes";
+        case ProjectOopMirNodeKind::CoreEnvironmentCurrentDirectory: return "core-environment-current-directory";
+        case ProjectOopMirNodeKind::CoreProcessRun: return "core-process-run";
         case ProjectOopMirNodeKind::CoreFileWriteAllText: return "core-file-write-all-text";
         case ProjectOopMirNodeKind::CoreFileAppendAllText: return "core-file-append-all-text";
         case ProjectOopMirNodeKind::CoreDirectoryDelete: return "core-directory-delete";
@@ -1283,6 +1289,24 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgs:
             result->kind = ProjectOopMirNodeKind::CoreEnvironmentGetCommandLineArgs;
+            break;
+        case ProjectOopHirNodeKind::CoreFileGetSize:
+            result->kind = ProjectOopMirNodeKind::CoreFileGetSize;
+            break;
+        case ProjectOopHirNodeKind::CoreFileReadAllBytes:
+            result->kind = ProjectOopMirNodeKind::CoreFileReadAllBytes;
+            break;
+        case ProjectOopHirNodeKind::CoreFileReadBytes:
+            result->kind = ProjectOopMirNodeKind::CoreFileReadBytes;
+            break;
+        case ProjectOopHirNodeKind::CoreFileWriteAllBytes:
+            result->kind = ProjectOopMirNodeKind::CoreFileWriteAllBytes;
+            break;
+        case ProjectOopHirNodeKind::CoreEnvironmentCurrentDirectory:
+            result->kind = ProjectOopMirNodeKind::CoreEnvironmentCurrentDirectory;
+            break;
+        case ProjectOopHirNodeKind::CoreProcessRun:
+            result->kind = ProjectOopMirNodeKind::CoreProcessRun;
             break;
         case ProjectOopHirNodeKind::CoreDirectoryGetFileCount:
             result->kind = ProjectOopMirNodeKind::CoreDirectoryGetFileCount;

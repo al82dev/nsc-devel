@@ -166,6 +166,17 @@ enum class ProjectOopHirNodeKind
     CoreFileReadAllText,
     CoreFileWriteAllText,
     CoreFileAppendAllText,
+    // Bloque 4, fase A -- ver MethodCoreOperationKind::FileGetSize. Un operando (la ruta), un
+    // entero de 64 bits fuera: la misma forma de un operando que CoreFileExists, con otro tipo
+    // de salida.
+    CoreFileGetSize,
+    // Bloque 4, fase A -- ver MethodCoreOperationKind::FileReadAllBytes y siguientes.
+    CoreFileReadAllBytes,
+    CoreFileReadBytes,
+    CoreFileWriteAllBytes,
+    CoreEnvironmentCurrentDirectory,
+    // Bloque 4, fase C -- ver MethodCoreOperationKind::ProcessRun.
+    CoreProcessRun,
     // Stage 53.4 "Filesystem/Paths (cierre)" -- see MethodCoreOperationKind::DirectoryDelete/
     // PathGetFullPath in ProjectMethodBodyModel.h. Same shared operand-loop machinery again.
     CoreDirectoryDelete,

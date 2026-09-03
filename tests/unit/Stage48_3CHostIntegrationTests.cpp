@@ -2,6 +2,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
+#include "nativesharp/Linker/WindowsRuntimeImports.h"
 
 #include "../support/TestContext.h"
 
@@ -21,6 +22,7 @@ using nativesharp::ExitCode;
 using nativesharp::driver::Driver;
 using nativesharp::linker::LldLinker;
 using nativesharp::linker::PeExecutableVerifier;
+using nativesharp::linker::createWindowsImportLibraries;
 using nativesharp::tests::TestContext;
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
@@ -235,73 +237,50 @@ bool importsSymbol(
     return false;
 }
 
+// Materializa la superficie de imports del runtime para enlazar un host contra la biblioteca
+// ESTATICA. En el enlace estatico el objeto de runtime entra dentro del ejecutable del host, asi
+// que el host necesita la lista entera de simbolos Win32 del runtime, no solo los que su propio
+// codigo llama. (En la variante DLL no hace falta: el runtime va dentro de la DLL.)
+//
+// LLAMA A LA FUNCION DEL COMPILADOR, y eso es la correccion del 2026-09-02. Hasta hoy este helper
+// tenia su PROPIA COPIA de las cuatro tablas de simbolos --las 62 entradas de KERNEL32
+// incluidas--, pegada a mano, y la misma copia estaba repetida en los tres ficheros de prueba de
+// host (Stage47, Stage48_3, Stage48_4).
+//
+// WindowsRuntimeImports.h se describe a si mismo como "THE single source of truth", y su
+// comentario de HISTORY cuenta que la consolidacion elimino las copias duplicadas. Elimino DOS DE
+// CINCO --las de WindowsExecutableBuilder.cpp y WindowsLibraryBuilder.cpp-- y dejo estas tres,
+// que nadie volvio a mirar porque estaban en tests/.
+//
+// LO QUE ESO COSTO, medido: el Bloque 4 anadio GetCurrentDirectoryA, CreateProcessA y
+// GetExitCodeProcess a la tabla del compilador. Estas copias se quedaron en 62 entradas, el
+// enlace del host estatico no pudo resolver esos tres simbolos, y las tres pruebas se pusieron
+// rojas por una lista copiada -- no por el codigo que miden. Una tabla duplicada no verifica
+// nada: solo se queda vieja en silencio y despues acusa al cambio equivocado.
+//
+// NO SE RELAJA NINGUNA COMPROBACION AL HACER ESTO. Salen las mismas cuatro bibliotecas de
+// importacion, en el mismo orden (KERNEL32, KERNELBASE, SHELL32, ucrtbase), y detras quedan
+// exactamente los mismos expect() de antes. Lo unico que cambia es de donde sale la lista de
+// simbolos: de la tabla real del compilador en vez de una copia.
 bool createRuntimeImports(
     const LldLinker& linker,
     const std::filesystem::path& directory,
     std::vector<std::filesystem::path>& imports,
     std::string& error)
 {
-    const std::array<std::string_view, 62> kernel32Symbols = {
-        "ExitProcess", "GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle",
-        "WriteFile", "TlsAlloc", "TlsGetValue", "TlsSetValue", "RaiseException",
-        // Stage 53.1 "Time" -- NativeClock's three raw wrappers import these directly.
-        "QueryPerformanceCounter", "QueryPerformanceFrequency", "GetSystemTimeAsFileTime",
-        "GetTickCount64", "GetActiveProcessorCount",
-        "GetEnvironmentVariableA", "SetEnvironmentVariableA",
-        // Stage 53.3 "Filesystem/Paths" -- File/Directory's Win32 wrappers import these directly.
-        "GetFileAttributesA", "DeleteFileA", "CreateDirectoryA",
-        // Stage 53.3b -- File.ReadAllText/WriteAllText/AppendAllText's Win32 wrappers.
-        "CreateFileA", "GetFileSizeEx", "ReadFile", "CloseHandle", "SetFilePointer",
-        // Stage 53.4 "Filesystem/Paths (cierre)" -- Directory.Delete/Path.GetFullPath's Win32
-        // wrappers.
-        "RemoveDirectoryA", "GetFullPathNameA",
-        // Stage 53.5 "Command-line arguments" -- Environment.GetCommandLineArgCount/
-        // GetCommandLineArgs's Win32 wrappers import these directly from KERNEL32.dll.
-        // CommandLineToArgvW itself lives in SHELL32.dll -- see the separate shell32 import
-        // library below. The runtime module always declares/calls all four regardless of
-        // whether THIS test's own host program happens to use them, so any static-library host
-        // link needs the full symbol surface, not just what the test program itself calls.
-        "GetCommandLineW", "WideCharToMultiByte", "LocalFree",
-        // Stage 53.6 "Enumeracion de directorios" -- Directory.GetFileCount/GetFiles/
-        // GetDirectoryCount/GetDirectories's Win32 wrappers import these directly.
-        "FindFirstFileA", "FindNextFileA", "FindClose",
-        // Stage 54.1 "Threads" -- Thread's ThreadCreate/ThreadJoin/ThreadDetach's Win32
-        // wrappers import these directly.
-        "CreateThread", "WaitForSingleObject", "CreateMutexA", "ReleaseMutex", "GetCurrentThreadId",
-        // Stage 54.4 "Condition Variables" -- Monitor's Win32 wrappers import these directly.
-        "AcquireSRWLockExclusive", "ReleaseSRWLockExclusive", "WakeConditionVariable",
-        "WakeAllConditionVariable", "SleepConditionVariableSRW",
-        // Stage 54.5 "Otras primitivas de sincronizacion" -- Semaphore/Event's Win32 wrappers
-        // import these directly (SemaphoreWait/EventWait/SemaphoreClose/EventClose reuse
-        // WaitForSingleObject/CloseHandle above).
-        "CreateSemaphoreA", "ReleaseSemaphore", "CreateEventA", "SetEvent", "ResetEvent",
-        // Stage 55.1 "Process" -- Process's Win32 wrappers import these directly.
-        "GetCurrentProcessId", "GetCurrentProcess", "K32GetProcessMemoryInfo", "GetProcessTimes",
-        "GetPriorityClass", "SetPriorityClass",
-        // Stage 55.2 "Hardware / System Info" -- SystemInfo's Win32 wrappers import these directly.
-        "GetSystemInfo", "GlobalMemoryStatusEx",
-        // Stage 55.3 "Diagnostics" -- Debug's Win32 wrappers import these directly.
-        "OutputDebugStringA", "IsDebuggerPresent", "RtlCaptureStackBackTrace",
-        // Pre-Stage-56 "utilidades basicas" round -- Thread.SleepRaw/File.CopyRaw/MoveRaw/
-        // Directory.MoveRaw's Win32 wrappers import these directly.
-        "Sleep", "CopyFileA", "MoveFileA"};
-    const std::array<std::string_view, 1> kernelbaseSymbols = {"__chkstk"};
-    const std::array<std::string_view, 1> shell32Symbols = {"CommandLineToArgvW"};
-    const std::array<std::string_view, 5> ucrtSymbols = {
-        "strlen", "__C_specific_handler", "memset", "memcpy", "memmove"};
-    const std::filesystem::path kernel32 = directory / "kernel32.lib";
-    const std::filesystem::path kernelbase = directory / "kernelbase.lib";
-    const std::filesystem::path shell32 = directory / "shell32.lib";
-    const std::filesystem::path ucrtbase = directory / "ucrtbase.lib";
-    if (!linker.createImportLibrary("KERNEL32.dll", kernel32Symbols, kernel32, error) ||
-        !linker.createImportLibrary("KERNELBASE.dll", kernelbaseSymbols, kernelbase, error) ||
-        !linker.createImportLibrary("SHELL32.dll", shell32Symbols, shell32, error) ||
-        !linker.createImportLibrary("ucrtbase.dll", ucrtSymbols, ucrtbase, error))
-    {
-        return false;
-    }
-    imports = {kernel32, kernelbase, shell32, ucrtbase};
-    return true;
+    // Los cuatro simbolos condicionales de ucrtbase los decide un escaneo del texto del IR
+    // (@__C_specific_handler y los tres @llvm.mem*), porque las pasadas de LLVM pueden
+    // materializarlos en cualquiera de los dos modulos. Aqui no hay un IR concreto que escanear
+    // --se esta preparando el enlace de un host ajeno-- asi que se le pasa un texto que los
+    // nombra a los cuatro, que es exactamente el conjunto que la copia anterior pedia a mano.
+    //
+    // Pedir de mas no cuesta: una biblioteca de importacion es un archivo PEREZOSO y el enlazador
+    // solo saca de ella los miembros que alguien referencia. Pedir de menos es justo el fallo que
+    // esto viene a arreglar.
+    const std::string_view allCompilerSupportSymbols =
+        "@__C_specific_handler @llvm.memset @llvm.memcpy @llvm.memmove";
+    return createWindowsImportLibraries(
+        linker, directory, allCompilerSupportSymbols, {}, imports, error);
 }
 
 std::string clangCCommand(
@@ -530,7 +509,7 @@ int main()
 {
     TestContext tests;
     const std::filesystem::path root =
-        std::filesystem::temp_directory_path() / "nativesharp_stage48_3_c_host_integration";
+        nativesharp::tests::evidenceRoot("nativesharp_stage48_3_c_host_integration");
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root, cleanupError);

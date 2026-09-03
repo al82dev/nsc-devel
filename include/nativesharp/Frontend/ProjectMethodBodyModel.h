@@ -737,7 +737,54 @@ enum class MethodCoreOperationKind
     ThreadSleepRaw,
     FileCopyRaw,
     FileMoveRaw,
-    DirectoryMoveRaw
+    DirectoryMoveRaw,
+    // Bloque 4, fase A -- SHR-030. `File.GetSize(string path)` devuelve `builtin:long`: un
+    // builtin:string entra, un entero de 64 bits sale.
+    //
+    // POR QUE 64 BITS Y NO int. Un `.obj` de LLVM pasa de los 2 GiB con facilidad en un proyecto
+    // grande, y `GetFileSizeEx` --que ya esta importado, lo usa FileReadAllText-- devuelve
+    // precisamente un LARGE_INTEGER de 64 bits. Truncar aqui a i32 seria inventar un limite que
+    // ni Windows ni el formato tienen. FileReadAllText SI trunca, y su propio comentario lo dice:
+    // ahi es aceptable porque el resultado es una cadena que se va a manipular en memoria; aqui
+    // el resultado ES el tamano y devolverlo mal no tiene arreglo aguas arriba.
+    //
+    // Devuelve -1 cuando el archivo no existe o no se puede abrir. No es un codigo de error
+    // inventado: es el mismo convenio que el resto de esta familia --File.Exists devuelve false,
+    // ReadAllText devuelve la cadena vacia-- y ademas -1 no colisiona con ningun tamano posible,
+    // que es lo que un 0 si haria con un archivo vacio.
+    FileGetSize,
+    // Bloque 4, fase A -- SHR-028/029 y el directorio de trabajo.
+    //
+    // FileReadAllBytes: un builtin:string entra, un builtin:byte[] sale. La forma es IDENTICA a
+    // FileReadAllText --un puntero entra, un puntero recien asignado sale-- y no por casualidad:
+    // un `byte[]` y un `string` tienen el MISMO layout en memoria, { i64 longitud; datos }. El
+    // hook del runtime es literalmente el mismo codigo con otro nombre.
+    //
+    // FileReadBytes: dos operandos --la ruta y el arreglo del llamador-- y un builtin:int fuera
+    // (cuantos bytes se leyeron de verdad). Es el patron "buffer provisto por el llamador" que
+    // Directory.GetFiles ya establecio, y es el que usara el driver: leer un .obj de 100 KB para
+    // luego copiarlo a otro buffer es justo lo que el Bloque 3 existe para evitar.
+    //
+    // FileWriteAllBytes: tres operandos --ruta, arreglo, cuantos bytes escribir-- y builtin:bool
+    // fuera. El contador es explicito y no la longitud del arreglo a proposito: quien construye
+    // un buffer casi siempre lo tiene mas grande que lo que ha llenado, y obligarle a recortarlo
+    // seria una copia entera por escritura.
+    //
+    // EnvironmentCurrentDirectory: cero operandos, builtin:string fuera. Cierra la ultima de las
+    // siete operaciones de filesystem que el doc 81 midio (`current_path`).
+    FileReadAllBytes,
+    FileReadBytes,
+    FileWriteAllBytes,
+    EnvironmentCurrentDirectory,
+    // Bloque 4, fase C -- SHR-032. `Process.Run(exe, linea, salida)` devuelve builtin:int.
+    //
+    // ES EL BLOQUEO DURO DEL AUTO-HOSPEDADO: sin crear procesos hijos, un `nsc` escrito en
+    // NativeSharp no puede lanzar el enlazador. `Process.ns` existia desde Stage 55.1 pero su
+    // cabecera decia que crear procesos estaba "deliberadamente fuera de alcance".
+    //
+    // Tres builtin:string entran, un builtin:int sale -- el codigo de salida del hijo, o -1 si no
+    // se pudo lanzar. Es la primera operacion nucleo de tres cadenas.
+    ProcessRun
 };
 
 struct MethodCoreBinding final

@@ -37,6 +37,33 @@ namespace NativeSharp.Core.Diagnostics
             return GetCurrentProcessIdRaw();
         }
 
+        // Bloque 4, fase C -- SHR-032. Operacion nucleo: CreateProcessA + WaitForSingleObject +
+        // GetExitCodeProcess + CloseHandle.
+        //
+        // ESTO ES LO QUE DESBLOQUEA EL AUTO-HOSPEDADO. La cabecera de este archivo decia que
+        // crear procesos hijos estaba "deliberadamente fuera de alcance", y esa frase era el
+        // motivo por el que un `nsc` escrito en NativeSharp no podia lanzar el enlazador -- y por
+        // tanto no podia producir un ejecutable.
+        //
+        // Lanza `executable` con `commandLine`, redirige su stdout Y su stderr a `outputPath`,
+        // ESPERA a que termine y devuelve su codigo de salida.
+        //
+        //   executable   la ruta del .exe
+        //   commandLine  la linea COMPLETA, incluyendo el argv[0] -- asi lo espera Windows
+        //   outputPath   donde van stdout y stderr, INTERCALADOS en el orden en que ocurrieron
+        //
+        // Devuelve -1 si no se pudo lanzar: fichero de salida inaccesible --incluida una ruta
+        // vacia-- o CreateProcess fallido. Un proceso que devolviera 0xFFFFFFFF daria -1 tambien;
+        // se acepta a sabiendas, porque ningun compilador ni enlazador de esta familia lo hace y
+        // la alternativa seria partir la firma en dos por un caso que no ocurre.
+        //
+        // NO HAY TIEMPO LIMITE, a proposito: un enlazador que no termina es un fallo del
+        // enlazador, y matarlo a los N segundos lo disfrazaria de codigo de salida raro.
+        public static int Run(string executable, string commandLine, string outputPath)
+        {
+            return -1;
+        }
+
         // Memoria fisica actualmente en uso por este proceso, en bytes (PROCESS_MEMORY_COUNTERS.
         // WorkingSetSize via K32GetProcessMemoryInfo) -- una medicion instantanea, no un pico
         // historico (para eso existe PeakWorkingSetSize en la misma estructura de Win32, no

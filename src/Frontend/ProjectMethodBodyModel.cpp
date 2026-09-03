@@ -7287,6 +7287,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 // same shape as TickCount64/ProcessorCount above) and GetCommandLineArgs (one
                 // builtin:string[] argument -- the "buffer provided by the caller" pattern, see
                 // Environment.ns's header comment).
+                // Bloque 4, fase A. CurrentDirectory: cero argumentos, builtin:string fuera --
+                // la misma forma de cero operandos que TickCount64/ProcessorCount, con el tipo de
+                // salida de GetEnvironmentVariable. Cierra `current_path`, la ultima de las siete
+                // operaciones de filesystem que el doc 81 midio.
+                else if (selectedMember.name == "CurrentDirectory" &&
+                    selectedMember.declaredTypeKey == "builtin:string" &&
+                    selectedMember.parameters.empty())
+                {
+                    environmentKind = MethodCoreOperationKind::EnvironmentCurrentDirectory;
+                }
                 else if (selectedMember.name == "GetCommandLineArgCount" &&
                     selectedMember.declaredTypeKey == "builtin:int" &&
                     selectedMember.parameters.empty())
@@ -7365,6 +7375,48 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     selectedMember.parameters[1].typeKey == "builtin:string")
                 {
                     ioKind = MethodCoreOperationKind::FileWriteAllText;
+                }
+                // Bloque 4, fase A -- SHR-028. ReadAllBytes: misma forma de un argumento que
+                // ReadAllText, y el mismo tipo de salida en memoria: un `byte[]` y un `string`
+                // comparten layout, { i64 longitud; datos }.
+                else if (isFile && selectedMember.name == "ReadAllBytes" &&
+                    selectedMember.declaredTypeKey == "builtin:byte[]" &&
+                    selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == "builtin:string")
+                {
+                    ioKind = MethodCoreOperationKind::FileReadAllBytes;
+                }
+                // ReadBytes: ruta + arreglo del llamador, cuantos bytes se leyeron fuera. El
+                // patron "buffer provisto por el llamador" de Directory.GetFiles, que es el que
+                // no asigna y por tanto el que usara el driver.
+                else if (isFile && selectedMember.name == "ReadBytes" &&
+                    selectedMember.declaredTypeKey == "builtin:int" &&
+                    selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey == "builtin:string" &&
+                    selectedMember.parameters[1].typeKey == "builtin:byte[]")
+                {
+                    ioKind = MethodCoreOperationKind::FileReadBytes;
+                }
+                // SHR-029. WriteAllBytes: ruta + arreglo + CUANTOS bytes escribir. El contador es
+                // explicito y no la longitud del arreglo porque quien construye un buffer casi
+                // siempre lo tiene mas grande que lo que ha llenado.
+                else if (isFile && selectedMember.name == "WriteAllBytes" &&
+                    selectedMember.declaredTypeKey == "builtin:bool" &&
+                    selectedMember.parameters.size() == 3 &&
+                    selectedMember.parameters[0].typeKey == "builtin:string" &&
+                    selectedMember.parameters[1].typeKey == "builtin:byte[]" &&
+                    selectedMember.parameters[2].typeKey == "builtin:int")
+                {
+                    ioKind = MethodCoreOperationKind::FileWriteAllBytes;
+                }
+                // Bloque 4, fase A -- SHR-030. `File.GetSize(string)` devuelve builtin:long.
+                // Misma forma de un argumento que ReadAllText, otro tipo de salida.
+                else if (isFile && selectedMember.name == "GetSize" &&
+                    selectedMember.declaredTypeKey == "builtin:long" &&
+                    selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == "builtin:string")
+                {
+                    ioKind = MethodCoreOperationKind::FileGetSize;
                 }
                 else if (isFile && selectedMember.name == "AppendAllText" &&
                     selectedMember.declaredTypeKey == "builtin:void" &&
@@ -7933,7 +7985,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 selectedMember.isStatic)
             {
                 std::optional<MethodCoreOperationKind> processKind;
-                if (selectedMember.declaredTypeKey == "builtin:long" && selectedMember.parameters.empty())
+                // Bloque 4, fase C -- SHR-032. `Run(exe, linea, salida)`: tres builtin:string
+                // entran, builtin:int sale. Es la PRIMERA operacion nucleo de esta clase que
+                // habla de OTRO proceso -- las cinco de Stage 55.1 son todas sobre el actual, y
+                // su comentario de arriba lo dice. La forma de tres argumentos es la misma que
+                // String.Substring y File.WriteAllBytes ya usan.
+                if (selectedMember.name == "Run" &&
+                    selectedMember.declaredTypeKey == "builtin:int" &&
+                    selectedMember.parameters.size() == 3 &&
+                    selectedMember.parameters[0].typeKey == "builtin:string" &&
+                    selectedMember.parameters[1].typeKey == "builtin:string" &&
+                    selectedMember.parameters[2].typeKey == "builtin:string")
+                {
+                    processKind = MethodCoreOperationKind::ProcessRun;
+                }
+                else if (selectedMember.declaredTypeKey == "builtin:long" && selectedMember.parameters.empty())
                 {
                     if (selectedMember.name == "GetCurrentProcessIdRaw")
                     {
@@ -11427,6 +11493,12 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::DirectoryExists: return "directory-exists";
         case MethodCoreOperationKind::DirectoryCreate: return "directory-create";
         case MethodCoreOperationKind::FileReadAllText: return "file-read-all-text";
+        case MethodCoreOperationKind::FileGetSize: return "file-get-size";
+        case MethodCoreOperationKind::FileReadAllBytes: return "file-read-all-bytes";
+        case MethodCoreOperationKind::FileReadBytes: return "file-read-bytes";
+        case MethodCoreOperationKind::FileWriteAllBytes: return "file-write-all-bytes";
+        case MethodCoreOperationKind::EnvironmentCurrentDirectory: return "environment-current-directory";
+        case MethodCoreOperationKind::ProcessRun: return "process-run";
         case MethodCoreOperationKind::FileWriteAllText: return "file-write-all-text";
         case MethodCoreOperationKind::FileAppendAllText: return "file-append-all-text";
         case MethodCoreOperationKind::DirectoryDelete: return "directory-delete";

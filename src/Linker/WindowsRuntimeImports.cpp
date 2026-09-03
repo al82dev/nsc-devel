@@ -30,7 +30,16 @@ bool createWindowsImportLibraries(
 
     // The canonical runtime tables. The KERNEL32 list's per-stage comments are the project's
     // import history and moved here verbatim from the (formerly duplicated) builder copies.
-    const std::array<std::string_view, 62> kernel32Symbols = {
+    //
+    // EL TAMANO SE DEDUCE, Y ESO ES UNA CORRECCION, NO UN ADORNO. Estas tres tablas se
+    // declaraban como `std::array<std::string_view, N>` con la N escrita a mano. Anadir un
+    // simbolo y no tocar la N da "error: excess elements in struct initializer" apuntando al
+    // ULTIMO elemento de la lista -- no al que acabas de meter -- asi que el error senala una
+    // linea que no se ha cambiado en meses. Medido el 2026-09-02: las tres altas del Bloque 4
+    // (GetCurrentDirectoryA, CreateProcessA, GetExitCodeProcess) dejaron la N en 62 con 65
+    // entradas y tumbaron el build de LAS DOS PASADAS de all.bat. Con std::to_array la cuenta
+    // la lleva el compilador y ese fallo ya no se puede escribir.
+    const auto kernel32Symbols = std::to_array<std::string_view>({
         "ExitProcess",
         "GetProcessHeap",
         "HeapAlloc",
@@ -73,6 +82,22 @@ bool createWindowsImportLibraries(
         // src/Runtime/WindowsRuntimeBuilder.cpp) import these directly from KERNEL32.dll.
         "RemoveDirectoryA",
         "GetFullPathNameA",
+        // Bloque 4, fase A -- Environment.CurrentDirectory. ESTA LISTA ES EL DECIMO SITIO QUE HAY
+        // QUE TOCAR, y no estaba en la tabla del doc 100: declarar el import con LLVMAddFunction
+        // en WindowsRuntimeBuilder NO basta. Esa declaracion solo dice "existe un simbolo con
+        // este nombre"; quien le dice al enlazador de que DLL sacarlo es esta lista, que alimenta
+        // la biblioteca de importacion.
+        //
+        // Sin esta linea el compilador construye e instala sin una queja, y despues TODOS los
+        // programas fallan al enlazar con "undefined symbol: GetCurrentDirectoryA" -- porque el
+        // objeto de runtime va dentro de cada ejecutable, asi que un import que falta no rompe la
+        // funcion que lo usa: rompe el enlace de todo. Medido el 2026-09-02: 86 de 86 trabajos
+        // con "build failed".
+        "GetCurrentDirectoryA",
+        // Bloque 4, fase C -- Process.Run. WaitForSingleObject y CloseHandle ya estaban (los
+        // hilos de Stage 54.1 los importan), asi que solo faltan estos dos.
+        "CreateProcessA",
+        "GetExitCodeProcess",
         // Stage 53.5 "Command-line arguments" -- Environment.GetCommandLineArgCount/
         // GetCommandLineArgs (see src/Runtime/WindowsRuntimeBuilder.cpp) import these directly
         // from KERNEL32.dll. CommandLineToArgvW itself lives in SHELL32.dll, not here -- see the
@@ -143,11 +168,11 @@ bool createWindowsImportLibraries(
         // Directory.MoveRaw (one Win32 call, two NativeSharp-level operations).
         "Sleep",
         "CopyFileA",
-        "MoveFileA"};
-    const std::array<std::string_view, 1> kernelbaseSymbols = {"__chkstk"};
+        "MoveFileA"});
+    const auto kernelbaseSymbols = std::to_array<std::string_view>({"__chkstk"});
     // Stage 53.5 "Command-line arguments" -- CommandLineToArgvW is the one Win32 symbol the
     // runtime imports from SHELL32.dll rather than KERNEL32/KERNELBASE.
-    const std::array<std::string_view, 1> shell32Symbols = {"CommandLineToArgvW"};
+    const auto shell32Symbols = std::to_array<std::string_view>({"CommandLineToArgvW"});
 
     // Compiler-support imports from ucrtbase.dll, driven by what the IR actually references:
     // LLVM passes can materialize @llvm.memcpy/memset/memmove (LoopIdiomRecognize rewriting a

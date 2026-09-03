@@ -1,0 +1,29 @@
+STAGE_FIX_IMPORTS -- 2026-09-02
+Arreglo del build roto de la corrida del Bloque 4: la tabla de imports de KERNEL32 tenia el
+tamano escrito a mano (62) y 65 entradas tras las tres altas del Bloque 4.
+Ver mkdown/102_el_build_roto_por_una_cuenta_a_mano.md
+
+MODIFICADOS
+  src/Linker/WindowsRuntimeImports.cpp
+      - kernel32Symbols  : std::array<std::string_view, 62> -> std::to_array<std::string_view>
+      - kernelbaseSymbols: std::array<std::string_view, 1>  -> std::to_array<std::string_view>
+      - shell32Symbols   : std::array<std::string_view, 1>  -> std::to_array<std::string_view>
+      - comentario nuevo encima de kernel32Symbols explicando por que el tamano se deduce
+
+NUEVOS
+  mkdown/102_el_build_roto_por_una_cuenta_a_mano.md
+  mkdown/STAGE_FIX_IMPORTS_CHANGED_FILES.txt
+
+SIN TOCAR
+  Ningun fichero de pruebas, ningun fixture, ninguna lista de casos.
+  El arreglo es de compilador y de una sola clase de declaracion.
+
+VERIFICADO
+  Las tres declaraciones, extraidas tal cual a una unidad suelta y compiladas con
+  clang++-18 -std=c++20 -Wall -Wextra: sin avisos.
+  kernel32=65  kernelbase=1  shell32=1  total=67  sin duplicados
+  presentes: GetCurrentDirectoryA, CreateProcessA, GetExitCodeProcess, GetFileSizeEx,
+             ReadFile, WriteFile, CreateFileA, CloseHandle, WaitForSingleObject
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que el enlace real resuelva los simbolos. Eso lo mide all.bat en Windows.

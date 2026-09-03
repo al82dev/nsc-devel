@@ -15,16 +15,33 @@ namespace nativesharp::runtime
 {
 namespace
 {
+#include <cstdio>
+#include <cstdlib>
+
 using namespace llvm_api;
 
+// EL TOPE ERA 8 Y DEVOLVIA nullptr EN SILENCIO. Bloque 4, fase C: `CreateProcessA` tiene DIEZ
+// parametros, asi que su tipo salia nulo, `LLVMAddFunction` lo recibia, y el compilador se caia
+// con un SIGSEGV dentro de `llvm::PointerType::get` -- una pila que no menciona ni esta funcion ni
+// el tope ni el nombre del import. El limite estaba puesto porque hasta entonces ninguna firma de
+// Win32 usada aqui pasaba de ocho.
+//
+// SE SUBE A 16 Y SE DEJA DE DEVOLVER nullptr. Un tope superado ahora ABORTA con un mensaje, porque
+// devolver nulo aqui no es un error que el llamador pueda manejar: nadie comprueba el resultado
+// --son cincuenta declaraciones de imports seguidas-- y el sintoma aparece a treinta marcos de
+// distancia. Entre un fallo ruidoso en el sitio y un puntero nulo que viaja, el ruidoso.
 LLVMTypeRef functionType(
     LLVMTypeRef returnType,
     std::initializer_list<LLVMTypeRef> parameters)
 {
-    std::array<LLVMTypeRef, 8> storage{};
+    std::array<LLVMTypeRef, 16> storage{};
     if (parameters.size() > storage.size())
     {
-        return nullptr;
+        std::fprintf(stderr,
+            "nsc: internal error: functionType() recibio %zu parametros y el tope es %zu. "
+            "Sube el tamano de `storage`.\n",
+            parameters.size(), storage.size());
+        std::abort();
     }
 
     unsigned index = 0;
@@ -1034,6 +1051,715 @@ bool buildFileReadAllText(
     LLVMValueRef closeArguments[1] = {handle};
     LLVMBuildCall2(builder, closeHandleType, closeHandle, closeArguments, 1, "");
     LLVMBuildRet(builder, resultString);
+
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+// Bloque 4, fase A -- SHR-030. `File.GetSize(path)`: cuanto ocupa un archivo, sin leerlo.
+//
+// POR QUE EXISTE Y NO SE DEDUCE DE ReadAllBytes. El driver necesita el tamano ANTES de decidir
+// como leer: para reservar el buffer exacto, para saltarse un archivo vacio, o para no intentar
+// meter en memoria algo que no cabe. Deducirlo leyendo el archivo entero es justo lo contrario de
+// lo que se quiere.
+//
+// DEVUELVE -1 CUANDO NO SE PUDO. Y esa es la unica diferencia de criterio con el resto de esta
+// familia. `File.ReadAllText` colapsa cualquier fallo en la cadena vacia y `File.Exists` en false,
+// porque ahi el valor de fallo es indistinguible de un resultado legitimo y da igual. Aqui no:
+// **0 es el tamano de un archivo vacio**, que existe y es un caso normal. Devolver 0 para "no se
+// pudo abrir" haria imposible distinguir un archivo vacio de uno que no esta, y esa distincion es
+// justo la que el driver necesita. -1 no colisiona con ningun tamano posible.
+//
+// POR ESO SI SE MIRA EL BOOL de GetFileSizeEx, a diferencia de buildFileReadAllText, que lo
+// descarta con su motivo escrito. Alli el peor caso al ignorarlo es leer cero bytes; aqui el
+// resultado ES el tamano, y devolver un cero silencioso seria devolver un dato falso.
+bool buildFileGetSize(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef createFileA,
+    LLVMTypeRef createFileAType,
+    LLVMValueRef getFileSizeEx,
+    LLVMTypeRef getFileSizeExType,
+    LLVMValueRef closeHandle,
+    LLVMTypeRef closeHandleType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i64Type, {pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_file_get_size", type);
+    if (function == nullptr)
+    {
+        return false;
+    }
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef failed = LLVMAppendBasicBlockInContext(context, function, "failed");
+    LLVMBasicBlockRef haveHandle = LLVMAppendBasicBlockInContext(context, function, "have_handle");
+    LLVMBasicBlockRef sizeFailed = LLVMAppendBasicBlockInContext(context, function, "size_failed");
+    LLVMBasicBlockRef sizeOk = LLVMAppendBasicBlockInContext(context, function, "size_ok");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+
+    LLVMValueRef pathString = LLVMGetParam(function, 0);
+    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // Los mismos siete argumentos que buildFileReadAllText, y por los mismos motivos:
+    // GENERIC_READ=0x80000000, FILE_SHARE_READ=0x1, sin atributos de seguridad, OPEN_EXISTING=3
+    // (preguntar el tamano no puede CREAR el archivo), FILE_ATTRIBUTE_NORMAL=0x80, sin plantilla.
+    LLVMValueRef createArguments[7] = {
+        pathBuffer,
+        LLVMConstInt(i32Type, 0x80000000u, 0),
+        LLVMConstInt(i32Type, 0x1, 0),
+        LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 3, 0),
+        LLVMConstInt(i32Type, 0x80, 0),
+        LLVMConstNull(pointerType)};
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
+    LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
+    LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
+    LLVMBuildCondBr(builder, isInvalid, failed, haveHandle);
+
+    // No se pudo abrir: no existe, no hay permiso, o esta bloqueado. -1, sin distinguir cual --
+    // la misma simplificacion deliberada del resto de la familia (los codigos de error de Win32
+    // no estan cableados a excepciones de NativeSharp, y eso es su propio trabajo de diseno).
+    LLVMPositionBuilderAtEnd(builder, failed);
+    LLVMBuildRet(builder, LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0));
+
+    LLVMPositionBuilderAtEnd(builder, haveHandle);
+    LLVMValueRef sizeSlot = LLVMBuildAlloca(builder, i64Type, "size_slot");
+    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), sizeSlot);
+    LLVMValueRef sizeArguments[2] = {handle, sizeSlot};
+    LLVMValueRef sizeOkFlag = LLVMBuildCall2(
+        builder, getFileSizeExType, getFileSizeEx, sizeArguments, 2, "size_ok_flag");
+    // El handle se cierra en LOS DOS caminos, y por eso se cierra aqui, antes de la bifurcacion:
+    // un `return` temprano que se deje el handle abierto es una fuga que no da la cara hasta que
+    // el proceso lleva horas corriendo.
+    LLVMValueRef closeArguments[1] = {handle};
+    LLVMBuildCall2(builder, closeHandleType, closeHandle, closeArguments, 1, "");
+    LLVMValueRef sizeFailedFlag = LLVMBuildICmp(
+        builder, LLVMIntEQ, sizeOkFlag, LLVMConstInt(i32Type, 0, 0), "size_failed_flag");
+    LLVMBuildCondBr(builder, sizeFailedFlag, sizeFailed, sizeOk);
+
+    LLVMPositionBuilderAtEnd(builder, sizeFailed);
+    LLVMBuildRet(builder, LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0));
+
+    LLVMPositionBuilderAtEnd(builder, sizeOk);
+    LLVMValueRef size = LLVMBuildLoad2(builder, i64Type, sizeSlot, "size");
+    LLVMBuildRet(builder, size);
+
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+// Bloque 4, fase A -- SHR-028. `File.ReadAllBytes(path)`.
+//
+// ES EL MISMO CODIGO QUE buildFileReadAllText, Y NO ES PEREZA. Un `byte[]` de NativeSharp y un
+// `string` de NativeSharp tienen el MISMO layout en memoria: { i64 longitud; los datos justo
+// detras }. Se comprobo mirando el IR de `new byte[8]`, que pide 16 bytes -- 8 de cabecera y 8 de
+// datos. Leer un archivo entero a memoria produce exactamente esa forma, se llame como se llame.
+//
+// POR QUE ENTONCES DOS HOOKS Y NO UNO. Porque el que los distingue es el FRONTEND, por la clave de
+// tipo del valor devuelto (`builtin:byte[]` contra `builtin:string`), y esa distincion tiene que
+// sobrevivir hasta el IR para que el codigo de arriba sepa que tiene. Compartir el simbolo
+// obligaria a que la bajada eligiera el tipo de salida por su cuenta, que es justo la clase de
+// decision que no debe estar ahi. El coste son sesenta lineas de IR duplicadas en el runtime; el
+// beneficio es que el tipo lo decide quien lo sabe.
+//
+// LA DIFERENCIA REAL CON ReadAllText es el truncamiento a 32 bits de ReadFile: alli el comentario
+// dice que un fichero de TEXTO de mas de 4 GiB es irreal en este dominio, y es cierto. Aqui un
+// .obj de esa talla tampoco es realista, pero el argumento ya no es el mismo, asi que queda dicho
+// aparte: si algun dia hace falta, la solucion es un bucle de lectura por trozos, no un cambio de
+// tipo.
+bool buildFileReadAllBytes(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef getProcessHeap,
+    LLVMTypeRef getProcessHeapType,
+    LLVMValueRef heapAlloc,
+    LLVMTypeRef heapAllocType,
+    LLVMValueRef createFileA,
+    LLVMTypeRef createFileAType,
+    LLVMValueRef getFileSizeEx,
+    LLVMTypeRef getFileSizeExType,
+    LLVMValueRef readFile,
+    LLVMTypeRef readFileType,
+    LLVMValueRef closeHandle,
+    LLVMTypeRef closeHandleType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(pointerType, {pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_file_read_all_bytes", type);
+    if (function == nullptr)
+    {
+        return false;
+    }
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef emptyResult = LLVMAppendBasicBlockInContext(context, function, "empty_result");
+    LLVMBasicBlockRef haveHandle = LLVMAppendBasicBlockInContext(context, function, "have_handle");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+
+    LLVMValueRef pathString = LLVMGetParam(function, 0);
+    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef createArguments[7] = {
+        pathBuffer,
+        LLVMConstInt(i32Type, 0x80000000u, 0),
+        LLVMConstInt(i32Type, 0x1, 0),
+        LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 3, 0),
+        LLVMConstInt(i32Type, 0x80, 0),
+        LLVMConstNull(pointerType)};
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
+    LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
+    LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
+    LLVMBuildCondBr(builder, isInvalid, emptyResult, haveHandle);
+
+    // No se pudo abrir: un arreglo VACIO, no nulo. Devolver nulo obligaria a cada llamador a
+    // comprobarlo antes de leer `.Length`, y el resto de esta familia ya establecio que un fallo
+    // se colapsa en el valor vacio. Quien necesite distinguir "vacio" de "no existe" tiene
+    // File.Exists y File.GetSize, que para eso devuelve -1.
+    LLVMPositionBuilderAtEnd(builder, emptyResult);
+    LLVMValueRef emptyHeap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "empty_heap");
+    LLVMValueRef emptyAllocArguments[3] = {
+        emptyHeap, LLVMConstInt(i32Type, 0, 0), LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef emptyArray = LLVMBuildCall2(
+        builder, heapAllocType, heapAlloc, emptyAllocArguments, 3, "empty_array");
+    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), emptyArray);
+    LLVMBuildRet(builder, emptyArray);
+
+    LLVMPositionBuilderAtEnd(builder, haveHandle);
+    LLVMValueRef sizeSlot = LLVMBuildAlloca(builder, i64Type, "size_slot");
+    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), sizeSlot);
+    LLVMValueRef sizeArguments[2] = {handle, sizeSlot};
+    LLVMBuildCall2(builder, getFileSizeExType, getFileSizeEx, sizeArguments, 2, "");
+    LLVMValueRef size = LLVMBuildLoad2(builder, i64Type, sizeSlot, "size");
+
+    LLVMValueRef heap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "heap");
+    LLVMValueRef totalSize = LLVMBuildAdd(builder, size, LLVMConstInt(i64Type, 8, 0), "total_size");
+    LLVMValueRef allocArguments[3] = {heap, LLVMConstInt(i32Type, 0, 0), totalSize};
+    LLVMValueRef resultArray = LLVMBuildCall2(
+        builder, heapAllocType, heapAlloc, allocArguments, 3, "result_array");
+    LLVMBuildStore(builder, size, resultArray);
+    LLVMValueRef resultDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef resultData = LLVMBuildGEP2(builder, i8Type, resultArray, resultDataIndex, 1, "result_data");
+
+    // Mismo truncamiento a DWORD que ReadAllText, y con la misma consecuencia: por encima de
+    // ~4 GiB se leeria solo el principio. Ver la cabecera de esta funcion.
+    LLVMValueRef sizeI32 = LLVMBuildTrunc(builder, size, i32Type, "size_i32");
+    LLVMValueRef bytesReadSlot = LLVMBuildAlloca(builder, i32Type, "bytes_read_slot");
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), bytesReadSlot);
+    LLVMValueRef readArguments[5] = {
+        handle, resultData, sizeI32, bytesReadSlot, LLVMConstNull(pointerType)};
+    LLVMBuildCall2(builder, readFileType, readFile, readArguments, 5, "");
+    LLVMValueRef closeArguments[1] = {handle};
+    LLVMBuildCall2(builder, closeHandleType, closeHandle, closeArguments, 1, "");
+    LLVMBuildRet(builder, resultArray);
+
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+// Bloque 4, fase A -- SHR-028, la variante que NO asigna. `File.ReadBytes(path, destino)`.
+//
+// POR QUE EXISTE SI YA HAY ReadAllBytes. Porque el driver lee muchos archivos y ReadAllBytes pide
+// memoria en cada uno. Con un buffer reutilizado --el patron que Directory.GetFiles establecio--
+// se lee un .obj tras otro sin una sola asignacion. Es exactamente lo que el Bloque 3 persigue.
+//
+// DEVUELVE CUANTOS BYTES SE LEYERON, y lee como mucho lo que quepa: si el archivo es mas grande
+// que el destino, se lee el principio y se devuelve la longitud del destino. NO es un error ni se
+// trunca en silencio sin decirlo -- el llamador compara lo devuelto con File.GetSize y sabe si se
+// quedo corto. La alternativa --fallar-- obligaria a dos llamadas siempre (tamano y lectura) para
+// el caso normal en que el buffer sobra.
+//
+// Devuelve 0 si no se pudo abrir. Aqui 0 no es ambiguo: leer cero bytes de un archivo vacio y no
+// poder abrirlo dejan el destino igual, y ninguno de los dos es un caso que el llamador trate
+// distinto. Quien necesite la diferencia tiene File.GetSize.
+bool buildFileReadBytes(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef createFileA,
+    LLVMTypeRef createFileAType,
+    LLVMValueRef getFileSizeEx,
+    LLVMTypeRef getFileSizeExType,
+    LLVMValueRef readFile,
+    LLVMTypeRef readFileType,
+    LLVMValueRef closeHandle,
+    LLVMTypeRef closeHandleType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i32Type, {pointerType, pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_file_read_bytes", type);
+    if (function == nullptr)
+    {
+        return false;
+    }
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef failed = LLVMAppendBasicBlockInContext(context, function, "failed");
+    LLVMBasicBlockRef haveHandle = LLVMAppendBasicBlockInContext(context, function, "have_handle");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+
+    LLVMValueRef pathString = LLVMGetParam(function, 0);
+    LLVMValueRef destination = LLVMGetParam(function, 1);
+    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    LLVMValueRef createArguments[7] = {
+        pathBuffer,
+        LLVMConstInt(i32Type, 0x80000000u, 0),
+        LLVMConstInt(i32Type, 0x1, 0),
+        LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 3, 0),
+        LLVMConstInt(i32Type, 0x80, 0),
+        LLVMConstNull(pointerType)};
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
+    LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
+    LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
+    LLVMBuildCondBr(builder, isInvalid, failed, haveHandle);
+
+    LLVMPositionBuilderAtEnd(builder, failed);
+    LLVMBuildRet(builder, LLVMConstInt(i32Type, 0, 0));
+
+    LLVMPositionBuilderAtEnd(builder, haveHandle);
+    // El tamano del archivo y la capacidad del destino; se lee el menor de los dos.
+    LLVMValueRef sizeSlot = LLVMBuildAlloca(builder, i64Type, "size_slot");
+    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), sizeSlot);
+    LLVMValueRef sizeArguments[2] = {handle, sizeSlot};
+    LLVMBuildCall2(builder, getFileSizeExType, getFileSizeEx, sizeArguments, 2, "");
+    LLVMValueRef fileSize = LLVMBuildLoad2(builder, i64Type, sizeSlot, "file_size");
+    LLVMValueRef capacity = LLVMBuildLoad2(builder, i64Type, destination, "capacity");
+    LLVMValueRef fits = LLVMBuildICmp(builder, LLVMIntULE, fileSize, capacity, "fits");
+    LLVMValueRef toRead = LLVMBuildSelect(builder, fits, fileSize, capacity, "to_read");
+
+    LLVMValueRef destinationDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef destinationData = LLVMBuildGEP2(
+        builder, i8Type, destination, destinationDataIndex, 1, "destination_data");
+    LLVMValueRef toReadI32 = LLVMBuildTrunc(builder, toRead, i32Type, "to_read_i32");
+    LLVMValueRef bytesReadSlot = LLVMBuildAlloca(builder, i32Type, "bytes_read_slot");
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), bytesReadSlot);
+    LLVMValueRef readArguments[5] = {
+        handle, destinationData, toReadI32, bytesReadSlot, LLVMConstNull(pointerType)};
+    LLVMBuildCall2(builder, readFileType, readFile, readArguments, 5, "");
+    LLVMValueRef closeArguments[1] = {handle};
+    LLVMBuildCall2(builder, closeHandleType, closeHandle, closeArguments, 1, "");
+    // Se devuelve lo que ReadFile dice que leyo, no lo que se le pidio: son distintos si el
+    // archivo se acorto entre GetFileSizeEx y ReadFile, y el dato honesto es el segundo.
+    LLVMValueRef bytesRead = LLVMBuildLoad2(builder, i32Type, bytesReadSlot, "bytes_read");
+    LLVMBuildRet(builder, bytesRead);
+
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+// Bloque 4, fase A -- SHR-029. `File.WriteAllBytes(path, datos, cuantos)`.
+//
+// CREATE_ALWAYS, igual que WriteAllText: el archivo termina conteniendo SOLO lo que se escribe
+// ahora. Si ya existia, se trunca a cero antes.
+//
+// DEVUELVE bool, y aqui SI se mira el BOOL de WriteFile, a diferencia de WriteAllText que lo
+// descarta. El motivo es el mismo que en File.GetSize: escribir un .obj a medias y seguir como si
+// nada produce un enlace que falla mucho despues, con un error que no menciona la escritura. Un
+// disco lleno es un caso real y barato de detectar aqui.
+//
+// EL CONTADOR ES EXPLICITO y no la longitud del arreglo -- ver MethodCoreOperationKind. Se recorta
+// a la capacidad real del arreglo por si el llamador se pasa: escribir mas alla del final seria
+// leer memoria ajena y meterla en un archivo.
+bool buildFileWriteAllBytes(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef createFileA,
+    LLVMTypeRef createFileAType,
+    LLVMValueRef writeFile,
+    LLVMTypeRef writeFileType,
+    LLVMValueRef closeHandle,
+    LLVMTypeRef closeHandleType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i1Type, {pointerType, pointerType, i32Type});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_file_write_all_bytes", type);
+    if (function == nullptr)
+    {
+        return false;
+    }
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef failed = LLVMAppendBasicBlockInContext(context, function, "failed");
+    LLVMBasicBlockRef haveHandle = LLVMAppendBasicBlockInContext(context, function, "have_handle");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+
+    LLVMValueRef pathString = LLVMGetParam(function, 0);
+    LLVMValueRef data = LLVMGetParam(function, 1);
+    LLVMValueRef requestedCount = LLVMGetParam(function, 2);
+    LLVMValueRef pathBuffer = buildNullTerminatedCopy(context, builder, function, pathString);
+    // GENERIC_WRITE=0x40000000, sin comparticion, CREATE_ALWAYS=2, FILE_ATTRIBUTE_NORMAL=0x80.
+    LLVMValueRef createArguments[7] = {
+        pathBuffer,
+        LLVMConstInt(i32Type, 0x40000000u, 0),
+        LLVMConstInt(i32Type, 0, 0),
+        LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 2, 0),
+        LLVMConstInt(i32Type, 0x80, 0),
+        LLVMConstNull(pointerType)};
+    LLVMValueRef handle = LLVMBuildCall2(builder, createFileAType, createFileA, createArguments, 7, "handle");
+    LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
+    LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
+    LLVMValueRef isInvalid = LLVMBuildICmp(builder, LLVMIntEQ, handleAsInt, invalidHandle, "is_invalid");
+    LLVMBuildCondBr(builder, isInvalid, failed, haveHandle);
+
+    LLVMPositionBuilderAtEnd(builder, failed);
+    LLVMBuildRet(builder, LLVMConstInt(i1Type, 0, 0));
+
+    LLVMPositionBuilderAtEnd(builder, haveHandle);
+    // El contador pedido se recorta a la longitud real del arreglo. Un llamador que pide escribir
+    // mas de lo que tiene esta pidiendo que se lea memoria que no es suya.
+    LLVMValueRef requested64 = LLVMBuildSExt(builder, requestedCount, i64Type, "requested64");
+    LLVMValueRef length = LLVMBuildLoad2(builder, i64Type, data, "length");
+    LLVMValueRef negative = LLVMBuildICmp(
+        builder, LLVMIntSLT, requested64, LLVMConstInt(i64Type, 0, 0), "negative");
+    LLVMValueRef nonNegative = LLVMBuildSelect(
+        builder, negative, LLVMConstInt(i64Type, 0, 0), requested64, "non_negative");
+    LLVMValueRef fits = LLVMBuildICmp(builder, LLVMIntULE, nonNegative, length, "fits");
+    LLVMValueRef toWrite = LLVMBuildSelect(builder, fits, nonNegative, length, "to_write");
+
+    LLVMValueRef dataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef dataStart = LLVMBuildGEP2(builder, i8Type, data, dataIndex, 1, "data_start");
+    LLVMValueRef toWriteI32 = LLVMBuildTrunc(builder, toWrite, i32Type, "to_write_i32");
+    LLVMValueRef writtenSlot = LLVMBuildAlloca(builder, i32Type, "written_slot");
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 0, 0), writtenSlot);
+    LLVMValueRef writeArguments[5] = {
+        handle, dataStart, toWriteI32, writtenSlot, LLVMConstNull(pointerType)};
+    LLVMValueRef writeOk = LLVMBuildCall2(
+        builder, writeFileType, writeFile, writeArguments, 5, "write_ok");
+    LLVMValueRef closeArguments[1] = {handle};
+    LLVMBuildCall2(builder, closeHandleType, closeHandle, closeArguments, 1, "");
+    // Verdadero solo si WriteFile dijo que si Y escribio todo lo que se le pidio. Un disco que se
+    // llena a mitad devuelve TRUE con menos bytes escritos, y eso es un fallo.
+    LLVMValueRef written = LLVMBuildLoad2(builder, i32Type, writtenSlot, "written");
+    LLVMValueRef apiOk = LLVMBuildICmp(
+        builder, LLVMIntNE, writeOk, LLVMConstInt(i32Type, 0, 0), "api_ok");
+    LLVMValueRef complete = LLVMBuildICmp(builder, LLVMIntEQ, written, toWriteI32, "complete");
+    LLVMValueRef succeeded = LLVMBuildAnd(builder, apiOk, complete, "succeeded");
+    LLVMBuildRet(builder, succeeded);
+
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+// Bloque 4, fase A. `Environment.CurrentDirectory()` -- cierra `current_path`, la ultima de las
+// siete operaciones de filesystem que el doc 81 midio como usadas de verdad por el arbol de nsc.
+//
+// Mismo idioma de dos llamadas que buildPathGetFullPath: la primera con buffer nulo devuelve el
+// tamano necesario INCLUYENDO el terminador; la segunda lo llena. La diferencia es que
+// GetCurrentDirectoryA tiene dos parametros y no cuatro, y que el orden es (tamano, buffer).
+bool buildEnvironmentCurrentDirectory(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef getProcessHeap,
+    LLVMTypeRef getProcessHeapType,
+    LLVMValueRef heapAlloc,
+    LLVMTypeRef heapAllocType,
+    LLVMValueRef getCurrentDirectoryA,
+    LLVMTypeRef getCurrentDirectoryAType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(pointerType, {});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_environment_current_directory", type);
+    if (function == nullptr)
+    {
+        return false;
+    }
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef emptyResult = LLVMAppendBasicBlockInContext(context, function, "empty_result");
+    LLVMBasicBlockRef allocateResult = LLVMAppendBasicBlockInContext(context, function, "allocate_result");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+
+    LLVMValueRef sizeArguments[2] = {LLVMConstInt(i32Type, 0, 0), LLVMConstNull(pointerType)};
+    LLVMValueRef requiredSize = LLVMBuildCall2(
+        builder, getCurrentDirectoryAType, getCurrentDirectoryA, sizeArguments, 2, "required_size");
+    LLVMValueRef failed = LLVMBuildICmp(
+        builder, LLVMIntEQ, requiredSize, LLVMConstInt(i32Type, 0, 0), "failed");
+    LLVMBuildCondBr(builder, failed, emptyResult, allocateResult);
+
+    LLVMPositionBuilderAtEnd(builder, emptyResult);
+    LLVMValueRef emptyHeap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "empty_heap");
+    LLVMValueRef emptyAllocArguments[3] = {
+        emptyHeap, LLVMConstInt(i32Type, 0, 0), LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef emptyString = LLVMBuildCall2(
+        builder, heapAllocType, heapAlloc, emptyAllocArguments, 3, "empty_string");
+    LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), emptyString);
+    LLVMBuildRet(builder, emptyString);
+
+    LLVMPositionBuilderAtEnd(builder, allocateResult);
+    LLVMValueRef requiredSize64 = LLVMBuildZExt(builder, requiredSize, i64Type, "required_size64");
+    LLVMValueRef totalSize = LLVMBuildAdd(builder, requiredSize64, LLVMConstInt(i64Type, 8, 0), "total_size");
+    LLVMValueRef heap = LLVMBuildCall2(builder, getProcessHeapType, getProcessHeap, nullptr, 0, "heap");
+    LLVMValueRef allocArguments[3] = {heap, LLVMConstInt(i32Type, 0, 0), totalSize};
+    LLVMValueRef resultString = LLVMBuildCall2(
+        builder, heapAllocType, heapAlloc, allocArguments, 3, "result_string");
+    LLVMValueRef resultDataIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef resultData = LLVMBuildGEP2(builder, i8Type, resultString, resultDataIndex, 1, "result_data");
+    LLVMValueRef fillArguments[2] = {requiredSize, resultData};
+    // La SEGUNDA llamada devuelve los caracteres copiados SIN el terminador, que es exactamente
+    // la longitud que quiere una cadena de NativeSharp. Se guarda esa, no `requiredSize - 1`: si
+    // el directorio cambiara entre las dos llamadas, el dato honesto es el de la segunda.
+    LLVMValueRef copied = LLVMBuildCall2(
+        builder, getCurrentDirectoryAType, getCurrentDirectoryA, fillArguments, 2, "copied");
+    LLVMValueRef copied64 = LLVMBuildZExt(builder, copied, i64Type, "copied64");
+    LLVMBuildStore(builder, copied64, resultString);
+    LLVMBuildRet(builder, resultString);
+
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+// Bloque 4, fase C. Pone a cero un bloque de pila, en trozos de 8 bytes.
+//
+// POR QUE NO memset. Porque este runtime tiene un bug ya documentado con memset y su alias (ver
+// BUGS_ENCONTRADOS_bug_memset_se_llama_por_su_alias.md), y porque aqui no hace falta: los tres
+// bloques que se limpian son de 24, 104 y 24 bytes, o sea tres, trece y tres almacenamientos.
+// Emitir un bucle o una llamada para eso seria mas codigo del que se ahorra.
+//
+// `bytes` tiene que ser multiplo de 8; las tres estructuras de Win32 que se usan aqui lo son en
+// x64 por su propio alineamiento.
+void buildZeroFillStack(
+    LLVMContextRef context,
+    LLVMBuilderRef builder,
+    LLVMValueRef base,
+    unsigned long long bytes)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    for (unsigned long long offset = 0; offset + 8 <= bytes; offset += 8)
+    {
+        LLVMValueRef index[1] = {LLVMConstInt(i64Type, offset, 0)};
+        LLVMValueRef slot = LLVMBuildGEP2(builder, i8Type, base, index, 1, "zero_slot");
+        LLVMBuildStore(builder, LLVMConstInt(i64Type, 0, 0), slot);
+    }
+}
+
+// Bloque 4, fase C -- SHR-032. `Process.Run(ejecutable, lineaDeComandos, rutaDeSalida)`.
+//
+// ES EL BLOQUEO DURO DEL AUTO-HOSPEDADO. Sin crear procesos hijos, un `nsc` escrito en NativeSharp
+// no puede lanzar el enlazador, y por tanto no puede producir un ejecutable. `Process.ns` existia
+// desde Stage 55.1, pero su cabecera decia que crear procesos estaba "deliberadamente fuera de
+// alcance"; sus cinco operaciones hablan solo del proceso ACTUAL.
+//
+// QUE HACE, EN ORDEN:
+//   1. abre `rutaDeSalida` para escritura, con el handle marcado como HEREDABLE;
+//   2. lanza el proceso con stdout Y stderr apuntando a ese handle;
+//   3. espera a que termine, sin limite de tiempo;
+//   4. lee su codigo de salida y lo devuelve.
+//
+// Es exactamente lo que `LldLinker.cpp` hace hoy en C++ para invocar a lld-link, y esa es la
+// prueba de que el conjunto es el correcto: no se ha inventado una API, se ha portado la que el
+// compilador ya usa.
+//
+// POR QUE stdout Y stderr AL MISMO FICHERO. Porque un enlazador escribe sus diagnosticos por
+// stderr y su ruido por stdout, y quien lee el resultado quiere los dos INTERCALADOS en el orden
+// en que ocurrieron. Dos ficheros obligarian a reconstruir ese orden, que no se puede.
+//
+// POR QUE NO HAY TIEMPO LIMITE. Un enlazador que no termina es un fallo del enlazador, y matarlo a
+// los N segundos convertiria ese fallo en "el codigo de salida fue raro" -- que es peor, porque se
+// parece a un fallo del programa que se compilaba. WaitForSingleObject con INFINITE deja el
+// problema donde esta.
+//
+// DEVUELVE -1 SI NO SE PUDO LANZAR, y ese valor NO puede confundirse con un codigo de salida: los
+// codigos de salida de Windows son DWORD sin signo, y aqui se devuelven como i32, asi que un
+// proceso que devolviera 0xFFFFFFFF daria -1 tambien. Es la unica ambiguedad, se acepta a
+// sabiendas: ningun enlazador ni compilador de esta familia devuelve ese valor, y la alternativa
+// --un out-parameter de exito-- convertiria la firma mas usada del driver en dos argumentos por un
+// caso que no ocurre.
+//
+// UNA RUTA DE SALIDA VACIA NO ES UN CASO ESPECIAL: CreateFileA falla sobre "" y se cae por el
+// mismo camino de error, devolviendo -1. No hace falta comprobarlo antes.
+bool buildProcessRun(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef createFileA,
+    LLVMTypeRef createFileAType,
+    LLVMValueRef createProcessA,
+    LLVMTypeRef createProcessAType,
+    LLVMValueRef waitForSingleObject,
+    LLVMTypeRef waitForSingleObjectType,
+    LLVMValueRef getExitCodeProcess,
+    LLVMTypeRef getExitCodeProcessType,
+    LLVMValueRef closeHandle,
+    LLVMTypeRef closeHandleType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i32Type, {pointerType, pointerType, pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_process_run", type);
+    if (function == nullptr)
+    {
+        return false;
+    }
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef noOutput = LLVMAppendBasicBlockInContext(context, function, "no_output");
+    LLVMBasicBlockRef haveOutput = LLVMAppendBasicBlockInContext(context, function, "have_output");
+    LLVMBasicBlockRef spawnFailed = LLVMAppendBasicBlockInContext(context, function, "spawn_failed");
+    LLVMBasicBlockRef spawned = LLVMAppendBasicBlockInContext(context, function, "spawned");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+
+    LLVMValueRef executableString = LLVMGetParam(function, 0);
+    LLVMValueRef commandLineString = LLVMGetParam(function, 1);
+    LLVMValueRef outputPathString = LLVMGetParam(function, 2);
+
+    LLVMValueRef executableBuffer = buildNullTerminatedCopy(context, builder, function, executableString);
+    // La linea de comandos tiene que estar en memoria ESCRIBIBLE: CreateProcessA puede modificarla
+    // en sitio. `buildNullTerminatedCopy` da un alloca, asi que ya lo esta -- pero conviene decirlo,
+    // porque pasar un literal de solo lectura ahi es un fallo clasico que en Windows se manifiesta
+    // como una violacion de acceso dentro de kernel32.
+    LLVMValueRef commandLineBuffer = buildNullTerminatedCopy(context, builder, function, commandLineString);
+    LLVMValueRef outputPathBuffer = buildNullTerminatedCopy(context, builder, function, outputPathString);
+
+    // SECURITY_ATTRIBUTES { DWORD nLength; LPVOID lpSecurityDescriptor; BOOL bInheritHandle; }
+    // 24 bytes en x64. bInheritHandle=TRUE es lo que hace que el handle del fichero sobreviva al
+    // CreateProcess: sin eso el hijo recibe un handle invalido y no escribe nada.
+    LLVMValueRef securityAttributes = LLVMBuildArrayAlloca(
+        builder, i8Type, LLVMConstInt(i64Type, 24, 0), "security_attributes");
+    buildZeroFillStack(context, builder, securityAttributes, 24);
+    LLVMValueRef saLengthIndex[1] = {LLVMConstInt(i64Type, 0, 0)};
+    LLVMValueRef saLength = LLVMBuildGEP2(builder, i8Type, securityAttributes, saLengthIndex, 1, "sa_length");
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 24, 0), saLength);
+    LLVMValueRef saInheritIndex[1] = {LLVMConstInt(i64Type, 16, 0)};
+    LLVMValueRef saInherit = LLVMBuildGEP2(builder, i8Type, securityAttributes, saInheritIndex, 1, "sa_inherit");
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 1, 0), saInherit);
+
+    // GENERIC_WRITE=0x40000000, FILE_SHARE_READ=0x1 (para poder leer el fichero mientras el hijo
+    // escribe), CREATE_ALWAYS=2, FILE_ATTRIBUTE_NORMAL=0x80.
+    LLVMValueRef createFileArguments[7] = {
+        outputPathBuffer,
+        LLVMConstInt(i32Type, 0x40000000u, 0),
+        LLVMConstInt(i32Type, 0x1, 0),
+        securityAttributes,
+        LLVMConstInt(i32Type, 2, 0),
+        LLVMConstInt(i32Type, 0x80, 0),
+        LLVMConstNull(pointerType)};
+    LLVMValueRef outputHandle = LLVMBuildCall2(
+        builder, createFileAType, createFileA, createFileArguments, 7, "output_handle");
+    LLVMValueRef outputAsInt = LLVMBuildPtrToInt(builder, outputHandle, i64Type, "output_as_int");
+    LLVMValueRef invalidHandle = LLVMConstInt(i64Type, static_cast<unsigned long long>(-1), 0);
+    LLVMValueRef outputInvalid = LLVMBuildICmp(
+        builder, LLVMIntEQ, outputAsInt, invalidHandle, "output_invalid");
+    LLVMBuildCondBr(builder, outputInvalid, noOutput, haveOutput);
+
+    // No se pudo abrir el fichero de salida -- incluida la ruta vacia, que cae aqui sola.
+    LLVMPositionBuilderAtEnd(builder, noOutput);
+    LLVMBuildRet(builder, LLVMConstInt(i32Type, static_cast<unsigned long long>(-1), 0));
+
+    LLVMPositionBuilderAtEnd(builder, haveOutput);
+    // STARTUPINFOA: 104 bytes en x64. Solo tres campos importan aqui --cb, dwFlags y los tres
+    // handles-- y el resto tiene que ser CERO, de ahi el memset: un dwFlags con basura hace que
+    // CreateProcess interprete campos que nadie relleno.
+    //
+    //   cb            0     dwFlags      60     hStdInput   80
+    //   hStdOutput   88     hStdError    96
+    //
+    // STARTF_USESTDHANDLES = 0x100. Sin ese bit, los tres handles se ignoran.
+    LLVMValueRef startupInfo = LLVMBuildArrayAlloca(
+        builder, i8Type, LLVMConstInt(i64Type, 104, 0), "startup_info");
+    buildZeroFillStack(context, builder, startupInfo, 104);
+    LLVMValueRef cbIndex[1] = {LLVMConstInt(i64Type, 0, 0)};
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 104, 0),
+        LLVMBuildGEP2(builder, i8Type, startupInfo, cbIndex, 1, "si_cb"));
+    LLVMValueRef flagsIndex[1] = {LLVMConstInt(i64Type, 60, 0)};
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, 0x100, 0),
+        LLVMBuildGEP2(builder, i8Type, startupInfo, flagsIndex, 1, "si_flags"));
+    LLVMValueRef stdOutIndex[1] = {LLVMConstInt(i64Type, 88, 0)};
+    LLVMBuildStore(builder, outputHandle,
+        LLVMBuildGEP2(builder, i8Type, startupInfo, stdOutIndex, 1, "si_stdout"));
+    LLVMValueRef stdErrIndex[1] = {LLVMConstInt(i64Type, 96, 0)};
+    LLVMBuildStore(builder, outputHandle,
+        LLVMBuildGEP2(builder, i8Type, startupInfo, stdErrIndex, 1, "si_stderr"));
+
+    // PROCESS_INFORMATION { HANDLE hProcess; HANDLE hThread; DWORD pid; DWORD tid; } -- 24 bytes.
+    LLVMValueRef processInformation = LLVMBuildArrayAlloca(
+        builder, i8Type, LLVMConstInt(i64Type, 24, 0), "process_information");
+    buildZeroFillStack(context, builder, processInformation, 24);
+
+    // bInheritHandles=TRUE es obligatorio para que el handle de salida llegue al hijo; sin el, los
+    // campos hStdOutput/hStdError apuntan a un handle que el hijo no tiene.
+    LLVMValueRef createProcessArguments[10] = {
+        executableBuffer,
+        commandLineBuffer,
+        LLVMConstNull(pointerType),
+        LLVMConstNull(pointerType),
+        LLVMConstInt(i32Type, 1, 0),
+        LLVMConstInt(i32Type, 0, 0),
+        LLVMConstNull(pointerType),
+        LLVMConstNull(pointerType),
+        startupInfo,
+        processInformation};
+    LLVMValueRef spawnOk = LLVMBuildCall2(
+        builder, createProcessAType, createProcessA, createProcessArguments, 10, "spawn_ok");
+    // El handle del fichero se cierra AQUI, en el padre, pase lo que pase: el hijo ya tiene su
+    // copia. Dejarlo abierto mantendria el fichero bloqueado despues de que el hijo terminara, y
+    // quien quiere leer el resultado justo despues se encontraria con un fichero en uso.
+    LLVMValueRef closeOutputArguments[1] = {outputHandle};
+    LLVMBuildCall2(builder, closeHandleType, closeHandle, closeOutputArguments, 1, "");
+    LLVMValueRef spawnFailedFlag = LLVMBuildICmp(
+        builder, LLVMIntEQ, spawnOk, LLVMConstInt(i32Type, 0, 0), "spawn_failed_flag");
+    LLVMBuildCondBr(builder, spawnFailedFlag, spawnFailed, spawned);
+
+    LLVMPositionBuilderAtEnd(builder, spawnFailed);
+    LLVMBuildRet(builder, LLVMConstInt(i32Type, static_cast<unsigned long long>(-1), 0));
+
+    LLVMPositionBuilderAtEnd(builder, spawned);
+    LLVMValueRef processHandleIndex[1] = {LLVMConstInt(i64Type, 0, 0)};
+    LLVMValueRef processHandleSlot = LLVMBuildGEP2(
+        builder, i8Type, processInformation, processHandleIndex, 1, "process_handle_slot");
+    LLVMValueRef processHandle = LLVMBuildLoad2(
+        builder, pointerType, processHandleSlot, "process_handle");
+    LLVMValueRef threadHandleIndex[1] = {LLVMConstInt(i64Type, 8, 0)};
+    LLVMValueRef threadHandleSlot = LLVMBuildGEP2(
+        builder, i8Type, processInformation, threadHandleIndex, 1, "thread_handle_slot");
+    LLVMValueRef threadHandle = LLVMBuildLoad2(
+        builder, pointerType, threadHandleSlot, "thread_handle");
+
+    // INFINITE = 0xFFFFFFFF. Ver la cabecera: un enlazador colgado es un fallo del enlazador, y un
+    // tiempo limite lo disfrazaria de codigo de salida raro.
+    LLVMValueRef waitArguments[2] = {processHandle, LLVMConstInt(i32Type, 0xFFFFFFFFu, 0)};
+    LLVMBuildCall2(builder, waitForSingleObjectType, waitForSingleObject, waitArguments, 2, "");
+
+    LLVMValueRef exitCodeSlot = LLVMBuildAlloca(builder, i32Type, "exit_code_slot");
+    // Por omision -1: si GetExitCodeProcess fallara, el resultado sigue siendo "no se pudo", que es
+    // la verdad, en vez de un cero que diria "todo bien".
+    LLVMBuildStore(builder, LLVMConstInt(i32Type, static_cast<unsigned long long>(-1), 0), exitCodeSlot);
+    LLVMValueRef exitCodeArguments[2] = {processHandle, exitCodeSlot};
+    LLVMBuildCall2(builder, getExitCodeProcessType, getExitCodeProcess, exitCodeArguments, 2, "");
+    LLVMValueRef exitCode = LLVMBuildLoad2(builder, i32Type, exitCodeSlot, "exit_code");
+
+    // LOS DOS handles del hijo. Olvidar el del hilo es la fuga clasica de CreateProcess: el
+    // proceso termina, su handle se cierra, y el del hilo primario se queda vivo para siempre.
+    LLVMValueRef closeThreadArguments[1] = {threadHandle};
+    LLVMBuildCall2(builder, closeHandleType, closeHandle, closeThreadArguments, 1, "");
+    LLVMValueRef closeProcessArguments[1] = {processHandle};
+    LLVMBuildCall2(builder, closeHandleType, closeHandle, closeProcessArguments, 1, "");
+    LLVMBuildRet(builder, exitCode);
 
     LLVMDisposeBuilder(builder);
     return true;
@@ -4510,6 +5236,29 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         i32Type, {pointerType, i32Type, pointerType, pointerType});
     LLVMValueRef getFullPathNameA = LLVMAddFunction(module, "GetFullPathNameA", getFullPathNameAType);
 
+    // Bloque 4, fase A. GetCurrentDirectoryA es el UNICO import de Win32 que esta fase anade: las
+    // otras tres operaciones (ReadAllBytes/ReadBytes/WriteAllBytes) reutilizan CreateFileA,
+    // GetFileSizeEx, ReadFile, WriteFile y CloseHandle, que ya estaban aqui para las variantes de
+    // texto. Su forma es la del "pregunta el tamano primero" de GetFullPathNameA, con un
+    // parametro menos:
+    //
+    //   DWORD GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer);
+    LLVMTypeRef getCurrentDirectoryAType = functionType(i32Type, {i32Type, pointerType});
+    LLVMValueRef getCurrentDirectoryA = LLVMAddFunction(module, "GetCurrentDirectoryA", getCurrentDirectoryAType);
+
+    // Bloque 4, fase C -- Process.Run. CreateProcessA tiene DIEZ parametros; GetExitCodeProcess,
+    // dos. WaitForSingleObject y CloseHandle ya estaban (los hilos de Stage 54.1 los importan).
+    //
+    //   BOOL CreateProcessA(LPCSTR app, LPSTR cmd, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES,
+    //                       BOOL inherit, DWORD flags, LPVOID env, LPCSTR cwd,
+    //                       LPSTARTUPINFOA, LPPROCESS_INFORMATION);
+    LLVMTypeRef createProcessAType = functionType(i32Type, {
+        pointerType, pointerType, pointerType, pointerType, i32Type,
+        i32Type, pointerType, pointerType, pointerType, pointerType});
+    LLVMValueRef createProcessA = LLVMAddFunction(module, "CreateProcessA", createProcessAType);
+    LLVMTypeRef getExitCodeProcessType = functionType(i32Type, {pointerType, pointerType});
+    LLVMValueRef getExitCodeProcess = LLVMAddFunction(module, "GetExitCodeProcess", getExitCodeProcessType);
+
     // Stage 53.5 "Command-line arguments". GetCommandLineW/CommandLineToArgvW/WideCharToMultiByte/
     // LocalFree -- see buildEnvironmentGetCommandLineArgs's header comment for why this round
     // deliberately uses *W (UTF-16) Win32 calls, the only place in this entire runtime that does.
@@ -4846,6 +5595,26 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
             context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
             createFileA, createFileAType, getFileSizeEx, getFileSizeExType,
             readFile, readFileType, closeHandle, closeHandleType) &&
+        buildFileGetSize(
+            context, module, createFileA, createFileAType, getFileSizeEx, getFileSizeExType,
+            closeHandle, closeHandleType) &&
+        buildFileReadAllBytes(
+            context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
+            createFileA, createFileAType, getFileSizeEx, getFileSizeExType,
+            readFile, readFileType, closeHandle, closeHandleType) &&
+        buildFileReadBytes(
+            context, module, createFileA, createFileAType, getFileSizeEx, getFileSizeExType,
+            readFile, readFileType, closeHandle, closeHandleType) &&
+        buildFileWriteAllBytes(
+            context, module, createFileA, createFileAType, writeFile, writeFileType,
+            closeHandle, closeHandleType) &&
+        buildEnvironmentCurrentDirectory(
+            context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType,
+            getCurrentDirectoryA, getCurrentDirectoryAType) &&
+        buildProcessRun(
+            context, module, createFileA, createFileAType, createProcessA, createProcessAType,
+            waitForSingleObject, waitForSingleObjectType,
+            getExitCodeProcess, getExitCodeProcessType, closeHandle, closeHandleType) &&
         buildFileWriteAllText(
             context, module, createFileA, createFileAType, writeFile, writeFileType,
             closeHandle, closeHandleType) &&

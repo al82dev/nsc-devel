@@ -336,7 +336,7 @@ int main()
 {
     TestContext tests;
     const std::filesystem::path root =
-        std::filesystem::temp_directory_path() / "nativesharp_stage46_native_libraries";
+        nativesharp::tests::evidenceRoot("nativesharp_stage46_native_libraries");
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root, cleanupError);

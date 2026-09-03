@@ -1,0 +1,59 @@
+STAGE_EVIDENCIA -- 2026-09-02
+La evidencia que conservan las pruebas al fallar pasa de %TEMP% a _evidencia\ dentro del
+repositorio, para que se pueda leer sin estar delante de la maquina.
+Ver mkdown/104_la_evidencia_dentro_del_repositorio.md
+
+MODIFICADOS
+  tests/support/TestContext.h
+      + evidenceRoot(name): lee NSC_TEST_EVIDENCE_DIR; sin la variable se comporta
+        exactamente como antes (temp_directory_path() / name).
+        _dupenv_s bajo _WIN32 / std::getenv fuera -- mismo patron que LldLinker.cpp,
+        evita el C4996 con /WX.
+      + #include <cstdlib>, <string>
+
+  tests/unit/Stage46NativeLibrariesTests.cpp
+  tests/unit/Stage47HostCAbiTests.cpp
+  tests/unit/Stage48_1CHeaderGeneratorTests.cpp
+  tests/unit/Stage48_3CHostIntegrationTests.cpp
+  tests/unit/Stage48_4CppHostIntegrationTests.cpp
+  tests/unit/Stage48_5CSharpPInvokeHostTests.cpp
+      Una linea en cada uno:
+        std::filesystem::temp_directory_path() / "<nombre>"
+      ->  nativesharp::tests::evidenceRoot("<nombre>")
+      Son las seis que llaman a resultKeeping(); las otras 90 borran su directorio
+      pase lo que pase, asi que moverlas no cambiaria nada observable.
+
+  run_windows_checklist.bat   (CRLF)
+      + NSC_TEST_EVIDENCE_DIR=%ROOT%\_evidencia\%NSC_LOG_DIR% antes de ctest, con mkdir
+      + echo de la ruta, para que salga en el log de la corrida
+      + comentario: por que va FUERA de %LOGDIR% (nslink_pipeline.py copia %LOGDIR%
+        entero al buzon de NSLink; ya se comio 5319 ficheros una vez)
+
+  nslink_solo.bat             (CRLF)
+      + lo mismo, con _evidencia\%SOLO_OUT% para no pisar la evidencia de all.bat
+
+  all.bat                     (CRLF)
+      + rmdir /s /q "_evidencia" en la limpieza de arranque
+      + comentario explicando que es y por que se borra
+
+  .gitignore
+      + /_evidencia
+
+NUEVOS
+  mkdown/104_la_evidencia_dentro_del_repositorio.md
+  mkdown/STAGE_EVIDENCIA_CHANGED_FILES.txt
+
+DESCARTADO
+  Redirigir TEMP/TMP para toda la corrida de ctest. Una sola linea y cero ficheros de
+  prueba tocados, pero redirige lo temporal de clang, lld-link, dotnet, MSBuild y NuGet
+  para arreglar un problema nuestro.
+
+VERIFICADO
+  clang++-18 -std=c++20 -Wall -Wextra -fsyntax-only contra las cabeceras reales:
+  los seis ficheros limpios, ni error ni aviso.
+  (Stage48_1 con un BuildId.h equivalente al que genera CMake; Stage48_5 con -DNSC_SOURCE_DIR.)
+  Los tres .bat siguen siendo CRLF, comprobado con `file`.
+
+NO VERIFICADO
+  Que la evidencia acabe donde digo. Se ve en la proxima corrida -- all.bat imprime la
+  ruta antes de ctest -- y sobre todo la primera vez que algo se ponga rojo.

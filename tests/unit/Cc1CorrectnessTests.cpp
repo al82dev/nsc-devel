@@ -422,6 +422,44 @@ int main()
         tests, root, "tests/cc1/c23_views_and_lifetimes/c23_views_and_lifetimes.nsproj",
         "cc1-c23-views-and-lifetimes", 42);
 
+    // Bloque 4, fase A -- E/S binaria de archivos. Las cinco operaciones nuevas se enfrentan ENTRE
+    // SI: se escribe, se pregunta el tamano, se lee de las dos formas, y las tres respuestas
+    // tienen que coincidir. Cubre ademas los tres casos que separan esta familia del resto --
+    // que GetSize devuelve -1 y no 0 cuando el archivo no esta (para poder distinguirlo de uno
+    // VACIO, que tambien se prueba), que ReadBytes con un buffer corto lee el principio y lo dice
+    // en vez de fallar, y que WriteAllBytes recorta el contador a la longitud real del arreglo.
+    // Ver mkdown\100_bloque4_fase_a_io_binaria.md.
+    checkFixture(
+        tests, root, "tests/cc1/c24_binary_file_io/c24_binary_file_io.nsproj",
+        "cc1-c24-binary-file-io", 42);
+
+    // Bloque 4, fase B -- ByteBuffer, BinaryWriter y BinaryReader, IDA Y VUELTA. Se construye una
+    // cabecera con la forma de la de COFF, se vuelca a disco con las operaciones de la fase A, se
+    // relee y se exige que TODOS los campos coincidan. La propiedad medida es que escribir y leer
+    // son inversas: una prueba contra bytes literales pasaria igual si los dos estuvieran mal del
+    // mismo modo. Cubre ademas el maximo de 64 bits y un negativo --donde el signo se rompe--, que
+    // leer de mas devuelve None SIN mover la posicion, y que ByteBuffer no pierde nada al crecer.
+    // Ver mkdown\101_bloque4_fases_b_y_c.md.
+    checkFixture(
+        tests, root, "tests/cc1/c25_binary_roundtrip/c25_binary_roundtrip.nsproj",
+        "cc1-c25-binary-roundtrip", 42);
+
+    // Bloque 4 -- EL CRITERIO DE CIERRE DEL BLOQUE, escrito en el doc 69 antes de empezarlo: "un
+    // programa NativeSharp encuentra fuentes, las lee, escribe un binario y llama al enlazador".
+    // c24 y c25 miden las fases por separado; este mide que COMPONEN: prepara un arbol de
+    // fuentes, las descubre con Directory.GetFiles, las lee, emite un objeto binario con
+    // ByteBuffer/BinaryWriter, lo relee con File.ReadBytes/BinaryReader campo por campo, y
+    // lanza dos procesos hijos con Process.Run -- uno es el propio ejecutable (codigo de salida
+    // y salida de texto comprobados) y el otro es el enlazador de verdad.
+    //
+    // OJO CON LO QUE MIDE ESTA PRUEBA Y LO QUE NO. Aqui solo se COMPILA Y ENLAZA: checkFixture
+    // ejecuta bajo Wine, que en Windows no esta, asi que la ejecucion se salta. Quien de verdad
+    // corre c26 --y por tanto quien mide Process.Run-- es run_cases.py, en los 90 trabajos.
+    // Ver mkdown\105_bloque4_cierre_driver_minimo.md.
+    checkFixture(
+        tests, root, "tests/cc1/c26_driver_minimo/c26_driver_minimo.nsproj",
+        "cc1-c26-driver-minimo", 42);
+
     // =====================================================================================
     // EH -- EH-001, medido en el IR.
     // =====================================================================================

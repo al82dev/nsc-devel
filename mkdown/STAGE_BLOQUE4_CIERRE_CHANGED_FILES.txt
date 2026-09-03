@@ -1,0 +1,84 @@
+STAGE_BLOQUE4_CIERRE -- 2026-09-02
+El criterio de cierre del Bloque 4 (doc 69): un programa NativeSharp que encuentra fuentes, las
+lee, escribe un binario, lo relee y LLAMA AL ENLAZADOR. Primera ejecucion real de Process.Run.
+Ver mkdown/105_bloque4_cierre_driver_minimo.md
+
+NUEVOS
+  tests/cc1/c26_driver_minimo/Main.ns
+  tests/cc1/c26_driver_minimo/c26_driver_minimo.nsproj
+  mkdown/105_bloque4_cierre_driver_minimo.md
+  mkdown/STAGE_BLOQUE4_CIERRE_CHANGED_FILES.txt
+
+MODIFICADOS
+  run_cases.py
+      + c26 en la tabla CASES (45 casos -> 90 trabajos)
+      + linker_path(): NSC_LLD_LINK si esta puesta, si no lld-link en el PATH -- la MISMA regla
+        que findLldLink() en src/Linker/LldLinker.cpp
+      + child_environment() exporta NSC_CC1_LINKER, que es de donde c26 saca el enlazador
+      + import shutil
+
+  nslink_pipeline.py
+      + c26 en su tabla CASES (la segunda copia; comprobado que las dos son identicas, 45 y 45)
+      ~ "los 84 trabajos" -> "los trabajos del corpus" en comentarios y salida
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      + checkFixture para c26. Aqui solo COMPILA Y ENLAZA: checkFixture ejecuta bajo Wine, que
+        en Windows no esta. Quien mide Process.Run es run_cases.py.
+
+  all.bat, nslink_solo.bat
+      ~ "los 84 trabajos" -> "los trabajos del corpus". Era prosa, no logica, pero un numero
+        escrito a mano en un comentario es lo que se queda viejo.
+
+LO QUE MIDE c26 Y NO MEDIAN c24 NI c25
+  Que las cuatro capas COMPONEN en un solo programa. c24 y c25 miden las fases por separado;
+  un fallo en c26 con esos dos en verde significa que las piezas estan bien y la composicion no.
+  Y es el unico sitio donde Process.Run se ejecuta: hasta hoy sus diez argumentos de
+  CreateProcessA existian solo como IR.
+
+DECISIONES
+  - El hijo es el propio ejecutable. Parada estructural: el padre solo existe con cuantos==1 y
+    todo hijo recibe uno mas, asi que un hijo NO PUEDE lanzar otro aunque no reconozca su
+    argumento. No hay bomba de procesos posible.
+  - Del enlazador real se comprueba que ARRANCO y devolvio un codigo, no un codigo concreto:
+    lld-link y nslink.exe son dos CLI distintas y exigir un codigo convertiria esto en una
+    prueba de la CLI del enlazador.
+  - Sin NSC_CC1_LINKER ni NSC_LLD_LINK, avisa por su salida y NO falla.
+  - El programa escribe sus propias entradas: bajo run_cases.py el cwd es la raiz del repo y
+    bajo ctest no tiene por que serlo.
+
+CORRECCION DEL MISMO DIA, despues de la primera corrida
+  run_cases.py -- linker_path() reimplementaba la busqueda del enlazador en Python
+  (NSC_LLD_LINK, si no shutil.which("lld-link")). No era "la misma regla que findLldLink()":
+  en la corrida nsc encontro el enlazador y enlazo los 90 trabajos, y shutil.which no encontro
+  nada, asi que el PASO 6 -- el criterio de cierre del bloque -- no se ejecuto en la pasada 1
+  y la corrida salio VERDE igual. Cuarta copia de una regla desincronizada en esta ronda.
+
+  Arreglo: preguntarselo a `nsc --print-linker`, que ya existia y llama a LldLinker::discover().
+  Resuelto una vez en main(), no en los 90 hilos, y IMPRESO -- el aviso estaba enterrado en el
+  log de un caso entre noventa, y un aviso que hay que ir a buscar no es un aviso.
+  - fuera `import shutil`
+  - + _LINKER_PATH_CACHE
+  - + las tres lineas [CASOS] cuando no hay enlazador
+
+MEDIDO EN LA PRIMERA CORRIDA
+  Pasada 1 (lld-link) y pasada 2 (NSLink): Passed 92 / Failed 0, ctest 244/244, 90 trabajos OK,
+  build limpio con /WX, triage 16/16.
+  Pasada 2, log de c26:  "c26: enlazador lanzado, codigo 2"  <- criterio cumplido con NSLink,
+  primera ejecucion real de CreateProcessA en el proyecto.
+  Pasada 1, log de c26:  "AVISO: ... no se lanzo el enlazador"  <- lo que este arreglo corrige.
+
+VERIFICADO (contenedor, frontend real)
+  ./fe tests/cc1/c26_driver_minimo/c26_driver_minimo.nsproj --stage=llvm   OK
+  ./sweep.sh llvm                                     OK=170  FAIL=5  (los 5 negativos de siempre)
+  El IR llama a __nativesharp_process_run y NO a __nsc_method_...Process__Run
+  -- es decir, Process.Run baja a la operacion nucleo y no al metodo que devuelve -1.
+  Las dos tablas de casos comprobadas identicas caso por caso: 45 y 45.
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que CreateProcessA lance de verdad. Lo mide all.bat en Windows, y es la primera vez.
+
+ESPERADO EN LA PROXIMA CORRIDA
+  ctest      244   (c26 va DENTRO de nsc.cc1.correctness: crecen sus comprobaciones, no el
+                    numero de pruebas de ctest)
+  trabajos    90   (eran 88)
+  triage   16/16

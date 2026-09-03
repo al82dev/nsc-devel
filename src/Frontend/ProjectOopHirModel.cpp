@@ -18,6 +18,296 @@ namespace nativesharp::frontend
 {
 namespace
 {
+// LA UNICA TABLA de las operaciones nucleo que se bajan por el bloque compartido de "llamada
+// tipo string" de lowerExpression, y de cuantos operandos toma cada una.
+//
+// POR QUE EXISTE, y es la correccion del 2026-09-02. Antes esto eran DOS listas separadas dentro
+// de esa misma funcion, a cientos de lineas una de otra:
+//
+//   1) una cadena de `core->kind == ... ||` que decidia si la operacion entraba en el bloque;
+//   2) una cadena de if/else-if que le asignaba la aridad, con un `expected = 2U` por omision.
+//
+// Anadir una operacion y olvidar una de las dos NO daba ningun error, y cada olvido fallaba de
+// una forma distinta y ninguna decia el nombre de la operacion:
+//
+//   * solo en (1): la aridad caia al 2 por omision. Si la operacion no tomaba dos operandos, el
+//     resultado era "Stage 51 string intrinsic received an invalid operand count" -- un mensaje
+//     que no nombra ni la operacion ni la lista.
+//   * solo en (2): la operacion nunca entraba al bloque, asi que la llamada se quedaba siendo el
+//     metodo NativeSharp normal -- el que devuelve -1 o "" como marcador de posicion. Compila,
+//     enlaza, ejecuta, y da una respuesta plausible y FALSA. Medido al implementar File.GetSize:
+//     el gancho aparecia declarado en el IR y sin una sola llamada.
+//
+// Con una sola funcion las dos preguntas salen de la misma respuesta: `has_value()` es (1) y el
+// valor es (2), asi que no pueden discrepar.
+//
+// Y EL SWITCH NO TIENE `default` A PROPOSITO. Con -Wswitch (y /WX, que este proyecto usa),
+// anadir un enumerador a MethodCoreOperationKind y no tocar esta funcion es un ERROR DE
+// COMPILACION que nombra el enumerador que falta. Ese es todo el punto: la comprobacion la hace
+// el compilador y no la memoria de quien anade la operacion numero 105. Si la operacion nueva no
+// va por este bloque, se pone en el grupo de `std::nullopt` y ya esta -- pero hay que decirlo.
+// LOS COMENTARIOS POR OPERACION son los de las dos cadenas viejas, movidos aqui tal cual: son
+// la historia de por que cada operacion cae en el grupo en el que cae, y se pierden si se
+// quedan en un fichero que ya no existe.
+std::optional<std::size_t> stringCallOperandCount(MethodCoreOperationKind kind)
+{
+    switch (kind)
+    {
+    // ---------------------------------------------------------------------------------------
+    // SIN OPERANDOS.
+    // ---------------------------------------------------------------------------------------
+    // Stage 54.3 "Mutex": MutexCreate (zero operands -- the first core operation in
+    // the project with none at all), MutexLock/MutexUnlock/MutexClose (one
+    // builtin:nint operand, the saved HANDLE) -- exact same shape as
+    // ThreadJoin/ThreadDetach above, no receiver, same shared machinery.
+    case MethodCoreOperationKind::MutexCreate:
+        return 0U;
+
+    // ---------------------------------------------------------------------------------------
+    // UN OPERANDO. El grupo grande: "una cosa entra, otra sale". Casi todas son una cadena (una
+    // ruta, el nombre de una variable de entorno), pero el bloque nunca exigio que el operando
+    // FUERA una cadena -- baja lo que haya con lowerExpression, asi que GetCommandLineArgs entra
+    // aqui con un builtin:string[] sin cambiar el mecanismo.
+    // ---------------------------------------------------------------------------------------
+    case MethodCoreOperationKind::StringFromCharArray:
+    // C8 "type root": RuntimeHelpers.TypeName/ReferenceHash -- one operand each (an
+    // Object reference), a string and an int out. Same shared shape as everything
+    // else here; the operand type is new, the mechanism is not.
+    // C8: TypeName/ReferenceHash each take exactly the object reference.
+    case MethodCoreOperationKind::ObjectTypeName:
+    case MethodCoreOperationKind::ObjectReferenceHash:
+    // Stage 53.2b "Environment (variables)": GetEnvironmentVariable/
+    // SetEnvironmentVariable are string intrinsics in every way this block cares
+    // about (operand count, operand lowering with implicit conversions, no
+    // receiver) -- they only differ in which runtime hook the LLVM lowerer calls,
+    // so they slot into this exact shared block rather than duplicating it.
+    case MethodCoreOperationKind::EnvironmentGetVariable:
+    // Stage 53.3 "Filesystem/Paths": File.Exists/File.Delete/Directory.Exists/
+    // Directory.CreateDirectory -- same story, one string operand, a different
+    // runtime hook.
+    case MethodCoreOperationKind::FileExists:
+    case MethodCoreOperationKind::FileDelete:
+    case MethodCoreOperationKind::DirectoryExists:
+    case MethodCoreOperationKind::DirectoryCreate:
+    // Stage 53.3b "Filesystem/Paths (contenido de archivo)": ReadAllText/
+    // WriteAllText/AppendAllText -- same story again, still no receiver, still just
+    // string operands (1 for ReadAllText, 2 for WriteAllText/AppendAllText).
+    // Stage 53.3b: ReadAllText is "one string in, a string out" -- same bucket.
+    // WriteAllText/AppendAllText are NOT here on purpose: they take two string
+    // operands (path, content), so they fall through to the default `expected =
+    // 2U` above, the same bucket EnvironmentSetVariable already uses.
+    case MethodCoreOperationKind::FileReadAllText:
+    // Stage 53.4 "Filesystem/Paths (cierre)": Directory.Delete/Path.GetFullPath --
+    // same story again, one string operand, a different runtime hook.
+    // Stage 53.4: Directory.Delete (one string in, void out) and
+    // Path.GetFullPath (one string in, a string out) are both one-operand too.
+    case MethodCoreOperationKind::DirectoryDelete:
+    case MethodCoreOperationKind::PathGetFullPath:
+    // Stage 53.5 "Command-line arguments": GetCommandLineArgs -- one operand again,
+    // but this time a builtin:string[] instead of a builtin:string. This block
+    // never actually required its operand to BE a string -- it just lowers whatever
+    // expression is there via lowerExpression, which already handles array-typed
+    // expressions elsewhere in the compiler -- so an array operand slots in without
+    // any change to the mechanism itself.
+    // Stage 53.5: GetCommandLineArgs is "one array in (the caller-provided
+    // buffer), an int out" -- also one operand.
+    case MethodCoreOperationKind::EnvironmentGetCommandLineArgs:
+    // Stage 53.6 "Enumeracion de directorios": GetFileCount/GetDirectoryCount are
+    // "one string in (the path), an int out" -- one operand, same bucket as
+    // Directory.Delete/Path.GetFullPath. GetFiles/GetDirectories are "one string in
+    // (path) + one array in (the caller-provided buffer), an int out" -- two
+    // operands, the same default `expected = 2U` bucket EnvironmentSetVariable/
+    // WriteAllText/AppendAllText already use, so no explicit listing is needed for
+    // those two below.
+    // Stage 53.6: GetFileCount/GetDirectoryCount are "one string in (path), an
+    // int out" -- one operand too. GetFiles/GetDirectories are NOT here on
+    // purpose: they take two operands (path, destination buffer), so they fall
+    // through to the default `expected = 2U` above, the same bucket
+    // EnvironmentSetVariable/WriteAllText/AppendAllText already use.
+    case MethodCoreOperationKind::DirectoryGetFileCount:
+    case MethodCoreOperationKind::DirectoryGetDirectoryCount:
+    // Stage 54.1 "Threads": ThreadCreate/ThreadJoin/ThreadDetach are all one operand
+    // (ThreadCreate's is a ThreadStart delegate value; ThreadJoin/ThreadDetach's is a
+    // builtin:nint HANDLE) -- same shared "no receiver, operands lowered via
+    // lowerExpression" shape as every other core operation here.
+    // Stage 54.1: ThreadCreate (one delegate operand), ThreadJoin/ThreadDetach
+    // (one nint operand) -- all three are one-operand too.
+    case MethodCoreOperationKind::ThreadCreate:
+    case MethodCoreOperationKind::ThreadJoin:
+    case MethodCoreOperationKind::ThreadDetach:
+    // Stage 54.3: MutexLock/MutexUnlock/MutexClose (one builtin:nint HANDLE
+    // operand each). MutexCreate is NOT here on purpose -- see the `expected = 0U`
+    // branch above.
+    case MethodCoreOperationKind::MutexLock:
+    case MethodCoreOperationKind::MutexUnlock:
+    case MethodCoreOperationKind::MutexClose:
+    // Stage 54.5: SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose
+    // (one builtin:nint HANDLE operand each). SemaphoreCreate/EventCreate (two
+    // operands) and SemaphoreWait/EventWait (HANDLE + timeout, two operands) are
+    // NOT here on purpose -- they fall through to the default `expected = 2U`
+    // above, the same bucket EnvironmentSetVariable/WriteAllText/etc. already use.
+    case MethodCoreOperationKind::SemaphoreRelease:
+    case MethodCoreOperationKind::SemaphoreClose:
+    case MethodCoreOperationKind::EventSet:
+    case MethodCoreOperationKind::EventReset:
+    case MethodCoreOperationKind::EventClose:
+    // Stage 55.1/55.3: Process.SetPriorityClassRaw (one builtin:int operand) and
+    // Debug.OutputStringRaw (one builtin:string operand) -- exact same "no receiver,
+    // one operand lowered via lowerExpression, void result" shape as
+    // MutexLock/FileDelete above; this bucket never required a particular operand
+    // type (ThreadJoin's builtin:nint operand already proved that).
+    // Stage 55.1/55.3: Process.SetPriorityClassRaw/Debug.OutputStringRaw -- one
+    // operand each, see the top-of-block comment above.
+    case MethodCoreOperationKind::ProcessSetPriorityClassRaw:
+    case MethodCoreOperationKind::DebugOutputStringRaw:
+    // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29): ThreadSleepRaw
+    // (one builtin:int operand, void out -- same shape as ProcessSetPriorityClassRaw
+    // above), FileCopyRaw (three operands -- joins StringSubstring in the
+    // expected=3U bucket below), FileMoveRaw/DirectoryMoveRaw (two operands each,
+    // fall through to the default expected=2U bucket). THIS gate is the actual
+    // switch that routes a recognized core-operation call into the shared "no
+    // receiver, operands straight from the AST" HIR block below -- missing an entry
+    // here means the call site is left as an ordinary static-call, and the core
+    // operation silently never lowers to its LLVM runtime hook at all.
+    // Pre-Stage-56 "utilidades basicas" -- Thread.SleepRaw (one builtin:int
+    // operand, void out). FileMoveRaw/DirectoryMoveRaw are NOT here on purpose:
+    // they take two operands (source, dest), so they fall through to the default
+    // expected=2U bucket above.
+    case MethodCoreOperationKind::ThreadSleepRaw:
+    // Bloque 4, fase A: File.GetSize -- una cadena entra, un i64 sale. Va en esta
+    // lista y no en el bucket por omision porque ese es de DOS operandos: sin esta
+    // linea el enlace no falla ni se queja, simplemente la llamada se queda siendo
+    // el metodo NativeSharp normal --que devuelve -1-- y la operacion nucleo no se
+    // emite nunca. Medido al implementarla: el hook aparecia declarado en el IR y
+    // sin una sola llamada.
+    // Bloque 4, fase A: File.GetSize -- una cadena entra, un i64 sale.
+    //
+    // OJO: SON DOS LISTAS, y hay que estar en LAS DOS. La de arriba decide que
+    // esto ES una operacion nucleo con operandos tomados del AST; esta decide
+    // CUANTOS operandos se esperan, y su omision es 2. Estar solo en la primera
+    // no da un error de compilacion ni un diagnostico util: da
+    // "Stage 51 string intrinsic received an invalid operand count" en tiempo de
+    // carga, que no menciona ni el nombre de la operacion ni cual de las dos
+    // listas falta. Medido al implementar File.GetSize.
+    case MethodCoreOperationKind::FileGetSize:
+    // Bloque 4, fase A: ReadAllBytes (1 operando), ReadBytes (2, y por tanto en el
+    // bucket por omision) y WriteAllBytes (3, listado abajo con StringSubstring).
+    // Bloque 4, fase A: ReadAllBytes es de un operando. ReadBytes es de dos y cae
+    // en la omision; WriteAllBytes es de tres y va en la lista de arriba.
+    case MethodCoreOperationKind::FileReadAllBytes:
+        return 1U;
+
+    // ---------------------------------------------------------------------------------------
+    // DOS OPERANDOS. Era el valor por omision de la cadena vieja, y por eso era la trampa: una
+    // operacion nueva que se olvidara caia aqui en silencio. Ahora esta escrito.
+    // ---------------------------------------------------------------------------------------
+    case MethodCoreOperationKind::StringConcat:
+    case MethodCoreOperationKind::StringEquals:
+    // SHR-010: `String.CharacterPointer(texto, indice)` cae en este mismo bloque --
+    // sin receptor, dos operandos, un gancho distinto en el backend. Es exactamente
+    // la forma que el bloque ya cubre; anadir un camino propio habria sido copiar
+    // la conversion implicita de operandos por tercera vez.
+    case MethodCoreOperationKind::StringCharacterPointer:
+    case MethodCoreOperationKind::EnvironmentSetVariable:
+    case MethodCoreOperationKind::FileWriteAllText:
+    case MethodCoreOperationKind::FileAppendAllText:
+    case MethodCoreOperationKind::DirectoryGetFiles:
+    case MethodCoreOperationKind::DirectoryGetDirectories:
+    // Stage 54.5 "Otras primitivas de sincronizacion": Semaphore/Event, EXACTO mismo
+    // shape que Mutex arriba (sin receptor, HANDLE builtin:nint de ida y vuelta) --
+    // SemaphoreCreate/EventCreate son de DOS operandos (bucket "expected=2U" por
+    // defecto, ver mas abajo), SemaphoreWait/EventWait tambien DOS (HANDLE + timeout),
+    // SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose de UNO (el
+    // HANDLE) -- mismo bucket "expected=1U" que MutexLock/MutexUnlock/MutexClose.
+    case MethodCoreOperationKind::SemaphoreCreate:
+    case MethodCoreOperationKind::SemaphoreWait:
+    case MethodCoreOperationKind::EventCreate:
+    case MethodCoreOperationKind::EventWait:
+    case MethodCoreOperationKind::FileMoveRaw:
+    case MethodCoreOperationKind::DirectoryMoveRaw:
+    case MethodCoreOperationKind::FileReadBytes:
+        return 2U;
+
+    // ---------------------------------------------------------------------------------------
+    // TRES OPERANDOS.
+    // ---------------------------------------------------------------------------------------
+    case MethodCoreOperationKind::StringSubstring:
+    // Pre-Stage-56 "utilidades basicas" -- File.CopyRaw(source, dest, overwrite).
+    case MethodCoreOperationKind::FileCopyRaw:
+    case MethodCoreOperationKind::FileWriteAllBytes:
+    // Bloque 4, fase C: Process.Run -- tres operandos, listado abajo con
+    // StringSubstring y FileWriteAllBytes.
+    case MethodCoreOperationKind::ProcessRun:
+        return 3U;
+
+    // ---------------------------------------------------------------------------------------
+    // NO PASAN POR ESTE BLOQUE, y estan listadas una por una a proposito: sin ellas el switch
+    // necesitaria un `default`, y con un `default` el compilador ya no obliga a nadie a decidir
+    // donde va la operacion numero 105. Cada una de estas se baja por su propio camino en
+    // lowerExpression (acceso a arreglo, consola, atomicos, sincronizacion, ...).
+    // ---------------------------------------------------------------------------------------
+    case MethodCoreOperationKind::ArrayAllocation:
+    case MethodCoreOperationKind::ArrayLength:
+    case MethodCoreOperationKind::ArrayElement:
+    case MethodCoreOperationKind::RawElement:
+    case MethodCoreOperationKind::StringLiteral:
+    case MethodCoreOperationKind::StringLength:
+    case MethodCoreOperationKind::StringElement:
+    case MethodCoreOperationKind::ConsoleWriteLine:
+    case MethodCoreOperationKind::ConsoleWrite:
+    case MethodCoreOperationKind::ConsoleErrorWriteLine:
+    case MethodCoreOperationKind::ConsoleErrorWrite:
+    case MethodCoreOperationKind::SizeofConstant:
+    case MethodCoreOperationKind::StackAllocation:
+    case MethodCoreOperationKind::RawAllocation:
+    case MethodCoreOperationKind::PointerArithmetic:
+    case MethodCoreOperationKind::StructToString:
+    case MethodCoreOperationKind::StructEquals:
+    case MethodCoreOperationKind::StructHashCode:
+    case MethodCoreOperationKind::ClockQueryCounter:
+    case MethodCoreOperationKind::ClockQueryFrequency:
+    case MethodCoreOperationKind::ClockQuerySystemFileTime:
+    case MethodCoreOperationKind::EnvironmentTickCount64:
+    case MethodCoreOperationKind::EnvironmentProcessorCount:
+    case MethodCoreOperationKind::EnvironmentExit:
+    case MethodCoreOperationKind::EnvironmentGetCommandLineArgCount:
+    case MethodCoreOperationKind::InterlockedIncrementInt32:
+    case MethodCoreOperationKind::InterlockedDecrementInt32:
+    case MethodCoreOperationKind::InterlockedAddInt32:
+    case MethodCoreOperationKind::InterlockedExchangeInt32:
+    case MethodCoreOperationKind::InterlockedCompareExchangeInt32:
+    case MethodCoreOperationKind::InterlockedIncrementInt64:
+    case MethodCoreOperationKind::InterlockedDecrementInt64:
+    case MethodCoreOperationKind::InterlockedAddInt64:
+    case MethodCoreOperationKind::InterlockedExchangeInt64:
+    case MethodCoreOperationKind::InterlockedCompareExchangeInt64:
+    case MethodCoreOperationKind::MonitorEnter:
+    case MethodCoreOperationKind::MonitorExit:
+    case MethodCoreOperationKind::MonitorWait:
+    case MethodCoreOperationKind::MonitorPulse:
+    case MethodCoreOperationKind::MonitorPulseAll:
+    case MethodCoreOperationKind::ProcessGetCurrentProcessIdRaw:
+    case MethodCoreOperationKind::ProcessGetWorkingSetSizeRaw:
+    case MethodCoreOperationKind::ProcessGetKernelTimeRaw:
+    case MethodCoreOperationKind::ProcessGetUserTimeRaw:
+    case MethodCoreOperationKind::ProcessGetPriorityClassRaw:
+    case MethodCoreOperationKind::SystemInfoGetPageSizeRaw:
+    case MethodCoreOperationKind::SystemInfoGetProcessorArchitectureRaw:
+    case MethodCoreOperationKind::SystemInfoGetAllocationGranularityRaw:
+    case MethodCoreOperationKind::SystemInfoGetTotalPhysicalMemoryBytesRaw:
+    case MethodCoreOperationKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw:
+    case MethodCoreOperationKind::SystemInfoGetMemoryLoadPercentRaw:
+    case MethodCoreOperationKind::DebugIsDebuggerPresentRaw:
+    case MethodCoreOperationKind::DebugCaptureStackFrameCountRaw:
+    case MethodCoreOperationKind::EnvironmentCurrentDirectory:
+        return std::nullopt;
+    }
+
+    // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
+    // aviso de "control reaches end of non-void function", que no entiende esa garantia.
+    return std::nullopt;
+}
+
 std::string sanitize(std::string value)
 {
     for (char& ch : value)
@@ -161,6 +451,12 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreDirectoryExists: return "core-directory-exists";
         case ProjectOopHirNodeKind::CoreDirectoryCreate: return "core-directory-create";
         case ProjectOopHirNodeKind::CoreFileReadAllText: return "core-file-read-all-text";
+        case ProjectOopHirNodeKind::CoreFileGetSize: return "core-file-get-size";
+        case ProjectOopHirNodeKind::CoreFileReadAllBytes: return "core-file-read-all-bytes";
+        case ProjectOopHirNodeKind::CoreFileReadBytes: return "core-file-read-bytes";
+        case ProjectOopHirNodeKind::CoreFileWriteAllBytes: return "core-file-write-all-bytes";
+        case ProjectOopHirNodeKind::CoreEnvironmentCurrentDirectory: return "core-environment-current-directory";
+        case ProjectOopHirNodeKind::CoreProcessRun: return "core-process-run";
         case ProjectOopHirNodeKind::CoreFileWriteAllText: return "core-file-write-all-text";
         case ProjectOopHirNodeKind::CoreFileAppendAllText: return "core-file-append-all-text";
         case ProjectOopHirNodeKind::CoreDirectoryDelete: return "core-directory-delete";
@@ -2574,113 +2870,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             }
 
             const MethodCoreBinding* core = coreBinding(expression);
-            if (core != nullptr &&
-                (core->kind == MethodCoreOperationKind::StringConcat ||
-                 core->kind == MethodCoreOperationKind::StringEquals ||
-                 core->kind == MethodCoreOperationKind::StringSubstring ||
-                 core->kind == MethodCoreOperationKind::StringFromCharArray ||
-                 // SHR-010: `String.CharacterPointer(texto, indice)` cae en este mismo bloque --
-                 // sin receptor, dos operandos, un gancho distinto en el backend. Es exactamente
-                 // la forma que el bloque ya cubre; anadir un camino propio habria sido copiar
-                 // la conversion implicita de operandos por tercera vez.
-                 core->kind == MethodCoreOperationKind::StringCharacterPointer ||
-                 // Stage 53.2b "Environment (variables)": GetEnvironmentVariable/
-                 // SetEnvironmentVariable are string intrinsics in every way this block cares
-                 // about (operand count, operand lowering with implicit conversions, no
-                 // receiver) -- they only differ in which runtime hook the LLVM lowerer calls,
-                 // so they slot into this exact shared block rather than duplicating it.
-                 core->kind == MethodCoreOperationKind::EnvironmentGetVariable ||
-                 core->kind == MethodCoreOperationKind::EnvironmentSetVariable ||
-                 // Stage 53.3 "Filesystem/Paths": File.Exists/File.Delete/Directory.Exists/
-                 // Directory.CreateDirectory -- same story, one string operand, a different
-                 // runtime hook.
-                 core->kind == MethodCoreOperationKind::FileExists ||
-                 core->kind == MethodCoreOperationKind::FileDelete ||
-                 core->kind == MethodCoreOperationKind::DirectoryExists ||
-                 core->kind == MethodCoreOperationKind::DirectoryCreate ||
-                 // Stage 53.3b "Filesystem/Paths (contenido de archivo)": ReadAllText/
-                 // WriteAllText/AppendAllText -- same story again, still no receiver, still just
-                 // string operands (1 for ReadAllText, 2 for WriteAllText/AppendAllText).
-                 core->kind == MethodCoreOperationKind::FileReadAllText ||
-                 core->kind == MethodCoreOperationKind::FileWriteAllText ||
-                 core->kind == MethodCoreOperationKind::FileAppendAllText ||
-                 // Stage 53.4 "Filesystem/Paths (cierre)": Directory.Delete/Path.GetFullPath --
-                 // same story again, one string operand, a different runtime hook.
-                 core->kind == MethodCoreOperationKind::DirectoryDelete ||
-                 core->kind == MethodCoreOperationKind::PathGetFullPath ||
-                 // Stage 53.5 "Command-line arguments": GetCommandLineArgs -- one operand again,
-                 // but this time a builtin:string[] instead of a builtin:string. This block
-                 // never actually required its operand to BE a string -- it just lowers whatever
-                 // expression is there via lowerExpression, which already handles array-typed
-                 // expressions elsewhere in the compiler -- so an array operand slots in without
-                 // any change to the mechanism itself.
-                 core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgs ||
-                 // Stage 53.6 "Enumeracion de directorios": GetFileCount/GetDirectoryCount are
-                 // "one string in (the path), an int out" -- one operand, same bucket as
-                 // Directory.Delete/Path.GetFullPath. GetFiles/GetDirectories are "one string in
-                 // (path) + one array in (the caller-provided buffer), an int out" -- two
-                 // operands, the same default `expected = 2U` bucket EnvironmentSetVariable/
-                 // WriteAllText/AppendAllText already use, so no explicit listing is needed for
-                 // those two below.
-                 core->kind == MethodCoreOperationKind::DirectoryGetFileCount ||
-                 core->kind == MethodCoreOperationKind::DirectoryGetFiles ||
-                 core->kind == MethodCoreOperationKind::DirectoryGetDirectoryCount ||
-                 core->kind == MethodCoreOperationKind::DirectoryGetDirectories ||
-                 // Stage 54.1 "Threads": ThreadCreate/ThreadJoin/ThreadDetach are all one operand
-                 // (ThreadCreate's is a ThreadStart delegate value; ThreadJoin/ThreadDetach's is a
-                 // builtin:nint HANDLE) -- same shared "no receiver, operands lowered via
-                 // lowerExpression" shape as every other core operation here.
-                 core->kind == MethodCoreOperationKind::ThreadCreate ||
-                 core->kind == MethodCoreOperationKind::ThreadJoin ||
-                 core->kind == MethodCoreOperationKind::ThreadDetach ||
-                 // C8 "type root": RuntimeHelpers.TypeName/ReferenceHash -- one operand each (an
-                 // Object reference), a string and an int out. Same shared shape as everything
-                 // else here; the operand type is new, the mechanism is not.
-                 core->kind == MethodCoreOperationKind::ObjectTypeName ||
-                 core->kind == MethodCoreOperationKind::ObjectReferenceHash ||
-                 // Stage 54.3 "Mutex": MutexCreate (zero operands -- the first core operation in
-                 // the project with none at all), MutexLock/MutexUnlock/MutexClose (one
-                 // builtin:nint operand, the saved HANDLE) -- exact same shape as
-                 // ThreadJoin/ThreadDetach above, no receiver, same shared machinery.
-                 core->kind == MethodCoreOperationKind::MutexCreate ||
-                 core->kind == MethodCoreOperationKind::MutexLock ||
-                 core->kind == MethodCoreOperationKind::MutexUnlock ||
-                 core->kind == MethodCoreOperationKind::MutexClose ||
-                 // Stage 54.5 "Otras primitivas de sincronizacion": Semaphore/Event, EXACTO mismo
-                 // shape que Mutex arriba (sin receptor, HANDLE builtin:nint de ida y vuelta) --
-                 // SemaphoreCreate/EventCreate son de DOS operandos (bucket "expected=2U" por
-                 // defecto, ver mas abajo), SemaphoreWait/EventWait tambien DOS (HANDLE + timeout),
-                 // SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose de UNO (el
-                 // HANDLE) -- mismo bucket "expected=1U" que MutexLock/MutexUnlock/MutexClose.
-                 core->kind == MethodCoreOperationKind::SemaphoreCreate ||
-                 core->kind == MethodCoreOperationKind::SemaphoreWait ||
-                 core->kind == MethodCoreOperationKind::SemaphoreRelease ||
-                 core->kind == MethodCoreOperationKind::SemaphoreClose ||
-                 core->kind == MethodCoreOperationKind::EventCreate ||
-                 core->kind == MethodCoreOperationKind::EventSet ||
-                 core->kind == MethodCoreOperationKind::EventReset ||
-                 core->kind == MethodCoreOperationKind::EventWait ||
-                 core->kind == MethodCoreOperationKind::EventClose ||
-                 // Stage 55.1/55.3: Process.SetPriorityClassRaw (one builtin:int operand) and
-                 // Debug.OutputStringRaw (one builtin:string operand) -- exact same "no receiver,
-                 // one operand lowered via lowerExpression, void result" shape as
-                 // MutexLock/FileDelete above; this bucket never required a particular operand
-                 // type (ThreadJoin's builtin:nint operand already proved that).
-                 core->kind == MethodCoreOperationKind::ProcessSetPriorityClassRaw ||
-                 core->kind == MethodCoreOperationKind::DebugOutputStringRaw ||
-                 // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29): ThreadSleepRaw
-                 // (one builtin:int operand, void out -- same shape as ProcessSetPriorityClassRaw
-                 // above), FileCopyRaw (three operands -- joins StringSubstring in the
-                 // expected=3U bucket below), FileMoveRaw/DirectoryMoveRaw (two operands each,
-                 // fall through to the default expected=2U bucket). THIS gate is the actual
-                 // switch that routes a recognized core-operation call into the shared "no
-                 // receiver, operands straight from the AST" HIR block below -- missing an entry
-                 // here means the call site is left as an ordinary static-call, and the core
-                 // operation silently never lowers to its LLVM runtime hook at all.
-                 core->kind == MethodCoreOperationKind::ThreadSleepRaw ||
-                 core->kind == MethodCoreOperationKind::FileCopyRaw ||
-                 core->kind == MethodCoreOperationKind::FileMoveRaw ||
-                 core->kind == MethodCoreOperationKind::DirectoryMoveRaw))
+            // Las dos preguntas --entra en este bloque, y con cuantos operandos-- salen de la
+            // MISMA respuesta: ver stringCallOperandCount() al principio de este archivo.
+            const std::optional<std::size_t> coreOperandCount =
+                core != nullptr ? stringCallOperandCount(core->kind) : std::nullopt;
+            if (coreOperandCount.has_value())
             {
                 if (addressContext)
                 {
@@ -2710,82 +2904,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 // bucket. Same three buckets as before: 3 operands (Substring only), 1 operand
                 // (every "one string in, one thing out" operation), 2 operands (everything else:
                 // Concat/Equals/SetEnvironmentVariable).
-                std::size_t expected = 2U;
-                if (core->kind == MethodCoreOperationKind::StringSubstring ||
-                    // Pre-Stage-56 "utilidades basicas" -- File.CopyRaw(source, dest, overwrite).
-                    core->kind == MethodCoreOperationKind::FileCopyRaw)
-                {
-                    expected = 3U;
-                }
-                else if (core->kind == MethodCoreOperationKind::MutexCreate)
-                {
-                    // Stage 54.3: the first (and so far only) zero-operand core operation in the
-                    // project -- MutexCreate takes no explicit arguments at all, it just returns
-                    // a fresh HANDLE. The `operands` vector is empty here (no receiver, no AST
-                    // arguments), so `operands.size() != expected` below correctly requires 0.
-                    expected = 0U;
-                }
-                else if (core->kind == MethodCoreOperationKind::StringFromCharArray ||
-                    core->kind == MethodCoreOperationKind::EnvironmentGetVariable ||
-                    core->kind == MethodCoreOperationKind::FileExists ||
-                    core->kind == MethodCoreOperationKind::FileDelete ||
-                    core->kind == MethodCoreOperationKind::DirectoryExists ||
-                    core->kind == MethodCoreOperationKind::DirectoryCreate ||
-                    // Stage 53.3b: ReadAllText is "one string in, a string out" -- same bucket.
-                    // WriteAllText/AppendAllText are NOT here on purpose: they take two string
-                    // operands (path, content), so they fall through to the default `expected =
-                    // 2U` above, the same bucket EnvironmentSetVariable already uses.
-                    core->kind == MethodCoreOperationKind::FileReadAllText ||
-                    // Stage 53.4: Directory.Delete (one string in, void out) and
-                    // Path.GetFullPath (one string in, a string out) are both one-operand too.
-                    core->kind == MethodCoreOperationKind::DirectoryDelete ||
-                    core->kind == MethodCoreOperationKind::PathGetFullPath ||
-                    // Stage 53.5: GetCommandLineArgs is "one array in (the caller-provided
-                    // buffer), an int out" -- also one operand.
-                    core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgs ||
-                    // Stage 53.6: GetFileCount/GetDirectoryCount are "one string in (path), an
-                    // int out" -- one operand too. GetFiles/GetDirectories are NOT here on
-                    // purpose: they take two operands (path, destination buffer), so they fall
-                    // through to the default `expected = 2U` above, the same bucket
-                    // EnvironmentSetVariable/WriteAllText/AppendAllText already use.
-                    core->kind == MethodCoreOperationKind::DirectoryGetFileCount ||
-                    core->kind == MethodCoreOperationKind::DirectoryGetDirectoryCount ||
-                    // Stage 54.1: ThreadCreate (one delegate operand), ThreadJoin/ThreadDetach
-                    // (one nint operand) -- all three are one-operand too.
-                    core->kind == MethodCoreOperationKind::ThreadCreate ||
-                    core->kind == MethodCoreOperationKind::ThreadJoin ||
-                    core->kind == MethodCoreOperationKind::ThreadDetach ||
-                    // Stage 54.3: MutexLock/MutexUnlock/MutexClose (one builtin:nint HANDLE
-                    // operand each). MutexCreate is NOT here on purpose -- see the `expected = 0U`
-                    // branch above.
-                    core->kind == MethodCoreOperationKind::MutexLock ||
-                    core->kind == MethodCoreOperationKind::MutexUnlock ||
-                    core->kind == MethodCoreOperationKind::MutexClose ||
-                    // Stage 54.5: SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose
-                    // (one builtin:nint HANDLE operand each). SemaphoreCreate/EventCreate (two
-                    // operands) and SemaphoreWait/EventWait (HANDLE + timeout, two operands) are
-                    // NOT here on purpose -- they fall through to the default `expected = 2U`
-                    // above, the same bucket EnvironmentSetVariable/WriteAllText/etc. already use.
-                    core->kind == MethodCoreOperationKind::SemaphoreRelease ||
-                    core->kind == MethodCoreOperationKind::SemaphoreClose ||
-                    core->kind == MethodCoreOperationKind::EventSet ||
-                    core->kind == MethodCoreOperationKind::EventReset ||
-                    core->kind == MethodCoreOperationKind::EventClose ||
-                    // Stage 55.1/55.3: Process.SetPriorityClassRaw/Debug.OutputStringRaw -- one
-                    // operand each, see the top-of-block comment above.
-                    core->kind == MethodCoreOperationKind::ProcessSetPriorityClassRaw ||
-                    core->kind == MethodCoreOperationKind::DebugOutputStringRaw ||
-                    // Pre-Stage-56 "utilidades basicas" -- Thread.SleepRaw (one builtin:int
-                    // operand, void out). FileMoveRaw/DirectoryMoveRaw are NOT here on purpose:
-                    // they take two operands (source, dest), so they fall through to the default
-                    // expected=2U bucket above.
-                    core->kind == MethodCoreOperationKind::ThreadSleepRaw ||
-                    // C8: TypeName/ReferenceHash each take exactly the object reference.
-                    core->kind == MethodCoreOperationKind::ObjectTypeName ||
-                    core->kind == MethodCoreOperationKind::ObjectReferenceHash)
-                {
-                    expected = 1U;
-                }
+                // La aridad viene de la misma tabla que decidio entrar aqui, asi que no puede
+                // discrepar con ella. El `expected = 2U` por omision de la version anterior
+                // --la trampa que se tragaba cualquier operacion nueva olvidada-- ya no existe.
+                const std::size_t expected = *coreOperandCount;
                 if (operands.size() != expected)
                 {
                     error = "Stage 51 string intrinsic received an invalid operand count";
@@ -2803,6 +2925,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 else if (core->kind == MethodCoreOperationKind::DirectoryExists) kind = ProjectOopHirNodeKind::CoreDirectoryExists;
                 else if (core->kind == MethodCoreOperationKind::DirectoryCreate) kind = ProjectOopHirNodeKind::CoreDirectoryCreate;
                 else if (core->kind == MethodCoreOperationKind::FileReadAllText) kind = ProjectOopHirNodeKind::CoreFileReadAllText;
+                else if (core->kind == MethodCoreOperationKind::FileGetSize) kind = ProjectOopHirNodeKind::CoreFileGetSize;
+                else if (core->kind == MethodCoreOperationKind::FileReadAllBytes) kind = ProjectOopHirNodeKind::CoreFileReadAllBytes;
+                else if (core->kind == MethodCoreOperationKind::FileReadBytes) kind = ProjectOopHirNodeKind::CoreFileReadBytes;
+                else if (core->kind == MethodCoreOperationKind::FileWriteAllBytes) kind = ProjectOopHirNodeKind::CoreFileWriteAllBytes;
+                else if (core->kind == MethodCoreOperationKind::ProcessRun) kind = ProjectOopHirNodeKind::CoreProcessRun;
                 else if (core->kind == MethodCoreOperationKind::FileWriteAllText) kind = ProjectOopHirNodeKind::CoreFileWriteAllText;
                 else if (core->kind == MethodCoreOperationKind::FileAppendAllText) kind = ProjectOopHirNodeKind::CoreFileAppendAllText;
                 else if (core->kind == MethodCoreOperationKind::DirectoryDelete) kind = ProjectOopHirNodeKind::CoreDirectoryDelete;
@@ -3199,7 +3326,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                  // Stage 53.5 "Command-line arguments": GetCommandLineArgCount joins this same
                  // zero-argument bucket -- it takes no operands either, just like TickCount64/
                  // ProcessorCount, and returns builtin:int like ProcessorCount does.
-                 core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount))
+                 core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount ||
+                 // Bloque 4, fase A: CurrentDirectory tambien es de cero argumentos, pero su
+                 // resultado es builtin:string -- el primer tipo de salida no numerico de este
+                 // bucket, de ahi el tercer caso en la cadena de abajo.
+                 core->kind == MethodCoreOperationKind::EnvironmentCurrentDirectory))
             {
                 // Stage 53.2 "Environment": same zero-argument shape as the NativeClock trio
                 // just above -- the only difference is the result type, "builtin:long" for
@@ -3222,6 +3353,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
                 else if (core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount)
                 {
                     kind = ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgCount;
+                }
+                else if (core->kind == MethodCoreOperationKind::EnvironmentCurrentDirectory)
+                {
+                    kind = ProjectOopHirNodeKind::CoreEnvironmentCurrentDirectory;
+                    resultTypeKey = "builtin:string";
                 }
                 return makeNode(kind, expression, resultTypeKey);
             }

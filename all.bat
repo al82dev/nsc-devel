@@ -11,7 +11,7 @@ rem     PASADA 2   nslink.exe    build-clang-nslink\    ->  _logs_nslink\
 rem
 rem CADA PASADA TIENE SU PROPIO ARBOL DE BUILD Y SU PROPIO DIRECTORIO DE LOGS, desde el primer
 rem byte. No se mueve nada, no se restaura nada, no se comparte nada. Las dos construyen su
-rem compilador, corren ctest, los 84 trabajos, el triage, el manifiesto y su reporte.
+rem compilador, corren ctest, los trabajos del corpus, el triage, el manifiesto y su reporte.
 rem
 rem LAS DOS SE CORREN SIEMPRE. Un fallo de la 1 no cancela la 2: los dos reportes juntos son lo
 rem que dice de quien es el fallo, y tener solo uno es justo lo que no sirve.
@@ -101,13 +101,20 @@ rem ============================================================================
 rem LIMPIEZA. AQUI, Y SIN QUE NADIE TENGA QUE TECLEAR NADA ANTES.
 rem
 rem `all.bat` es LA CORRIDA: lo que mide sale de fuentes, no de .obj que sobrevivieron a saber
-rem que ronda. Se borran los dos arboles de build y los dos directorios de logs.
+rem que ronda. Se borran los dos arboles de build, los dos directorios de logs y `_evidencia`.
+rem
+rem `_evidencia\` es donde las pruebas que construyen cosas de verdad dejan sus .obj, .lib,
+rem ejecutables y logs del enlazador cuando FALLAN (ver NSC_TEST_EVIDENCE_DIR en
+rem run_windows_checklist.bat). Va aqui dentro y no en %TEMP% para que se pueda leer desde
+rem el repositorio; se borra al empezar por la misma razon que los logs: la evidencia de una
+rem corrida no debe confundirse con la de la anterior.
 rem
 rem EXCEPCION: `quick` y `norebuild` conservan los arboles -- existen para NO reconstruir, y
 rem borrarlos los dejaria sin nada que usar.
 rem =====================================================================================
 if exist "_logs_lldlink" rmdir /s /q "_logs_lldlink" 2>nul
 if exist "_logs_nslink" rmdir /s /q "_logs_nslink" 2>nul
+if exist "_evidencia" rmdir /s /q "_evidencia" 2>nul
 
 if /I "%~1"=="quick" goto :sin_borrar_build
 if /I "%~1"=="norebuild" goto :sin_borrar_build

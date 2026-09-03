@@ -447,7 +447,7 @@ int main()
 {
     TestContext tests;
     const std::filesystem::path root =
-        std::filesystem::temp_directory_path() / "nativesharp-stage48_5-csharp-pinvoke-host-tests";
+        nativesharp::tests::evidenceRoot("nativesharp-stage48_5-csharp-pinvoke-host-tests");
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
     std::filesystem::create_directories(root, ec);

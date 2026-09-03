@@ -1,0 +1,123 @@
+// Bloque 4, fase A -- E/S binaria de archivos, medida EJECUTANDO.
+//
+// QUE MIDE Y POR QUE ASI. Las cinco operaciones de la fase se enfrentan ENTRE SI en vez de
+// compararse contra numeros escritos a mano: se escribe un archivo, se pregunta su tamano, se lee
+// de las dos formas, y se exige que las tres respuestas coincidan. Si algun dia una de ellas se
+// desalinea de las otras, se desalinea AQUI -- que es lo que una fixture de ida y vuelta compra y
+// una lista de asserts contra constantes no.
+//
+// Codigo de salida esperado cuando el compilador esta sano: 42. Cada fallo devuelve un codigo
+// distinto para que el reporte diga CUAL de los pasos se rompio sin abrir un depurador.
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+namespace cc1binaryfileio
+{
+    public class Program
+    {
+        // Un patron con los cuatro casos que un byte puede tener mal: el cero, el 0x7F que es el
+        // ultimo positivo con signo, el 0x80 que es el primero que un sbyte veria negativo, y el
+        // 0xFF. Si en algun punto de la cadena un byte se trata como con signo, 0x80 y 0xFF son
+        // los que lo delatan.
+        public static byte[] Patron()
+        {
+            byte[] datos = new byte[4];
+            datos[0] = 0;
+            datos[1] = 127;
+            datos[2] = 128;
+            datos[3] = 255;
+            return datos;
+        }
+
+        public static int Main()
+        {
+            // EL NOMBRE DEL FICHERO SALE DEL PROPIO EJECUTABLE, Y NO ES UN DETALLE.
+            //
+            // run_cases.py lanza los 88 trabajos con `cwd` en la RAIZ DEL REPO y 16 en paralelo,
+            // asi que `-O0` y `-O2` de esta misma fixture corren A LA VEZ en el mismo directorio.
+            // Con un nombre fijo los dos escribirian, leerian y borrarian el MISMO fichero, y el
+            // fallo seria intermitente: uno borra mientras el otro lee, y el caso rojo cambia de
+            // corrida en corrida. Esa es la peor clase de prueba que hay -- una que falla a veces
+            // y por un motivo que no esta en el codigo que se estaba tocando.
+            //
+            // args[0] es la ruta del ejecutable, que run_cases.py nombra `<etiqueta>_<opt>.exe`.
+            // Derivar de ahi da un nombre distinto por trabajo sin que el programa tenga que saber
+            // con que optimizacion se compilo.
+            string[] argumentos = new string[8];
+            int cuantos = Environment.GetCommandLineArgs(argumentos);
+            if (cuantos < 1) { return 99; }
+            raii string propio = Path.GetFileNameWithoutExtension(argumentos[0]);
+            raii string ruta = String.Concat(propio, ".c24.bin");
+            byte[] original = Patron();
+
+            // 1. Escribir, y exigir que diga que fue bien. WriteAllText devuelve void; esta
+            //    devuelve bool a proposito -- ver File.ns.
+            if (!File.WriteAllBytes(ruta, original, 4)) { return 1; }
+
+            // 2. El tamano coincide con lo escrito. Aqui es donde GetSize se enfrenta a
+            //    WriteAllBytes en vez de a un numero.
+            long tamano = File.GetSize(ruta);
+            if (tamano != 4) { return 2; }
+
+            // 3. Leer entero. La longitud del arreglo devuelto tiene que ser la misma que dijo
+            //    GetSize -- dos operaciones distintas contestando lo mismo.
+            byte[] leido = File.ReadAllBytes(ruta);
+            if (leido.Length != 4) { return 3; }
+            if (leido[0] != 0) { return 4; }
+            if (leido[1] != 127) { return 5; }
+            if (leido[2] != 128) { return 6; }
+            if (leido[3] != 255) { return 7; }
+
+            // 4. Leer en un buffer del llamador MAS GRANDE que el archivo. Devuelve lo que hay,
+            //    no la capacidad.
+            byte[] grande = new byte[16];
+            int leidos = File.ReadBytes(ruta, grande);
+            if (leidos != 4) { return 8; }
+            if (grande[2] != 128) { return 9; }
+            if (grande[3] != 255) { return 10; }
+            // Lo que habia mas alla de lo leido no se toco.
+            if (grande[4] != 0) { return 11; }
+
+            // 5. Leer en un buffer MAS PEQUENIO. Se lee el principio y se dice cuanto: no es un
+            //    error, y esa decision esta escrita en File.ns.
+            byte[] pequenio = new byte[2];
+            int parciales = File.ReadBytes(ruta, pequenio);
+            if (parciales != 2) { return 12; }
+            if (pequenio[0] != 0) { return 13; }
+            if (pequenio[1] != 127) { return 14; }
+
+            // 6. Escribir MENOS de lo que el arreglo tiene. El contador manda, no la longitud.
+            if (!File.WriteAllBytes(ruta, original, 2)) { return 15; }
+            if (File.GetSize(ruta) != 2) { return 16; }
+
+            // 7. Pedir escribir MAS de lo que el arreglo tiene: se recorta a la longitud real en
+            //    vez de leer memoria ajena.
+            if (!File.WriteAllBytes(ruta, original, 99)) { return 17; }
+            if (File.GetSize(ruta) != 4) { return 18; }
+
+            // 8. Un archivo que no existe: -1, que NO es 0. Esta es la distincion por la que
+            //    GetSize se separa del criterio del resto de la clase.
+            File.Delete(ruta);
+            if (File.GetSize(ruta) != -1) { return 19; }
+
+            // 9. Y leerlo da un arreglo vacio, no nulo: se le puede preguntar la longitud sin
+            //    comprobar nada antes.
+            byte[] ausente = File.ReadAllBytes(ruta);
+            if (ausente.Length != 0) { return 20; }
+
+            // 10. Un archivo VACIO mide 0 y existe -- que es justo lo que -1 permite distinguir.
+            byte[] nada = new byte[1];
+            if (!File.WriteAllBytes(ruta, nada, 0)) { return 21; }
+            if (File.GetSize(ruta) != 0) { return 22; }
+            File.Delete(ruta);
+
+            // 11. El directorio de trabajo existe y no esta vacio. No se compara contra una ruta
+            //     concreta a proposito: depende de desde donde se lance.
+            string cwd = Environment.CurrentDirectory();
+            if (cwd.Length == 0) { return 23; }
+
+            delete[] argumentos;
+            return 42;
+        }
+    }
+}

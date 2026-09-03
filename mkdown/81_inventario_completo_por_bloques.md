@@ -218,13 +218,17 @@ uso-después-de-liberar, y añadir la comprobación más tarde obliga a reescrib
 **Terminado cuando:** un programa NativeSharp encuentra fuentes, las lee, escribe un binario y
 **llama a `lld-link.exe`**.
 
+> **Estado 2026-09-02:** hechas 031, 028/029/030, 025/026/027 y 032; medidas en verde con los
+> dos enlazadores (docs 100, 101, 103). Falta **solo el programa del criterio de cierre**.
+> `035` ya no cuenta para cerrar el bloque: salio del roadmap, ver doc 99 §1.
+
 | SHR | Qué | Spec | Estado medido |
 |---|---|:--:|---|
 | **031** | Filesystem — **siete operaciones**, no «filesystem compiler-grade» en abstracto | **E** | `path` 108 · `remove` 31 · `is_regular_file` 9 · `weakly_canonical` 2 · `absolute` 2 · `file_size` 1 · `current_path` 1. **El 80 % es manipulación de rutas: texto, no sistema de archivos** |
 | **028 / 029 / 030** | `File.ReadAllBytes`, `WriteAllBytes`, `GetSize` | **E** | La mitad binaria junto a las de texto que ya funcionan. Pequeño |
 | **025 / 026 / 027** | `ByteBuffer`, `BinaryReader`, `BinaryWriter` | **D** | Ausentes. COFF/PE/metadata. ~15 funciones de E/S binaria |
 | **032** | **`Process.Run` — crear procesos hijos** | **D** | `Process.ns` existe y su cabecera dice *«crear procesos hijos (CreateProcess) está deliberadamente fuera de alcance de esta ronda»*. Tiene `CurrentProcessId`, `WorkingSetSize`, `KernelTime`, `UserTime`, `PriorityClass`; **ninguna crea un proceso**. `src/Linker/LldLinker.cpp` invoca `lld-link.exe` con `CreateProcessW` + `WaitForSingleObject`. **Sin esto `nsc-next` no enlaza** |
-| **035** | `NativeLibrary` | **D** | Ausente; marcado «Sí/estratégico» |
+| ~~**035**~~ | ~~`NativeLibrary`~~ | — | **FUERA DEL ROADMAP, no aplazada.** Decidido el 2026-09-02: el flag de enlazador tiene `nslink-inproc`, que enlaza contra `NativeLinkCore.lib` dentro de `nsc`, asi que no hay nada que cargar. **Motivo, los cuatro casos que la justificarian y las condiciones exactas que la reabren: doc 99 §1.** No volver a listarla como pendiente sin mirar esa seccion |
 
 ---
 

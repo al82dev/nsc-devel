@@ -60,6 +60,12 @@ constexpr const char* kDirectoryExistsFunctionName = "__nativesharp_directory_ex
 constexpr const char* kDirectoryCreateFunctionName = "__nativesharp_directory_create";
 // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- see src/Runtime/WindowsRuntimeBuilder.cpp.
 constexpr const char* kFileReadAllTextFunctionName = "__nativesharp_file_read_all_text";
+constexpr const char* kFileGetSizeFunctionName = "__nativesharp_file_get_size";
+constexpr const char* kFileReadAllBytesFunctionName = "__nativesharp_file_read_all_bytes";
+constexpr const char* kFileReadBytesFunctionName = "__nativesharp_file_read_bytes";
+constexpr const char* kFileWriteAllBytesFunctionName = "__nativesharp_file_write_all_bytes";
+constexpr const char* kEnvironmentCurrentDirectoryFunctionName = "__nativesharp_environment_current_directory";
+constexpr const char* kProcessRunFunctionName = "__nativesharp_process_run";
 constexpr const char* kFileWriteAllTextFunctionName = "__nativesharp_file_write_all_text";
 constexpr const char* kFileAppendAllTextFunctionName = "__nativesharp_file_append_all_text";
 // Stage 53.4 "Filesystem/Paths (cierre)" -- see src/Runtime/WindowsRuntimeBuilder.cpp.
@@ -527,6 +533,43 @@ private:
         fileReadAllTextFunctionType_ = LLVMFunctionType(ptr, fileReadAllTextParams, 1, 0);
         fileReadAllTextFunction_ = LLVMAddFunction(
             module_, kFileReadAllTextFunctionName, fileReadAllTextFunctionType_);
+
+        // Bloque 4, fase A -- File.GetSize. Un puntero a cadena entra, un i64 sale. Es la primera
+        // operacion nucleo de esta familia que devuelve 64 bits: las demas devuelven i1, i32, void
+        // o un puntero. Ver MethodCoreOperationKind::FileGetSize para por que no puede ser i32.
+        LLVMTypeRef fileGetSizeParams[] = {ptr};
+        fileGetSizeFunctionType_ = LLVMFunctionType(
+            LLVMInt64TypeInContext(context_), fileGetSizeParams, 1, 0);
+        fileGetSizeFunction_ = LLVMAddFunction(
+            module_, kFileGetSizeFunctionName, fileGetSizeFunctionType_);
+
+        // Bloque 4, fase A -- E/S binaria. Un `byte[]` es un puntero al MISMO layout que una
+        // cadena, { i64 longitud; datos }, asi que en el IR los tres son punteros y la firma no
+        // distingue "arreglo de bytes" de "cadena": lo que las separa es la clave de tipo del
+        // frontend, no el tipo LLVM.
+        LLVMTypeRef fileReadAllBytesParams[] = {ptr};
+        fileReadAllBytesFunctionType_ = LLVMFunctionType(ptr, fileReadAllBytesParams, 1, 0);
+        fileReadAllBytesFunction_ = LLVMAddFunction(
+            module_, kFileReadAllBytesFunctionName, fileReadAllBytesFunctionType_);
+        LLVMTypeRef fileReadBytesParams[] = {ptr, ptr};
+        fileReadBytesFunctionType_ = LLVMFunctionType(i32, fileReadBytesParams, 2, 0);
+        fileReadBytesFunction_ = LLVMAddFunction(
+            module_, kFileReadBytesFunctionName, fileReadBytesFunctionType_);
+        LLVMTypeRef fileWriteAllBytesParams[] = {ptr, ptr, i32};
+        fileWriteAllBytesFunctionType_ = LLVMFunctionType(
+            LLVMInt1TypeInContext(context_), fileWriteAllBytesParams, 3, 0);
+        fileWriteAllBytesFunction_ = LLVMAddFunction(
+            module_, kFileWriteAllBytesFunctionName, fileWriteAllBytesFunctionType_);
+        environmentCurrentDirectoryFunctionType_ = LLVMFunctionType(ptr, nullptr, 0, 0);
+        environmentCurrentDirectoryFunction_ = LLVMAddFunction(
+            module_, kEnvironmentCurrentDirectoryFunctionName, environmentCurrentDirectoryFunctionType_);
+
+        // Bloque 4, fase C -- Process.Run. Tres punteros a cadena entran (ejecutable, linea de
+        // comandos, ruta de salida), un i32 sale: el codigo de salida del hijo, o -1.
+        LLVMTypeRef processRunParams[] = {ptr, ptr, ptr};
+        processRunFunctionType_ = LLVMFunctionType(i32, processRunParams, 3, 0);
+        processRunFunction_ = LLVMAddFunction(
+            module_, kProcessRunFunctionName, processRunFunctionType_);
         LLVMTypeRef fileWriteAllTextParams[] = {ptr, ptr};
         fileWriteAllTextFunctionType_ = LLVMFunctionType(
             LLVMVoidTypeInContext(context_), fileWriteAllTextParams, 2, 0);
@@ -867,7 +910,11 @@ private:
             fileExistsFunction_ == nullptr || fileDeleteFunction_ == nullptr ||
             directoryExistsFunction_ == nullptr || directoryCreateFunction_ == nullptr ||
             fileReadAllTextFunction_ == nullptr || fileWriteAllTextFunction_ == nullptr ||
-            fileAppendAllTextFunction_ == nullptr ||
+            fileAppendAllTextFunction_ == nullptr || fileGetSizeFunction_ == nullptr ||
+            fileReadAllBytesFunction_ == nullptr || fileReadBytesFunction_ == nullptr ||
+            fileWriteAllBytesFunction_ == nullptr ||
+            environmentCurrentDirectoryFunction_ == nullptr ||
+            processRunFunction_ == nullptr ||
             directoryDeleteFunction_ == nullptr || pathGetFullPathFunction_ == nullptr ||
             environmentGetCommandLineArgCountFunction_ == nullptr ||
             environmentGetCommandLineArgsFunction_ == nullptr ||
@@ -4870,6 +4917,84 @@ private:
                 return buildNoUnwindCall(
                     fileReadAllTextFunctionType_, fileReadAllTextFunction_, args, 1, "file.readalltext");
             }
+            // Bloque 4, fase A -- File.GetSize. Un operando (la ruta) y un i64 de vuelta. Toda
+            // la logica --abrir, preguntar el tamano, cerrar, devolver -1 si algo falla-- vive en
+            // el hook del runtime, igual que en CoreFileReadAllText.
+            case frontend::ProjectOopMirNodeKind::CoreFileGetSize:
+            {
+                if (node->children.size() != 1 || fileGetSizeFunction_ == nullptr)
+                    return failValue(error, "Bloque 4 File.GetSize requires one string argument and runtime hook");
+                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
+                if (path == nullptr) return nullptr;
+                LLVMValueRef args[] = {path};
+                return buildNoUnwindCall(
+                    fileGetSizeFunctionType_, fileGetSizeFunction_, args, 1, "file.getsize");
+            }
+            // Bloque 4, fase A -- ReadAllBytes: un operando, un puntero al arreglo recien
+            // asignado de vuelta. Misma forma que CoreFileReadAllText, y el mismo hook salvo el
+            // nombre: el layout de un byte[] y el de un string son el mismo.
+            case frontend::ProjectOopMirNodeKind::CoreFileReadAllBytes:
+            {
+                if (node->children.size() != 1 || fileReadAllBytesFunction_ == nullptr)
+                    return failValue(error, "Bloque 4 File.ReadAllBytes requires one string argument and runtime hook");
+                LLVMValueRef path = lowerExpression(node->children.front().get(), error);
+                if (path == nullptr) return nullptr;
+                LLVMValueRef args[] = {path};
+                return buildNoUnwindCall(
+                    fileReadAllBytesFunctionType_, fileReadAllBytesFunction_, args, 1, "file.readallbytes");
+            }
+            // ReadBytes: la ruta y el arreglo del llamador; devuelve cuantos bytes se leyeron.
+            case frontend::ProjectOopMirNodeKind::CoreFileReadBytes:
+            {
+                if (node->children.size() != 2 || fileReadBytesFunction_ == nullptr)
+                    return failValue(error, "Bloque 4 File.ReadBytes requires a path and a byte[] argument and runtime hook");
+                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
+                if (path == nullptr) return nullptr;
+                LLVMValueRef destination = lowerExpression(node->children[1].get(), error);
+                if (destination == nullptr) return nullptr;
+                LLVMValueRef args[] = {path, destination};
+                return buildNoUnwindCall(
+                    fileReadBytesFunctionType_, fileReadBytesFunction_, args, 2, "file.readbytes");
+            }
+            // WriteAllBytes: ruta, arreglo y cuantos bytes de el escribir. Devuelve i1.
+            case frontend::ProjectOopMirNodeKind::CoreFileWriteAllBytes:
+            {
+                if (node->children.size() != 3 || fileWriteAllBytesFunction_ == nullptr)
+                    return failValue(error, "Bloque 4 File.WriteAllBytes requires a path, a byte[] and a count, plus the runtime hook");
+                LLVMValueRef path = lowerExpression(node->children[0].get(), error);
+                if (path == nullptr) return nullptr;
+                LLVMValueRef data = lowerExpression(node->children[1].get(), error);
+                if (data == nullptr) return nullptr;
+                LLVMValueRef count = lowerExpression(node->children[2].get(), error);
+                if (count == nullptr) return nullptr;
+                LLVMValueRef args[] = {path, data, count};
+                return buildNoUnwindCall(
+                    fileWriteAllBytesFunctionType_, fileWriteAllBytesFunction_, args, 3, "file.writeallbytes");
+            }
+            // CurrentDirectory: cero operandos, una cadena recien asignada de vuelta.
+            case frontend::ProjectOopMirNodeKind::CoreEnvironmentCurrentDirectory:
+            {
+                if (environmentCurrentDirectoryFunction_ == nullptr)
+                    return failValue(error, "Bloque 4 Environment.CurrentDirectory requires its runtime hook");
+                return buildNoUnwindCall(
+                    environmentCurrentDirectoryFunctionType_, environmentCurrentDirectoryFunction_,
+                    nullptr, 0, "environment.currentdirectory");
+            }
+            // Bloque 4, fase C -- Process.Run. Tres operandos, i32 de vuelta.
+            case frontend::ProjectOopMirNodeKind::CoreProcessRun:
+            {
+                if (node->children.size() != 3 || processRunFunction_ == nullptr)
+                    return failValue(error, "Bloque 4 Process.Run requires three string arguments and runtime hook");
+                LLVMValueRef executable = lowerExpression(node->children[0].get(), error);
+                if (executable == nullptr) return nullptr;
+                LLVMValueRef commandLine = lowerExpression(node->children[1].get(), error);
+                if (commandLine == nullptr) return nullptr;
+                LLVMValueRef outputPath = lowerExpression(node->children[2].get(), error);
+                if (outputPath == nullptr) return nullptr;
+                LLVMValueRef args[] = {executable, commandLine, outputPath};
+                return buildNoUnwindCall(
+                    processRunFunctionType_, processRunFunction_, args, 3, "process.run");
+            }
             // WriteAllText/AppendAllText: two string arguments (path, content), void return --
             // same "call the hook, dummy i1 result" shape CoreEnvironmentSetVariable uses.
             case frontend::ProjectOopMirNodeKind::CoreFileWriteAllText:
@@ -8347,6 +8472,18 @@ private:
     LLVMValueRef directoryCreateFunction_ = nullptr;
     LLVMTypeRef directoryCreateFunctionType_ = nullptr;
     LLVMValueRef fileReadAllTextFunction_ = nullptr;
+    LLVMTypeRef fileGetSizeFunctionType_ = nullptr;
+    LLVMValueRef fileGetSizeFunction_ = nullptr;
+    LLVMTypeRef fileReadAllBytesFunctionType_ = nullptr;
+    LLVMValueRef fileReadAllBytesFunction_ = nullptr;
+    LLVMTypeRef fileReadBytesFunctionType_ = nullptr;
+    LLVMValueRef fileReadBytesFunction_ = nullptr;
+    LLVMTypeRef fileWriteAllBytesFunctionType_ = nullptr;
+    LLVMValueRef fileWriteAllBytesFunction_ = nullptr;
+    LLVMTypeRef environmentCurrentDirectoryFunctionType_ = nullptr;
+    LLVMValueRef environmentCurrentDirectoryFunction_ = nullptr;
+    LLVMTypeRef processRunFunctionType_ = nullptr;
+    LLVMValueRef processRunFunction_ = nullptr;
     LLVMTypeRef fileReadAllTextFunctionType_ = nullptr;
     LLVMValueRef fileWriteAllTextFunction_ = nullptr;
     LLVMTypeRef fileWriteAllTextFunctionType_ = nullptr;

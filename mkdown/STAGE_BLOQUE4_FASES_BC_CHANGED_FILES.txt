@@ -1,0 +1,51 @@
+STAGE BLOQUE 4, FASES B Y C -- E/S binaria y creacion de procesos
+Fecha: 2026-09-02
+Doc:   mkdown/101_bloque4_fases_b_y_c.md
+Fase A: mkdown/100_bloque4_fase_a_io_binaria.md
+
+FASE B -- BIBLIOTECA PURA, SIN TOCAR EL COMPILADOR
+  lib/NativeSharp.Core/ByteBuffer.ns     NUEVO  el unico que asigna; AsSpan() no copia
+  lib/NativeSharp.Core/BinaryWriter.ns   NUEVO  little-endian sin opcion; no puede fallar
+  lib/NativeSharp.Core/BinaryReader.ns   NUEVO  borrowed struct; Optional<T>, nunca excepciones
+
+FASE C -- Process.Run (SHR-032), el bloqueo duro del auto-hospedado
+  lib/NativeSharp.Core.Diagnostics/Process.ns             Run(exe, linea, salida) -> int
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h   ProcessRun
+  include/nativesharp/Frontend/ProjectOopHirModel.h       CoreProcessRun
+  include/nativesharp/Frontend/ProjectOopMirModel.h       CoreProcessRun
+  src/Frontend/ProjectMethodBodyModel.cpp                 reconocimiento y nombre
+  src/Frontend/ProjectOopHirModel.cpp                     nombre, LAS DOS listas, mapeo
+  src/Frontend/ProjectOopMirModel.cpp                     nombre y mapeo
+  src/LLVM/ProjectOopLlvmLowerer.cpp                      hook __nativesharp_process_run
+  src/Runtime/WindowsRuntimeBuilder.cpp                   buildProcessRun + buildZeroFillStack
+                                                          + imports CreateProcessA/GetExitCodeProcess
+
+DOS DEFECTOS DEL ANDAMIAJE, ARREGLADOS
+  src/Linker/WindowsRuntimeImports.cpp    EL DECIMO SITIO. Sin GetCurrentDirectoryA aqui, los 86
+                                          trabajos fallan con "undefined symbol" -- el objeto de
+                                          runtime va en CADA ejecutable. Anadidos ademas
+                                          CreateProcessA y GetExitCodeProcess.
+  src/Runtime/WindowsRuntimeBuilder.cpp   functionType() tenia tope 8 y devolvia nullptr EN
+                                          SILENCIO. CreateProcessA tiene 10 -> SIGSEGV dentro de
+                                          llvm::PointerType::get, con una pila que no menciona ni
+                                          el helper ni el import. Tope a 16 y ABORTA con mensaje.
+
+PRUEBAS
+  tests/cc1/c25_binary_roundtrip/         NUEVA -- ida y vuelta: escribir y leer son inversas
+  tests/unit/Cc1CorrectnessTests.cpp      la fixture bajo nsc.cc1.correctness
+  run_cases.py                            la fixture en la tabla (86 -> 88 trabajos)
+  nslink_pipeline.py                      su copia de la tabla
+
+MEDIDO EN EL CONTENEDOR
+  c25 --stage=llvm  OK
+  Process.Run: llamada al hook en el IR del programa; definicion en el runtime con
+               CreateProcessA(10 args), WaitForSingleObject(-1), GetExitCodeProcess y 3 CloseHandle
+  barrido bodies y llvm: 169 OK / 5 FAIL  (dos mas que por la manana: c24 y c25)
+
+NO MEDIDO
+  La ejecucion real en Windows. Ninguna de las seis operaciones ha llamado a su funcion de Win32.
+  Process.Run NO tiene fixture ejecutable, y el motivo esta escrito en el doc 101 s4.
+
+FALTA PARA CERRAR EL BLOQUE
+  Una corrida de all.bat en verde, y la fixture del criterio: un programa NativeSharp que encuentre
+  fuentes, las lea, escriba un binario, lo relea y LLAME AL ENLAZADOR.
