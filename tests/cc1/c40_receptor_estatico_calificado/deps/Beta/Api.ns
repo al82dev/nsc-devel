@@ -1,0 +1,10 @@
+namespace SharedBeta
+{
+    public class Color
+    {
+        public static int Value()
+        {
+            return 6;
+        }
+    }
+}

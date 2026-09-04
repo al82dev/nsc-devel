@@ -106,6 +106,23 @@ void expectInvalid(
         std::string(caseName) + " records at least one error diagnostic");
 }
 
+void expectValid(
+    TestContext& tests,
+    const std::filesystem::path& root,
+    std::string_view caseName,
+    std::string_view source)
+{
+    const auto directory = root / std::string(caseName);
+    writeProject(directory, caseName);
+    writeFile(directory / "Main.ns", source);
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(
+        directory / (std::string(caseName) + ".nsproj"), error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        std::string(caseName) + " compiles through OOP MIR");
+}
+
 std::size_t countSelectedCallsByFlag(
     const ProjectCompilation& compilation,
     bool ClassMemberSymbol::*flag)
@@ -378,11 +395,10 @@ void testNegatives(TestContext& tests, const std::filesystem::path& root)
     expectInvalid(tests, root, "GetOnlyAssignment",
         "class C { public int Value { get { return 1; } } public void F() { Value = 2; } }",
         "no accessible setter");
-    expectInvalid(tests, root, "PropertyCompoundDeferred",
-        "class C { public int Value { get; set; } public void F() { Value += 1; } }", "deferred");
-    expectInvalid(tests, root, "IndexerCompoundDeferred",
-        "class C { private int X; public int this[int i] { get { return X; } set { X = value; } } public void F() { this[0] += 1; } }",
-        "deferred");
+    expectValid(tests, root, "PropertyCompoundSupported",
+        "class C { public int Value { get; set; } public void F() { Value += 1; } }");
+    expectValid(tests, root, "IndexerCompoundSupported",
+        "class C { private int X; public int this[int i] { get { return X; } set { X = value; } } public void F() { this[0] += 1; } }");
     expectInvalid(tests, root, "MissingImplicitConversion",
         "class A { } class B { } class H { public B F(A value) { B result = value; return result; } }",
         "cannot implicitly convert");

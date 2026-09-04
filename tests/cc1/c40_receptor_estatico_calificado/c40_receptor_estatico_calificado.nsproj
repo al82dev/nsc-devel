@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>c40_receptor_estatico_calificado</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <ProjectReference Include="deps/Alpha/Alpha.nsproj" />
+    <ProjectReference Include="deps/Beta/Beta.nsproj" />
+  </ItemGroup>
+</Project>

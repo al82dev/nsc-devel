@@ -193,6 +193,25 @@ bool Parser::atContextualKeyword(std::string_view keyword) const noexcept
     return current().kind() == TokenKind::Identifier && current().lexeme() == keyword;
 }
 
+bool Parser::expectContextualKeyword(
+    std::string_view keyword,
+    std::string_view description)
+{
+    if (atContextualKeyword(keyword))
+    {
+        consume();
+        return true;
+    }
+
+    diagnostics_.report(
+        diagnostics::DiagnosticId::ExpectedToken,
+        diagnostics::DiagnosticSeverity::Error,
+        current().range(),
+        "expected " + std::string(description) + ", found '" +
+            std::string(current().lexeme()) + "'");
+    return false;
+}
+
 bool Parser::consumeIf(TokenKind kind) noexcept
 {
     if (!at(kind))
@@ -2007,7 +2026,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                     modifier.range(),
                     "duplicate extern C modifier on class member");
             }
-            expect(TokenKind::KwC, "'C' after extern");
+            expectContextualKeyword("C", "'C' after extern");
             // Interop Foundation (Stage 55.x, generic FFI): `extern C from "<dll>" { ... }` as a
             // CLASS-MEMBER block declares imported C functions. Each declaration inside becomes
             // a body-less static method of the enclosing class -- callable as ClassName.Fn(...)
@@ -3481,7 +3500,7 @@ ast::AstNode* Parser::parseExternCDeclaration()
 {
     const std::size_t beginIndex = index_;
     consume();
-    expect(TokenKind::KwC, "'C'");
+    expectContextualKeyword("C", "'C'");
 
     if (at(TokenKind::KwDelegate))
     {

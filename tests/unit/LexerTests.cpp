@@ -134,8 +134,9 @@ int main()
         tests.expect(
             tokens[1].kind() == TokenKind::Identifier,
             "If is an identifier because keywords are case-sensitive");
-        tests.expect(tokens[2].kind() == TokenKind::KwExtern && tokens[3].kind() == TokenKind::KwC,
-            "extern C uses exact keyword C");
+        tests.expect(tokens[2].kind() == TokenKind::KwExtern &&
+                tokens[3].kind() == TokenKind::Identifier && tokens[3].lexeme() == "C",
+            "C remains an identifier for contextual extern C parsing");
         tests.expect(tokens[4].kind() == TokenKind::Identifier, "lowercase c is not the C linkage keyword");
         tests.expect(tokens[5].kind() == TokenKind::KwClass, "class remains a reserved type keyword");
         tests.expect(
@@ -149,7 +150,7 @@ int main()
         const std::string allKeywords =
             "void bool byte char short ushort int uint long ulong nint nuint float double const public internal protected private "
             "if else while for break continue return struct class enum namespace using new delete stackalloc sizeof "
-            "extern C true false null this";
+            "extern true false null this";
         const std::vector<Token> tokens = lex(allKeywords, diagnostics, sources);
         const std::vector<TokenKind> expected = {
             TokenKind::KwVoid, TokenKind::KwBool, TokenKind::KwByte, TokenKind::KwChar,
@@ -161,7 +162,7 @@ int main()
             TokenKind::KwContinue, TokenKind::KwReturn, TokenKind::KwStruct, TokenKind::KwClass, TokenKind::KwEnum,
             TokenKind::KwNamespace, TokenKind::KwUsing, TokenKind::KwNew, TokenKind::KwDelete,
             TokenKind::KwStackalloc, TokenKind::KwSizeof,
-            TokenKind::KwExtern, TokenKind::KwC, TokenKind::KwTrue, TokenKind::KwFalse,
+            TokenKind::KwExtern, TokenKind::KwTrue, TokenKind::KwFalse,
             TokenKind::KwNull, TokenKind::KwThis, TokenKind::EndOfFile};
         bool matches = tokens.size() == expected.size();
         for (std::size_t index = 0; matches && index < expected.size(); ++index)

@@ -139,6 +139,33 @@ int Main()
         "enum E { A } int Main() { const nuint s = sizeof(E.A); return (int)s; }");
     tests.expect(sizeofOk, "sizeof(E.A) is parsed as sizeof(expression), not sizeof(type)");
 
+    frontend::FrontendCompilation typeNamedC;
+    const bool typeNamedCOk = typeNamedC.compileBuffer(
+        "type_c.ns",
+        "struct C { public int Value; } "
+        "int Main() { C value; value.Value = 42; return value.Value; }");
+    frontend::FrontendCompilation contextualC;
+    const bool contextualCOk = contextualC.compileBuffer(
+        "contextual_c.ns",
+        "struct Box { public int C; } enum Keys { C = 67 } "
+        "int Main() { int C = 1; Box value; value.C = C; return (int)Keys.C - 25; }");
+    tests.expect(typeNamedCOk && !typeNamedC.diagnostics().hasErrors() &&
+            contextualCOk && !contextualC.diagnostics().hasErrors(),
+        "C is an ordinary type, local, field, and enum-member identifier outside extern C");
+
+    frontend::FrontendCompilation invalidExternLanguage;
+    const bool invalidExternLanguageOk = invalidExternLanguage.compileBuffer(
+        "extern_language.ns", "extern X { int puts(char* text); }");
+    bool hasExpectedC = false;
+    for (const diagnostics::Diagnostic& diagnostic :
+         invalidExternLanguage.diagnostics().diagnostics())
+    {
+        hasExpectedC = hasExpectedC ||
+            diagnostic.message().find("expected 'C'") != std::string::npos;
+    }
+    tests.expect(!invalidExternLanguageOk && hasExpectedC,
+        "extern followed by another identifier keeps the specific expected-C diagnostic");
+
     frontend::FrontendCompilation ternary;
     const bool ternaryOk = ternary.compileBuffer(
         "no_ternary.ns",

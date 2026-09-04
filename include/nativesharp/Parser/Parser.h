@@ -30,6 +30,7 @@ private:
     const lexer::Token& peek(std::size_t distance = 1) const noexcept;
     bool at(lexer::TokenKind kind) const noexcept;
     bool atContextualKeyword(std::string_view keyword) const noexcept;
+    bool expectContextualKeyword(std::string_view keyword, std::string_view description);
     bool consumeIf(lexer::TokenKind kind) noexcept;
     const lexer::Token& consume() noexcept;
     bool expect(lexer::TokenKind kind, std::string_view description);

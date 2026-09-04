@@ -1,0 +1,23 @@
+// NSC-LIMIT-001: `C` es identificador ordinario salvo inmediatamente despues de `extern`.
+// NSC-LIMIT-002: un namespace calificado, un alias de namespace y un alias de tipo pueden ser
+// la raiz de un acceso estatico. Los dos proyectos dependientes publican `Color` para que una
+// busqueda por nombre corto no pueda acertar por casualidad.
+using AlphaColor = SharedAlpha.Color;
+using A = SharedAlpha;
+
+namespace QualifiedStatic
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            return SharedAlpha.Color.Value()
+                + SharedBeta.Color.Value()
+                + AlphaColor.Value()
+                + A.Color.Value()
+                + SharedAlpha.Color.Number
+                + SharedAlpha.Color.Code
+                + (int)SharedAlpha.Mode.C;
+        }
+    }
+}

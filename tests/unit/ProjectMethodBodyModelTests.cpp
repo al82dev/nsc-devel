@@ -459,6 +459,96 @@ void testDiagnosticsAndContexts(TestContext& tests, const std::filesystem::path&
             "null converts to class references for local initialization, method arguments, and returns"); // 55
     }
 }
+
+void testQualifiedStaticTypeRoots(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path alpha = root / "QualifiedAlpha";
+    const std::filesystem::path beta = root / "QualifiedBeta";
+    const std::filesystem::path app = root / "QualifiedApp";
+    writeProject(alpha, "QualifiedAlpha");
+    writeProject(beta, "QualifiedBeta");
+    writeFile(
+        alpha / "Api.ns",
+        "namespace SharedAlpha {\n"
+        "  public struct Color {\n"
+        "    public static int Number = 7;\n"
+        "    public static int Value() { return 5; }\n"
+        "    public static int Code { get { return 8; } }\n"
+        "  }\n"
+        "  public enum Mode { C = 6 }\n"
+        "}\n");
+    writeFile(
+        beta / "Api.ns",
+        "namespace SharedBeta {\n"
+        "  public class Color { public static int Value() { return 6; } }\n"
+        "}\n");
+    writeFile(
+        app / "QualifiedApp.nsproj",
+        "<Project><PropertyGroup><Name>QualifiedApp</Name></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" />"
+        "<ProjectReference Include=\"../QualifiedAlpha/QualifiedAlpha.nsproj\" />"
+        "<ProjectReference Include=\"../QualifiedBeta/QualifiedBeta.nsproj\" />"
+        "</ItemGroup></Project>");
+    writeFile(
+        app / "Main.ns",
+        "using AlphaColor = SharedAlpha.Color;\n"
+        "using A = SharedAlpha;\n"
+        "namespace QualifiedApp {\n"
+        "  public class Child { public int Value() { return 1; } }\n"
+        "  public class Holder { public Child Child; }\n"
+        "  public class Transform { public int Position; }\n"
+        "  public class Camera {\n"
+        "    public Transform Transform;\n"
+        "    public int Read() { return Transform.Position; }\n"
+        "  }\n"
+        "  public class Program {\n"
+        "    public static int Instance(Holder object) { return object.Child.Value(); }\n"
+        "    public static int Main() {\n"
+        "      return SharedAlpha.Color.Value() + SharedBeta.Color.Value() +\n"
+        "        AlphaColor.Value() + A.Color.Value() + SharedAlpha.Color.Number +\n"
+        "        SharedAlpha.Color.Code + (int)SharedAlpha.Mode.C;\n"
+        "    }\n"
+        "  }\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(app / "QualifiedApp.nsproj", error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        "qualified types, namespace aliases, and type aliases bind as static receivers");
+    tests.expect(compilation.methodBodyModel() != nullptr &&
+            hasBindingKind(*compilation.methodBodyModel(), MethodNameBindingKind::TypeReference,
+                "SharedAlpha.Color") &&
+            hasBindingKind(*compilation.methodBodyModel(), MethodNameBindingKind::TypeReference,
+                "AlphaColor") &&
+            hasBindingKind(*compilation.methodBodyModel(), MethodNameBindingKind::TypeReference,
+                "A.Color") &&
+            hasBindingKind(*compilation.methodBodyModel(), MethodNameBindingKind::ExplicitObjectMethodGroup,
+                "Value"),
+        "qualified static roots do not change an ordinary object.Child.Value() access");
+
+    const std::filesystem::path ambiguous = root / "QualifiedAmbiguous";
+    writeFile(
+        ambiguous / "QualifiedAmbiguous.nsproj",
+        "<Project><PropertyGroup><Name>QualifiedAmbiguous</Name></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" />"
+        "<ProjectReference Include=\"../QualifiedAlpha/QualifiedAlpha.nsproj\" />"
+        "<ProjectReference Include=\"../QualifiedBeta/QualifiedBeta.nsproj\" />"
+        "</ItemGroup></Project>");
+    writeFile(
+        ambiguous / "Main.ns",
+        "using SharedAlpha; using SharedBeta; namespace QualifiedAmbiguous;\n"
+        "public class Program { public static int Main() { return Color.Value(); } }\n");
+
+    ProjectCompilation ambiguousCompilation;
+    error.clear();
+    const bool ambiguousOk = ambiguousCompilation.compileProjectMethodBodies(
+        ambiguous / "QualifiedAmbiguous.nsproj", error);
+    tests.expect(!ambiguousOk &&
+            diagnosticCount(ambiguousCompilation, DiagnosticId::AmbiguousTypeName) == 1 &&
+            diagnosticCount(ambiguousCompilation, DiagnosticId::UnknownIdentifier) == 0,
+        "an unqualified static receiver from two imported namespaces reports deterministic ambiguity");
+}
 }
 
 int main()
@@ -474,6 +564,7 @@ int main()
     testScopeRules(tests, root);
     testOverloadResolution(tests, root);
     testDiagnosticsAndContexts(tests, root);
+    testQualifiedStaticTypeRoots(tests, root);
 
     std::filesystem::remove_all(root, error);
     return tests.result();

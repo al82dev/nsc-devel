@@ -41,6 +41,34 @@ std::vector<std::string> splitQualifiedName(const std::string& name)
     return segments;
 }
 
+std::optional<std::string> expressionQualifiedName(const ast::AstNode* expression)
+{
+    if (expression == nullptr)
+    {
+        return std::nullopt;
+    }
+    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        return expression->text().empty()
+            ? std::nullopt
+            : std::optional<std::string>(expression->text());
+    }
+    if (expression->kind() != ast::AstNodeKind::MemberExpression ||
+        expression->first() == nullptr || expression->text().empty())
+    {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> prefix = expressionQualifiedName(expression->first());
+    if (!prefix.has_value())
+    {
+        return std::nullopt;
+    }
+    prefix->push_back('.');
+    *prefix += expression->text();
+    return prefix;
+}
+
 std::string joinSegments(std::span<const std::string> segments)
 {
     std::string result;
@@ -353,6 +381,18 @@ std::optional<std::size_t> ProjectNameLookup::resolvedTypeOrdinal(
         return std::nullopt;
     }
     return binding.targetTypeOrdinal;
+}
+
+const ExpressionTypeNameBinding* ProjectNameLookup::expressionTypeBinding(
+    const ast::AstNode* expression) const noexcept
+{
+    const auto iterator = expressionTypeBindingBySyntax_.find(expression);
+    if (iterator == expressionTypeBindingBySyntax_.end() ||
+        iterator->second >= expressionTypeBindings_.size())
+    {
+        return nullptr;
+    }
+    return &expressionTypeBindings_[iterator->second];
 }
 
 bool ProjectNameLookup::isBuilt() const noexcept
@@ -795,6 +835,11 @@ void ProjectNameLookup::bindNode(
         return;
     }
 
+    if (node->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, environment);
+    }
+
     if (node->typeSyntax() != nullptr)
     {
         bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, environment, diagnostics);
@@ -818,6 +863,35 @@ void ProjectNameLookup::bindNode(
     {
         bindNode(unit, child, namespaceSegments, environment, diagnostics);
     }
+}
+
+void ProjectNameLookup::bindExpressionTypeReceiver(
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* expression,
+    const std::vector<std::string>& namespaceSegments,
+    const LookupEnvironment& environment)
+{
+    if (expression == nullptr || expressionTypeBindingBySyntax_.contains(expression))
+    {
+        return;
+    }
+
+    const std::optional<std::string> writtenName = expressionQualifiedName(expression);
+    if (!writtenName.has_value())
+    {
+        return;
+    }
+    std::vector<std::size_t> candidates = resolveExpressionTypeCandidates(
+        unit.projectOrdinal(), namespaceSegments, environment, *writtenName);
+    if (candidates.empty())
+    {
+        return;
+    }
+
+    const std::size_t ordinal = expressionTypeBindings_.size();
+    expressionTypeBindings_.push_back(
+        ExpressionTypeNameBinding{expression, *writtenName, std::move(candidates)});
+    expressionTypeBindingBySyntax_.emplace(expression, ordinal);
 }
 
 void ProjectNameLookup::bindTypeSyntax(
@@ -1128,6 +1202,44 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
         }
     }
     return referencedGlobal;
+}
+
+std::vector<std::size_t> ProjectNameLookup::resolveExpressionTypeCandidates(
+    std::size_t projectOrdinal,
+    const std::vector<std::string>& namespaceSegments,
+    const LookupEnvironment& environment,
+    const std::string& writtenName) const
+{
+    if (writtenName.find('.') == std::string::npos)
+    {
+        const auto alias = environment.typeAliases.find(writtenName);
+        if (alias != environment.typeAliases.end() && alias->second != nullptr)
+        {
+            const ast::TypeSyntax* target = alias->second;
+            std::unordered_set<std::string> visitedAliases;
+            visitedAliases.insert(writtenName);
+            while (target != nullptr &&
+                   !lexer::isBuiltinTypeKeyword(target->baseTokenKind()) &&
+                   target->typeArguments().empty() && target->modifiers().empty())
+            {
+                const std::string& targetName = target->baseName();
+                if (!visitedAliases.insert(targetName).second)
+                {
+                    return {};
+                }
+
+                const auto chainedAlias = environment.typeAliases.find(targetName);
+                if (chainedAlias == environment.typeAliases.end())
+                {
+                    return resolveTypeCandidates(
+                        projectOrdinal, namespaceSegments, environment, targetName);
+                }
+                target = chainedAlias->second;
+            }
+            return {};
+        }
+    }
+    return resolveTypeCandidates(projectOrdinal, namespaceSegments, environment, writtenName);
 }
 
 std::vector<std::size_t> ProjectNameLookup::resolveQualifiedTypeCandidates(

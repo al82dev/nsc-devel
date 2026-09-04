@@ -101,7 +101,6 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"default", TokenKind::KwDefault},
         {"extern", TokenKind::KwExtern},
         {"export", TokenKind::KwExport},
-        {"C", TokenKind::KwC},
         {"true", TokenKind::KwTrue},
         {"false", TokenKind::KwFalse},
         {"null", TokenKind::KwNull},

@@ -676,6 +676,76 @@ namespace proj { class Program {
         "is never assigned in the body of");
 }
 
+void testForwardedOutSatisfiesOnlyAnOutObligation(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string source = R"NS(
+namespace proj {
+    public struct Pair { public int left; public int right; }
+    public struct Slots { public int[2] values; }
+    class Program {
+        private static bool Fill(out Pair value) {
+            value.left = 20;
+            value.right = 22;
+            return true;
+        }
+        private static void FillInt(out int value, int replacement) {
+            value = replacement;
+        }
+        private static bool Forward(out Pair value) {
+            return Fill(out value);
+        }
+        private static void ForwardNested(out Slots value) {
+            FillInt(out value.values[0], 20);
+            FillInt(out value.values[1], 22);
+        }
+        public static int Main() {
+            Pair value;
+            Slots slots;
+            ForwardNested(out slots);
+            return Forward(out value) && value.left + value.right == 42
+                ? slots.values[0] + slots.values[1]
+                : 1;
+        }
+    }
+}
+)NS";
+    runBoth(tests, root, "ForwardedOut", source, 42);
+
+    reject(
+        tests, root, "ForwardedRefIsNotOut",
+        R"NS(
+namespace proj { class Program {
+    private static void Touch(ref int value) { value = 42; }
+    private static void Bad(out int value) { Touch(ref value); }
+    public static int Main() { int value; Bad(out value); return value; }
+} }
+)NS",
+        "is never assigned in the body of");
+
+    reject(
+        tests, root, "PassedByValueIsNotOut",
+        R"NS(
+namespace proj { class Program {
+    private static void Observe(int value) { }
+    private static void Bad(out int value) { Observe(value); }
+    public static int Main() { int value; Bad(out value); return value; }
+} }
+)NS",
+        "is never assigned in the body of");
+
+    reject(
+        tests, root, "OutSyntaxToRefIsNotOut",
+        R"NS(
+namespace proj { class Program {
+    private static void Touch(ref int value) { value = 42; }
+    private static void Bad(out int value) { Touch(out value); }
+    public static int Main() { int value; Bad(out value); return value; }
+} }
+)NS",
+        "is never assigned in the body of");
+}
+
 void testRefNessParticipatesInOverloadResolution(
     TestContext& tests, const std::filesystem::path& root)
 {
@@ -792,6 +862,7 @@ int main()
     testByReferenceParametersRoundTrip(tests, root);
     testTheKeywordIsRequiredAndExact(tests, root);
     testInIsReadOnlyAndOutIsAnObligation(tests, root);
+    testForwardedOutSatisfiesOnlyAnOutObligation(tests, root);
     testRefNessParticipatesInOverloadResolution(tests, root);
 
     testInteropContractFixturesCompile(tests);

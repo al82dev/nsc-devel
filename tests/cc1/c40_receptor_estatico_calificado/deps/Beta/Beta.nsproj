@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>QualifiedBeta</Name></PropertyGroup>
+  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+</Project>

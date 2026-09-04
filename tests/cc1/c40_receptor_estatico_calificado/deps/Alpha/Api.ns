@@ -1,0 +1,22 @@
+namespace SharedAlpha
+{
+    public struct Color
+    {
+        public static int Number = 7;
+
+        public static int Value()
+        {
+            return 5;
+        }
+
+        public static int Code
+        {
+            get { return 8; }
+        }
+    }
+
+    public enum Mode
+    {
+        C = 6,
+    }
+}

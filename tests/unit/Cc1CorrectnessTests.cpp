@@ -684,6 +684,15 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c39_enum_nombre_o2/c39_enum_nombre_o2.nsproj",
         "cc1-c39-enum-nombre-o2", 42);
 
+    // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
+    // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
+    // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,
+    // enlace y ejecucion sin depender de una resolucion accidental por nombre corto.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c40_receptor_estatico_calificado/c40_receptor_estatico_calificado.nsproj",
+        "cc1-c40-receptor-estatico-calificado", 42);
+
     // A PARTIR DE AQUI NADA ES UNA FIXTURE: son rechazos y comprobaciones sobre el IR. Los corre
     // la entrada `--rest`, y nadie mas -- una entrada por fixture que ademas arrastrara todo esto
     // lo repetiria cuarenta veces.

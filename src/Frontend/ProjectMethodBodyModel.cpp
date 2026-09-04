@@ -49,6 +49,20 @@ constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 // ID 129. El gemelo del de arriba para el `ToString()` sintetizado de un enum.
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 
+std::string typeCandidateList(
+    std::span<const std::size_t> candidates,
+    const ProjectNameLookup& lookup)
+{
+    std::string result;
+    for (const std::size_t ordinal : candidates)
+    {
+        if (ordinal >= lookup.namedTypes().size()) continue;
+        if (!result.empty()) result += ", ";
+        result += lookup.namedTypes()[ordinal].identity.key();
+    }
+    return result;
+}
+
 bool isComparison(TokenKind kind) noexcept
 {
     return kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual ||
@@ -5749,7 +5763,48 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
 
     ExpressionResult receiver;
     bool typeReceiver = false;
+    bool valueReceiver = false;
+    std::optional<std::size_t> typeOrdinal;
+    std::string writtenTypeName;
+
+    // A value in lexical/member scope wins over an equally named type. Besides matching the
+    // usual expression lookup rule, this is essential for APIs with a property named after its
+    // type (`Transform Transform` followed by `Transform.Position`). The old type-first probe
+    // interpreted that receiver as the class and then complained that Position was not static.
+    bool memberValueShadowsType = false;
     if (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::string& receiverName = expression->first()->text();
+        const std::vector<std::size_t> candidates = memberCandidates(methodMemberOrdinal, receiverName);
+        memberValueShadowsType = std::any_of(candidates.begin(), candidates.end(), [&](std::size_t ordinal)
+        {
+            if (ordinal >= memberModel_->members().size()) return false;
+            const ClassMemberKind kind = memberModel_->members()[ordinal].kind;
+            return kind != ClassMemberKind::Constructor && kind != ClassMemberKind::Destructor;
+        });
+        memberValueShadowsType = memberValueShadowsType ||
+            !memberCandidates(methodMemberOrdinal, "get_" + receiverName).empty() ||
+            !memberCandidates(methodMemberOrdinal, "set_" + receiverName).empty();
+    }
+    if (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        (lookupScopeName(scopeOrdinal, expression->first()->text()).has_value() ||
+         memberValueShadowsType))
+    {
+        receiver = analyzeExpression(
+            expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        if (!receiver.valid || receiver.methodGroup)
+        {
+            return result;
+        }
+        valueReceiver = true;
+        receiver.receiverSyntax = expression->first();
+        receiver.receiverTypeKey = receiver.typeKey;
+        receiver.receiverTypeOrdinal = namedTypeOrdinalForTypeKey(receiver.typeKey);
+    }
+
+    if (!valueReceiver &&
+        expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        expression->first()->typeSyntax() != nullptr)
     {
         // ID 131. `Caja<int>.Make(...)`. El parser deja el TypeSyntax del tipo CERRADO colgado del
         // identificador cuando la forma escrita llevaba argumentos de tipo. Cuando esta, se
@@ -5763,43 +5818,66 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         // no existe --se escribio un tipo cerrado que nadie mas usa-- no se resuelve nada y el
         // camino de abajo da el diagnostico de siempre, que es lo correcto: inventar la
         // instanciacion desde un acceso a miembro seria monomorfizar en el sitio equivocado.
-        std::optional<std::size_t> typeOrdinal;
         const ast::TypeSyntax* closedType = expression->first()->typeSyntax();
-        if (closedType != nullptr && memberModel_ != nullptr && nameLookup_ != nullptr)
+        typeOrdinal = namedTypeOrdinalForTypeKey(
+            memberModel_->canonicalTypeKey(closedType, *nameLookup_));
+        writtenTypeName = expression->first()->text();
+    }
+    else if (!valueReceiver)
+    {
+        const ExpressionTypeNameBinding* binding =
+            nameLookup_->expressionTypeBinding(expression->first());
+        if (binding != nullptr)
         {
-            typeOrdinal = namedTypeOrdinalForTypeKey(
-                memberModel_->canonicalTypeKey(closedType, *nameLookup_));
+            writtenTypeName = binding->writtenName;
+            if (binding->candidateTypeOrdinals.size() > 1)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::AmbiguousTypeName,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->first()->range(),
+                    "ambiguous type name '" + writtenTypeName + "'; candidates: " +
+                        typeCandidateList(binding->candidateTypeOrdinals, *nameLookup_));
+                return result;
+            }
+            if (!binding->candidateTypeOrdinals.empty())
+            {
+                typeOrdinal = binding->candidateTypeOrdinals.front();
+            }
         }
-        else
+        else if (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
         {
             typeOrdinal = resolveTypeIdentifier(methodMemberOrdinal, expression->first()->text());
-        }
-        if (typeOrdinal.has_value())
-        {
-            typeReceiver = true;
-            receiver.typeKey = inheritanceModel_->typeKeyForOrdinal(*typeOrdinal);
-            receiver.valid = true;
-            receiver.receiverSyntax = expression->first();
-            receiver.receiverTypeKey = receiver.typeKey;
-            receiver.receiverTypeOrdinal = typeOrdinal;
-            nameBindings_.push_back(MethodNameBinding{
-                MethodNameBindingKind::TypeReference,
-                expression->first(),
-                methodMemberOrdinal,
-                scopeOrdinal,
-                expression->first()->text(),
-                receiver.typeKey,
-                std::nullopt,
-                std::nullopt,
-                {},
-                expression->first(),
-                receiver.typeKey,
-                typeOrdinal,
-                false});
+            writtenTypeName = expression->first()->text();
         }
     }
 
-    if (!typeReceiver && expression->first()->kind() == ast::AstNodeKind::BaseExpression)
+    if (typeOrdinal.has_value())
+    {
+        typeReceiver = true;
+        receiver.typeKey = inheritanceModel_->typeKeyForOrdinal(*typeOrdinal);
+        receiver.valid = true;
+        receiver.receiverSyntax = expression->first();
+        receiver.receiverTypeKey = receiver.typeKey;
+        receiver.receiverTypeOrdinal = typeOrdinal;
+        nameBindings_.push_back(MethodNameBinding{
+            MethodNameBindingKind::TypeReference,
+            expression->first(),
+            methodMemberOrdinal,
+            scopeOrdinal,
+            writtenTypeName,
+            receiver.typeKey,
+            std::nullopt,
+            std::nullopt,
+            {},
+            expression->first(),
+            receiver.typeKey,
+            typeOrdinal,
+            false});
+    }
+
+    if (!valueReceiver && !typeReceiver &&
+        expression->first()->kind() == ast::AstNodeKind::BaseExpression)
     {
         if (!contextHasImplicitThis(methodMemberOrdinal))
         {
@@ -5841,7 +5919,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             baseType,
             true});
     }
-    else if (!typeReceiver)
+    else if (!valueReceiver && !typeReceiver)
     {
         receiver = analyzeExpression(
             expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -7076,6 +7154,43 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 call.receiverTypeOrdinal.reset();
             }
         }
+
+        // NSC-LIMIT-006. Forwarding the current method's `out` parameter to another real `out`
+        // parameter is a write just as surely as `value = ...`. Do this only after overload
+        // resolution: syntax alone is insufficient because `callee(out value)` must not satisfy
+        // the obligation when the selected parameter is actually `ref` (that mismatch is still
+        // diagnosed by checkArgumentPassKinds above). Following the target root also covers the
+        // member/index forms already accepted for explicit assignments.
+        const ClassMemberSymbol* callerMember = methodSymbol(methodMemberOrdinal);
+        for (std::size_t argumentOrdinal = 0; callerMember != nullptr &&
+             argumentOrdinal < resolvedArguments.size() &&
+             argumentOrdinal < selectedMember.parameters.size(); ++argumentOrdinal)
+        {
+            if (selectedMember.parameters[argumentOrdinal].passKind != ParameterPassKind::Out ||
+                resolvedArguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Out)
+            {
+                continue;
+            }
+            const ast::AstNode* argumentSyntax = resolvedArgumentSyntax(argumentOrdinal);
+            if (argumentSyntax == nullptr || argumentSyntax->first() == nullptr)
+            {
+                continue;
+            }
+            const ast::AstNode* root = definiteAssignmentTargetRoot(argumentSyntax->first());
+            if (root == nullptr)
+            {
+                continue;
+            }
+            const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, root->text());
+            if (!target.has_value() || target->kind != ScopeNameKind::Parameter ||
+                target->semanticOrdinal >= callerMember->parameters.size() ||
+                callerMember->parameters[target->semanticOrdinal].passKind != ParameterPassKind::Out)
+            {
+                continue;
+            }
+            assignedOutParameters_.insert({methodMemberOrdinal, target->semanticOrdinal});
+        }
+
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < resolvedArguments.size() &&
              argumentOrdinal < selectedMember.parameters.size(); ++argumentOrdinal)
         {
