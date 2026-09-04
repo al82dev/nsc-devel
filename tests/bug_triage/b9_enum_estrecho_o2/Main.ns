@@ -32,7 +32,8 @@
 //
 // COMO LEER EL CODIGO DE SALIDA:
 //
-//   10-15  -> el valor de 8 bits ya es incorrecto ANTES de ToString(). No es EnumName.
+//   10-16  -> el valor de 8 bits ya es incorrecto ANTES de ToString(). No es EnumName.
+//             El 16 es el valor del camino de reserva, comprobado antes de pedir su nombre.
 //   20-24  -> el valor esta bien y el CONTENIDO de la cadena es incorrecto para un enumerador
 //             VALIDO. Esto acota el fallo a la PRODUCCION de la cadena, y NO demuestra todavia que
 //             la culpa sea la cadena de `icmp`/`select` de lowerEnumName: caben igual un puntero o
@@ -98,6 +99,10 @@ namespace b9enumestrechoo2
             ConSigno opaco = (ConSigno)Opaco(-3);
             if ((int)opaco != -3) { return 14; }
             if (opaco != ConSigno.MenosTres) { return 15; }
+            // El valor del camino de RESERVA tambien se comprueba aqui, y no donde se le pide el
+            // nombre: si no, un 25 no distinguiria "la reserva fallo" de "este valor ya era otro".
+            ConSigno fuera = (ConSigno)Opaco(100);
+            if ((int)fuera != 100) { return 16; }
 
             // =============================================================================
             // CAPA 2 -- EL CONTENIDO DE LA CADENA, TODOS LOS BYTES. Ningun `==` ni `!=`.
@@ -139,7 +144,6 @@ namespace b9enumestrechoo2
             // `MenosTres.ToString()` devolviera `"ConSigno"` por error, esto ni siquiera se
             // ejecutaria: habria salido 20 mas arriba. Las dos mitades de EnumName --acertar y no
             // acertar-- se miden por separado y en ese orden.
-            ConSigno fuera = (ConSigno)Opaco(100);
             string reserva = fuera.ToString();
             if (!MismosBytes(reserva, "ConSigno")) { return 25; }
 

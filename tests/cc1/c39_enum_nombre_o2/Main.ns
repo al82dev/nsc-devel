@@ -26,12 +26,12 @@
 //
 // Codigo de salida esperado: 42.
 //
-//   10-19    -> el valor de 8 bits ya es incorrecto ANTES de ToString().
+//   10-19    -> el valor ya es incorrecto ANTES de ToString().
+//   110-115  -> lo mismo que 10-19, para las entradas que no cabian en esa decena.
 //   20-29    -> el valor esta bien y el CONTENIDO de la cadena es incorrecto.
-//   120-124  -> lo mismo que 20-29, para los casos que no cabian en esa decena: por variable
-//               local, los dos caminos de reserva, el no plegable, y el de `Ancho` por funcion.
+//   120-125  -> lo mismo que 20-29, para los casos que no cabian en esa decena.
 //   30-39    -> el contenido es correcto byte a byte y falla el `!=`. Es el operador de cadenas.
-//   130-134  -> lo mismo que 30-39, para los casos que no cabian en esa decena.
+//   130-135  -> lo mismo que 30-39, para los casos que no cabian en esa decena.
 //   42       -> todo correcto. Ningun otro camino devuelve 42.
 //
 // TODA cadena verificada en la capa 2 se compara en la capa 3, y ninguna comparacion vuelve a
@@ -124,8 +124,31 @@ namespace cc1enumnombreo2
             if ((int)Dos.Alto != 60000) { return 14; }
             if ((long)Ocho.Enorme != 5000000000) { return 15; }
             if ((int)Ancho.Dos != 2) { return 16; }
-            if ((int)PasaSinSigno(SinSigno.DosCientos) != 200) { return 17; }
-            if ((int)PasaPositivo(ConSignoPositivo.Dos) != 2) { return 18; }
+            SinSigno porFuncionValor = PasaSinSigno(SinSigno.DosCientos);
+            if ((int)porFuncionValor != 200) { return 17; }
+            ConSignoPositivo porFuncionPositivoValor = PasaPositivo(ConSignoPositivo.Dos);
+            if ((int)porFuncionPositivoValor != 2) { return 18; }
+
+            // TODA entrada que mas abajo produce un nombre se declara AQUI y se comprueba AQUI. Si
+            // una de ellas se creara ya en la capa 2, su codigo de fallo no distinguiria "la cadena
+            // salio mal" de "el valor con el que se pidio la cadena ya era otro" -- que es una capa
+            // distinta y la causal.
+            Ocho porFuncionOchoValor = PasaOcho(Ocho.Enorme);
+            if ((long)porFuncionOchoValor != 5000000000) { return 19; }
+            Ancho porFuncionAnchoValor = PasaAncho(Ancho.Dos);
+            if ((int)porFuncionAnchoValor != 2) { return 10 + 100; }           // 110
+            // `PasaDos` mide un `enum : ushort` ATRAVESANDO una funcion. `opacoDos`, mas abajo,
+            // mide otra cosa distinta: la conversion `int -> enum` de un valor no plegable.
+            Dos porFuncionDosValor = PasaDos(Dos.Alto);
+            if ((int)porFuncionDosValor != 60000) { return 11 + 100; }         // 111
+            SinSigno porLocal = SinSigno.DosCientos;
+            if ((int)porLocal != 200) { return 12 + 100; }                     // 112
+            SinSigno fuera = (SinSigno)Opaco(77);
+            if ((int)fuera != 77) { return 13 + 100; }                         // 113
+            Ancho fueraAncho = (Ancho)Opaco(99);
+            if ((int)fueraAncho != 99) { return 14 + 100; }                    // 114
+            Dos opacoDos = (Dos)Opaco(60000);
+            if ((int)opacoDos != 60000) { return 15 + 100; }                   // 115
 
             // =============================================================================
             // CAPA 2 -- EL CONTENIDO DE LA CADENA, TODOS LOS BYTES. Ningun `==` ni `!=`.
@@ -149,30 +172,29 @@ namespace cc1enumnombreo2
             string constanteAncho = Ancho.Dos.ToString();
             if (!MismosBytes(constanteAncho, "Dos")) { return 26; }
 
-            string porFuncion = PasaSinSigno(SinSigno.DosCientos).ToString();
+            string porFuncion = porFuncionValor.ToString();
             if (!MismosBytes(porFuncion, "DosCientos")) { return 27; }
-            string porFuncionPositivo = PasaPositivo(ConSignoPositivo.Dos).ToString();
+            string porFuncionPositivo = porFuncionPositivoValor.ToString();
             if (!MismosBytes(porFuncionPositivo, "Dos")) { return 28; }
-            string porFuncionOcho = PasaOcho(Ocho.Enorme).ToString();
+            string porFuncionOcho = porFuncionOchoValor.ToString();
             if (!MismosBytes(porFuncionOcho, "Enorme")) { return 29; }
-            string porFuncionAncho = PasaAncho(Ancho.Dos).ToString();
+            string porFuncionAncho = porFuncionAnchoValor.ToString();
             if (!MismosBytes(porFuncionAncho, "Dos")) { return 24 + 100; }     // 124
+            string porFuncionDos = porFuncionDosValor.ToString();
+            if (!MismosBytes(porFuncionDos, "Alto")) { return 25 + 100; }      // 125
 
-            SinSigno porLocal = SinSigno.DosCientos;
             string desdeLocal = porLocal.ToString();
             if (!MismosBytes(desdeLocal, "DosCientos")) { return 20 + 100; }   // 120
 
             // Fuera de rango: el nombre del TIPO. Es la otra salida de EnumName, la que se toma
-            // cuando NINGUNA comparacion acierta.
-            SinSigno fuera = (SinSigno)Opaco(77);
+            // cuando NINGUNA comparacion acierta. Los dos valores ya se comprobaron en la capa 1,
+            // asi que un fallo aqui es de la cadena y no del numero.
             string reserva = fuera.ToString();
             if (!MismosBytes(reserva, "SinSigno")) { return 21 + 100; }        // 121
-            Ancho fueraAncho = (Ancho)Opaco(99);
             string reservaAncho = fueraAncho.ToString();
             if (!MismosBytes(reservaAncho, "Ancho")) { return 22 + 100; }      // 122
 
             // Y por un camino no plegable, para que el nombre se decida en ejecucion.
-            Dos opacoDos = (Dos)Opaco(60000);
             string desdeOpaco = opacoDos.ToString();
             if (!MismosBytes(desdeOpaco, "Alto")) { return 23 + 100; }         // 123
 
@@ -194,6 +216,7 @@ namespace cc1enumnombreo2
             if (porFuncionAncho != "Dos") { return 32 + 100; }                 // 132
             if (porFuncionOcho != "Enorme") { return 33 + 100; }                // 133
             if (reservaAncho != "Ancho") { return 34 + 100; }                   // 134
+            if (porFuncionDos != "Alto") { return 35 + 100; }                   // 135
 
             return 42;
         }
