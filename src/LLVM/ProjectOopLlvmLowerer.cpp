@@ -6617,22 +6617,52 @@ private:
     // FORMA DEL NODO: children[0] el valor, children[1] la cadena de reserva (el nombre del tipo),
     // y de ahi en adelante PARES (constante, nombre) en orden de declaracion.
     //
-    // SE BAJA A UNA CADENA DE `select`, SIN SALTOS:
+    // SE BAJA A UN `switch` CON UN `phi`, que es exactamente la forma a la que baja un `switch`
+    // del lenguaje sobre ese mismo enum:
     //
-    //     %v  = <valor, bajado UNA VEZ>
-    //     %r0 = <cadena de reserva>
-    //     %c1 = icmp eq %v, K1 ;  %r1 = select %c1, S1, %r0
-    //     %c2 = icmp eq %v, K2 ;  %r2 = select %c2, S2, %r1
-    //     ...
+    //     switch <valor>, label %reserva [ K1, label %n1  K2, label %n2 ... ]
+    //     %resultado = phi ptr [ S1, %n1 ], [ S2, %n2 ], ..., [ <reserva>, %reserva ]
     //
-    // Una cadena de literales es una cadena de PUNTEROS a globales constantes, asi que un `select`
-    // entre dos de ellas es legal y no cuesta nada -- ninguna rama tiene efectos ni puede fallar.
-    // Sin saltos, sin bloques nuevos, y con el valor evaluado una sola vez, que es la propiedad
-    // por la que este nodo existe.
+    // POR QUE NO ES UNA CADENA DE `select`, QUE ES LO QUE ERA HASTA EL 2026-09-04. Lo era, y la
+    // cadena que emitia es CORRECTA: `icmp eq i8 %v, -3` seguido de `select` sobre punteros a
+    // globales constantes. LLVM 18 la compila bien a -O2 --comprobado pasandole el IR de c38 por
+    // `opt -O2`, que pliega la funcion entera hasta `ret i32 42`--. Con LLVM 23, que es contra el
+    // que enlaza el compilador que se entrega, a -O2 devuelve la RESERVA.
     //
-    // EL ORDEN IMPORTA Y ES EL DE DECLARACION: la cadena se construye desde la reserva hacia
-    // arriba, asi que el enumerador declarado ANTES queda mas cerca del resultado y gana cuando
-    // dos comparten valor (un alias). Es lo que un lector espera al mirar el enum.
+    // LO MEDIDO, y es lo unico sobre lo que se decidio (corrida del 2026-09-04):
+    //
+    //   * `c38` codigo 39 y `b9` codigo 61: `ConSigno.MenosTres.ToString()` --`enum : sbyte`,
+    //     valor -3-- devuelve "ConSigno", el nombre del tipo. Con receptor CONSTANTE y con
+    //     receptor opaco, o sea que no depende de que el valor cruce una llamada.
+    //   * la capa 1 de `b9` pasa: el valor de 8 bits SIGUE siendo -3 al llegar a ToString().
+    //   * `c38` codigo 26 PASA: `ClasificaConSigno`, que es un `switch` del lenguaje sobre el
+    //     MISMO enum con el MISMO -3, acierta a -O2. En el IR eso es
+    //     `switch i8 %v, [ i8 -3, ... ]`.
+    //   * `c38` codigos 37, 38 y 50-53 pasan: un `enum : byte` con 200 y 128 --que en i8 son -56
+    //     y -128-- acierta con la cadena de `select`, y los alias tambien.
+    //
+    // O sea: en el mismo fichero, al mismo nivel de optimizacion y con el mismo compilador, el
+    // mismo valor estrecho y negativo se compara BIEN dentro de un `switch` y MAL dentro de la
+    // cadena de `select`. Esa es la unica discriminacion que existe hoy, y por eso la bajada se
+    // mueve a la forma que la maquina que falla demuestra que funciona.
+    //
+    // ESTO NO ES UN DIAGNOSTICO Y NO HAY QUE LEERLO COMO TAL. No se sabe que transformacion de
+    // LLVM 23 rompe la cadena de `select` --no hay aqui con que ejecutar LLVM 23-- asi que esto
+    // es un RODEO apoyado en una medicion, no la reparacion de una causa identificada. Si algun
+    // dia se puede depurar contra LLVM 23, el sitio a mirar sigue siendo el plegado de una cadena
+    // de `select` sobre punteros gobernada por un `icmp` de 8 bits con una constante negativa.
+    //
+    // LO QUE SE GANA DE PASO, y esto si es una mejora por si misma: EL ALIAS DEJA DE DEPENDER DEL
+    // ORDEN DEL BUCLE. Un `switch` de LLVM no admite dos casos con el mismo valor --el
+    // verificador lo rechaza-- asi que los pares se deduplican aqui y gana EL PRIMERO DECLARADO,
+    // que es la regla que documenta el frontend y que fija la fixture c34 (`Solo = 1` declarado
+    // despues de `Lectura = 1` sale "Lectura"). Antes esa regla se conseguia recorriendo los
+    // pares al reves para que el primero quedara en el `select` de mas afuera: correcto, pero
+    // invertible por accidente con un cambio de bucle -- y ya se invirtio una vez. Ahora esta
+    // escrita como lo que es, una eleccion entre iguales, y no como un efecto del anidamiento.
+    //
+    // EL RECEPTOR SE SIGUE BAJANDO UNA SOLA VEZ, que es la propiedad por la que este nodo existe:
+    // `Dame().ToString()` no puede llamar a `Dame()` una vez por enumerador.
     LLVMValueRef lowerEnumName(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node->children.size() < 2U || (node->children.size() % 2U) != 0U)
@@ -6641,38 +6671,106 @@ private:
         }
         LLVMValueRef value = lowerExpression(node->children[0].get(), error);
         if (value == nullptr) return nullptr;
-        LLVMValueRef result = lowerExpression(node->children[1].get(), error);
-        if (result == nullptr) return nullptr;
 
-        // LA CADENA SE CONSTRUYE AL REVES, Y ESO NO ES UN DETALLE.
-        //
-        // `result` empieza siendo la reserva y cada vuelta lo envuelve en un `select`, asi que el
-        // ULTIMO par que se procesa queda MAS AFUERA -- y el mas afuera es el que gana. Recorrer
-        // los pares en orden de declaracion haria ganar al ULTIMO enumerador que comparte valor,
-        // que es justo lo contrario de lo que el frontend documenta (ProjectOopHirModel: los pares
-        // van "en orden de declaracion... el que decide quien gana cuando dos enumeradores
-        // comparten valor") y de lo que la fixture c34 fija: `Solo = 1` declarado despues de
-        // `Lectura = 1` tiene que salir "Lectura".
-        //
-        // Recorriendolos del ultimo al primero, el PRIMER par declarado se aplica el ultimo y
-        // queda arriba del todo. Gana el primero, que es la decision.
-        //
-        // Que un alias gane o pierda parece cosmetico hasta que se recuerda por que existen los
-        // alias: `Solo = 1` es un nombre alternativo de una bandera, y un programa que imprime
-        // banderas espera el nombre canonico, no el ultimo sinonimo que alguien anadio al final
-        // del enum. Y sobre todo: la respuesta tiene que ser ESTABLE, no depender de en que orden
-        // el backend recorra una lista.
-        for (std::size_t pair = node->children.size(); pair >= 4U; pair -= 2)
+        // EL ANCHO DEL TIPO QUE GOBIERNA, para deduplicar por el PATRON DE BITS y no por el numero
+        // escrito. Es el mismo ancho con el que `IntegerConstant` construye cada constante
+        // (LLVMConstInt trunca al ancho del tipo), asi que dos enumeradores que aqui salgan
+        // iguales son exactamente los que LLVM veria como el mismo caso. Deduplicar por el valor
+        // de 64 bits sin enmascarar dejaria pasar un par que colisiona al truncar, y eso no seria
+        // un nombre equivocado: seria un `switch` con dos casos iguales, o sea IR invalido.
+        const std::string& receiverTypeKey = node->children[0]->typeKey;
+        LLVMTypeRef governingType = llvmType(receiverTypeKey, error);
+        if (governingType == nullptr) return nullptr;
+        const frontend::builtins::IntegerTypeInfo* receiverEnum =
+            enumUnderlyingInfo(receiverTypeKey);
+        const unsigned governingWidth =
+            receiverEnum != nullptr ? receiverEnum->width : integerWidth(receiverTypeKey);
+        if (governingWidth == 0 || governingWidth > 64)
         {
-            const std::size_t index = pair - 2U;
-            LLVMValueRef constant = lowerExpression(node->children[index].get(), error);
-            if (constant == nullptr) return nullptr;
-            LLVMValueRef name = lowerExpression(node->children[index + 1].get(), error);
-            if (name == nullptr) return nullptr;
-            LLVMValueRef matches =
-                LLVMBuildICmp(builder_, LLVMIntEQ, value, constant, "enum.name.is");
-            result = LLVMBuildSelect(builder_, matches, name, result, "enum.name");
+            return failValue(
+                error, "ID 129 enum name receiver is not an integer carrier: " + receiverTypeKey);
         }
+        const std::uint64_t mask = governingWidth >= 64
+            ? ~std::uint64_t{0}
+            : ((std::uint64_t{1} << governingWidth) - 1U);
+
+        // LOS PARES QUE SOBREVIVEN A LA DEDUPLICACION, en orden de declaracion. Se guarda el
+        // indice del par y no el valor bajado porque las constantes y los nombres se bajan mas
+        // abajo, ya dentro del bloque que les toca.
+        std::vector<std::pair<std::uint64_t, std::size_t>> cases;
+        cases.reserve((node->children.size() - 2U) / 2U);
+        for (std::size_t index = 2U; index + 1U < node->children.size(); index += 2U)
+        {
+            const std::uint64_t bits = node->children[index]->integerValue & mask;
+            bool alias = false;
+            for (const auto& existing : cases)
+            {
+                if (existing.first != bits) continue;
+                alias = true;
+                break;
+            }
+            if (!alias) cases.emplace_back(bits, index);
+        }
+
+        LLVMTypeRef stringType = LLVMPointerTypeInContext(context_, 0);
+        LLVMBasicBlockRef fallbackBlock = appendBlock("enum.name.fallback");
+        std::vector<LLVMBasicBlockRef> caseBlocks;
+        caseBlocks.reserve(cases.size());
+        for (std::size_t index = 0; index < cases.size(); ++index)
+        {
+            caseBlocks.push_back(appendBlock("enum.name.case"));
+        }
+        LLVMBasicBlockRef joinBlock = appendBlock("enum.name.join");
+
+        LLVMValueRef instruction =
+            LLVMBuildSwitch(builder_, value, fallbackBlock, static_cast<unsigned>(cases.size()));
+        for (std::size_t index = 0; index < cases.size(); ++index)
+        {
+            // La constante se BAJA, no se reconstruye: `lowerExpression` de un `IntegerConstant`
+            // ya devuelve el `LLVMConstInt` con el ancho y el patron correctos, y usar ese mismo
+            // valor garantiza que el caso del `switch` y lo que antes comparaba el `icmp` son
+            // bit a bit la misma constante.
+            LLVMValueRef constant =
+                lowerExpression(node->children[cases[index].second].get(), error);
+            if (constant == nullptr) return nullptr;
+            LLVMAddCase(instruction, constant, caseBlocks[index]);
+        }
+
+        std::vector<LLVMValueRef> incomingValues;
+        std::vector<LLVMBasicBlockRef> incomingBlocks;
+        incomingValues.reserve(cases.size() + 1U);
+        incomingBlocks.reserve(cases.size() + 1U);
+
+        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
+        if (fallback == nullptr) return nullptr;
+        incomingValues.push_back(fallback);
+        incomingBlocks.push_back(LLVMGetInsertBlock(builder_));
+        LLVMBuildBr(builder_, joinBlock);
+
+        for (std::size_t index = 0; index < cases.size(); ++index)
+        {
+            LLVMPositionBuilderAtEnd(builder_, caseBlocks[index]);
+            LLVMValueRef name =
+                lowerExpression(node->children[cases[index].second + 1U].get(), error);
+            if (name == nullptr) return nullptr;
+            incomingValues.push_back(name);
+            // El bloque que se anota es el que el constructor tiene ABIERTO, no `caseBlocks[i]`:
+            // bajar el nombre podria haber abierto bloques nuevos. Hoy no lo hace --un literal de
+            // cadena es un global, no una instruccion-- pero anotar el bloque de partida seria un
+            // `phi` que nombra un predecesor que no lo es, y eso es IR invalido en cuanto deje de
+            // ser cierto. Es el mismo cuidado que ya toma lowerStringEquals.
+            incomingBlocks.push_back(LLVMGetInsertBlock(builder_));
+            LLVMBuildBr(builder_, joinBlock);
+        }
+
+        LLVMPositionBuilderAtEnd(builder_, joinBlock);
+        LLVMValueRef result = LLVMBuildPhi(builder_, stringType, "enum.name");
+        LLVMAddIncoming(
+            result,
+            incomingValues.data(),
+            incomingBlocks.data(),
+            static_cast<unsigned>(incomingValues.size()));
         return result;
     }
 

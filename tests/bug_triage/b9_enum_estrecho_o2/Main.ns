@@ -62,6 +62,18 @@
 // reserva, y eso tambien podria salir de una transformacion incorrecta del `select`. El sitio a
 // mirar en el IR seria la cadena de `select` de ProjectOopLlvmLowerer, pero cambiarla con este
 // dato todavia seria un arreglo especulativo.
+//
+// LO QUE MIDIO LA CORRIDA DEL 2026-09-04: exit 61. O sea exactamente eso: el valor sigue siendo
+// -3, las cadenas se leen bien, y aun asi el nombre que sale es la reserva.
+//
+// Lo que rompio el empate NO fue este fichero, sino un vecino dentro de c38: su codigo 26 PASA, y
+// es un `switch` del lenguaje sobre el MISMO enum con el MISMO -3, que en el IR es
+// `switch i8 %v, [ i8 -3, ... ]`. Mismo fichero, mismo -O2, mismo compilador: el valor estrecho y
+// negativo se compara BIEN dentro de un `switch` y MAL dentro de la cadena de `select`. Con esa
+// discriminacion --y solo con ella-- la bajada de EnumName se movio a `switch` + `phi`. Sigue sin
+// ser un diagnostico: es un rodeo apoyado en una medicion. Ver mkdown/119, seccion 1.4.
+//
+// ESTE FICHERO SIGUE VIVO hasta que una corrida en Windows devuelva 42.
 using NativeSharp.Core;
 
 namespace b9enumestrechoo2

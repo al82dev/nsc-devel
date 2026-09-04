@@ -382,6 +382,65 @@ endif()
 install(TARGETS nsc RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
 
+# =====================================================================================
+# NSC_TEST_COMPILER -- EL COMPILADOR QUE MIDE CTEST.
+#
+# Los 116 tests de mas abajo invocaban el OBJETIVO `nsc`, y CMake resuelve un objetivo al
+# binario del ARBOL DE BUILD: build-clang/bin/nsc.exe. Eso ata la bateria a un artefacto
+# intermedio en vez de al que se entrega. `cmake --install` copia ese binario a
+# C:/native-sharp/bin, y entre los dos caben una instalacion que fallo, un install que se
+# salto, o un arbol de build rehecho despues. Lo que se mide tiene que ser lo instalado,
+# porque es lo que un proyecto de fuera va a usar.
+#
+# EL 2026-09-04 ESO SALIO A LA SUPERFICIE. test_nsc.bat construye el objetivo `pruebas`,
+# que EXCLUYE `nsc` a proposito -- para no cambiar el compilador que se esta midiendo. Sin
+# `build-clang/bin/nsc.exe`, 116 tests salieron `***Not Run` con "Could not find executable
+# A:/nsc-devel/build-clang/bin/nsc.exe". El defecto no era el fichero ausente: era que la
+# bateria apuntaba al sitio equivocado desde el principio, y solo se vio cuando el sitio
+# equivocado quedo vacio.
+#
+# ES UNA RUTA Y NO UN OBJETIVO, Y ESO ES DELIBERADO. Mientras se escriba el nombre del
+# objetivo, CMake tiene que resolverlo al arbol de build por definicion: no existe forma de
+# que `COMMAND nsc` signifique "el instalado". Escribir la ruta rompe ese vinculo, que es
+# justo lo que se quiere -- ctest ya no depende de construir nada y mide el fichero que hay.
+#
+# LA CONTRAPARTIDA, DICHA ENTERA: ctest deja de garantizar que ese fichero este al dia. Esa
+# garantia se mueve a quien lanza la corrida, y hay dos sitios que la dan:
+#
+#   * all.bat instala en el paso 1, justo antes de ctest, asi que ahi es fresco por
+#     construccion;
+#   * test_nsc.bat no instala --es su promesa-- y por eso compara la fecha del ejecutable
+#     con la de las fuentes (build_al_dia.py --solo-nsc) y avisa antes de medir nada.
+#
+# Y dentro de la propia bateria queda `nsc.version`, el primero de los 116: comprueba
+# version y stage contra un regex, asi que un compilador de otra stage se pone rojo ahi.
+#
+# FUERA DE WINDOWS no existe C:/, asi que el valor por defecto vuelve a ser el del arbol de
+# build. La variable es de cache: `-DNSC_TEST_COMPILER=<ruta>` manda sobre las dos ramas.
+# =====================================================================================
+set(NSC_TEST_COMPILER "" CACHE FILEPATH
+    "Ejecutable nsc que mide ctest (vacio = C:/native-sharp/bin/nsc.exe en Windows)")
+set(_nsc_test_compiler_es_ruta TRUE)
+if(NSC_TEST_COMPILER STREQUAL "")
+    if(WIN32)
+        set(NSC_TEST_COMPILER "C:/native-sharp/bin/nsc.exe")
+    else()
+        set(NSC_TEST_COMPILER "$<TARGET_FILE:nsc>")
+        set(_nsc_test_compiler_es_ruta FALSE)
+    endif()
+endif()
+message(STATUS "ctest mide el compilador: ${NSC_TEST_COMPILER}")
+if(_nsc_test_compiler_es_ruta AND NOT EXISTS "${NSC_TEST_COMPILER}")
+    # NO es FATAL_ERROR, y la razon es el huevo y la gallina: en un arbol recien clonado el
+    # configure ocurre ANTES del primer install, asi que parar aqui haria imposible la
+    # primera construccion. Se avisa; si sigue faltando cuando ctest corra, lo repetira el
+    # propio ctest, y ahora nombrando la ruta correcta.
+    message(WARNING
+        "NSC_TEST_COMPILER todavia no existe: ${NSC_TEST_COMPILER} -- los tests que lo "
+        "invocan saldran `Not Run` hasta que se instale "
+        "(cmake --install <build> --prefix C:/native-sharp)")
+endif()
+
 if(NSC_BUILD_TESTS)
     enable_testing()
 
@@ -1353,7 +1412,7 @@ if(NSC_BUILD_TESTS)
     #
     # `[0-9a-f]` y no `.*` a proposito: un @NSC_BUILD_ID@ sin sustituir dejaria la linea vacia, y un
     # `.*` la aceptaria igual.
-    add_test(NAME nsc.version COMMAND nsc --version)
+    add_test(NAME nsc.version COMMAND "${NSC_TEST_COMPILER}" --version)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
@@ -1361,7 +1420,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage25.project-names
-        COMMAND nsc --check-project-names
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-names
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage25/App/App.nsproj)
     set_tests_properties(
         nsc.stage25.project-names
@@ -1369,7 +1428,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage26.project-members
-        COMMAND nsc --check-project-members
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-members
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage26/App/App.nsproj)
     set_tests_properties(
         nsc.stage26.project-members
@@ -1378,7 +1437,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage27.project-method-bodies
-        COMMAND nsc --check-project-method-bodies
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-method-bodies
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage27/App/Stage27App.nsproj)
     set_tests_properties(
         nsc.stage27.project-method-bodies
@@ -1386,7 +1445,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage28.project-constructions
-        COMMAND nsc --check-project-constructions
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-constructions
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage28/App/Stage28App.nsproj)
     set_tests_properties(
         nsc.stage28.project-constructions
@@ -1394,7 +1453,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage29.project-layouts
-        COMMAND nsc --check-project-layouts
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-layouts
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage29/App/Stage29App.nsproj)
     set_tests_properties(
         nsc.stage29.project-layouts
@@ -1402,7 +1461,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage30.project-oop-llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage30/App/Stage30App.nsproj)
     set_tests_properties(
         nsc.stage30.project-oop-llvm
@@ -1411,7 +1470,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE30_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage30_example.obj)
     add_test(
         NAME nsc.stage30.project-oop-object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage30/App/Stage30App.nsproj
             -O2 -o ${NSC_STAGE30_OBJECT})
     set_tests_properties(
@@ -1420,7 +1479,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage31.generalized-receivers
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage31/App/Stage31App.nsproj)
     set_tests_properties(
         nsc.stage31.generalized-receivers
@@ -1428,7 +1487,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage31.receiver-dump
-        COMMAND nsc --dump-project-method-bodies
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-method-bodies
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage31/App/Stage31App.nsproj)
     set_tests_properties(
         nsc.stage31.receiver-dump
@@ -1436,7 +1495,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage32.inheritance-graph
-        COMMAND nsc --check-project-inheritance
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-inheritance
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage32/App/Stage32App.nsproj)
     set_tests_properties(
         nsc.stage32.inheritance-graph
@@ -1444,7 +1503,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage33.constructor-chaining
-        COMMAND nsc --check-project-constructions
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-constructions
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage33/App/Stage33App.nsproj)
     set_tests_properties(
         nsc.stage33.constructor-chaining
@@ -1452,7 +1511,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage33.inheritance-layout
-        COMMAND nsc --check-project-layouts
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-layouts
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage33/App/Stage33App.nsproj)
     set_tests_properties(
         nsc.stage33.inheritance-layout
@@ -1460,7 +1519,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage33.inheritance-llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage33/App/Stage33App.nsproj)
     set_tests_properties(
         nsc.stage33.inheritance-llvm
@@ -1468,7 +1527,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage34.virtual-dispatch
-        COMMAND nsc --check-project-virtual-dispatch
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-virtual-dispatch
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage34/App/Stage34App.nsproj)
     set_tests_properties(
         nsc.stage34.virtual-dispatch
@@ -1476,7 +1535,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage34.virtual-llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage34/App/Stage34App.nsproj)
     set_tests_properties(
         nsc.stage34.virtual-llvm
@@ -1485,7 +1544,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE34_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage34_virtual_example.obj)
     add_test(
         NAME nsc.stage34.virtual-object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage34/App/Stage34App.nsproj
             -O2 -o ${NSC_STAGE34_OBJECT})
     set_tests_properties(
@@ -1494,7 +1553,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage37.method-bodies
-        COMMAND nsc --check-project-method-bodies
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-method-bodies
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage37/App/Stage37App.nsproj)
     set_tests_properties(
         nsc.stage37.method-bodies
@@ -1502,7 +1561,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage37.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage37/App/Stage37App.nsproj)
     set_tests_properties(
         nsc.stage37.mir-dump
@@ -1510,7 +1569,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage37.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage37/App/Stage37App.nsproj)
     set_tests_properties(
         nsc.stage37.llvm
@@ -1519,7 +1578,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE37_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage37_static_example.obj)
     add_test(
         NAME nsc.stage37.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage37/App/Stage37App.nsproj
             -O2 -o ${NSC_STAGE37_OBJECT})
     set_tests_properties(
@@ -1528,7 +1587,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage35-recovery.destruction
-        COMMAND nsc --check-project-destruction
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-destruction
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj)
     set_tests_properties(
         nsc.stage35-recovery.destruction
@@ -1536,7 +1595,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage35-recovery.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj)
     set_tests_properties(
         nsc.stage35-recovery.mir-dump
@@ -1544,7 +1603,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage35-recovery.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj)
     set_tests_properties(
         nsc.stage35-recovery.llvm
@@ -1553,7 +1612,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE35_RECOVERY_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage35_recovery_example.obj)
     add_test(
         NAME nsc.stage35-recovery.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj
             -O2 -o ${NSC_STAGE35_RECOVERY_OBJECT})
     set_tests_properties(
@@ -1562,7 +1621,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage36-recovery.interfaces
-        COMMAND nsc --check-project-interfaces
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-interfaces
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj)
     set_tests_properties(
         nsc.stage36-recovery.interfaces
@@ -1570,7 +1629,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage36-recovery.interface-dump
-        COMMAND nsc --dump-project-interfaces
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-interfaces
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj)
     set_tests_properties(
         nsc.stage36-recovery.interface-dump
@@ -1578,7 +1637,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage36-recovery.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj)
     set_tests_properties(
         nsc.stage36-recovery.mir-dump
@@ -1586,7 +1645,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage36-recovery.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj)
     set_tests_properties(
         nsc.stage36-recovery.llvm
@@ -1595,7 +1654,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE36_RECOVERY_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage36_recovery_example.obj)
     add_test(
         NAME nsc.stage36-recovery.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj
             -O2 -o ${NSC_STAGE36_RECOVERY_OBJECT})
     set_tests_properties(
@@ -1604,7 +1663,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage38.method-bodies
-        COMMAND nsc --check-project-method-bodies
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-method-bodies
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage38/App/Stage38App.nsproj)
     set_tests_properties(
         nsc.stage38.method-bodies
@@ -1612,7 +1671,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage38.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage38/App/Stage38App.nsproj)
     set_tests_properties(
         nsc.stage38.mir-dump
@@ -1620,7 +1679,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage38.interface-dispatch
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage38/App/Stage38App.nsproj)
     set_tests_properties(
         nsc.stage38.interface-dispatch
@@ -1628,7 +1687,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage38.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage38/App/Stage38App.nsproj)
     set_tests_properties(
         nsc.stage38.llvm
@@ -1637,7 +1696,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE38_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage38_example.obj)
     add_test(
         NAME nsc.stage38.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage38/App/Stage38App.nsproj
             -O2 -o ${NSC_STAGE38_OBJECT})
     set_tests_properties(
@@ -1646,7 +1705,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage39.method-bodies
-        COMMAND nsc --dump-project-method-bodies
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-method-bodies
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage39/App/Stage39App.nsproj)
     set_tests_properties(
         nsc.stage39.method-bodies
@@ -1654,7 +1713,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage39.hir-dump
-        COMMAND nsc --dump-project-oop-hir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-hir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage39/App/Stage39App.nsproj)
     set_tests_properties(
         nsc.stage39.hir-dump
@@ -1662,7 +1721,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage39.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage39/App/Stage39App.nsproj)
     set_tests_properties(
         nsc.stage39.mir-dump
@@ -1670,7 +1729,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage39.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage39/App/Stage39App.nsproj)
     set_tests_properties(
         nsc.stage39.llvm
@@ -1679,7 +1738,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE39_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage39_example.obj)
     add_test(
         NAME nsc.stage39.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage39/App/Stage39App.nsproj
             -O2 -o ${NSC_STAGE39_OBJECT})
     set_tests_properties(
@@ -1688,7 +1747,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage40.members
-        COMMAND nsc --dump-project-members
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-members
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj)
     set_tests_properties(
         nsc.stage40.members
@@ -1696,7 +1755,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage40.layouts
-        COMMAND nsc --dump-project-layouts
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-layouts
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj)
     set_tests_properties(
         nsc.stage40.layouts
@@ -1704,7 +1763,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage40.hir-dump
-        COMMAND nsc --dump-project-oop-hir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-hir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj)
     set_tests_properties(
         nsc.stage40.hir-dump
@@ -1712,7 +1771,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage40.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj)
     set_tests_properties(
         nsc.stage40.mir-dump
@@ -1720,7 +1779,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage40.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj)
     set_tests_properties(
         nsc.stage40.llvm
@@ -1729,7 +1788,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE40_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage40_example.obj)
     add_test(
         NAME nsc.stage40.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj
             -O2 -o ${NSC_STAGE40_OBJECT})
     set_tests_properties(
@@ -1738,7 +1797,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage42.method-bodies
-        COMMAND nsc --dump-project-method-bodies
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-method-bodies
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage42/App/Stage42App.nsproj)
     set_tests_properties(
         nsc.stage42.method-bodies
@@ -1746,7 +1805,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage42.hir-dump
-        COMMAND nsc --dump-project-oop-hir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-hir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage42/App/Stage42App.nsproj)
     set_tests_properties(
         nsc.stage42.hir-dump
@@ -1754,7 +1813,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage42.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage42/App/Stage42App.nsproj)
     set_tests_properties(
         nsc.stage42.mir-dump
@@ -1762,7 +1821,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage42.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage42/App/Stage42App.nsproj)
     set_tests_properties(
         nsc.stage42.llvm
@@ -1771,7 +1830,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE42_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage42_example.obj)
     add_test(
         NAME nsc.stage42.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage42/App/Stage42App.nsproj
             -O2 -o ${NSC_STAGE42_OBJECT})
     set_tests_properties(
@@ -1780,7 +1839,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage43.method-bodies
-        COMMAND nsc --dump-project-method-bodies
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-method-bodies
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage43/App/Stage43App.nsproj)
     set_tests_properties(
         nsc.stage43.method-bodies
@@ -1788,7 +1847,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage43.hir-dump
-        COMMAND nsc --dump-project-oop-hir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-hir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage43/App/Stage43App.nsproj)
     set_tests_properties(
         nsc.stage43.hir-dump
@@ -1796,7 +1855,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage43.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage43/App/Stage43App.nsproj)
     set_tests_properties(
         nsc.stage43.mir-dump
@@ -1804,7 +1863,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage43.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage43/App/Stage43App.nsproj)
     set_tests_properties(
         nsc.stage43.llvm
@@ -1813,7 +1872,7 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE43_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage43_example.obj)
     add_test(
         NAME nsc.stage43.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage43/App/Stage43App.nsproj
             -O2 -o ${NSC_STAGE43_OBJECT})
     set_tests_properties(
@@ -1822,7 +1881,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage44.generics
-        COMMAND nsc --dump-project-generics
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-generics
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage44/App/Stage44App.nsproj)
     set_tests_properties(
         nsc.stage44.generics
@@ -1830,7 +1889,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage44.hir-dump
-        COMMAND nsc --dump-project-oop-hir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-hir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage44/App/Stage44App.nsproj)
     set_tests_properties(
         nsc.stage44.hir-dump
@@ -1838,7 +1897,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage44.mir-dump
-        COMMAND nsc --dump-project-oop-mir
+        COMMAND "${NSC_TEST_COMPILER}" --dump-project-oop-mir
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage44/App/Stage44App.nsproj)
     set_tests_properties(
         nsc.stage44.mir-dump
@@ -1846,7 +1905,7 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.stage44.llvm
-        COMMAND nsc --verify-project-oop-llvm
+        COMMAND "${NSC_TEST_COMPILER}" --verify-project-oop-llvm
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage44/App/Stage44App.nsproj)
     set_tests_properties(
         nsc.stage44.llvm
@@ -1855,216 +1914,248 @@ if(NSC_BUILD_TESTS)
     set(NSC_STAGE44_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/stage44_example.obj)
     add_test(
         NAME nsc.stage44.object
-        COMMAND nsc --emit-project-oop-obj
+        COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage44/App/Stage44App.nsproj
             -O2 -o ${NSC_STAGE44_OBJECT})
     set_tests_properties(
         nsc.stage44.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
 
-    add_test(NAME nsc.target COMMAND nsc --print-target)
-    add_test(NAME nsc.codegen-target COMMAND nsc --print-codegen)
+    add_test(NAME nsc.target COMMAND "${NSC_TEST_COMPILER}" --print-target)
+    add_test(NAME nsc.codegen-target COMMAND "${NSC_TEST_COMPILER}" --print-codegen)
     set_tests_properties(nsc.codegen-target PROPERTIES PASS_REGULAR_EXPRESSION "0x8664")
 
-    add_test(NAME nsc.llvm-pipeline-o2 COMMAND nsc --print-llvm-pipeline -O2)
+    add_test(NAME nsc.llvm-pipeline-o2 COMMAND "${NSC_TEST_COMPILER}" --print-llvm-pipeline -O2)
     set_tests_properties(nsc.llvm-pipeline-o2 PROPERTIES PASS_REGULAR_EXPRESSION "default<O2>")
     set_tests_properties(nsc.target PROPERTIES PASS_REGULAR_EXPRESSION "x86_64-pc-windows-msvc")
 
-    add_test(NAME nsc.runtime-dump COMMAND nsc --dump-runtime-llvm)
+    add_test(NAME nsc.runtime-dump COMMAND "${NSC_TEST_COMPILER}" --dump-runtime-llvm)
     set_tests_properties(nsc.runtime-dump PROPERTIES PASS_REGULAR_EXPRESSION "define void @__nativesharp_start")
 
-    add_test(NAME nsc.linker-info COMMAND nsc --print-linker)
+    add_test(NAME nsc.linker-info COMMAND "${NSC_TEST_COMPILER}" --print-linker)
     set_tests_properties(nsc.linker-info PROPERTIES PASS_REGULAR_EXPRESSION "lld-link")
 
     set(NSC_INTEGRATION_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration)
 
-    add_test(NAME nsc.integration.full COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
-    add_test(NAME nsc.integration.control-flow COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
-    add_test(NAME nsc.integration.memory-types COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/memory_types.ns)
-    add_test(NAME nsc.integration.hir-features COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
-    add_test(NAME nsc.integration.mir-features COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
-    add_test(NAME nsc.integration.cfg-features COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
+    add_test(NAME nsc.integration.full COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+    add_test(NAME nsc.integration.control-flow COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
+    add_test(NAME nsc.integration.memory-types COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/memory_types.ns)
+    add_test(NAME nsc.integration.hir-features COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
+    add_test(NAME nsc.integration.mir-features COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
+    add_test(NAME nsc.integration.cfg-features COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
     add_test(
         NAME nsc.integration.dominance-features
-        COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
     add_test(
         NAME nsc.integration.ssa-features
-        COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
     add_test(
         NAME nsc.integration.pass-features
-        COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
-    add_test(NAME nsc.integration.library-check COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/library_unit.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
+    add_test(NAME nsc.integration.library-check COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/library_unit.ns)
 
-    add_test(NAME nsc.invalid.program-missing-main COMMAND nsc ${NSC_INTEGRATION_DIR}/valid/library_unit.ns)
+    add_test(NAME nsc.invalid.program-missing-main COMMAND "${NSC_TEST_COMPILER}" ${NSC_INTEGRATION_DIR}/valid/library_unit.ns)
     set_tests_properties(nsc.invalid.program-missing-main PROPERTIES WILL_FAIL TRUE)
 
-    add_test(NAME nsc.dump-tokens COMMAND nsc --dump-tokens ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+    add_test(NAME nsc.dump-tokens COMMAND "${NSC_TEST_COMPILER}" --dump-tokens ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(nsc.dump-tokens PROPERTIES PASS_REGULAR_EXPRESSION "KwExtern.*KwC")
 
-    add_test(NAME nsc.dump-ast COMMAND nsc --dump-ast ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+    add_test(NAME nsc.dump-ast COMMAND "${NSC_TEST_COMPILER}" --dump-ast ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(nsc.dump-ast PROPERTIES PASS_REGULAR_EXPRESSION "CompilationUnit")
 
-    add_test(NAME nsc.dump-symbols COMMAND nsc --dump-symbols ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+    add_test(NAME nsc.dump-symbols COMMAND "${NSC_TEST_COMPILER}" --dump-symbols ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(nsc.dump-symbols PROPERTIES PASS_REGULAR_EXPRESSION "Function Main.*defined")
 
-    add_test(NAME nsc.dump-sema COMMAND nsc --dump-sema ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+    add_test(NAME nsc.dump-sema COMMAND "${NSC_TEST_COMPILER}" --dump-sema ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(
         nsc.dump-sema
         PROPERTIES PASS_REGULAR_EXPRESSION "conversion implicit-string-literal-to-char-pointer")
 
-    add_test(NAME nsc.dump-hir COMMAND nsc --dump-hir ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+    add_test(NAME nsc.dump-hir COMMAND "${NSC_TEST_COMPILER}" --dump-hir ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(nsc.dump-hir PROPERTIES PASS_REGULAR_EXPRESSION "FunctionDeclaration symbol=Function:Main")
 
-    add_test(NAME nsc.dump-hir-features COMMAND nsc --dump-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
+    add_test(NAME nsc.dump-hir-features COMMAND "${NSC_TEST_COMPILER}" --dump-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
     set_tests_properties(
         nsc.dump-hir-features
         PROPERTIES PASS_REGULAR_EXPRESSION "CompoundAssignment.*read-conversion=integral-promotion")
 
-    add_test(NAME nsc.verify-hir COMMAND nsc --verify-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
+    add_test(NAME nsc.verify-hir COMMAND "${NSC_TEST_COMPILER}" --verify-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
     set_tests_properties(nsc.verify-hir PROPERTIES PASS_REGULAR_EXPRESSION "HIR verification: ok")
 
-    add_test(NAME nsc.dump-mir COMMAND nsc --dump-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
+    add_test(NAME nsc.dump-mir COMMAND "${NSC_TEST_COMPILER}" --dump-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
     set_tests_properties(nsc.dump-mir PROPERTIES PASS_REGULAR_EXPRESSION "mir.module")
 
-    add_test(NAME nsc.verify-mir COMMAND nsc --verify-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
+    add_test(NAME nsc.verify-mir COMMAND "${NSC_TEST_COMPILER}" --verify-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
     set_tests_properties(nsc.verify-mir PROPERTIES PASS_REGULAR_EXPRESSION "MIR verification: ok")
 
-    add_test(NAME nsc.dump-mir-features COMMAND nsc --dump-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
+    add_test(NAME nsc.dump-mir-features COMMAND "${NSC_TEST_COMPILER}" --dump-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
     set_tests_properties(nsc.dump-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "bounds.check")
 
-    add_test(NAME nsc.verify-mir-features COMMAND nsc --verify-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
+    add_test(NAME nsc.verify-mir-features COMMAND "${NSC_TEST_COMPILER}" --verify-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
     set_tests_properties(nsc.verify-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "MIR verification: ok")
 
-    add_test(NAME nsc.dump-cfg COMMAND nsc --dump-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
+    add_test(NAME nsc.dump-cfg COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
     set_tests_properties(nsc.dump-cfg PROPERTIES PASS_REGULAR_EXPRESSION "cfg.module")
 
-    add_test(NAME nsc.verify-cfg COMMAND nsc --verify-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
+    add_test(NAME nsc.verify-cfg COMMAND "${NSC_TEST_COMPILER}" --verify-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
     set_tests_properties(nsc.verify-cfg PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
 
-    add_test(NAME nsc.dump-cfg-features COMMAND nsc --dump-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
+    add_test(NAME nsc.dump-cfg-features COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
     set_tests_properties(nsc.dump-cfg-features PROPERTIES PASS_REGULAR_EXPRESSION "\[unreachable\]")
 
-    add_test(NAME nsc.verify-cfg-features COMMAND nsc --verify-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
+    add_test(NAME nsc.verify-cfg-features COMMAND "${NSC_TEST_COMPILER}" --verify-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
     set_tests_properties(nsc.verify-cfg-features PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
 
     add_test(
         NAME nsc.dump-dominance
-        COMMAND nsc --dump-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
     set_tests_properties(nsc.dump-dominance PROPERTIES PASS_REGULAR_EXPRESSION "dominance.module")
 
     add_test(
         NAME nsc.verify-dominance
-        COMMAND nsc --verify-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --verify-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
     set_tests_properties(
         nsc.verify-dominance
         PROPERTIES PASS_REGULAR_EXPRESSION "Dominance verification: ok")
 
     add_test(
         NAME nsc.dump-ssa
-        COMMAND nsc --dump-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
     set_tests_properties(nsc.dump-ssa PROPERTIES PASS_REGULAR_EXPRESSION "phi @value")
 
     add_test(
         NAME nsc.verify-ssa
-        COMMAND nsc --verify-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --verify-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
     set_tests_properties(nsc.verify-ssa PROPERTIES PASS_REGULAR_EXPRESSION "SSA verification: ok")
 
     add_test(
         NAME nsc.dump-opt
-        COMMAND nsc --dump-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
     set_tests_properties(nsc.dump-opt PROPERTIES PASS_REGULAR_EXPRESSION "optimized.ssa.module")
 
     add_test(
         NAME nsc.verify-opt
-        COMMAND nsc --verify-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --verify-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
     set_tests_properties(nsc.verify-opt PROPERTIES PASS_REGULAR_EXPRESSION "Optimization verification: ok")
 
     add_test(
         NAME nsc.dump-pass-pipeline
-        COMMAND nsc --dump-pass-pipeline ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-pass-pipeline ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
     set_tests_properties(nsc.dump-pass-pipeline PROPERTIES PASS_REGULAR_EXPRESSION "pass.pipeline")
 
     add_test(
         NAME nsc.dump-llvm
-        COMMAND nsc --dump-llvm ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(nsc.dump-llvm PROPERTIES PASS_REGULAR_EXPRESSION "target triple = \"x86_64-pc-windows-msvc\"")
 
     add_test(
         NAME nsc.verify-llvm
-        COMMAND nsc --verify-llvm ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --verify-llvm ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(nsc.verify-llvm PROPERTIES PASS_REGULAR_EXPRESSION "LLVM verification: ok")
 
     add_test(
         NAME nsc.dump-llvm-opt-o2
-        COMMAND nsc --dump-llvm-opt ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-llvm-opt ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2)
     set_tests_properties(nsc.dump-llvm-opt-o2 PROPERTIES PASS_REGULAR_EXPRESSION "ret i32 40")
 
     add_test(
         NAME nsc.dump-llvm-raw-with-o2
-        COMMAND nsc --dump-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2)
     set_tests_properties(
         nsc.dump-llvm-raw-with-o2
         PROPERTIES PASS_REGULAR_EXPRESSION "call i32 @Square")
 
     add_test(
         NAME nsc.verify-llvm-opt-o3
-        COMMAND nsc --verify-llvm-opt ${NSC_INTEGRATION_DIR}/valid/llvm_features.ns -O3)
+        COMMAND "${NSC_TEST_COMPILER}" --verify-llvm-opt ${NSC_INTEGRATION_DIR}/valid/llvm_features.ns -O3)
     set_tests_properties(
         nsc.verify-llvm-opt-o3
         PROPERTIES PASS_REGULAR_EXPRESSION "LLVM optimization verification: ok")
 
     add_test(
         NAME nsc.dump-llvm-phi
-        COMMAND nsc --dump-llvm ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
     set_tests_properties(nsc.dump-llvm-phi PROPERTIES PASS_REGULAR_EXPRESSION "phi i32")
 
     add_test(
         NAME nsc.verify-llvm-features
-        COMMAND nsc --verify-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --verify-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_features.ns)
     set_tests_properties(nsc.verify-llvm-features PROPERTIES PASS_REGULAR_EXPRESSION "LLVM verification: ok")
 
     add_test(
         NAME nsc.dump-llvm-traps
-        COMMAND nsc --dump-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_features.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_features.ns)
     set_tests_properties(nsc.dump-llvm-traps PROPERTIES PASS_REGULAR_EXPRESSION "__nativesharp_trap")
 
     add_test(
         NAME nsc.emit-exe
-        COMMAND nsc --emit-exe ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns
+        COMMAND "${NSC_TEST_COMPILER}" --emit-exe ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns
             -o ${CMAKE_CURRENT_BINARY_DIR}/nativesharp_stage19_integration.exe)
     set_tests_properties(nsc.emit-exe PROPERTIES PASS_REGULAR_EXPRESSION "PE executable emission: ok")
 
     add_test(
         NAME nsc.emit-exe-o2
-        COMMAND nsc --emit-exe ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2
+        COMMAND "${NSC_TEST_COMPILER}" --emit-exe ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2
             -o ${CMAKE_CURRENT_BINARY_DIR}/nativesharp_stage20_o2.exe)
     set_tests_properties(nsc.emit-exe-o2 PROPERTIES PASS_REGULAR_EXPRESSION "optimization: O2")
 
     add_test(
         NAME nsc.invalid.optimization-level
-        COMMAND nsc --check ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns -O4)
+        COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns -O4)
     set_tests_properties(nsc.invalid.optimization-level PROPERTIES WILL_FAIL TRUE)
 
     add_test(
         NAME nsc.invalid.unresolved-link
-        COMMAND nsc --emit-exe ${NSC_INTEGRATION_DIR}/invalid/linker_unresolved_symbol.ns
+        COMMAND "${NSC_TEST_COMPILER}" --emit-exe ${NSC_INTEGRATION_DIR}/invalid/linker_unresolved_symbol.ns
             -o ${CMAKE_CURRENT_BINARY_DIR}/nativesharp_stage19_unresolved.exe)
     set_tests_properties(nsc.invalid.unresolved-link PROPERTIES WILL_FAIL TRUE)
 
-    add_test(NAME nsc.invalid.unknown COMMAND nsc --check ${NSC_INTEGRATION_DIR}/invalid/unknown_identifier.ns)
+    add_test(NAME nsc.invalid.unknown COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/invalid/unknown_identifier.ns)
     set_tests_properties(nsc.invalid.unknown PROPERTIES WILL_FAIL TRUE)
 
-    add_test(NAME nsc.invalid.bounds COMMAND nsc --check ${NSC_INTEGRATION_DIR}/invalid/bounds.ns)
+    add_test(NAME nsc.invalid.bounds COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/invalid/bounds.ns)
     set_tests_properties(nsc.invalid.bounds PROPERTIES WILL_FAIL TRUE)
 
-    add_test(NAME nsc.invalid.bool-condition COMMAND nsc --check ${NSC_INTEGRATION_DIR}/invalid/bool_condition.ns)
+    add_test(NAME nsc.invalid.bool-condition COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/invalid/bool_condition.ns)
     set_tests_properties(nsc.invalid.bool-condition PROPERTIES WILL_FAIL TRUE)
 
-    add_test(NAME nsc.invalid.missing-return COMMAND nsc --check ${NSC_INTEGRATION_DIR}/invalid/missing_return.ns)
+    add_test(NAME nsc.invalid.missing-return COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/invalid/missing_return.ns)
     set_tests_properties(nsc.invalid.missing-return PROPERTIES WILL_FAIL TRUE)
 
     add_test(
         NAME nsc.invalid.llvm-reserved-runtime
-        COMMAND nsc --check ${NSC_INTEGRATION_DIR}/invalid/llvm_reserved_runtime.ns)
+        COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/invalid/llvm_reserved_runtime.ns)
     set_tests_properties(nsc.invalid.llvm-reserved-runtime PROPERTIES WILL_FAIL TRUE)
+
+    # =================================================================================
+    # `pruebas` -- UN OBJETIVO CON TODOS LOS EJECUTABLES DE PRUEBA Y NINGUNO DEL COMPILADOR.
+    #
+    # POR QUE EXISTE. `cmake --build` sin `--target` construye TODO, y eso incluye `nsc`.
+    # Para correr la bateria contra un compilador YA instalado --que es lo que hace
+    # test_nsc.bat-- reconstruir `nsc` es trabajo de mas y, peor, arriesga cambiar lo que se
+    # esta midiendo. `build_nsc.bat` genera el compilador aparte y a proposito; este objetivo
+    # es la otra mitad de esa separacion.
+    #
+    # LA LISTA NO SE ESCRIBE A MANO. Son mas de cien ejecutables y crecen cada semana: una
+    # lista escrita aqui envejeceria en silencio y un test nuevo dejaria de construirse sin
+    # que nadie lo notara -- la misma forma de defecto que el guardia de fixtures existe para
+    # cazar. Se toma del propio sistema de construccion y se filtra por tipo.
+    get_property(_nsc_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    set(_nsc_pruebas "")
+    foreach(_nsc_t IN LISTS _nsc_targets)
+        get_target_property(_nsc_tipo ${_nsc_t} TYPE)
+        if(_nsc_tipo STREQUAL "EXECUTABLE" AND NOT _nsc_t STREQUAL "nsc")
+            list(APPEND _nsc_pruebas ${_nsc_t})
+        endif()
+    endforeach()
+    list(LENGTH _nsc_pruebas _nsc_pruebas_n)
+    if(_nsc_pruebas_n LESS 50)
+        # Si el filtro deja de reconocerlos, esto NO puede quedarse en silencio construyendo
+        # tres: seria una corrida verde que mide una fraccion. Se para el configure.
+        message(FATAL_ERROR
+            "el objetivo `pruebas` solo reconocio ${_nsc_pruebas_n} ejecutables; el filtro "
+            "de BUILDSYSTEM_TARGETS cambio y dejaria de construir la mayoria de los tests")
+    endif()
+    add_custom_target(pruebas DEPENDS ${_nsc_pruebas})
+    message(STATUS "objetivo `pruebas`: ${_nsc_pruebas_n} ejecutables, sin `nsc`")
 endif()

@@ -1,0 +1,43 @@
+STAGE ENUM SWITCH -- 2026-09-04
+Ficheros modificados y creados en A:\nsc-devel
+
+MODIFICADOS
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      lowerEnumName: la bajada pasa de cadena de `select` a `switch` + `phi`, la forma que
+      c38 codigo 26 demuestra que LLVM 23 compila bien a -O2 con el mismo enum estrecho y
+      negativo con el que la cadena de `select` falla (c38 codigo 39, b9 codigo 61).
+      Los alias se deduplican por patron de bits y gana el primero declarado; la regla deja
+      de depender del orden del bucle. Sin simbolos nuevos en src/LLVM/LlvmCApi.h.
+
+  CMakeLists.txt
+      Nueva variable de cache NSC_TEST_COMPILER. Los 116 `add_test(... COMMAND nsc ...)`
+      pasan a `COMMAND "${NSC_TEST_COMPILER}"`, que por omision es
+      C:/native-sharp/bin/nsc.exe en Windows y $<TARGET_FILE:nsc> fuera de Windows.
+      Aviso --no error-- al configurar si la ruta todavia no existe.
+
+  test_nsc.bat
+      Antes de medir nada, compara la fecha del compilador instalado con la de las fuentes
+      (build_al_dia.py --solo-nsc) y avisa sin abortar. Encabezado actualizado.
+
+  build_al_dia.py
+      Se separa EXISTIR de ESTAR AL DIA: build.ninja se comprueba por existencia y ya no
+      por fecha. Quitaba un falso "hay que construir" en la secuencia
+      configure -> editar fuente -> construir.
+
+CREADOS
+  mkdown/119_el_switch_que_si_acierta.md
+  mkdown/STAGE_ENUM_SWITCH_CHANGED_FILES.txt
+
+VERIFICACION EN EL CONTENEDOR (fuentes comprobadas identicas al disco por SHA-256 contra
+MANIFEST_SHA256.txt: 396 rutas de src/, include/ y lib/, una sola diferencia y del carril
+de NSLink)
+  - compila sin avisos con -Wall -Wextra
+  - opt -passes=verify acepta el modulo de c38
+  - opt -O2 de LLVM 18 sigue plegando Main de c38 hasta 42 (sin regresion)
+  - b9 y c39 compilan y verifican a -O2
+  - barrido completo: 185 OK, 5 FAIL -- la linea base; los 5 son los negativos intencionados
+  - arbol de ctest generado: 283 add_test, 116 al compilador instalado, 0 al arbol de build
+  - build_al_dia.py: 4 escenarios sinteticos, los 4 con el veredicto esperado
+
+NO VERIFICADO AQUI, y solo lo puede decir una corrida en Windows
+  - si LLVM 23 deja de devolver la cadena de reserva. c38 y b9 siguen siendo la prueba.
