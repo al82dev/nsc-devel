@@ -661,3 +661,53 @@ La leccion util no es "revisar mas". Es que **la duplicacion se cuenta buscandol
 recordandola** -- vale para los seis sitios del ancho de enum, para los cuatro del numero de
 version, y para los tres campos del encabezado. Cada vez que este documento dijo "y ahora esta en
 un solo sitio" sin haber hecho la busqueda, quedaba al menos uno fuera.
+
+---
+
+## 14. La corrida de Windows: 117 de 118, y lo que el verde de c39 MIDE
+
+Primera pasada completa con todo esto dentro. **117 trabajos en verde de 118.** El unico rojo es el
+bug de los enums estrechos con signo:
+
+* `c38 -O0` -> 42.
+* `c38 -O2` -> **39**, o sea `OpacoConSigno(ConSigno.MenosTres).ToString()`.
+* La pasada uso `lld-link`, y con NSLink da lo mismo: **el fallo ocurre antes del enlazador, o al
+  margen de el.**
+
+### El verde de c39 no es "una prueba mas que pasa": es la medida del alcance
+
+`c39_enum_nombre_o2` pasa a -O0 **y a -O2**, y eso acota el defecto por MEDICION. Lo que c39 cubre
+y responde bien con optimizacion:
+
+| Forma | Cubierto por c39 a -O2 |
+|---|---|
+| `enum : byte` con 200 y 255 -- constante, por local, por funcion, no plegable | verde |
+| `enum : sbyte` con valores POSITIVOS (2, 127) | verde |
+| `enum : ushort` (60000), `enum : long` (5000000000), `enum` sin declarar | verde |
+| el camino de RESERVA (valor fuera del enum -> nombre del tipo), en dos anchos | verde |
+| el operador de cadenas sobre las mismas cadenas ya verificadas byte a byte | verde |
+
+De ahi salen tres exclusiones que ya no son conjetura:
+
+1. **NO es "un enum de un byte"**: `enum : byte` con 200 y 255 pasa. Un byte no basta.
+2. **NO es "un tipo subyacente con signo"**: `enum : sbyte` con 2 y 127 pasa. El signo del TIPO no
+   basta.
+3. **NO es el camino de reserva ni el operador de cadenas**: los dos pasan a -O2 en c39.
+
+Queda una sola combinacion: **tipo estrecho CON signo Y valor NEGATIVO**. Sumado a lo que la
+primera corrida de triage ya habia demostrado --que basta un receptor CONSTANTE, luego no es la ABI
+del retorno de ocho bits-- el defecto esta acotado a un punto, y todo por medicion.
+
+### Lo que falta, y es UN numero
+
+La linea de la etapa 5:
+
+```
+[VIVO] b9_enum_estrecho_o2 -O2 -- exit N
+```
+
+* **20-26** -> el contenido producido es incorrecto. El defecto esta en la produccion de la cadena.
+* **30-36** -> el contenido es correcto byte a byte y falla el operador de comparacion.
+* **10-16** -> el valor ya era otro antes de pedir el nombre.
+
+Y el arreglo se escribe sabiendo cual de las tres es, en vez de tocar `lowerEnumName` a ciegas.

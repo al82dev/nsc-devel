@@ -272,3 +272,25 @@ MEDIDO EN LA QUINTA REVISION
   bad ptr    write=0 err=... pointer 4/8 ... Windows x64 only
   minor1: minor=1 target=1 enumkey=''
 Barrido del corpus: OK=183 FAIL=5.
+
+CORRIDA COMPLETA EN WINDOWS -- 117/118 (doc 118 seccion 14)
+----------------------------------------------------------
+Verde todo menos `c38 -O2`, que devuelve 39 -- el bug de los enums estrechos con signo. La pasada
+uso lld-link y con NSLink da lo mismo: el fallo ocurre antes del enlazador o al margen de el.
+
+EL VERDE DE c39 A -O2 ES LA MEDIDA DEL ALCANCE, no una prueba mas que pasa. Pasan con optimizacion:
+`enum : byte` con 200 y 255 (constante, local, por funcion, no plegable), `enum : sbyte` con valores
+POSITIVOS, `ushort`, `long`, el enum sin declarar, el camino de reserva en dos anchos, y el operador
+de cadenas. De ahi tres exclusiones medidas:
+
+  * no es "un enum de un byte" -- `enum : byte` pasa;
+  * no es "un tipo subyacente con signo" -- `enum : sbyte` positivo pasa;
+  * no es el camino de reserva ni el operador de cadenas -- los dos pasan.
+
+Queda una sola combinacion: tipo estrecho CON signo Y valor NEGATIVO. Con lo que ya se sabia --que
+basta un receptor constante, luego no es la ABI del retorno de ocho bits-- el defecto esta acotado
+a un punto por medicion.
+
+PENDIENTE: la linea de la etapa 5, `[VIVO] b9_enum_estrecho_o2 -O2 -- exit N`. El 20-26 dice
+produccion de la cadena, el 30-36 dice operador de comparacion, el 10-16 dice que el valor ya era
+otro.
