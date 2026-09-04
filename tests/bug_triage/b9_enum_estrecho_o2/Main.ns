@@ -45,7 +45,8 @@
 //             ninguna comparacion acierta.
 //   30-36  -> el operador de cadenas. Y aqui SI es concluyente: cada una compara la MISMA variable
 //             que la capa 2 acaba de verificar byte a byte, sin volver a llamar a ToString().
-//   50-57  -> falla tambien en un vecino sin signo o positivo.
+//   50-58  -> falla tambien en un vecino sin signo o positivo. Dentro de la decena vale el
+//             mismo orden: primero el valor, luego el contenido, luego el operador.
 //   42     -> no reproduce. Ningun otro camino devuelve 42.
 using NativeSharp.Core;
 
@@ -183,10 +184,13 @@ namespace b9enumestrechoo2
             if (!MismosBytes(positivo, "Dos")) { return 54; }
             if (positivo != "Dos") { return 55; }
 
+            // El valor ANTES del nombre, igual que en las capas 1 y 2: sin esto, un 56 no
+            // distinguiria "la cadena salio mal" de "este valor ya era otro".
             SinSigno sinSignoOpaco = (SinSigno)Opaco(200);
+            if ((int)sinSignoOpaco != 200) { return 56; }
             string opacoSinSigno = sinSignoOpaco.ToString();
-            if (!MismosBytes(opacoSinSigno, "DosCientos")) { return 56; }
-            if (opacoSinSigno != "DosCientos") { return 57; }
+            if (!MismosBytes(opacoSinSigno, "DosCientos")) { return 57; }
+            if (opacoSinSigno != "DosCientos") { return 58; }
 
             return 42;
         }

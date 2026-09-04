@@ -36,9 +36,10 @@ y sólo después el caso del bug. Así, un fallo del reproductor mismo se distin
 
 En `b1`–`b8` eso se traduce en códigos correlativos: si devuelve 1 o 2, el fixture está mal
 escrito; si devuelve el último número, es el bug. **`b9` no sigue ese esquema**, y a propósito: sus
-códigos van por DECENAS, una por capa (10–15 el valor, 20–26 el contenido de la cadena, 30–36 el
-operador de comparación, 50–57 los vecinos), porque lo que hay que averiguar ahí no es *si* falla
-sino *qué capa* falla. La cabecera de su `Main.ns` lleva el mapa completo.
+códigos van por DECENAS, una por capa (10–16 el valor, 20–26 el contenido de la cadena, 30–36 el
+operador de comparación, 50–58 los vecinos), porque lo que hay que averiguar ahí no es *si* falla
+sino *qué capa* falla. **La cabecera de su `Main.ns` es la referencia**: este párrafo puede quedarse
+atrás cuando la sonda crezca, y el mapa de allí no, porque vive junto a los `return`.
 
 Cada `Main.ns` lleva arriba el reporte original: qué se rompió, dónde se encontró, qué impacto
 tuvo medido, y por qué el control de al lado sí funciona.

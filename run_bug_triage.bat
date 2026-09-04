@@ -89,9 +89,14 @@ REM ===========================================================================
 set "TPROJ=%~1"
 set "TNAME=%~2"
 
+REM UNA FIXTURE QUE NO ESTA CUENTA COMO VIVA, y esto no es una sutileza: antes se imprimia
+REM el aviso y se salia con exito sin tocar ALIVE, asi que borrar una carpeta --o escribir mal
+REM su ruta al inscribirla-- daba "cero vivos" con el bug intacto. Un falso verde es peor que
+REM un rojo: el rojo se investiga, el verde se cree.
 if exist "%TPROJ%" goto :triage_run
->> "%REPORT%" echo [ ?? ] %TNAME% -- fixture no encontrado
+>> "%REPORT%" echo [VIVO] %TNAME% -- fixture no encontrado, NO se midio
 >> "%REPORT%" echo        %TPROJ%
+set /a ALIVE+=1
 exit /b 0
 
 :triage_run
