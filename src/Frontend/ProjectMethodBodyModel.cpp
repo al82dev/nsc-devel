@@ -22,6 +22,108 @@
 
 namespace nativesharp::frontend
 {
+// NSC-LIMIT-010. LA REGLA DE COMPATIBILIDAD DE PROPIEDAD, ESCRITA UNA SOLA VEZ.
+//
+// Estaba solo dentro de `analyzeCall`, y `ProjectConstructionModel::bindConstruction` elegia
+// constructor mirando nada mas tipos y conversiones fisicas. Por eso `new Caja(move(duenio))` no
+// encontraba el constructor `owned`: fisicamente todos los candidatos valian, y no habia con que
+// desempatarlos. Sacada aqui, los dos resolutores contestan lo mismo por construccion.
+//
+// El orden de las comprobaciones NO es libre. `parameterOwnable` va PRIMERO: un `owned T`
+// monomorfizado sobre un tipo valor lleva el calificador escrito y no tiene nada que poseer, asi
+// que cualquier forma de argumento vale. Comprobar el calificador antes que la ownabilidad
+// rechazaba `LinkedList<int>.AddFirst`, que pasa un `move` de un `int` a un parametro `owned T` --
+// medido en Stage 52 y arreglado entonces; aqui se conserva ese orden intacto.
+OwnershipArgumentFit classifyOwnershipArgument(
+    bool parameterOwnable,
+    sema::OwnershipKind parameterOwnership,
+    sema::OwnershipKind argumentOwnership,
+    bool argumentTransfer,
+    bool argumentIsFreshOwner) noexcept
+{
+    // LA HISTORIA COMPLETA DE ESE ORDEN, medida en Stage 52 y conservada aqui porque no esta
+    // escrita en ningun otro sitio:
+    //
+    // Stage 52 fix: the three branches below must be mutually exclusive on
+    // parameterOwnable itself, not just on parameterOwnership -- the ORIGINAL
+    // shape of this chain gated the Owned and Borrowed cases on
+    // "parameterOwnership == X && parameterOwnable", but then fell through to a
+    // plain "else if" for everything else, which included the (Owned,
+    // !parameterOwnable) and (Borrowed, !parameterOwnable) combinations too --
+    // i.e. a value-typed "owned T"/"borrowed T" parameter (T monomorphized to
+    // int, bool, a struct, ...) whose caller passed an EXPLICIT move(...)
+    // argument (ownershipTransfer=true) landed in the catch-all
+    // "unqualified parameter forbids ownership-transfer argument" branch and was
+    // wrongly rejected as non-viable -- discovered via LinkedList<int>.AddFirst's
+    // "created[0].SetValue(move(value))" (a plain value(int)-returning move on an
+    // owned int parameter, calling another owned-int method) reporting "no viable
+    // overload of 'SetValue'". Gating on !parameterOwnable FIRST, uniformly
+    // bypassing every ownership check, fixes this for Owned AND Borrowed alike.
+    if (!parameterOwnable)
+    {
+        // Estructuralmente inerte: no hay propiedad que transferir ni que prestar.
+        return OwnershipArgumentFit::Ok;
+    }
+    if (parameterOwnership == sema::OwnershipKind::Owned)
+    {
+        // DOS FORMAS DE SATISFACER UN `owned`, y la segunda faltaba.
+        //
+        //   1. una TRANSFERENCIA de un owner con nombre: `move(local)`, `move(p.campo)`;
+        //   2. un owner RECIEN CREADO que todavia no es de nadie: `new T(...)`.
+        //
+        // Exigir solo la primera hacia imposible `new Caja(new Carga(7))`, y no por una regla del
+        // lenguaje sino por una que no contemplaba el caso: no hay de donde mover, asi que `move`
+        // ni siquiera se puede escribir ahi. El parametro `owned` se queda con el valor en las
+        // dos formas, que es lo unico que la regla tiene que garantizar.
+        const bool transfers =
+            argumentOwnership == sema::OwnershipKind::Owned && argumentTransfer;
+        if (transfers || argumentIsFreshOwner) return OwnershipArgumentFit::Ok;
+        return OwnershipArgumentFit::OwnedRequiresTransfer;
+    }
+    if (parameterOwnership == sema::OwnershipKind::Borrowed)
+    {
+        const bool checkedBorrowSource =
+            (argumentOwnership == sema::OwnershipKind::Owned ||
+             argumentOwnership == sema::OwnershipKind::Borrowed) &&
+            !argumentTransfer;
+        return checkedBorrowSource
+            ? OwnershipArgumentFit::Ok
+            : OwnershipArgumentFit::BorrowedRequiresCheckedSource;
+    }
+    // Parametro sin calificador. Ni una transferencia ni un prestamo pueden colarse dentro: se
+    // perderia el contrato en silencio, que es justo lo que Stage 50 existe para impedir.
+    if (argumentTransfer || argumentOwnership == sema::OwnershipKind::Borrowed)
+    {
+        return OwnershipArgumentFit::UnqualifiedRejectsOwnership;
+    }
+    return OwnershipArgumentFit::Ok;
+}
+
+std::string ownershipArgumentFitMessage(
+    OwnershipArgumentFit fit,
+    std::string_view parameterName,
+    std::string_view parameterTypeKey)
+{
+    const std::string parameter =
+        "parameter '" + std::string(parameterName) + "' of type '" + std::string(parameterTypeKey) + "'";
+    switch (fit)
+    {
+        case OwnershipArgumentFit::OwnedRequiresTransfer:
+            return "owned " + parameter +
+                " requires an ownership transfer: pass move(...) or a value that already owns "
+                "its storage";
+        case OwnershipArgumentFit::BorrowedRequiresCheckedSource:
+            return "borrowed " + parameter +
+                " requires an owned or borrowed source; a moved value cannot be borrowed";
+        case OwnershipArgumentFit::UnqualifiedRejectsOwnership:
+            return "unqualified " + parameter +
+                " cannot receive an ownership transfer or a borrowed value";
+        case OwnershipArgumentFit::Ok:
+            break;
+    }
+    return {};
+}
+
 namespace
 {
 using lexer::TokenKind;
@@ -301,9 +403,16 @@ bool ProjectMethodBodyModel::build(
             (member.syntax->second()->kind() == ast::AstNodeKind::BaseConstructorInitializer ||
              member.syntax->second()->kind() == ast::AstNodeKind::ThisConstructorInitializer))
         {
+            // NSC-LIMIT-010: `this(...)` y `base(...)` son llamadas a constructor, asi que sus
+            // argumentos se analizan con `allowMove` como los de un `new` y los de una llamada
+            // ordinaria. Sin esto, delegar la propiedad --`: this(move(entrante))`, que es la
+            // forma en cadena natural-- se rechazaba aunque el constructor destino declarara el
+            // parametro `owned`.
             for (const ast::AstNode* argument : member.syntax->second()->children())
             {
-                analyzeExpression(argument, memberOrdinal, rootScopeOrdinal, diagnostics);
+                analyzeExpression(
+                    argument, memberOrdinal, rootScopeOrdinal, diagnostics,
+                    /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
             }
         }
         analyzeBlock(
@@ -500,6 +609,20 @@ bool ProjectMethodBodyModel::typeKeyHasDefinedDefaultStorage(std::string_view ty
         {
             return type.kind == NamedTypeDeclarationKind::Struct;
         }
+    }
+    return false;
+}
+
+// NSC-LIMIT-004: la clave nombra un struct y nada mas. Misma busqueda que aggregateIsUnion,
+// justo debajo, pero mirando la CLASE de la declaracion en vez de su texto auxiliar.
+bool ProjectMethodBodyModel::typeKeyIsStruct(std::string_view typeKey) const noexcept
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    {
+        if (type.identity.key() != identity) continue;
+        return type.kind == NamedTypeDeclarationKind::Struct;
     }
     return false;
 }
@@ -4978,24 +5101,32 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 bool argumentsValid = true;
                 for (const ast::AstNode* argument : expression->children())
                 {
-                    // Stage 52 note: constructor arguments deliberately do NOT allow move(...)
-                    // here. ProjectConstructionModel's own overload matching has no
-                    // ownership-transfer validation at all (unlike ordinary method calls, whose
-                    // resolution -- see the CallExpression argument loop and its
-                    // "ownership-transfer argument requires an owned parameter" diagnostics --
-                    // fully checks it); wiring that up correctly is a real, separate compiler gap,
-                    // orthogonal to generics, that every existing NativeSharp class already avoids
-                    // by convention (a constructor never takes an `owned T` parameter; ownership
-                    // is transferred through a dedicated method call afterward, exactly like
-                    // List<T>.Add/SetAt/Insert). The collections package follows that SAME
-                    // established idiom rather than exercising this gap -- see the Stage 52
-                    // didactic writeup's "known limitations" section.
+                    // NSC-LIMIT-010: los argumentos de un constructor se analizan CON
+                    // `allowMove`, igual que los de una llamada ordinaria.
+                    //
+                    // Hasta el 2026-09-04 se analizaban sin el, y aqui habia un comentario que
+                    // explicaba el hueco: ProjectConstructionModel elegia constructor mirando solo
+                    // tipos y conversiones fisicas, sin validacion de propiedad, asi que admitir
+                    // `move(...)` habria producido una transferencia que nadie comprobaba. El
+                    // hueco esta cerrado: la regla vive en classifyOwnershipArgument y
+                    // bindConstruction la aplica sobre los mismos datos.
+                    //
+                    // Sin `allowMove` no basta con que el constructor exista: `move(x)` como
+                    // argumento se rechazaba ANTES de llegar a la resolucion, y el lowering de HIR
+                    // habria muerto despues en «move expression has no semantic move binding»,
+                    // porque el binding se crea aqui o no se crea.
                     const ExpressionResult argumentResult = analyzeExpression(
-                        argument, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                        argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                        /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
                     argumentsValid = argumentsValid && argumentResult.valid && !argumentResult.methodGroup;
                 }
                 result.typeKey = objectType;
                 result.valid = argumentsValid && !isErrorType(objectType);
+                // NSC-LIMIT-010: `new T(...)` sobre un tipo con almacenamiento propio produce un
+                // OWNER RECIEN CREADO. No se marca transferencia --no hay fuente con nombre-- sino
+                // el tercer estado, que solo relaja el contrato de un parametro `owned`. Un
+                // parametro sin calificador sigue viendo exactamente lo que veia antes.
+                result.ownershipFreshOwner = result.valid && typeKeyIsOwnable(objectType);
             }
             break;
         case ast::AstNodeKind::NewExpression:
@@ -6864,54 +6995,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     // actually ownable (a class/interface reference or native string) enforces
                     // the transfer contract.
                     const bool parameterOwnable =
-                        isReferenceTypeKey(candidate.parameters[argumentOrdinal].typeKey) ||
-                        candidate.parameters[argumentOrdinal].typeKey == "builtin:string";
-                    // Stage 52 fix: the three branches below must be mutually exclusive on
-                    // parameterOwnable itself, not just on parameterOwnership -- the ORIGINAL
-                    // shape of this chain gated the Owned and Borrowed cases on
-                    // "parameterOwnership == X && parameterOwnable", but then fell through to a
-                    // plain "else if" for everything else, which included the (Owned,
-                    // !parameterOwnable) and (Borrowed, !parameterOwnable) combinations too --
-                    // i.e. a value-typed "owned T"/"borrowed T" parameter (T monomorphized to
-                    // int, bool, a struct, ...) whose caller passed an EXPLICIT move(...)
-                    // argument (ownershipTransfer=true) landed in the catch-all
-                    // "unqualified parameter forbids ownership-transfer argument" branch and was
-                    // wrongly rejected as non-viable -- discovered via LinkedList<int>.AddFirst's
-                    // "created[0].SetValue(move(value))" (a plain value(int)-returning move on an
-                    // owned int parameter, calling another owned-int method) reporting "no viable
-                    // overload of 'SetValue'". Gating on !parameterOwnable FIRST, uniformly
-                    // bypassing every ownership check, fixes this for Owned AND Borrowed alike.
-                    if (!parameterOwnable)
+                        typeKeyIsOwnable(candidate.parameters[argumentOrdinal].typeKey);
+                    // NSC-LIMIT-010: la regla vive ahora en classifyOwnershipArgument, arriba de
+                    // este fichero, y la comparte ProjectConstructionModel. Lo que sigue a este
+                    // bloque es el comentario historico de Stage 52 que explica POR QUE el orden
+                    // de las comprobaciones es el que es; se conserva porque esa razon no esta en
+                    // ningun otro sitio.
+                    if (classifyOwnershipArgument(
+                            parameterOwnable,
+                            parameterOwnership,
+                            resolvedArguments[argumentOrdinal].ownership,
+                            resolvedArguments[argumentOrdinal].ownershipTransfer,
+                            resolvedArguments[argumentOrdinal].ownershipFreshOwner) !=
+                        OwnershipArgumentFit::Ok)
                     {
-                        // Nothing to check: an owned/borrowed qualifier on a non-ownable
-                        // (value-typed) parameter is structurally inert, so every argument shape
-                        // -- plain, move()'d, or borrowed -- is accepted uniformly.
-                    }
-                    else if (parameterOwnership == sema::OwnershipKind::Owned)
-                    {
-                        if (resolvedArguments[argumentOrdinal].ownership != sema::OwnershipKind::Owned ||
-                            !resolvedArguments[argumentOrdinal].ownershipTransfer)
-                        {
-                            candidateBinding.viable = false;
-                        }
-                    }
-                    else if (parameterOwnership == sema::OwnershipKind::Borrowed)
-                    {
-                        const bool checkedBorrowSource =
-                            (resolvedArguments[argumentOrdinal].ownership == sema::OwnershipKind::Owned ||
-                             resolvedArguments[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed) &&
-                            !resolvedArguments[argumentOrdinal].ownershipTransfer;
-                        if (!checkedBorrowSource)
-                        {
-                            candidateBinding.viable = false;
-                        }
-                    }
-                    else if (resolvedArguments[argumentOrdinal].ownershipTransfer ||
-                        resolvedArguments[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed)
-                    {
-                        // Ownership and borrow contracts may not be silently discarded into an
-                        // unqualified parameter. A borrowed parameter is the non-retaining
-                        // function-boundary contract in Stage 50.
                         candidateBinding.viable = false;
                     }
                 }
@@ -6971,12 +7068,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     // report a misleading ownership error for a generic parameter closed over
                     // a plain value type.
                     const bool diagnosticParameterOwnable =
-                        isReferenceTypeKey(candidate.parameters[argumentOrdinal].typeKey) ||
-                        candidate.parameters[argumentOrdinal].typeKey == "builtin:string";
+                        typeKeyIsOwnable(candidate.parameters[argumentOrdinal].typeKey);
+                    // NSC-LIMIT-010: este re-chequeo, que existe solo para dar un mensaje bueno,
+                    // llevaba escrita SU PROPIA copia de la regla -- la tercera. Ahora pregunta al
+                    // mismo sitio que la viabilidad, asi que no puede acusar de un incumplimiento
+                    // que la resolucion no vio, ni callarse uno que si.
                     if (candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::Owned &&
-                        diagnosticParameterOwnable &&
-                        (resolvedArguments[argumentOrdinal].ownership != sema::OwnershipKind::Owned ||
-                         !resolvedArguments[argumentOrdinal].ownershipTransfer))
+                        classifyOwnershipArgument(
+                            diagnosticParameterOwnable,
+                            candidate.parameters[argumentOrdinal].ownership,
+                            resolvedArguments[argumentOrdinal].ownership,
+                            resolvedArguments[argumentOrdinal].ownershipTransfer,
+                            resolvedArguments[argumentOrdinal].ownershipFreshOwner) !=
+                        OwnershipArgumentFit::Ok)
                     {
                         std::string message = "owned parameter '" + candidate.parameters[argumentOrdinal].name +
                             "' requires explicit ownership transfer";
@@ -9026,6 +9130,74 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
         }
         result.typeKey = "builtin:bool";
         result.valid = true;
+        return result;
+    }
+
+    // NSC-LIMIT-004. `left == right` SOBRE DOS STRUCTS.
+    //
+    // Va antes del bloque generico de comparacion y despues de los operadores definidos por el
+    // usuario, que es el orden correcto: un struct que declara su propio `operator ==` gana, y
+    // esto es lo que hace el resto.
+    //
+    // LO QUE PASABA ANTES. El bloque de abajo acepta cualquier par de operandos con el MISMO
+    // typeKey. Dos structs lo cumplen, asi que la comparacion salia valida, bajaba a un nodo
+    // `Binary` corriente, y en el backend `applyBinaryOperation` terminaba llamando a
+    // `LLVMBuildICmp` sobre un agregado -- `icmp eq [24 x i8]`, que no es una instruccion legal.
+    // El defecto no era el backend: era que la semantica habia dicho que si.
+    //
+    // LA SEMANTICA QUE SE ELIGE ES LA QUE YA EXISTE. No se inventa una segunda: `==` sobre
+    // structs es exactamente `Struct.Equals`, o sea comparacion bit a bit de cada hoja escalar
+    // declarada, recursiva, SIN padding. Se registra el mismo `MethodCoreOperationKind` y el
+    // lowering distingue una llamada `.Equals` de un operador por la clase del nodo de sintaxis.
+    if (isComparison(operation) && (typeKeyIsStruct(left.typeKey) || typeKeyIsStruct(right.typeKey)))
+    {
+        if (left.typeKey != right.typeKey)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "cannot compare '" + left.typeKey + "' with '" + right.typeKey +
+                    "': a struct compares only against its own type");
+            return result;
+        }
+        if (operation != TokenKind::EqualEqual && operation != TokenKind::BangEqual)
+        {
+            // ORDENAR no es comparar por igualdad. Un struct no tiene orden natural: sus campos
+            // no dicen cual pesa mas, y adivinarlo --orden de declaracion, por ejemplo-- daria una
+            // respuesta estable y arbitraria, que es la peor clase. C tampoco ordena structs.
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "struct '" + left.typeKey + "' supports only '==' and '!=': there is no ordering "
+                    "over its fields; declare your own comparison if you need one");
+            return result;
+        }
+        if (aggregateIsUnion(left.typeKey))
+        {
+            // La misma razon que rechaza `union.Equals(...)`: solo un miembro esta vivo y nada en
+            // el valor dice cual. Se repite el contrato en vez de dejarlo pasar por otra puerta.
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "union '" + left.typeKey + "' cannot be compared with '==' or '!=': only one "
+                    "member of a union is live at a time, so comparing every field would be "
+                    "meaningless; declare your own comparison");
+            return result;
+        }
+        coreBindings_.push_back(MethodCoreBinding{
+            MethodCoreOperationKind::StructEquals,
+            expression,
+            methodMemberOrdinal,
+            scopeOrdinal,
+            "builtin:bool",
+            left.typeKey,
+            false, std::nullopt, std::nullopt});
+        result.typeKey = "builtin:bool";
+        result.valid = true;
+        result.assignable = false;
         return result;
     }
 
@@ -11369,6 +11541,14 @@ bool ProjectMethodBodyModel::isReferenceTypeKey(std::string_view typeKey) const 
     return referenceTypeOrdinalForTypeKey(typeKey).has_value();
 }
 
+bool ProjectMethodBodyModel::typeKeyIsOwnable(std::string_view typeKey) const noexcept
+{
+    // La cadena nativa entra aqui aunque no sea una referencia de clase: posee su propio
+    // almacenamiento y `owned string` es legal. Es la misma expresion que la resolucion de
+    // llamadas usaba en linea antes de NSC-LIMIT-010.
+    return isReferenceTypeKey(typeKey) || typeKey == "builtin:string";
+}
+
 // C1.1 "function-pointer round trip" -- the type-key predicates for the three sides of the trip.
 // A named type key is "type:<identity>"; the delegate half of the answer therefore needs the name
 // lookup (an enum, a struct and a delegate all share that prefix), and "is it EXTERN C" is the
@@ -11562,12 +11742,23 @@ void ProjectMethodBodyModel::recordExpressionType(
     {
         return;
     }
-    expressionTypes_.push_back(MethodExpressionTypeBinding{
-        expression,
-        methodMemberOrdinal,
-        scopeOrdinal,
-        result.typeKey,
-        result.integerConstant});
+    // NSC-LIMIT-010: se copian TAMBIEN ownership, transferencia y origen. Antes se quedaban en
+    // ExpressionResult, y ProjectConstructionModel --que solo ve estos bindings-- no podia
+    // distinguir `move(duenio)` de `duenio`. Los campos se nombran en vez de ir por posicion: la
+    // lista crecio a nueve, y un inicializador agregado posicional de nueve campos es un error de
+    // una linea esperando a que alguien inserte un miembro en medio.
+    MethodExpressionTypeBinding binding;
+    binding.syntax = expression;
+    binding.methodMemberOrdinal = methodMemberOrdinal;
+    binding.scopeOrdinal = scopeOrdinal;
+    binding.typeKey = result.typeKey;
+    binding.integerConstant = result.integerConstant;
+    binding.ownership = result.ownership;
+    binding.ownershipTransfer = result.ownershipTransfer;
+    binding.ownershipFreshOwner = result.ownershipFreshOwner;
+    binding.ownershipSourceLocalOrdinal = result.ownershipSourceLocalOrdinal;
+    binding.ownershipSourceParameterOrdinal = result.ownershipSourceParameterOrdinal;
+    expressionTypes_.push_back(std::move(binding));
 }
 
 void ProjectMethodBodyModel::reportPrevious(

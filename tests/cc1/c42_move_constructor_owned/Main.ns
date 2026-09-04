@@ -1,0 +1,129 @@
+// NSC-LIMIT-010 -- `move(...)` hacia un parametro `owned` de un CONSTRUCTOR.
+//
+// LO QUE FALLABA, y no era donde parecia. `new Caja(move(duenio))` moria con «move(...) is only
+// valid for a direct RAII local or owned parameter in ...». El mensaje culpaba a `move`, y `move`
+// estaba bien: los argumentos de un constructor se analizaban con `allowMove == false`, asi que la
+// expresion se rechazaba ANTES de llegar a la resolucion de constructores.
+//
+// Y no se podia arreglar solo con encender la bandera. `ProjectConstructionModel` elegia
+// constructor mirando unicamente tipos y conversiones fisicas: sin validacion de propiedad, un
+// `move` admitido habria producido una transferencia que nadie comprobaba, y un `new Caja(duenio)`
+// SIN move habria compilado igual de bien. Las dos mitades tenian que cerrarse a la vez, y la
+// regla vive ahora en un solo sitio --classifyOwnershipArgument-- que comparten la resolucion de
+// llamadas y la de constructores.
+//
+// LO QUE SE MIDE:
+//
+//   10   la transferencia llego: el valor esta dentro de la caja.
+//   11   una segunda transferencia independiente. NO comprueba que la fuente quedara
+//        moved-from: eso solo se puede medir con un programa que NO compile --usar `primera`
+//        despues de moverla-- y una fixture tiene que compilar entera. Ese caso vive en la
+//        suite de rechazos, como `cc1-limit010-uso-tras-mover`.
+//   12   reenvio de un parametro `owned` a otro constructor `owned`, que es la forma en cadena.
+//   13   `this(...)`: un constructor delega en otro y la transferencia viaja igual.
+//   14   OWNER RECIEN CREADO directo: `new Caja(new Carga(50))`. Aqui `move` no se puede ni
+//        escribir --no hay fuente con nombre-- asi que exigir una transferencia hacia este caso
+//        imposible. Es el tercer estado de la regla, y es el que se le escapo a la primera
+//        version de esta fixture: todos sus casos pasaban antes por una local.
+//   15   `base(move(...))`. `this(...)` y `base(...)` comparten el analisis en
+//        ProjectConstructionModel, pero COMPARTIR no es lo mismo que estar probado: hasta esta
+//        version solo existia el caso de `this(...)`, y una diferencia entre los dos --la
+//        accesibilidad del candidato se calcula distinto para cada uno-- habria pasado sin verse.
+//   42   todo correcto.
+//
+// Los NEGATIVOS --copia sin `move`, `move` a un parametro sin calificador, doble movimiento-- no
+// caben aqui: una fixture tiene que compilar entera. Viven en la suite de rechazos.
+using NativeSharp.Core;
+
+namespace c42moveconstructorowned
+{
+    public class Carga
+    {
+        public int valor;
+        public Carga(int v) { valor = v; }
+    }
+
+    public class Caja
+    {
+        private owned Carga dentro;
+
+        public Caja(owned Carga entrante)
+        {
+            dentro = move(entrante);
+        }
+
+        // Delegacion: `this(...)` transfiere con las mismas reglas que un `new`.
+        public Caja(owned Carga entrante, int extra) : this(move(entrante))
+        {
+            dentro.valor = dentro.valor + extra;
+        }
+
+        public int Valor() { return dentro.valor; }
+    }
+
+    // La jerarquia existe para probar `base(move(...))`. Es deliberadamente minima: lo que se
+    // mide es que la transferencia cruza el inicializador de base, no la herencia.
+    public class CajaBase
+    {
+        private owned Carga guardada;
+        public CajaBase(owned Carga entrante) { guardada = move(entrante); }
+        public int ValorBase() { return guardada.valor; }
+    }
+
+    public class CajaDerivada : CajaBase
+    {
+        public CajaDerivada(owned Carga entrante) : base(move(entrante)) { }
+    }
+
+    public class Envoltorio
+    {
+        private owned Caja caja;
+
+        // Reenvio: un parametro `owned` alimenta el parametro `owned` de otro constructor.
+        public Envoltorio(owned Carga entrante)
+        {
+            caja = new Caja(move(entrante));
+        }
+
+        public int Valor() { return caja.Valor(); }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            owned Carga primera = new Carga(7);
+            owned Caja caja = new Caja(move(primera));
+            if (caja.Valor() != 7) { return 10; }
+
+            // Otra transferencia, independiente de la primera.
+            owned Carga segunda = new Carga(11);
+            owned Caja otra = new Caja(move(segunda));
+            if (otra.Valor() != 11) { return 11; }
+
+            owned Carga tercera = new Carga(20);
+            owned Envoltorio envuelta = new Envoltorio(move(tercera));
+            if (envuelta.Valor() != 20) { return 12; }
+
+            owned Carga cuarta = new Carga(30);
+            owned Caja delegada = new Caja(move(cuarta), 5);
+            if (delegada.Valor() != 35) { return 13; }
+
+            // OWNER RECIEN CREADO, sin local intermedia. No se puede escribir `move` aqui --no
+            // hay nada de donde mover-- asi que exigir una transferencia hacia este caso
+            // imposible de satisfacer. Es el tercer estado de la regla de propiedad, y sin este
+            // caso la fixture solo media owners que primero pasan por una local.
+            owned Caja directa = new Caja(new Carga(50));
+            if (directa.Valor() != 50) { return 14; }
+
+            // `base(move(...))`. El camino del inicializador es el mismo que el de `this(...)`
+            // en el codigo, pero la accesibilidad del candidato NO se calcula igual para los dos,
+            // asi que compartir la implementacion no basta para darlo por probado.
+            owned Carga quinta = new Carga(60);
+            owned CajaDerivada derivada = new CajaDerivada(move(quinta));
+            if (derivada.ValorBase() != 60) { return 15; }
+
+            return 42;
+        }
+    }
+}

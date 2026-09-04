@@ -7342,6 +7342,19 @@ private:
         const std::string& operandType,
         std::string& error)
     {
+        // NSC-LIMIT-004. DEFENSA, no arreglo. Un agregado no puede llegar aqui: `icmp eq [24 x i8]`
+        // no es una instruccion legal y el verificador rechaza el modulo entero, con un mensaje
+        // que habla de vectores y no menciona structs por ningun lado. La correccion esta en el
+        // frontend --`==` sobre structs baja a AggregateEquals-- y esto es la red por si alguna
+        // vez vuelve a colarse: dice el nombre del tipo y de donde viene el problema.
+        if (isEnumTypeKey(operandType) == false && operandType.starts_with("type:") &&
+            structLayout(operandType) != nullptr)
+        {
+            return failValue(
+                error,
+                "aggregate comparison reached scalar binary lowering for '" + operandType +
+                    "': struct equality must lower through AggregateEquals");
+        }
         const bool floating = isFloating(operandType);
         if (isComparison(operation))
         {

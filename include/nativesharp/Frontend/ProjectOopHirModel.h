@@ -512,6 +512,16 @@ private:
     // C6 "struct members": true when the expression denotes storage that already exists, so a
     // struct receiver can take its address directly instead of needing a temporary.
     bool isNaturallyAddressable(const ast::AstNode* expression) const noexcept;
+    // NSC-LIMIT-008. The call binding of a name that the semantic model resolved to a
+    // PROPERTY/INDEXER GETTER -- a call wearing the clothes of a name -- or null when the name is
+    // real storage (a field, an array element) or is not resolved at all.
+    //
+    // It returns the BINDING and not a bool because the two callers need different halves of the
+    // same answer: lowerExpression needs the binding to lower the accessor call, and
+    // isNaturallyAddressable only needs to know whether there was one. Returning a bool would leave
+    // lowerExpression re-deriving the binding, which is how the two sites came to disagree in the
+    // first place.
+    const MethodCallBinding* accessorGetterBinding(const ast::AstNode* expression) const noexcept;
     std::unique_ptr<ProjectOopHirNode> lowerReceiver(
         const ast::AstNode* receiverSyntax,
         std::string_view receiverTypeKey,

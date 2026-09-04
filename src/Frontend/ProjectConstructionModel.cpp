@@ -568,6 +568,35 @@ void ProjectConstructionModel::bindConstructorInitializer(
             {
                 candidate.viable = false;
             }
+            // NSC-LIMIT-010. PRIMERO LA FISICA, DESPUES EL CONTRATO, y en ese orden.
+            //
+            // Un candidato fisicamente imposible no llega a tener opinion sobre propiedad: si la
+            // conversion no existe, el argumento ni siquiera cabe en ese parametro, y dejar que
+            // hable el calificador produciria un diagnostico sobre `move` cuando el problema es el
+            // tipo. El veredicto se calcula igualmente para que `ownershipFits` tenga exactamente
+            // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
+            // candidato cuando la fisica ya lo habia aceptado.
+            const OwnershipArgumentFit fit = classifyOwnershipArgument(
+                methodBodyModel_->typeKeyIsOwnable(candidateSymbol.parameters[argumentOrdinal].typeKey),
+                candidateSymbol.parameters[argumentOrdinal].ownership,
+                argumentTypes[argumentOrdinal].ownership,
+                argumentTypes[argumentOrdinal].ownershipTransfer,
+                argumentTypes[argumentOrdinal].ownershipFreshOwner);
+            candidate.ownershipFits.push_back(fit);
+            if (conversion.exists() && fit != OwnershipArgumentFit::Ok)
+            {
+                candidate.viable = false;
+            }
+            if (fit == OwnershipArgumentFit::Ok && argumentTypes[argumentOrdinal].ownershipTransfer)
+            {
+                ConstructorOwnershipTransfer transfer;
+                transfer.parameterOrdinal = argumentOrdinal;
+                transfer.sourceLocalOrdinal =
+                    argumentTypes[argumentOrdinal].ownershipSourceLocalOrdinal;
+                transfer.sourceParameterOrdinal =
+                    argumentTypes[argumentOrdinal].ownershipSourceParameterOrdinal;
+                candidate.ownershipTransfers.push_back(transfer);
+            }
             candidate.conversions.push_back(std::move(conversion));
         }
         binding.evaluatedCandidates.push_back(std::move(candidate));
@@ -625,11 +654,19 @@ void ProjectConstructionModel::bindConstructorInitializer(
         }
         if (viable.empty())
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidCall,
-                diagnostics::DiagnosticSeverity::Error,
-                binding.initializerSyntax != nullptr ? binding.initializerSyntax->range() : constructor.range,
-                std::string("no applicable ") + targetName + " matches the constructor initializer argument types");
+            // NSC-LIMIT-010: misma explicacion que el camino de `new`. «no applicable
+            // this-constructor matches the argument types» es cierto y no ayuda cuando los tipos
+            // encajan y lo que falta es un `move`.
+            if (!explainOwnershipRejection(
+                    binding.evaluatedCandidates, argumentTypes.size(),
+                    binding.initializerSyntax, binding.initializerSyntax, diagnostics))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCall,
+                    diagnostics::DiagnosticSeverity::Error,
+                    binding.initializerSyntax != nullptr ? binding.initializerSyntax->range() : constructor.range,
+                    std::string("no applicable ") + targetName + " matches the constructor initializer argument types");
+            }
             binding.resolution = ConstructorInitializerResolutionKind::NoViableCandidate;
         }
         else if (nonDominated.size() != 1)
@@ -648,6 +685,8 @@ void ProjectConstructionModel::bindConstructorInitializer(
             binding.selectedConstructorMemberOrdinal = selected.memberOrdinal;
             binding.selectedEntryConstructorMemberOrdinal = selected.memberOrdinal;
             binding.selectedConversions = selected.conversions;
+            // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
+            binding.selectedOwnershipTransfers = selected.ownershipTransfers;
         }
     }
 
@@ -919,6 +958,35 @@ void ProjectConstructionModel::bindConstruction(
             {
                 candidate.viable = false;
             }
+            // NSC-LIMIT-010. PRIMERO LA FISICA, DESPUES EL CONTRATO, y en ese orden.
+            //
+            // Un candidato fisicamente imposible no llega a tener opinion sobre propiedad: si la
+            // conversion no existe, el argumento ni siquiera cabe en ese parametro, y dejar que
+            // hable el calificador produciria un diagnostico sobre `move` cuando el problema es el
+            // tipo. El veredicto se calcula igualmente para que `ownershipFits` tenga exactamente
+            // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
+            // candidato cuando la fisica ya lo habia aceptado.
+            const OwnershipArgumentFit fit = classifyOwnershipArgument(
+                methodBodyModel_->typeKeyIsOwnable(constructor.parameters[argumentOrdinal].typeKey),
+                constructor.parameters[argumentOrdinal].ownership,
+                argumentTypes[argumentOrdinal].ownership,
+                argumentTypes[argumentOrdinal].ownershipTransfer,
+                argumentTypes[argumentOrdinal].ownershipFreshOwner);
+            candidate.ownershipFits.push_back(fit);
+            if (conversion.exists() && fit != OwnershipArgumentFit::Ok)
+            {
+                candidate.viable = false;
+            }
+            if (fit == OwnershipArgumentFit::Ok && argumentTypes[argumentOrdinal].ownershipTransfer)
+            {
+                ConstructorOwnershipTransfer transfer;
+                transfer.parameterOrdinal = argumentOrdinal;
+                transfer.sourceLocalOrdinal =
+                    argumentTypes[argumentOrdinal].ownershipSourceLocalOrdinal;
+                transfer.sourceParameterOrdinal =
+                    argumentTypes[argumentOrdinal].ownershipSourceParameterOrdinal;
+                candidate.ownershipTransfers.push_back(transfer);
+            }
             candidate.conversions.push_back(std::move(conversion));
         }
         binding.evaluatedCandidates.push_back(std::move(candidate));
@@ -984,6 +1052,17 @@ void ProjectConstructionModel::bindConstruction(
     }
     if (viable.empty())
     {
+        // NSC-LIMIT-010. Si el unico estorbo fue el contrato de propiedad, se dice cual y
+        // donde en vez del generico. La explicacion la da explainOwnershipRejection, que la
+        // comparten este camino y el de `this(...)`/`base(...)`.
+        if (explainOwnershipRejection(
+                binding.evaluatedCandidates, argumentTypes.size(), expression, expression,
+                diagnostics))
+        {
+            binding.resolution = ConstructionResolutionKind::NoViableCandidate;
+            constructions_.push_back(std::move(binding));
+            return;
+        }
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
@@ -1030,6 +1109,8 @@ void ProjectConstructionModel::bindConstruction(
     binding.resolution = ConstructionResolutionKind::ResolvedExplicit;
     binding.selectedConstructorMemberOrdinal = selected.memberOrdinal;
     binding.selectedConversions = selected.conversions;
+    // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
+    binding.selectedOwnershipTransfers = selected.ownershipTransfers;
     constructions_.push_back(std::move(binding));
 }
 
@@ -1048,6 +1129,63 @@ std::optional<MethodExpressionTypeBinding> ProjectConstructionModel::expressionT
         }
     }
     return std::nullopt;
+}
+
+bool ProjectConstructionModel::explainOwnershipRejection(
+    const std::vector<ConstructorCandidateBinding>& candidates,
+    std::size_t argumentCount,
+    const ast::AstNode* argumentListSyntax,
+    const ast::AstNode* fallbackSyntax,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (memberModel_ == nullptr) return false;
+    const ConstructorCandidateBinding* unico = nullptr;
+    std::size_t conAridad = 0;
+    for (const ConstructorCandidateBinding& candidato : candidates)
+    {
+        if (!candidato.accessible || candidato.ownershipFits.size() != argumentCount) continue;
+        ++conAridad;
+        unico = &candidato;
+    }
+    if (conAridad != 1 || unico == nullptr || !unico->memberOrdinal.has_value()) return false;
+    if (*unico->memberOrdinal >= memberModel_->members().size()) return false;
+
+    // La FISICA tiene que estar completa. Si alguna conversion no existe, el estorbo son los
+    // tipos y hablar de `move` mandaria al lector al sitio equivocado.
+    for (const ProjectImplicitConversion& conversion : unico->conversions)
+    {
+        if (!conversion.exists()) return false;
+    }
+    bool algunaObjecion = false;
+    for (const OwnershipArgumentFit fit : unico->ownershipFits)
+    {
+        algunaObjecion = algunaObjecion || fit != OwnershipArgumentFit::Ok;
+    }
+    if (!algunaObjecion) return false;
+
+    const ClassMemberSymbol& elegido = memberModel_->members()[*unico->memberOrdinal];
+    if (elegido.parameters.size() != argumentCount) return false;
+    for (std::size_t index = 0; index < unico->ownershipFits.size(); ++index)
+    {
+        if (unico->ownershipFits[index] == OwnershipArgumentFit::Ok) continue;
+        const ast::AstNode* argumento =
+            argumentListSyntax != nullptr && index < argumentListSyntax->children().size()
+                ? argumentListSyntax->children()[index]
+                : nullptr;
+        const SourceRange range = argumento != nullptr
+            ? argumento->range()
+            : (fallbackSyntax != nullptr ? fallbackSyntax->range() : SourceRange{});
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "argument " + std::to_string(index + 1) + ": " +
+                ownershipArgumentFitMessage(
+                    unico->ownershipFits[index],
+                    elegido.parameters[index].name,
+                    elegido.parameters[index].typeKey));
+    }
+    return true;
 }
 
 bool ProjectConstructionModel::constructorAccessible(

@@ -1,0 +1,157 @@
+// NSC-LIMIT-004 -- `==` y `!=` sobre dos valores del MISMO struct.
+//
+// LO QUE FALLABA. El modelo semantico aceptaba cualquier comparacion cuyos dos operandos tuvieran
+// el mismo typeKey. Dos structs lo cumplen, asi que la expresion salia valida, bajaba a un nodo
+// `Binary` corriente, y en el backend terminaba en `LLVMBuildICmp` sobre un agregado --
+// `icmp eq [24 x i8]`, que no es una instruccion legal. El verificador rechazaba el modulo entero
+// con un mensaje sobre vectores que no menciona structs por ningun lado.
+//
+// LA SEMANTICA NO ES NUEVA. `a == b` es exactamente `a.Equals(b)`: comparacion bit a bit de cada
+// hoja escalar DECLARADA, recursiva, excluyendo el padding. No es `memcmp` del carrier: el padding
+// no esta definido y compararlo haria que dos valores iguales pudieran salir distintos segun como
+// se hubieran escrito antes. Dos formas de escribir la misma operacion, un solo algoritmo.
+//
+// LO QUE SE MIDE:
+//
+//   10-11  el caso base: iguales y distintos.
+//   12-13  `!=`, que es la igualdad negada -- se comprueba aparte porque se baja envolviendo el
+//          resultado en un `Bang`, y una negacion perdida daria exactamente lo contrario.
+//   14-15  UN struct CON PADDING. `Padded` mide 16 bytes y solo 9 son campos. Lo que esto mide
+//          es que la comparacion de un struct con relleno da la respuesta correcta -- NO que el
+//          relleno se ignore: escribir bytes de relleno distintos en dos valores no se puede
+//          expresar en NativeSharp, porque no son direccionables. Que se ignoran se comprueba en
+//          el IR, contando las hojas comparadas: son las declaradas y ninguna mas.
+//   16-17  struct ANIDADO y arreglo de tamanio fijo: las hojas se aplanan recursivamente.
+//   18-19  el tamanio de un solo byte y el de 32, que viajan por caminos de ABI distintos.
+//   20-21  coma flotante, con la misma regla de bits que `Struct.Equals` ya fija.
+//   22-23  dentro de un generico MATERIALIZADO, que es donde el reporte original lo vio.
+//   42     todo correcto.
+//
+// Los rechazos --`<` sobre structs, comparar dos structs distintos, comparar una union-- no caben
+// aqui: una fixture tiene que compilar entera.
+using NativeSharp.Core;
+
+namespace c43igualdaddestructs
+{
+    public struct Punto
+    {
+        public int x;
+        public int y;
+    }
+
+    // Nueve bytes de campos en dieciseis de tamanio: siete de relleno que NO deben entrar.
+    public struct Padded
+    {
+        public byte bandera;
+        public long ancho;
+    }
+
+    public struct Anidado
+    {
+        public Punto punto;
+        public int[2] celdas;
+    }
+
+    public struct UnByte
+    {
+        public byte valor;
+    }
+
+    public struct Grande
+    {
+        public long a;
+        public long b;
+        public long c;
+        public long d;
+    }
+
+    public struct ConFlotante
+    {
+        public double valor;
+    }
+
+    public class Caja<T>
+    {
+        public bool Iguales(T izquierda, T derecha) { return izquierda == derecha; }
+        public bool Distintos(T izquierda, T derecha) { return izquierda != derecha; }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Punto a;
+            a.x = 1;
+            a.y = 2;
+            Punto b;
+            b.x = 1;
+            b.y = 2;
+            Punto c;
+            c.x = 1;
+            c.y = 3;
+
+            if (!(a == b)) { return 10; }
+            if (a == c) { return 11; }
+            if (a != b) { return 12; }
+            if (!(a != c)) { return 13; }
+
+            // Struct con relleno. Las hojas que se comparan son las declaradas: eso lo fija el
+            // IR, no este `if`.
+            Padded p1;
+            p1.bandera = 3;
+            p1.ancho = 9;
+            Padded p2;
+            p2.bandera = 3;
+            p2.ancho = 9;
+            if (!(p1 == p2)) { return 14; }
+            p2.ancho = 10;
+            if (p1 == p2) { return 15; }
+
+            Anidado n1;
+            n1.punto.x = 4;
+            n1.punto.y = 5;
+            n1.celdas[0] = 6;
+            n1.celdas[1] = 7;
+            Anidado n2;
+            n2.punto.x = 4;
+            n2.punto.y = 5;
+            n2.celdas[0] = 6;
+            n2.celdas[1] = 7;
+            if (!(n1 == n2)) { return 16; }
+            n2.celdas[1] = 8;
+            if (n1 == n2) { return 17; }
+
+            UnByte u1;
+            u1.valor = 200;
+            UnByte u2;
+            u2.valor = 200;
+            if (!(u1 == u2)) { return 18; }
+
+            Grande g1;
+            g1.a = 1;
+            g1.b = 2;
+            g1.c = 3;
+            g1.d = 4;
+            Grande g2;
+            g2.a = 1;
+            g2.b = 2;
+            g2.c = 3;
+            g2.d = 5;
+            if (g1 == g2) { return 19; }
+
+            ConFlotante f1;
+            f1.valor = 1.5;
+            ConFlotante f2;
+            f2.valor = 1.5;
+            if (!(f1 == f2)) { return 20; }
+            f2.valor = 2.5;
+            if (f1 == f2) { return 21; }
+
+            Caja<Punto> caja = new Caja<Punto>();
+            if (!caja.Iguales(a, b)) { return 22; }
+            if (!caja.Distintos(a, c)) { return 23; }
+
+            return 42;
+        }
+    }
+}

@@ -292,6 +292,31 @@ std::string lowerToLlvmText(
 // ninguna fixture de ejecucion puede aislar del todo: que el destino de una asignacion compuesta
 // se evalua UNA sola vez. Si `buffer[Probe()] += 1` se hubiera desazucarado a
 // `buffer[Probe()] = buffer[Probe()] + 1`, en el IR habria DOS llamadas a Probe y no una.
+// Recorta UNA funcion del texto de un modulo. Las aserciones sobre IR que cuentan ocurrencias
+// tienen que contar dentro de la funcion que miden: el modulo trae la biblioteca de runtime
+// entera, y una cuenta hecha sobre todo el texto mide a los vecinos -- y se rompe el dia que un
+// vecino cambia, con un rojo que no habla del contrato que la prueba defiende.
+std::string sliceFunction(const std::string& text, std::string_view nameFragment)
+{
+    std::size_t search = 0;
+    while (true)
+    {
+        const std::size_t define = text.find("\ndefine ", search);
+        if (define == std::string::npos) return {};
+        const std::size_t lineEnd = text.find('\n', define + 1);
+        if (lineEnd == std::string::npos) return {};
+        const std::string header = text.substr(define + 1, lineEnd - define - 1);
+        // El final de una funcion en el texto de LLVM es una llave en la columna cero.
+        const std::size_t close = text.find("\n}", lineEnd);
+        if (close == std::string::npos) return {};
+        if (header.find(nameFragment) != std::string::npos)
+        {
+            return text.substr(define + 1, close - define + 1);
+        }
+        search = close + 1;
+    }
+}
+
 std::size_t countOccurrences(const std::string& text, std::string_view needle)
 {
     std::size_t total = 0;
@@ -693,6 +718,36 @@ int main(int argc, char** argv)
         "tests/cc1/c40_receptor_estatico_calificado/c40_receptor_estatico_calificado.nsproj",
         "cc1-c40-receptor-estatico-calificado", 42);
 
+    // NSC-LIMIT-008. `f.Actual.Leer()` con `Actual` un getter que devuelve un struct por valor:
+    // antes se rechazaba con «properties are semantic accessor calls and are not addressable».
+    // La fixture cuenta las llamadas al getter DENTRO del accesor, porque bajar el receptor dos
+    // veces daria el valor correcto y llamaria dos veces -- un defecto que comprobar el valor no
+    // ve. Cubre struct pequenio, struct por sret, metodo mutante sobre el temporal, y un campo
+    // struct corriente que no debe recibir temporal alguno.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c41_propiedad_receptor_struct/c41_propiedad_receptor_struct.nsproj",
+        "cc1-c41-propiedad-receptor-struct", 42);
+
+    // NSC-LIMIT-010. `new Caja(move(duenio))` con un constructor de parametro `owned`. Cubre la
+    // transferencia directa, el reenvio de un parametro `owned` a otro constructor, y la
+    // delegacion `: this(move(...))`. Los negativos --copia sin move, move a parametro sin
+    // calificador-- no caben en una fixture, que tiene que compilar entera.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c42_move_constructor_owned/c42_move_constructor_owned.nsproj",
+        "cc1-c42-move-constructor-owned", 42);
+
+    // NSC-LIMIT-004. `==` y `!=` sobre dos valores del mismo struct, que antes llegaban a
+    // `LLVMBuildICmp` como agregado y el verificador rechazaba el modulo entero. Cubre padding,
+    // anidamiento, arreglo fijo, un byte, 32 bytes, coma flotante y un generico materializado.
+    // Los rechazos --orden, tipos distintos, union-- viven en la suite de negativos.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c43_igualdad_de_structs/c43_igualdad_de_structs.nsproj",
+        "cc1-c43-igualdad-de-structs", 42);
+
+
     // A PARTIR DE AQUI NADA ES UNA FIXTURE: son rechazos y comprobaciones sobre el IR. Los corre
     // la entrada `--rest`, y nadie mas -- una entrada por fixture que ademas arrastrara todo esto
     // lo repetiria cuarenta veces.
@@ -702,6 +757,314 @@ int main(int argc, char** argv)
             gSelectedFixture.empty() || gSelectedFixtureMatched,
             "selector '" + gSelectedFixture + "' names a registered fixture");
         return tests.result();
+    }
+
+    // =====================================================================================
+    // NSC-LIMIT-010 y NSC-LIMIT-004 -- LOS RECHAZOS.
+    //
+    // Ninguno cabe en una fixture: una fixture tiene que compilar entera, y estos programas no
+    // deben compilar. Sin ellos, las fixtures de arriba solo demuestran que lo legal pasa, y una
+    // regla que acepta todo tambien lo hace.
+    // =====================================================================================
+
+    // Copiar un owner a un parametro `owned` sin `move`. La resolucion de constructores no miraba
+    // propiedad en absoluto, asi que esto COMPILABA antes de NSC-LIMIT-010 -- y producia dos
+    // owners del mismo objeto.
+    checkRejected(
+        tests, root, "cc1-limit010-constructor-copia-sin-move",
+        R"NS(
+namespace limit010copia
+{
+    class Carga { public int valor; public Carga(int v) { valor = v; } }
+    class Caja
+    {
+        private owned Carga dentro;
+        public Caja(owned Carga entrante) { dentro = move(entrante); }
+    }
+    class P
+    {
+        public static int Main()
+        {
+            owned Carga c = new Carga(7);
+            owned Caja b = new Caja(c);
+            return 42;
+        }
+    }
+}
+)NS",
+        "requires an ownership transfer");
+
+    // `move` hacia un parametro SIN calificador: el contrato se perderia en silencio y nadie
+    // liberaria el objeto.
+    checkRejected(
+        tests, root, "cc1-limit010-move-a-parametro-sin-calificador",
+        R"NS(
+namespace limit010sincalif
+{
+    class Carga { public int valor; public Carga(int v) { valor = v; } }
+    class Caja
+    {
+        private Carga dentro;
+        public Caja(Carga entrante) { dentro = entrante; }
+    }
+    class P
+    {
+        public static int Main()
+        {
+            owned Carga c = new Carga(7);
+            Caja b = new Caja(move(c));
+            return 42;
+        }
+    }
+}
+)NS",
+        "cannot receive an ownership transfer");
+
+    // USO DESPUES DE MOVER. Es lo que la fixture c42 NO puede medir --tendria que no compilar--
+    // y sin esto «la fuente quedo moved-from» seria una afirmacion sin prueba.
+    checkRejected(
+        tests, root, "cc1-limit010-uso-tras-mover",
+        R"NS(
+namespace limit010usotras
+{
+    class Carga { public int valor; public Carga(int v) { valor = v; } }
+    class Caja
+    {
+        private owned Carga dentro;
+        public Caja(owned Carga entrante) { dentro = move(entrante); }
+    }
+    class P
+    {
+        public static int Main()
+        {
+            owned Carga c = new Carga(7);
+            owned Caja b = new Caja(move(c));
+            return c.valor;
+        }
+    }
+}
+)NS",
+        "use of moved-from");
+
+    // `this(...)` sin `move`, teniendo el parametro `owned` en la mano. El camino del
+    // inicializador calculaba la objecion y luego emitia el mensaje generico; ahora dice cual.
+    checkRejected(
+        tests, root, "cc1-limit010-inicializador-sin-move",
+        R"NS(
+namespace limit010init
+{
+    class Carga { public int valor; public Carga(int v) { valor = v; } }
+    class Caja
+    {
+        private owned Carga dentro;
+        public Caja(owned Carga entrante) { dentro = move(entrante); }
+        public Caja(owned Carga entrante, int extra) : this(entrante) { }
+    }
+    class P
+    {
+        public static int Main() { return 42; }
+    }
+}
+)NS",
+        "requires an ownership transfer");
+
+    // ORDENAR structs. Un struct no tiene orden natural y adivinarlo daria una respuesta estable
+    // y arbitraria, que es la peor clase.
+    checkRejected(
+        tests, root, "cc1-limit004-orden-entre-structs",
+        R"NS(
+namespace limit004orden
+{
+    struct Punto { public int x; public int y; }
+    class P
+    {
+        public static int Main()
+        {
+            Punto a; a.x = 1; a.y = 2;
+            Punto b; b.x = 1; b.y = 2;
+            if (a < b) { return 1; }
+            return 42;
+        }
+    }
+}
+)NS",
+        "supports only '==' and '!='");
+
+    // Dos structs DISTINTOS con la misma forma. Comparar contra otro tipo significaria boxing,
+    // que este lenguaje no hace.
+    checkRejected(
+        tests, root, "cc1-limit004-structs-de-tipos-distintos",
+        R"NS(
+namespace limit004tipos
+{
+    struct Punto { public int x; public int y; }
+    struct Otro { public int x; public int y; }
+    class P
+    {
+        public static int Main()
+        {
+            Punto a; a.x = 1; a.y = 2;
+            Otro o; o.x = 1; o.y = 2;
+            if (a == o) { return 1; }
+            return 42;
+        }
+    }
+}
+)NS",
+        "compares only against its own type");
+
+    // UNION. Solo un miembro esta vivo y nada en el valor dice cual: la misma razon que ya
+    // rechaza `union.Equals(...)`, repetida para que no entre por la otra puerta.
+    checkRejected(
+        tests, root, "cc1-limit004-union",
+        R"NS(
+namespace limit004union
+{
+    union Mezcla { public int entero; public float flotante; }
+    class P
+    {
+        public static int Main()
+        {
+            Mezcla m1; m1.entero = 1;
+            Mezcla m2; m2.entero = 1;
+            if (m1 == m2) { return 1; }
+            return 42;
+        }
+    }
+}
+)NS",
+        "only one member of a union is live");
+
+    // `base(...)` sin `move`. Comparte la implementacion con `this(...)` y NO comparte todo: la
+    // accesibilidad del candidato se calcula distinto para cada uno (`ExplicitThis` la da por
+    // buena, `base` la comprueba contra la clase derivada). Compartir codigo no es lo mismo que
+    // estar probado, y sin este caso una divergencia entre los dos pasaba sin verse.
+    checkRejected(
+        tests, root, "cc1-limit010-base-sin-move",
+        R"NS(
+namespace limit010base
+{
+    class Carga { public int valor; public Carga(int v) { valor = v; } }
+    class CajaBase
+    {
+        private owned Carga guardada;
+        public CajaBase(owned Carga entrante) { guardada = move(entrante); }
+    }
+    class CajaDerivada : CajaBase
+    {
+        public CajaDerivada(owned Carga entrante) : base(entrante) { }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "requires an ownership transfer");
+
+    // =====================================================================================
+    // NSC-LIMIT-004 -- EL PADDING, MEDIDO EN EL IR Y NO AFIRMADO EN UN COMENTARIO.
+    //
+    // POR QUE HACE FALTA, aunque la fixture c43 ya compare un struct con relleno y salga verde.
+    // El relleno NO ES DIRECCIONABLE desde NativeSharp: no hay forma de escribir dos valores que
+    // difieran solo en los bytes de relleno. Asi que una implementacion incorrecta que comparara
+    // los dieciseis bytes del carrier --un memcmp, o un `icmp` sobre el agregado-- daria la MISMA
+    // respuesta en esa fixture y pasaria igual.
+    //
+    // Lo unico que distingue una implementacion de la otra es la forma del IR. `Padded` declara
+    // dos campos: un `byte` en el offset 0 y un `long` en el 8. Nueve bytes de contenido en
+    // dieciseis de tamanio.
+    // =====================================================================================
+    {
+        const std::string text = lowerToLlvmText(
+            tests, root, "cc1-limit004-padding-en-el-ir",
+            R"NS(
+namespace limit004pad
+{
+    struct Padded { public byte bandera; public long ancho; }
+    struct Tres { public byte a; public byte b; public long c; }
+    struct Lleno { public long x; public long y; }
+    class P
+    {
+        public static bool Iguales(Padded a, Padded b) { return a == b; }
+        public static bool TresIguales(Tres a, Tres b) { return a == b; }
+        public static bool LlenoIguales(Lleno a, Lleno b) { return a == b; }
+    }
+}
+)NS");
+
+        // SE RECORTA A LA FUNCION, y no es cosmetico: `lowerToLlvmText` devuelve el MODULO
+        // ENTERO, biblioteca de runtime incluida, y ahi hay decenas de structs de dieciseis
+        // bytes. Una cuenta sobre el modulo mediria a los vecinos y se rompria el dia que
+        // alguien anadiera una comparacion de agregados al runtime -- un rojo que no habla de
+        // este contrato. Recortada, cada cuenta de abajo es exacta.
+        const std::string cuerpo = sliceFunction(text, "limit004pad_P__Iguales");
+        // ESTA GUARDA NO ES UNA FORMALIDAD. Si `sliceFunction` no encuentra la funcion --un
+        // nombre mal escrito basta-- `cuerpo` queda vacio, los conteos dan cero y fallan... pero
+        // las aserciones de AUSENCIA (`find(...) == npos`) pasan solas sobre una cadena vacia.
+        // Un verde falso entre los rojos, que es peor que un rojo limpio. Medido: la primera
+        // version de esta prueba buscaba `padir_P__Iguales`, el nombre de un programa de scratch,
+        // en un modulo cuyo namespace es `limit004pad`.
+        tests.expect(!cuerpo.empty(), "cc1-limit004-padding: encuentra la funcion en el modulo");
+        if (cuerpo.empty()) return tests.result();
+
+        // DOS hojas, ni una mas. Con tres, el relleno estaria entrando en la respuesta; con una,
+        // habria un campo sin comparar.
+        tests.expect(
+            countOccurrences(cuerpo, "getelementptr i8, ptr %struct.root.operand, i64 ") == 2,
+            "cc1-limit004-padding: compara exactamente dos hojas");
+        // Y EN LOS OFFSETS DECLARADOS. El 0 es `bandera`, el 8 es `ancho`. Los bytes 1..7 y 9..15
+        // son relleno: no hay ni un GEP que los alcance.
+        tests.expect(
+            countOccurrences(cuerpo, "getelementptr i8, ptr %struct.root.operand, i64 0") == 1,
+            "cc1-limit004-padding: lee el offset 0");
+        tests.expect(
+            countOccurrences(cuerpo, "getelementptr i8, ptr %struct.root.operand, i64 8") == 1,
+            "cc1-limit004-padding: lee el offset 8");
+        // Una comparacion por hoja, sobre los bits de la hoja -- no sobre el carrier.
+        tests.expect(
+            countOccurrences(cuerpo, "= icmp eq i64 %struct.eq.left") == 2,
+            "cc1-limit004-padding: una comparacion por hoja");
+        // Y NADA del agregado entero. Estas dos formas son las que un `icmp` sobre el carrier o un
+        // memcmp dejarian en el IR, y son exactamente las que la fixture c43 NO puede descartar:
+        // con el mismo contenido declarado en los dos valores, las dos dan la misma respuesta.
+        tests.expect(
+            cuerpo.find("icmp eq [") == std::string::npos &&
+                cuerpo.find("icmp ne [") == std::string::npos,
+            "cc1-limit004-padding: ningun icmp sobre el agregado");
+        tests.expect(
+            cuerpo.find("memcmp") == std::string::npos,
+            "cc1-limit004-padding: ningun memcmp del carrier");
+        // El carrier se carga DOS veces y solo para copiar cada operando a su ranura. Si apareciera
+        // una tercera, seria una lectura del agregado que no es una copia.
+        tests.expect(
+            countOccurrences(cuerpo, "load [16 x i8]") == 2,
+            "cc1-limit004-padding: el carrier solo se carga para copiar los dos operandos");
+
+        // LA PRUEBA DE QUE LO ANTERIOR MIDE ALGO, y no solo describe lo que salio.
+        //
+        // Los tres structs miden LOS MISMOS DIECISEIS BYTES y declaran distinto numero de campos.
+        // Una implementacion que comparara el carrier daria la misma forma para los tres -- el
+        // conteo de hojas seria constante. Que siga a los CAMPOS DECLARADOS y no al tamanio es la
+        // unica diferencia observable entre las dos implementaciones, y es lo que se afirma aqui:
+        //
+        //     Padded  1 + 8, siete de relleno  -> 2 hojas, offsets 0 y 8
+        //     Tres    1 + 1 + 8, seis          -> 3 hojas, offsets 0, 1 y 8
+        //     Lleno   8 + 8, cero              -> 2 hojas, offsets 0 y 8
+        //
+        // `Padded` y `Lleno` dan la misma cuenta a proposito: lo que separa a los tres no es el
+        // relleno sino cuantos campos hay, que es exactamente el contrato.
+        const std::string tres = sliceFunction(text, "limit004pad_P__TresIguales");
+        const std::string lleno = sliceFunction(text, "limit004pad_P__LlenoIguales");
+        tests.expect(
+            !tres.empty() && !lleno.empty(),
+            "cc1-limit004-padding: encuentra las dos funciones de control");
+        tests.expect(
+            countOccurrences(tres, "getelementptr i8, ptr %struct.root.operand, i64 ") == 3,
+            "cc1-limit004-padding: tres campos en dieciseis bytes dan TRES hojas");
+        tests.expect(
+            countOccurrences(tres, "getelementptr i8, ptr %struct.root.operand, i64 1") == 1,
+            "cc1-limit004-padding: la segunda hoja de Tres esta en el offset 1");
+        tests.expect(
+            countOccurrences(lleno, "getelementptr i8, ptr %struct.root.operand, i64 ") == 2,
+            "cc1-limit004-padding: dos campos sin relleno dan DOS hojas");
     }
 
     // =====================================================================================

@@ -148,6 +148,55 @@ struct MethodShadowingEvent final
     SourceRange range;
 };
 
+// NSC-LIMIT-010. Por que ESTE veredicto es un tipo y no un `bool`.
+//
+// La regla de compatibilidad entre un argumento y un parametro con calificador de propiedad la
+// necesitan DOS resolutores: el de llamadas ordinarias (`analyzeCall`) y el de constructores
+// (`ProjectConstructionModel::bindConstruction`). Hasta el 2026-09-04 solo existia en el primero,
+// y el segundo elegia constructor mirando unicamente tipos y conversiones fisicas -- por eso
+// `new Caja(move(duenio))` no encontraba el constructor `owned` aunque estuviera escrito.
+//
+// Un `bool` habria bastado para descartar candidatos, pero no para el diagnostico: el contrato
+// pide distinguir «falta move», «un prestado no satisface owned» y «move a un parametro sin
+// calificador», y con un booleano cada llamador tendria que volver a deducir cual de los tres fue
+// -- o sea, una segunda copia de la misma regla, que es exactamente el defecto que se esta
+// cerrando.
+enum class OwnershipArgumentFit
+{
+    Ok,
+    // El parametro es `owned` y el argumento no transfiere: falta `move(...)`, o el valor es
+    // prestado y por tanto no es suyo para darlo.
+    OwnedRequiresTransfer,
+    // El parametro es `borrowed` y el argumento no es una fuente prestable comprobada.
+    BorrowedRequiresCheckedSource,
+    // El parametro no lleva calificador y el argumento trae un contrato: transferirlo lo
+    // perderia en silencio.
+    UnqualifiedRejectsOwnership
+};
+
+// La regla, en un solo sitio y sin dependencias del modelo.
+//
+// `parameterOwnable` entra COMO DATO y no se calcula aqui a proposito: depende del name lookup
+// (`isReferenceTypeKey`), que esta funcion no tiene ni debe tener. Los dos llamadores ya saben
+// responderla. Y es el primer filtro, no el ultimo: un `owned T`/`borrowed T` generico
+// monomorfizado sobre un tipo valor lleva el calificador escrito pero no tiene nada que poseer,
+// asi que ahi TODA forma de argumento vale. Ese orden costo una correccion en Stage 52 --
+// comprobar primero el calificador y despues la ownabilidad rechazaba
+// `LinkedList<int>.AddFirst`, que pasa un `move` de un `int` a un parametro `owned T`.
+OwnershipArgumentFit classifyOwnershipArgument(
+    bool parameterOwnable,
+    sema::OwnershipKind parameterOwnership,
+    sema::OwnershipKind argumentOwnership,
+    bool argumentTransfer,
+    bool argumentIsFreshOwner) noexcept;
+
+// Texto del diagnostico para un veredicto que no es Ok. Vive junto a la regla para que los dos
+// resolutores digan lo mismo ante la misma causa.
+std::string ownershipArgumentFitMessage(
+    OwnershipArgumentFit fit,
+    std::string_view parameterName,
+    std::string_view parameterTypeKey);
+
 struct MethodExpressionTypeBinding final
 {
     const ast::AstNode* syntax = nullptr;
@@ -155,6 +204,16 @@ struct MethodExpressionTypeBinding final
     std::size_t scopeOrdinal = 0;
     std::string typeKey;
     std::optional<ProjectIntegerConstant> integerConstant;
+    // NSC-LIMIT-010. El resultado semantico de una expresion llevaba ownership, transferencia y
+    // origen, y `recordExpressionType` los TIRABA al copiarlo aqui. ProjectConstructionModel solo
+    // ve estos bindings, asi que sin estos cuatro campos no tiene con que decidir: para el, un
+    // `move(duenio)` y un `duenio` a secas eran la misma expresion del mismo tipo.
+    sema::OwnershipKind ownership = sema::OwnershipKind::None;
+    bool ownershipTransfer = false;
+    // NSC-LIMIT-010: ver ExpressionResult::ownershipFreshOwner.
+    bool ownershipFreshOwner = false;
+    std::optional<std::size_t> ownershipSourceLocalOrdinal;
+    std::optional<std::size_t> ownershipSourceParameterOrdinal;
 };
 
 enum class MethodRuntimeTypeOperationKind
@@ -1008,6 +1067,11 @@ public:
     std::span<const MethodNameBinding> nameBindings() const noexcept;
     std::span<const MethodShadowingEvent> shadowingEvents() const noexcept;
     std::span<const MethodExpressionTypeBinding> expressionTypes() const noexcept;
+    // NSC-LIMIT-010. "Este tipo tiene algo que poseer": una referencia de clase/interfaz o una
+    // cadena nativa. Publico porque ProjectConstructionModel lo necesita para aplicar la MISMA
+    // regla de propiedad que las llamadas ordinarias, y volver a escribirlo alli seria la segunda
+    // definicion de ownable -- que es la forma exacta del defecto que este ID cierra.
+    bool typeKeyIsOwnable(std::string_view typeKey) const noexcept;
     std::span<const MethodRuntimeTypeBinding> runtimeTypeBindings() const noexcept;
     std::span<const MethodCoreBinding> coreBindings() const noexcept;
     std::span<const MethodExceptionBinding> exceptionBindings() const noexcept;
@@ -1069,6 +1133,16 @@ private:
         std::optional<ProjectIntegerConstant> integerConstant;
         sema::OwnershipKind ownership = sema::OwnershipKind::None;
         bool ownershipTransfer = false;
+        // NSC-LIMIT-010. ESTA EXPRESION ACABA DE CREAR UN OWNER que no pertenece a nadie todavia:
+        // `new T(...)`. No es lo mismo que una transferencia -- no hay fuente con nombre de la que
+        // salga, y por eso `move` no se puede ni escribir sobre ella.
+        //
+        // Es una tercera situacion y no un caso de las otras dos, y hace falta porque un parametro
+        // `owned` exigia «ownership == Owned && ownershipTransfer», lo que dejaba fuera
+        // `new Caja(new Carga(7))` -- no habia de donde mover. Lo relaja SOLO para parametros
+        // `owned`, que son los que se quedan con el valor; un parametro sin calificador sigue
+        // rechazandolo, y no es un descuido: nadie lo liberaria.
+        bool ownershipFreshOwner = false;
         std::optional<std::size_t> ownershipSourceLocalOrdinal;
         std::optional<std::size_t> ownershipSourceParameterOrdinal;
         std::optional<std::size_t> borrowedLocalOrdinal;
@@ -1479,6 +1553,13 @@ private:
     // C8 "type root": a union takes no compiler-provided Equals/GetHashCode -- see the refusal in
     // analyzeCall for why.
     bool aggregateIsUnion(std::string_view typeKey) const noexcept;
+    // NSC-LIMIT-004. ¿Esta clave nombra un STRUCT? Ni una clase, ni una interfaz, ni un enum, ni
+    // un delegado, ni un `T[N]`.
+    //
+    // No se reutiliza `typeKeyHasDefinedDefaultStorage` --que seria lo cercano-- porque esa
+    // tambien cubre los arreglos de tamanio fijo, y un `int[4] == int[4]` no es lo que este ID
+    // define. La pregunta aqui es exactamente la que hace el camino de `Struct.Equals`.
+    bool typeKeyIsStruct(std::string_view typeKey) const noexcept;
     // SHR-013 "vistas y tiempo de vida". Las tres preguntas de un tipo vista, separadas porque
     // NO son la misma:
     //   * aggregateIsBorrowedView -- el tipo se declaro `borrowed struct`.

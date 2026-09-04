@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c41_propiedad_receptor_struct</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,195 @@
+STAGE NSC-LIMIT-008 / 010 / 004 -- 2026-09-04
+Ficheros modificados y creados en A:\nsc-devel
+
+MODIFICADOS
+  include/nativesharp/Frontend/ProjectOopHirModel.h
+      accessorGetterBinding: el binding de llamada cuando un nombre resolvio a un getter de
+      propiedad o indexador. Devuelve el binding y no un bool porque los dos llamadores
+      necesitan mitades distintas de la misma respuesta.
+
+  src/Frontend/ProjectOopHirModel.cpp
+      008: isNaturallyAddressable deja de decir `true` para toda MemberExpression; un getter
+      no es almacenamiento, asi que lowerReceiver le hace temporal. La copia en linea de esa
+      pregunta que habia en lowerExpression se sustituye por el helper.
+      004: BinaryExpression con core StructEquals baja a AggregateEquals; `!=` se envuelve en
+      el Unary/Bang existente.
+
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+      OwnershipArgumentFit y classifyOwnershipArgument/ownershipArgumentFitMessage.
+      MethodExpressionTypeBinding gana ownership, ownershipTransfer y los dos ordinales de
+      origen. typeKeyIsOwnable publico. typeKeyIsStruct privado.
+
+  src/Frontend/ProjectMethodBodyModel.cpp
+      010: la regla de compatibilidad de propiedad sale de analyzeCall a una funcion de
+      namespace, con su historia de Stage 52 completa. allowMove=true en los argumentos de
+      ObjectCreationExpression y en los de this()/base(). recordExpressionType copia los
+      cuatro campos que antes tiraba.
+      004: rama de comparacion de structs en analyzeBinary, antes del bloque generico.
+
+  include/nativesharp/Frontend/ProjectConstructionModel.h
+      ConstructorOwnershipTransfer. ConstructorCandidateBinding gana ownershipFits y
+      ownershipTransfers; ObjectConstructionBinding y ConstructorInitializerBinding ganan
+      selectedOwnershipTransfers.
+
+  src/Frontend/ProjectConstructionModel.cpp
+      010: los dos bucles de candidatos --el de `new` y el de this()/base()-- aplican la regla
+      compartida, primero la fisica y despues el contrato. Diagnostico especifico cuando hay un
+      solo candidato con la aridad correcta y su unica objecion es de propiedad.
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      004: defensa en applyBinaryOperation. Un agregado que llegue ahi da error interno con el
+      nombre del tipo en vez de IR invalido. No sustituye al arreglo del frontend.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      registro de las tres fixtures nuevas.
+
+CREADOS
+  tests/cc1/c41_propiedad_receptor_struct/{c41_propiedad_receptor_struct.nsproj,Main.ns}
+  tests/cc1/c42_move_constructor_owned/{c42_move_constructor_owned.nsproj,Main.ns}
+  tests/cc1/c43_igualdad_de_structs/{c43_igualdad_de_structs.nsproj,Main.ns}
+  mkdown/120_limit_008_010_004.md
+  mkdown/STAGE_LIMIT_008_010_004_CHANGED_FILES.txt
+
+VERIFICACION EN EL CONTENEDOR
+  - las cinco unidades tocadas compilan sin avisos con -Wall -Wextra
+  - barrido completo: 188 OK / 5 FAIL en --stage=llvm y en --stage=bodies (linea base 185 OK;
+    las tres que suben son las fixtures nuevas). Los 5 son los negativos intencionados.
+  - opt -passes=verify de LLVM 18 acepta el modulo de c43
+  - IR de c41: getter llamado una vez, struct pequenio en registro, struct de 24 bytes por
+    sret, y un campo struct SIN temporal adicional
+  - IR de c43: 51 comparaciones de hoja y CERO icmp sobre agregados
+  - rojo previo reproducido y medido para 008 y 010 revirtiendo el cambio y recompilando
+  - los negativos de 010 y de 004 comprobados fuera de fixture, con su mensaje exacto
+
+NO VERIFICADO AQUI
+  - el codigo de salida 42 en ejecucion: el contenedor no enlaza ni ejecuta PE
+  - los tests unitarios de ctest: necesitan el build completo de nsc
+
+NO HECHOS EN ESTA ENTREGA
+  NSC-LIMIT-005  el area (LlvmOptimizer/LlvmTargetMachine/LlvmCApi) fue modificada en el arbol
+                 durante la sesion; escribir encima habria chocado. Ademas el arnes no la
+                 compila: LLVMRunPassesOnFunction no existe en la API C de LLVM 18.
+  NSC-LIMIT-007  AST + parser en cuatro posiciones + modelo + fase semantica nueva.
+                 Parser.cpp y Lexer.cpp tambien se movieron durante la sesion.
+  NSC-LIMIT-009  el mas caro: parser, siembra, lookup con cadena de contenedores,
+                 accesibilidad y mangling.
+
+=====================================================================================
+SEGUNDA VUELTA -- 2026-09-04, tras revision externa
+=====================================================================================
+
+CUATRO DEFECTOS CORREGIDOS
+  P1  accessorGetterBinding ignoraba isIndexerAccessor, que es una bandera DISTINTA de
+      isPropertyAccessor. `obj[i].MetodoDeStruct()` seguia exactamente igual de roto.
+      Rojo previo medido: "Stage 38 indexers are semantic accessor calls and are not
+      directly addressable".
+
+  P1  un owner RECIEN CREADO no podia alimentar un parametro `owned`:
+      `new Caja(new Carga(7))` era inviable, y tambien lo era en una llamada ORDINARIA.
+      classifyOwnershipArgument gana un tercer estado (ownershipFreshOwner) que
+      ObjectCreationExpression marca. El cambio es estrictamente aditivo: solo convierte
+      rechazos en aceptaciones, y solo para parametros `owned`.
+      De paso, el re-chequeo de diagnostico deja su propia copia de la regla -- eran tres.
+
+  P2  this(...)/base(...) calculaba ownershipFits y emitia el mensaje generico. La
+      explicacion se extrajo a ProjectConstructionModel::explainOwnershipRejection, que
+      usan los dos caminos.
+
+  P1  tres fixtures afirmaban en comentarios cosas que su codigo no hacia:
+        c41 decia "campo struct" y usaba una variable LOCAL
+        c42 decia "la fuente quedo moved-from" y nunca volvia a usar la fuente
+        c43 decia "el relleno se escribe distinto" y solo asignaba campos
+      Corregidas: c41 gana el campo y el indexador, c42 gana el owner recien creado y
+      dice lo que mide, c43 corrige el comentario (el relleno no es direccionable en
+      NativeSharp; que se ignora se demuestra contando hojas en el IR).
+
+MODIFICADOS EN LA SEGUNDA VUELTA
+  src/Frontend/ProjectOopHirModel.cpp                      indexadores
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h    ownershipFreshOwner, firma del helper
+  src/Frontend/ProjectMethodBodyModel.cpp                  tercer estado, marcado en new,
+                                                           tercera copia de la regla eliminada
+  include/nativesharp/Frontend/ProjectConstructionModel.h  explainOwnershipRejection
+  src/Frontend/ProjectConstructionModel.cpp                explicador compartido
+  tests/cc1/c41_propiedad_receptor_struct/Main.ns          campo + indexador
+  tests/cc1/c42_move_constructor_owned/Main.ns             owner recien creado + comentario honesto
+  tests/cc1/c43_igualdad_de_structs/Main.ns                comentario honesto
+  tests/unit/Cc1CorrectnessTests.cpp                       SIETE rechazos nuevos, detras del
+                                                           guardia de --rest
+  mkdown/120_limit_008_010_004.md                          seccion 7
+
+VERIFICACION
+  - las tres unidades tocadas compilan sin avisos con -Wall -Wextra
+  - barrido: 188 OK / 5 FAIL en --stage=llvm y --stage=bodies, sin cambio
+  - IR de c41: propiedad e indexador con temporal; campo y local con su propia direccion
+  - rojo previo medido para el indexador y para el owner recien creado
+  - los siete rechazos comprobados contra su mensaje, no solo contra el fallo
+
+=====================================================================================
+TERCERA VUELTA -- 2026-09-04, misma revision
+=====================================================================================
+
+Ningun defecto nuevo de implementacion. Dos huecos de prueba.
+
+  P1  LA EXCLUSION DEL PADDING SE AFIRMABA Y NO SE DEMOSTRABA. El relleno no es
+      direccionable desde NativeSharp, asi que ningun programa distingue "compara las
+      hojas declaradas" de "compara los dieciseis bytes": los dos dan la misma respuesta.
+      Lo unico que las separa es la forma del IR.
+
+      Prueba nueva cc1-limit004-padding-en-el-ir: exactamente dos hojas, offsets 0 y 8 y
+      ningun otro, una icmp por hoja, ningun icmp sobre el agregado, ningun memcmp, y el
+      carrier cargado solo las dos veces de copiar los operandos.
+
+      Con control de sensibilidad, que es lo que la separa de otra afirmacion: tres
+      structs de LOS MISMOS 16 BYTES con 2, 3 y 2 campos declarados dan 2, 3 y 2 hojas.
+      Una implementacion que comparase el carrier daria la misma forma para los tres.
+
+      Las aserciones se recortan a la funcion (sliceFunction nuevo). lowerToLlvmText
+      devuelve el modulo entero con el runtime dentro, donde hay decenas de structs de
+      dieciseis bytes: la primera version de la asercion contaba 73 donde esperaba 2.
+
+  P2  base(...) SIN COBERTURA DE PROPIEDAD. Comparte implementacion con this(...) pero no
+      comparte la accesibilidad del candidato, que se calcula distinto para cada uno.
+      Positivo base(move(entrante)) en c42 (codigo 15) y rechazo base(entrante).
+
+MODIFICADOS EN LA TERCERA VUELTA
+  tests/unit/Cc1CorrectnessTests.cpp    sliceFunction, prueba de IR del padding con su
+                                        control de sensibilidad, rechazo de base()
+  tests/cc1/c42_move_constructor_owned/Main.ns   CajaBase/CajaDerivada y codigo 15
+  mkdown/120_limit_008_010_004.md       seccion 7.5
+
+VERIFICACION
+  - las siete aserciones de la prueba de padding comprobadas una a una contra el IR real
+    que emite el compilador, recortado a la funcion
+  - la tabla de sensibilidad (2/3/2 hojas en 16 bytes) medida, no supuesta
+  - sliceFunction compilado y ejercitado aparte: devuelve una sola funcion y no invade la
+    siguiente
+  - el mensaje del rechazo de base() comprobado, no solo el hecho de fallar
+  - c42 con base(move(...)) compila; barrido 188 OK / 5 FAIL sin cambio
+  - llaves, parentesis y corchetes del .cpp de pruebas cuadran fuera de literales
+
+=====================================================================================
+CUARTA VUELTA -- 2026-09-04, misma revision
+=====================================================================================
+
+  P1  LA PRUEBA DE PADDING BUSCABA UNA FUNCION INEXISTENTE.
+      sliceFunction(text, "padir_P__Iguales") -- `padir` era el namespace de un programa
+      de scratch; el que la prueba compila declara `limit004pad`. Las dos funciones de
+      control, anadidas despues, si usaban el prefijo correcto.
+
+      LO GRAVE NO ES EL ROJO. Con `cuerpo` vacio, las tres aserciones de AUSENCIA
+      --find("icmp eq [") == npos y companeras, las que defienden el contrato-- PASAN
+      solas. Verde falso entre los rojos.
+
+      Corregido el nombre y endurecida la guarda: si no encuentra la funcion, la prueba
+      para en vez de seguir midiendo sobre el vacio.
+
+      CAUSA: las siete aserciones se validaron contra el IR del scratch, no contra el del
+      fuente que la prueba lleva dentro.
+
+VERIFICACION, rehecha como debio hacerse
+  - el fuente .ns y los fragmentos de sliceFunction se EXTRAEN del propio fichero de
+    pruebas, se compilan con el arnes, y las catorce aserciones se evaluan contra ese IR:
+    14 OK, 0 fallos
+  - demostrado que con el fragmento equivocado tres aserciones pasan sobre cadena vacia
+  - barrido 188 OK / 5 FAIL sin cambio
+  - llaves y parentesis cuadran fuera de literales

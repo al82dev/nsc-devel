@@ -1994,21 +1994,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(receiver));
                 return node;
             }
-            const MethodCallBinding* accessorCall = callBinding(expression);
-            if (accessorCall != nullptr && accessorCall->resolution == MethodCallResolutionKind::Resolved &&
-                accessorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
-                *accessorCall->selectedMemberOrdinal < memberModel_->members().size())
+            // NSC-LIMIT-008: la misma pregunta que hace isNaturallyAddressable, hecha una sola
+            // vez. Antes estaba escrita aqui a mano y alli no se hacia, y esa discrepancia era el
+            // defecto: un getter se clasificaba como direccionable y lowerReceiver no le hacia
+            // temporal.
+            if (const MethodCallBinding* accessorCall = accessorGetterBinding(expression);
+                accessorCall != nullptr)
             {
-                const ClassMemberSymbol& selected = memberModel_->members()[*accessorCall->selectedMemberOrdinal];
-                if (selected.isPropertyAccessor && selected.isGetter)
+                if (addressContext)
                 {
-                    if (addressContext)
-                    {
-                        error = "Stage 38 properties are semantic accessor calls and are not addressable";
-                        return nullptr;
-                    }
-                    return lowerResolvedCall(accessorCall, {});
+                    error = "Stage 38 properties are semantic accessor calls and are not addressable";
+                    return nullptr;
                 }
+                return lowerResolvedCall(accessorCall, {});
             }
             if (currentLambda_ != nullptr)
             {
@@ -2371,6 +2369,53 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         case ast::AstNodeKind::BinaryExpression:
         {
             const MethodCoreBinding* stringCore = coreBinding(expression);
+            // NSC-LIMIT-004. `a == b` y `a != b` sobre dos structs. El modelo semantico registro
+            // un `StructEquals` sobre el propio BinaryExpression, asi que aqui se construye el
+            // MISMO nodo que produce `a.Equals(b)` -- no hay una segunda semantica de igualdad de
+            // agregados, solo dos formas de escribirla. La clase del nodo de sintaxis es lo que
+            // las distingue: alli es una CallExpression, aqui un BinaryExpression.
+            //
+            // Para `!=` se envuelve la igualdad en el `Unary`/`Bang` que ya existe, en vez de
+            // dar al nodo de agregados un modo negado propio: negar un bool es una instruccion, y
+            // un segundo modo seria un segundo sitio donde la regla puede discrepar.
+            if (stringCore != nullptr && stringCore->kind == MethodCoreOperationKind::StructEquals)
+            {
+                if (addressContext)
+                {
+                    error = "C8 struct comparison result is not addressable";
+                    return nullptr;
+                }
+                auto node = makeNode(
+                    ProjectOopHirNodeKind::AggregateEquals, expression, stringCore->resultTypeKey);
+                node->elementTypeKey = stringCore->elementTypeKey;
+                auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (left == nullptr) return nullptr;
+                auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
+                if (right == nullptr) return nullptr;
+                node->children.push_back(std::move(left));
+                node->children.push_back(std::move(right));
+                node->argumentCount = node->children.size();
+                if (!appendAggregateLeaves(
+                        stringCore->elementTypeKey, 0, expression, node->children, error))
+                {
+                    return nullptr;
+                }
+                if (node->children.size() == node->argumentCount)
+                {
+                    error = "C8 struct '" + stringCore->elementTypeKey +
+                        "' has no fields to compare";
+                    return nullptr;
+                }
+                if (expression->tokenKind() == lexer::TokenKind::BangEqual)
+                {
+                    auto negated = makeNode(
+                        ProjectOopHirNodeKind::Unary, expression, stringCore->resultTypeKey);
+                    negated->operation = lexer::TokenKind::Bang;
+                    negated->children.push_back(std::move(node));
+                    return negated;
+                }
+                return node;
+            }
             if (stringCore != nullptr &&
                 (stringCore->kind == MethodCoreOperationKind::StringConcat ||
                  stringCore->kind == MethodCoreOperationKind::StringEquals))
@@ -4083,10 +4128,63 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     }
 }
 
+// NSC-LIMIT-008. Is this name actually a GETTER CALL?
+//
+// `source.Current` and `table[key]` are written like storage and parse like storage, but if the
+// semantic model bound them to a property or indexer accessor they are calls: they RETURN a value,
+// and that value has no home. Syntax cannot tell the two apart -- `point.X` is a field on one type
+// and a property on another, and the difference is only known after member resolution.
+//
+// Two places need this answer and they used to disagree. lowerExpression asked it (the
+// MemberExpression case, which rejects `addressContext` for a getter) while isNaturallyAddressable
+// did not, and answered `true` for every MemberExpression. That disagreement is the whole defect:
+// `source.Current.Read()` classified the getter as addressable, so lowerReceiver never entered its
+// TemporaryAddress path and the struct method received the address of something that was never
+// stored.
+const MethodCallBinding* ProjectOopHirModel::accessorGetterBinding(
+    const ast::AstNode* expression) const noexcept
+{
+    if (expression == nullptr || memberModel_ == nullptr) return nullptr;
+    switch (expression->kind())
+    {
+        // The three spellings a getter can wear. `Current` unqualified inside its own class is an
+        // IdentifierExpression, `source.Current` a MemberExpression, `table[key]` an
+        // IndexExpression -- and all three are calls once the model has resolved them.
+        case ast::AstNodeKind::IdentifierExpression:
+        case ast::AstNodeKind::MemberExpression:
+        case ast::AstNodeKind::IndexExpression:
+            break;
+        default:
+            return nullptr;
+    }
+    const MethodCallBinding* accessorCall = callBinding(expression);
+    if (accessorCall == nullptr ||
+        accessorCall->resolution != MethodCallResolutionKind::Resolved ||
+        !accessorCall->selectedMemberOrdinal.has_value() ||
+        *accessorCall->selectedMemberOrdinal >= memberModel_->members().size())
+    {
+        // No binding at all is the ORDINARY case, not an error: a real field, a real array element
+        // and a real fixed-array element never produce one. They keep their own address.
+        return nullptr;
+    }
+    const ClassMemberSymbol& selected = memberModel_->members()[*accessorCall->selectedMemberOrdinal];
+    // PROPIEDAD *O* INDEXADOR. `isIndexerAccessor` es una bandera distinta de `isPropertyAccessor`,
+    // no un caso suyo, y mirar solo la primera dejaba fuera `obj[i].MetodoDeStruct()`: el
+    // IndexExpression entraba por el switch de arriba, resolvia a un getter de indexador, y este
+    // filtro lo dejaba pasar como si fuera almacenamiento. Exactamente el mismo defecto que este
+    // ID cierra, en la otra mitad de la sintaxis.
+    if (!selected.isPropertyAccessor && !selected.isIndexerAccessor) return nullptr;
+    if (!selected.isGetter) return nullptr;
+    return accessorCall;
+}
+
 // C6 "struct members": does this expression denote storage that already exists? An identifier, a
 // field of one, an element of one, and a dereference all do -- and a parenthesized form of any of
 // them does too. A call, an operator, a conversion or a `new` does not: its result is a value with
 // no home. Only the second group needs a temporary made for it.
+//
+// NSC-LIMIT-008 added the one case where syntax lies: a property or indexer getter is written like
+// a field or an element and is a call. See accessorGetterBinding.
 bool ProjectOopHirModel::isNaturallyAddressable(const ast::AstNode* expression) const noexcept
 {
     if (expression == nullptr) return false;
@@ -4095,6 +4193,8 @@ bool ProjectOopHirModel::isNaturallyAddressable(const ast::AstNode* expression) 
         case ast::AstNodeKind::IdentifierExpression:
         case ast::AstNodeKind::MemberExpression:
         case ast::AstNodeKind::IndexExpression:
+            // A real field or a real element: storage. An accessor: a returned value with no home.
+            return accessorGetterBinding(expression) == nullptr;
         case ast::AstNodeKind::ThisExpression:
         case ast::AstNodeKind::BaseExpression:
             return true;

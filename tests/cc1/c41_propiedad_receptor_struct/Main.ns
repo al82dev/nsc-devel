@@ -1,0 +1,138 @@
+// NSC-LIMIT-008 -- metodo de struct invocado sobre el valor devuelto por una PROPIEDAD.
+//
+// LO QUE FALLABA. `f.Actual.Leer()`, con `Actual` un getter que devuelve un struct por valor, se
+// rechazaba con «Stage 38 properties are semantic accessor calls and are not addressable». No era
+// una regla del lenguaje: era una clasificacion equivocada. `isNaturallyAddressable` devolvia
+// `true` para TODA `MemberExpression`, propiedades incluidas, asi que `lowerReceiver` creia que el
+// receptor ya tenia direccion y nunca entraba en su camino `TemporaryAddress` -- el mismo camino
+// que ya funcionaba para `(a + b).x` y `Cross(u, v).z` desde C6.
+//
+// LA SEMANTICA QUE ESTA FIXTURE FIJA, y que es la que el compilador ya habia elegido para un
+// temporal: se copia el valor, se muta la copia, y la copia se descarta. `f.Actual.Subir()`
+// compila y no cambia nada. Es lo mismo que hace C# con una propiedad que devuelve un struct, y
+// es la unica respuesta honesta: la propiedad no es almacenamiento, asi que no hay donde escribir.
+//
+// LO QUE SE MIDE, y el orden importa:
+//
+//   10-11  el caso del reporte -- struct pequenio, y el getter llamado EXACTAMENTE UNA VEZ.
+//          El contador va aparte del valor a proposito: bajar el receptor dos veces daria el
+//          valor correcto y llamaria al getter dos veces, y eso es un defecto que un `!= 7`
+//          no ve.
+//   12-13  struct MAYOR de ocho bytes, que viaja por sret. Es otro camino de ABI, no el mismo
+//          con otro tamanio.
+//   14-16  metodo MUTANTE sobre el temporal: compila, consume una llamada al getter, y el
+//          objeto de origen NO cambia.
+//   17-18  INDEXADOR que devuelve struct. `isIndexerAccessor` es una bandera DISTINTA de
+//          `isPropertyAccessor`, no un caso suyo: la primera version del arreglo miraba solo la
+//          segunda y dejaba `obj[i].Metodo()` exactamente igual de roto. Sin este caso, esa
+//          mitad del defecto se habria dado por cerrada sin tocarla.
+//   19-20  LOS DOS CASOS QUE NO DEBEN RECIBIR TEMPORAL, y son los que impiden «arreglarlo»
+//          dandoselo a todo: un CAMPO struct --que es una MemberExpression, la misma clase de
+//          sintaxis que el getter, y por tanto el unico control real de que la distincion no se
+//          hace por la forma sino por lo que resolvio-- y una variable local. Con temporal para
+//          todos, esta fixture pasaria igual y cada llamada a metodo de struct del proyecto
+//          llevaria una copia de mas.
+//   42     todo correcto.
+using NativeSharp.Core;
+
+namespace c41propiedadreceptorstruct
+{
+    public struct Lector
+    {
+        public int valor;
+        public int Leer() { return valor; }
+        public void Subir() { valor = valor + 1; }
+    }
+
+    // Veinticuatro bytes: por encima del umbral de ocho, asi que el getter devuelve por `sret` y
+    // el receptor del metodo es la direccion de esa ranura, no un entero en un registro.
+    public struct Grande
+    {
+        public long a;
+        public long b;
+        public long c;
+        public long Suma() { return a + b + c; }
+    }
+
+    public class Fuente
+    {
+        private Lector actual;
+        private Grande grande;
+        private Lector[] tabla;
+        // PUBLICO y struct: `f.campo.Leer()` es una MemberExpression igual que `f.Actual.Leer()`,
+        // y tiene que resolverse al reves. Es el control de que la distincion no la hace la forma
+        // de la sintaxis.
+        public Lector campo;
+        public int llamadas;
+
+        public Fuente()
+        {
+            actual.valor = 7;
+            campo.valor = 13;
+            tabla = new Lector[2];
+            tabla[0].valor = 21;
+            tabla[1].valor = 22;
+            grande.a = 1;
+            grande.b = 2;
+            grande.c = 3;
+            llamadas = 0;
+        }
+
+        // El contador esta DENTRO del getter y no fuera: es la unica forma de contar llamadas
+        // reales al accesor en vez de contar veces que el codigo fuente lo menciona.
+        public Lector Actual
+        {
+            get { llamadas = llamadas + 1; return actual; }
+        }
+
+        public Grande Gorda
+        {
+            get { llamadas = llamadas + 1; return grande; }
+        }
+
+        // El indexador cuenta en el MISMO contador: asi el numero total dice cuantas veces se
+        // llamo a un accesor, sea propiedad o indexador.
+        public Lector this[int index]
+        {
+            get { llamadas = llamadas + 1; return tabla[index]; }
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Fuente f = new Fuente();
+
+            if (f.Actual.Leer() != 7) { return 10; }
+            if (f.llamadas != 1) { return 11; }
+
+            if (f.Gorda.Suma() != 6) { return 12; }
+            if (f.llamadas != 2) { return 13; }
+
+            // Muta la COPIA. Que compile ya es la mitad del arreglo; que no cambie el origen es
+            // la otra mitad, y se comprueba en la linea siguiente leyendo otra vez.
+            f.Actual.Subir();
+            if (f.llamadas != 3) { return 14; }
+            if (f.Actual.Leer() != 7) { return 15; }
+            if (f.llamadas != 4) { return 16; }
+
+            // INDEXADOR que devuelve struct por valor. Misma historia que la propiedad, otra
+            // bandera en el modelo de miembros.
+            if (f[0].Leer() != 21) { return 17; }
+            if (f.llamadas != 5) { return 18; }
+
+            // Y los dos que NO deben recibir temporal. El campo es una MemberExpression, igual
+            // que el getter: si la distincion se hiciera por la forma de la sintaxis y no por lo
+            // que resolvio, este caso se rompia.
+            if (f.campo.Leer() != 13) { return 19; }
+            if (f.llamadas != 5) { return 20; }
+
+            Lector local;
+            local.valor = 5;
+            if (local.Leer() != 5) { return 21; }
+
+            return 42;
+        }
+    }
+}
