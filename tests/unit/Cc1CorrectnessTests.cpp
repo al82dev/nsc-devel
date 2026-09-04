@@ -668,13 +668,13 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c38_enum_ancho/c38_enum_ancho.nsproj",
         "cc1-c38-enum-ancho", 42);
 
-    // `ToString()` sobre enums estrechos -- LA FRONTERA DE UN BUG VIVO.
+    // `ToString()` sobre enums estrechos -- LA FRONTERA DE LA REGRESION b9.
     //
     // El 2026-09-03, c38 devolvio 42 a -O0 y 39 a -O2 al pedir el nombre de un `enum : sbyte` con
     // valor NEGATIVO. La corrida de triage de las 18:29 demostro despues que basta un receptor
     // CONSTANTE: no hace falta ninguna funcion de por medio, y queda descartada la ABI del retorno
-    // de ocho bits. Ese caso esta aislado en tests/bug_triage/b9_enum_estrecho_o2 y NO se repite
-    // aqui.
+    // de ocho bits. b9 lo fija promoviendo el patron estrecho a i64 antes del switch de EnumName;
+    // ese caso esta aislado en tests/bug_triage/b9_enum_estrecho_o2 y NO se repite aqui.
     //
     // Esta fixture mide sus vecinos inmediatos --los otros tres anchos, el mismo `sbyte` con
     // valores positivos, y el receptor constante, por local, por funcion y no plegable-- que hoy

@@ -6617,10 +6617,11 @@ private:
     // FORMA DEL NODO: children[0] el valor, children[1] la cadena de reserva (el nombre del tipo),
     // y de ahi en adelante PARES (constante, nombre) en orden de declaracion.
     //
-    // SE BAJA A UN `switch` CON UN `phi`, que es exactamente la forma a la que baja un `switch`
-    // del lenguaje sobre ese mismo enum:
+    // SE BAJA A UN `switch` CON UN `phi`. La clave del switch es el PATRON DE BITS promovido sin
+    // signo a i64, no el entero estrecho original:
     //
-    //     switch <valor>, label %reserva [ K1, label %n1  K2, label %n2 ... ]
+    //     %bits = zext i8 <valor> to i64
+    //     switch i64 %bits, label %reserva [ i64 K1, label %n1  i64 K2, label %n2 ... ]
     //     %resultado = phi ptr [ S1, %n1 ], [ S2, %n2 ], ..., [ <reserva>, %reserva ]
     //
     // POR QUE NO ES UNA CADENA DE `select`, QUE ES LO QUE ERA HASTA EL 2026-09-04. Lo era, y la
@@ -6641,16 +6642,13 @@ private:
     //   * `c38` codigos 37, 38 y 50-53 pasan: un `enum : byte` con 200 y 128 --que en i8 son -56
     //     y -128-- acierta con la cadena de `select`, y los alias tambien.
     //
-    // O sea: en el mismo fichero, al mismo nivel de optimizacion y con el mismo compilador, el
-    // mismo valor estrecho y negativo se compara BIEN dentro de un `switch` y MAL dentro de la
-    // cadena de `select`. Esa es la unica discriminacion que existe hoy, y por eso la bajada se
-    // mueve a la forma que la maquina que falla demuestra que funciona.
-    //
-    // ESTO NO ES UN DIAGNOSTICO Y NO HAY QUE LEERLO COMO TAL. No se sabe que transformacion de
-    // LLVM 23 rompe la cadena de `select` --no hay aqui con que ejecutar LLVM 23-- asi que esto
-    // es un RODEO apoyado en una medicion, no la reparacion de una causa identificada. Si algun
-    // dia se puede depurar contra LLVM 23, el sitio a mirar sigue siendo el plegado de una cadena
-    // de `select` sobre punteros gobernada por un `icmp` de 8 bits con una constante negativa.
+    // La primera correccion intento conservar `i8 -3` y cambiar solamente `select` por `switch`.
+    // b9 demostro que no bastaba: LLVMRunPasses de LLVM 23 plegaba TAMBIEN ese switch al bloque de
+    // reserva, aunque el IR impreso era correcto; el mismo IR serializado y pasado a opt.exe se
+    // plegaba bien. Normalizar ambos lados al patron i64 elimina de la decision del optimizador la
+    // unica forma conflictiva (una constante negativa estrecha) sin cambiar el valor observable
+    // ni el ABI del enum. La igualdad de enums depende de sus bits, y esos bits son precisamente
+    // los que ya se usan abajo para deduplicar aliases.
     //
     // LO QUE SE GANA DE PASO, y esto si es una mejora por si misma: EL ALIAS DEJA DE DEPENDER DEL
     // ORDEN DEL BUCLE. Un `switch` de LLVM no admite dos casos con el mismo valor --el
@@ -6679,8 +6677,7 @@ private:
         // de 64 bits sin enmascarar dejaria pasar un par que colisiona al truncar, y eso no seria
         // un nombre equivocado: seria un `switch` con dos casos iguales, o sea IR invalido.
         const std::string& receiverTypeKey = node->children[0]->typeKey;
-        LLVMTypeRef governingType = llvmType(receiverTypeKey, error);
-        if (governingType == nullptr) return nullptr;
+        if (llvmType(receiverTypeKey, error) == nullptr) return nullptr;
         const frontend::builtins::IntegerTypeInfo* receiverEnum =
             enumUnderlyingInfo(receiverTypeKey);
         const unsigned governingWidth =
@@ -6693,6 +6690,13 @@ private:
         const std::uint64_t mask = governingWidth >= 64
             ? ~std::uint64_t{0}
             : ((std::uint64_t{1} << governingWidth) - 1U);
+
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef governingBits = value;
+        if (governingWidth < 64)
+        {
+            governingBits = LLVMBuildZExt(builder_, value, i64, "enum.name.bits");
+        }
 
         // LOS PARES QUE SOBREVIVEN A LA DEDUPLICACION, en orden de declaracion. Se guarda el
         // indice del par y no el valor bajado porque las constantes y los nombres se bajan mas
@@ -6723,16 +6727,11 @@ private:
         LLVMBasicBlockRef joinBlock = appendBlock("enum.name.join");
 
         LLVMValueRef instruction =
-            LLVMBuildSwitch(builder_, value, fallbackBlock, static_cast<unsigned>(cases.size()));
+            LLVMBuildSwitch(
+                builder_, governingBits, fallbackBlock, static_cast<unsigned>(cases.size()));
         for (std::size_t index = 0; index < cases.size(); ++index)
         {
-            // La constante se BAJA, no se reconstruye: `lowerExpression` de un `IntegerConstant`
-            // ya devuelve el `LLVMConstInt` con el ancho y el patron correctos, y usar ese mismo
-            // valor garantiza que el caso del `switch` y lo que antes comparaba el `icmp` son
-            // bit a bit la misma constante.
-            LLVMValueRef constant =
-                lowerExpression(node->children[cases[index].second].get(), error);
-            if (constant == nullptr) return nullptr;
+            LLVMValueRef constant = LLVMConstInt(i64, cases[index].first, 0);
             LLVMAddCase(instruction, constant, caseBlocks[index]);
         }
 

@@ -1,4 +1,4 @@
-// b9 -- `ToString()` de un enum `sbyte` con valor NEGATIVO. BUG VIVO a -O2.
+// b9 -- `ToString()` de un enum `sbyte` con valor NEGATIVO. REGRESION de -O2.
 //
 // EL SINTOMA. El 2026-09-03, `tests/cc1/c38_enum_ancho` devolvio 42 a -O0 y 39 a -O2 en Windows.
 //
@@ -10,11 +10,9 @@
 //   * `c39` verde a -O2 excluye "un enum de un byte" y "un tipo subyacente con signo": `byte` con
 //     200 y 255 pasa, y `sbyte` con 2 y 127 pasa. Queda estrecho + con signo + NEGATIVO.
 //
-// Y NO SE PUEDE CULPAR A LLVM 23 TODAVIA. Que el compilador enlace LLVM 23 no demuestra que el
-// defecto sea suyo: puede estar aprovechando `poison` o IR invalido que genera el propio nsc.
-// Tampoco hay un error evidente antes del lowering -- ProjectOopHirModel construye bien los pares
-// (valor, nombre), ProjectOopMirModel los copia sin transformarlos, y el recorrido inverso de
-// ProjectOopLlvmLowerer conserva el primer nombre declarado cuando hay alias.
+// El modulo verificaba y su texto era correcto antes del pipeline. La captura hecha dentro de
+// nsc demostro que LLVMRunPasses de LLVM 23 plegaba el resultado a la reserva; el mismo texto
+// serializado y pasado a opt.exe elegia "MenosTres". No era el enlazador ni la emision del objeto.
 //
 // ------------------------------------------------------------------------------------------
 // POR QUE ESTA SONDA NO USA `MismosBytes` PARA DIAGNOSTICAR
@@ -57,23 +55,13 @@
 //   50-58      -> falla tambien en un vecino sin signo o positivo.
 //   42         -> no reproduce. Ningun otro camino devuelve 42.
 //
-// UN LIMITE QUE HAY QUE TENER PRESENTE AL LEER EL RESULTADO: ni siquiera un 61 demuestra por si
-// solo que el `icmp` contra -3 devolvio falso. Demuestra que el resultado FINAL es el literal de
-// reserva, y eso tambien podria salir de una transformacion incorrecta del `select`. El sitio a
-// mirar en el IR seria la cadena de `select` de ProjectOopLlvmLowerer, pero cambiarla con este
-// dato todavia seria un arreglo especulativo.
-//
 // LO QUE MIDIO LA CORRIDA DEL 2026-09-04: exit 61. O sea exactamente eso: el valor sigue siendo
 // -3, las cadenas se leen bien, y aun asi el nombre que sale es la reserva.
 //
-// Lo que rompio el empate NO fue este fichero, sino un vecino dentro de c38: su codigo 26 PASA, y
-// es un `switch` del lenguaje sobre el MISMO enum con el MISMO -3, que en el IR es
-// `switch i8 %v, [ i8 -3, ... ]`. Mismo fichero, mismo -O2, mismo compilador: el valor estrecho y
-// negativo se compara BIEN dentro de un `switch` y MAL dentro de la cadena de `select`. Con esa
-// discriminacion --y solo con ella-- la bajada de EnumName se movio a `switch` + `phi`. Sigue sin
-// ser un diagnostico: es un rodeo apoyado en una medicion. Ver mkdown/119, seccion 1.4.
-//
-// ESTE FICHERO SIGUE VIVO hasta que una corrida en Windows devuelva 42.
+// El primer rodeo (`switch i8` + `phi`) SIGUIO devolviendo 61. La correccion que si paso esta
+// sonda en Windows, tanto a -O0 como a -O2, promueve sin signo el patron estrecho antes de decidir:
+// `i8 -3` se compara como `i64 253`. No cambia el enum ni su ABI; solo elimina de EnumName la forma
+// que LLVM 23 plegaba de manera distinta dentro del proceso. Este fichero queda como regresion.
 using NativeSharp.Core;
 
 namespace b9enumestrechoo2
