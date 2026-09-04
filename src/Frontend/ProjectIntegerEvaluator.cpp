@@ -374,6 +374,7 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateMember(
 
     bool isEnumConstant = false;
     std::int64_t enumConstantValue = 0;
+    std::string enumUnderlyingKey;
     const ast::AstNode* initializer = nullptr;
     std::string declaredTypeKey;
     std::optional<std::size_t> memberDeclaringType;
@@ -381,6 +382,7 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateMember(
             *ordinal,
             isEnumConstant,
             enumConstantValue,
+            enumUnderlyingKey,
             initializer,
             declaredTypeKey,
             memberDeclaringType))
@@ -390,9 +392,15 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateMember(
 
     if (isEnumConstant)
     {
-        // Un miembro de enum baja a i32 con signo, igual que en el backend.
+        // UN MIEMBRO DE ENUM VALE LO QUE SU TIPO SUBYACENTE, no `builtin:int` siempre.
+        //
+        // Esta linea era la QUINTA copia de "un enum es un int con signo", y la que mas lejos
+        // llegaba sin que se notase: `normalize` trunca al ancho del tipo que se le da, asi que un
+        // enumerador de un `enum : ulong` con valor 2^64-1 salia de aqui valiendo -1, y ese -1 era
+        // lo que acababa en el IR. La regla esta en EnumUnderlyingType.h y la contesta ahora quien
+        // tiene la declaracion delante.
         ProjectIntegerValue value;
-        value.typeKey = "builtin:int";
+        value.typeKey = enumUnderlyingKey.empty() ? std::string("builtin:int") : enumUnderlyingKey;
         value.bits = normalize(static_cast<std::uint64_t>(enumConstantValue), value.typeKey);
         return value;
     }

@@ -110,6 +110,13 @@ private:
     // ID 132. `argumentCount` es cuantos argumentos de VALOR trae la llamada. Sirve para elegir
     // entre dos plantillas genericas con el mismo nombre y la misma aridad de TIPOS -- que antes
     // eran el mismo simbolo y daban "duplicate generic template identity".
+    // ID 132. Todas las plantillas visibles con ese nombre y esa aridad generica.
+    std::vector<TemplateState*> collectMethodTemplates(
+        const ProjectSyntaxUnit& unit,
+        std::string_view ownerName,
+        std::string_view methodName,
+        std::size_t arity);
+
     TemplateState* resolveMethodTemplate(
         const ProjectSyntaxUnit& unit,
         std::string_view ownerName,
@@ -124,7 +131,11 @@ private:
     std::string ensureMethodSpecialization(
         TemplateState& state,
         std::span<ast::TypeSyntax* const> arguments,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        // ID 132. Cuando varias plantillas comparten nombre y aridad generica, todas se
+        // especializan con ESTE nombre y se convierten en sobrecargas ordinarias. Vacio para el
+        // caso normal, donde el nombre lo deriva la propia clave.
+        std::string_view sharedName = {});
 
     ast::TypeSyntax* cloneType(
         ast::AstArena& arena,

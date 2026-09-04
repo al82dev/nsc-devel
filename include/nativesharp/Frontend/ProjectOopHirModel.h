@@ -120,6 +120,18 @@ enum class ProjectOopHirNodeKind
     ArrayElementAddress,
     StringLength,
     StringElementValue,
+    // ID 129. `ToString()` de un enum: el NOMBRE del enumerador.
+    //
+    // FORMA: children[0] es el VALOR del enum, children[1] la cadena de reserva (el nombre del
+    // tipo), y a partir de children[2] van PARES (constante entera, literal de cadena), uno por
+    // enumerador, en orden de declaracion.
+    //
+    // POR QUE UN NODO Y NO UNA CADENA DE CONDICIONALES, que es como se hizo primero: aquella
+    // bajaba el RECEPTOR UNA VEZ POR ENUMERADOR, asi que un receptor con efectos --`Dame()`--
+    // los repetia. Se rodeaba exigiendo un receptor re-evaluable y rechazando el resto, que es
+    // una limitacion del compilador disfrazada de regla del lenguaje. Con un nodo, el valor se
+    // baja UNA VEZ y la eleccion es una cadena de `select` sin saltos.
+    EnumName,
     StringConcat,
     StringEquals,
     StringSubstring,

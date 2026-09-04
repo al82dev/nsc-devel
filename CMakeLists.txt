@@ -790,6 +790,24 @@ if(NSC_BUILD_TESTS)
     # lista en este proyecto, y las cuatro anteriores costaron un documento cada una: la tabla de
     # imports (docs 102/103), las tablas de enteros (112), las cadenas del HIR (106) y las dos
     # tablas de casos (115). Anadir una fixture sigue siendo UNA linea, en el .cpp, como siempre.
+    #
+    # DOS FORMAS DE QUEDARSE OBSOLETA, Y LAS DOS ESTAN CERRADAS ABAJO:
+    #
+    #   1. La lista se lee en tiempo de CONFIGURE. Sin declarar el .cpp como dependencia del
+    #      configure, anadir una fixture y compilar NO registraria su prueba -- la corrida saldria
+    #      verde midiendo una fixture menos, que es la peor forma de fallar que tiene una suite.
+    #      CMAKE_CONFIGURE_DEPENDS lo arregla: tocar el fichero vuelve a correr el configure.
+    #   2. El umbral era `LESS 30`, un numero escrito a mano cuando habia treinta y seis fixtures.
+    #      Un suelo fijo ENVEJECE: con treinta y ocho en el arbol, un regex roto que reconociera
+    #      treinta y una pasaria el guardia y se perderian siete sin decir nada.
+    #
+    # EL GUARDIA COMPARA CONTRA EL DIRECTORIO, que es la unica fuente de verdad que no se puede
+    # olvidar de actualizar: TODA carpeta de tests/cc1 con un .nsproj tiene que tener su prueba
+    # registrada. Esto no envejece, y ademas caza el fallo que de verdad ocurrio dos veces el
+    # 2026-09-03 -- una fixture escrita y nunca inscrita (c37), que no es un regex roto sino un
+    # olvido, y que un suelo numerico no habria detectado jamas.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/Cc1CorrectnessTests.cpp")
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/Cc1CorrectnessTests.cpp" _cc1_source)
     string(REGEX MATCHALL "checkFixture\\([^;]*;" _cc1_calls "${_cc1_source}")
     set(_cc1_labels "")
@@ -800,13 +818,40 @@ if(NSC_BUILD_TESTS)
     endforeach()
     list(REMOVE_DUPLICATES _cc1_labels)
     list(LENGTH _cc1_labels _cc1_count)
-    if(_cc1_count LESS 30)
+
+    # `c38_enum_ancho/c38_enum_ancho.nsproj` -> `cc1-c38-enum-ancho`.
+    #
+    # CONFIGURE_DEPENDS NO ES OPCIONAL AQUI. Un `file(GLOB)` normal se evalua UNA VEZ, en el
+    # configure, y despues nada vuelve a mirar el directorio: crear una fixture nueva no despertaria
+    # al guardia hasta que otra cosa provocara un reconfigure. O sea que el guardia escrito para
+    # cazar "una fixture escrita y nunca inscrita" no habria visto precisamente el caso recien
+    # escrito -- que es el unico momento en que ese olvido ocurre. Con CONFIGURE_DEPENDS, cmake
+    # comprueba el glob en cada build y vuelve a configurar si cambio.
+    file(GLOB _cc1_projects CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/cc1/*/*.nsproj")
+    set(_cc1_missing "")
+    set(_cc1_fixture_count 0)
+    foreach(_cc1_project IN LISTS _cc1_projects)
+        get_filename_component(_cc1_dir "${_cc1_project}" DIRECTORY)
+        get_filename_component(_cc1_dir "${_cc1_dir}" NAME)
+        string(REPLACE "_" "-" _cc1_dir "${_cc1_dir}")
+        math(EXPR _cc1_fixture_count "${_cc1_fixture_count} + 1")
+        if(NOT "cc1-${_cc1_dir}" IN_LIST _cc1_labels)
+            list(APPEND _cc1_missing "cc1-${_cc1_dir}")
+        endif()
+    endforeach()
+    if(_cc1_missing)
+        message(FATAL_ERROR
+            "tests/cc1 tiene fixtures que Cc1CorrectnessTests.cpp no registra: ${_cc1_missing}. "
+            "Una fixture escrita y no inscrita no mide nada, y la corrida sale verde igual")
+    endif()
+    if(_cc1_count LESS _cc1_fixture_count)
         # Si el regex deja de encontrar las llamadas --porque alguien cambio la forma de
         # checkFixture-- esto NO puede quedarse en silencio registrando tres pruebas: seria una
         # corrida verde que mide una decima parte. Se para el configure.
         message(FATAL_ERROR
-            "Cc1CorrectnessTests.cpp: solo se reconocieron ${_cc1_count} fixtures; el patron de "
-            "checkFixture cambio y esta lista dejaria de medir el corpus entero")
+            "Cc1CorrectnessTests.cpp: solo se reconocieron ${_cc1_count} etiquetas para "
+            "${_cc1_fixture_count} fixtures en el arbol; el patron de checkFixture cambio y esta "
+            "lista dejaria de medir el corpus entero")
     endif()
     foreach(_cc1_label IN LISTS _cc1_labels)
         add_test(NAME nsc.cc1.correctness.${_cc1_label}

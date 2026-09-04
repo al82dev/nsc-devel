@@ -1,0 +1,256 @@
+// El TIPO SUBYACENTE de un enum, medido: tamano, signo, layout y flujo de control.
+//
+// QUE MIDE Y POR QUE. Hasta el 2026-09-03 todo enum de NativeSharp media CUATRO BYTES y se trataba
+// como con signo, en cuatro sitios distintos que decian lo mismo por separado. Traducir un header
+// de C con `enum : uint8_t` dentro de una struct producia entonces un layout SILENCIOSAMENTE
+// EQUIVOCADO: el campo ocupaba cuatro bytes donde C pone uno, y todo lo que iba detras se
+// desplazaba. Eso no es una carencia de expresividad, es una RESPUESTA FALSA.
+//
+// Ahora el autor puede escribir `enum E : byte`, y las cuatro respuestas --el tamano en el modelo
+// de layout, el tipo LLVM, el signo de las extensiones y el signo de las constantes de `case`--
+// salen de una sola regla (include/nativesharp/Frontend/EnumUnderlyingType.h). Esta fixture existe
+// para comprobar que las cuatro coinciden, porque el modo en que fallarian si no coincidieran es
+// callado.
+//
+// LA COMPROBACION MAS DURA es la de `size(N)`: el tamano de la struct no lo escribe esta fixture,
+// lo verifica el compilador contra el layout que el mismo calcula, y los numeros salieron de lo
+// que clang pone para el equivalente en C. Si un enum midiera de mas, la declaracion no compilaria.
+//
+// EL SIGNO SE MIDE CON VALORES QUE LO DELATAN. 200 en un `byte` extendido con signo daria -56; -3
+// en un `sbyte` extendido sin signo daria 253. Los dos casos estan aqui, y en las dos direcciones
+// que importan: la conversion explicita y la comparacion de un `switch`.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+
+namespace cc1enumancho
+{
+    // Sin `: tipo` es `int`, que es lo que hacia antes y lo que hace C por omision. Nada de lo
+    // escrito hasta hoy cambia de tamano: esta es la comprobacion de que no hubo regresion.
+    public enum Normal { Cero = 0, Uno = 1, Grande = 100000 }
+
+    // Un byte sin signo. 200 no cabe en un `sbyte` y es justo el valor que delata una extension
+    // con signo equivocada.
+    public enum SinSigno : byte { Bajo = 0, Alto = 200, Medio = 128 }
+
+    // Un byte CON signo. -3 delata una extension sin signo equivocada.
+    public enum ConSigno : sbyte { MenosTres = -3, Cero = 0, Tope = 127 }
+
+    public enum Dos : ushort { Cero = 0, Alto = 60000 }
+
+    public enum Ocho : long { Cero = 0, Enorme = 5000000000 }
+
+    // LOS DOS EXTREMOS DEL RANGO DE 64 BITS, y estan aqui porque NO CABEN EN EL MISMO TIPO DE C++:
+    // el minimo de `long` es -2^63 y el maximo de `ulong` es 2^64-1. El modelo llevaba el valor de
+    // un enumerador en un `int64_t`, asi que 2^64-1 se veia como -1 y se rechazaba una constante
+    // legal. Ahora se lleva como (magnitud, signo) y los dos extremos se comprueban exactamente.
+    public enum Tope : ulong { Cero = 0, Max = 18446744073709551615 }
+    public enum Suelo : long { Min = -9223372036854775808, Cero = 0 }
+
+    // ALIAS: dos nombres con el mismo valor. Gana EL PRIMERO DECLARADO. La cadena de `select` que
+    // el backend construye tiene que armarse al reves para que eso sea cierto -- construida en
+    // orden directo, el ultimo par queda mas afuera y gana `Segundo`.
+    public enum ConAlias : byte { Primero = 7, Segundo = 7, Otro = 9 }
+
+    // El campo de enum dentro de una struct: el caso que motivo todo esto. Los tamanos son los que
+    // clang da para las structs equivalentes en C con `enum : uint8_t` y compania.
+    public size(1) struct UnByte
+    {
+        public SinSigno Bandera;
+    }
+
+    // byte + relleno + ushort: el enum de dos bytes obliga a alinear a dos.
+    public size(4) struct MezclaCorta
+    {
+        public SinSigno Bandera;
+        public Dos Codigo;
+    }
+
+    // long + int + relleno de cuatro.
+    public size(16) struct MezclaLarga
+    {
+        public Ocho Grande;
+        public Normal Normal;
+    }
+
+    public class Program
+    {
+        // Un valor que el compilador no puede plegar, para que las conversiones se hagan de verdad
+        // en tiempo de ejecucion y no salgan de una constante del modulo.
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return valor + (cuantos - cuantos);
+        }
+
+        private static SinSigno OpacoSinSigno(SinSigno valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return SinSigno.Bajo;
+        }
+
+        private static ConAlias OpacoAlias(ConAlias valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return ConAlias.Otro;
+        }
+
+        private static ConSigno OpacoConSigno(ConSigno valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return ConSigno.Cero;
+        }
+
+        // Un `switch` sobre un enum estrecho. El caso 200 solo acierta si la constante de `case` se
+        // emitio SIN signo, igual que el valor con el que se compara.
+        private static int Clasifica(SinSigno valor)
+        {
+            switch (valor)
+            {
+                case SinSigno.Bajo: return 10;
+                case SinSigno.Medio: return 20;
+                case SinSigno.Alto: return 30;
+            }
+            return 99;
+        }
+
+        private static int ClasificaConSigno(ConSigno valor)
+        {
+            switch (valor)
+            {
+                case ConSigno.MenosTres: return 11;
+                case ConSigno.Cero: return 21;
+                case ConSigno.Tope: return 31;
+            }
+            return 98;
+        }
+
+        public static int Main()
+        {
+            // -----------------------------------------------------------------------------
+            // 1. EL TAMANO. Es lo primero porque todo lo demas depende de el.
+            // -----------------------------------------------------------------------------
+            if (sizeof(Normal) != 4) { return 1; }
+            if (sizeof(SinSigno) != 1) { return 2; }
+            if (sizeof(ConSigno) != 1) { return 3; }
+            if (sizeof(Dos) != 2) { return 4; }
+            if (sizeof(Ocho) != 8) { return 5; }
+
+            // Y el tamano de las structs que los contienen. Las declaraciones `size(N)` de arriba
+            // ya lo verificaron en tiempo de compilacion; esto comprueba que `sizeof` en tiempo de
+            // ejecucion da lo mismo, o sea que el modelo de layout y el backend coinciden.
+            if (sizeof(UnByte) != 1) { return 6; }
+            if (sizeof(MezclaCorta) != 4) { return 7; }
+            if (sizeof(MezclaLarga) != 16) { return 8; }
+
+            // -----------------------------------------------------------------------------
+            // 2. EL SIGNO EN LA CONVERSION. 200 extendido con signo daria -56.
+            // -----------------------------------------------------------------------------
+            SinSigno alto = OpacoSinSigno(SinSigno.Alto);
+            if ((int)alto != 200) { return 9; }
+            if ((long)alto != 200) { return 10; }
+            if ((int)OpacoSinSigno(SinSigno.Medio) != 128) { return 11; }
+
+            // -3 extendido sin signo daria 253.
+            ConSigno menos = OpacoConSigno(ConSigno.MenosTres);
+            if ((int)menos != -3) { return 12; }
+            if ((long)menos != -3) { return 13; }
+            if ((int)OpacoConSigno(ConSigno.Tope) != 127) { return 14; }
+
+            // El ancho grande, en las dos direcciones: no se trunca al convertir a long, y al
+            // truncar a int se queda con los 32 bits de abajo.
+            if ((long)Ocho.Enorme != 5000000000) { return 15; }
+            if ((int)Dos.Alto != 60000) { return 16; }
+            if ((int)Normal.Grande != 100000) { return 17; }
+
+            // La direccion contraria: un entero convertido a enum estrecho.
+            SinSigno desdeEntero = (SinSigno)Opaco(200);
+            if (desdeEntero != SinSigno.Alto) { return 18; }
+            ConSigno negativo = (ConSigno)Opaco(-3);
+            if (negativo != ConSigno.MenosTres) { return 19; }
+
+            // -----------------------------------------------------------------------------
+            // 3. LA COMPARACION DIRECTA, sin pasar por un entero.
+            // -----------------------------------------------------------------------------
+            if (alto != SinSigno.Alto) { return 20; }
+            if (alto == SinSigno.Bajo) { return 21; }
+            if (menos != ConSigno.MenosTres) { return 22; }
+
+            // -----------------------------------------------------------------------------
+            // 4. EL SWITCH. Aqui es donde el signo de las constantes de `case` se mide: si la
+            //    constante 200 se emitiera con signo (-56) y el valor sin signo (200), ningun
+            //    `case` acertaria y la funcion caeria al 99.
+            // -----------------------------------------------------------------------------
+            if (Clasifica(OpacoSinSigno(SinSigno.Bajo)) != 10) { return 23; }
+            if (Clasifica(OpacoSinSigno(SinSigno.Medio)) != 20) { return 24; }
+            if (Clasifica(OpacoSinSigno(SinSigno.Alto)) != 30) { return 25; }
+            if (ClasificaConSigno(OpacoConSigno(ConSigno.MenosTres)) != 11) { return 26; }
+            if (ClasificaConSigno(OpacoConSigno(ConSigno.Cero)) != 21) { return 27; }
+            if (ClasificaConSigno(OpacoConSigno(ConSigno.Tope)) != 31) { return 28; }
+
+            // -----------------------------------------------------------------------------
+            // 5. LOS CAMPOS DE STRUCT. El layout ya esta verificado por `size(N)`; esto comprueba
+            //    que leer y escribir el campo estrecho conserva el valor -- o sea que el acceso usa
+            //    el mismo ancho que el layout.
+            // -----------------------------------------------------------------------------
+            MezclaCorta mezcla;
+            mezcla.Bandera = SinSigno.Alto;
+            mezcla.Codigo = Dos.Alto;
+            if ((int)mezcla.Bandera != 200) { return 29; }
+            if ((int)mezcla.Codigo != 60000) { return 30; }
+            if (mezcla.Bandera != SinSigno.Alto) { return 31; }
+
+            MezclaLarga larga;
+            larga.Grande = Ocho.Enorme;
+            larga.Normal = Normal.Grande;
+            if ((long)larga.Grande != 5000000000) { return 32; }
+            if ((int)larga.Normal != 100000) { return 33; }
+
+            // Un arreglo de enums estrechos: si el elemento midiera cuatro bytes en vez de uno,
+            // los indices se irian a otro sitio.
+            owned SinSigno[] banderas = new SinSigno[4];
+            banderas[0] = SinSigno.Alto;
+            banderas[1] = SinSigno.Medio;
+            banderas[2] = SinSigno.Bajo;
+            banderas[3] = SinSigno.Alto;
+            if ((int)banderas[Opaco(0)] != 200) { return 34; }
+            if ((int)banderas[Opaco(1)] != 128) { return 35; }
+            if ((int)banderas[Opaco(3)] != 200) { return 36; }
+            delete[] banderas;
+
+            // -----------------------------------------------------------------------------
+            // 6. ToString(). El nombre no depende del ancho, pero la busqueda compara el valor
+            //    contra cada constante, y esas comparaciones son las que el signo puede romper.
+            // -----------------------------------------------------------------------------
+            if (SinSigno.Alto.ToString() != "Alto") { return 37; }
+            if (OpacoSinSigno(SinSigno.Medio).ToString() != "Medio") { return 38; }
+            if (OpacoConSigno(ConSigno.MenosTres).ToString() != "MenosTres") { return 39; }
+            if (Ocho.Enorme.ToString() != "Enorme") { return 40; }
+            if (Normal.Grande.ToString() != "Grande") { return 41; }
+
+            // -----------------------------------------------------------------------------
+            // 7. LOS EXTREMOS DE 64 BITS. Se comparan por su patron de bits (`(long)` de un
+            //    `ulong` de 2^64-1 es -1) para no necesitar un literal sin signo de 64 bits.
+            // -----------------------------------------------------------------------------
+            if (sizeof(Tope) != 8) { return 43; }
+            if (sizeof(Suelo) != 8) { return 44; }
+            if ((long)Tope.Max != -1) { return 45; }
+            if ((long)Suelo.Min != -9223372036854775808) { return 46; }
+            if ((long)Tope.Cero != 0) { return 47; }
+            if (Tope.Max.ToString() != "Max") { return 48; }
+            if (Suelo.Min.ToString() != "Min") { return 49; }
+
+            // -----------------------------------------------------------------------------
+            // 8. EL ALIAS. `Segundo` vale lo mismo que `Primero`, y sale "Primero" -- el primero
+            //    declarado. Es lo que el frontend documenta, y depende de que el backend arme la
+            //    cadena de comparaciones al reves; armada en orden directo saldria "Segundo".
+            // -----------------------------------------------------------------------------
+            if (ConAlias.Primero.ToString() != "Primero") { return 50; }
+            if (ConAlias.Segundo.ToString() != "Primero") { return 51; }
+            if (OpacoAlias(ConAlias.Segundo).ToString() != "Primero") { return 52; }
+            if (OpacoAlias(ConAlias.Otro).ToString() != "Otro") { return 53; }
+
+            return 42;
+        }
+    }
+}

@@ -1,0 +1,214 @@
+// Utf8 -- la otra mitad de la decision de que `string` son BYTES.
+//
+// LA DECISION (mkdown/114, ID 125) es que `Length` cuenta bytes y es O(1), y que decodificar se
+// pide explicitamente. Esta fixture mide la clase que hace usable esa decision.
+//
+// LAS SECUENCIAS ESPERADAS NO SALEN DE MI CABEZA. Se generaron con el codificador UTF-8 de Python
+// --un tercero-- y se escriben aqui byte a byte:
+//
+//     U+0041  'A'   1 byte   65
+//     U+00F1  'n~'  2 bytes  195 177
+//     U+20AC  euro  3 bytes  226 130 172
+//     U+1D11E clave 4 bytes  240 157 132 158
+//
+// Escribirlas a ojo es como me equivoque dos veces en el c30 con la aritmetica de coma flotante y
+// una en el c31 con la longitud de una cadena. Contra un tercero, no contra mi modelo.
+//
+// LA MITAD QUE MAS IMPORTA ES LA DE LO INVALIDO, y no es quisquilloseria: un decodificador
+// permisivo que acepta secuencias SOBRELARGAS es un agujero de seguridad clasico. C0 AF decodifica
+// a '/' en un decodificador flojo, y por ahi se han saltado comprobaciones de rutas durante veinte
+// anos. Aqui se rechaza, y la fixture lo fija.
+//
+// Codigo de salida esperado: 42.
+using NativeSharp.Core;
+
+namespace cc1utf8
+{
+    public class Program
+    {
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return valor + (cuantos - cuantos);
+        }
+
+        // Una cadena construida BYTE A BYTE, para no depender de como el lexer lee el fichero
+        // fuente. Lo que se mide es la clase, no la codificacion del .ns.
+        private static owned string DesdeBytes(byte[] datos, int cuantos)
+        {
+            raii StringBuilder constructor = new StringBuilder();
+            int i = 0;
+            while (i < cuantos)
+            {
+                constructor.Append((char)datos[i]);
+                i = i + 1;
+            }
+            return constructor.ToOwnedString();
+        }
+
+        public static int Main()
+        {
+            byte[] buffer = new byte[16];
+
+            // ---------------------------------------------------------------------------------
+            // 1. SequenceLength: lo que anuncia un byte inicial.
+            // ---------------------------------------------------------------------------------
+            if (Utf8.SequenceLength((byte)65) != 1) { return 1; }
+            if (Utf8.SequenceLength((byte)195) != 2) { return 2; }
+            if (Utf8.SequenceLength((byte)226) != 3) { return 3; }
+            if (Utf8.SequenceLength((byte)240) != 4) { return 4; }
+            // Un byte de continuacion NO puede empezar una secuencia.
+            if (Utf8.SequenceLength((byte)128) != 0) { return 5; }
+            // Y FE/FF no existen en UTF-8.
+            if (Utf8.SequenceLength((byte)254) != 0) { return 6; }
+
+            // ---------------------------------------------------------------------------------
+            // 2. Encode: los cuatro anchos, contra los bytes que dio el codificador de referencia.
+            // ---------------------------------------------------------------------------------
+            if (Utf8.EncodedLength(65) != 1) { return 7; }
+            if (Utf8.Encode(65, buffer, 0) != 1) { return 8; }
+            if (buffer[0] != 65) { return 9; }
+
+            if (Utf8.EncodedLength(241) != 2) { return 10; }
+            if (Utf8.Encode(241, buffer, 0) != 2) { return 11; }
+            if (buffer[0] != 195) { return 12; }
+            if (buffer[1] != 177) { return 13; }
+
+            if (Utf8.EncodedLength(8364) != 3) { return 14; }
+            if (Utf8.Encode(8364, buffer, 0) != 3) { return 15; }
+            if (buffer[0] != 226) { return 16; }
+            if (buffer[1] != 130) { return 17; }
+            if (buffer[2] != 172) { return 18; }
+
+            if (Utf8.EncodedLength(119070) != 4) { return 19; }
+            if (Utf8.Encode(119070, buffer, 0) != 4) { return 20; }
+            if (buffer[0] != 240) { return 21; }
+            if (buffer[1] != 157) { return 22; }
+            if (buffer[2] != 132) { return 23; }
+            if (buffer[3] != 158) { return 24; }
+
+            // Lo NO codificable: sustitutos y lo que pasa del tope.
+            if (Utf8.EncodedLength(55296) != 0) { return 25; }
+            if (Utf8.Encode(55296, buffer, 0) != 0) { return 26; }
+            if (Utf8.EncodedLength(1114112) != 0) { return 27; }
+            // Y lo que no cabe: NO escribe nada, para no dejar medio caracter en el buffer.
+            byte[] chico = new byte[2];
+            chico[0] = (byte)7;
+            chico[1] = (byte)7;
+            if (Utf8.Encode(8364, chico, 0) != 0) { return 28; }
+            if (chico[0] != 7) { return 29; }
+
+            // ---------------------------------------------------------------------------------
+            // 3. DECODIFICAR LO QUE SE ACABA DE CODIFICAR. Ida y vuelta, que es la unica forma de
+            //    que un error de signo o de mascara no se cancele consigo mismo.
+            // ---------------------------------------------------------------------------------
+            int puntos = 0;
+            puntos = 0;
+            int cuantosBytes = 0;
+            cuantosBytes = Utf8.Encode(65, buffer, 0);
+            cuantosBytes = cuantosBytes + Utf8.Encode(241, buffer, cuantosBytes);
+            cuantosBytes = cuantosBytes + Utf8.Encode(8364, buffer, cuantosBytes);
+            cuantosBytes = cuantosBytes + Utf8.Encode(119070, buffer, cuantosBytes);
+            if (cuantosBytes != 10) { return 30; }
+
+            raii string mezcla = DesdeBytes(buffer, cuantosBytes);
+            // DIEZ BYTES Y CUATRO CARACTERES: es exactamente la diferencia que la decision del
+            // ID 125 pone sobre la mesa, medida en una linea.
+            if (mezcla.Length != 10) { return 31; }
+            if (Utf8.CodePointCount(mezcla) != 4) { return 32; }
+            if (!Utf8.IsValid(mezcla)) { return 33; }
+
+            int usados = 0;
+            if (Utf8.DecodeAt(mezcla, 0, out usados) != 65) { return 34; }
+            if (usados != 1) { return 35; }
+            if (Utf8.DecodeAt(mezcla, 1, out usados) != 241) { return 36; }
+            if (usados != 2) { return 37; }
+            if (Utf8.DecodeAt(mezcla, 3, out usados) != 8364) { return 38; }
+            if (usados != 3) { return 39; }
+            if (Utf8.DecodeAt(mezcla, 6, out usados) != 119070) { return 40; }
+            if (usados != 4) { return 41; }
+
+            // Recorrer con NextIndex da los mismos cuatro.
+            int recorridos = 0;
+            int i = 0;
+            while (i < mezcla.Length)
+            {
+                i = Utf8.NextIndex(mezcla, i);
+                recorridos = recorridos + 1;
+            }
+            if (recorridos != 4) { return 43; }
+
+            // ---------------------------------------------------------------------------------
+            // 4. LOS LIMITES. Cortar por bytes no puede partir un caracter.
+            // ---------------------------------------------------------------------------------
+            if (!Utf8.IsBoundary(mezcla, 0)) { return 44; }
+            if (!Utf8.IsBoundary(mezcla, 1)) { return 45; }
+            // El byte 2 es la continuacion de la enye.
+            if (Utf8.IsBoundary(mezcla, 2)) { return 46; }
+            if (Utf8.BoundaryAtOrBefore(mezcla, 2) != 1) { return 47; }
+            if (Utf8.BoundaryAtOrBefore(mezcla, 5) != 3) { return 48; }
+            if (Utf8.BoundaryAtOrBefore(mezcla, 9) != 6) { return 49; }
+            if (Utf8.BoundaryAtOrBefore(mezcla, 10) != 10) { return 50; }
+
+            // ---------------------------------------------------------------------------------
+            // 5. LO INVALIDO. Es la mitad que de verdad protege.
+            // ---------------------------------------------------------------------------------
+            byte[] malo = new byte[8];
+
+            // SOBRELARGA de '/': C0 AF. Un decodificador flojo da '/' y se salta comprobaciones.
+            malo[0] = (byte)192; malo[1] = (byte)175;
+            raii string sobrelarga = DesdeBytes(malo, 2);
+            if (Utf8.IsValid(sobrelarga)) { return 51; }
+            if (Utf8.DecodeAt(sobrelarga, 0, out usados) != Utf8.Invalid()) { return 52; }
+
+            // SOBRELARGA del NUL: C0 80. El truco de "NUL modificado" de Java.
+            malo[0] = (byte)192; malo[1] = (byte)128;
+            raii string nulLargo = DesdeBytes(malo, 2);
+            if (Utf8.IsValid(nulLargo)) { return 53; }
+
+            // SUSTITUTO D800: ED A0 80. No es un punto de codigo escalar.
+            malo[0] = (byte)237; malo[1] = (byte)160; malo[2] = (byte)128;
+            raii string sustituto = DesdeBytes(malo, 3);
+            if (Utf8.IsValid(sustituto)) { return 54; }
+
+            // PASA DE 10FFFF: F4 90 80 80.
+            malo[0] = (byte)244; malo[1] = (byte)144; malo[2] = (byte)128; malo[3] = (byte)128;
+            raii string pasado = DesdeBytes(malo, 4);
+            if (Utf8.IsValid(pasado)) { return 55; }
+
+            // CONTINUACION SUELTA.
+            malo[0] = (byte)128;
+            raii string suelta = DesdeBytes(malo, 1);
+            if (Utf8.IsValid(suelta)) { return 56; }
+
+            // CORTADA: E2 82 sin su tercer byte.
+            malo[0] = (byte)226; malo[1] = (byte)130;
+            raii string cortada = DesdeBytes(malo, 2);
+            if (Utf8.IsValid(cortada)) { return 57; }
+
+            // FE no existe en UTF-8.
+            malo[0] = (byte)254;
+            raii string inexistente = DesdeBytes(malo, 1);
+            if (Utf8.IsValid(inexistente)) { return 58; }
+
+            // Y una cadena invalida SE PUEDE RECORRER sin colgarse: DecodeAt consume uno.
+            if (Utf8.CodePointCount(sobrelarga) != 2) { return 59; }
+
+            // ---------------------------------------------------------------------------------
+            // 6. ASCII: bytes y caracteres coinciden, que es el caso comun y tiene que ser barato.
+            // ---------------------------------------------------------------------------------
+            string ascii = "NativeSharp";
+            if (ascii.Length != 11) { return 60; }
+            if (Utf8.CodePointCount(ascii) != 11) { return 61; }
+            if (!Utf8.IsValid(ascii)) { return 62; }
+            // La cadena vacia es UTF-8 valido y tiene cero caracteres.
+            if (Utf8.CodePointCount("") != 0) { return 63; }
+            if (!Utf8.IsValid("")) { return 64; }
+
+            // Con un indice que el compilador no puede plegar.
+            if (Utf8.DecodeAt(ascii, Opaco(0), out usados) != 78) { return 65; }
+
+            return 42;
+        }
+    }
+}

@@ -485,6 +485,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::ArrayElementAddress: return "array-element-address";
         case ProjectOopMirNodeKind::StringLength: return "string-length";
         case ProjectOopMirNodeKind::StringElementLoad: return "string-element-load";
+        case ProjectOopMirNodeKind::EnumName: return "enum-name";
         case ProjectOopMirNodeKind::StringConcat: return "string-concat";
         case ProjectOopMirNodeKind::StringEquals: return "string-equals";
         case ProjectOopMirNodeKind::StringSubstring: return "string-substring";
@@ -1177,6 +1178,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             result->kind = ProjectOopMirNodeKind::StringElementLoad;
             result->immediate = 1;
             result->alignment = 1;
+            break;
+        case ProjectOopHirNodeKind::EnumName:
+            result->kind = ProjectOopMirNodeKind::EnumName;
             break;
         case ProjectOopHirNodeKind::StringConcat:
             result->kind = ProjectOopMirNodeKind::StringConcat;

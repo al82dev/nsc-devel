@@ -25,7 +25,9 @@
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <array>
+#include <iostream>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -78,31 +80,45 @@ int runUnderWine(const std::string& wine, const std::filesystem::path& exePath)
 #endif
 }
 
-// PARTIR ESTA SUITE EN VARIAS PRUEBAS DE ctest -- 2026-09-03.
+// EL SELECTOR DE FIXTURES, y por que este ejecutable tiene que leer argv.
 //
-// POR QUE. En la corrida del 2026-09-03, `ctest -j 16` tardo 274.47 s de reloj y la prueba mas
-// lenta, `nsc.cc1.correctness`, tardo 273.97 s. Es decir: el reloj de ctest ERA esta prueba, y las
-// otras quince CPU estaban paradas casi todo ese rato. La causa es que aqui dentro se compilan y
-// ejecutan treinta y seis fixtures EN SERIE dentro de un solo proceso.
+// CMake registra UNA prueba de ctest por fixture --`nsc.cc1.correctness.cc1-c30-contratos` y
+// compania-- y le pasa la etiqueta como argumento. Si el ejecutable ignorara ese argumento,
+// pasarian tres cosas, y las tres son peores que la lentitud que el reparto venia a arreglar:
 //
-// Y HAY UN SEGUNDO MOTIVO, que no es velocidad: cuando una fixture se ponia roja, el nombre de la
-// prueba que fallaba era `nsc.cc1.correctness` y habia que abrir el log para saber CUAL. Con una
-// prueba por fixture, el nombre lo dice.
+//   1. CADA UNA DE LAS ~40 ENTRADAS CORRERIA LA SUITE ENTERA. El reparto no ahorraria nada;
+//      multiplicaria el trabajo por cuarenta.
+//   2. TODAS COMPARTIRIAN EL MISMO DIRECTORIO TEMPORAL, y cada una lo borra al arrancar. Una
+//      instancia borra los .exe que otra esta enlazando: fallos erraticos que no corresponden a
+//      ningun defecto del compilador. Un rojo que no se reproduce es peor que no medir.
+//   3. UN ROJO SEGUIRIA SIN DECIR CUAL. Ese era el segundo motivo del reparto, y no el de la
+//      velocidad.
 //
-// COMO. Un argumento opcional selecciona que se ejecuta:
-//
-//     (sin argumento)     todo, como siempre -- correr el binario a mano no cambia
-//     <etiqueta>          SOLO esa fixture
-//     --rest              todo MENOS las fixtures (las comprobaciones de IR de mas abajo)
-//
-// CMakeLists registra un `add_test` por fixture mas uno con `--rest`, y ctest los reparte entre
-// los dieciseis nucleos como cualquier otra prueba.
+// Por eso el directorio de salida lleva el selector en el nombre: dos entradas concurrentes NO
+// pueden pisarse aunque el argumento se pierda por otro camino.
 std::string gSelectedFixture;
+bool gRestMode = false;
+// ¿llego a coincidir el selector con alguna fixture? Si no, la corrida no midio NADA y tiene que
+// decirlo: un selector con una errata daria "PASS: 0 checks", que ctest cuenta como verde. Una
+// prueba que pasa sin comprobar nada es la unica forma de rojo que no se ve.
+bool gSelectedFixtureMatched = false;
 
+// ¿toca ejecutar esta fixture en esta invocacion? Sin argumento se ejecutan todas --que es como
+// se corre a mano-- y en modo `--rest` ninguna, porque esa entrada mide lo que NO es fixture.
 bool fixtureSelected(std::string_view label)
 {
+    if (gRestMode) return false;
     if (gSelectedFixture.empty()) return true;
-    return gSelectedFixture == label;
+    if (gSelectedFixture != label) return false;
+    gSelectedFixtureMatched = true;
+    return true;
+}
+
+// ¿toca ejecutar lo que no es fixture --los rechazos y las comprobaciones sobre el IR? Solo en
+// `--rest`, o cuando no se pidio nada en concreto.
+bool restSelected()
+{
+    return gRestMode || gSelectedFixture.empty();
 }
 
 void checkFixture(
@@ -315,16 +331,48 @@ std::size_t countCatchLeaveBlocksThatClear(const std::string& text)
 
 int main(int argc, char** argv)
 {
-    // El selector. Sin argumento se ejecuta todo, que es lo que hace correr el binario a mano.
-    if (argc > 1 && argv[1] != nullptr) gSelectedFixture = argv[1];
+    // argv[1] es `--rest` o una etiqueta de fixture. Sin argumento se corre todo, que es lo que
+    // hace falta al invocar el ejecutable a mano.
+    if (argc > 1 && argv[1] != nullptr)
+    {
+        const std::string argument = argv[1];
+        if (argument == "--rest")
+        {
+            gRestMode = true;
+        }
+        else
+        {
+            // LA FORMA SE VALIDA ANTES DE TOCAR EL DISCO, y ese orden es el punto.
+            //
+            // El selector acaba dentro de una ruta a la que se le hace `remove_all`. Sin validarlo
+            // primero, un argumento como `../../algo` sale de %TEMP% y BORRA otra cosa -- y la
+            // comprobacion de que el selector nombra una fixture registrada, que existe mas abajo,
+            // llegaria demasiado tarde: el borrado ya habria ocurrido.
+            //
+            // Una etiqueta es `cc1-` y despues minusculas, digitos y guiones. Nada mas: ni puntos,
+            // ni separadores, ni mayusculas.
+            const bool wellFormed =
+                argument.size() > 4 && argument.compare(0, 4, "cc1-") == 0 &&
+                std::all_of(argument.begin() + 4, argument.end(), [](unsigned char c) {
+                    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+                });
+            if (!wellFormed)
+            {
+                std::cerr << "FAILED: '" << argument
+                          << "' is not a fixture label (expected cc1-<lowercase-digits-dashes>)\n";
+                return 1;
+            }
+            gSelectedFixture = argument;
+        }
+    }
 
     TestContext tests;
-    // LA RAIZ TEMPORAL LLEVA EL SELECTOR EN EL NOMBRE, y esto NO es cosmetico: ctest lanza estas
-    // pruebas EN PARALELO, y hasta ahora todas habrian borrado y reescrito el mismo directorio.
-    // Dos procesos vaciando la misma carpeta mientras el otro compila dentro es una carrera que
-    // se manifiesta como un fallo de enlace intermitente y no como lo que es.
-    const auto root = std::filesystem::temp_directory_path() /
-        ("nsc-cc1" + (gSelectedFixture.empty() ? std::string() : "-" + gSelectedFixture));
+    // EL DIRECTORIO LLEVA EL SELECTOR EN EL NOMBRE. Es lo que evita que dos entradas de ctest en
+    // paralelo se borren los ficheros la una a la otra: cada una tiene el suyo, y el `remove_all`
+    // de abajo solo toca el propio.
+    const std::string slot = gRestMode ? std::string("rest")
+        : (gSelectedFixture.empty() ? std::string("all") : gSelectedFixture);
+    const auto root = std::filesystem::temp_directory_path() / ("nsc-cc1-" + slot);
     std::error_code cleanup;
     std::filesystem::remove_all(root, cleanup);
     std::filesystem::create_directories(root);
@@ -582,11 +630,68 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c35_sobrecarga_generica/c35_sobrecarga_generica.nsproj",
         "cc1-c35-sobrecarga-generica", 42);
 
-    // A PARTIR DE AQUI, LAS COMPROBACIONES DE IR. No compilan fixtures del arbol: construyen
-    // programas pequenos en memoria y miran el IR emitido. Se ejecutan cuando no hay selector
-    // (correr el binario a mano) o con `--rest`, que es como las registra CMakeLists.
-    if (!gSelectedFixture.empty() && gSelectedFixture != "--rest")
+    // Utf8 -- la otra mitad de la decision de que `string` son BYTES (mkdown/114, ID 125). Sin
+    // esto, "bytes opacos" seria un callejon sin salida: no habria forma de contar caracteres,
+    // recorrerlos ni saber si una cadena que viene de fuera esta bien formada.
+    //
+    // Las secuencias esperadas salen del codificador UTF-8 de Python --un tercero-- y no de mi
+    // cabeza. Y la mitad que mas protege es la de lo INVALIDO: una sobrelarga C0 AF decodifica a
+    // '/' en un decodificador flojo, y por ahi se han saltado comprobaciones de rutas durante
+    // veinte anos.
+    checkFixture(
+        tests, root, "tests/cc1/c36_utf8/c36_utf8.nsproj",
+        "cc1-c36-utf8", 42);
+
+    // `size(N)` -- el contrato de layout, la mitad positiva. Once structs cuyos tamaños salieron
+    // de compilar las EQUIVALENTES EN C con clang y preguntarle sizeof/_Alignof: ninguna
+    // verificación cuenta si el modelo contra el que verifico lo construí yo, y aquí el modelo es
+    // un compilador de C, que es contra quien estas structs tienen que coincidir de verdad.
+    //
+    // La fixture mide las DOS mitades: que el modelo de layout coincida con C (eso lo comprueba
+    // el propio `size(N)` al compilar) y que lo que el backend materializa sea ese mismo modelo
+    // (eso lo comprueban `sizeof` y la lectura por punteros en ejecución).
+    checkFixture(
+        tests, root, "tests/cc1/c37_contrato_de_layout/c37_contrato_de_layout.nsproj",
+        "cc1-c37-contrato-de-layout", 42);
+
+    // `enum E : byte` -- el TIPO SUBYACENTE de un enum. Hasta el 2026-09-03 todo enum media cuatro
+    // bytes y se trataba como con signo, en cuatro sitios que decian lo mismo por separado, asi
+    // que traducir un header de C con `enum : uint8_t` dentro de una struct daba un layout
+    // SILENCIOSAMENTE equivocado. Eso no es falta de expresividad: es una respuesta falsa.
+    //
+    // La fixture mide las cuatro respuestas a la vez --tamano, tipo LLVM, signo de las extensiones
+    // y signo de las constantes de `case`-- con valores elegidos para que discrepar se note: 200
+    // en un `byte` extendido con signo daria -56, y -3 en un `sbyte` extendido sin signo daria
+    // 253. Los tamanos de las structs los verifica `size(N)` contra lo que clang da para las
+    // equivalentes en C.
+    checkFixture(
+        tests, root, "tests/cc1/c38_enum_ancho/c38_enum_ancho.nsproj",
+        "cc1-c38-enum-ancho", 42);
+
+    // `ToString()` sobre enums estrechos -- LA FRONTERA DE UN BUG VIVO.
+    //
+    // El 2026-09-03, c38 devolvio 42 a -O0 y 39 a -O2 al pedir el nombre de un `enum : sbyte` con
+    // valor NEGATIVO. La corrida de triage de las 18:29 demostro despues que basta un receptor
+    // CONSTANTE: no hace falta ninguna funcion de por medio, y queda descartada la ABI del retorno
+    // de ocho bits. Ese caso esta aislado en tests/bug_triage/b9_enum_estrecho_o2 y NO se repite
+    // aqui.
+    //
+    // Esta fixture mide sus vecinos inmediatos --los otros tres anchos, el mismo `sbyte` con
+    // valores positivos, y el receptor constante, por local, por funcion y no plegable-- que hoy
+    // responden bien. Va ordenada por capas igual que b9: el valor, despues el contenido de la
+    // cadena byte a byte, y al final el operador de comparacion.
+    checkFixture(
+        tests, root, "tests/cc1/c39_enum_nombre_o2/c39_enum_nombre_o2.nsproj",
+        "cc1-c39-enum-nombre-o2", 42);
+
+    // A PARTIR DE AQUI NADA ES UNA FIXTURE: son rechazos y comprobaciones sobre el IR. Los corre
+    // la entrada `--rest`, y nadie mas -- una entrada por fixture que ademas arrastrara todo esto
+    // lo repetiria cuarenta veces.
+    if (!restSelected())
     {
+        tests.expect(
+            gSelectedFixture.empty() || gSelectedFixtureMatched,
+            "selector '" + gSelectedFixture + "' names a registered fixture");
         return tests.result();
     }
 
@@ -1470,6 +1575,197 @@ namespace cc1neg
     }
 }
 )NS");
+
+    // =====================================================================================
+    // `size(N)` -- el contrato de layout de una struct, para bindings.
+    //
+    // La mitad positiva vive en tests/cc1/c37_contrato_de_layout, con once structs cuyos tamaños
+    // salieron de compilar las EQUIVALENTES EN C con clang. Aquí van los tres rechazos, que son
+    // los que demuestran que el modificador SIRVE para algo: uno que no comprueba nada nunca falla.
+    // =====================================================================================
+
+    // EL CASO QUE JUSTIFICA LA FUNCIÓN. `byte` + `int` miden 8 por el relleno, no 5. Un binding
+    // escrito a ojo pone 5, y sin esto compilaría y leería basura desde la primera llamada.
+    checkRejected(
+        tests, root, "cc1-size-mismatch",
+        R"NS(
+namespace cc1sizebad
+{
+    public size(5) struct R
+    {
+        public byte Bandera;
+        public int Valor;
+    }
+
+    class P
+    {
+        public static int Main() { return 42; }
+    }
+}
+)NS",
+        "declares size(5) but its fields lay out to 8 bytes");
+
+    // `size` es un contrato de LAYOUT, y una clase no tiene layout de valor: es un objeto de
+    // montículo con su propia cabecera. Aceptarlo lo convertiría en una decoración que nadie
+    // honra, que es justo lo que `pack`/`align` ya rechazan por el mismo motivo.
+    checkRejected(
+        tests, root, "cc1-size-on-class",
+        R"NS(
+namespace cc1sizeclass
+{
+    // El nombre NO puede ser `C`: es palabra reservada (`extern C`), y el parser rechazaria la
+    // declaracion por el nombre ANTES de llegar a comprobar el modificador de layout. La prueba
+    // seguiria viendo un rechazo --y pasando por rechazo-- pero midiendo otra cosa.
+    public size(8) class Caja
+    {
+        public int Valor;
+    }
+
+    class P
+    {
+        public static int Main() { return 42; }
+    }
+}
+)NS",
+        "layout modifiers apply only to struct and union declarations");
+
+    // `size(0)` casi siempre es un generador que no supo leer el tamaño y escribió su valor por
+    // omisión. Una struct de cero bytes no existe en el modelo de objetos de Windows x64.
+    checkRejected(
+        tests, root, "cc1-size-zero",
+        R"NS(
+namespace cc1sizezero
+{
+    public size(0) struct S
+    {
+        public int Valor;
+    }
+
+    class P
+    {
+        public static int Main() { return 42; }
+    }
+}
+)NS",
+        "size requires a positive byte count");
+
+    // =====================================================================================
+    // El tipo subyacente de un enum -- los cuatro rechazos.
+    //
+    // La mitad positiva vive en tests/cc1/c38_enum_ancho. Estos cuatro son los que demuestran que
+    // declarar el tipo subyacente SIRVE: si el compilador aceptara un valor que no cabe, lo
+    // truncaria al materializarlo y el programa veria un numero que nadie escribio.
+    // =====================================================================================
+
+    // 300 no cabe en un byte. Truncado seria 44, y nada en el programa lo diria.
+    checkRejected(
+        tests, root, "cc1-enum-underlying-overflow",
+        R"NS(
+namespace cc1enumover
+{
+    public enum E : byte { A = 300 }
+
+    class P
+    {
+        public static int Main() { return (int)E.A; }
+    }
+}
+)NS",
+        "does not fit in the underlying type 'builtin:byte'");
+
+    // EL AUTO-INCREMENTO TAMBIEN SE SALE, y este es el caso que nadie ve: 255 cabe, y `B` no lleva
+    // ningun numero escrito que mirar. Comprobar solo los valores explicitos dejaria pasar
+    // justamente esto.
+    checkRejected(
+        tests, root, "cc1-enum-underlying-overflow-implicit",
+        R"NS(
+namespace cc1enumimpl
+{
+    public enum E : byte { A = 255, B }
+
+    class P
+    {
+        public static int Main() { return (int)E.B; }
+    }
+}
+)NS",
+        "enum value for 'B' does not fit in the underlying type 'builtin:byte'");
+
+    // NO HAY SUCESOR DE 2^64-1. Un enumerador sin inicializador detras del maximo del tipo
+    // subyacente no tiene ningun valor que tomar, y darle uno seria inventarlo.
+    //
+    // La primera version del manejo de extremos SATURABA aqui: devolvia el mismo valor, `Siguiente`
+    // valia lo mismo que `Max`, y compilaba. Dos nombres indistinguibles y un valor que nadie
+    // escribio -- una respuesta falsa, que es peor que el rechazo que faltaba.
+    checkRejected(
+        tests, root, "cc1-enum-underlying-no-successor",
+        R"NS(
+namespace cc1enumnosucc
+{
+    public enum E : ulong { Max = 18446744073709551615, Siguiente }
+
+    class P
+    {
+        public static int Main() { return 0; }
+    }
+}
+)NS",
+        "there is no next one to count to");
+
+    // El tipo subyacente tiene que ser un entero incorporado. Ni `bool`, ni coma flotante, ni una
+    // clase: el ancho y el signo de un enum son parte del ABI y no hay respuesta para esos.
+    checkRejected(
+        tests, root, "cc1-enum-underlying-not-integer",
+        R"NS(
+namespace cc1enumnotint
+{
+    public enum E : string { A = 0 }
+
+    class P
+    {
+        public static int Main() { return (int)E.A; }
+    }
+}
+)NS",
+        "underlying type of an enum must be a built-in integer type");
+
+    // `char` ESTA EN LA TABLA GENERAL DE ENTEROS Y AUN ASI NO VALE. En NativeSharp `char` es un
+    // byte de TEXTO (ocho bits, sin signo, CC1-100) y esta en la tabla porque aritmeticamente se
+    // comporta como uno; pero el tipo subyacente de un enum es una decision de ABI, y "el ancho de
+    // un caracter" no responde a eso. `byte` dice lo mismo sin ambiguedad, y C# tampoco lo admite.
+    // Esta prueba existe porque el diagnostico ENUMERA los tipos permitidos: si `char` se colara,
+    // el mensaje estaria mintiendo sobre su propia lista.
+    checkRejected(
+        tests, root, "cc1-enum-underlying-char",
+        R"NS(
+namespace cc1enumchar
+{
+    public enum E : char { A = 0 }
+
+    class P
+    {
+        public static int Main() { return (int)E.A; }
+    }
+}
+)NS",
+        "underlying type of an enum must be a built-in integer type");
+
+    // Y SE MIRA LA FORMA, NO EL NOMBRE. `int*` tiene "int" de nombre base: una comprobacion escrita
+    // sobre el nombre lo aceptaria y el enum acabaria midiendo cuatro bytes en vez de ocho.
+    checkRejected(
+        tests, root, "cc1-enum-underlying-pointer",
+        R"NS(
+namespace cc1enumptr
+{
+    public enum E : int* { A = 0 }
+
+    class P
+    {
+        public static int Main() { return (int)E.A; }
+    }
+}
+)NS",
+        "underlying type of an enum must be a built-in integer type");
 
     // La otra mitad: un negativo NO cabe en un destino sin signo. Si el cierre se hubiera escrito
     // demasiado ancho, esto compilaría y truncaría en silencio.

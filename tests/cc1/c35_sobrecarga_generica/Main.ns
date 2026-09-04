@@ -13,10 +13,23 @@
 // llamada generica filtra por cuantos argumentos trae. `Algorithm.Sort` ya es una sobrecarga de
 // verdad, y esta fixture es el consumidor que lo fija.
 //
-// LO QUE SIGUE SIN PODERSE, medido abajo por omision y dicho aqui para que nadie lo herede como
-// cubierto: dos sobrecargas genericas con la MISMA cuenta de parametros y tipos distintos. Elegir
-// entre ellas necesita los tipos de los argumentos, y la pasada generica corre ANTES del modelo
-// semantico -- alli solo hay sintaxis.
+// Y LA SEGUNDA MITAD, del mismo dia: dos sobrecargas con la MISMA cuenta de parametros y tipos
+// distintos -- `F<T>(T)` contra `F<T>(T[])`. Esas no se pueden separar por la cuenta, y elegir
+// necesita los TIPOS de los argumentos, que la pasada generica no conoce porque corre antes del
+// modelo semantico.
+//
+// LA SOLUCION NO ES ADIVINAR: es materializar TODAS las candidatas con el MISMO nombre
+// especializado. A partir de ahi dejan de ser un problema de genericos y son SOBRECARGAS
+// ORDINARIAS -- metodos no genericos, mismo nombre, listas de parametros distintas -- que este
+// compilador resuelve por tipos desde siempre. El problema se le pasa a la capa que tiene los
+// datos.
+//
+// Y si dos especializaciones acaban con la MISMA lista de parametros, el choque lo detecta la
+// deteccion de metodos duplicados de siempre:
+//
+//     duplicate method signature 'F__g1__int(builtin:int)' in type 'pz.U'
+//
+// que es un mensaje mejor que el de antes, y en su sitio.
 //
 // Codigo de salida esperado: 42.
 using NativeSharp.Core;
@@ -43,6 +56,17 @@ namespace cc1sobrecargagenerica
         {
             if (desde < 0 || tope > datos.Length || tope < desde) { return -1; }
             return tope - desde;
+        }
+
+        // POR TIPOS, no por cuenta: las dos toman UN parametro. Antes esto no compilaba.
+        public static int Solo<T>(T uno)
+        {
+            return 1;
+        }
+
+        public static int Solo<T>(T[] varios)
+        {
+            return 100 + varios.Length;
         }
 
         // Y con DOS parametros de tipo, para que la aridad generica siga contando.
@@ -85,6 +109,14 @@ namespace cc1sobrecargagenerica
             // Dos parametros de tipo.
             if (Utiles.Par<int, string>(3) != 1) { return 9; }
             if (Utiles.Par<int, string>(3, "x") != 2) { return 10; }
+
+            // POR TIPOS, con la MISMA cuenta de parametros. Es la mitad que faltaba del ID 132.
+            if (Utiles.Solo<int>(7) != 1) { return 30; }
+            if (Utiles.Solo<int>(v) != 107) { return 31; }
+            // Y con otro tipo de elemento, para que cada una se monomorfice por su cuenta.
+            if (Utiles.Solo<string>(textos) != 103) { return 32; }
+            // Con un valor que el compilador no puede plegar.
+            if (Utiles.Solo<int>(Opaco(5)) != 1) { return 33; }
 
             // EL CONSUMIDOR DE VERDAD: Algorithm.Sort con y sin comparador, que hasta hoy eran
             // Sort y SortWith porque no podian compartir nombre.

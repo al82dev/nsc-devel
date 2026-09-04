@@ -345,7 +345,7 @@ if exist "%LOGDIR%\cases\counts.txt" (
 )
 
 REM --- 5. Regresion de bugs reportados ----------------------------------------
-REM Solo en el modo completo. Los ocho casos de tests\bug_triage tambien estan bajo ctest
+REM Solo en el modo completo. Los casos de tests\bug_triage tambien estan bajo ctest
 REM (nsc.stage56.bugfix), pero ahi solo se verifica que COMPILAN: en Windows no hay Wine, asi
 REM que la mitad de ejecucion la corre este script. Dos de esos bugs eran silenciosos -- el
 REM programa compilaba y devolvia el valor equivocado -- y para esos, ejecutar es la unica
@@ -359,7 +359,7 @@ call "%ROOT%\run_bug_triage.bat" > "%LOGDIR%\05_triage_run.log" 2>&1
 if errorlevel 1 (
     call :fail "bug_triage" "hay bugs vivos -- ver _logs\TRIAGE.txt"
 ) else (
-    call :ok "bug_triage" "16/16, cero vivos"
+    call :ok "bug_triage" "cero vivos"
 )
 
 :report

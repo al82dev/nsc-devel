@@ -4,10 +4,21 @@
 // enum es un entero con nombres en el codigo fuente y nada mas en el binario. Ninguna cantidad de
 // codigo en String.ns los recupera. Este ID llevaba anotado desde el doc 92 §7 por eso mismo.
 //
-// COMO SE BAJA, y por que importa para lo que esta fixture mide: la llamada se convierte en una
-// cadena de `valor == A ? "A" : (valor == B ? "B" : ... : "<nombre del tipo>")`, construida con
-// nodos que ya existian. No hay tabla en el binario, no hay operacion del runtime, no hay import.
-// Cuando el valor es una constante, el optimizador pliega la cadena entera y queda un literal.
+// COMO SE BAJA, y por que importa para lo que esta fixture mide: la llamada se convierte en un
+// nodo propio que baja el valor UNA SOLA VEZ y elige con una cadena de `select` sin saltos:
+//
+//     %v  = <valor>
+//     %r0 = "<nombre del tipo>"
+//     %c1 = icmp eq %v, K1 ;  %r1 = select %c1, "A", %r0
+//     ...
+//
+// No hay tabla en el binario, no hay operacion del runtime, no hay import. Cuando el valor es una
+// constante, el optimizador pliega la cadena entera y queda un literal.
+//
+// LA PRIMERA VERSION ERA UNA CADENA DE CONDICIONALES y bajaba el receptor UNA VEZ POR ENUMERADOR,
+// asi que para no repetir efectos exigia un receptor "re-evaluable" y rechazaba
+// `Dame().ToString()`. Eso era una limitacion del compilador escrita como si fuera una regla del
+// lenguaje. El paso 7 de abajo es el que la fija cerrada: cuenta las llamadas.
 //
 // LO QUE MIDE ESTA FIXTURE, y cada punto responde a una decision:
 //
@@ -53,8 +64,21 @@ namespace cc1enumnombre
             return valor + (cuantos - cuantos);
         }
 
+        // Un receptor CON EFECTOS. Es lo que la primera version del ID 129 no podia aceptar.
+        private static int llamadas;
+        private static Color devolver;
+
+        private static Color Contar()
+        {
+            llamadas = llamadas + 1;
+            return devolver;
+        }
+
         public static int Main()
         {
+            llamadas = 0;
+            devolver = Color.Verde;
+
             // 1. El caso corriente.
             Color a = Color.Rojo;
             if (!String.Equals(a.ToString(), "Rojo")) { return 1; }
@@ -94,6 +118,26 @@ namespace cc1enumnombre
             // 6. Concatenar el nombre, que es para lo que sirve de verdad.
             raii string mensaje = String.Concat("color=", b.ToString());
             if (!String.Equals(mensaje, "color=Verde")) { return 13; }
+
+            // -----------------------------------------------------------------------------
+            // 7. UN RECEPTOR CON EFECTOS, EVALUADO UNA SOLA VEZ.
+            //
+            // Esto NO COMPILABA en la primera version: se rechazaba con "needs a receiver it can
+            // read more than once". La cuenta de llamadas es lo que hace util esta comprobacion --
+            // sin ella, una bajada que llamara a `Contar()` tres veces daria el nombre correcto y
+            // pasaria igual.
+            // -----------------------------------------------------------------------------
+            llamadas = 0;
+            string delMetodo = Contar().ToString();
+            if (!String.Equals(delMetodo, "Verde")) { return 14; }
+            if (llamadas != 1) { return 15; }
+
+            // Y con un valor que el metodo elige en ejecucion, para que no se pliegue.
+            llamadas = 0;
+            devolver = (Color)Opaco(2);
+            string delMetodoDinamico = Contar().ToString();
+            if (!String.Equals(delMetodoDinamico, "Azul")) { return 16; }
+            if (llamadas != 1) { return 17; }
 
             return 42;
         }

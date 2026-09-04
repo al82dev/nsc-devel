@@ -1,0 +1,187 @@
+// `size(N)` -- EL CONTRATO DE LAYOUT DE UNA STRUCT, comprobado en compilacion.
+//
+// POR QUE EXISTE. El peor fallo que puede producir un binding no es perder una distincion de
+// tipos: es una struct cuyos BYTES no coinciden con los de C. Eso no da un error -- da datos
+// corruptos, y se manifiesta como un campo que vale basura a doscientas llamadas de distancia.
+//
+// El lenguaje ya podia FIJAR el layout --`pack(N)`, `align(N)` y `at(N)` por campo-- pero no podia
+// COMPROBARLO de punta a punta, porque el relleno final no lo escribe nadie: sale de la regla de
+// alineacion. `size(N)` cierra eso, y un generador de bindings puede emitirlo desde lo que Clang
+// le dice del header.
+//
+// VERIFICA, NO FUERZA. Si forzara, anadiria relleno hasta cuadrar y taparia el desajuste -- que es
+// exactamente el fallo que se quiere cazar. Un binding que rellena en silencio es un binding que
+// miente.
+//
+// LOS TAMANOS DE ESTA FIXTURE NO SALEN DE MI CABEZA. Se sacaron compilando las structs
+// EQUIVALENTES EN C con clang y preguntandole `sizeof`/`_Alignof`:
+//
+//     Vector3        size=12 align=4        Entidad        size=28 align=4
+//     ConRelleno     size= 8 align=4        Matriz         size=64 align=4
+//     Apretada(p1)   size= 5 align=1        Color          size= 4 align=1
+//     Alineada(a16)  size=16 align=16       Rect           size=16 align=4
+//     Variante(union)size= 8 align=8        ConPuntero     size=16 align=8
+//                                           LargoYByte     size=16 align=8
+//
+// Es la regla del proyecto: ninguna verificacion cuenta si el modelo contra el que verifico lo
+// construi yo. Aqui el modelo es un compilador de C, que es contra quien estas structs tienen que
+// coincidir de verdad.
+//
+// Codigo de salida esperado: 42.
+using NativeSharp.Core;
+
+namespace cc1layout
+{
+    // El caso corriente: tres float seguidos, sin relleno.
+    public size(12) struct Vector3
+    {
+        public float X;
+        public float Y;
+        public float Z;
+    }
+
+    // RELLENO INTERIOR Y FINAL: byte + int son 8, no 5. Es el caso donde un binding escrito a ojo
+    // se equivoca, y el que `size` caza.
+    public size(8) struct ConRelleno
+    {
+        public byte Bandera;
+        public int Valor;
+    }
+
+    // pack(1) quita el relleno: los mismos campos miden 5.
+    public pack(1) size(5) struct Apretada
+    {
+        public byte Bandera;
+        public int Valor;
+    }
+
+    // align(16) sube el tamano al multiplo siguiente.
+    public align(16) size(16) struct Alineada
+    {
+        public float X;
+        public float Y;
+    }
+
+    // Una union mide lo que su miembro mas grande, y se alinea como el.
+    public size(8) union Variante
+    {
+        public at(0) int Entero;
+        public at(0) double Doble;
+    }
+
+    // Structs ANIDADAS: el relleno se propaga.
+    public size(28) struct Entidad
+    {
+        public Vector3 Posicion;
+        public Vector3 Velocidad;
+        public byte Vivo;
+    }
+
+    // Un arreglo fijo dentro de la struct -- 16 float.
+    public size(64) struct Matriz
+    {
+        public float[16] M;
+    }
+
+    // Cuatro bytes seguidos: 4, alineacion 1.
+    public size(4) struct Color
+    {
+        public byte R;
+        public byte G;
+        public byte B;
+        public byte A;
+    }
+
+    public size(16) struct Rect
+    {
+        public float X;
+        public float Y;
+        public float Ancho;
+        public float Alto;
+    }
+
+    // Un puntero fuerza alineacion 8, asi que el int arrastra cuatro bytes de relleno.
+    public size(16) struct ConPuntero
+    {
+        public void* Puntero;
+        public int Cuantos;
+    }
+
+    public size(16) struct LargoYByte
+    {
+        public long Grande;
+        public byte Chico;
+    }
+
+    public class Program
+    {
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return valor + (cuantos - cuantos);
+        }
+
+        public static int Main()
+        {
+            // LA MITAD DE COMPILACION YA PASO: si algun `size(N)` de arriba no cuadrara, este
+            // programa NO COMPILARIA. Lo de abajo es la otra mitad -- que `sizeof` en ejecucion
+            // diga lo mismo que el modelo de layout dijo al compilar.
+            //
+            // Las dos hacen falta. `size(N)` comprueba el modelo contra el header de C; `sizeof`
+            // comprueba que lo que el backend materializa es ese mismo modelo. Un desacuerdo entre
+            // las dos seria el defecto que el milestone CC1 existe para impedir: dos capas
+            // definiendo lo mismo de forma distinta.
+            if (sizeof(Vector3) != 12) { return 1; }
+            if (sizeof(ConRelleno) != 8) { return 2; }
+            if (sizeof(Apretada) != 5) { return 3; }
+            if (sizeof(Alineada) != 16) { return 4; }
+            if (sizeof(Variante) != 8) { return 5; }
+            if (sizeof(Entidad) != 28) { return 6; }
+            if (sizeof(Matriz) != 64) { return 7; }
+            if (sizeof(Color) != 4) { return 8; }
+            if (sizeof(Rect) != 16) { return 9; }
+            if (sizeof(ConPuntero) != 16) { return 10; }
+            if (sizeof(LargoYByte) != 16) { return 11; }
+
+            // Y LOS OFFSETS, medidos escribiendo por un puntero y leyendo por otro. Clang dice
+            // que en la Entidad la velocidad empieza en 12 y el byte de vida en 24.
+            Entidad e;
+            e.Posicion.X = 1.0f;
+            e.Posicion.Y = 2.0f;
+            e.Posicion.Z = 3.0f;
+            e.Velocidad.X = 4.0f;
+            e.Velocidad.Y = 5.0f;
+            e.Velocidad.Z = 6.0f;
+            e.Vivo = (byte)7;
+
+            byte* bytes = (byte*)&e;
+            float* comoFloat = (float*)bytes;
+            // offset 12 / 4 == indice 3: el primer float de la velocidad.
+            if (comoFloat[3] != 4.0f) { return 12; }
+            if (comoFloat[5] != 6.0f) { return 13; }
+            // offset 24: el byte de vida.
+            if (bytes[24] != 7) { return 14; }
+
+            // El mismo puntero, con un indice que el compilador no puede plegar.
+            if (bytes[Opaco(24)] != 7) { return 15; }
+
+            // pack(1) de verdad: el int empieza en el byte 1, no en el 4.
+            Apretada a;
+            a.Bandera = (byte)200;
+            a.Valor = 0;
+            byte* apretados = (byte*)&a;
+            if (apretados[0] != 200) { return 16; }
+            a.Valor = 1;
+            // Con pack(1) el byte 1 es el menos significativo del int.
+            if (apretados[1] != 1) { return 17; }
+
+            // La union comparte los bytes.
+            Variante v;
+            v.Doble = 0.0;
+            v.Entero = 5;
+            if (v.Entero != 5) { return 18; }
+
+            return 42;
+        }
+    }
+}

@@ -1,6 +1,7 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
@@ -34,8 +35,8 @@ namespace nativesharp::interop
 namespace
 {
 constexpr std::array<std::uint8_t, 8> kMagic = {'N', 'S', 'M', 'E', 'T', 'A', '1', 0};
-constexpr std::uint16_t kFormatMajor = 1;
-constexpr std::uint16_t kFormatMinor = 1;
+constexpr std::uint16_t kFormatMajor = kMetadataFormatMajor;
+constexpr std::uint16_t kFormatMinor = kMetadataFormatMinor;
 constexpr std::uint32_t kEndianMarker = 0x01020304U;
 constexpr std::uint32_t kWindowsX64Target = 1;
 constexpr std::uint32_t kPointerSize = 8;
@@ -513,8 +514,24 @@ bool buildMetadataModel(
         }
         else if (type.kind == frontend::NamedTypeDeclarationKind::Enum)
         {
-            record.size = 4;
-            record.alignment = 4;
+            // EL TAMANO DEL ENUM SALE DEL MODELO DE LAYOUT, no de un 4 escrito aqui.
+            //
+            // Este era el SEPTIMO sitio con "un enum mide cuatro bytes" escrito a mano, y el mas
+            // caro de los que quedaban: los metadatos alimentan a los generadores de host --el
+            // enlace P/Invoke de C# y el de C++/CLI-- asi que un 4/4 fijo se propaga a codigo que
+            // otro compilador genera y que ya nadie relaciona con este fichero. Un `enum : byte`
+            // exportado hacia que el host reservara cuatro bytes donde el modulo pone uno.
+            //
+            // `valueLayoutForTypeKey` es la misma consulta que usan el modelo MIR y el HIR, asi que
+            // los metadatos no pueden discrepar del layout que el propio modulo materializa.
+            const std::optional<std::pair<std::uint64_t, std::uint64_t>> enumLayout =
+                compilation.objectLayoutModel()->valueLayoutForTypeKey(
+                    *compilation.nameLookup(), "type:" + type.identity.key());
+            record.size = enumLayout.has_value() ? enumLayout->first : 4;
+            record.alignment = enumLayout.has_value() ? enumLayout->second : 4;
+            // EL SIGNO, que el tamano no lleva: `enum : byte` y `enum : sbyte` miden lo mismo.
+            record.enumUnderlyingTypeKey =
+                std::string(frontend::enumUnderlyingTypeKey(type.syntax));
         }
         else if (type.kind == frontend::NamedTypeDeclarationKind::Interface)
         {
@@ -738,6 +755,9 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writer.u64(type.referenceSize);
         writer.u64(type.referenceAlignment);
         writer.u64(type.stableTypeId);
+        // Minor 2. Un lector de minor 1 no lo espera, asi que se escribe solo cuando el formato
+        // que se esta produciendo lo incluye -- la misma condicion que ya usa `ownership`.
+        if (metadata.formatMinor >= 2) writer.text(type.enumUnderlyingTypeKey);
         writer.u32(static_cast<std::uint32_t>(type.fields.size()));
         for (const LibraryMetadataField& field : type.fields)
         {
@@ -883,6 +903,11 @@ bool decodePayload(
             return false;
         }
         type.kind = static_cast<LibraryMetadataTypeKind>(kind);
+        if (metadata.formatMinor >= 2 && !reader.text(type.enumUnderlyingTypeKey))
+        {
+            error = "truncated or invalid metadata enum underlying type";
+            return false;
+        }
         std::uint32_t fieldCount = 0;
         if (!readCount(reader, fieldCount)) { error = "invalid metadata field count"; return false; }
         type.fields.reserve(fieldCount);
@@ -1095,6 +1120,45 @@ bool LibraryMetadataCodec::write(
     error.clear();
     LibraryMetadata metadata;
     if (!buildMetadataModel(compilation, metadata, error)) return false;
+    return writeModel(metadata, destination, error);
+}
+
+// Escribe un MODELO ya construido, en la version menor que el propio modelo dice.
+//
+// POR QUE EXISTE, y no es andamiaje de pruebas. La compatibilidad hacia atras de este formato solo
+// se puede MEDIR si se puede producir un fichero de una version anterior: sin esto, "un lector de
+// 1.2 lee un fichero de 1.1" es una afirmacion sobre codigo que nadie ejecuto nunca -- y este
+// proyecto no cuenta esas. Cada minor futuro hereda la prueba sin escribir nada nuevo.
+bool LibraryMetadataCodec::writeModel(
+    const LibraryMetadata& model,
+    const std::filesystem::path& destination,
+    std::string& error) const
+{
+    error.clear();
+    LibraryMetadata metadata = model;
+    if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
+    {
+        error = "cannot write NativeSharp metadata format " +
+            std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
+        return false;
+    }
+    // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. Escribir la constante por encima de lo que el modelo
+    // diga es exactamente lo que hacia el encabezado con el minor: dos fuentes de verdad para el
+    // mismo campo. Y aqui seria peor, porque esta funcion existe para MEDIR round-trips -- un
+    // campo que se sobrescribe en silencio hace que la prueba diga "el objetivo sobrevivio" cuando
+    // lo que sobrevivio es la constante.
+    //
+    // NativeSharp 0.1 solo tiene un objetivo, asi que lo unico correcto es rechazar cualquier otro
+    // con su numero delante, y no producir un fichero que el lector rechazaria despues.
+    if (metadata.targetId != kWindowsX64Target || metadata.pointerSize != kPointerSize ||
+        metadata.pointerAlignment != kPointerAlignment)
+    {
+        error = "cannot write NativeSharp metadata for target " + std::to_string(metadata.targetId) +
+            " with pointer " + std::to_string(metadata.pointerSize) + "/" +
+            std::to_string(metadata.pointerAlignment) +
+            "; NativeSharp 0.1 targets Windows x64 only";
+        return false;
+    }
 
     metadata.abiFingerprint = sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -1107,12 +1171,19 @@ bool LibraryMetadataCodec::write(
 
     ByteWriter file;
     file.raw(kMagic);
-    file.u16(kFormatMajor);
-    file.u16(kFormatMinor);
+    // El encabezado escribe el minor DEL MODELO, no la constante. El cuerpo ya se codifica
+    // segun `metadata.formatMinor` (`if (metadata.formatMinor >= N)`), asi que tomar el numero de
+    // otro sitio serian dos fuentes de verdad para el mismo campo dentro del mismo fichero -- y un
+    // encabezado que dijera 2 sobre un cuerpo escrito como 1 es un fichero que no se puede leer.
+    file.u16(metadata.formatMajor);
+    file.u16(metadata.formatMinor);
+    // El marcador de endianidad es una propiedad de la CODIFICACION, no del modelo: no hay campo
+    // que pueda decir otra cosa, y por eso este si es una constante. Los tres siguientes salen del
+    // modelo, ya validado arriba.
     file.u32(kEndianMarker);
-    file.u32(kWindowsX64Target);
-    file.u32(kPointerSize);
-    file.u32(kPointerAlignment);
+    file.u32(metadata.targetId);
+    file.u32(metadata.pointerSize);
+    file.u32(metadata.pointerAlignment);
     file.u64(static_cast<std::uint64_t>(payload.size()));
     file.raw(metadata.abiFingerprint);
     file.raw(payloadHash);

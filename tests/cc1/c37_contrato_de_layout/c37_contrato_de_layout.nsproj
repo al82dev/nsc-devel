@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c37_contrato_de_layout</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

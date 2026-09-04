@@ -4,7 +4,7 @@ setlocal EnableExtensions
 REM ---------------------------------------------------------------------------
 REM NativeSharp -- bug triage.
 REM
-REM Builds and runs the eight reproducers in tests\bug_triage\ against the nsc
+REM Builds and runs the reproducers in tests\bug_triage\ against the nsc
 REM currently installed in C:\native-sharp, and reports which reported bugs are
 REM still alive. Several were reported against compilers older than C1, C6, C7
 REM and C8, so some may already be dead.
@@ -63,6 +63,7 @@ call :triage "%BT%\b5_ctor_owned_field_array\b5_ctor_owned_field_array.nsproj" b
 call :triage "%BT%\b6_delegate_projectref\app\b6_delegate_projectref.nsproj" b6_delegate_projectref
 call :triage "%BT%\b7_duplicate_extern_c\b7_duplicate_extern_c.nsproj" b7_duplicate_extern_c
 call :triage "%BT%\b8_shift_folding\b8_shift_folding.nsproj" b8_shift_folding
+call :triage "%BT%\b9_enum_estrecho_o2\b9_enum_estrecho_o2.nsproj" b9_enum_estrecho_o2
 
 >> "%REPORT%" echo.
 >> "%REPORT%" echo Vivos: %ALIVE%

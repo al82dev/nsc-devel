@@ -1,0 +1,99 @@
+STAGE_LIMITES -- 2026-09-03
+Los cuatro limites que quedaban anotados al cerrar el doc 116.
+Ver mkdown/117_los_cuatro_limites.md
+
+Tres eran defectos del compilador. El cuarto era una decision a la que le faltaba la mitad que la
+hace usable.
+
+1) x / cero_const -- EL DIAGNOSTICO LLEGA AL CASO CORRIENTE
+  include/nativesharp/Frontend/ProjectMethodBodyModel.h
+      + MethodLocalSymbol::constantIntegerValue
+  src/Frontend/ProjectMethodBodyModel.cpp
+      + se pliega al declarar el local
+      + divisorIsConstantZero(), que lee las DOS vias: la constante de la expresion y el local.
+      POR QUE APARTE Y NO EN integerConstant, que seria lo obvio: ese campo lo consume
+      commonNumericType para decidir el tipo comun de una operacion, asi que darle valor a cada
+      `const` local CAMBIARIA LA PROMOCION de expresiones que hoy compilan. Esto se usa para una
+      pregunta y no tipa nada.
+  LIMITE MEDIDO, no supuesto: `const int a=5; const int b=5; const int cero=a-b;` NO se pliega --
+  el evaluador resuelve MIEMBROS const, no locales, y los locales dependen del ambito, que el
+  evaluador no tiene. Cerrarlo es darle al resolvedor un espacio de ordinales para locales.
+
+2) enum.ToString() -- FUERA LA RESTRICCION DEL RECEPTOR
+  Era la peor de las cuatro: una limitacion del COMPILADOR escrita como si fuera una regla del
+  LENGUAJE ("needs a receiver it can read more than once").
+  include/nativesharp/Frontend/ProjectOopHirModel.h   + ProjectOopHirNodeKind::EnumName
+  include/nativesharp/Frontend/ProjectOopMirModel.h   + ProjectOopMirNodeKind::EnumName
+  src/Frontend/ProjectOopHirModel.cpp   la bajada, con el receptor UNA VEZ
+  src/Frontend/ProjectOopMirModel.cpp   nombre + mapeo
+  src/LLVM/ProjectOopLlvmLowerer.cpp    lowerEnumName: cadena de `select` SIN SALTOS
+  src/Frontend/ProjectMethodBodyModel.cpp   fuera el rechazo
+      Una cadena de literales es una cadena de PUNTEROS a globales constantes, asi que un select
+      entre dos es legal y gratis: ninguna rama tiene efectos ni puede fallar.
+      MEDIDO en el IR: con un receptor que cuenta, UNA llamada y TRES comparaciones.
+  EL FONDO SIGUE SIENDO EL NOMBRE DEL TIPO, y ahora se sabe por que no es el numero: los bindings
+  de llamada se indexan POR NODO DE SINTAXIS, y ese nodo ya lleva el de la operacion nucleo. Una
+  llamada mas exigiria un nodo de AST sintetico que este modelo no fabrica. Razon concreta, no
+  preferencia.
+
+3) SOBRECARGAS GENERICAS POR TIPOS -- se le pasa el problema a quien tiene los datos
+  src/Frontend/ProjectGenericModel.cpp
+  include/nativesharp/Frontend/ProjectGenericModel.h
+      + collectMethodTemplates() y el nombre compartido en ensureMethodSpecialization().
+      LA SOLUCION NO ES ADIVINAR: es NO ELEGIR. Cuando varias plantillas comparten nombre y aridad
+      generica se materializan TODAS con el MISMO nombre especializado, y a partir de ahi son
+      SOBRECARGAS ORDINARIAS que este compilador resuelve por tipos desde siempre.
+      El duplicado de verdad lo detecta ahora el modelo de miembros, con mejor mensaje:
+        duplicate method signature 'F__g1__int(builtin:int)' in type 'pz.U'
+      Y la deteccion de duplicados a nivel de plantilla queda SOLO PARA TIPOS: dos clases con el
+      mismo nombre y aridad siguen siendo un choque, porque ahi no hay lista de parametros.
+
+  EL DESEMPATE DE LA CLAVE CAMBIO, y es lo que evitaba un VERDE FALSO. Con la cuenta de parametros,
+  F<T>(T) y F<T>(T[]) habrian compartido clave -- y por tanto clave de ESPECIALIZACION -- asi que
+  la segunda habria dado en la cache de la primera y UNA DE LAS DOS SOBRECARGAS HABRIA
+  DESAPARECIDO EN SILENCIO. Ahora desempata la POSICION DE DECLARACION, unica por construccion.
+
+4) string SON BYTES -- y ahora eso tiene salida
+  lib/NativeSharp.Core/Utf8.ns  (NUEVO)
+      NO es un defecto: es la decision del doc 114 (ID 125). Lo que faltaba es la mitad que la hace
+      usable -- sin ella "bytes opacos" es un callejon sin salida.
+      SequenceLength, DecodeAt, NextIndex, CodePointCount, IsValid, IsBoundary,
+      BoundaryAtOrBefore, EncodedLength, Encode.
+      DOS PROPIEDADES DELIBERADAS: no es el comportamiento por omision (hay que llamarlo, asi que
+      quien paga el O(n) sabe que lo paga) y los nombres dicen lo que cuestan (CodePointCount no
+      se llama Length).
+      LA VALIDACION ES ESTRICTA y esa es la mitad que protege: una SOBRELARGA C0 AF decodifica a
+      '/' en un decodificador flojo, y por ahi se han saltado comprobaciones de rutas durante
+      veinte anos. Se rechazan sobrelargas, sustitutos D800-DFFF, todo lo que pase de 10FFFF,
+      continuaciones sueltas y secuencias cortadas.
+
+NUEVAS Y AMPLIADAS -- fixtures
+  tests/cc1/c36_utf8/           esperado 42   (NUEVA)
+      LAS SECUENCIAS ESPERADAS SALEN DEL CODIFICADOR DE PYTHON, no de mi cabeza. Escribirlas a ojo
+      es exactamente como me equivoque dos veces en el c30 con la coma flotante y una en el c31
+      con la longitud de una cadena.
+      Decodifica lo que acaba de codificar, y mide en una linea la diferencia que la decision pone
+      sobre la mesa: DIEZ BYTES, CUATRO CARACTERES.
+  tests/cc1/c34_enum_nombre/Main.ns   + el paso 7: un receptor CON EFECTOS, y la CUENTA DE
+      LLAMADAS. Sin contarlas, una bajada que llamara tres veces daria el nombre correcto y
+      pasaria igual.
+  tests/cc1/c35_sobrecarga_generica/Main.ns   + Solo<T>(T) contra Solo<T>(T[]), misma cuenta.
+
+MEDIDO
+  ./sweep.sh llvm  ->  OK=181  FAIL=5   (eran 180)
+  nsc.cc1.integer-evaluator: 39/39
+  nsc.llvm-lowering: 39/39
+  Dame().ToString(): UNA llamada en el IR, tres comparaciones.
+  Duplicado genuino de plantilla: detectado por el modelo de miembros.
+  56 casos -> 112 trabajos.
+
+NO VERIFICADO (no se puede desde el contenedor)
+  Que c34, c35 y c36 pasen EJECUTANDO.
+
+ESPERADO
+  ctest      281   (una prueba mas por fixture nueva, desde el reparto del doc 116)
+  trabajos   112
+  triage   16/16
+
+ATENCION
+  Hay que reconstruir nsc.exe. CMakeLists.txt NO cambio esta vez.

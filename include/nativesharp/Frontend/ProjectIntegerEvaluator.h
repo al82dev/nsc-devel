@@ -62,10 +62,16 @@ public:
 
     // Para un ordinal de miembro: su valor si es constante de enum, o el AST de su inicializador si
     // es un campo `const`, junto con el tipo que lo declara para seguir expandiendo.
+    //
+    // `enumUnderlyingTypeKey` sale con el tipo entero SUBYACENTE del enum --`builtin:byte`,
+    // `builtin:ulong`...-- cuando el miembro es una constante de enum. Sin el, este evaluador tenia
+    // que suponer `builtin:int`, y esa suposicion truncaba a 32 bits el valor de todo enumerador de
+    // un enum mas ancho: `Max = 18446744073709551615` en un `enum : ulong` salia valiendo -1.
     virtual bool describeConstantMember(
         std::size_t memberOrdinal,
         bool& isEnumConstant,
         std::int64_t& enumConstantValue,
+        std::string& enumUnderlyingTypeKey,
         const ast::AstNode*& initializer,
         std::string& declaredTypeKey,
         std::optional<std::size_t>& declaringTypeOrdinal) const = 0;

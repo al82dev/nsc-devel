@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c39_enum_nombre_o2</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

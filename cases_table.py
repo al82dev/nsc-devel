@@ -107,6 +107,23 @@ CASES: list[tuple[str, str, int | None]] = [
     # ID 132 -- sobrecargas genericas por lista de parametros. El consumidor de verdad es
     # Algorithm.Sort con y sin comparador, que hasta hoy eran Sort y SortWith.
     (f"{CC}/c35_sobrecarga_generica/c35_sobrecarga_generica.nsproj", "cc1_c35_sobrecarga_generica", 42),
+    # Utf8 -- la otra mitad de la decision del ID 125. Las secuencias esperadas salen del
+    # codificador de Python, no de mi cabeza, y la mitad que mas importa es la de lo INVALIDO.
+    (f"{CC}/c36_utf8/c36_utf8.nsproj", "cc1_c36_utf8", 42),
+    # `size(N)` -- el contrato de layout de una struct. Once structs cuyos tamanos salieron de
+    # compilar las EQUIVALENTES EN C con clang: ninguna verificacion cuenta si el modelo contra el
+    # que verifico lo construi yo, y aqui el modelo es un compilador de C.
+    (f"{CC}/c37_contrato_de_layout/c37_contrato_de_layout.nsproj", "cc1_c37_contrato_de_layout", 42),
+    # `enum E : byte` -- el tipo subyacente de un enum. Los valores estan elegidos para que
+    # discrepar se note: 200 en un `byte` extendido con signo daria -56, y -3 en un `sbyte`
+    # extendido sin signo daria 253.
+    (f"{CC}/c38_enum_ancho/c38_enum_ancho.nsproj", "cc1_c38_enum_ancho", 42),
+    # La FRONTERA del bug vivo b9: `ToString()` sobre enums estrechos en las formas vecinas al caso
+    # roto. El caso roto es un `enum : sbyte` NEGATIVO con receptor CONSTANTE --la corrida de triage
+    # del 2026-09-03 18:29 demostro que no hace falta ninguna funcion de por medio-- y vive aislado
+    # en tests/bug_triage. Esta acota el defecto por medicion y protege de que su arreglo rompa lo
+    # que ya funcionaba.
+    (f"{CC}/c39_enum_nombre_o2/c39_enum_nombre_o2.nsproj", "cc1_c39_enum_nombre_o2", 42),
 
     # --- ejemplos empaquetados ---
     ("examples/project_stage56_c1/Stage56C1InteropCompletion.nsproj", "project_stage56_c1", 0),

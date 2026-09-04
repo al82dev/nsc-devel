@@ -61,6 +61,17 @@ struct MethodLocalSymbol final
     std::string name;
     std::string typeKey;
     bool isConst = false;
+    // El VALOR de un local `const` de tipo entero, plegado al declararlo.
+    //
+    // POR QUE SE GUARDA AQUI y no se recalcula al usarlo: la expresion que lo inicializa esta en
+    // el sitio de la declaracion y en ningun otro. Cuando alguien escribe `x / cero`, lo unico
+    // que tiene a mano es el nombre.
+    //
+    // Y POR QUE NO VIAJA EN `ExpressionResult::integerConstant`, que seria lo obvio: ese campo lo
+    // consume `commonNumericType` para decidir el tipo comun de una operacion, asi que darle un
+    // valor a cada `const` local cambiaria la PROMOCION de expresiones que hoy compilan. Esto se
+    // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
+    std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     std::optional<std::size_t> localBorrowBindingOrdinal;
@@ -1199,6 +1210,7 @@ private:
             std::size_t memberOrdinal,
             bool& isEnumConstant,
             std::int64_t& enumConstantValue,
+            std::string& enumUnderlyingTypeKey,
             const ast::AstNode*& initializer,
             std::string& declaredTypeKey,
             std::optional<std::size_t>& declaringTypeOrdinal) const override;
@@ -1368,6 +1380,13 @@ private:
     //
     // `offender` sale apuntando al primer subnodo que no cumple, para que el diagnostico senale
     // el rango de fuente exacto en vez de la asignacion entera.
+    // ¿el divisor es un cero que el compilador ya conoce? Ver el comentario de la definicion:
+    // cubre la constante plegada Y el local `const` que vale cero, que llegan por vias distintas.
+    bool divisorIsConstantZero(
+        const ast::AstNode* divisorSyntax,
+        const ExpressionResult& divisor,
+        std::size_t scopeOrdinal) const;
+
     bool isAccessorDestinationReevaluable(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal,

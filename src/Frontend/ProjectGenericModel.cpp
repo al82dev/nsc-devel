@@ -129,19 +129,40 @@ bool ProjectGenericModel::build(
             if (state.record.kind != GenericTemplateKind::Method) continue;
             ++baseCounts[state.record.canonicalKey];
         }
+        // EL DESEMPATE ES LA POSICION DE DECLARACION, no la cuenta de parametros.
+        //
+        // La cuenta separaba `F<T>(T[])` de `F<T>(T[], int, int)`, pero NO separa `F<T>(T)` de
+        // `F<T>(T[])` -- las dos toman uno. Y si dos plantillas comparten clave, comparten la
+        // clave de especializacion, asi que la segunda daria en la cache de la primera y una de
+        // las dos sobrecargas DESAPARECERIA en silencio. Ese es exactamente el fallo que este
+        // proyecto persigue: no un rojo, sino un verde que mide otra cosa.
+        //
+        // El indice de declaracion es unico por construccion y determinista (orden de fuente).
+        std::size_t index = 0;
         for (TemplateState& state : templateStates_)
         {
+            const std::size_t position = index++;
             if (state.record.kind != GenericTemplateKind::Method) continue;
             const auto found = baseCounts.find(state.record.canonicalKey);
             if (found == baseCounts.end() || found->second < 2) continue;
-            state.record.canonicalKey +=
-                "#" + std::to_string(valueParameterCount(state.syntax));
+            state.record.canonicalKey += "#" + std::to_string(position);
         }
     }
 
+    // LA DETECCION DE DUPLICADOS ES SOLO PARA TIPOS, desde el 2026-09-03.
+    //
+    // Dos plantillas de METODO con el mismo nombre y la misma aridad generica YA NO son un error:
+    // son sobrecargas, y se materializan todas con un nombre compartido para que la resolucion
+    // ordinaria elija por tipos (ver processGenericCall). Si despues de sustituir acaban con la
+    // MISMA lista de parametros --un duplicado de verdad-- lo detecta la deteccion de metodos
+    // duplicados del modelo de miembros, que es donde se comparan listas de parametros.
+    //
+    // Para clases, structs y delegados no cambia nada: dos con el mismo nombre y aridad siguen
+    // siendo un choque, porque ahi no hay lista de parametros que los distinga.
     std::unordered_set<std::string> templateKeys;
     for (const TemplateState& state : templateStates_)
     {
+        if (state.record.kind == GenericTemplateKind::Method) continue;
         if (!templateKeys.insert(state.record.canonicalKey).second)
         {
             diagnostics.report(
@@ -400,6 +421,46 @@ bool ProjectGenericModel::processGenericCall(
     // ID 132. Los argumentos de VALOR de la llamada. Los hijos de un nodo de llamada son sus
     // argumentos; el receptor viaja en el callee, no aqui.
     const std::size_t argumentCount = call->children().size();
+
+    // ID 132, SEGUNDA MITAD -- las que comparten cuenta de parametros y difieren en los TIPOS.
+    //
+    // Filtrar por cuenta de argumentos separa `Cuenta<T>(T[])` de `Cuenta<T>(T[], int, int)`. Lo
+    // que NO puede separar es `F<T>(T)` de `F<T>(T[])`: los dos toman uno, y elegir necesita el
+    // TIPO del argumento -- que esta pasada no conoce, porque corre antes del modelo semantico.
+    //
+    // ANTES SE RENDIA: "duplicate generic template identity", y habia que renombrar.
+    // AHORA SE MATERIALIZAN TODAS con el MISMO nombre especializado, y a partir de ese momento son
+    // sobrecargas ORDINARIAS -- metodos no genericos con el mismo nombre y listas de parametros
+    // distintas, que este compilador resuelve por tipos desde siempre.
+    //
+    // No se adivina nada: se le pasa el problema a la capa que tiene los datos. Y si dos
+    // especializaciones acaban con la MISMA lista de parametros --`F<int>(int)` y `F<T>(int)`--
+    // el choque lo detecta la deteccion de metodos duplicados de siempre, que es su sitio.
+    std::vector<TemplateState*> shared =
+        collectMethodTemplates(unit, requestedOwner, methodName, call->typeSyntaxes().size());
+    if (shared.size() > 1U)
+    {
+        std::string sharedName = methodName + "__g" +
+            std::to_string(call->typeSyntaxes().size());
+        for (const ast::TypeSyntax* argument : call->typeSyntaxes())
+            sharedName += "__" + sanitize(typeSpelling(argument));
+
+        currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
+        currentInstantiationNamespace_ = namespaceName;
+        for (TemplateState* candidate : shared)
+        {
+            if (call->typeSyntaxes().size() != candidate->record.parameters.size()) continue;
+            if (ensureMethodSpecialization(
+                    *candidate, call->typeSyntaxes(), diagnostics, sharedName).empty())
+            {
+                return false;
+            }
+        }
+        if (callee != nullptr) callee->setText(sharedName);
+        call->clearTypeSyntaxes();
+        return true;
+    }
+
     TemplateState* state = resolveMethodTemplate(
         unit, requestedOwner, methodName, call->typeSyntaxes().size(), argumentCount);
     if (state == nullptr)
@@ -463,6 +524,28 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
         }
     }
     return fallback;
+}
+
+// ID 132. TODAS las plantillas de metodo visibles con este nombre y esta aridad generica. Es el
+// conjunto que, si tiene mas de una, se materializa entero con un nombre compartido para que la
+// resolucion de sobrecargas ordinaria elija por tipos.
+std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::collectMethodTemplates(
+    const ProjectSyntaxUnit& unit,
+    std::string_view ownerName,
+    std::string_view methodName,
+    std::size_t arity)
+{
+    std::vector<TemplateState*> result;
+    for (TemplateState& state : templateStates_)
+    {
+        if (state.record.kind != GenericTemplateKind::Method) continue;
+        if (!projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) continue;
+        if (state.record.name != methodName) continue;
+        if (state.record.parameters.size() != arity) continue;
+        if (!ownerName.empty() && state.record.ownerName != ownerName) continue;
+        result.push_back(&state);
+    }
+    return result;
 }
 
 ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
@@ -579,7 +662,8 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
 std::string ProjectGenericModel::ensureMethodSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::string_view sharedName)
 {
     std::vector<std::string> spellings;
     spellings.reserve(arguments.size());
@@ -597,9 +681,28 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     if (const auto found = specializationByKey_.find(key); found != specializationByKey_.end())
         return specializations_[found->second].specializedName;
 
-    std::string specializedName = state.record.name + "__g" + std::to_string(arguments.size());
-    for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
-    specializedName += "__h" + stableHashSuffix(key);
+    // ID 132, segunda mitad. `sharedName` no esta vacio cuando VARIAS plantillas comparten nombre
+    // y aridad generica: todas se especializan con EL MISMO nombre, y a partir de ahi dejan de ser
+    // un problema de genericos y pasan a ser SOBRECARGAS ORDINARIAS, que este compilador ya
+    // resuelve por lista de parametros desde siempre.
+    //
+    // Es la unica forma honesta de hacerlo en esta pasada: elegir aqui exigiria los TIPOS de los
+    // argumentos, y el modelo semantico --el unico que los conoce-- corre despues. En vez de
+    // adivinar, se materializan todas y se deja elegir a quien sabe.
+    //
+    // La CLAVE sigue llevando la identidad de cada plantilla (con su `#N`), asi que la cache
+    // sigue distinguiendolas; lo unico compartido es el nombre emitido.
+    std::string specializedName;
+    if (!sharedName.empty())
+    {
+        specializedName = std::string(sharedName);
+    }
+    else
+    {
+        specializedName = state.record.name + "__g" + std::to_string(arguments.size());
+        for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
+        specializedName += "__h" + stableHashSuffix(key);
+    }
 
     const std::size_t ordinal = specializations_.size();
     specializationByKey_.emplace(key, ordinal);

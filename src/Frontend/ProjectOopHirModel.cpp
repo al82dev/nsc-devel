@@ -1,3 +1,4 @@
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
@@ -492,6 +493,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ArrayElementAddress: return "array-element-address";
         case ProjectOopHirNodeKind::StringLength: return "string-length";
         case ProjectOopHirNodeKind::StringElementValue: return "string-element-value";
+        case ProjectOopHirNodeKind::EnumName: return "enum-name";
         case ProjectOopHirNodeKind::StringConcat: return "string-concat";
         case ProjectOopHirNodeKind::StringEquals: return "string-equals";
         case ProjectOopHirNodeKind::StringSubstring: return "string-substring";
@@ -1040,7 +1042,22 @@ bool ProjectOopHirModel::build(
         // lowering) sees an ordinary `static const int` field and needs no enum-specific code.
         if (field.isEnumConstant)
         {
-            auto literal = makeNode(ProjectOopHirNodeKind::IntegerConstant, field.syntax, "builtin:int");
+            // EL LITERAL LLEVA EL TIPO SUBYACENTE DEL ENUM, no `builtin:int`.
+            //
+            // Aguas abajo, `normalizeInteger` trunca al ancho de esta clave y extiende el signo. Con
+            // `builtin:int` fijo, TODO enumerador se truncaba a 32 bits antes de llegar al IR: en un
+            // `enum : ulong`, el valor 4294967295 salia valiendo -1, y el modelo de miembros --que
+            // ya lo habia aceptado como valido-- no tenia forma de enterarse. La regla esta en
+            // EnumUnderlyingType.h.
+            const frontend::NamedTypeDeclaration* enumType =
+                field.declaringTypeOrdinal < nameLookup.namedTypes().size()
+                    ? &nameLookup.namedTypes()[field.declaringTypeOrdinal]
+                    : nullptr;
+            const std::string_view underlyingKey = enumType != nullptr
+                ? enumUnderlyingTypeKey(enumType->syntax)
+                : std::string_view("builtin:int");
+            auto literal = makeNode(
+                ProjectOopHirNodeKind::IntegerConstant, field.syntax, std::string(underlyingKey));
             literal->integerValue = static_cast<std::uint64_t>(field.enumConstantValue);
             fieldInitializers_.push_back(ProjectOopHirFieldInitializer{
                 memberOrdinal, field.declaringTypeOrdinal, field.isStatic, field.isConst, std::move(literal)});
@@ -3351,39 +3368,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     }
                 }
 
-                // El fondo: el nombre corto del tipo. Se construye primero y la cadena se va
-                // envolviendo hacia atras, asi que el PRIMER enumerador declarado queda arriba y
-                // se comprueba antes -- el orden del codigo fuente, que es el que el lector
-                // espera cuando dos enumeradores comparten valor (un alias).
-                std::unique_ptr<ProjectOopHirNode> chain =
+                // EL NODO. children[0] es el valor, children[1] la cadena de reserva, y de ahi
+                // en adelante PARES (constante, nombre) en orden de declaracion -- que es el
+                // orden en que se comparan, y por tanto el que decide quien gana cuando dos
+                // enumeradores comparten valor (un alias).
+                //
+                // EL RECEPTOR SE BAJA UNA SOLA VEZ. La primera version de esto era una cadena de
+                // condicionales que lo bajaba una vez POR ENUMERADOR, y para no repetir efectos
+                // exigia un receptor re-evaluable: `Dame().ToString()` se rechazaba. Eso era una
+                // limitacion del compilador escrita como si fuera una regla del lenguaje.
+                auto node = makeNode(ProjectOopHirNodeKind::EnumName, expression, "builtin:string");
+                auto receiverNode = lowerExpression(receiverSyntax, memberOrdinal, false, error);
+                if (receiverNode == nullptr) return nullptr;
+                node->children.push_back(std::move(receiverNode));
+
+                auto fallback =
                     makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
-                chain->stringValue = shortTypeName(core->elementTypeKey);
+                fallback->stringValue = shortTypeName(core->elementTypeKey);
+                node->children.push_back(std::move(fallback));
 
-                for (auto iterator = enumerators.rbegin(); iterator != enumerators.rend();
-                     ++iterator)
+                for (const auto& enumerator : enumerators)
                 {
-                    auto receiverNode = lowerExpression(receiverSyntax, memberOrdinal, false, error);
-                    if (receiverNode == nullptr) return nullptr;
-                    auto constant =
-                        makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, core->elementTypeKey);
-                    constant->integerValue = static_cast<std::uint64_t>(iterator->first);
-
-                    auto comparison = makeNode(ProjectOopHirNodeKind::Binary, expression, "builtin:bool");
-                    comparison->operation = lexer::TokenKind::EqualEqual;
-                    comparison->children.push_back(std::move(receiverNode));
-                    comparison->children.push_back(std::move(constant));
-
-                    auto name = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
-                    name->stringValue = iterator->second;
-
-                    auto conditional =
-                        makeNode(ProjectOopHirNodeKind::Conditional, expression, "builtin:string");
-                    conditional->children.push_back(std::move(comparison));
-                    conditional->children.push_back(std::move(name));
-                    conditional->children.push_back(std::move(chain));
-                    chain = std::move(conditional);
+                    auto constant = makeNode(
+                        ProjectOopHirNodeKind::IntegerConstant, expression, core->elementTypeKey);
+                    constant->integerValue = static_cast<std::uint64_t>(enumerator.first);
+                    auto name = makeNode(
+                        ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
+                    name->stringValue = enumerator.second;
+                    node->children.push_back(std::move(constant));
+                    node->children.push_back(std::move(name));
                 }
-                return chain;
+                return node;
             }
 
             // C8 "type root", struct half. ToString on a struct is a COMPILE-TIME constant -- a

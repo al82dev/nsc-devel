@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
+
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -232,7 +234,15 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         // enum era la que quedaba viva.
         if (declaration.kind == NamedTypeDeclarationKind::Enum)
         {
-            const target::TypeLayout layout = targetLayout_.layoutOf(target::BuiltinLayoutKind::Enum);
+            // Mismo motivo que en el otro sitio: el ancho del enum es el de su tipo subyacente.
+            target::TypeLayout layout = targetLayout_.layoutOf(target::BuiltinLayoutKind::Enum);
+            if (const builtins::IntegerTypeInfo* info =
+                    builtins::findIntegerType(enumUnderlyingTypeKey(declaration.syntax));
+                info != nullptr && info->width >= 8)
+            {
+                layout.size = info->width / 8U;
+                layout.alignment = layout.size;
+            }
             return {{layout.size, layout.alignment}};
         }
         // Clase, interfaz y delegado: una referencia, que es un puntero nativo.
@@ -375,6 +385,18 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
     }
     if (type.kind == NamedTypeDeclarationKind::Enum)
     {
+        // EL TAMANO DE UN ENUM SALE DE SU TIPO SUBYACENTE, desde el 2026-09-03. Antes esto
+        // devolvia siempre {4,4}, asi que un `enum : byte` dentro de una struct ocupaba cuatro
+        // bytes donde C pone uno y desplazaba todo lo que iba detras -- en silencio.
+        // La regla vive en include/nativesharp/Frontend/EnumUnderlyingType.h y la comparten el
+        // modelo de layout, el backend y las decisiones de signo.
+        const std::string_view underlying = enumUnderlyingTypeKey(type.syntax);
+        if (const builtins::IntegerTypeInfo* info = builtins::findIntegerType(underlying);
+            info != nullptr && info->width >= 8)
+        {
+            const std::uint64_t bytes = info->width / 8U;
+            return TypeLayout{bytes, bytes};
+        }
         return targetLayout_.layoutOf(BuiltinLayoutKind::Enum);
     }
     if (type.kind != NamedTypeDeclarationKind::Struct)
@@ -403,6 +425,34 @@ namespace
 // struct/union declaration -- "union", "pack=N", "align=N", comma-joined in any order. Anything
 // unrecognized is ignored rather than fatal: a marker this build does not know about must not
 // turn a valid declaration into a hard error.
+// `size(N)` -- el tamano AFIRMADO por el autor, si lo escribio. Va aparte de
+// `target::StructLayoutOptions` a proposito: esa struct describe COMO se calcula el layout, y esto
+// no participa en el calculo. Es una comprobacion sobre el resultado.
+std::optional<std::uint64_t> parseAssertedSize(const NamedTypeDeclaration& type)
+{
+    const std::string& text = type.syntax != nullptr ? type.syntax->auxiliaryText() : std::string();
+    std::size_t position = 0;
+    while (position < text.size())
+    {
+        const std::size_t comma = text.find(',', position);
+        const std::string_view token(
+            text.data() + position,
+            (comma == std::string::npos ? text.size() : comma) - position);
+        position = (comma == std::string::npos ? text.size() : comma + 1);
+        if (!token.starts_with("size=")) continue;
+        std::uint64_t value = 0;
+        bool digits = false;
+        for (const char digit : token.substr(5))
+        {
+            if (std::isdigit(static_cast<unsigned char>(digit)) == 0) return std::nullopt;
+            digits = true;
+            value = value * 10U + static_cast<std::uint64_t>(digit - '0');
+        }
+        if (digits) return value;
+    }
+    return std::nullopt;
+}
+
 target::StructLayoutOptions parseStructLayoutOptions(const NamedTypeDeclaration& type)
 {
     target::StructLayoutOptions options;
@@ -536,6 +586,33 @@ bool ProjectObjectLayoutModel::buildStructLayout(
             field.size,
             field.alignment,
             member.declaredTypeKey});
+    }
+
+    // `size(N)`. Aqui es donde se comprueba, porque es el unico sitio donde el tamano YA ESTA
+    // CALCULADO -- con su relleno final, que es justo la parte que nadie escribe y donde un
+    // binding se desvia de C sin enterarse.
+    //
+    // EL MENSAJE LLEVA LOS DOS NUMEROS. Un diagnostico que solo dijera "el tamano no coincide"
+    // obligaria a otra corrida para saber cual es: quien lo lee esta comparando contra un header
+    // de C y lo que necesita es la diferencia, no la noticia.
+    if (const std::optional<std::uint64_t> asserted = parseAssertedSize(type);
+        asserted.has_value() && *asserted != layout->size)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            type.range,
+            "struct '" + type.identity.key() + "' declares size(" + std::to_string(*asserted) +
+                ") but its fields lay out to " + std::to_string(layout->size) +
+                " bytes with alignment " + std::to_string(layout->alignment) +
+                "; size() verifies the layout, it does not pad it");
+        // MARCAR `Failed` ANTES DE SALIR, como hacen los otros tres puntos de fallo de esta
+        // funcion. Dejarlo en `Visiting` haria que la SIGUIENTE consulta de este mismo tipo
+        // --cualquier struct que lo tenga como campo-- lo tomara por un ciclo, y el segundo
+        // diagnostico diria "referencia circular" sobre una struct que no tiene ninguna. Un error
+        // que inventa un segundo error distinto es peor que el primero.
+        namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+        return false;
     }
 
     namedTypeLayouts_[typeOrdinal] = TypeLayout{layout->size, layout->alignment};

@@ -328,6 +328,30 @@ void SemanticAnalyzer::analyzeEnum(ast::AstNode* node)
         return;
     }
 
+    // `enum E : byte` NO ESTA EN ESTA RUTA, Y SE DICE EN VOZ ALTA.
+    //
+    // El tipo subyacente declarado lo implementa la ruta de PROYECTO: alli el ancho y el signo del
+    // enum salen de una regla unica (include/nativesharp/Frontend/EnumUnderlyingType.h) que el
+    // modelo de layout, el generador de cabeceras C y el bajador consultan por igual. Esta ruta de
+    // fichero unico tiene su propio modelo de tipos, su propio layout y su propio bajador, y en los
+    // tres un enum mide 32 bits y tiene signo.
+    //
+    // POR QUE RECHAZAR Y NO IMPLEMENTARLO AQUI TAMBIEN. Aceptar la sintaxis y seguir dando 32 bits
+    // es la unica salida que este proyecto no admite: seria una RESPUESTA FALSA, y ademas la peor
+    // clase, porque el autor escribio el ancho que queria y el compilador dijo que si. Implementarlo
+    // seria una segunda copia de la regla --exactamente el defecto que el tipo subyacente vino a
+    // cerrar-- en un camino que ninguna fixture del corpus ejercita, o sea codigo sin medir. Queda
+    // el rechazo, que es corto, cierto, y dice adonde ir.
+    if (node->typeSyntax() != nullptr)
+    {
+        report(
+            node->range(),
+            diagnostics::DiagnosticId::InvalidEnumInitializer,
+            "a declared enum underlying type is only supported by the project pipeline; "
+            "in the single-file pipeline an enum is always a signed 32-bit integer");
+        return;
+    }
+
     Type* enumType = types_.createEnum(node->text(), node);
     Symbol* enumSymbol = createSymbol(SymbolKind::Enum, node, enumType, true);
     globalScope_->declare(enumSymbol);

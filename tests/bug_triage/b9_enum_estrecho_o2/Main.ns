@@ -1,0 +1,190 @@
+// b9 -- `ToString()` de un enum `sbyte` con valor NEGATIVO. BUG VIVO a -O2.
+//
+// EL SINTOMA. El 2026-09-03, `tests/cc1/c38_enum_ancho` devolvio 42 a -O0 y 39 a -O2 en Windows.
+//
+// LO MEDIDO HASTA AHORA (corrida del 2026-09-03 18:29, `exit 10` con la primera version):
+//
+//   * el caso que falla NO cruza ninguna llamada -- basta un receptor CONSTANTE;
+//   * queda DESCARTADA la hipotesis del retorno de ocho bits y la ABI de Windows x64;
+//   * no depende del enlazador: `c38 -O2` da 39 con LLD-link y con NSLink.
+//
+// LAS TRES CAUSAS QUE SIGUEN ABIERTAS:
+//
+//   1. EnumName elige el literal equivocado;
+//   2. elige el bueno y la COMPARACION de cadenas se optimiza mal;
+//   3. algo anterior produce `poison` y -O2 lo aprovecha.
+//
+// DOS ERRORES DE DISENO QUE ESTA VERSION CORRIGE, y los dos hacian que la sonda AFIRMARA MAS DE LO
+// QUE PODIA DEMOSTRAR:
+//
+//   * `Opaco` no era opaco. `cuantos - cuantos` es cero, asi que -O2 puede reducirlo a `valor` y
+//     plegar igualmente la constante -- con lo que los casos "no plegables" no probaban nada. Ahora
+//     el valor pasa por una comparacion cuyo resultado el compilador NO puede conocer.
+//   * la capa "letra a letra" solo miraba algunos bytes. `"Cero"` y `"Tope"` miden LOS DOS cuatro:
+//     si EnumName devolviera `"Tope"` donde toca `"Cero"`, la capa 2 pasaba y la capa 3 salia roja,
+//     y el informe habria dicho "fallo la comparacion de cadenas" cuando el fallo era la ELECCION.
+//     Ahora se comparan TODOS los bytes antes de tocar el operador de cadenas.
+//
+// LA DISTINCION ENTRE LA CAPA 2 Y LA CAPA 3, que es toda la gracia del fichero: la capa 2 lee la
+// cadena con `Length` y con indexacion --que no pasan por el operador de igualdad-- y la capa 3
+// usa `!=`. Si la 2 pasa y la 3 falla, el contenido es correcto y lo que se optimiza mal es el
+// operador.
+//
+// COMO LEER EL CODIGO DE SALIDA:
+//
+//   10-15  -> el valor de 8 bits ya es incorrecto ANTES de ToString(). No es EnumName.
+//   20-24  -> el valor esta bien y el CONTENIDO de la cadena es incorrecto para un enumerador
+//             VALIDO. Esto acota el fallo a la PRODUCCION de la cadena, y NO demuestra todavia que
+//             la culpa sea la cadena de `icmp`/`select` de lowerEnumName: caben igual un puntero o
+//             una longitud corrompidos, o un `poison` anterior que -O2 aprovecha. Es un rango de
+//             localizacion, no un veredicto.
+//   26     -> igual que 20-24, para la forma literal del 39 de c38.
+//   25     -> fallo el camino de RESERVA: un valor que no coincide con ningun enumerador no
+//             devolvio el nombre del tipo. Es la otra salida de EnumName, la que se toma cuando
+//             ninguna comparacion acierta.
+//   30-36  -> el operador de cadenas. Y aqui SI es concluyente: cada una compara la MISMA variable
+//             que la capa 2 acaba de verificar byte a byte, sin volver a llamar a ToString().
+//   50-57  -> falla tambien en un vecino sin signo o positivo.
+//   42     -> no reproduce. Ningun otro camino devuelve 42.
+using NativeSharp.Core;
+
+namespace b9enumestrechoo2
+{
+    public enum ConSigno : sbyte { MenosTres = -3, Cero = 0, Tope = 127 }
+    public enum SinSigno : byte { Bajo = 0, DosCientos = 200 }
+    public enum ConSignoPositivo : sbyte { Uno = 1, Dos = 2 }
+
+    public class Program
+    {
+        // OPACO DE VERDAD. La version anterior hacia `valor + (cuantos - cuantos)`, que es `valor`
+        // y el optimizador lo sabe. Aqui el resultado depende de una comparacion cuyo lado derecho
+        // el compilador no puede acotar: no hay forma de saber en compilacion cuantos argumentos
+        // trae la linea de ordenes, asi que la rama tiene que quedarse y `valor` no se pliega.
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            if (cuantos > 1000000) { return valor + 1; }
+            return valor;
+        }
+
+        // COMPARA DOS CADENAS BYTE A BYTE SIN USAR EL OPERADOR DE IGUALDAD, que es justo lo que la
+        // capa 3 mide y por tanto lo que la capa 2 no puede usar. Solo `Length` e indexacion.
+        private static bool MismosBytes(string obtenida, string esperada)
+        {
+            if (obtenida.Length != esperada.Length) { return false; }
+            int i = 0;
+            while (i < obtenida.Length)
+            {
+                if (obtenida[i] != esperada[i]) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static int Main()
+        {
+            // =============================================================================
+            // CAPA 1 -- EL VALOR DE OCHO BITS. Sin nombres, sin cadenas.
+            //
+            // Si el numero ya es otro, EnumName estaria eligiendo contra un valor equivocado y el
+            // nombre fallaria como CONSECUENCIA. Por eso va delante.
+            // =============================================================================
+            if ((int)ConSigno.MenosTres != -3) { return 10; }
+            if ((long)ConSigno.MenosTres != -3) { return 11; }
+            ConSigno local = ConSigno.MenosTres;
+            if ((int)local != -3) { return 12; }
+            if (local != ConSigno.MenosTres) { return 13; }
+            // El mismo valor por un camino que ahora si es opaco de verdad.
+            ConSigno opaco = (ConSigno)Opaco(-3);
+            if ((int)opaco != -3) { return 14; }
+            if (opaco != ConSigno.MenosTres) { return 15; }
+
+            // =============================================================================
+            // CAPA 2 -- EL CONTENIDO DE LA CADENA, TODOS LOS BYTES. Ningun `==` ni `!=`.
+            //
+            // Llegar aqui significa que el valor de ocho bits es correcto. Un fallo aqui acota el
+            // defecto a la PRODUCCION de la cadena y descarta el operador de igualdad, que es lo
+            // que mide la capa 3 -- pero no dice cual de las tres causas abiertas es: EnumName
+            // eligiendo otro literal, un puntero o una longitud corrompidos, o `poison`.
+            //
+            // Se comparan TODOS los bytes a proposito: `Cero` y `Tope` miden LOS DOS cuatro, asi
+            // que mirar solo la longitud confundiria una eleccion equivocada con un acierto.
+            // =============================================================================
+            string constante = ConSigno.MenosTres.ToString();
+            if (!MismosBytes(constante, "MenosTres")) { return 20; }
+
+            string porLocal = local.ToString();
+            if (!MismosBytes(porLocal, "MenosTres")) { return 21; }
+
+            string porOpaco = opaco.ToString();
+            if (!MismosBytes(porOpaco, "MenosTres")) { return 22; }
+
+            // Los otros dos enumeradores del MISMO enum. Si estos salen bien y `MenosTres` no, el
+            // detonante es el valor negativo y no el enum entero.
+            //
+            // SE GUARDAN EN VARIABLES, y no es estilo: la capa 3 tiene que comparar EXACTAMENTE las
+            // cadenas que esta capa verifico. Llamar otra vez a `ToString()` dentro del `!=` seria
+            // una llamada NUEVA a EnumName, y entonces un fallo alli no distinguiria "el operador
+            // compara mal" de "esta segunda llamada produjo otro contenido".
+            string cero = ConSigno.Cero.ToString();
+            if (!MismosBytes(cero, "Cero")) { return 23; }
+            string tope = ConSigno.Tope.ToString();
+            if (!MismosBytes(tope, "Tope")) { return 24; }
+
+            // EL CAMINO DE RESERVA. Un valor que no coincide con ningun enumerador tiene que dar
+            // el nombre del TIPO, que es la otra salida de EnumName: la que se toma cuando NINGUNA
+            // comparacion acierta.
+            //
+            // Un 25 significa que ESE camino fallo, no que los demas devolvieran la reserva. Si
+            // `MenosTres.ToString()` devolviera `"ConSigno"` por error, esto ni siquiera se
+            // ejecutaria: habria salido 20 mas arriba. Las dos mitades de EnumName --acertar y no
+            // acertar-- se miden por separado y en ese orden.
+            ConSigno fuera = (ConSigno)Opaco(100);
+            string reserva = fuera.ToString();
+            if (!MismosBytes(reserva, "ConSigno")) { return 25; }
+
+            // La forma literal del 39 de c38, guardada aparte para que la capa 3 pueda compararla
+            // sin volver a llamar a ToString().
+            string directo = ConSigno.MenosTres.ToString();
+            if (!MismosBytes(directo, "MenosTres")) { return 26; }
+
+            // =============================================================================
+            // CAPA 3 -- EL OPERADOR DE CADENAS. Lo ultimo, porque se apoya en las dos anteriores.
+            //
+            // Llegar aqui significa que el valor Y el contenido son correctos. Si esto falla, el
+            // defecto no esta ni en el valor ni en EnumName: esta en como se compara.
+            // =============================================================================
+            // TODAS comparan variables que la capa 2 ya verifico byte a byte. Ninguna vuelve a
+            // llamar a ToString() aqui: si lo hiciera, un fallo no distinguiria el operador de una
+            // segunda llamada que hubiera producido otro contenido.
+            if (constante != "MenosTres") { return 30; }
+            if (porLocal != "MenosTres") { return 31; }
+            if (porOpaco != "MenosTres") { return 32; }
+            if (cero != "Cero") { return 33; }
+            if (tope != "Tope") { return 34; }
+            if (directo != "MenosTres") { return 35; }
+            if (reserva != "ConSigno") { return 36; }
+
+            // =============================================================================
+            // CAPA 4 -- LOS VECINOS. Un byte SIN signo, y uno con signo pero POSITIVO. Las tres
+            // capas otra vez, en el mismo orden.
+            // =============================================================================
+            if ((int)SinSigno.DosCientos != 200) { return 50; }
+            string sinSigno = SinSigno.DosCientos.ToString();
+            if (!MismosBytes(sinSigno, "DosCientos")) { return 51; }
+            if (sinSigno != "DosCientos") { return 52; }
+
+            if ((int)ConSignoPositivo.Dos != 2) { return 53; }
+            string positivo = ConSignoPositivo.Dos.ToString();
+            if (!MismosBytes(positivo, "Dos")) { return 54; }
+            if (positivo != "Dos") { return 55; }
+
+            SinSigno sinSignoOpaco = (SinSigno)Opaco(200);
+            string opacoSinSigno = sinSignoOpaco.ToString();
+            if (!MismosBytes(opacoSinSigno, "DosCientos")) { return 56; }
+            if (opacoSinSigno != "DosCientos") { return 57; }
+
+            return 42;
+        }
+    }
+}

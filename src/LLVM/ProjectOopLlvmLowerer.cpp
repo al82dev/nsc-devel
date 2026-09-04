@@ -4,6 +4,7 @@
 #include "SignedDivisionCorrection.h"
 
 #include "nativesharp/Frontend/BuiltinIntegerTypes.h"
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
@@ -979,16 +980,19 @@ private:
                 {
                     return fail(error, "Stage 37 const field lost its compile-time initializer");
                 }
-                // Stage 51.x: an enum member's typeKey is its own enum type (int-sized underneath,
-                // but not "builtin:int"/"builtin:uint"), so isIntegral() alone would miss it --
-                // isEnumConstant marks it as still int-sized and signed (NativeSharp enums are
-                // backed by a plain signed int, matching the classic single-file enum pipeline).
+                // La clave de tipo de un miembro de enum es la del propio enum, no
+                // "builtin:int"/"builtin:uint", asi que isIntegral() sola no lo veria:
+                // isEnumConstant es lo que lo marca. El SIGNO sale del tipo subyacente y no de una
+                // suposicion -- un `enum : byte` con un miembro en 200 se emite sin signo.
+                const frontend::builtins::IntegerTypeInfo* fieldEnum = enumUnderlyingInfo(field.typeKey);
                 if (frontend::ProjectTypeConversion::isIntegral(field.typeKey) || field.isEnumConstant)
                 {
                     initializer = LLVMConstInt(
                         type,
                         field.constantIntegerValue,
-                        (field.isEnumConstant || isSignedInteger(field.typeKey)) ? 1 : 0);
+                        (fieldEnum != nullptr ? fieldEnum->isSigned : isSignedInteger(field.typeKey))
+                            ? 1
+                            : 0);
                 }
                 else if (field.typeKey == "builtin:bool")
                 {
@@ -4212,11 +4216,16 @@ private:
         {
             return fail(error, "switch governing value is not integral or an enum: " + governingTypeKey);
         }
-        // An enum lowers to i32 and its members are signed; every other governing type answers for
-        // itself. Same rule the constant-field lowering uses, so a `case` constant and the value it
-        // is compared against can never disagree about sign.
+        // EL SIGNO DE LAS CONSTANTES DE `case` es el del tipo que gobierna: el subyacente si es un
+        // enum, y el suyo propio en cualquier otro caso. Es la misma regla que usa la bajada de
+        // campos `const`, asi que una constante de `case` y el valor con el que se compara no
+        // pueden discrepar de signo. Un `switch` sobre un `enum : byte` con un miembro en 200
+        // dependia de esto: con signo, la constante se emitia como -56.
+        const frontend::builtins::IntegerTypeInfo* governingEnum = enumUnderlyingInfo(governingTypeKey);
         const LLVMBool signExtend =
-            (isEnumTypeKey(governingTypeKey) || isSignedInteger(governingTypeKey)) ? 1 : 0;
+            (governingEnum != nullptr ? governingEnum->isSigned : isSignedInteger(governingTypeKey))
+                ? 1
+                : 0;
 
         const std::size_t sectionCount = node->children.size() - 1;
         std::vector<LLVMBasicBlockRef> sectionBlocks;
@@ -4740,6 +4749,8 @@ private:
                     ? LLVMBuildLoad2(builder_, LLVMInt8TypeInContext(context_), address, "string.element.load")
                     : nullptr;
             }
+            case frontend::ProjectOopMirNodeKind::EnumName:
+                return lowerEnumName(node, error);
             case frontend::ProjectOopMirNodeKind::StringConcat:
                 return lowerStringConcat(node, error);
             case frontend::ProjectOopMirNodeKind::StringEquals:
@@ -6601,6 +6612,70 @@ private:
         return LLVMBuildTrunc(builder_, mixed, i32, "refhash");
     }
 
+    // ID 129. `ToString()` de un enum -- el NOMBRE del enumerador.
+    //
+    // FORMA DEL NODO: children[0] el valor, children[1] la cadena de reserva (el nombre del tipo),
+    // y de ahi en adelante PARES (constante, nombre) en orden de declaracion.
+    //
+    // SE BAJA A UNA CADENA DE `select`, SIN SALTOS:
+    //
+    //     %v  = <valor, bajado UNA VEZ>
+    //     %r0 = <cadena de reserva>
+    //     %c1 = icmp eq %v, K1 ;  %r1 = select %c1, S1, %r0
+    //     %c2 = icmp eq %v, K2 ;  %r2 = select %c2, S2, %r1
+    //     ...
+    //
+    // Una cadena de literales es una cadena de PUNTEROS a globales constantes, asi que un `select`
+    // entre dos de ellas es legal y no cuesta nada -- ninguna rama tiene efectos ni puede fallar.
+    // Sin saltos, sin bloques nuevos, y con el valor evaluado una sola vez, que es la propiedad
+    // por la que este nodo existe.
+    //
+    // EL ORDEN IMPORTA Y ES EL DE DECLARACION: la cadena se construye desde la reserva hacia
+    // arriba, asi que el enumerador declarado ANTES queda mas cerca del resultado y gana cuando
+    // dos comparten valor (un alias). Es lo que un lector espera al mirar el enum.
+    LLVMValueRef lowerEnumName(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->children.size() < 2U || (node->children.size() % 2U) != 0U)
+        {
+            return failValue(error, "ID 129 enum name node needs a value, a fallback and pairs");
+        }
+        LLVMValueRef value = lowerExpression(node->children[0].get(), error);
+        if (value == nullptr) return nullptr;
+        LLVMValueRef result = lowerExpression(node->children[1].get(), error);
+        if (result == nullptr) return nullptr;
+
+        // LA CADENA SE CONSTRUYE AL REVES, Y ESO NO ES UN DETALLE.
+        //
+        // `result` empieza siendo la reserva y cada vuelta lo envuelve en un `select`, asi que el
+        // ULTIMO par que se procesa queda MAS AFUERA -- y el mas afuera es el que gana. Recorrer
+        // los pares en orden de declaracion haria ganar al ULTIMO enumerador que comparte valor,
+        // que es justo lo contrario de lo que el frontend documenta (ProjectOopHirModel: los pares
+        // van "en orden de declaracion... el que decide quien gana cuando dos enumeradores
+        // comparten valor") y de lo que la fixture c34 fija: `Solo = 1` declarado despues de
+        // `Lectura = 1` tiene que salir "Lectura".
+        //
+        // Recorriendolos del ultimo al primero, el PRIMER par declarado se aplica el ultimo y
+        // queda arriba del todo. Gana el primero, que es la decision.
+        //
+        // Que un alias gane o pierda parece cosmetico hasta que se recuerda por que existen los
+        // alias: `Solo = 1` es un nombre alternativo de una bandera, y un programa que imprime
+        // banderas espera el nombre canonico, no el ultimo sinonimo que alguien anadio al final
+        // del enum. Y sobre todo: la respuesta tiene que ser ESTABLE, no depender de en que orden
+        // el backend recorra una lista.
+        for (std::size_t pair = node->children.size(); pair >= 4U; pair -= 2)
+        {
+            const std::size_t index = pair - 2U;
+            LLVMValueRef constant = lowerExpression(node->children[index].get(), error);
+            if (constant == nullptr) return nullptr;
+            LLVMValueRef name = lowerExpression(node->children[index + 1].get(), error);
+            if (name == nullptr) return nullptr;
+            LLVMValueRef matches =
+                LLVMBuildICmp(builder_, LLVMIntEQ, value, constant, "enum.name.is");
+            result = LLVMBuildSelect(builder_, matches, name, result, "enum.name");
+        }
+        return result;
+    }
+
     LLVMValueRef lowerStringLiteral(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         const auto found = stringGlobals_.find(node->stringValue);
@@ -8130,16 +8205,20 @@ private:
         if (source == target || source == "builtin:null") return value;
         LLVMTypeRef destination = llvmType(target, error);
         if (destination == nullptr) return nullptr;
-        // Stage 51.x: an enum type key is int-sized and signed underneath (matching the classic
-        // single-file enum pipeline), so an explicit cast to/from it needs the same treatment as
-        // a real "builtin:int" operand here -- integerWidth()/isSignedInteger() alone don't know
-        // about named types at all.
-        const bool sourceIsEnum = isEnumTypeKey(source);
-        const bool targetIsEnum = isEnumTypeKey(target);
-        const unsigned sourceWidth = sourceIsEnum ? 32U : integerWidth(source);
-        const unsigned targetWidth = targetIsEnum ? 32U : integerWidth(target);
-        const bool sourceSigned = sourceIsEnum || isSignedInteger(source);
-        const bool targetSigned = targetIsEnum || isSignedInteger(target);
+        // UN ENUM SE CONVIERTE COMO SU TIPO SUBYACENTE. `integerWidth()` e `isSignedInteger()` solo
+        // saben de claves "builtin:", asi que la clave de un enum tiene que traer su ancho y su
+        // signo de la declaracion. Antes esto decia "32 bits y con signo" sin preguntar, y con un
+        // `enum : byte` emitia `icmp ne i8 %v, i32 200` -- el verificador de LLVM lo rechazaba,
+        // que es la forma AFORTUNADA del defecto; en `enum : sbyte` habria sido peor, porque
+        // extender sin signo un -1 da 255 y eso compila y responde mal.
+        const frontend::builtins::IntegerTypeInfo* sourceEnum = enumUnderlyingInfo(source);
+        const frontend::builtins::IntegerTypeInfo* targetEnum = enumUnderlyingInfo(target);
+        const unsigned sourceWidth = sourceEnum != nullptr ? sourceEnum->width : integerWidth(source);
+        const unsigned targetWidth = targetEnum != nullptr ? targetEnum->width : integerWidth(target);
+        const bool sourceSigned =
+            sourceEnum != nullptr ? sourceEnum->isSigned : isSignedInteger(source);
+        const bool targetSigned =
+            targetEnum != nullptr ? targetEnum->isSigned : isSignedInteger(target);
         if (sourceWidth != 0 && targetWidth != 0)
         {
             if (sourceWidth == targetWidth) return value;
@@ -8179,19 +8258,36 @@ private:
         return failValue(error, "unsupported Stage 34 LLVM conversion from '" + std::string(source) + "' to '" + std::string(target) + "'");
     }
 
-    // Stage 51.x: true only for a "type:" key that actually names an enum (never for a struct or
-    // class reference sharing the same "type:" prefix) -- mirrors the lookup llvmType() already
-    // does to map an enum type key to i32.
-    bool isEnumTypeKey(std::string_view typeKey) const
+    // EL TIPO ENTERO SUBYACENTE DE UN ENUM, buscado por su clave de tipo. Nulo si la clave no
+    // nombra un enum -- ni una struct ni una referencia de clase, que comparten el prefijo
+    // "type:".
+    //
+    // ES EL UNICO SITIO DE ESTE BACKEND que traduce una clave de tipo a la regla de
+    // include/nativesharp/Frontend/EnumUnderlyingType.h. El tipo LLVM, el ancho de las
+    // conversiones, el signo de las extensiones y el signo de las constantes de `case` salen los
+    // cuatro de aqui, y por eso no pueden discrepar: hasta el 2026-09-03 eran cuatro copias de
+    // "un enum mide 32 bits y tiene signo" escritas por separado, y un `enum : byte` las
+    // contradecia a las cuatro a la vez.
+    const frontend::builtins::IntegerTypeInfo* enumUnderlyingInfo(std::string_view typeKey) const
     {
-        if (!typeKey.starts_with("type:")) return false;
+        if (!typeKey.starts_with("type:")) return nullptr;
         const std::string_view key = typeKey.substr(5);
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
         {
-            if (type.identity.key() == key && type.kind == frontend::NamedTypeDeclarationKind::Enum)
-                return true;
+            if (type.identity.key() != key ||
+                type.kind != frontend::NamedTypeDeclarationKind::Enum)
+                continue;
+            return frontend::builtins::findIntegerType(frontend::enumUnderlyingTypeKey(type.syntax));
         }
-        return false;
+        return nullptr;
+    }
+
+    // Un enum SIEMPRE tiene tipo subyacente --lo escrito, o `int` por omision, y las dos formas
+    // salen de la tabla unica de enteros-- asi que "hay tipo subyacente" y "es un enum" son la
+    // misma pregunta.
+    bool isEnumTypeKey(std::string_view typeKey) const
+    {
+        return enumUnderlyingInfo(typeKey) != nullptr;
     }
 
     LLVMTypeRef llvmType(std::string_view typeKey, std::string& error) const
@@ -8232,11 +8328,25 @@ private:
         }
         if (typeKey.starts_with("type:"))
         {
-            const std::string_view key = typeKey.substr(5);
-            for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
+            // El ancho del enum es el de su TIPO SUBYACENTE, no siempre 32. La regla esta en
+            // include/nativesharp/Frontend/EnumUnderlyingType.h y la comparten el modelo de layout
+            // y este backend: si discreparan, una struct con un campo de enum tendria un tamano en
+            // el frontend y otro en el IR.
+            //
+            // Los cuatro anchos que la tabla de enteros admite se escriben uno a uno en vez de con
+            // LLVMIntTypeInContext porque la API C que este proyecto declara a mano
+            // (src/LLVM/LlvmCApi.h) no incluye esa funcion, y anadir un simbolo a esa frontera es
+            // una decision aparte -- la lista de 146 esta congelada a proposito (SHR-090).
+            if (const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(typeKey);
+                enumInfo != nullptr)
             {
-                if (type.identity.key() == key && type.kind == frontend::NamedTypeDeclarationKind::Enum)
-                    return LLVMInt32TypeInContext(context_);
+                switch (enumInfo->width)
+                {
+                    case 8: return LLVMInt8TypeInContext(context_);
+                    case 16: return LLVMInt16TypeInContext(context_);
+                    case 64: return LLVMInt64TypeInContext(context_);
+                    default: return LLVMInt32TypeInContext(context_);
+                }
             }
             if (const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey); layout != nullptr)
             {

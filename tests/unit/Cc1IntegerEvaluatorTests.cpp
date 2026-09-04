@@ -56,6 +56,7 @@ public:
         std::size_t,
         bool&,
         std::int64_t&,
+        std::string&,          // enumUnderlyingTypeKey
         const AstNode*&,
         std::string&,
         std::optional<std::size_t>&) const override

@@ -125,6 +125,21 @@ namespace Stage48_1.Host
         Second = 2
     }
 
+    // Enums CON tipo subyacente declarado. Existen aqui porque la cara de C del contrato es este
+    // fichero: si el typedef generado dijera `int32_t` para un enum de un byte, el lado de C leeria
+    // cuatro bytes de un campo de uno.
+    public enum Narrow : byte
+    {
+        Low = 0,
+        High = 200
+    }
+
+    public enum Wide : long
+    {
+        Zero = 0,
+        Huge = 5000000000
+    }
+
     public struct Outer
     {
         public Inner Child;
@@ -170,6 +185,8 @@ namespace Stage48_1.Host
         public static export extern C double EchoDouble(double value) { return value; }
         public static export extern C void* EchoPointer(void* value) { return value; }
         public static export extern C Mode EchoMode(Mode value) { return value; }
+        public static export extern C Narrow EchoNarrow(Narrow value) { return value; }
+        public static export extern C Wide EchoWide(Wide value) { return value; }
         public static export extern C Inner EchoInner(Inner value) { return value; }
         public static export extern C Outer EchoOuter(Outer value) { return value; }
         public static export extern C Node* EchoNodePointer(Node* value) { return value; }
@@ -228,7 +245,15 @@ void testAutomaticDllHeader(TestContext& tests, const std::filesystem::path& roo
             header.find("NS_IMarker* NS_CALL EchoMarker(NS_IMarker* value);") != std::string::npos,
         "interfaces become opaque pointer-sized C handles");
     tests.expect(header.find("typedef int32_t NS_Mode;") != std::string::npos,
-        "NativeSharp enums use the Stage 47 fixed int32 host carrier");
+        "an enum with no declared underlying type keeps the int32 host carrier");
+    // EL TYPEDEF LLEVA EL TIPO SUBYACENTE. Es la cara de C del contrato del enum: un `enum : byte`
+    // declarado aqui como `int32_t` haria que el consumidor de C leyera cuatro bytes de un campo de
+    // uno y desplazara todo lo que fuera detras dentro de una struct -- el mismo defecto que el
+    // tipo subyacente vino a cerrar, pero en la direccion que el propio compilador genera.
+    tests.expect(header.find("typedef uint8_t NS_Narrow;") != std::string::npos,
+        "`enum Narrow : byte` becomes uint8_t in the generated C header, not int32_t");
+    tests.expect(header.find("typedef int64_t NS_Wide;") != std::string::npos,
+        "`enum Wide : long` becomes int64_t in the generated C header");
     tests.expect(header.find("typedef int32_t (NS_CALL *NS_Transform)(int32_t value);") != std::string::npos,
         "extern C delegates become native C function-pointer typedefs");
     tests.expect(header.find("NS_API int32_t NS_CALL Add(int32_t left, int32_t right);") != std::string::npos,
@@ -481,7 +506,7 @@ int main()
 {
     TestContext tests;
     const std::filesystem::path root =
-        nativesharp::tests::evidenceRoot("nativesharp_stage48_1_c_header_generator");
+        std::filesystem::temp_directory_path() / "nativesharp_stage48_1_c_header_generator";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root, cleanupError);

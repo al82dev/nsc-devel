@@ -1,0 +1,190 @@
+// `ToString()` sobre enums estrechos: lo que SI esta cerrado.
+//
+// QUE MIDE Y POR QUE ESTA SEPARADA DE c38. `c38_enum_ancho` mide el tipo subyacente entero --
+// tamano, signo de las conversiones, layout, `switch`. Esta mide UNA sola cosa: que el nombre que
+// devuelve `ToString()` sea el correcto para cada ancho, y que lo sea IGUAL a -O0 y a -O2.
+//
+// EXISTE PORQUE HAY UN BUG VIVO AL LADO. El 2026-09-03, `c38` devolvio 42 a -O0 y 39 a -O2 al pedir
+// el nombre de un `enum : sbyte` con valor NEGATIVO. La corrida de triage del 18:29 demostro
+// despues que **basta un receptor CONSTANTE**: no hace falta ninguna funcion de por medio, y queda
+// descartada la ABI del retorno de ocho bits. Ese caso vive aislado en
+// `tests/bug_triage/b9_enum_estrecho_o2` y no se repite aqui.
+//
+// Lo que queda aqui es la FRONTERA de ese bug: los vecinos inmediatos del caso roto, que a dia de
+// hoy responden bien. Sirve para dos cosas y las dos importan:
+//
+//   * que el arreglo de b9 no rompa lo que ya funcionaba -- son justo las formas que un cambio en
+//     `lowerEnumName` puede estropear;
+//   * que el bug quede ACOTADO por medicion y no por conjetura: si manana una de estas se pusiera
+//     roja, el defecto seria mas ancho de lo que b9 describe.
+//
+// EL ORDEN ES EL MISMO QUE EN b9, Y POR LA MISMA RAZON. En un solo ejecutable el primer fallo es el
+// unico dato, asi que las comprobaciones van de lo mas primitivo a lo mas derivado -- el valor de
+// ocho bits, despues el contenido de la cadena leido byte a byte, y al final el operador de
+// comparacion. Puesto al reves, un fallo del operador abortaria antes de llegar al examen de bytes
+// y el codigo de salida senalaria una capa que no es la causal.
+//
+// Codigo de salida esperado: 42.
+//
+//   10-19  -> el valor de 8 bits ya es incorrecto ANTES de ToString().
+//   20-29  -> el valor esta bien y el CONTENIDO de la cadena es incorrecto.
+//   30-39  -> el contenido es correcto byte a byte y falla el `!=`. Es el operador de cadenas.
+//   42     -> todo correcto. Ningun otro camino devuelve 42.
+using NativeSharp.Core;
+
+namespace cc1enumnombreo2
+{
+    public enum SinSigno : byte { Bajo = 0, DosCientos = 200, Tope = 255 }
+
+    // CON SIGNO PERO TODO POSITIVO. Separa "el tipo subyacente tiene signo" de "el valor es
+    // negativo": si esto pasa y b9 falla, el detonante es el valor y no el tipo.
+    public enum ConSignoPositivo : sbyte { Uno = 1, Dos = 2, Tope = 127 }
+
+    public enum Dos : ushort { Cero = 0, Alto = 60000 }
+    public enum Ocho : long { Cero = 0, Enorme = 5000000000 }
+    public enum Ancho { Uno = 1, Dos = 2 }
+
+    public class Program
+    {
+        // OPACO DE VERDAD. `valor + (cuantos - cuantos)` es `valor` y el optimizador lo sabe: con
+        // esa forma, -O2 pliega la constante igualmente y los casos "no plegables" no medirian
+        // nada. Aqui el resultado depende de una comparacion cuyo lado derecho el compilador no
+        // puede acotar --no hay forma de saber en compilacion cuantos argumentos trae la linea de
+        // ordenes-- asi que la rama tiene que quedarse y el valor no se pliega.
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            if (cuantos > 1000000) { return valor + 1; }
+            return valor;
+        }
+
+        // COMPARA DOS CADENAS BYTE A BYTE SIN USAR EL OPERADOR DE IGUALDAD, que es justo lo que la
+        // capa 3 mide y por tanto lo que la capa 2 no puede usar. Solo `Length` e indexacion.
+        //
+        // TODOS los bytes, no el primero y el ultimo: `Cero` y `Tope` miden los dos cuatro, asi que
+        // mirar solo los extremos confundiria una eleccion equivocada con un acierto.
+        private static bool MismosBytes(string obtenida, string esperada)
+        {
+            if (obtenida.Length != esperada.Length) { return false; }
+            int i = 0;
+            while (i < obtenida.Length)
+            {
+                if (obtenida[i] != esperada[i]) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        private static SinSigno PasaSinSigno(SinSigno valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return SinSigno.Bajo;
+        }
+
+        private static ConSignoPositivo PasaPositivo(ConSignoPositivo valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return ConSignoPositivo.Uno;
+        }
+
+        private static Dos PasaDos(Dos valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return Dos.Cero;
+        }
+
+        private static Ocho PasaOcho(Ocho valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return Ocho.Cero;
+        }
+
+        private static Ancho PasaAncho(Ancho valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return Ancho.Uno;
+        }
+
+        public static int Main()
+        {
+            // =============================================================================
+            // CAPA 1 -- EL VALOR DE OCHO BITS Y SUS HERMANOS. Sin nombres, sin cadenas.
+            // =============================================================================
+            if ((int)SinSigno.DosCientos != 200) { return 10; }
+            if ((int)SinSigno.Tope != 255) { return 11; }
+            if ((int)ConSignoPositivo.Dos != 2) { return 12; }
+            if ((int)ConSignoPositivo.Tope != 127) { return 13; }
+            if ((int)Dos.Alto != 60000) { return 14; }
+            if ((long)Ocho.Enorme != 5000000000) { return 15; }
+            if ((int)Ancho.Dos != 2) { return 16; }
+            if ((int)PasaSinSigno(SinSigno.DosCientos) != 200) { return 17; }
+            if ((int)PasaPositivo(ConSignoPositivo.Dos) != 2) { return 18; }
+
+            // =============================================================================
+            // CAPA 2 -- EL CONTENIDO DE LA CADENA, TODOS LOS BYTES. Ningun `==` ni `!=`.
+            //
+            // Cada cadena se GUARDA para que la capa 3 pueda comparar exactamente estas mismas y
+            // no una llamada nueva: comparar una llamada nueva confundiria "el operador compara
+            // mal" con "esta segunda llamada produjo otro contenido".
+            // =============================================================================
+            string constanteByte = SinSigno.DosCientos.ToString();
+            if (!MismosBytes(constanteByte, "DosCientos")) { return 20; }
+            string constanteTope = SinSigno.Tope.ToString();
+            if (!MismosBytes(constanteTope, "Tope")) { return 21; }
+            string constantePositivo = ConSignoPositivo.Dos.ToString();
+            if (!MismosBytes(constantePositivo, "Dos")) { return 22; }
+            string constantePositivoTope = ConSignoPositivo.Tope.ToString();
+            if (!MismosBytes(constantePositivoTope, "Tope")) { return 23; }
+            string constanteDos = Dos.Alto.ToString();
+            if (!MismosBytes(constanteDos, "Alto")) { return 24; }
+            string constanteOcho = Ocho.Enorme.ToString();
+            if (!MismosBytes(constanteOcho, "Enorme")) { return 25; }
+            string constanteAncho = Ancho.Dos.ToString();
+            if (!MismosBytes(constanteAncho, "Dos")) { return 26; }
+
+            string porFuncion = PasaSinSigno(SinSigno.DosCientos).ToString();
+            if (!MismosBytes(porFuncion, "DosCientos")) { return 27; }
+            string porFuncionPositivo = PasaPositivo(ConSignoPositivo.Dos).ToString();
+            if (!MismosBytes(porFuncionPositivo, "Dos")) { return 28; }
+            string porFuncionOcho = PasaOcho(Ocho.Enorme).ToString();
+            if (!MismosBytes(porFuncionOcho, "Enorme")) { return 29; }
+
+            SinSigno porLocal = SinSigno.DosCientos;
+            string desdeLocal = porLocal.ToString();
+            if (!MismosBytes(desdeLocal, "DosCientos")) { return 20 + 100; }   // 120
+
+            // Fuera de rango: el nombre del TIPO. Es la otra salida de EnumName, la que se toma
+            // cuando NINGUNA comparacion acierta.
+            SinSigno fuera = (SinSigno)Opaco(77);
+            string reserva = fuera.ToString();
+            if (!MismosBytes(reserva, "SinSigno")) { return 21 + 100; }        // 121
+            Ancho fueraAncho = (Ancho)Opaco(99);
+            string reservaAncho = fueraAncho.ToString();
+            if (!MismosBytes(reservaAncho, "Ancho")) { return 22 + 100; }      // 122
+
+            // Y por un camino no plegable, para que el nombre se decida en ejecucion.
+            Dos opacoDos = (Dos)Opaco(60000);
+            string desdeOpaco = opacoDos.ToString();
+            if (!MismosBytes(desdeOpaco, "Alto")) { return 23 + 100; }         // 123
+
+            // =============================================================================
+            // CAPA 3 -- EL OPERADOR DE CADENAS. Compara las MISMAS variables ya verificadas.
+            // =============================================================================
+            if (constanteByte != "DosCientos") { return 30; }
+            if (constanteTope != "Tope") { return 31; }
+            if (constantePositivo != "Dos") { return 32; }
+            if (constantePositivoTope != "Tope") { return 33; }
+            if (constanteDos != "Alto") { return 34; }
+            if (constanteOcho != "Enorme") { return 35; }
+            if (constanteAncho != "Dos") { return 36; }
+            if (porFuncion != "DosCientos") { return 37; }
+            if (porFuncionPositivo != "Dos") { return 38; }
+            if (desdeLocal != "DosCientos") { return 39; }
+            if (reserva != "SinSigno") { return 30 + 100; }                    // 130
+            if (desdeOpaco != "Alto") { return 31 + 100; }                     // 131
+            if (PasaAncho(Ancho.Dos).ToString() != "Dos") { return 32 + 100; } // 132
+
+            return 42;
+        }
+    }
+}

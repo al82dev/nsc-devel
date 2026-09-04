@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
+
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
@@ -2583,6 +2585,19 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.name = variable->text();
     local.typeKey = typeKey;
     local.isConst = variable->flag();
+    // El valor de un `const` entero, plegado aqui. Ver el comentario del campo: sirve para
+    // contestar "¿el divisor es cero?" y para nada mas.
+    if (local.isConst && variable->first() != nullptr &&
+        ProjectIntegerEvaluator::isIntegerType(typeKey))
+    {
+        const std::optional<ProjectIntegerValue> folded =
+            foldIntegerConstant(variable->first(), std::nullopt);
+        if (folded.has_value())
+        {
+            local.constantIntegerValue =
+                static_cast<std::int64_t>(ProjectIntegerEvaluator::normalize(folded->bits, typeKey));
+        }
+    }
     local.isRaii = isRaii;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     if (pendingLocalBorrow.has_value())
@@ -3459,6 +3474,7 @@ bool ProjectMethodBodyModel::ConstantMemberResolver::describeConstantMember(
     std::size_t memberOrdinal,
     bool& isEnumConstant,
     std::int64_t& enumConstantValue,
+    std::string& enumUnderlyingTypeKey,
     const ast::AstNode*& initializer,
     std::string& declaredTypeKey,
     std::optional<std::size_t>& declaringTypeOrdinal) const
@@ -3473,6 +3489,15 @@ bool ProjectMethodBodyModel::ConstantMemberResolver::describeConstantMember(
 
     isEnumConstant = member.isEnumConstant;
     enumConstantValue = member.enumConstantValue;
+    enumUnderlyingTypeKey.clear();
+    if (member.isEnumConstant && model_.nameLookup_ != nullptr &&
+        member.declaringTypeOrdinal < model_.nameLookup_->namedTypes().size())
+    {
+        // Nombre completo: el parametro de salida se llama igual que la funcion y la tapa.
+        enumUnderlyingTypeKey = std::string(
+            ::nativesharp::frontend::enumUnderlyingTypeKey(
+                model_.nameLookup_->namedTypes()[member.declaringTypeOrdinal].syntax));
+    }
     declaredTypeKey = member.declaredTypeKey;
     declaringTypeOrdinal = member.declaringTypeOrdinal;
     initializer = member.syntax != nullptr ? member.syntax->first() : nullptr;
@@ -6333,29 +6358,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 "the compiler-provided 'ToString' on an enum takes no arguments");
             return {};
         }
-        // EL RECEPTOR SE BAJA UNA VEZ POR ENUMERADOR, porque el `ToString` de un enum se convierte
-        // en una cadena de `valor == A ? "A" : ...` (el porque, en ProjectOopHirModel.cpp). Con un
-        // receptor que tenga efectos, eso los repetiria: `Dame().ToString()` llamaria a `Dame()`
-        // una vez por enumerador.
+        // NO HAY RESTRICCION SOBRE EL RECEPTOR. La primera version de esto exigia un receptor
+        // re-evaluable --la misma lista que usa la asignacion compuesta sobre propiedades-- porque
+        // la bajada era una cadena de condicionales que bajaba el receptor una vez por enumerador,
+        // y `Dame().ToString()` habria llamado a `Dame()` una vez por nombre.
         //
-        // SE RECHAZA EN VEZ DE HACERLO, con la MISMA regla que ya usa la asignacion compuesta
-        // sobre propiedades e indexadores (ID 82): un local, un parametro, `this`, una constante,
-        // o una operacion sobre esos. Es la lista que ya esta escrita y demostrada en
-        // isAccessorDestinationReevaluable, y reutilizarla es mejor que inventar una segunda con
-        // los mismos casos y otro nombre.
-        //
-        // El mensaje dice QUE HACER, no solo que no se puede.
-        const ast::AstNode* offender = nullptr;
-        if (!isAccessorDestinationReevaluable(callee.receiverSyntax, scopeOrdinal, offender))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                (offender != nullptr ? offender : expression)->range(),
-                "the compiler-provided 'ToString' on an enum needs a receiver it can read more "
-                "than once; bind this value to a local first");
-            return {};
-        }
+        // Eso era una limitacion del COMPILADOR escrita como si fuera una regla del LENGUAJE. La
+        // bajada usa ahora un nodo propio que baja el valor UNA SOLA VEZ (ProjectOopHirModel.cpp,
+        // ProjectOopHirNodeKind::EnumName), asi que la restriccion sobra y cualquier expresion de
+        // tipo enum vale como receptor.
         coreBindings_.push_back(MethodCoreBinding{
             MethodCoreOperationKind::EnumToString,
             expression,
@@ -8697,6 +8708,54 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
     return result;
 }
 
+// ¿ESTE DIVISOR ES UN CERO QUE EL COMPILADOR YA CONOCE?
+//
+// Dos formas, y la segunda es la que faltaba:
+//
+//   * una CONSTANTE de la propia expresion -- `x / 0`, `x / (2 - 2)`, un miembro `const` de tipo.
+//     Esas llegan plegadas en `ExpressionResult::integerConstant`.
+//   * un LOCAL `const` cuyo valor es cero -- `const int cero = 0; ... x / cero;`. Ese no llegaba:
+//     `integerConstant` no se rellena para un identificador, y a proposito, porque ese campo lo
+//     consume `commonNumericType` para decidir promociones y darle valor a cada `const` local
+//     cambiaria el tipo de expresiones que hoy compilan.
+//
+// Por eso el valor del local se guarda aparte, al declararlo (MethodLocalSymbol::
+// constantIntegerValue), y se lee aqui y en ningun otro sitio.
+//
+// LO QUE SIGUE FUERA, dicho para que nadie lo herede como cubierto y MEDIDO, no supuesto:
+//
+//   * `const int a = 5; const int b = 5; const int cero = a - b;` -- un `const` local derivado de
+//     OTROS `const` locales NO se pliega, asi que `x / cero` compila. El motivo es concreto: el
+//     evaluador resuelve nombres a traves de un ConstantMemberResolver que sabe de MIEMBROS
+//     `const` de tipo, no de locales, y los locales dependen del ambito, que el evaluador no
+//     tiene. Cerrarlo es darle al resolvedor un espacio de ordinales para locales; se puede, y no
+//     se ha hecho.
+//   * cualquier divisor que no sea constante.
+//
+// Para los dos, la guarda en tiempo de ejecucion es la respuesta y es correcta: el programa muere
+// con DivisionByZero en vez de compilar a poison. Esto solo adelanta el aviso donde se puede.
+bool ProjectMethodBodyModel::divisorIsConstantZero(
+    const ast::AstNode* divisorSyntax,
+    const ExpressionResult& divisor,
+    std::size_t scopeOrdinal) const
+{
+    if (divisor.integerConstant.has_value() && divisor.integerConstant->value == 0) return true;
+    if (divisorSyntax == nullptr ||
+        divisorSyntax->kind() != ast::AstNodeKind::IdentifierExpression)
+    {
+        return false;
+    }
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, divisorSyntax->text());
+    if (!name.has_value() || name->kind != ScopeNameKind::Local ||
+        name->semanticOrdinal >= locals_.size())
+    {
+        return false;
+    }
+    const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+    return local.isConst && local.constantIntegerValue.has_value() &&
+        *local.constantIntegerValue == 0;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
@@ -9038,7 +9097,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
         // el compilador no sabe nada y la guarda en tiempo de ejecucion es la respuesta correcta.
         if ((operation == TokenKind::Slash || operation == TokenKind::Percent) &&
             ProjectIntegerEvaluator::isIntegerType(result.typeKey) &&
-            right.integerConstant.has_value() && right.integerConstant->value == 0)
+            divisorIsConstantZero(expression->second(), right, scopeOrdinal))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,

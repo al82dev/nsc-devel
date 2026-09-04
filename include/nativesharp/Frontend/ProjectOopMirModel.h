@@ -89,6 +89,8 @@ enum class ProjectOopMirNodeKind
     ArrayElementAddress,
     StringLength,
     StringElementLoad,
+    // ID 129. Ver ProjectOopHirNodeKind::EnumName para la forma y el porque.
+    EnumName,
     StringConcat,
     StringEquals,
     StringSubstring,

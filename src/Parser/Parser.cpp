@@ -957,6 +957,9 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     // Un modificador que el autor escribe no rompe nada existente y dice la intencion en la
     // declaracion, que es donde se lee.
     bool isBorrowedView = false;
+    // `size(N)`: el tamano que el autor AFIRMA que mide la struct. Ver el comentario del bloque
+    // que lo parsea.
+    std::optional<std::uint64_t> layoutSize;
 
     while (true)
     {
@@ -989,6 +992,57 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 value.reset();
             }
             if (isPack) layoutPack = value; else layoutAlign = value;
+            continue;
+        }
+        // `size(N)` -- LA ASERCION DE TAMANO, para bindings.
+        //
+        // POR QUE EXISTE, y por que va en esta misma ranura que `pack` y `align`. El peor fallo que
+        // puede producir un binding no es perder una distincion de tipos: es una struct cuyos BYTES
+        // no coinciden con los de C. Eso no da un error -- da datos corruptos, y se manifiesta como
+        // un campo que vale basura a doscientas llamadas de distancia.
+        //
+        // El lenguaje ya podia FIJAR el layout: `pack(N)`, `align(N)` y `at(N)` por campo. Lo que
+        // no podia era COMPROBARLO de punta a punta, porque el relleno final de una struct no lo
+        // escribe nadie: sale de la regla de alineacion. `size(N)` cierra eso.
+        //
+        // VERIFICA, NO FUERZA, y la diferencia es la razon de ser del modificador. Si forzara,
+        // anadiria relleno hasta cuadrar y el desajuste quedaria TAPADO -- que es exactamente el
+        // fallo que se quiere cazar. Un binding que rellena en silencio es un binding que miente.
+        //
+        // Y NO ES UN static_assert GENERAL. El lenguaje no tiene evaluacion de constantes en
+        // tiempo de compilacion sobre layouts --el modelo semantico corre ANTES que el de layout,
+        // y por eso `sizeof` se resuelve tarde-- asi que un assert general seria una promesa que
+        // habria que sostener con maquinaria que no existe. Esto es un contrato de layout, escrito
+        // donde se lee el layout, y no pretende ser otra cosa.
+        if (atContextualKeyword("size") && peek().kind() == TokenKind::LeftParen)
+        {
+            const lexer::Token& keyword = consume();
+            consume();
+            std::optional<std::uint64_t> value;
+            if (at(TokenKind::IntegerLiteral) &&
+                std::holds_alternative<std::uint64_t>(current().value()))
+            {
+                value = std::get<std::uint64_t>(current().value());
+                consume();
+            }
+            else
+            {
+                expect(TokenKind::IntegerLiteral, "size value");
+            }
+            expect(TokenKind::RightParen, "')'");
+            // El cero se rechaza aqui y no en el modelo: una struct de cero bytes no existe en el
+            // modelo de objetos de Windows x64, y `size(0)` casi siempre es un generador que no
+            // supo leer el tamano y escribio su valor por omision.
+            if (value.has_value() && *value == 0)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    keyword.range(),
+                    "size requires a positive byte count");
+                value.reset();
+            }
+            layoutSize = value;
             continue;
         }
         if (at(TokenKind::KwPublic) || at(TokenKind::KwInternal))
@@ -1299,7 +1353,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         // is what keeps the modifier from becoming a decoration nobody honours. The values ride
         // on the declaration's auxiliary text, joined to the union marker parseStructDeclaration
         // already wrote, which is where ProjectObjectLayoutModel reads them back.
-        if ((layoutPack.has_value() || layoutAlign.has_value()))
+        if ((layoutPack.has_value() || layoutAlign.has_value() || layoutSize.has_value()))
         {
             if (declaration->kind() != ast::AstNodeKind::StructDeclaration)
             {
@@ -1307,7 +1361,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                     diagnostics::DiagnosticId::ExpectedDeclaration,
                     diagnostics::DiagnosticSeverity::Error,
                     declaration->range(),
-                    "pack/align layout modifiers apply only to struct and union declarations");
+                    "pack/align/size layout modifiers apply only to struct and union declarations");
             }
             else
             {
@@ -1321,6 +1375,11 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 {
                     layout += (layout.empty() ? "" : ",");
                     layout += "align=" + std::to_string(*layoutAlign);
+                }
+                if (layoutSize.has_value())
+                {
+                    layout += (layout.empty() ? "" : ",");
+                    layout += "size=" + std::to_string(*layoutSize);
                 }
                 declaration->setAuxiliaryText(std::move(layout));
             }
@@ -3359,6 +3418,26 @@ ast::AstNode* Parser::parseEnumDeclaration()
     knownTypeNames_.insert(std::string(name.lexeme()));
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::EnumDeclaration, name.range());
     node->setText(std::string(name.lexeme()));
+
+    // `enum Nombre : tipo` -- EL TIPO SUBYACENTE.
+    //
+    // POR QUE NO ES COMODIDAD. Hasta hoy TODO enum media cuatro bytes
+    // (TargetDataLayout.cpp, BuiltinLayoutKind::Enum). Un header de C con `enum : uint8_t` dentro
+    // de una struct produce entonces un layout SILENCIOSAMENTE EQUIVOCADO: el campo ocupa cuatro
+    // bytes donde C pone uno, y todo lo que va detras se desplaza. Eso no es una carencia de
+    // expresividad, es una respuesta falsa -- P1 por el criterio de este proyecto.
+    //
+    // El ancho y el signo de un enum son parte del ABI, y esta es la unica forma de decirlos.
+    // Sin `: tipo` sigue siendo `int`, que es el valor por omision de C y lo que ya hacia.
+    //
+    // Se admiten los enteros incorporados y nada mas: ni `bool`, ni coma flotante, ni otro enum.
+    // La comprobacion de cual se escribio la hace el modelo de nombres, que es quien resuelve
+    // tipos; aqui solo se guarda lo que el autor escribio.
+    if (consumeIf(TokenKind::Colon))
+    {
+        ast::TypeSyntax* underlying = parseType();
+        node->setTypeSyntax(underlying);
+    }
 
     expect(TokenKind::LeftBrace, "'{'");
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))

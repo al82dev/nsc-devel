@@ -1,6 +1,6 @@
 # `tests/bug_triage/` — ¿cuáles de los bugs reportados siguen vivos?
 
-Ocho reproductores mínimos, uno por bug del compilador que las instancias consumidoras
+Reproductores mínimos, uno por bug del compilador que las instancias consumidoras
 (bindings, port de `Saru.Framework`, port del tutorial de OpenGL) levantaron contra `nsc` y que
 **no están en `BUGS_ENCONTRADOS/` de este repo ni arreglados**.
 
@@ -32,13 +32,18 @@ Cada caso **devuelve 42 cuando el compilador está sano**. Cualquier otra cosa e
 | compila y se cae | **VIVO** — ver el código; un stack overflow sale como número enorme |
 
 Cada fixture corre **primero sus controles** — las variantes vecinas que se sabe que funcionan —
-y sólo después el caso del bug. Así, un fallo del reproductor mismo se distingue del bug: si
-devuelve 1 o 2, el fixture está mal escrito; si devuelve el último número, es el bug.
+y sólo después el caso del bug. Así, un fallo del reproductor mismo se distingue del bug.
+
+En `b1`–`b8` eso se traduce en códigos correlativos: si devuelve 1 o 2, el fixture está mal
+escrito; si devuelve el último número, es el bug. **`b9` no sigue ese esquema**, y a propósito: sus
+códigos van por DECENAS, una por capa (10–15 el valor, 20–26 el contenido de la cadena, 30–36 el
+operador de comparación, 50–57 los vecinos), porque lo que hay que averiguar ahí no es *si* falla
+sino *qué capa* falla. La cabecera de su `Main.ns` lleva el mapa completo.
 
 Cada `Main.ns` lleva arriba el reporte original: qué se rompió, dónde se encontró, qué impacto
 tuvo medido, y por qué el control de al lado sí funciona.
 
-## Los ocho
+## Los casos
 
 | # | Carpeta | Bug | Severidad |
 |---|---|---|---|
@@ -50,6 +55,16 @@ tuvo medido, y por qué el control de al lado sí funciona.
 | 6 | `b6_delegate_projectref` | un `extern C delegate` no cruza un `ProjectReference` | media |
 | 7 | `b7_duplicate_extern_c` | el mismo símbolo C en dos clases no linkea (`símbolo.1`) | probablemente ya cerrado por C1 |
 | 8 | `b8_shift_folding` | `1u << 28` pliega a `double`; y shift sobre `ushort` | baja |
+| 9 | `b9_enum_estrecho_o2` | `ToString()` de un `enum : sbyte` NEGATIVO da otro nombre a -O2 que a -O0 | **alta -- silencioso, y solo con optimizacion** |
+
+`b9` es el único que **no reproduce a -O0**: compila y responde bien sin optimizar, y sólo diverge
+a -O2. Por eso su `Main.ns` no es un caso suelto sino una sonda ordenada **por capas**, de lo más
+primitivo a lo más derivado — el valor de ocho bits, después el contenido de la cadena leído byte a
+byte, y al final el operador de comparación. En un solo ejecutable el primer fallo es el único
+dato, así que ese orden es lo que hace que el código de salida nombre la capa **causal** y no una
+consecuencia suya. Cada cadena se guarda en una variable, se verifica y se compara: comparar una
+llamada nueva a `ToString()` confundiría "el operador compara mal" con "esta segunda llamada
+produjo otro contenido".
 
 `b6` es el único con dos proyectos (`lib/` + `app/`), porque el bug **es** cruzar el borde de
 proyecto. El runner compila `app/`.

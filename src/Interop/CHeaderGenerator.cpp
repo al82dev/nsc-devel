@@ -4,6 +4,7 @@
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
@@ -633,7 +634,25 @@ bool CHeaderGenerator::writeHeader(
     for (const NamedTypeDeclaration& type : namedTypes)
     {
         if (!reachable.contains(type.identity.key()) || type.kind != NamedTypeDeclarationKind::Enum) continue;
-        out << "typedef int32_t " << hostNamedTypeName(context, type) << ";\n";
+        // EL TYPEDEF LLEVA EL TIPO SUBYACENTE, no `int32_t` siempre.
+        //
+        // Esta linea es la cara de C del contrato: un `enum E : byte` que se declarara aqui como
+        // `int32_t` haria que el lado de C leyera cuatro bytes de un campo de uno, y desplazara
+        // todo lo que fuera detras dentro de una struct. Es exactamente el defecto que el tipo
+        // subyacente vino a cerrar, pero en la direccion contraria -- y el mas dificil de ver,
+        // porque el fichero que miente lo genera el propio compilador.
+        //
+        // La traduccion la hace hostType(), que ya sabe pasar cada clave de entero a su tipo de
+        // <stdint.h>; no se escribe aqui una segunda tabla.
+        std::string enumError;
+        const std::string carrier =
+            hostType(frontend::enumUnderlyingTypeKey(type.syntax), context, enumError);
+        if (carrier.empty())
+        {
+            error = enumError;
+            return false;
+        }
+        out << "typedef " << carrier << " " << hostNamedTypeName(context, type) << ";\n";
     }
     if (!reachable.empty()) out << '\n';
 

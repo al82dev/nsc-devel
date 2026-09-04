@@ -13,6 +13,17 @@ class ProjectCompilation;
 
 namespace nativesharp::interop
 {
+// LA VERSION DEL FORMATO .nsmeta, EN UN SOLO SITIO Y PUBLICA.
+//
+// Publica porque las pruebas necesitan saber cual es la actual: escrito a mano en cada sitio, el
+// dia que el minor sube de 1 a 2 la prueba de "un minor del futuro se rechaza" pasa a comprobar el
+// minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
+// la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
+//
+// MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
+// MINOR 1: los campos, miembros y parametros llevan `ownership`.
+inline constexpr std::uint16_t kMetadataFormatMajor = 1;
+inline constexpr std::uint16_t kMetadataFormatMinor = 2;
 enum class LibraryMetadataTypeKind : std::uint8_t
 {
     Class = 0,
@@ -55,6 +66,17 @@ struct LibraryMetadataType final
     std::uint64_t referenceSize = 0;
     std::uint64_t referenceAlignment = 1;
     std::uint64_t stableTypeId = 0;
+    // EL TIPO ENTERO SUBYACENTE DE UN ENUM ("builtin:byte", "builtin:sbyte"...). Vacio para todo
+    // lo que no sea un enum.
+    //
+    // POR QUE NO BASTA CON `size`. `enum : byte` y `enum : sbyte` miden LOS DOS un byte, asi que
+    // un consumidor que solo lea el tamano no puede distinguirlos -- y un generador de host que
+    // eligiera el signo contrario convertiria un 200 en un -56. El signo es parte del ABI igual
+    // que el ancho, y estos metadatos son lo que los generadores de host leen.
+    //
+    // Se guarda la CLAVE y no un par (ancho, signo) porque la clave es lo que ya circula por todo
+    // el compilador, y porque lleva las dos respuestas sin que nadie tenga que recomponerlas.
+    std::string enumUnderlyingTypeKey;
     std::vector<LibraryMetadataField> fields;
 };
 
@@ -135,8 +157,8 @@ struct LibraryMetadataExport final
 
 struct LibraryMetadata final
 {
-    std::uint16_t formatMajor = 1;
-    std::uint16_t formatMinor = 1;
+    std::uint16_t formatMajor = kMetadataFormatMajor;
+    std::uint16_t formatMinor = kMetadataFormatMinor;
     std::uint32_t targetId = 1;
     std::uint32_t pointerSize = 8;
     std::uint32_t pointerAlignment = 8;
@@ -157,6 +179,14 @@ class LibraryMetadataCodec final
 public:
     bool write(
         const frontend::ProjectCompilation& compilation,
+        const std::filesystem::path& destination,
+        std::string& error) const;
+
+    // Escribe un modelo ya construido, en la version menor que el modelo dice. Es lo que permite
+    // MEDIR la compatibilidad hacia atras en vez de afirmarla: produce un fichero de una version
+    // anterior y leelo con el lector actual.
+    bool writeModel(
+        const LibraryMetadata& model,
         const std::filesystem::path& destination,
         std::string& error) const;
 

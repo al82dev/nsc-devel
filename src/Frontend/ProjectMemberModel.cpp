@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
+
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
@@ -1441,6 +1443,90 @@ bool ProjectMemberModel::collectTypeMembers(
 // this is narrower than a full constant-expression evaluator, but it covers every enum this
 // project declares (StringComparison, StringSplitOptions) and it fails loudly instead of
 // silently mis-evaluating something more exotic.
+namespace
+{
+// EL VALOR DE UN ENUMERADOR SE LLEVA COMO (MAGNITUD SIN SIGNO, SIGNO), NO COMO UN `int64_t`.
+//
+// Parece un rodeo y no lo es: los dos extremos del rango que un enum puede declarar --el minimo de
+// `long`, que es -2^63, y el maximo de `ulong`, que es 2^64-1-- NO CABEN EN EL MISMO TIPO DE C++.
+// Estrechar a `int64_t` antes de comprobar hace que `ulong.MaxValue` se vea como -1 y se rechace
+// una constante perfectamente legal, y hace que el limite superior de `ulong` sea incomprobable.
+// Con el par, el rango de los diez tipos enteros se comprueba exactamente y sin casos especiales.
+struct EnumValue
+{
+    std::uint64_t magnitude = 0;
+    bool negative = false;
+};
+
+// ¿Cabe este valor en el tipo subyacente? Se compara sobre el ancho y el signo REALES.
+//
+// LOS DOS LADOS IMPORTAN. Demasiado ancho aceptaria 300 en un `enum : byte` y lo truncaria al
+// materializarlo -- un valor que el programa nunca escribio. Demasiado estrecho no dejaria escribir
+// en un `enum : long` o `: ulong` constantes que C escribe todos los dias.
+bool enumValueFits(EnumValue value, const builtins::IntegerTypeInfo* underlying)
+{
+    if (underlying == nullptr || underlying->width == 0 || underlying->width > 64) return false;
+    const unsigned width = underlying->width;
+    if (value.negative)
+    {
+        // `-0` es 0, y es el unico negativo que un tipo sin signo admite.
+        if (!underlying->isSigned) return value.magnitude == 0;
+        // El minimo de un tipo con signo de N bits es -2^(N-1): la magnitud llega justo a 2^(N-1).
+        const std::uint64_t limit =
+            width >= 64U ? (std::uint64_t{1} << 63) : (std::uint64_t{1} << (width - 1U));
+        return value.magnitude <= limit;
+    }
+    if (underlying->isSigned)
+    {
+        const std::uint64_t limit =
+            (width >= 64U ? (std::uint64_t{1} << 63) : (std::uint64_t{1} << (width - 1U))) - 1U;
+        return value.magnitude <= limit;
+    }
+    if (width >= 64U) return true;   // 2^64-1 no se puede escribir como (1<<64)-1
+    return value.magnitude <= (std::uint64_t{1} << width) - 1U;
+}
+
+// El patron de bits que se guarda. Los consumidores del valor --el evaluador de constantes, el
+// HIR y el backend-- lo convierten a `uint64_t` inmediatamente y lo normalizan por el tipo, asi
+// que lo que el `int64_t` de ClassMemberSymbol lleva son BITS y no una magnitud con signo. Por eso
+// `ulong.MaxValue` puede viajar dentro de el.
+std::uint64_t enumValueBits(EnumValue value)
+{
+    return value.negative ? (0U - value.magnitude) : value.magnitude;
+}
+
+// El sucesor, para el auto-incremento. Se calcula sobre el par y no sobre los bits, para que
+// -1 -> 0 -> 1 sea una cuenta y no una envoltura.
+//
+// `hasValue` en falso significa NO HAY SUCESOR REPRESENTABLE: el anterior era 2^64-1, que es el
+// mayor entero que cualquier tipo subyacente admite. Hace falta un tercer estado y no vale saturar
+// devolviendo el mismo valor -- eso es lo que hacia la primera version de esta funcion, y el
+// resultado era que
+//
+//     enum E : ulong { Max = 18446744073709551615, Siguiente }
+//
+// compilaba y `Siguiente` valia LO MISMO que `Max`, en silencio. Saturar es una RESPUESTA FALSA:
+// el programa recibe un valor que nadie escribio y dos nombres distintos que no se pueden
+// distinguir. Y el comentario que lo acompanaba era ademas incorrecto -- decia que `enumValueFits`
+// lo rechazaria, cuando 2^64-1 cabe perfectamente en `ulong` y por eso pasaba.
+struct EnumSuccessor
+{
+    EnumValue value;
+    bool hasValue = true;
+};
+
+EnumSuccessor enumValueNext(EnumValue value)
+{
+    if (value.negative && value.magnitude > 0)
+    {
+        const std::uint64_t reduced = value.magnitude - 1U;
+        return EnumSuccessor{EnumValue{reduced, reduced != 0}, true};
+    }
+    if (value.magnitude == ~std::uint64_t{0}) return EnumSuccessor{value, false};
+    return EnumSuccessor{EnumValue{value.magnitude + 1U, false}, true};
+}
+}
+
 bool ProjectMemberModel::collectEnumMembers(
     std::size_t typeOrdinal,
     const NamedTypeDeclaration& type,
@@ -1451,8 +1537,31 @@ bool ProjectMemberModel::collectEnumMembers(
         return !diagnostics.hasErrors();
     }
 
+    // EL RANGO ADMITIDO SALE DEL TIPO SUBYACENTE, no siempre de `int`.
+    //
+    // Antes esto exigia que todo valor cupiera en un `int` de 32 bits. Con `enum : byte` eso seria
+    // demasiado ancho --aceptaria 300 en un enum de un byte y lo truncaria al materializarlo-- y
+    // con `enum : long` demasiado estrecho. Las dos direcciones son fallos, y la segunda ni
+    // siquiera dejaria escribir constantes que C escribe todos los dias.
+    //
+    // La regla del tipo subyacente esta en include/nativesharp/Frontend/EnumUnderlyingType.h, que
+    // es la misma que consultan el modelo de layout y el backend.
+    const std::string_view underlyingKey = enumUnderlyingTypeKey(type.syntax);
+    const builtins::IntegerTypeInfo* underlying = builtins::findIntegerType(underlyingKey);
+    // `enum E : bool` o `enum E : MiClase` se rechaza aqui, una vez, y no en cada miembro.
+    if (type.syntax->typeSyntax() != nullptr && declaredEnumUnderlyingTypeKey(type.syntax).empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidEnumInitializer,
+            diagnostics::DiagnosticSeverity::Error,
+            type.range,
+            "the underlying type of an enum must be a built-in integer type "
+            "(byte, sbyte, short, ushort, int, uint, long, ulong, nint, nuint)");
+        return false;
+    }
+
     std::unordered_map<std::string, const ast::AstNode*> seen;
-    std::int64_t nextValue = 0;
+    EnumSuccessor nextValue;
     for (const ast::AstNode* memberNode : type.syntax->children())
     {
         if (memberNode == nullptr || memberNode->kind() != ast::AstNodeKind::EnumMemberDeclaration)
@@ -1478,7 +1587,21 @@ bool ProjectMemberModel::collectEnumMembers(
         }
         seen.emplace(memberNode->text(), memberNode);
 
-        std::int64_t value = nextValue;
+        // SIN SUCESOR NO HAY MIEMBRO. Un enumerador sin inicializador detras del maximo de 64 bits
+        // no tiene ningun valor que tomar, y darle uno --el que sea-- seria inventarlo.
+        if (!nextValue.hasValue && memberNode->first() == nullptr)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidEnumInitializer,
+                diagnostics::DiagnosticSeverity::Error,
+                memberNode->range(),
+                "enum member '" + memberNode->text() + "' has no value: the previous member is the "
+                "largest value of the underlying type '" + std::string(underlyingKey) +
+                "', so there is no next one to count to");
+            continue;
+        }
+
+        EnumValue value = nextValue.value;
         if (memberNode->first() != nullptr)
         {
             const ast::AstNode* initializer = memberNode->first();
@@ -1500,21 +1623,24 @@ bool ProjectMemberModel::collectEnumMembers(
                         "(general constant-expression folding for enum initializers is not supported yet)");
                 continue;
             }
-            const std::uint64_t magnitude = initializer->integerValue();
-            const std::int64_t signedMagnitude = static_cast<std::int64_t>(magnitude);
-            value = negative ? -signedMagnitude : signedMagnitude;
-            if (value < std::numeric_limits<std::int32_t>::min() ||
-                value > std::numeric_limits<std::int32_t>::max())
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidEnumInitializer,
-                    diagnostics::DiagnosticSeverity::Error,
-                    memberNode->range(),
-                    "enum value for '" + memberNode->text() + "' must be representable as NativeSharp int");
-                continue;
-            }
+            value = EnumValue{initializer->integerValue(), negative};
         }
-        nextValue = value + 1;
+        // LA COMPROBACION DE RANGO ESTA FUERA DEL `if` A PROPOSITO. El valor de un miembro sin
+        // inicializador sale del auto-incremento, y ese tambien se puede salir: en
+        // `enum E : byte { A = 255, B }` el 255 cabe y el 256 no, y quien lo escribio no puso
+        // ningun numero que mirar. Comprobar solo lo escrito dejaria pasar justo el caso que nadie
+        // ve.
+        if (!enumValueFits(value, underlying))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidEnumInitializer,
+                diagnostics::DiagnosticSeverity::Error,
+                memberNode->range(),
+                "enum value for '" + memberNode->text() + "' does not fit in the underlying "
+                "type '" + std::string(underlyingKey) + "' of this enum");
+            continue;
+        }
+        nextValue = enumValueNext(value);
 
         ClassMemberSymbol symbol;
         symbol.kind = ClassMemberKind::Field;
@@ -1534,7 +1660,9 @@ bool ProjectMemberModel::collectEnumMembers(
         symbol.isReadonly = true;
         symbol.isConst = true;
         symbol.isEnumConstant = true;
-        symbol.enumConstantValue = value;
+        // BITS, no magnitud con signo -- ver enumValueBits(). Es lo que deja que un
+        // `enum E : ulong { Max = 18446744073709551615 }` viaje en un `int64_t`.
+        symbol.enumConstantValue = static_cast<std::int64_t>(enumValueBits(value));
 
         const std::size_t memberOrdinal = members_.size();
         members_.push_back(std::move(symbol));

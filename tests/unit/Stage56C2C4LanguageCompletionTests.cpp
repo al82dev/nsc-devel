@@ -316,7 +316,11 @@ namespace proj {
     class Program { public static int Main() { return 0; } }
 }
 )NS",
-        "pack/align layout modifiers apply only to struct and union declarations");
+        // El mensaje enumera los modificadores, asi que crece cuando se anade uno: desde que
+        // existe `size(N)` dice "pack/align/size". Se comprueba el trozo estable --lo que la regla
+        // AFIRMA-- y no la lista, para que anadir un cuarto modificador no vuelva a poner roja
+        // esta prueba sin que nada este mal.
+        "layout modifiers apply only to struct and union declarations");
 
     reject(
         tests, root, "OffsetOnStaticField",

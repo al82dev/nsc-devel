@@ -1,0 +1,274 @@
+STAGE -- `size(N)` y el tipo subyacente de un enum
+Fecha: 2026-09-03
+Doc: mkdown/118_el_tipo_subyacente_de_un_enum.md
+
+NUEVOS
+------
+include/nativesharp/Frontend/EnumUnderlyingType.h
+    La regla unica del tipo subyacente de un enum: lo escrito tras `: `, o `builtin:int`.
+    Valida la FORMA del TypeSyntax (sin punteros, arreglos, argumentos genericos ni
+    cualificador de propiedad) y no solo el nombre base. `char` se excluye a proposito.
+
+tests/cc1/c37_contrato_de_layout/c37_contrato_de_layout.nsproj
+tests/cc1/c37_contrato_de_layout/Main.ns
+    Once structs cuyos tamanos salieron de compilar las equivalentes en C con clang.
+    Mide el modelo de layout (via `size(N)`, en compilacion) y lo que el backend
+    materializa (via `sizeof` y punteros, en ejecucion). Codigo de salida 42.
+
+tests/cc1/c38_enum_ancho/c38_enum_ancho.nsproj
+tests/cc1/c38_enum_ancho/Main.ns
+    Tamano, signo de las conversiones, signo de las constantes de `switch`, campos de
+    struct, arreglos y `ToString()` sobre enums de 1, 2, 4 y 8 bytes, con y sin signo.
+    Mas los dos extremos de 64 bits y el orden de los alias. Codigo de salida 42.
+
+MODIFICADOS -- la entrega
+-------------------------
+src/Parser/Parser.cpp
+    * `size(N)` en el bucle de modificadores de declaracion, junto a `pack`/`align`.
+      Rechaza `size(0)`. Escribe `size=N` en auxiliaryText.
+    * `enum Nombre : Tipo` -- el tipo se guarda con setTypeSyntax().
+
+src/Frontend/ProjectObjectLayoutModel.cpp
+    * parseAssertedSize() lee `size=` de auxiliaryText.
+    * La comprobacion al final de buildStructLayout: si el tamano declarado no coincide
+      con el calculado, error con los dos numeros y la alineacion.
+    * Los dos sitios que daban {4,4} para un enum ahora derivan {ancho/8, ancho/8} del
+      tipo subyacente.
+
+src/Frontend/ProjectMemberModel.cpp
+    * El rango de un valor de enumerador se comprueba sobre el ancho y el signo reales.
+    * collectEnumMembers rechaza una vez el tipo subyacente que no es entero incorporado.
+    * La comprobacion de rango esta FUERA de la rama del inicializador, para que el
+      auto-incremento tambien se compruebe.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    * enumUnderlyingInfo(typeKey) -- el UNICO sitio del backend que traduce una clave de
+      tipo a la regla del tipo subyacente. isEnumTypeKey() pasa a ser un caso suyo.
+    * llvmType() devuelve i8/i16/i32/i64 segun el ancho.
+    * convert() toma ancho Y signo de ahi (era 32 y con signo fijos). Es lo que hacia
+      que `(int)a` sobre un `enum : byte` emitiera `icmp ne i8 %v, i32 200`.
+    * lowerSwitch() y la bajada de campos `const` toman el signo de ahi.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    * checkFixture cc1-c37-contrato-de-layout (42) y cc1-c38-enum-ancho (42).
+    * checkRejected cc1-size-mismatch, cc1-size-on-class, cc1-size-zero.
+    * checkRejected cc1-enum-underlying-overflow, -overflow-implicit, -not-integer,
+      -char, -pointer.
+
+cases_table.py
+    * cc1_c37_contrato_de_layout (42) y cc1_c38_enum_ancho (42).
+      c37 estaba escrita desde la entrega anterior pero nunca se inscribio.
+
+MODIFICADOS -- la revision del delta (doc 118 seccion 7)
+-------------------------------------------------------
+Seis defectos mas, encontrados por una revision estatica sobre este mismo delta. Los seis
+eran reales.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    P0. El ejecutable habia vuelto a `int main()` sin argumentos e ignoraba la etiqueta que
+    CMake le pasa: las ~40 entradas corrian la suite ENTERA y ademas compartian
+    %TEMP%/nsc-cc1, borrandoselo unas a otras -- rojos que no corresponden a ningun defecto
+    del compilador y que no se reproducen. Restaurado main(argc,argv),
+    fixtureSelected()/restSelected(), y el directorio temporal lleva ahora el selector en el
+    nombre para que dos entradas concurrentes no puedan pisarse.
+
+src/Interop/CHeaderGenerator.cpp
+    P1. `typedef int32_t` para todo enum: la cabecera generada le decia a C que leyera
+    cuatro bytes de un campo de uno. El typedef sale ahora de hostType(), que ya sabe
+    traducir cada clave de entero a <stdint.h>; no se escribio una segunda tabla.
+
+src/LLVM/ProjectOopLlvmLowerer.cpp
+    P1. lowerEnumName construia la cadena de `select` en orden de declaracion; como cada
+    vuelta envuelve a la anterior, ganaba el ULTIMO enumerador que comparte valor. Se
+    construye ahora del ultimo par al primero, para que gane el primero declarado -- que es
+    lo que el frontend documenta y lo que c34 fija.
+
+src/Frontend/ProjectMemberModel.cpp
+    P1. El valor de un enumerador se llevaba en un int64_t, y los dos extremos de 64 bits
+    (-2^63 y 2^64-1) no caben en el mismo tipo de C++: ulong.MaxValue se veia como -1 y se
+    rechazaba una constante legal. Se lleva como (magnitud, signo) y se guarda el patron de
+    bits.
+
+src/Frontend/ProjectIntegerEvaluator.cpp
+src/Frontend/ProjectOopHirModel.cpp
+src/Frontend/ProjectMethodBodyModel.cpp
+include/nativesharp/Frontend/ProjectIntegerEvaluator.h
+include/nativesharp/Frontend/ProjectMethodBodyModel.h
+    P1, segunda mitad. Dos copias MAS de "un enum es un int con signo" -- la quinta y la
+    sexta -- las dos truncando a 32 bits DESPUES de que el modelo de miembros hubiera
+    aceptado el valor. El resolvedor de constantes devuelve ahora tambien el tipo subyacente.
+
+src/Sema/SemanticAnalyzer.cpp
+    P1. La ruta de fichero unico aceptaba `enum E : byte` y seguia dando 32 bits. Se rechaza
+    con un mensaje que dice adonde ir. NO se implementa alli: seria una segunda copia de la
+    regla --el defecto que este trabajo vino a cerrar-- en un camino que ninguna fixture del
+    corpus ejercita.
+
+src/Frontend/ProjectObjectLayoutModel.cpp
+    P2. Un fallo de `size(N)` salia sin marcar `Failed`, dejando el tipo en `Visiting`; la
+    siguiente consulta lo tomaria por un ciclo y anadiria un segundo diagnostico falso.
+
+include/nativesharp/Frontend/EnumUnderlyingType.h
+    `enum E : char` se rechaza. `char` esta en la tabla general de enteros porque
+    aritmeticamente se comporta como un entero de ocho bits, pero el tipo subyacente de un
+    enum es una decision de ABI y el diagnostico ENUMERA los tipos permitidos: si `char` se
+    colara, el mensaje estaria mintiendo sobre su propia lista.
+
+tests/unit/Stage48_1CHeaderGeneratorTests.cpp
+    `enum : byte` -> uint8_t y `enum : long` -> int64_t en la cabecera generada; el enum sin
+    tipo declarado sigue dando int32_t.
+
+MEDIDO
+------
+Barrido del corpus en el arnes de contenedor: OK=183 FAIL=5 (los cinco negativos
+intencionados de siempre).
+
+El IR del resto del corpus no cambia POR CONSTRUCCION: ningun .ns del arbol declara un tipo
+subyacente de enum ni usa `size(N)`, asi que todos los consumidores dan la misma respuesta
+que daban antes (32 bits, con signo).
+
+Los diez anchos de enum verificados leyendo el IR, incluidos los dos extremos de 64 bits:
+i64 -1 para ulong.MaxValue, i64 -9223372036854775808 para el minimo de long, i32 -1 para
+uint.MaxValue, i16 -5536 para 60000, i8 -56 para 200. Son los patrones de bits correctos:
+LLVM imprime las constantes enteras con signo.
+
+Extensiones: zext i8->i32/i64 para `byte`, sext i8->i32/i64 para `sbyte`, zext i16->i32 para
+`ushort`, trunc i32->i8 en la direccion contraria. Constantes de `switch`: i8 0, i8 -128,
+i8 -56 para un `enum : byte` con 0, 128 y 200.
+
+Orden de los alias verificado en el IR antes y despues del arreglo.
+
+NO MEDIDO
+---------
+La ejecucion en Windows. c37 no ha corrido nunca, c38 es nueva, y c34 NO CORRE DESDE LA
+REESCRITURA DEL ID 129 -- que es exactamente por lo que el defecto de los alias llego hasta
+la revision en vez de salir rojo en la primera pasada.
+
+LIMITACION CONOCIDA, NO ARREGLADA
+---------------------------------
+La materializacion de genericos instancia todos los candidatos antes de resolver la
+sobrecarga (ID 132). Si el cuerpo del candidato que NO se iba a elegir es invalido para ese
+argumento de tipo, la compilacion falla por un candidato que nadie pidio. Es un RECHAZO
+ruidoso --el error apunta al cuerpo ofensivo-- y no una respuesta falsa; arreglarlo requiere
+resolver la sobrecarga por tipos ANTES de instanciar, o sea una pasada dirigida por tipos
+delante del modelo semantico. Es un cambio de otro tamano y necesita su propia entrega.
+
+SEGUNDA REVISION -- tres mas, corregidos (doc 118 seccion 10)
+------------------------------------------------------------
+src/Interop/LibraryMetadata.cpp
+    P1. `record.size = 4; record.alignment = 4;` para todo enum -- el SEPTIMO sitio con la
+    regla a mano, y el mas caro de los que quedaban: los metadatos alimentan a los
+    generadores de host (P/Invoke de C# y C++/CLI), asi que el 4/4 fijo se propaga a codigo
+    que otro compilador genera. Sale ahora de valueLayoutForTypeKey, la misma consulta que
+    usan el modelo MIR y el HIR.
+
+src/Frontend/ProjectMemberModel.cpp
+    P1, Y ESTE LO INTRODUJE YO en la ronda anterior. enumValueNext SATURABA: sin sucesor
+    representable devolvia el mismo valor, con lo que
+    `enum E : ulong { Max = 18446744073709551615, Siguiente }` compilaba y `Siguiente` valia
+    lo mismo que `Max`. Una respuesta falsa introducida arreglando otra. El comentario que
+    lo acompanaba ademas mentia: decia que enumValueFits lo rechazaria, y 2^64-1 cabe en
+    ulong. Hace falta un tercer estado (EnumSuccessor::hasValue), no una saturacion.
+
+CMakeLists.txt
+    P1. Dos formas de quedarse obsoleto: (1) la lista se lee en configure y el .cpp no era
+    dependencia del configure -- anadir una fixture y compilar no la habria registrado;
+    (2) el umbral `LESS 30` era un numero a mano de cuando habia 36 fixtures, y con 38 un
+    regex roto que reconociera 31 pasaba. El guardia compara ahora contra EL DIRECTORIO:
+    toda carpeta de tests/cc1 con un .nsproj tiene que tener su prueba registrada. No
+    envejece, y caza ademas el olvido que ocurrio dos veces (c37 escrita y no inscrita).
+    Verificado provocando los dos fallos.
+
+tests/unit/Stage48_2LibraryMetadataTests.cpp
+    `enum : byte` -> 1/1 y `enum : long` -> 8/8 en los metadatos; el enum sin declarar sigue
+    dando 4/4. La prueba anterior pasaba Y NO PODIA VER EL DEFECTO: solo usaba un enum por
+    omision de 32 bits.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    checkRejected cc1-enum-underlying-no-successor.
+
+TERCERA REVISION -- dos huecos y un rojo (doc 118 seccion 11)
+------------------------------------------------------------
+tests/unit/Cc1CorrectnessTests.cpp
+    P1. `--rest` estaba EN ROJO (1 de 349): cc1-size-on-class declaraba `class C`, y `C` es
+    palabra reservada (`extern C`), asi que el parser rechazaba por el nombre antes de
+    llegar al modificador de layout. Renombrada a `Caja`. Salio roja y no verde porque el
+    fragmento esperado era especifico -- para eso sirve exigir el texto del diagnostico.
+    Ademas: un selector que no nombra ninguna fixture registrada ya no termina en
+    "PASS: 0 checks" (verde para ctest); es un fallo con su propio mensaje.
+
+include/nativesharp/Interop/LibraryMetadata.h
+src/Interop/LibraryMetadata.cpp
+    P1. Los metadatos llevaban el tamano del enum pero NO el signo, y `enum : byte` y
+    `enum : sbyte` miden los dos un byte: un generador de host no podia distinguirlos.
+    El registro de tipo lleva ahora enumUnderlyingTypeKey, por el mecanismo de version menor
+    que el formato ya tenia (minor 1 -> 2, escrito y leido bajo formatMinor >= 2).
+
+CMakeLists.txt
+    P2. El `file(GLOB)` del guardia se evalua una sola vez en el configure, asi que una
+    fixture NUEVA no lo despertaba -- el guardia escrito para cazar "fixture escrita y nunca
+    inscrita" no veia precisamente el caso recien escrito. CONFIGURE_DEPENDS lo cierra.
+
+tests/unit/Stage48_2LibraryMetadataTests.cpp
+    El signo en los metadatos: builtin:byte, builtin:long, builtin:int para el enum sin
+    declarar, y vacio para una struct.
+
+CUARTA REVISION -- la version del formato (doc 118 seccion 12)
+-------------------------------------------------------------
+include/nativesharp/Interop/LibraryMetadata.h
+src/Interop/LibraryMetadata.cpp
+    P1. Subir .nsmeta a 1.2 dejo cuatro comprobaciones rojas, todas porque el numero de
+    version estaba escrito a mano en cada sitio -- incluida la prueba de "un minor del futuro
+    se rechaza", con un `2` literal, que al subir el formato paso a comprobar el minor ACTUAL.
+    kMetadataFormatMajor/kMetadataFormatMinor son ahora publicos y la prueba dice
+    kMetadataFormatMinor + 1.
+    Ademas: el ENCABEZADO escribia la constante mientras el CUERPO se codificaba segun
+    metadata.formatMinor -- dos fuentes de verdad para el mismo campo en el mismo fichero.
+    El encabezado escribe ahora el minor del modelo.
+    Y writeModel(modelo, ruta), que permite PRODUCIR un fichero de una version anterior: sin
+    eso, "un lector de 1.2 lee un fichero de 1.1" es una afirmacion sobre codigo que nadie
+    ejecuto.
+
+tests/unit/Stage48_2LibraryMetadataTests.cpp
+tests/unit/Stage50_9MetadataHostCompatibilityTests.cpp
+    Las cuatro expectativas de version actualizadas, y una prueba REAL de lectura
+    retrocompatible: se escribe un fichero 1.1 con dos tipos --el segundo DETRAS del enum,
+    para que un lector que se comiera bytes de mas lo dejara corrido-- y se lee con el lector
+    de 1.2. Mas la huella ABI: `enum : byte` y `enum : sbyte` miden lo mismo y tienen que dar
+    huellas distintas.
+
+tests/unit/Cc1CorrectnessTests.cpp
+    P2. argv[1] entraba directo en la ruta a la que se le hace remove_all: `../../algo` sale
+    de %TEMP% y borra otra cosa. La validacion existia pero llegaba DESPUES del borrado. La
+    forma se valida ahora antes de tocar el disco.
+
+MEDIDO EN LA CUARTA REVISION
+----------------------------
+Ejecutado en el contenedor, no razonado:
+  minor=1 types=2 t0=OldFormat.Mode/4 enumkey='' t1=OldFormat.Pair/8   verify=ok
+  12: minor=2 enumkey='builtin:sbyte' size=1 t1=OldFormat.Pair
+  huella byte  0ad63454f67aa573 / sbyte e7585f06d34e1032 -> distintas
+Barrido del corpus: OK=183 FAIL=5.
+
+QUINTA REVISION -- el objetivo en writeModel (doc 118 seccion 13)
+----------------------------------------------------------------
+src/Interop/LibraryMetadata.cpp
+    P2. writeModel escribia kWindowsX64Target/kPointerSize/kPointerAlignment por encima de lo
+    que el modelo dijera -- el mismo defecto que acababa de arreglar en el encabezado con el
+    minor, un campo mas alla, en la misma funcion. Pesa mas aqui porque writeModel existe
+    para MEDIR round-trips: un campo sobrescrito en silencio hace que la prueba diga "el
+    objetivo sobrevivio" cuando sobrevivio la constante. Los tres salen ahora del modelo, y
+    un objetivo ajeno se RECHAZA con su numero delante en vez de producir un fichero que el
+    lector rechazaria. El marcador de endianidad sigue siendo constante a proposito: es una
+    propiedad de la codificacion, no del modelo.
+
+tests/unit/Stage50_9MetadataHostCompatibilityTests.cpp
+    El objetivo sobrevive el round-trip; un targetId ajeno y un pointerSize ajeno se rechazan.
+
+MEDIDO EN LA QUINTA REVISION
+----------------------------
+  ok write=1   target=1 ptr=8/8
+  bad target write=0 err=... target 7 ... Windows x64 only
+  bad ptr    write=0 err=... pointer 4/8 ... Windows x64 only
+  minor1: minor=1 target=1 enumkey=''
+Barrido del corpus: OK=183 FAIL=5.

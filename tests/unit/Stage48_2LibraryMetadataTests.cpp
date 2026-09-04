@@ -154,6 +154,21 @@ namespace Meta
         Second = 2
     }
 
+    // Enums CON tipo subyacente declarado. Los metadatos alimentan a los GENERADORES DE HOST (el
+    // enlace P/Invoke de C# y el de C++/CLI), asi que un tamano fijo de 4 aqui se propaga a codigo
+    // que otro compilador genera y que ya nadie relaciona con este fichero.
+    public enum Narrow : byte
+    {
+        Low = 0,
+        High = 200
+    }
+
+    public enum Wide : long
+    {
+        Zero = 0,
+        Huge = 5000000000
+    }
+
     extern C delegate int Transform(int value);
 
     public class Api
@@ -179,7 +194,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "Stage 48.2 emits .nsmeta explicitly without linking the binary product");
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
         "explicit metadata generation creates parent directories and keeps stderr empty");
-    tests.expect(output.find("format: NSMETA 1.1") != std::string::npos &&
+    tests.expect(output.find("format: NSMETA 1.2") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
 
@@ -192,7 +207,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "metadata persists exact producer and module identity");
     tests.expect(metadata.targetTriple == "x86_64-pc-windows-msvc" && metadata.pointerSize == 8 && metadata.pointerAlignment == 8,
         "metadata freezes the NativeSharp 0.1 Windows x64 target contract");
-    tests.expect(metadata.types.size() == 7, "all root-module named types are persisted as compiler metadata");
+    tests.expect(metadata.types.size() == 9, "all root-module named types are persisted as compiler metadata");
     tests.expect(metadata.exports.size() == 3, "three explicit Stage47 C ABI exports are persisted");
     tests.expect(LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint).size() == 64,
         "ABI fingerprint is a full 256-bit SHA-256 value");
@@ -205,6 +220,31 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(pair != nullptr && pair->fields[0].name == "X" && pair->fields[0].offset == 0 &&
             pair->fields[1].name == "Y" && pair->fields[1].offset == 4,
         "field names and exact offsets are preserved for compile-time layout semantics");
+
+    // EL TAMANO DEL ENUM EN LOS METADATOS. Hasta el 2026-09-03 se escribia 4/4 para todos, sin
+    // preguntar. Un `enum : byte` exportado hacia entonces que el host generado reservara cuatro
+    // bytes donde el modulo pone uno -- el mismo defecto de ABI que el tipo subyacente vino a
+    // cerrar, en la salida que menos se mira.
+    const LibraryMetadataType* mode = findType(metadata, "::Meta.Mode");
+    tests.expect(mode != nullptr && mode->size == 4 && mode->alignment == 4,
+        "an enum with no declared underlying type stays 4/4 in metadata");
+    const LibraryMetadataType* narrow = findType(metadata, "::Meta.Narrow");
+    tests.expect(narrow != nullptr && narrow->size == 1 && narrow->alignment == 1,
+        "`enum Narrow : byte` is persisted as 1/1, not 4/4");
+    // EL SIGNO, que el tamano NO lleva. `enum : byte` y `enum : sbyte` miden los dos un byte: un
+    // generador de host que solo leyera el tamano no podria distinguirlos, y elegir el signo
+    // contrario convertiria un 200 en un -56.
+    tests.expect(narrow != nullptr && narrow->enumUnderlyingTypeKey == "builtin:byte",
+        "metadata records the enum's underlying type key, so size alone need not carry the sign");
+    tests.expect(mode != nullptr && mode->enumUnderlyingTypeKey == "builtin:int",
+        "an enum with no declared underlying type records builtin:int explicitly");
+    const LibraryMetadataType* wide = findType(metadata, "::Meta.Wide");
+    tests.expect(wide != nullptr && wide->size == 8 && wide->alignment == 8,
+        "`enum Wide : long` is persisted as 8/8");
+    tests.expect(wide != nullptr && wide->enumUnderlyingTypeKey == "builtin:long",
+        "`enum Wide : long` records builtin:long as its underlying type");
+    tests.expect(pair != nullptr && pair->enumUnderlyingTypeKey.empty(),
+        "a struct records no enum underlying type");
 
     const LibraryMetadataType* derived = findType(metadata, "::Meta.Derived");
     tests.expect(derived != nullptr && derived->kind == LibraryMetadataTypeKind::Class &&
