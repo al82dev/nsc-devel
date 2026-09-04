@@ -26,10 +26,17 @@
 //
 // Codigo de salida esperado: 42.
 //
-//   10-19  -> el valor de 8 bits ya es incorrecto ANTES de ToString().
-//   20-29  -> el valor esta bien y el CONTENIDO de la cadena es incorrecto.
-//   30-39  -> el contenido es correcto byte a byte y falla el `!=`. Es el operador de cadenas.
-//   42     -> todo correcto. Ningun otro camino devuelve 42.
+//   10-19    -> el valor de 8 bits ya es incorrecto ANTES de ToString().
+//   20-29    -> el valor esta bien y el CONTENIDO de la cadena es incorrecto.
+//   120-124  -> lo mismo que 20-29, para los casos que no cabian en esa decena: por variable
+//               local, los dos caminos de reserva, el no plegable, y el de `Ancho` por funcion.
+//   30-39    -> el contenido es correcto byte a byte y falla el `!=`. Es el operador de cadenas.
+//   130-134  -> lo mismo que 30-39, para los casos que no cabian en esa decena.
+//   42       -> todo correcto. Ningun otro camino devuelve 42.
+//
+// TODA cadena verificada en la capa 2 se compara en la capa 3, y ninguna comparacion vuelve a
+// llamar a ToString(): si alguna lo hiciera, un fallo suyo no distinguiria "el operador compara
+// mal" de "esta segunda llamada produjo otro contenido".
 using NativeSharp.Core;
 
 namespace cc1enumnombreo2
@@ -148,6 +155,8 @@ namespace cc1enumnombreo2
             if (!MismosBytes(porFuncionPositivo, "Dos")) { return 28; }
             string porFuncionOcho = PasaOcho(Ocho.Enorme).ToString();
             if (!MismosBytes(porFuncionOcho, "Enorme")) { return 29; }
+            string porFuncionAncho = PasaAncho(Ancho.Dos).ToString();
+            if (!MismosBytes(porFuncionAncho, "Dos")) { return 24 + 100; }     // 124
 
             SinSigno porLocal = SinSigno.DosCientos;
             string desdeLocal = porLocal.ToString();
@@ -182,7 +191,9 @@ namespace cc1enumnombreo2
             if (desdeLocal != "DosCientos") { return 39; }
             if (reserva != "SinSigno") { return 30 + 100; }                    // 130
             if (desdeOpaco != "Alto") { return 31 + 100; }                     // 131
-            if (PasaAncho(Ancho.Dos).ToString() != "Dos") { return 32 + 100; } // 132
+            if (porFuncionAncho != "Dos") { return 32 + 100; }                 // 132
+            if (porFuncionOcho != "Enorme") { return 33 + 100; }                // 133
+            if (reservaAncho != "Ancho") { return 34 + 100; }                   // 134
 
             return 42;
         }
