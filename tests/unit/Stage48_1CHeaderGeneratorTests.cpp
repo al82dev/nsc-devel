@@ -455,9 +455,57 @@ public class Api
     tests.expect(emitHeader(directory / "Collisions.nsproj", directory / "Collisions.h", output, error) == ExitCode::Success,
         "Stage 48.1 generates collision-free C names for same-named NativeSharp types in different namespaces");
     const std::string header = readFile(directory / "Collisions.h");
-    tests.expect(header.find("NS_Collisions__First_Pair") != std::string::npos &&
-            header.find("NS_Collisions__Second_Pair") != std::string::npos,
+    // NSC-LIMIT-009. La forma calificada es ahora una codificacion REVERSIBLE de la identidad:
+    // alfanumerico tal cual, `_` como `__`, y cualquier otro byte como `_HH`. `::` es `_3A_3A` y
+    // `.` es `_2E`. Antes se aplastaba todo a `_`, lo que hacia indistinguibles dos identidades
+    // legales y dejaba el desempate --y por tanto el header-- a merced del orden de declaracion.
+    tests.expect(header.find("NS_Collisions_3A_3AFirst_2EPair") != std::string::npos &&
+            header.find("NS_Collisions_3A_3ASecond_2EPair") != std::string::npos,
         "colliding simple type names are deterministically qualified in generated C identifiers");
+}
+
+// NSC-LIMIT-009. EL PAR QUE EL SANEADOR ANTERIOR APLASTABA AL MISMO NOMBRE.
+//
+// La primera version de esta prueba usaba `Ns.Inner` y `Ns_Inner`, y NO probaba nada: sus nombres
+// simples son distintos --`Inner` y `Ns_Inner`--, asi que los dos tomaban la forma corta y el
+// codificador completo no llegaba a llamarse. El saneador viejo habria pasado esa prueba.
+//
+// Estos dos se llaman los DOS `Pair`, asi que ninguno puede usar la forma corta y los dos pasan
+// por la codificacion. Y sus identidades son exactamente el par que colapsaba:
+//
+//     Col::A.B+Pair    ->  Col__A_B_Pair     (aplastando todo a `_`)
+//     Col::A_B.Pair    ->  Col__A_B_Pair     el mismo
+//
+// El primero ejercita ademas el `+` real de los tipos anidados, no un separador inventado.
+void testQualifiedNamesAreInjective(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "Injective";
+    writeProject(directory, "Injective", "StaticLibrary", R"NS(
+namespace A { public class B { public struct Pair { public int X; } } }
+namespace A_B { public struct Pair { public int Y; } }
+public class Api
+{
+    public static export extern C A.B.Pair EchoNested(A.B.Pair value) { return value; }
+    public static export extern C A_B.Pair EchoFlat(A_B.Pair value) { return value; }
+}
+)NS");
+    std::string output;
+    std::string error;
+    tests.expect(
+        emitHeader(directory / "Injective.nsproj", directory / "Injective.h", output, error) ==
+            ExitCode::Success,
+        "a nested type and a namespace type whose sanitized names once collided both emit");
+    const std::string header = readFile(directory / "Injective.h");
+    // `+` es `_2B`, `.` es `_2E` y el `_` escrito por el usuario es `__`. Las tres reglas juntas
+    // son lo que separa este par; con cualquiera de las tres a medias volveria a colapsar.
+    tests.expect(header.find("NS_Injective_3A_3AA_2EB_2BPair") != std::string::npos,
+        "the nested Pair encodes its '+' distinctly");
+    tests.expect(header.find("NS_Injective_3A_3AA__B_2EPair") != std::string::npos,
+        "the namespace Pair encodes its underscore distinctly");
+    // Y NINGUNO lleva sufijo de desempate: no hubo choque que desempatar, que es la diferencia
+    // entre una codificacion inyectiva y un parche sobre las consecuencias.
+    tests.expect(header.find("Pair_2") == std::string::npos,
+        "no tie-break suffix: the two identities never asked for the same C name");
 }
 
 void testHeaderGenerationGuards(TestContext& tests, const std::filesystem::path& root)
@@ -516,6 +564,7 @@ int main()
     testStaticLibraryHeader(tests, root);
     testGeneratedHeaderCompilesAndLinks(tests, root);
     testTypeNameCollisions(tests, root);
+    testQualifiedNamesAreInjective(tests, root);
     testHeaderGenerationGuards(tests, root);
 
     return tests.resultKeeping(root);

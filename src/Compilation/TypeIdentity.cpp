@@ -5,6 +5,74 @@
 
 namespace nativesharp::compilation
 {
+std::string symbolFragmentForIdentityKey(std::string_view identityKey)
+{
+    static constexpr char kHex[] = "0123456789ABCDEF";
+
+    std::string result;
+    result.reserve(identityKey.size() * 3);
+    for (const char character : identityKey)
+    {
+        const auto byte = static_cast<unsigned char>(character);
+        // Se compara contra los rangos ASCII a mano y no con `std::isalnum`, que depende del
+        // locale: el nombre de un simbolo no puede cambiar segun la maquina que compile.
+        const bool asciiAlphaNumeric =
+            (byte >= 'a' && byte <= 'z') ||
+            (byte >= 'A' && byte <= 'Z') ||
+            (byte >= '0' && byte <= '9');
+        if (asciiAlphaNumeric || byte == '_')
+        {
+            result.push_back(static_cast<char>(byte));
+            continue;
+        }
+        result.push_back('$');
+        result.push_back(kHex[byte >> 4]);
+        result.push_back(kHex[byte & 0x0F]);
+    }
+    return result;
+}
+
+bool symbolNeedsIrTextQuotes(std::string_view symbolName) noexcept
+{
+    if (symbolName.empty()) return true;
+    // La misma condicion que AsmWriter::PrintLLVMName, y por los mismos motivos: se comprueba a
+    // mano contra los rangos ASCII y no con `std::isalnum`, que depende del locale.
+    const auto first = static_cast<unsigned char>(symbolName.front());
+    if (first >= '0' && first <= '9') return true;
+    for (const char raw : symbolName)
+    {
+        const auto byte = static_cast<unsigned char>(raw);
+        const bool plain =
+            (byte >= 'a' && byte <= 'z') ||
+            (byte >= 'A' && byte <= 'Z') ||
+            (byte >= '0' && byte <= '9') ||
+            byte == '-' || byte == '.' || byte == '_';
+        if (!plain) return true;
+    }
+    return false;
+}
+
+std::string irTextSymbolReference(std::string_view symbolName)
+{
+    std::string result("@");
+    if (!symbolNeedsIrTextQuotes(symbolName))
+    {
+        result.append(symbolName);
+        return result;
+    }
+    result.push_back('"');
+    result.append(symbolName);
+    result.push_back('"');
+    return result;
+}
+
+std::string irTextIdentitySymbolPrefix(std::string_view prefix)
+{
+    std::string result("@\"");
+    result.append(prefix);
+    return result;
+}
+
 TypeIdentity::TypeIdentity(
     std::string moduleName,
     std::vector<std::string> namespaceSegments,

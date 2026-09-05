@@ -209,6 +209,8 @@ add_library(nsc_frontend STATIC
     src/Frontend/FrontendCompilation.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
+    src/Frontend/QualifiedNameLadder.cpp
+    src/Frontend/ProjectGenericConstraintModel.cpp
     src/Frontend/ProjectGenericModel.cpp
     src/Frontend/ProjectGenericModelDumper.cpp
     src/Frontend/ProjectNameLookup.cpp
@@ -1618,6 +1620,21 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.stage35-recovery.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
+
+    # NSC-LIMIT-007. La entrada de driver de la fase de constraints, ejercitada de verdad.
+    #
+    # Una fase sin prueba de ctest solo existe para quien lee el codigo: la revision encontro que
+    # `--check-project-generic-constraints` no la tenia, y de paso que la bandera no era una fase
+    # sino un alias de la de cuerpos. Las dos cosas se arreglaron; esto es lo que sostiene la
+    # segunda, porque la fixture c44 tiene cuerpos --y si la bandera volviera a arrastrarlos, un
+    # fallo de cuerpos se veria aqui como un fallo de constraints.
+    add_test(
+        NAME nsc.cc1.generic-constraints
+        COMMAND "${NSC_TEST_COMPILER}" --check-project-generic-constraints
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/cc1/c44_constraints_genericos/c44_constraints_genericos.nsproj)
+    set_tests_properties(
+        nsc.cc1.generic-constraints
+        PROPERTIES PASS_REGULAR_EXPRESSION "project generic constraint check: ok \\(0 violations\\)")
 
     add_test(
         NAME nsc.stage36-recovery.interfaces

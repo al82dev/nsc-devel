@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"A:/nsc-devel/build-test-lldlinker/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -28,6 +28,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+class ProjectGenericConstraintModel;
+
 enum class MethodScopeKind
 {
     Method,
@@ -1055,12 +1057,18 @@ struct MethodCallBinding final
 class ProjectMethodBodyModel final
 {
 public:
+    // NSC-LIMIT-007, tercera vuelta. El modelo de constraints entra aqui porque la unica fase que
+    // puede decidir si una violacion de constraint es un error del programa es esta: la que
+    // resuelve sobrecargas conociendo los tipos de los argumentos. Es un puntero y admite null
+    // --una compilacion sin genericos no necesita el modelo-- y su ausencia significa
+    // exactamente «ninguna candidata tiene constraints que consultar».
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ProjectGenericConstraintModel* genericConstraintModel = nullptr);
 
     std::span<const MethodScope> scopes() const noexcept;
     std::span<const MethodLocalSymbol> locals() const noexcept;
@@ -1139,9 +1147,15 @@ private:
         //
         // Es una tercera situacion y no un caso de las otras dos, y hace falta porque un parametro
         // `owned` exigia «ownership == Owned && ownershipTransfer», lo que dejaba fuera
-        // `new Caja(new Carga(7))` -- no habia de donde mover. Lo relaja SOLO para parametros
-        // `owned`, que son los que se quedan con el valor; un parametro sin calificador sigue
-        // rechazandolo, y no es un descuido: nadie lo liberaria.
+        // `new Caja(new Carga(7))` -- no habia de donde mover.
+        //
+        // SOLO RELAJA, NUNCA ENDURECE. Este comentario llego a afirmar que un parametro SIN
+        // calificador rechazaba un owner recien creado; era falso y ademas seria un cambio de
+        // lenguaje, no una comprobacion: `Insert(new Student(...))` sobre un parametro sin
+        // calificador es la forma mas ordinaria que hay --cinco ejemplos del libro la usan-- y
+        // `Student s = new Student(...); Insert(s);` hace lo mismo con el mismo objeto. Un
+        // parametro sin calificador no rastrea la vida del valor, y eso vale igual para uno
+        // recien creado que para uno que ya existia. Ver classifyOwnershipArgument.
         bool ownershipFreshOwner = false;
         std::optional<std::size_t> ownershipSourceLocalOrdinal;
         std::optional<std::size_t> ownershipSourceParameterOrdinal;
@@ -1641,6 +1655,7 @@ private:
     const ProjectMemberModel* memberModel_ = nullptr;
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
+    const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
     std::vector<MethodScope> scopes_;
     std::vector<std::vector<ScopeName>> scopeNames_;
     std::vector<MethodLocalSymbol> locals_;

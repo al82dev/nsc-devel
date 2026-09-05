@@ -1,0 +1,147 @@
+STAGE NSC-LIMIT-007 -- septima vuelta: la escala de nombres compartida -- 2026-09-05
+Ficheros modificados y creados en A:\nsc-devel
+
+LOS DOS DEFECTOS SON DE LA VUELTA ANTERIOR, no residuo antiguo.
+
+  P1  La fase generica decidia que tipo nombra el receptor de una llamada con reglas PROPIAS
+      --exacto, relativo al namespace del que llama, sufijo de segmentos-- en vez de con las de
+      ProjectNameLookup. `C.F<int>(0)` escrito en `A.B` con una `A.C` y una `Z.C` en el arbol:
+      para el modelo de nombres es `A.C` sin dudarlo; para la escala inventada las dos son sufijos
+      de `.C`, empatan, y la llamada se declaraba ambigua. Y el escalon de tipos CONTENEDORES
+      faltaba entero: dentro de `Outer`, `Helper` podia irse a `A.Helper`.
+
+  P2  Una plantilla con el `where` MAL DECLARADO --`where T : int`-- seguia analizando el cuerpo de
+      sus especializaciones. La primera pasada diagnostica el error; la segunda SALTA esa clausula,
+      `pending` queda vacio, y la especializacion no entraba en `invalidSpecializations_`.
+
+CREADOS
+
+  include/nativesharp/Frontend/QualifiedNameLadder.h
+  src/Frontend/QualifiedNameLadder.cpp
+      LA ESCALA, extraida. Dado el sitio en forma TEXTUAL --namespace lexico, cadena de tipos
+      contenedores, alias, imports-- produce las escrituras candidatas EN ORDEN DE PRIORIDAD, sin
+      tablas y sin decidir nada:
+
+        1  tipos CONTENEDORES del sitio, de dentro afuera
+        2  alias de namespace (sustituye y cierra)
+        3  la cadena LEXICA de namespaces, de dentro afuera
+        4  namespaces importados, TODOS en un solo escalon
+        5  el global del modulo propio
+        6  los modulos referenciados, por anidamiento
+
+      SE COMPARTE EL ORDEN, NO LA BUSQUEDA. Cada fase tiene su tabla --tipos una, plantillas la
+      otra-- y su nocion de visibilidad; forzar a las dos por el mismo sondeo cambiaria la
+      resolucion de nombres de todo el arbol para arreglar un defecto que no esta ahi.
+
+MODIFICADOS -- COMPILADOR
+
+  include/nativesharp/Frontend/ProjectNameLookup.h
+  src/Frontend/ProjectNameLookup.cpp
+      `resolveTypeCandidates` recorre la escala compartida y sondea por escalon. Cada `case` del
+      switch conserva EXACTAMENTE el sondeo que ese escalon tenia --que tabla, y con que regla de
+      visibilidad--, incluida la diferencia entre nombre simple y nombre con puntos.
+
+      SE BORRAN `resolveQualifiedTypeCandidates` y `resolveEnclosingTypeCandidates`: eran las dos
+      copias del orden dentro del propio fichero. Dejarlas seria volver a tener dos definiciones
+      de la misma regla, que es el defecto que esta vuelta cierra.
+
+      Nuevo `enclosingTypeSpellings`: la mitad TEXTUAL de `enclosingTypeOrdinals`, que es lo que la
+      escala acepta --no conoce ordinales a proposito, porque la fase generica no tiene de donde
+      sacarlos--.
+
+  include/nativesharp/Frontend/ProjectGenericModel.h
+  src/Frontend/ProjectGenericModel.cpp
+      FUERA `sourceSpellingRank`, `kNoMatch` y `endsWithSegment`.
+
+      Nuevo `templatesNamedBy`: recorre la escala y devuelve las plantillas del PRIMER escalon que
+      produzca alguna. `collectMethodTemplates` es esa funcion mas la regla de dueno unico, y
+      `resolveMethodTemplate` es esa misma funcion -- no una copia de sus reglas. Las dos no pueden
+      divergir porque son la misma.
+
+      EL CAMINO SIN DUENO DEJA DE DESHACER EL FILTRO. Antes terminaba en `unico(false, ...)`: si el
+      filtro por dueno no daba una unica plantilla, se quitaba el filtro. Ahora solo se toma cuando
+      la escala no encontro NINGUN dueno, que es lo unico que esta fase tiene para sospechar que el
+      receptor escrito era un VALOR y no un tipo --`objeto.F<int>()`--.
+
+      Nuevo `GenericLookupScope`: los `using` vigentes en el sitio, recogidos del mismo AST y en el
+      mismo sitio que ProjectNameLookup::bindScope, e hilados por `processNode`. Sin ellos, un
+      receptor traido por `using` o por alias no encontraba dueno y la llamada caia al camino sin
+      dueno. Un import se guarda en sus dos formas --la escrita y la escrita bajo cada prefijo del
+      namespace del sitio-- porque aqui no hay tabla de namespaces con la que resolverlo; el que no
+      acierte no elige mal, no acierta.
+
+      Nuevos `splitDotted` y `enclosingTypeSpellings`: la cadena de duenos se guarda con `+`
+      --identidad canonica-- y la escala la necesita con puntos y ACUMULADA.
+
+  include/nativesharp/Frontend/ProjectGenericConstraintModel.h
+  src/Frontend/ProjectGenericConstraintModel.cpp
+      `invalidTemplateOrdinals_`. Se llena DESDE `violations_`, no desde cada sitio que reporta:
+      toda violacion de declaracion lleva ya `isDeclarationViolation` y el ordinal de la PLANTILLA.
+      Recolectarlo de ahi hace que una regla de declaracion que se anada manana entre sola.
+
+      La segunda pasada, antes de mirar argumentos, marca invalidas las especializaciones de una
+      plantilla mal declarada y sale SIN emitir nada: el error ya salio sobre el `where`.
+
+  CMakeLists.txt
+      src/Frontend/QualifiedNameLadder.cpp en la lista de fuentes del frontend.
+
+MODIFICADOS -- PRUEBAS
+
+  tests/cc1/c46_sobrecargas_genericas/Main.ns
+      codigos 17-20, uno por escalon que faltaba:
+        17  NAMESPACE EXTERIOR -- `C.F<int>(0)` en `c46hijo.dentro` nombra `c46hijo.C`, no
+            `c46ajeno.C`.
+        18  TIPO CONTENEDOR -- `Helper.F<int>(0)` dentro de `Marco` nombra `Marco.Helper`, no
+            `c46anidado.Helper`.
+        19  `using` DE NAMESPACE.
+        20  ALIAS de namespace.
+      Cada uno tiene una plantilla AJENA del mismo nombre cuyo cuerpo NO COMPILA con `T = int`.
+      La fixture entera es ROJA contra el binario anterior.
+
+  tests/unit/ProjectNameLookupTests.cpp
+      `testQualifiedNameLadderOrder`: la escala SOLA, sin tablas y sin compilar nada. Seis
+      comprobaciones -- orden lexico de dentro afuera, contenedores por delante de todo, cadena de
+      contenedores de dentro afuera, el alias que sustituye y cierra, los imports en un solo
+      escalon, y el nombre con puntos que baja hasta el prefijo vacio.
+      64 -> 71 comprobaciones.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      cc1-limit007-plantilla-mal-declarada: `where T : int` con `x.MetodoInexistente()` en el
+      cuerpo. Exige el error del `where` y la AUSENCIA del del cuerpo.
+
+      Y a los tres casos de esa tabla se les anade contar los errores: EXACTAMENTE UNO. Buscar la
+      ausencia de un mensaje concreto deja pasar cualquier otro derivado que aparezca manana.
+
+      cc1-limit007-escala: compila c46 y comprueba sobre el MODELO GENERICO que las cuatro
+      plantillas ajenas no aparecen entre las especializaciones, y que las cuatro propias si. El
+      codigo de salida es la mitad de la medida: un programa puede devolver lo correcto y haber
+      clonado igualmente la ajena.
+
+MEDIDO EN EL CONTENEDOR (clang 18 + libLLVM-18, frontend real, reconstruccion completa)
+
+  P1 antes: «does not name a unique visible Stage 44 generic method template»   ahora: OK
+  P2 antes: 2 errores                                                            ahora: 1
+  c46 17-20: una sola especializacion cada uno, del dueno correcto
+  c46 entero contra el binario anterior:  ROJO
+  barrido bodies                          OK=191  FAIL=5
+  barrido llvm                            OK=191  FAIL=5
+  CompilationModelTests                   PASS 67
+  ClassMemberSyntaxTests                  PASS 58
+  ProjectNameLookupTests                  PASS 71   (64 antes, las 64 intactas)
+  ProjectMemberModelTests                 PASS 64
+  ProjectMethodBodyModelTests             PASS 55
+  avisos -Wall -Wextra                    0 en los cuatro ficheros tocados
+  prueba de la escala bajo mutacion       6 de 71 en ROJO
+
+  QUE LA REESCRITURA DE ProjectNameLookup NO CAMBIA NADA es lo que la hace una extraccion y no un
+  cambio de semantica: 191 proyectos y las 64 comprobaciones anteriores, intactos.
+
+NO MEDIDO AQUI
+  Cc1CorrectnessTests y ProjectCompilationTests compilan limpio pero NO ENLAZAN en este contenedor
+  --arrastran Driver::run, y con el LldLinker, WindowsExecutableBuilder y LlvmOptimizer, que
+  necesitan la API C de LLVM 23--. Sus casos nuevos se comprobaron reproduciendo sus asertos con
+  ProjectCompilation directamente y con el volcado de genericos.
+
+  El enlace y la ejecucion de las fixtures. Los cierra nscbuilder.py en la maquina.
+
+  NSC-LIMIT-005 / divergencias O1-O2. Sin tocar en esta entrega.

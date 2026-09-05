@@ -44,6 +44,26 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
         output << '>';
     }
 
+    // NSC-LIMIT-007: `where T : class, IFoo` se vuelca junto a los parametros, porque es parte
+    // de la firma generica y no de los hijos. Sin esto, una clausula perdida en el parser no se
+    // veria en ningun volcado.
+    for (const GenericConstraintClause& clause : node->genericConstraints())
+    {
+        output << " where " << clause.parameterName << ':';
+        bool first = true;
+        if (clause.requiresClass)
+        {
+            output << "class";
+            first = false;
+        }
+        for (const TypeSyntax* constraint : clause.typeConstraints)
+        {
+            if (!first) output << ',';
+            first = false;
+            dumpType(constraint, output);
+        }
+    }
+
     if (node->tokenKind() != lexer::TokenKind::Invalid)
     {
         output << " op=" << lexer::tokenKindName(node->tokenKind());

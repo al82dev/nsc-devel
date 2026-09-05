@@ -3,14 +3,18 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectNameLookupDumper.h"
+#include "nativesharp/Frontend/QualifiedNameLadder.h"
 
 #include "../support/TestContext.h"
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace
 {
@@ -404,6 +408,448 @@ void testDuplicateTypeAcrossFiles(TestContext& tests, const std::filesystem::pat
     tests.expect(hasDiagnostic(compilation, DiagnosticId::PreviousDeclaration),
         "duplicate named type retains previous declaration source location");
 }
+
+// NSC-LIMIT-009 -- LA IDENTIDAD DE UN TIPO ANIDADO Y QUIEN LO VE.
+//
+// Dos cosas que se miden aparte a proposito, porque son dos decisiones distintas:
+//
+//   * La IDENTIDAD canonica lleva `+` --`Ns.Outer+Item`-- y la produce TypeIdentity. El nombre
+//     FUENTE lleva punto --`Outer.Item`-- y vive en un indice aparte. Colapsar los dos volveria
+//     indistinguibles el anidado `Ns.Outer.Item` y el tipo `Item` del namespace `Ns.Outer`.
+//   * La ACCESIBILIDAD por omision depende del sitio: un tipo de namespace sin modificador es
+//     internal, uno anidado es private. Convertir el segundo en el primero publicaria dentro del
+//     modulo cada tipo interno que alguien escribiera para uso propio.
+void testNestedTypeIdentity(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path project = root / "NestedIdentity";
+    writeProject(project, "NestedIdentity");
+    writeFile(
+        project / "Types.ns",
+        "namespace Ns\n"
+        "{\n"
+        "    public class Outer\n"
+        "    {\n"
+        "        public struct Item { public int a; }\n"
+        "        private struct Secreta { public int b; }\n"
+        "        struct SinModificador { public int c; }\n"
+        "        public int Usar()\n"
+        "        {\n"
+        "            Item i; i.a = 1;\n"
+        "            Secreta s; s.b = 2;\n"
+        "            SinModificador m; m.c = 3;\n"
+        "            return i.a + s.b + m.c;\n"
+        "        }\n"
+        "    }\n"
+        "    public class Otro\n"
+        "    {\n"
+        "        public struct Item { public int d; }\n"
+        "    }\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectNames(project / "NestedIdentity.nsproj", error);
+    tests.expect(ok, "a project with nested types binds successfully");
+    const ProjectNameLookup* lookup = compilation.nameLookup();
+    tests.expect(lookup != nullptr, "nested type project produces a name lookup");
+    if (lookup == nullptr)
+    {
+        return;
+    }
+
+    const NamedTypeDeclaration* item = findType(*lookup, "NestedIdentity::Ns.Outer+Item");
+    const NamedTypeDeclaration* secreta = findType(*lookup, "NestedIdentity::Ns.Outer+Secreta");
+    const NamedTypeDeclaration* sinModificador =
+        findType(*lookup, "NestedIdentity::Ns.Outer+SinModificador");
+    const NamedTypeDeclaration* otroItem = findType(*lookup, "NestedIdentity::Ns.Otro+Item");
+    const NamedTypeDeclaration* outer = findType(*lookup, "NestedIdentity::Ns.Outer");
+
+    tests.expect(item != nullptr, "a nested type's canonical identity uses '+', not '.'");
+    tests.expect(otroItem != nullptr,
+        "the same nested name under a second container is a different type");
+    tests.expect(findType(*lookup, "NestedIdentity::Ns.Outer.Item") == nullptr,
+        "the dotted source spelling is NOT a canonical key");
+
+    if (item != nullptr && outer != nullptr)
+    {
+        tests.expect(item->containingTypeOrdinal.has_value(),
+            "a nested type records the ordinal of its container");
+        tests.expect(
+            item->identity.containingTypes().size() == 1 &&
+                item->identity.containingTypes().front().name == "Outer" &&
+                item->identity.containingTypes().front().arity == 0,
+            "the containing-type chain carries the container's name and its arity");
+        tests.expect(outer->containingTypeOrdinal == std::optional<std::size_t>(),
+            "a namespace-scope type has no container");
+    }
+
+    tests.expect(item != nullptr &&
+            item->accessibility == nativesharp::frontend::NamedTypeAccessibility::Public,
+        "an explicit public survives on a nested type");
+    tests.expect(secreta != nullptr &&
+            secreta->accessibility == nativesharp::frontend::NamedTypeAccessibility::Private,
+        "an explicit private survives on a nested type");
+    tests.expect(sinModificador != nullptr &&
+            sinModificador->accessibility == nativesharp::frontend::NamedTypeAccessibility::Private,
+        "a nested type with no accessibility modifier defaults to private, not to module internal");
+    tests.expect(outer != nullptr &&
+            outer->accessibility == nativesharp::frontend::NamedTypeAccessibility::Public,
+        "the containing type keeps its own accessibility");
+
+    // Y el nombre corto escrito DENTRO del contenedor resuelve al anidado: es el escalon de
+    // busqueda que se anadio delante del namespace, y sin el habria que escribir `Outer.Item`
+    // dentro del propio `Outer`.
+    tests.expect(resolvedBindingCount(*lookup, "Item", "NestedIdentity::Ns.Outer+Item") >= 1,
+        "the short name inside the container resolves to its own nested type");
+}
+
+// La forma fuente de un anidado usa puntos y puede coincidir byte a byte con un tipo de
+// namespace: Collision.Outer+Item frente a Collision.Outer.Item. Dentro de Outer, el escalon
+// del contenedor tiene prioridad y debe elegir exclusivamente el primero.
+void testNestedTypeShadowsHomonymousNamespaceType(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path project = root / "NestedNamespaceCollision";
+    writeProject(project, "NestedNamespaceCollision");
+    writeFile(
+        project / "Types.ns",
+        "namespace Collision.Outer\n"
+        "{\n"
+        "    public class Item { }\n"
+        "}\n"
+        "namespace Collision\n"
+        "{\n"
+        "    public class Outer\n"
+        "    {\n"
+        "        public class Item { }\n"
+        "        public Item Select(Item value)\n"
+        "        {\n"
+        "            Item local = value;\n"
+        "            return local;\n"
+        "        }\n"
+        "    }\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok =
+        compilation.compileProjectNames(project / "NestedNamespaceCollision.nsproj", error);
+    tests.expect(ok, "a nested type may share its dotted source spelling with a namespace type");
+    const ProjectNameLookup* lookup = compilation.nameLookup();
+    tests.expect(lookup != nullptr, "the nested/namespace collision produces a name lookup");
+    if (lookup == nullptr)
+    {
+        return;
+    }
+
+    tests.expect(
+        findType(*lookup, "NestedNamespaceCollision::Collision.Outer+Item") != nullptr &&
+            findType(*lookup, "NestedNamespaceCollision::Collision.Outer.Item") != nullptr,
+        "the nested and namespace types retain distinct canonical identities");
+    tests.expect(
+        resolvedBindingCount(
+            *lookup, "Item", "NestedNamespaceCollision::Collision.Outer+Item") >= 3,
+        "inside Outer, every short Item binding selects Outer+Item");
+    tests.expect(
+        resolvedBindingCount(
+            *lookup, "Item", "NestedNamespaceCollision::Collision.Outer.Item") == 0,
+        "the homonymous namespace type cannot steal the enclosing-type lookup rung");
+}
+
+// NSC-LIMIT-009 -- QUE CRUZA EL LIMITE DE PROYECTO, que son TODOS los eslabones o ninguno.
+void testNestedTypeAcrossProjects(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path library = root / "NestedLib";
+    const std::filesystem::path app = root / "NestedApp";
+    writeProject(library, "NestedLib");
+    writeFile(
+        library / "Lib.ns",
+        "namespace NestedShared\n"
+        "{\n"
+        "    public class Publica\n"
+        "    {\n"
+        "        public struct Visible { public int v; }\n"
+        "        internal struct Interna { public int i; }\n"
+        "    }\n"
+        "    internal class Reservada\n"
+        "    {\n"
+        "        public struct Dentro { public int d; }\n"
+        "    }\n"
+        "}\n");
+
+    writeProject(app, "NestedApp", "<ProjectReference Include=\"../NestedLib/NestedLib.nsproj\" />");
+    writeFile(
+        app / "Main.ns",
+        "using NestedShared;\n"
+        "namespace NestedConsumer\n"
+        "{\n"
+        "    public class P\n"
+        "    {\n"
+        "        public int Usar()\n"
+        "        {\n"
+        "            Publica.Visible v; v.v = 1;\n"
+        "            NestedShared.Publica.Visible w; w.v = 2;\n"
+        "            return v.v + w.v;\n"
+        "        }\n"
+        "    }\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectNames(app / "NestedApp.nsproj", error);
+    tests.expect(ok, "a public nested type of a public container crosses a ProjectReference");
+    const ProjectNameLookup* lookup = compilation.nameLookup();
+    if (lookup != nullptr)
+    {
+        tests.expect(
+            resolvedBindingCount(*lookup, "Publica.Visible", "NestedLib::NestedShared.Publica+Visible") >= 1,
+            "'using' plus the container-qualified source name reaches the nested type");
+        tests.expect(
+            resolvedBindingCount(
+                *lookup,
+                "NestedShared.Publica.Visible",
+                "NestedLib::NestedShared.Publica+Visible") >= 1,
+            "the fully qualified source name reaches the same nested type");
+    }
+
+    // El anidado internal de un contenedor public NO cruza...
+    const std::filesystem::path internalApp = root / "NestedInternalApp";
+    writeProject(
+        internalApp,
+        "NestedInternalApp",
+        "<ProjectReference Include=\"../NestedLib/NestedLib.nsproj\" />");
+    writeFile(
+        internalApp / "Main.ns",
+        "using NestedShared;\n"
+        "namespace NestedConsumer\n"
+        "{\n"
+        "    public class P { public int Usar() { Publica.Interna v; v.i = 1; return v.i; } }\n"
+        "}\n");
+    ProjectCompilation internalCompilation;
+    tests.expect(!internalCompilation.compileProjectNames(
+                     internalApp / "NestedInternalApp.nsproj", error),
+        "an internal nested type does not cross a ProjectReference");
+
+    // ...y el anidado PUBLIC de un contenedor internal tampoco, que es el caso que una
+    // comprobacion de un solo nivel habria dejado pasar: el `public` del anidado es cierto, y aun
+    // asi el tipo no es alcanzable, porque su contenedor no sale del modulo.
+    const std::filesystem::path hiddenApp = root / "NestedHiddenApp";
+    writeProject(
+        hiddenApp,
+        "NestedHiddenApp",
+        "<ProjectReference Include=\"../NestedLib/NestedLib.nsproj\" />");
+    writeFile(
+        hiddenApp / "Main.ns",
+        "using NestedShared;\n"
+        "namespace NestedConsumer\n"
+        "{\n"
+        "    public class P { public int Usar() { Reservada.Dentro v; v.d = 1; return v.d; } }\n"
+        "}\n");
+    ProjectCompilation hiddenCompilation;
+    tests.expect(!hiddenCompilation.compileProjectNames(hiddenApp / "NestedHiddenApp.nsproj", error),
+        "a public nested type of an internal container does not cross a ProjectReference");
+}
+
+// NSC-LIMIT-009, segunda vuelta -- `protected` ENTRE PROYECTOS.
+//
+// Es el caso normal de una biblioteca: `protected class Reservada` existe para que las derivadas
+// la usen, y una derivada suele estar en otro proyecto. El filtro de cruce de modulo exigia
+// `public` en toda la cadena, de modo que el nombre no llegaba a resolverse y la comprobacion de
+// herencia --la unica que sabe decidirlo-- no recibia la oportunidad.
+//
+// LAS DOS PRUEBAS LLEGAN HASTA `compileProjectInheritance`, no se paran en los nombres: la
+// decision depende del grafo de herencia, y pararse antes mediria otra cosa.
+void testNestedProtectedAcrossProjects(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path library = root / "ProtLib";
+    writeProject(library, "ProtLib");
+    writeFile(
+        library / "Lib.ns",
+        "namespace ProtShared\n"
+        "{\n"
+        "    public class Base\n"
+        "    {\n"
+        "        protected class Reservada { public int Codigo() { return 40; } }\n"
+        "        public int Propio() { Reservada r = new Reservada(); return r.Codigo(); }\n"
+        "    }\n"
+        "}\n");
+
+    const std::filesystem::path derived = root / "ProtDerived";
+    writeProject(derived, "ProtDerived", "<ProjectReference Include=\"../ProtLib/ProtLib.nsproj\" />");
+    writeFile(
+        derived / "Main.ns",
+        "using ProtShared;\n"
+        "namespace ProtApp\n"
+        "{\n"
+        "    public class Derivada : Base\n"
+        "    {\n"
+        "        public int Usar() { Base.Reservada r = new Base.Reservada(); return r.Codigo(); }\n"
+        "    }\n"
+        "}\n");
+
+    ProjectCompilation derivedCompilation;
+    std::string error;
+    tests.expect(
+        derivedCompilation.compileProjectInheritance(derived / "ProtDerived.nsproj", error),
+        "a protected nested type is reachable from a derived type in another project");
+
+    const std::filesystem::path stranger = root / "ProtStranger";
+    writeProject(
+        stranger, "ProtStranger", "<ProjectReference Include=\"../ProtLib/ProtLib.nsproj\" />");
+    writeFile(
+        stranger / "Main.ns",
+        "using ProtShared;\n"
+        "namespace ProtApp\n"
+        "{\n"
+        "    public class Ajena\n"
+        "    {\n"
+        "        public int Usar() { Base.Reservada r = new Base.Reservada(); return r.Codigo(); }\n"
+        "    }\n"
+        "}\n");
+
+    ProjectCompilation strangerCompilation;
+    tests.expect(
+        !strangerCompilation.compileProjectInheritance(stranger / "ProtStranger.nsproj", error),
+        "the same protected nested type is NOT reachable from an unrelated type in another project");
+    tests.expect(hasDiagnostic(strangerCompilation, DiagnosticId::UnknownTypeName),
+        "the cross-project protected rejection is a type-name diagnostic");
+}
+
+// NSC-LIMIT-009 -- `private` visto desde fuera del contenedor.
+void testNestedPrivateIsHidden(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path project = root / "NestedPrivate";
+    writeProject(project, "NestedPrivate");
+    writeFile(
+        project / "Types.ns",
+        "namespace NestedPriv\n"
+        "{\n"
+        "    public class Caja { private struct Secreta { public int s; } }\n"
+        "    public class Fuera { public int Usar() { Caja.Secreta s; s.s = 1; return s.s; } }\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    tests.expect(!compilation.compileProjectNames(project / "NestedPrivate.nsproj", error),
+        "a private nested type is not reachable from outside its container");
+    tests.expect(hasDiagnostic(compilation, DiagnosticId::UnknownTypeName),
+        "the private nested rejection is a type-name diagnostic");
+    // Y el mensaje no puede ser «no existe»: el tipo esta escrito dos lineas mas arriba, y decir
+    // que no existe manda al lector a buscar una errata que no hay.
+    bool saysProtectionLevel = false;
+    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (diagnostic.message().find("is private and is not accessible here") != std::string::npos)
+        {
+            saysProtectionLevel = true;
+        }
+    }
+    tests.expect(saysProtectionLevel,
+        "the diagnostic names the accessibility, not a missing type");
+}
+}
+
+// NSC-LIMIT-007 -- LA ESCALA, sola y sin tablas.
+//
+// `qualifiedNameLadder` es lo unico que este modelo comparte con la fase generica, y por eso tiene
+// prueba PROPIA: si el orden cambia aqui, cambia en las dos fases a la vez, que es exactamente la
+// propiedad que se busca. Comprobar el orden solo a traves de un programa compilado lo mediria de
+// refilon y no diria en que escalon esta el fallo.
+void testQualifiedNameLadderOrder(TestContext& tests)
+{
+    using nativesharp::frontend::QualifiedNameSite;
+    using nativesharp::frontend::QualifiedNameTier;
+    using nativesharp::frontend::qualifiedNameLadder;
+
+    const auto spellings = [](const auto& rungs)
+    {
+        std::vector<std::string> flat;
+        for (const auto& rung : rungs)
+            for (const std::string& spelling : rung.spellings) flat.push_back(spelling);
+        return flat;
+    };
+
+    // NOMBRE SIMPLE DENTRO DE `A.B`. El namespace mas interno primero, despues el exterior, y el
+    // global DESPUES de los imports -- que es la diferencia con la rama calificada.
+    {
+        const std::vector<std::string> segments{"A", "B"};
+        QualifiedNameSite site;
+        site.namespaceSegments = segments;
+        const std::vector<std::string> flat = spellings(qualifiedNameLadder(site, "C"));
+        tests.expect(flat.size() >= 3 && flat[0] == "A.B.C" && flat[1] == "A.C" && flat[2] == "C",
+            "ladder: a simple name tries the innermost namespace first, then outward, then global");
+    }
+
+    // LOS CONTENEDORES VAN PRIMERO, antes que cualquier namespace: dentro de `A.Outer`, `Helper`
+    // es `A.Outer.Helper` antes que `A.Helper`. Es el escalon que faltaba entero en la fase
+    // generica, y el que decide el caso 18 de c46.
+    {
+        const std::vector<std::string> segments{"A"};
+        const std::vector<std::string> enclosing{"A.Outer"};
+        QualifiedNameSite site;
+        site.namespaceSegments = segments;
+        site.enclosingTypeNames = enclosing;
+        const auto rungs = qualifiedNameLadder(site, "Helper");
+        tests.expect(!rungs.empty() && rungs.front().tier == QualifiedNameTier::EnclosingType &&
+                rungs.front().spellings.size() == 1 &&
+                rungs.front().spellings.front() == "A.Outer.Helper",
+            "ladder: an enclosing type outranks every namespace tier");
+    }
+
+    // DE DENTRO AFUERA TAMBIEN EN LA CADENA DE CONTENEDORES.
+    {
+        const std::vector<std::string> enclosing{"A.Outer", "A.Outer.Medio"};
+        QualifiedNameSite site;
+        site.enclosingTypeNames = enclosing;
+        const std::vector<std::string> flat = spellings(qualifiedNameLadder(site, "Item"));
+        tests.expect(flat.size() >= 2 && flat[0] == "A.Outer.Medio.Item" &&
+                flat[1] == "A.Outer.Item",
+            "ladder: the innermost containing type is tried first");
+    }
+
+    // UN ALIAS SUSTITUYE Y CIERRA: `X.C` con `using X = P.Q` no vuelve a buscarse como `X.C`.
+    {
+        const std::unordered_map<std::string, std::string> aliases{{"X", "P.Q"}};
+        QualifiedNameSite site;
+        site.aliases = &aliases;
+        const std::vector<std::string> flat = spellings(qualifiedNameLadder(site, "X.C"));
+        tests.expect(!flat.empty() && flat.front() == "P.Q.C",
+            "ladder: an alias substitutes its target");
+        bool sinSustituir = false;
+        for (const std::string& spelling : flat)
+            if (spelling == "X.C") sinSustituir = true;
+        tests.expect(!sinSustituir,
+            "ladder: and the written alias name is never tried on its own");
+    }
+
+    // LOS IMPORTS SON UN SOLO ESCALON: dos candidatos ahi son ambiguos, no se elige uno.
+    {
+        const std::vector<std::string> imports{"P", "Q"};
+        QualifiedNameSite site;
+        site.importedNamespaces = imports;
+        const auto rungs = qualifiedNameLadder(site, "C");
+        bool escalonUnico = false;
+        for (const auto& rung : rungs)
+        {
+            if (rung.tier != QualifiedNameTier::ImportedNamespace) continue;
+            escalonUnico = rung.spellings.size() == 2 && rung.spellings[0] == "P.C" &&
+                rung.spellings[1] == "Q.C";
+        }
+        tests.expect(escalonUnico,
+            "ladder: every imported namespace competes inside ONE tier");
+    }
+
+    // UN NOMBRE CON PUNTOS baja hasta el prefijo VACIO dentro del mismo escalon lexico -- no tiene
+    // escalon «global» aparte, porque su ultimo prefijo ya lo es.
+    {
+        const std::vector<std::string> segments{"A", "B"};
+        QualifiedNameSite site;
+        site.namespaceSegments = segments;
+        const std::vector<std::string> flat = spellings(qualifiedNameLadder(site, "N1.C"));
+        tests.expect(flat.size() >= 3 && flat[0] == "A.B.N1.C" && flat[1] == "A.N1.C" &&
+                flat[2] == "N1.C",
+            "ladder: a dotted name is prefixed by each lexical namespace, ending at none");
+    }
 }
 
 int main()
@@ -424,6 +870,12 @@ int main()
     testInvalidUsingAndDuplicates(tests, root);
     testAmbiguousAliasTarget(tests, root);
     testDuplicateTypeAcrossFiles(tests, root);
+    testNestedTypeIdentity(tests, root);
+    testNestedTypeShadowsHomonymousNamespaceType(tests, root);
+    testNestedTypeAcrossProjects(tests, root);
+    testNestedPrivateIsHidden(tests, root);
+    testNestedProtectedAcrossProjects(tests, root);
+    testQualifiedNameLadderOrder(tests);
 
     std::filesystem::remove_all(root, errorCode);
     return tests.result();

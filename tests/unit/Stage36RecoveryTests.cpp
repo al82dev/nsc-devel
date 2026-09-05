@@ -616,7 +616,13 @@ void testLlvmAndCoff(TestContext& tests, const std::filesystem::path& root)
         "LLVM ABI declares the compact interface-map entry layout");
     tests.expect(llvm.find("%nativesharp.interface_map = type { i64, ptr }") != std::string::npos,
         "LLVM ABI declares count+entries interface-map header");
-    tests.expect(llvm.find("@__nsc_ifmap_") != std::string::npos && llvm.find("@__nsc_iftable_") != std::string::npos,
+    // NSC-LIMIT-009. LA BUSQUEDA LLEVA `@\"` Y NO `@`, y no es un adorno: todo simbolo que sale
+    // de una identidad lleva el `$3A$3A` del `::` del modulo, y LLVM entrecomilla cualquier
+    // nombre con un byte que no sea alfanumerico, `-`, `.` o `_`. Lo impreso es
+    // `@\"__nsc_...\"`. Escrito a mano sin la comilla encuentra CERO, y en una asercion de
+    // ausencia eso seria un verde falso. Ver TypeIdentity.h e `irTextSymbolReference`.
+    tests.expect(llvm.find("@\"__nsc_ifmap_") != std::string::npos &&
+            llvm.find("@\"__nsc_iftable_") != std::string::npos,
         "LLVM materializes per-class interface maps and method tables");
     tests.expect(llvm.find("interface.search.") != std::string::npos,
         "interface call lowering performs runtime type-id map lookup rather than compile-time class selection");

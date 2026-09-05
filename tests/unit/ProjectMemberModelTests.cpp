@@ -444,6 +444,69 @@ void testBodyDiagnostics(TestContext& tests, const std::filesystem::path& root)
             "bare void parameter uses InvalidType while void* remains legal");
     }
 }
+// NSC-LIMIT-009 -- UN TIPO ANIDADO NO ES UN MIEMBRO EJECUTABLE.
+//
+// La prueba no es decorativa: `appendExpandedMemberNodes` decide que es miembro por una lista de
+// AstNodeKind, y un tipo anidado simplemente no coincidia con ninguna rama. Eso funciona por
+// accidente, y el accidente se rompe en cuanto alguien anade una rama nueva -- con un sintoma que
+// no es un error sino un miembro fantasma en el layout. Ahora se descarta explicitamente, y esta
+// prueba es lo que sostiene esa decision: el contenedor tiene EXACTAMENTE sus miembros, y el
+// anidado esta en la tabla de tipos, con sus propios miembros.
+void testNestedTypesAreNotMembers(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "NestedNotMembers";
+    writeProject(directory, "NestedNotMembers");
+    writeFile(
+        directory / "Types.ns",
+        "namespace Nested;\n"
+        "public class Outer {\n"
+        "  public int Campo;\n"
+        "  public struct Item { public int a; public int Doble() { return this.a * 2; } }\n"
+        "  public enum Modo { A, B }\n"
+        "  public int Leer() { return this.Campo; }\n"
+        "}\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMembers(directory / "NestedNotMembers.nsproj", error);
+    tests.expect(ok, "a class with nested types builds its member model");
+    if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr)
+    {
+        return;
+    }
+
+    const ProjectNameLookup& lookup = *compilation.nameLookup();
+    const ProjectMemberModel& model = *compilation.memberModel();
+
+    const std::optional<std::size_t> outer =
+        findTypeOrdinal(lookup, "NestedNotMembers::Nested.Outer");
+    const std::optional<std::size_t> item =
+        findTypeOrdinal(lookup, "NestedNotMembers::Nested.Outer+Item");
+    const std::optional<std::size_t> modo =
+        findTypeOrdinal(lookup, "NestedNotMembers::Nested.Outer+Modo");
+    tests.expect(outer.has_value(), "the container is a named type");
+    tests.expect(item.has_value(), "the nested struct is a named type of its own");
+    tests.expect(modo.has_value(), "the nested enum is a named type of its own");
+    if (!outer.has_value() || !item.has_value())
+    {
+        return;
+    }
+
+    // DOS, no cuatro: el campo y el metodo. Ni `Item` ni `Modo` cuentan.
+    tests.expect(model.membersOfType(*outer).size() == 2,
+        "the container has exactly its field and its method; the two nested types are not members");
+    for (const std::size_t memberOrdinal : model.membersOfType(*outer))
+    {
+        const ClassMemberSymbol& member = model.members()[memberOrdinal];
+        tests.expect(member.name != "Item" && member.name != "Modo",
+            "no nested type appears among the container's members");
+    }
+
+    // Y el anidado tiene los suyos, que es la otra mitad: no aparecer como miembro del contenedor
+    // no puede significar haber desaparecido.
+    tests.expect(model.membersOfType(*item).size() == 2,
+        "the nested struct owns its own field and method");
+}
 }
 
 int main()
@@ -460,6 +523,7 @@ int main()
     testConflicts(tests, root);
     testInitialOverloadLookup(tests, root);
     testBodyDiagnostics(tests, root);
+    testNestedTypesAreNotMembers(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

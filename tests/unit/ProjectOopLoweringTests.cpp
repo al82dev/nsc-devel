@@ -188,19 +188,27 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
         "OOP object initialization materializes zero-initialization with LLVM memset");
     tests.expect(llvm.find("getelementptr i8, ptr %this, i64 12") != std::string::npos,
         "field addressing lowers exactly to the explicit receiver plus the Macro A byte offset");
-    tests.expect(llvm.find("call void @__nsc_ctor_") != std::string::npos,
+    // NSC-LIMIT-009. LA BUSQUEDA LLEVA `@\"` Y NO `@`, y no es un adorno: todo simbolo que sale
+    // de una identidad lleva el `$3A$3A` del `::` del modulo, y LLVM entrecomilla cualquier
+    // nombre con un byte que no sea alfanumerico, `-`, `.` o `_`. Lo impreso es
+    // `@\"__nsc_...\"`. Escrito a mano sin la comilla encuentra CERO, y en una asercion de
+    // ausencia eso seria un verde falso. Ver TypeIdentity.h e `irTextSymbolReference`.
+    tests.expect(llvm.find("call void @\"__nsc_ctor_") != std::string::npos,
         "explicit object construction lowers selected constructor call after allocation");
-    tests.expect(llvm.find("call i32 @__nsc_method_") != std::string::npos,
+    tests.expect(llvm.find("call i32 @\"__nsc_method_") != std::string::npos,
         "instance method calls lower to direct internal-ABI calls with implicit this");
     tests.expect(llvm.find("while.cond") != std::string::npos && llvm.find("while.body") != std::string::npos,
         "structured OOP while lowers to explicit LLVM control-flow blocks");
     tests.expect(llvm.find("alloc.failed") != std::string::npos && llvm.find("object.init") != std::string::npos,
         "allocation failure is checked before zero-init/constructor execution");
 
-    const std::size_t makeAfterStart = llvm.find("define ptr @__nsc_method_Stage30Test__Demo_Counter__MakeAfterAdd__builtin_int");
+    const std::size_t makeAfterStart = llvm.find(
+        "define ptr @\"__nsc_method_Stage30Test$3A$3ADemo$2ECounter__MakeAfterAdd__builtin$3Aint");
     const std::size_t makeAfterEnd = makeAfterStart == std::string::npos ? std::string::npos : llvm.find("\n}", makeAfterStart);
     const std::size_t argumentCall = makeAfterStart == std::string::npos ? std::string::npos :
-        llvm.find("call i32 @__nsc_method_Stage30Test__Demo_Counter__Add__builtin_int", makeAfterStart);
+        llvm.find(
+        "call i32 @\"__nsc_method_Stage30Test$3A$3ADemo$2ECounter__Add__builtin$3Aint",
+        makeAfterStart);
     const std::size_t allocationCall = makeAfterStart == std::string::npos ? std::string::npos :
         llvm.find("call ptr @__nativesharp_alloc", makeAfterStart);
     tests.expect(

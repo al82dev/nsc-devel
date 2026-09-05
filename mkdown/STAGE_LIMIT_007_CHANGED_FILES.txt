@@ -1,0 +1,132 @@
+STAGE NSC-LIMIT-007 -- constraints genericos `where T : class, IComponente` -- 2026-09-04
+Ficheros modificados y creados en A:\nsc-devel
+
+MODIFICADOS
+  include/nativesharp/AST/AstNode.h
+      GenericConstraintClause: la clausula tal como se escribio, SIN RESOLVER --los tipos son
+      TypeSyntax*, no claves ni ordinales--, porque cuando el parser lee no existe todavia el
+      name lookup. `substitutedArgument` cuelga de la clausula CLONADA el tipo con el que se
+      cerro el parametro; sin el, el argumento de una especializacion no lo ve nadie, porque
+      clearTypeArguments lo borra del arbol al materializar.
+      AstNode gana addGenericConstraint / genericConstraints / clearGenericConstraints.
+
+  src/AST/AstNode.cpp
+      los tres accesores.
+
+  src/AST/AstDumper.cpp
+      vuelca ` where T:class,IFoo` antes del bloque `op=`, para que el dump de sintaxis siga
+      siendo una descripcion completa del nodo.
+
+  include/nativesharp/Parser/Parser.h
+      parseGenericConstraintClauses.
+
+  src/Parser/Parser.cpp
+      SE BORRAN LOS CINCO RECHAZOS «generic constraints are deferred beyond Stage 44». Cuatro
+      de ellos estaban ademas en la POSICION GRAMATICAL EQUIVOCADA --delante de la lista de
+      bases de una clase, y delante de la lista de parametros de metodo, funcion y delegado--
+      de modo que `class C<T> : Base where T : class` ni siquiera llegaba a leerse.
+      parseGenericConstraintClauses comprueba: que el parametro existe, que no hay dos
+      clausulas para el mismo, que no hay dos veces el mismo constraint, que `class` va
+      primero, y nombra uno a uno los constraints de C# que este compilador no implementa.
+      Cinco puntos de llamada: delegado, struct, clase (DESPUES de la lista de bases), cola de
+      metodo y cola de funcion. En interfaz no, porque aqui una interfaz no es generica.
+
+  include/nativesharp/Frontend/ProjectGenericModel.h
+      GenericTemplateRecord.constraints. GenericSpecializationRecord gana templateOrdinal,
+      instantiationSyntax e instantiationRange --el sitio que el diagnostico tiene que
+      senalar--. TemplateState gana su ordinal.
+
+  src/Frontend/ProjectGenericModel.cpp
+      los dos sitios de recoleccion copian las clausulas a la plantilla; los tres sitios de
+      instanciacion recuerdan su rango; cloneNode clona cada clausula sustituyendo sus tipos y
+      le cuelga el argumento ya sustituido.
+
+  src/Frontend/ProjectNameLookup.cpp
+      bindNode visita los tipos de constraint y el argumento colgado. ESTA ES LA PIEZA que
+      hace innecesaria una segunda resolucion de nombres en la fase de validacion.
+
+  include/nativesharp/Frontend/ProjectCompilation.h
+      genericConstraintModel_ y su accesor.
+
+  src/Frontend/ProjectCompilation.cpp
+      compileProjectMethodBodies construye el modelo de constraints ANTES del modelo de
+      cuerpos. Es el unico sitio posible: antes no existen herencia ni interfaces con que
+      responder, y despues el cuerpo ya se habria analizado sobre una especializacion invalida.
+
+  src/Driver/Driver.cpp
+      --check-project-generic-constraints, en la lista de acciones, en methodBodyAction, en el
+      mensaje de exito y en la ayuda.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      registro de c44 y diez rechazos: cinco semanticos (class con struct, interfaz con struct,
+      interfaz no implementada, base no derivada, constraint que no es tipo referencia) y cinco
+      del parser (parametro inexistente, clausula duplicada, `class` fuera de la primera
+      posicion, constraint duplicado, constraint no implementado).
+
+  CMakeLists.txt
+      src/Frontend/ProjectGenericConstraintModel.cpp en la lista de fuentes.
+
+CREADOS
+  include/nativesharp/Frontend/ProjectGenericConstraintModel.h
+  src/Frontend/ProjectGenericConstraintModel.cpp
+      la fase que valida. Lee las clausulas del NODO ESPECIALIZADO, no de la plantilla.
+  tests/cc1/c44_constraints_genericos/{c44_constraints_genericos.nsproj,Main.ns}
+  mkdown/121_limit_007_constraints_genericos.md
+  mkdown/STAGE_LIMIT_007_CHANGED_FILES.txt
+
+MEDIDO EN EL CONTENEDOR (clang 18 + libLLVM-18, frontend real)
+  barrido --stage=bodies : OK=189 FAIL=5 (los 5 son los negativos intencionados de siempre)
+  barrido --stage=llvm   : OK=189 FAIL=5
+  las siete unidades tocadas compilan con -Wall -Wextra sin un solo aviso
+  Cc1CorrectnessTests.cpp pasa -fsyntax-only -Wall -Wextra sin avisos
+  los diez mensajes de rechazo medidos uno a uno contra el frontend, no supuestos
+
+================================================================================
+SEGUNDA VUELTA -- los siete defectos de la revision. Ver mkdown/121, seccion 9.
+================================================================================
+
+MODIFICADOS ADEMAS
+  src/Parser/Parser.cpp
+      rechaza `where` en una FUNCION GLOBAL generica: no se materializa, asi que la
+      clausula quedaba escrita y sin comprobar. Rechaza tambien un constraint que nombra
+      otro parametro generico de la misma declaracion.
+
+  include/nativesharp/Frontend/ProjectGenericModel.h
+  src/Frontend/ProjectGenericModel.cpp
+      GenericSpecializationRecord.overloadGroup: marca las especializaciones que salieron
+      de un conjunto de sobrecargas y que por tanto son ALTERNATIVAS entre si.
+
+  include/nativesharp/Frontend/ProjectGenericConstraintModel.h
+  src/Frontend/ProjectGenericConstraintModel.cpp
+      dos pasadas. validateTemplateClauses recorre las PLANTILLAS y denuncia lo que esta
+      mal escrito --constraint que no es clase ni interfaz, y el mismo tipo dos veces por
+      identidad canonica-- se instancie o no. La pasada de especializaciones acumula sin
+      emitir y un grupo de sobrecargas solo falla si fallan todas.
+      `where T : class` acepta ahora delegado, string y arreglo; puntero no.
+
+  src/Frontend/ProjectNameLookup.cpp
+      bindNode ata los tipos de constraint de una PLANTILLA antes de devolver, que es lo
+      que permite validarla sin instanciarla.
+
+  include/nativesharp/Frontend/ProjectCompilation.h
+  src/Frontend/ProjectCompilation.cpp
+      compileProjectGenericConstraints como FASE propia, entre interfaces y cuerpos.
+
+  src/Driver/Driver.cpp
+      genericConstraintAction: escalon propio, ya no un alias de la fase de cuerpos.
+
+  tests/cc1/c44_constraints_genericos/Main.ns
+      codigos 17-21: delegado generico con where, `class` por delegado/string/arreglo, y
+      un conjunto de sobrecargas donde la candidata descartada incumple.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      3 rechazos nuevos (where en funcion global, constraint que es parametro generico,
+      duplicado por alias, puntero bajo class) y 1 aceptacion (sobrecarga descartada).
+
+  CMakeLists.txt
+      nsc.cc1.generic-constraints: la prueba ctest de la fase, que no existia.
+
+NO MEDIDO EN ESTA VUELTA
+  Solo compilacion sin avisos con -Wall -Wextra. Sin barrido de contenedor y sin corrida
+  de nscbuilder.py: se pidio expresamente no ejecutar nada. Los casos 17-21 de la fixture
+  estan ESCRITOS, no comprobados.

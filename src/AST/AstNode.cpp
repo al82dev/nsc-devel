@@ -40,6 +40,9 @@ void AstNode::clearTypeSyntaxes() noexcept { typeSyntaxes_.clear(); }
 void AstNode::addGenericParameter(std::string name) { genericParameters_.push_back(std::move(name)); }
 const std::vector<std::string>& AstNode::genericParameters() const noexcept { return genericParameters_; }
 void AstNode::clearGenericParameters() noexcept { genericParameters_.clear(); }
+void AstNode::addGenericConstraint(GenericConstraintClause clause) { genericConstraints_.push_back(std::move(clause)); }
+const std::vector<GenericConstraintClause>& AstNode::genericConstraints() const noexcept { return genericConstraints_; }
+void AstNode::clearGenericConstraints() noexcept { genericConstraints_.clear(); }
 AstNode* AstNode::first() const noexcept { return first_; }
 AstNode* AstNode::second() const noexcept { return second_; }
 AstNode* AstNode::third() const noexcept { return third_; }

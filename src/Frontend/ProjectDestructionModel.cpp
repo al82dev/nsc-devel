@@ -1,3 +1,4 @@
+#include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/ProjectDestructionModel.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -11,16 +12,11 @@ namespace nativesharp::frontend
 {
 namespace
 {
+// NSC-LIMIT-009. Solo se llama sobre claves de identidad. Ver symbolFragmentForIdentityKey: un
+// anidado y el tipo homonimo de namespace compartian entrada de destruccion.
 std::string sanitizeSymbol(std::string_view value)
 {
-    std::string result;
-    result.reserve(value.size());
-    for (const char character : value)
-    {
-        const unsigned char byte = static_cast<unsigned char>(character);
-        result.push_back(std::isalnum(byte) != 0 ? character : '_');
-    }
-    return result;
+    return compilation::symbolFragmentForIdentityKey(value);
 }
 }
 

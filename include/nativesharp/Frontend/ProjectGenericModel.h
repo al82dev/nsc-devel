@@ -1,6 +1,9 @@
 #pragma once
 
+#include "nativesharp/Frontend/QualifiedNameLadder.h"
+
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 
@@ -33,9 +36,19 @@ struct GenericTemplateRecord final
     std::size_t sourceOrdinal = 0;
     std::string moduleName;
     std::string namespaceName;
+    // NSC-LIMIT-009. La CADENA de tipos contenedores, unida con `+`: `A+Inner`, no `Inner`. Para
+    // un metodo generico es su dueno; para un tipo generico, sus contenedores.
     std::string ownerName;
     std::string name;
+    // El nombre del tipo con su cadena delante --`A+Inner`-- o el nombre a secas si no esta
+    // anidado. Es lo que hace que dos `Inner<T>` bajo contenedores distintos no compartan clave.
+    std::string qualifiedTypeName;
     std::vector<std::string> parameters;
+    // NSC-LIMIT-007. Las clausulas `where` DE LA PLANTILLA, copiadas del AST sin resolver. Se
+    // guardan aqui y no se validan al recolectar porque cuando esta fase corre --la segunda de
+    // toda la cadena-- todavia no existen el name lookup, la herencia ni las interfaces. Quien
+    // valida es ProjectGenericConstraintModel, con las tres ya construidas.
+    std::vector<ast::GenericConstraintClause> constraints;
     std::string canonicalKey;
 };
 
@@ -49,6 +62,25 @@ struct GenericSpecializationRecord final
     std::string specializedName;
     std::vector<std::string> typeArguments;
     std::size_t cacheOrdinal = 0;
+    // NSC-LIMIT-007. Lo que la validacion de constraints necesita y no podia deducir: DE QUE
+    // PLANTILLA salio esta especializacion, y DONDE se pidio.
+    //
+    // El sitio importa mas de lo que parece: sin el, un `Caja<int>` invalido se diagnostica sobre
+    // la declaracion de `Caja<T>`, que es correcta, y el lector va al sitio equivocado. El
+    // diagnostico tiene que apuntar a quien escribio `Caja<int>`.
+    std::size_t templateOrdinal = 0;
+    const ast::AstNode* instantiationSyntax = nullptr;
+    SourceRange instantiationRange;
+    // NSC-LIMIT-007, segunda vuelta. CERO si esta especializacion es la unica respuesta posible a
+    // su sitio de instanciacion; distinto de cero si salio de un conjunto de SOBRECARGAS que se
+    // materializaron todas juntas porque comparten nombre y aridad y elegir entre ellas necesita
+    // los tipos de los argumentos --que esta fase no tiene--.
+    //
+    // Importa para la validacion: en un grupo asi, que UNA candidata incumpla su constraint no es
+    // un error del programa, porque la llamada puede estar resolviendo a otra. Solo lo es si
+    // fallan TODAS. Sin este campo, `F<Valor>(...)` con dos `F<T>` declaradas se rechazaba por la
+    // candidata equivocada.
+    std::size_t overloadGroup = 0;
 };
 
 class ProjectGenericModel final
@@ -70,6 +102,10 @@ private:
         ProjectSyntaxUnit* unit = nullptr;
         ast::AstNode* syntax = nullptr;
         ast::AstNode* parent = nullptr;
+        // NSC-LIMIT-007. Su indice en templateStates_, que es el MISMO que en templates(): los
+        // records se copian uno a uno y en orden. La validacion de constraints necesita ir de una
+        // especializacion a su plantilla, y este es el enlace.
+        std::size_t ordinal = 0;
     };
 
     void collectTemplates(
@@ -81,11 +117,29 @@ private:
         bool insideGenericType,
         diagnostics::DiagnosticEngine& diagnostics);
 
+    // LOS `using` VIGENTES EN EL SITIO, que esta fase tambien necesita.
+    //
+    // La escala de nombres tiene un escalon de namespaces importados y otro de alias, y sin ellos
+    // `Caja.F<int>()` bajo un `using Otro;` no encuentra a su dueno y cae al camino sin dueno --el
+    // que materializa cualquier plantilla del mismo nombre--. Se recogen como los recoge
+    // ProjectNameLookup::bindScope, del mismo AST y en el mismo sitio.
+    //
+    // Con una diferencia honesta: alli el namespace importado se RESUELVE contra los namespaces
+    // que lo encierran, y aqui no hay con que resolverlo. Se guardan las dos formas --la escrita y
+    // la escrita bajo cada prefijo del namespace del sitio-- de modo que el escalon las pruebe
+    // todas. Un import que no acierte no elige mal: no acierta y se baja al escalon siguiente.
+    struct GenericLookupScope final
+    {
+        std::vector<std::string> importedNamespaces;
+        std::unordered_map<std::string, std::string> aliases;
+    };
+
     void processNode(
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
         const std::string& namespaceName,
         const std::string& ownerName,
+        const GenericLookupScope& scope,
         bool insideTemplate,
         diagnostics::DiagnosticEngine& diagnostics);
 
@@ -100,6 +154,7 @@ private:
         ast::AstNode* call,
         const std::string& namespaceName,
         const std::string& ownerName,
+        const GenericLookupScope& scope,
         diagnostics::DiagnosticEngine& diagnostics);
 
     TemplateState* resolveTypeTemplate(
@@ -107,19 +162,53 @@ private:
         std::string_view namespaceName,
         std::string_view writtenName,
         std::size_t arity);
-    // ID 132. `argumentCount` es cuantos argumentos de VALOR trae la llamada. Sirve para elegir
-    // entre dos plantillas genericas con el mismo nombre y la misma aridad de TIPOS -- que antes
-    // eran el mismo simbolo y daban "duplicate generic template identity".
-    // ID 132. Todas las plantillas visibles con ese nombre y esa aridad generica.
+    // LAS PLANTILLAS QUE UNA LLAMADA NOMBRA, y solo esas.
+    //
+    // Los tres filtros baratos --nombre, aridad generica y cuenta de argumentos de VALOR-- se
+    // aplican siempre. `argumentCount` separa `Cuenta<T>(T[])` de `Cuenta<T>(T[], int, int)`; lo
+    // que NO separa es `F<T>(T)` de `F<T>(T[])`, y eso es deliberado: elegir ahi necesita los
+    // TIPOS, que esta fase no tiene, asi que se materializan las dos y decide la resolucion de
+    // sobrecargas ordinaria.
+    //
+    // EL DUENO SE DECIDE CON LA ESCALA COMPARTIDA, no con reglas propias. `site` es el sitio de la
+    // llamada en forma textual --namespace lexico, cadena de tipos contenedores, alias, imports--
+    // y `qualifiedNameLadder` produce las escrituras candidatas EN ORDEN. Se devuelve el PRIMER
+    // escalon que produzca alguna plantilla, que es exactamente lo que hace el modelo de nombres
+    // con su tabla de tipos.
+    //
+    // Vacio significa «ningun escalon nombra un dueno». No significa «no hay plantillas»: puede
+    // que el receptor escrito no sea un tipo sino un VALOR --`objeto.F<int>()`--, y esa distincion
+    // no se puede hacer aqui. Quien recibe el vacio decide si cae al camino sin dueno.
+    std::vector<TemplateState*> templatesNamedBy(
+        const ProjectSyntaxUnit& unit,
+        const QualifiedNameSite& site,
+        std::string_view writtenOwner,
+        std::string_view methodName,
+        std::size_t arity,
+        std::size_t argumentCount);
+
+    // El conjunto de SOBRECARGAS que la llamada alcanza. Es `templatesNamedBy` mas la regla de
+    // DUENO UNICO: si el escalon ganador abarca dos escrituras de dueno distintas la llamada es
+    // ambigua de verdad y no se materializa nada, en vez de clonar plantillas de dos tipos
+    // homonimos y analizar un cuerpo que este codigo no nombra.
     std::vector<TemplateState*> collectMethodTemplates(
         const ProjectSyntaxUnit& unit,
-        std::string_view ownerName,
+        const QualifiedNameSite& site,
+        std::string_view writtenOwner,
         std::string_view methodName,
-        std::size_t arity);
+        std::size_t arity,
+        std::size_t argumentCount);
 
+    // La misma busqueda cuando se espera UNA sola plantilla. Usa `templatesNamedBy` --la misma
+    // funcion, no una copia de sus reglas-- de modo que las dos no pueden divergir.
+    //
+    // El camino SIN dueno solo se toma cuando la escala no encontro ninguno, que es la unica
+    // forma que tiene esta fase de sospechar que el receptor escrito era un valor y no un tipo.
+    // Tomarlo cuando el dueno SI se resolvio seria deshacer el filtro que acaba de aplicarse.
     TemplateState* resolveMethodTemplate(
         const ProjectSyntaxUnit& unit,
-        std::string_view ownerName,
+        const QualifiedNameSite& site,
+        std::string_view writtenOwner,
         std::string_view methodName,
         std::size_t arity,
         std::size_t argumentCount);
@@ -178,6 +267,13 @@ private:
     // immediately follows each assignment, never across a later, unrelated call.
     std::size_t currentInstantiationProjectOrdinal_ = 0;
     std::string currentInstantiationNamespace_;
+    // NSC-LIMIT-007: donde se pidio la especializacion que se esta materializando. Viaja por el
+    // mismo canal que el proyecto y el namespace de arriba, que es como esta fase ya pasaba
+    // contexto del sitio a la funcion que materializa.
+    SourceRange currentInstantiationRange_{};
+    // NSC-LIMIT-007. El grupo de sobrecargas que se esta materializando, o 0 fuera de uno.
+    std::size_t currentOverloadGroup_ = 0;
+    std::size_t nextOverloadGroup_ = 0;
 };
 
 const char* genericTemplateKindName(GenericTemplateKind kind) noexcept;

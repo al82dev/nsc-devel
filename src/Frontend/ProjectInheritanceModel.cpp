@@ -63,7 +63,126 @@ bool ProjectInheritanceModel::build(
     }
 
     built_ = true;
+    checkProtectedNestedTypeUses(diagnostics);
     return graphOk && !diagnostics.hasErrors();
+}
+
+std::optional<std::size_t> ProjectInheritanceModel::firstUnreachableProtectedLink(
+    std::size_t typeOrdinal,
+    std::span<const std::size_t> enclosingTypes) const
+{
+    // Hacia fuera por la cadena de contenedores: basta con que UN eslabon protegido quede fuera
+    // de alcance para que el nombre entero no lo este, aunque el ultimo sea public dentro de su
+    // contenedor.
+    std::optional<std::size_t> current = typeOrdinal;
+    while (current.has_value() && *current < nameLookup_->namedTypes().size())
+    {
+        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[*current];
+        const std::optional<std::size_t> container = type.containingTypeOrdinal;
+        if (!container.has_value())
+        {
+            return std::nullopt;
+        }
+        if (type.accessibility == NamedTypeAccessibility::Protected)
+        {
+            bool reachable = false;
+            for (const std::size_t enclosing : enclosingTypes)
+            {
+                if (enclosing == *container || isDerivedFrom(enclosing, *container, false))
+                {
+                    reachable = true;
+                    break;
+                }
+            }
+            if (!reachable)
+            {
+                return current;
+            }
+        }
+        current = container;
+    }
+    return std::nullopt;
+}
+
+void ProjectInheritanceModel::checkProtectedNestedTypeUses(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    // Un anidado `protected` se ve desde su contenedor, desde los tipos anidados en el, y desde
+    // cualquier tipo que DERIVE del contenedor. Esa tercera es la que obliga a esperar hasta
+    // aqui, y por eso la resolucion de nombres dejo pasar el nombre y guardo en el binding la
+    // cadena de tipos del sitio: lo unico que faltaba era la relacion de herencia.
+    //
+    // Se recorren los BINDINGS y no las declaraciones porque la pregunta es por USO: el mismo
+    // tipo protegido puede ser legitimo en una linea e ilegitimo en la siguiente.
+    const auto report = [&](std::size_t blockedOrdinal, SourceRange range)
+    {
+        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[blockedOrdinal];
+        const std::size_t container = *type.containingTypeOrdinal;
+        diagnostics.report(
+            diagnostics::DiagnosticId::UnknownTypeName,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "nested type '" + type.identity.fullyQualifiedName() +
+                "' is protected and is not accessible here; it is visible inside '" +
+                nameLookup_->namedTypes()[container].identity.fullyQualifiedName() +
+                "' and inside types derived from it");
+    };
+
+    for (const TypeNameBinding& binding : nameLookup_->bindings())
+    {
+        if (binding.kind != TypeNameBindingKind::Resolved || !binding.targetTypeOrdinal.has_value())
+        {
+            continue;
+        }
+        const std::optional<std::size_t> blocked = firstUnreachableProtectedLink(
+            *binding.targetTypeOrdinal, binding.enclosingTypeOrdinals);
+        if (blocked.has_value())
+        {
+            report(*blocked, binding.syntax != nullptr ? binding.syntax->range() : SourceRange{});
+        }
+    }
+
+    // Y LOS RECEPTORES DE EXPRESION, que es por donde se colaba.
+    //
+    // `Base.Reservada.Codigo()` nombra el tipo sin escribir un TypeSyntax: el receptor es una
+    // expresion, y produce un ExpressionTypeNameBinding, no un TypeNameBinding. Como la
+    // resolucion de nombres deja pasar `protected` a proposito --esperando esta comprobacion-- y
+    // esta comprobacion solo miraba los TypeNameBinding, un tipo ajeno alcanzaba un anidado
+    // protegido con solo llamar a un miembro estatico.
+    //
+    // Un binding de expresion puede tener VARIOS candidatos, porque el receptor todavia no se ha
+    // resuelto a uno. Basta con que uno sea alcanzable para no decir nada: elegir entre ellos es
+    // trabajo del resolvedor de miembros, y adelantarse aqui convertiria una ambiguedad en un
+    // error de proteccion que no es.
+    for (const ExpressionTypeNameBinding& binding : nameLookup_->expressionTypeBindings())
+    {
+        if (binding.candidateTypeOrdinals.empty())
+        {
+            continue;
+        }
+        std::optional<std::size_t> firstBlocked;
+        bool anyReachable = false;
+        for (const std::size_t candidate : binding.candidateTypeOrdinals)
+        {
+            const std::optional<std::size_t> blocked =
+                firstUnreachableProtectedLink(candidate, binding.enclosingTypeOrdinals);
+            if (!blocked.has_value())
+            {
+                anyReachable = true;
+                break;
+            }
+            if (!firstBlocked.has_value())
+            {
+                firstBlocked = blocked;
+            }
+        }
+        if (!anyReachable && firstBlocked.has_value())
+        {
+            report(
+                *firstBlocked,
+                binding.expression != nullptr ? binding.expression->range() : SourceRange{});
+        }
+    }
 }
 
 std::span<const ClassInheritanceInfo> ProjectInheritanceModel::classes() const noexcept

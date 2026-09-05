@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 
+#include "nativesharp/Frontend/QualifiedNameLadder.h"
+
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/AST/AstNodeKind.h"
 #include "nativesharp/Compilation/PartialTypeAggregator.h"
@@ -9,6 +11,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <filesystem>
 #include <functional>
@@ -239,6 +242,10 @@ struct ProjectNameLookup::LookupEnvironment final
     // everything a C typedef says -- and not just a name. `aliases` above stays the namespace
     // half; a given alias name is in exactly one of the two maps.
     std::unordered_map<std::string, const ast::TypeSyntax*> typeAliases;
+    // NSC-LIMIT-009. Los tipos dentro de los que se esta escribiendo, del mas exterior al mas
+    // interior. Es lo que convierte `Item` en `ns.Outer.Item` sin que nadie lo escriba, y lo que
+    // permite decidir si un anidado `private` se ve desde aqui.
+    std::vector<std::size_t> enclosingTypeOrdinals;
 };
 
 ModuleDeclarationSpace::ModuleDeclarationSpace(
@@ -302,6 +309,7 @@ bool ProjectNameLookup::build(
     const std::span<const compilation::Project> projects = graph.projects();
     modules_.reserve(projects.size());
     typesByModule_.resize(projects.size());
+    nestedSourceNamesByModule_.resize(projects.size());
     for (std::size_t projectOrdinal = 0; projectOrdinal < projects.size(); ++projectOrdinal)
     {
         modules_.push_back(std::make_unique<ModuleDeclarationSpace>(
@@ -395,6 +403,11 @@ const ExpressionTypeNameBinding* ProjectNameLookup::expressionTypeBinding(
     return &expressionTypeBindings_[iterator->second];
 }
 
+std::span<const ExpressionTypeNameBinding> ProjectNameLookup::expressionTypeBindings() const noexcept
+{
+    return expressionTypeBindings_;
+}
+
 bool ProjectNameLookup::isBuilt() const noexcept
 {
     return built_;
@@ -448,13 +461,14 @@ void ProjectNameLookup::predeclareUnit(
     const ProjectSyntaxUnit& unit,
     const std::string& sourcePath)
 {
-    predeclareNode(unit, unit.syntaxTree(), {}, sourcePath);
+    predeclareNode(unit, unit.syntaxTree(), {}, {}, sourcePath);
 }
 
 void ProjectNameLookup::predeclareNode(
     const ProjectSyntaxUnit& unit,
     const ast::AstNode* node,
     const std::vector<std::string>& namespaceSegments,
+    const std::vector<compilation::TypeNameSegment>& containingTypes,
     const std::string& sourcePath)
 {
     if (node == nullptr)
@@ -478,45 +492,85 @@ void ProjectNameLookup::predeclareNode(
         modules_[unit.projectOrdinal()]->globalNamespace().ensureNamespace(nestedNamespace);
         for (const ast::AstNode* child : node->children())
         {
-            predeclareNode(unit, child, nestedNamespace, sourcePath);
+            predeclareNode(unit, child, nestedNamespace, containingTypes, sourcePath);
         }
         return;
     }
 
     if (isNamedTypeDeclaration(node->kind()))
     {
+        const bool isNested = !containingTypes.empty();
         compilation::TypeIdentity identity(
             std::string(unit.moduleName()),
             namespaceSegments,
-            {},
+            containingTypes,
             node->text(),
             0);
         const bool hasExplicitAccessibility =
             node->tokenKind() == lexer::TokenKind::KwPublic ||
-            node->tokenKind() == lexer::TokenKind::KwInternal;
-        const NamedTypeAccessibility accessibility =
-            node->tokenKind() == lexer::TokenKind::KwPublic
-                ? NamedTypeAccessibility::Public
-                : NamedTypeAccessibility::Internal;
+            node->tokenKind() == lexer::TokenKind::KwInternal ||
+            node->tokenKind() == lexer::TokenKind::KwPrivate ||
+            node->tokenKind() == lexer::TokenKind::KwProtected;
+        // NSC-LIMIT-009. EL VALOR POR OMISION DEPENDE DEL SITIO, y esa es toda la regla: un tipo
+        // de namespace sin modificador es `internal` --visible en su modulo-- y uno ANIDADO sin
+        // modificador es `private`, visible solo dentro de su contenedor. Es la regla de C#, y
+        // convertir el segundo en el primero seria publicar dentro del modulo cada tipo interno
+        // que alguien escribiera para uso propio.
+        NamedTypeAccessibility accessibility =
+            isNested ? NamedTypeAccessibility::Private : NamedTypeAccessibility::Internal;
+        if (node->tokenKind() == lexer::TokenKind::KwPublic)
+        {
+            accessibility = NamedTypeAccessibility::Public;
+        }
+        else if (node->tokenKind() == lexer::TokenKind::KwInternal)
+        {
+            accessibility = NamedTypeAccessibility::Internal;
+        }
+        else if (node->tokenKind() == lexer::TokenKind::KwProtected)
+        {
+            accessibility = NamedTypeAccessibility::Protected;
+        }
+        else if (node->tokenKind() == lexer::TokenKind::KwPrivate)
+        {
+            accessibility = NamedTypeAccessibility::Private;
+        }
 
-        pendingTypes_.push_back(PendingTypeDeclaration{
-            std::move(identity),
-            NamedTypeDeclarationPart{
-                namedTypeKind(node->kind()),
-                accessibility,
-                hasExplicitAccessibility,
-                (node->kind() == ast::AstNodeKind::ClassDeclaration ||
-                 node->kind() == ast::AstNodeKind::InterfaceDeclaration) && node->flag(),
-                node->kind() == ast::AstNodeKind::ClassDeclaration &&
-                    node->hasModifier(lexer::TokenKind::KwAbstract),
-                node->kind() == ast::AstNodeKind::ClassDeclaration &&
-                    node->hasModifier(lexer::TokenKind::KwSealed),
-                unit.projectOrdinal(),
-                unit.sourceOrdinal(),
-                unit.fileId(),
-                node->range(),
-                node,
-                sourcePath}});
+        NamedTypeDeclarationPart part{
+            namedTypeKind(node->kind()),
+            accessibility,
+            hasExplicitAccessibility,
+            isNested,
+            (node->kind() == ast::AstNodeKind::ClassDeclaration ||
+             node->kind() == ast::AstNodeKind::InterfaceDeclaration) && node->flag(),
+            node->kind() == ast::AstNodeKind::ClassDeclaration &&
+                node->hasModifier(lexer::TokenKind::KwAbstract),
+            node->kind() == ast::AstNodeKind::ClassDeclaration &&
+                node->hasModifier(lexer::TokenKind::KwSealed),
+            unit.projectOrdinal(),
+            unit.sourceOrdinal(),
+            unit.fileId(),
+            node->range(),
+            node,
+            sourcePath};
+        pendingTypes_.push_back(PendingTypeDeclaration{std::move(identity), std::move(part)});
+
+        // NSC-LIMIT-009. Y AHORA SE BAJA. La version anterior devolvia aqui, que es exactamente
+        // por lo que un tipo dentro de otro no existia para nadie: se parseaba, se colgaba del
+        // arbol, y ninguna fase volvia a mirarlo.
+        //
+        // La aridad de cada segmento se toma del nodo --no se supone cero-- aunque hoy solo pueda
+        // valer cero: el parser rechaza un anidado generico, y esta linea es lo que hara que el
+        // dia que deje de rechazarlo la identidad salga completa en vez de ambigua.
+        std::vector<compilation::TypeNameSegment> nestedChain = containingTypes;
+        nestedChain.push_back(compilation::TypeNameSegment{
+            node->text(), static_cast<std::uint32_t>(node->genericParameters().size())});
+        for (const ast::AstNode* child : node->children())
+        {
+            if (isNamedTypeDeclaration(child->kind()))
+            {
+                predeclareNode(unit, child, namespaceSegments, nestedChain, sourcePath);
+            }
+        }
         return;
     }
 
@@ -524,7 +578,7 @@ void ProjectNameLookup::predeclareNode(
     {
         for (const ast::AstNode* child : node->children())
         {
-            predeclareNode(unit, child, namespaceSegments, sourcePath);
+            predeclareNode(unit, child, namespaceSegments, containingTypes, sourcePath);
         }
     }
 }
@@ -615,7 +669,16 @@ void ProjectNameLookup::finalizePredeclarations(
         bool finalPartial = primary.part.isPartial;
         bool finalAbstract = primary.part.isAbstract;
         bool finalSealed = primary.part.isSealed;
-        if (aggregated && !aggregator.types().empty())
+        // NSC-LIMIT-009. El agregador de partes solo conoce internal/public --es lo unico que un
+        // tipo de namespace puede ser-- asi que para un ANIDADO se le deja hacer su trabajo
+        // (duplicados, `partial`) y se ignora su veredicto de accesibilidad, que convertiria
+        // `private` en `internal` sin decirlo. Un anidado nunca es partial: el parser lo rechaza,
+        // de modo que aqui siempre hay exactamente una parte y `primary` ES la declaracion.
+        if (primary.part.isNested)
+        {
+            finalAccessibility = primary.part.accessibility;
+        }
+        else if (aggregated && !aggregator.types().empty())
         {
             finalAccessibility = namedAccessibility(aggregator.types().front().accessibility);
             finalAbstract = aggregator.types().front().isAbstract;
@@ -652,6 +715,7 @@ void ProjectNameLookup::finalizePredeclarations(
             primary.identity,
             finalKind,
             finalAccessibility,
+            std::nullopt,
             finalPartial,
             finalAbstract,
             finalSealed,
@@ -664,6 +728,36 @@ void ProjectNameLookup::finalizePredeclarations(
 
         const std::string fullyQualifiedName = primary.identity.fullyQualifiedName();
         typesByModule_[primary.part.projectOrdinal].emplace(fullyQualifiedName, typeOrdinal);
+        // NSC-LIMIT-009. La forma FUENTE, con puntos, en un indice aparte. La clave canonica de
+        // arriba lleva `+` y no se toca: son dos preguntas distintas --«que tipo es este» y «que
+        // ha escrito el programador»-- y colapsarlas en un mapa haria indistinguible un anidado
+        // `ns.Outer.Item` de un tipo `Item` en el namespace `ns.Outer`, que es precisamente la
+        // ambiguedad que hay que poder detectar.
+        if (!primary.identity.containingTypes().empty())
+        {
+            std::string sourceName;
+            for (const std::string& segment : primary.identity.namespaceSegments())
+            {
+                if (!sourceName.empty()) sourceName.push_back('.');
+                sourceName += segment;
+            }
+            for (const compilation::TypeNameSegment& segment : primary.identity.containingTypes())
+            {
+                if (!sourceName.empty()) sourceName.push_back('.');
+                sourceName += segment.name;
+            }
+            if (!sourceName.empty()) sourceName.push_back('.');
+            sourceName += primary.identity.name();
+            nestedSourceNamesByModule_[primary.part.projectOrdinal].emplace(
+                sourceName, typeOrdinal);
+        }
+        for (const NamedTypeDeclarationPart& part : namedTypes_[typeOrdinal].parts)
+        {
+            if (part.syntax != nullptr)
+            {
+                typeOrdinalBySyntax_[part.syntax] = typeOrdinal;
+            }
+        }
         ModuleDeclarationSpace& module = *modules_[primary.part.projectOrdinal];
         module.addTypeOrdinal(typeOrdinal);
         NamespaceSymbol& namespaceSymbol = module.globalNamespace().ensureNamespace(
@@ -671,6 +765,33 @@ void ProjectNameLookup::finalizePredeclarations(
         namespaceSymbol.addTypeOrdinal(typeOrdinal);
 
         groupBegin = groupEnd;
+    }
+
+    // NSC-LIMIT-009. Segunda pasada: el ORDINAL del contenedor de cada anidado. Se hace despues y
+    // no durante el bucle porque el contenedor puede no estar registrado todavia cuando se
+    // registra el anidado --el orden lo fija la ordenacion por clave, no el anidamiento-- y
+    // depender de ese orden seria depender de que `+` ordene por detras del fin de cadena.
+    for (NamedTypeDeclaration& type : namedTypes_)
+    {
+        if (type.identity.containingTypes().empty())
+        {
+            continue;
+        }
+        std::vector<compilation::TypeNameSegment> outerChain = type.identity.containingTypes();
+        const compilation::TypeNameSegment outer = outerChain.back();
+        outerChain.pop_back();
+        const compilation::TypeIdentity containerIdentity(
+            type.identity.moduleName(),
+            type.identity.namespaceSegments(),
+            outerChain,
+            outer.name,
+            outer.arity);
+        const auto iterator =
+            typesByModule_[type.projectOrdinal].find(containerIdentity.fullyQualifiedName());
+        if (iterator != typesByModule_[type.projectOrdinal].end())
+        {
+            type.containingTypeOrdinal = iterator->second;
+        }
     }
 }
 
@@ -823,6 +944,27 @@ void ProjectNameLookup::bindNode(
 
     if (!node->genericParameters().empty())
     {
+        // NSC-LIMIT-007, segunda vuelta. UNA PLANTILLA TAMBIEN RESUELVE SUS CONSTRAINTS, aunque
+        // nadie la instancie.
+        //
+        // Este `return` existe porque el cuerpo de una plantilla habla de `T`, que no es un tipo y
+        // no se puede resolver; la especializacion clonada es la que se visita. Pero los tipos
+        // ESCRITOS EN UN `where` no son eso: `where T : IComponente` nombra a `IComponente`, que
+        // existe con independencia de que `T` llegue a cerrarse. Sin esta vuelta, una plantilla
+        // nunca instanciada se llevaba sus errores de DECLARACION --`where T : MiEnum`-- sin que
+        // los viera nadie, y la promesa del ID quedaba a medias: el error existia solo si alguien
+        // usaba la plantilla.
+        //
+        // Solo los tipos de constraint: el argumento sustituido no existe en una plantilla, y el
+        // parser ya rechaza que un constraint nombre otro parametro generico, de modo que aqui no
+        // puede llegar por construccion un nombre irresoluble.
+        for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+        {
+            for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+            {
+                bindTypeSyntax(unit, constraint, namespaceSegments, environment, diagnostics);
+            }
+        }
         return;
     }
 
@@ -835,33 +977,68 @@ void ProjectNameLookup::bindNode(
         return;
     }
 
+    // NSC-LIMIT-009. Entrar en un tipo AMPLIA el alcance: dentro de `Outer`, `Item` se busca
+    // primero como `Outer.Item`, y un anidado `private` de `Outer` se ve. El entorno se copia solo
+    // cuando de verdad se entra en un tipo; en cualquier otro nodo se sigue usando el heredado,
+    // que es la referencia que llega, sin copias por nodo del arbol.
+    LookupEnvironment scopedEnvironment;
+    const LookupEnvironment* activeEnvironment = &environment;
+    if (isNamedTypeDeclaration(node->kind()))
+    {
+        const auto ordinal = typeOrdinalBySyntax_.find(node);
+        if (ordinal != typeOrdinalBySyntax_.end())
+        {
+            scopedEnvironment = environment;
+            scopedEnvironment.enclosingTypeOrdinals.push_back(ordinal->second);
+            activeEnvironment = &scopedEnvironment;
+        }
+    }
+    const LookupEnvironment& scope = *activeEnvironment;
+
     if (node->kind() == ast::AstNodeKind::MemberExpression)
     {
-        bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, environment);
+        bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, scope);
     }
 
     if (node->typeSyntax() != nullptr)
     {
-        bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, environment, diagnostics);
+        bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, diagnostics);
         for (const ast::TypeModifierSyntax& modifier : node->typeSyntax()->modifiers())
         {
             if (modifier.arrayCount != nullptr)
             {
-                bindNode(unit, modifier.arrayCount, namespaceSegments, environment, diagnostics);
+                bindNode(unit, modifier.arrayCount, namespaceSegments, scope, diagnostics);
             }
         }
     }
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
     {
-        bindTypeSyntax(unit, syntax, namespaceSegments, environment, diagnostics);
+        bindTypeSyntax(unit, syntax, namespaceSegments, scope, diagnostics);
+    }
+    // NSC-LIMIT-007. Los tipos escritos en un `where` son referencias de tipo como cualquier otra
+    // y se resuelven por el mismo camino: con el mismo alcance, los mismos `using` y los mismos
+    // alias. Sin esta vuelta quedaban sin resolver y la validacion de constraints solo veia
+    // `unresolved:IComponente` -- que la habria obligado a llevar su propia resolucion de
+    // nombres, o sea una segunda copia de la unica cosa que este fichero hace.
+    for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+    {
+        for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+        {
+            bindTypeSyntax(unit, constraint, namespaceSegments, scope, diagnostics);
+        }
+        if (clause.substitutedArgument != nullptr)
+        {
+            bindTypeSyntax(
+                unit, clause.substitutedArgument, namespaceSegments, scope, diagnostics);
+        }
     }
 
-    bindNode(unit, node->first(), namespaceSegments, environment, diagnostics);
-    bindNode(unit, node->second(), namespaceSegments, environment, diagnostics);
-    bindNode(unit, node->third(), namespaceSegments, environment, diagnostics);
+    bindNode(unit, node->first(), namespaceSegments, scope, diagnostics);
+    bindNode(unit, node->second(), namespaceSegments, scope, diagnostics);
+    bindNode(unit, node->third(), namespaceSegments, scope, diagnostics);
     for (const ast::AstNode* child : node->children())
     {
-        bindNode(unit, child, namespaceSegments, environment, diagnostics);
+        bindNode(unit, child, namespaceSegments, scope, diagnostics);
     }
 }
 
@@ -889,8 +1066,8 @@ void ProjectNameLookup::bindExpressionTypeReceiver(
     }
 
     const std::size_t ordinal = expressionTypeBindings_.size();
-    expressionTypeBindings_.push_back(
-        ExpressionTypeNameBinding{expression, *writtenName, std::move(candidates)});
+    expressionTypeBindings_.push_back(ExpressionTypeNameBinding{
+        expression, *writtenName, std::move(candidates), environment.enclosingTypeOrdinals});
     expressionTypeBindingBySyntax_.emplace(expression, ordinal);
 }
 
@@ -979,6 +1156,7 @@ void ProjectNameLookup::bindTypeSyntax(
     binding.fileId = unit.fileId();
     binding.namespaceName = joinSegments(effectiveNamespaceSegments);
     binding.writtenName = writtenName;
+    binding.enclosingTypeOrdinals = environment.enclosingTypeOrdinals;
 
     if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
@@ -1029,8 +1207,15 @@ void ProjectNameLookup::bindTypeSyntax(
             // tried. That half is fixed in Parser.cpp. This half is the diagnostic, which said
             // "unknown type name" and sent the reader looking for a typo instead of at the
             // declaration that was sitting right there.
+            // NSC-LIMIT-009. Antes que nada: el nombre puede estar nombrando un anidado que SI
+            // existe y que este sitio no puede ver. Es la misma clase de error que el de abajo
+            // --el tipo esta escrito, la accesibilidad es lo que falla-- y merece el mismo trato.
+            const std::optional<std::size_t> inaccessibleNested = findInaccessibleNestedType(
+                effectiveProjectOrdinal, effectiveNamespaceSegments, syntax->baseName());
+
             std::string internalMatch;
-            if (effectiveProjectOrdinal < modules_.size() && modules_[effectiveProjectOrdinal] != nullptr)
+            if (!inaccessibleNested.has_value() &&
+                effectiveProjectOrdinal < modules_.size() && modules_[effectiveProjectOrdinal] != nullptr)
             {
                 const std::string& wanted = syntax->baseName();
                 const std::string suffix = "." + wanted;
@@ -1057,7 +1242,22 @@ void ProjectNameLookup::bindTypeSyntax(
                     if (!internalMatch.empty()) break;
                 }
             }
-            if (!internalMatch.empty())
+            if (inaccessibleNested.has_value())
+            {
+                const NamedTypeDeclaration& nested = namedTypes_[*inaccessibleNested];
+                diagnostics.report(
+                    diagnostics::DiagnosticId::UnknownTypeName,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax->range(),
+                    "nested type '" + nested.identity.fullyQualifiedName() + "' is " +
+                        namedTypeAccessibilityName(nested.accessibility) +
+                        " and is not accessible here; it is visible only inside '" +
+                        (nested.containingTypeOrdinal.has_value()
+                             ? namedTypes_[*nested.containingTypeOrdinal].identity.fullyQualifiedName()
+                             : std::string("its container")) +
+                        "'");
+            }
+            else if (!internalMatch.empty())
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::UnknownTypeName,
@@ -1099,6 +1299,37 @@ void ProjectNameLookup::bindTypeSyntax(
     bindingBySyntax_.emplace(syntax, ordinal);
 }
 
+// NSC-LIMIT-007/009. La escritura COMPLETA de cada tipo contenedor del sitio, de fuera adentro.
+// Es la mitad textual de `enclosingTypeOrdinals`, y existe para poder darsela a
+// `qualifiedNameLadder` -- que no conoce ordinales a proposito: la fase generica, que usa la misma
+// escala, no tiene modelo de nombres del que sacarlos.
+std::vector<std::string> ProjectNameLookup::enclosingTypeSpellings(
+    const LookupEnvironment& environment) const
+{
+    std::vector<std::string> spellings;
+    spellings.reserve(environment.enclosingTypeOrdinals.size());
+    for (const std::size_t enclosing : environment.enclosingTypeOrdinals)
+    {
+        if (enclosing >= namedTypes_.size()) continue;
+        const compilation::TypeIdentity& identity = namedTypes_[enclosing].identity;
+        std::string candidate;
+        for (const std::string& segment : identity.namespaceSegments())
+        {
+            if (!candidate.empty()) candidate.push_back('.');
+            candidate += segment;
+        }
+        for (const compilation::TypeNameSegment& segment : identity.containingTypes())
+        {
+            if (!candidate.empty()) candidate.push_back('.');
+            candidate += segment.name;
+        }
+        if (!candidate.empty()) candidate.push_back('.');
+        candidate += identity.name();
+        spellings.push_back(std::move(candidate));
+    }
+    return spellings;
+}
+
 std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
     std::size_t projectOrdinal,
     const std::vector<std::string>& namespaceSegments,
@@ -1111,97 +1342,147 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
         return {};
     }
 
-    const auto alias = environment.aliases.find(nameSegments.front());
-    if (alias != environment.aliases.end())
+    // LA ESCALA VIENE DE FUERA, de `qualifiedNameLadder`. Este bucle NO decide el orden: lo
+    // recorre. Lo que decide, y lo que sigue viviendo aqui, es COMO se sondea cada escalon --que
+    // tabla, y con que regla de visibilidad--, porque eso es propio del modelo de nombres y no
+    // tiene sentido en la fase generica, que sondea plantillas.
+    //
+    // Antes el orden estaba escrito aqui y COPIADO, mas simple y por tanto distinto, dentro de
+    // `ProjectGenericModel`. Ver QualifiedNameLadder.h.
+    const std::vector<std::string> enclosing = enclosingTypeSpellings(environment);
+    const bool simpleName = nameSegments.size() == 1 &&
+        environment.aliases.find(nameSegments.front()) == environment.aliases.end();
+
+    QualifiedNameSite site;
+    site.namespaceSegments = namespaceSegments;
+    site.enclosingTypeNames = enclosing;
+    site.aliases = &environment.aliases;
+    site.importedNamespaces = environment.importedNamespaces;
+
+    for (const QualifiedNameRung& rung : qualifiedNameLadder(site, writtenName))
     {
-        std::string substituted = alias->second;
-        for (std::size_t index = 1; index < nameSegments.size(); ++index)
+        std::vector<std::size_t> found;
+        for (const std::string& candidate : rung.spellings)
         {
-            substituted.push_back('.');
-            substituted += nameSegments[index];
-        }
-        return resolveQualifiedTypeCandidates(projectOrdinal, namespaceSegments, substituted);
-    }
-
-    if (nameSegments.size() > 1)
-    {
-        return resolveQualifiedTypeCandidates(projectOrdinal, namespaceSegments, writtenName);
-    }
-
-    // Stage 21 lookup order: current/enclosing namespace declarations first.
-    for (std::size_t depth = namespaceSegments.size(); depth > 0; --depth)
-    {
-        const std::string candidate = appendQualified(
-            std::span<const std::string>(namespaceSegments.data(), depth),
-            writtenName);
-        const auto current = typesByModule_[projectOrdinal].find(candidate);
-        if (current != typesByModule_[projectOrdinal].end())
-        {
-            return {current->second};
-        }
-    }
-
-    // Imported namespaces form one lookup tier. Equal candidates are ambiguous.
-    std::vector<std::size_t> imported;
-    for (const std::string& importedNamespace : environment.importedNamespaces)
-    {
-        std::string qualified = importedNamespace;
-        if (!qualified.empty())
-        {
-            qualified.push_back('.');
-        }
-        qualified += writtenName;
-        const std::vector<std::size_t> candidates = findExactTypeCandidates(
-            projectOrdinal,
-            qualified,
-            false);
-        appendUnique(imported, candidates);
-    }
-    if (!imported.empty())
-    {
-        return imported;
-    }
-
-    // Current module global namespace precedes referenced-module exports.
-    const auto global = typesByModule_[projectOrdinal].find(writtenName);
-    if (global != typesByModule_[projectOrdinal].end())
-    {
-        return {global->second};
-    }
-
-    // Referenced public exports are considered last, preserving namespace nesting.
-    for (std::size_t depth = namespaceSegments.size(); depth > 0; --depth)
-    {
-        const std::string candidate = appendQualified(
-            std::span<const std::string>(namespaceSegments.data(), depth),
-            writtenName);
-        std::vector<std::size_t> referenced;
-        for (const std::size_t visibleOrdinal : modules_[projectOrdinal]->visibleProjectOrdinals())
-        {
-            const auto iterator = typesByModule_[visibleOrdinal].find(candidate);
-            if (iterator != typesByModule_[visibleOrdinal].end() &&
-                namedTypes_[iterator->second].accessibility == NamedTypeAccessibility::Public)
+            switch (rung.tier)
             {
-                referenced.push_back(iterator->second);
+                case QualifiedNameTier::EnclosingType:
+                {
+                    // Este escalon significa literalmente «miembro de un tipo contenedor».
+                    // Su escritura fuente usa puntos (Ns.Outer.Item), pero esa misma cadena
+                    // puede ser tambien la clave canonica de un tipo Item declarado en el
+                    // namespace Ns.Outer. findTypeInModule consulta primero esa clave canonica
+                    // y, en la colision, devolvia el tipo de namespace antes de mirar el
+                    // anidado. Aqui no hay tal ambiguedad: por definicion del escalon solo
+                    // participa el indice de nombres fuente de tipos anidados.
+                    const auto own =
+                        nestedSourceNamesByModule_[projectOrdinal].find(candidate);
+                    if (own != nestedSourceNamesByModule_[projectOrdinal].end() &&
+                        nestedTypeIsVisible(own->second, environment))
+                    {
+                        const std::array<std::size_t, 1> single{own->second};
+                        appendUnique(found, single);
+                    }
+                    break;
+                }
+                case QualifiedNameTier::LexicalNamespace:
+                {
+                    // UN NOMBRE SIMPLE SONDEA SOLO LA CLAVE CANONICA; uno con puntos pasa tambien
+                    // por el indice de nombres fuente, que es lo que hace que `ns.Outer.Item`
+                    // pueda ser un anidado. La diferencia estaba ya en las dos ramas de antes y se
+                    // conserva tal cual: cambiarla movería la resolucion de nombres de todo el
+                    // arbol para arreglar un defecto que no esta aqui.
+                    if (simpleName)
+                    {
+                        const auto current = typesByModule_[projectOrdinal].find(candidate);
+                        if (current != typesByModule_[projectOrdinal].end())
+                        {
+                            const std::array<std::size_t, 1> single{current->second};
+                            appendUnique(found, single);
+                        }
+                        break;
+                    }
+                    const std::optional<std::size_t> own =
+                        findTypeInModule(projectOrdinal, candidate);
+                    if (own.has_value() && nestedTypeIsVisible(*own, environment))
+                    {
+                        const std::array<std::size_t, 1> single{*own};
+                        appendUnique(found, single);
+                    }
+                    break;
+                }
+                case QualifiedNameTier::ImportedNamespace:
+                {
+                    if (simpleName)
+                    {
+                        appendUnique(
+                            found, findExactTypeCandidates(projectOrdinal, candidate, false));
+                        break;
+                    }
+                    const std::optional<std::size_t> own =
+                        findTypeInModule(projectOrdinal, candidate);
+                    if (own.has_value() && nestedTypeIsVisible(*own, environment))
+                    {
+                        const std::array<std::size_t, 1> single{*own};
+                        appendUnique(found, single);
+                    }
+                    for (const std::size_t visibleOrdinal :
+                         modules_[projectOrdinal]->visibleProjectOrdinals())
+                    {
+                        const std::optional<std::size_t> other =
+                            findTypeInModule(visibleOrdinal, candidate);
+                        if (other.has_value() && typeIsPubliclyVisible(*other))
+                        {
+                            const std::array<std::size_t, 1> single{*other};
+                            appendUnique(found, single);
+                        }
+                    }
+                    break;
+                }
+                case QualifiedNameTier::Global:
+                {
+                    const auto global = typesByModule_[projectOrdinal].find(candidate);
+                    if (global != typesByModule_[projectOrdinal].end())
+                    {
+                        const std::array<std::size_t, 1> single{global->second};
+                        appendUnique(found, single);
+                    }
+                    break;
+                }
+                case QualifiedNameTier::ReferencedModule:
+                {
+                    for (const std::size_t visibleOrdinal :
+                         modules_[projectOrdinal]->visibleProjectOrdinals())
+                    {
+                        if (simpleName)
+                        {
+                            const auto iterator = typesByModule_[visibleOrdinal].find(candidate);
+                            if (iterator != typesByModule_[visibleOrdinal].end() &&
+                                typeIsPubliclyVisible(iterator->second))
+                            {
+                                const std::array<std::size_t, 1> single{iterator->second};
+                                appendUnique(found, single);
+                            }
+                            continue;
+                        }
+                        const std::optional<std::size_t> other =
+                            findTypeInModule(visibleOrdinal, candidate);
+                        if (other.has_value() && typeIsPubliclyVisible(*other))
+                        {
+                            const std::array<std::size_t, 1> single{*other};
+                            appendUnique(found, single);
+                        }
+                    }
+                    break;
+                }
             }
         }
-        if (!referenced.empty())
+        if (!found.empty())
         {
-            return referenced;
+            return found;
         }
     }
-
-    std::vector<std::size_t> referencedGlobal;
-    for (const std::size_t visibleOrdinal : modules_[projectOrdinal]->visibleProjectOrdinals())
-    {
-        const auto iterator = typesByModule_[visibleOrdinal].find(writtenName);
-        if (iterator != typesByModule_[visibleOrdinal].end() &&
-            namedTypes_[iterator->second].accessibility == NamedTypeAccessibility::Public)
-        {
-            referencedGlobal.push_back(iterator->second);
-        }
-    }
-    return referencedGlobal;
+    return {};
 }
 
 std::vector<std::size_t> ProjectNameLookup::resolveExpressionTypeCandidates(
@@ -1242,52 +1523,123 @@ std::vector<std::size_t> ProjectNameLookup::resolveExpressionTypeCandidates(
     return resolveTypeCandidates(projectOrdinal, namespaceSegments, environment, writtenName);
 }
 
-std::vector<std::size_t> ProjectNameLookup::resolveQualifiedTypeCandidates(
-    std::size_t projectOrdinal,
-    const std::vector<std::string>& namespaceSegments,
-    const std::string& qualifiedName) const
+// NSC-LIMIT-009. Que un tipo cruce el limite de modulo. Para uno de namespace es la pregunta de
+// siempre --`public`-- y para un ANIDADO son todas: `public class Outer { public struct Item }`
+// exporta `Item`, y `class Outer { public struct Item }` no exporta nada, porque el contenedor no
+// sale. Sin esta cadena, un `public` interior habria colado al anidado por encima de su
+// contenedor internal.
+bool ProjectNameLookup::typeIsPubliclyVisible(std::size_t typeOrdinal) const
 {
-    if (projectOrdinal >= typesByModule_.size())
+    // NSC-LIMIT-009, segunda vuelta. `protected` TAMBIEN CRUZA -- o mejor dicho, tiene derecho a
+    // que se le pregunte. Un anidado protegido de un contenedor public es alcanzable desde una
+    // clase derivada, y esa clase puede estar en OTRO proyecto: es el caso normal de una
+    // biblioteca que declara `protected class Reservada` para que sus derivadas la usen.
+    //
+    // La version anterior lo descartaba aqui, con lo cual el nombre no llegaba a producir un
+    // binding resuelto y `checkProtectedNestedTypeUses` --que es quien sabe decidirlo-- no
+    // recibia nunca la oportunidad. `private` e `internal` si cortan: no hay ninguna fase
+    // posterior que pueda convertirlos en alcanzables desde fuera del modulo.
+    //
+    // El ESLABON SUPERIOR se exige public aparte, en el bucle: un contenedor `protected` de
+    // namespace no existe --solo un anidado puede serlo-- asi que un tipo raiz que no sea public
+    // no sale del modulo por ningun camino.
+    std::optional<std::size_t> current = typeOrdinal;
+    while (current.has_value() && *current < namedTypes_.size())
     {
-        return {};
-    }
-
-    // Exhaust all lexical namespaces in the current module before consulting references.
-    for (std::size_t depth = namespaceSegments.size() + 1; depth > 0; --depth)
-    {
-        const std::size_t prefixCount = depth - 1;
-        const std::string candidate = appendQualified(
-            std::span<const std::string>(namespaceSegments.data(), prefixCount),
-            qualifiedName);
-        const auto current = typesByModule_[projectOrdinal].find(candidate);
-        if (current != typesByModule_[projectOrdinal].end())
+        const NamedTypeDeclaration& type = namedTypes_[*current];
+        const bool nested = type.containingTypeOrdinal.has_value();
+        const bool crosses = type.accessibility == NamedTypeAccessibility::Public ||
+            (nested && type.accessibility == NamedTypeAccessibility::Protected);
+        if (!crosses)
         {
-            return {current->second};
+            return false;
         }
+        current = type.containingTypeOrdinal;
     }
+    return true;
+}
 
-    for (std::size_t depth = namespaceSegments.size() + 1; depth > 0; --depth)
+std::optional<std::size_t> ProjectNameLookup::findTypeInModule(
+    std::size_t moduleOrdinal,
+    const std::string& dottedName) const
+{
+    if (moduleOrdinal >= typesByModule_.size())
     {
-        const std::size_t prefixCount = depth - 1;
-        const std::string candidate = appendQualified(
-            std::span<const std::string>(namespaceSegments.data(), prefixCount),
-            qualifiedName);
-        std::vector<std::size_t> referenced;
-        for (const std::size_t visibleOrdinal : modules_[projectOrdinal]->visibleProjectOrdinals())
+        return std::nullopt;
+    }
+    const auto canonical = typesByModule_[moduleOrdinal].find(dottedName);
+    if (canonical != typesByModule_[moduleOrdinal].end())
+    {
+        return canonical->second;
+    }
+    const auto nested = nestedSourceNamesByModule_[moduleOrdinal].find(dottedName);
+    if (nested != nestedSourceNamesByModule_[moduleOrdinal].end())
+    {
+        return nested->second;
+    }
+    return std::nullopt;
+}
+
+bool ProjectNameLookup::nestedTypeIsVisible(
+    std::size_t typeOrdinal,
+    const LookupEnvironment& environment) const
+{
+    // Se recorre la cadena de contenedores hacia fuera. Basta con que UNO de ellos declare el
+    // eslabon como `private` y no este entre los contenedores lexicos del sitio de uso para que
+    // el nombre no se vea: `Outer.Privada.Item` no es alcanzable desde fuera de `Outer` aunque
+    // `Item` sea public dentro de `Privada`.
+    std::optional<std::size_t> current = typeOrdinal;
+    while (current.has_value() && *current < namedTypes_.size())
+    {
+        const NamedTypeDeclaration& type = namedTypes_[*current];
+        const std::optional<std::size_t> container = type.containingTypeOrdinal;
+        if (!container.has_value())
         {
-            const auto iterator = typesByModule_[visibleOrdinal].find(candidate);
-            if (iterator != typesByModule_[visibleOrdinal].end() &&
-                namedTypes_[iterator->second].accessibility == NamedTypeAccessibility::Public)
+            return true;
+        }
+        if (type.accessibility == NamedTypeAccessibility::Private)
+        {
+            const bool insideContainer = std::find(
+                environment.enclosingTypeOrdinals.begin(),
+                environment.enclosingTypeOrdinals.end(),
+                *container) != environment.enclosingTypeOrdinals.end();
+            if (!insideContainer)
             {
-                referenced.push_back(iterator->second);
+                return false;
             }
         }
-        if (!referenced.empty())
+        // `Protected` NO se decide aqui, y no por comodidad: la pregunta es «el tipo que escribe
+        // esto deriva del contenedor?», y el modelo de herencia se construye DESPUES de resolver
+        // nombres. Responder aqui obligaria a una de dos mentiras: tratarlo como private
+        // --rechazando el uso legitimo desde una derivada-- o como internal, que deja pasar el
+        // modulo entero. Se acepta, se guarda la cadena del sitio en el binding, y lo comprueba
+        // ProjectInheritanceModel, que es la primera fase que tiene la respuesta.
+        current = container;
+    }
+    return true;
+}
+
+std::optional<std::size_t> ProjectNameLookup::findInaccessibleNestedType(
+    std::size_t projectOrdinal,
+    const std::vector<std::string>& namespaceSegments,
+    const std::string& writtenName) const
+{
+    if (projectOrdinal >= nestedSourceNamesByModule_.size())
+    {
+        return std::nullopt;
+    }
+    for (std::size_t depth = namespaceSegments.size() + 1; depth > 0; --depth)
+    {
+        const std::string candidate = appendQualified(
+            std::span<const std::string>(namespaceSegments.data(), depth - 1),
+            writtenName);
+        const auto iterator = nestedSourceNamesByModule_[projectOrdinal].find(candidate);
+        if (iterator != nestedSourceNamesByModule_[projectOrdinal].end())
         {
-            return referenced;
+            return iterator->second;
         }
     }
-    return {};
+    return std::nullopt;
 }
 
 std::vector<std::size_t> ProjectNameLookup::findExactTypeCandidates(
@@ -1315,7 +1667,7 @@ std::vector<std::size_t> ProjectNameLookup::findExactTypeCandidates(
     {
         const auto iterator = typesByModule_[visibleOrdinal].find(fullyQualifiedName);
         if (iterator != typesByModule_[visibleOrdinal].end() &&
-            namedTypes_[iterator->second].accessibility == NamedTypeAccessibility::Public)
+            typeIsPubliclyVisible(iterator->second))
         {
             candidates.push_back(iterator->second);
         }
@@ -1388,8 +1740,12 @@ const char* namedTypeAccessibilityName(NamedTypeAccessibility accessibility) noe
 {
     switch (accessibility)
     {
+        case NamedTypeAccessibility::Private:
+            return "private";
         case NamedTypeAccessibility::Internal:
             return "internal";
+        case NamedTypeAccessibility::Protected:
+            return "protected";
         case NamedTypeAccessibility::Public:
             return "public";
     }

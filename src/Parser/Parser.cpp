@@ -4,8 +4,10 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
+#include <algorithm>
 #include <array>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace nativesharp::parser
@@ -625,6 +627,165 @@ bool Parser::parseGenericParameterList(ast::AstNode* declaration)
         if (!consumeIf(TokenKind::Comma)) break;
     }
     return expect(TokenKind::Greater, "'>' after generic type parameter list");
+}
+
+// NSC-LIMIT-007. `where T : class, Base, IFoo`.
+//
+// QUE SE ADMITE EN ESTA ENTREGA: `class`, una clase base y una o mas interfaces, en cualquier
+// combinacion, con `class` obligatoriamente el PRIMERO cuando aparece -- que es la regla de C#.
+// Cual de los tipos escritos es la base y cual la interfaz NO se decide aqui: eso exige saber que
+// declara cada nombre, y el name lookup no existe todavia cuando el parser corre.
+//
+// QUE NO: `struct`, `new()`, `unmanaged` y `notnull`. Se RECHAZAN CON UN DIAGNOSTICO PROPIO, no
+// con un parseo parcial que los ignore. Un constraint aceptado y no verificado es peor que uno
+// rechazado: promete algo que nadie comprueba, y el error acaba saliendo dentro del cuerpo
+// sustituido, que es el muro de errores de plantillas que este ID existe para quitar.
+//
+// LO QUE SE COMPRUEBA AQUI Y NO MAS TARDE es todo lo que se puede saber sin resolver tipos: que
+// el parametro exista, que no haya dos clausulas para el mismo, que no se repita un constraint, y
+// que `class` no venga en segunda posicion. Son errores de la DECLARACION, y dejarlos para la
+// validacion semantica los convertiria en errores del sitio de instanciacion -- lejos de la causa.
+bool Parser::parseGenericConstraintClauses(ast::AstNode* declaration)
+{
+    if (declaration == nullptr) return true;
+    bool ok = true;
+    std::unordered_set<std::string> constrained;
+    while (atContextualKeyword("where"))
+    {
+        const std::size_t clauseBegin = index_;
+        consume();
+        if (!at(TokenKind::Identifier))
+        {
+            expect(TokenKind::Identifier, "generic type parameter after 'where'");
+            return false;
+        }
+        const lexer::Token& parameter = consume();
+        ast::GenericConstraintClause clause;
+        clause.parameterName = std::string(parameter.lexeme());
+        clause.parameterRange = parameter.range();
+
+        const std::vector<std::string>& declared = declaration->genericParameters();
+        const bool known =
+            std::find(declared.begin(), declared.end(), clause.parameterName) != declared.end();
+        if (!known)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::UnknownIdentifier,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.range(),
+                "'" + clause.parameterName +
+                    "' is not a generic type parameter of this declaration");
+            ok = false;
+        }
+        else if (!constrained.insert(clause.parameterName).second)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::DuplicateSymbol,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.range(),
+                "duplicate 'where' clause for generic type parameter '" +
+                    clause.parameterName + "'");
+            ok = false;
+        }
+
+        if (!expect(TokenKind::Colon, "':' after the constrained type parameter")) return false;
+
+        std::unordered_set<std::string> written;
+        bool firstConstraint = true;
+        while (true)
+        {
+            // Las cuatro formas que esta entrega no implementa. `class` no esta en la lista: es la
+            // que SI se admite, y se distingue por ser palabra clave y no identificador.
+            const bool isKeywordClass = at(TokenKind::KwClass);
+            const char* unsupported = nullptr;
+            if (at(TokenKind::KwStruct)) unsupported = "struct";
+            else if (at(TokenKind::KwNew)) unsupported = "new()";
+            else if (atContextualKeyword("unmanaged")) unsupported = "unmanaged";
+            else if (atContextualKeyword("notnull")) unsupported = "notnull";
+            if (unsupported != nullptr)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    current().range(),
+                    std::string("the '") + unsupported +
+                        "' generic constraint is not supported yet; this compiler implements "
+                        "'class', a base class and interfaces");
+                synchronizeStatement();
+                return false;
+            }
+            if (isKeywordClass)
+            {
+                const lexer::Token& keyword = consume();
+                if (!firstConstraint)
+                {
+                    // La regla de C#, y no es cosmetica: `class` dice de que CLASE de tipo se
+                    // trata, y los demas dicen de que deriva. Mezclado en medio, un lector ya no
+                    // puede leer la lista de izquierda a derecha.
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        keyword.range(),
+                        "'class' must be the first constraint of its 'where' clause");
+                    ok = false;
+                }
+                if (clause.requiresClass)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        keyword.range(),
+                        "duplicate 'class' constraint for '" + clause.parameterName + "'");
+                    ok = false;
+                }
+                clause.requiresClass = true;
+            }
+            else
+            {
+                ast::TypeSyntax* constraint = parseType();
+                if (constraint == nullptr) return false;
+                // `where T : U` con `U` otro parametro de la MISMA declaracion. C# lo admite; este
+                // compilador no, y la razon esta en la fase que valida: monomorfiza, de modo que
+                // «U» ya no existe cuando se comprueba, y lo unico que quedaria por comparar seria
+                // el tipo con el que se cerro U -- que es otra regla, no esta. Se rechaza aqui
+                // para que la resolucion de nombres no acabe diciendo «unknown type name 'U'»,
+                // que manda al lector a buscar un tipo que nunca hubo.
+                if (std::find(declared.begin(), declared.end(), std::string(constraint->baseName())) !=
+                    declared.end())
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        constraint->range(),
+                        "'" + std::string(constraint->baseName()) +
+                            "' is a generic type parameter of this declaration and cannot be used "
+                            "as a constraint; this compiler implements 'class', a base class and "
+                            "interfaces");
+                    ok = false;
+                }
+                // El texto escrito es lo unico comparable sin resolver nombres. Dos escrituras
+                // distintas del mismo tipo se le escapan a esta comprobacion, y esa la coge la
+                // validacion semantica -- que si sabe a que resuelve cada una.
+                if (!written.insert(constraint->baseName()).second)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::DuplicateSymbol,
+                        diagnostics::DiagnosticSeverity::Error,
+                        constraint->range(),
+                        "duplicate constraint '" + constraint->baseName() + "' for '" +
+                            clause.parameterName + "'");
+                    ok = false;
+                }
+                clause.typeConstraints.push_back(constraint);
+            }
+            firstConstraint = false;
+            if (!consumeIf(TokenKind::Comma)) break;
+        }
+
+        clause.range = tokenRangeFrom(clauseBegin);
+        if (known) declaration->addGenericConstraint(std::move(clause));
+    }
+    return ok;
 }
 
 bool Parser::parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments)
@@ -1444,16 +1605,6 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     node->setTypeSyntax(returnType);
     node->setAuxiliaryText("delegate");
     parseGenericParameterList(node);
-    if (atContextualKeyword("where"))
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "generic constraints are deferred beyond Stage 44; monomorphization currently requires unconstrained type parameters");
-        synchronizeGlobal();
-        return node;
-    }
 
     expect(TokenKind::LeftParen, "'('");
     if (!at(TokenKind::RightParen))
@@ -1468,6 +1619,9 @@ ast::AstNode* Parser::parseDelegateDeclaration()
         }
     }
     expect(TokenKind::RightParen, "')'");
+    // NSC-LIMIT-007: `delegate void D<T>(T x) where T : class;` -- despues de la lista de
+    // parametros y antes del punto y coma, que es donde el lenguaje la pone.
+    parseGenericConstraintClauses(node);
     expect(TokenKind::Semicolon, "';'");
     node->setRange(tokenRangeFrom(beginIndex));
     return node;
@@ -1508,16 +1662,9 @@ ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form, bool isBorro
         node->setAuxiliaryText(std::move(markers));
     }
     parseGenericParameterList(node);
-    if (atContextualKeyword("where"))
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "generic constraints are deferred beyond Stage 44; monomorphization currently requires unconstrained type parameters");
-        synchronizeGlobal();
-        return node;
-    }
+    // NSC-LIMIT-007: un struct no declara bases en este lenguaje, asi que la clausula va aqui,
+    // entre los parametros genericos y el cuerpo.
+    parseGenericConstraintClauses(node);
 
     if (!expect(TokenKind::LeftBrace, "'{'") )
     {
@@ -1626,16 +1773,6 @@ ast::AstNode* Parser::parseClassDeclaration(bool isPartial, bool isAbstract, boo
     node->setText(className);
     node->setFlag(isPartial);
     parseGenericParameterList(node);
-    if (atContextualKeyword("where"))
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "generic constraints are deferred beyond Stage 44; monomorphization currently requires unconstrained type parameters");
-        synchronizeGlobal();
-        return node;
-    }
     if (isAbstract)
     {
         node->addModifier(TokenKind::KwAbstract);
@@ -1669,6 +1806,16 @@ ast::AstNode* Parser::parseClassDeclaration(bool isPartial, bool isAbstract, boo
         }
         while (consumeIf(TokenKind::Comma));
     }
+
+    // NSC-LIMIT-007: DESPUES de `: Base, IFoo` y antes del cuerpo, que es la posicion del
+    // lenguaje. El rechazo que habia antes estaba DELANTE de la lista de bases, asi que
+    // `class C<T> : Base where T : class` ni siquiera llegaba a leerse como clausula.
+    //
+    // NO hay una llamada equivalente en parseInterfaceDeclaration, y no es un olvido: una
+    // interfaz de este lenguaje NO declara parametros genericos --no llama a
+    // parseGenericParameterList-- asi que una clausula alli no podria nombrar nada. Poner la
+    // llamada de todas formas seria codigo muerto que aparenta una cobertura que no existe.
+    parseGenericConstraintClauses(node);
 
     if (!expect(TokenKind::LeftBrace, "'{'") )
     {
@@ -1737,6 +1884,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial)
         }
         while (consumeIf(TokenKind::Comma));
     }
+
 
     if (!expect(TokenKind::LeftBrace, "'{'") )
     {
@@ -1843,6 +1991,118 @@ ast::AstNode* Parser::parseInterfaceMember()
         "Stage 38 interfaces do not contain fields; expected method, property, or indexer contract");
     synchronizeStatement();
     return nullptr;
+}
+
+// NSC-LIMIT-009. `union` es contextual --sigue siendo un identificador corriente en todas partes--
+// asi que se reconoce igual que en `parseGlobalDeclaration`: por lo que viene detras.
+bool Parser::atNestedTypeDeclaration() const noexcept
+{
+    return at(TokenKind::KwClass) || at(TokenKind::KwStruct) || at(TokenKind::KwInterface) ||
+        at(TokenKind::KwEnum) || at(TokenKind::KwDelegate) ||
+        (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier);
+}
+
+ast::AstNode* Parser::parseNestedTypeDeclaration(
+    const NestedTypeModifiers& modifiers,
+    std::size_t beginIndex)
+{
+    // Lo que NO significa nada en una declaracion de tipo. Se rechaza cada uno por su nombre en
+    // vez de un «modificador no valido» generico: quien escribio `static class Item` dentro de
+    // una clase viene de C#, donde eso SI existe, y necesita saber que aqui no -- no que su
+    // linea es ilegible.
+    const auto refuse = [&](const char* modifierName, const char* reason)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            tokens_[beginIndex].range(),
+            std::string("'") + modifierName + "' is not valid on a nested type declaration: " + reason);
+    };
+    if (modifiers.isStatic)
+    {
+        refuse("static", "a type is not an instance of its container; a nested type is reached "
+                         "as Outer.Item whether or not anything of Outer exists");
+    }
+    if (modifiers.isReadonly) refuse("readonly", "a type is not storage");
+    if (modifiers.isConst) refuse("const", "a type is not a value");
+    if (modifiers.isVirtual) refuse("virtual", "a type is not dispatched");
+    if (modifiers.isOverride) refuse("override", "a type does not override anything");
+    if (modifiers.isExported || modifiers.isExternC)
+    {
+        refuse("export extern C", "the host C ABI exports functions, not types");
+    }
+    if (modifiers.hasExplicitFieldOffset)
+    {
+        refuse("at(N)", "a type has no offset inside its container; only a field does");
+    }
+
+    // `abstract` y `sealed` SI significan algo, pero solo en una clase. Se dejan pasar y el
+    // parser de clase los aplica; en cualquier otra forma se rechazan aqui, que es donde se sabe
+    // cual de las cinco se esta abriendo.
+    const bool nestedClass = at(TokenKind::KwClass);
+    if ((modifiers.isAbstract || modifiers.isSealed) && !nestedClass)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            tokens_[beginIndex].range(),
+            "abstract/sealed modifiers are supported only for class declarations");
+    }
+
+    ast::AstNode* declaration = nullptr;
+    if (at(TokenKind::KwClass))
+    {
+        declaration = parseClassDeclaration(false, modifiers.isAbstract, modifiers.isSealed);
+    }
+    else if (at(TokenKind::KwInterface))
+    {
+        declaration = parseInterfaceDeclaration(false);
+    }
+    else if (at(TokenKind::KwStruct) || atContextualKeyword("union"))
+    {
+        declaration = parseStructDeclaration(
+            at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union, false);
+    }
+    else if (at(TokenKind::KwEnum))
+    {
+        declaration = parseEnumDeclaration();
+    }
+    else
+    {
+        declaration = parseDelegateDeclaration();
+    }
+
+    if (declaration == nullptr)
+    {
+        return nullptr;
+    }
+
+    // NSC-LIMIT-009 -- LO QUE ESTA ENTREGA NO HACE, dicho en el parser y no en silencio.
+    //
+    // Un tipo anidado GENERICO exigiria que la identidad canonica llevara la aridad de CADA
+    // segmento de la cadena --`Outer`2+Item`1`-- y que la materializacion generica clonara un
+    // cuerpo que a su vez declara tipos. Ninguna de las dos cosas esta escrita, y una identidad
+    // con aridad perdida no es un limite: es una colision silenciosa entre `Outer<T>.Item` y
+    // `Outer.Item`. Se rechaza, que es lo unico honesto que se puede hacer hoy.
+    if (!declaration->genericParameters().empty())
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            declaration->range(),
+            "a nested type cannot declare generic parameters yet; declare '" +
+                declaration->text() + "' at namespace scope");
+    }
+
+    if (modifiers.accessibility != TokenKind::Invalid)
+    {
+        declaration->setTokenKind(modifiers.accessibility);
+    }
+    if (beginIndex < tokens_.size())
+    {
+        declaration->setRange(join(tokens_[beginIndex].range(), declaration->range()));
+    }
+    return declaration;
 }
 
 ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnresolvedNamedTypes)
@@ -2269,6 +2529,46 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 "Stage 42 events support accessibility and optional static only");
         }
         return parseEventTail(accessibility, isStatic, beginIndex);
+    }
+
+    // NSC-LIMIT-009. `partial` no entra en el bucle de modificadores de arriba --es contextual, y
+    // alli seria indistinguible de un tipo de campo llamado `partial`-- asi que se reconoce aqui,
+    // por lo que le sigue, y se consume para poder dar ESTE mensaje en vez de dejar que `partial`
+    // se lea como el tipo de un campo y el error salga tres tokens mas alla.
+    if (atContextualKeyword("partial") &&
+        (peek().kind() == TokenKind::KwClass || peek().kind() == TokenKind::KwStruct ||
+         peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
+         peek().kind() == TokenKind::KwDelegate))
+    {
+        const lexer::Token& modifier = consume();
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            modifier.range(),
+            "a nested type cannot be partial: the parts would have to agree on a container, and "
+            "this compiler aggregates partial types by namespace identity only");
+    }
+
+    // NSC-LIMIT-009. UN TIPO ANIDADO. Va antes de la guarda de abajo porque `class`, `struct`,
+    // `interface`, `enum` y `delegate` no son comienzos de tipo ni identificadores, de modo que
+    // caian todos en «expected an instance field or method declaration in class body» -- que es
+    // literalmente lo unico que le pasaba a `class Outer { struct Item { } }`.
+    if (atNestedTypeDeclaration())
+    {
+        return parseNestedTypeDeclaration(
+            NestedTypeModifiers{
+                accessibility,
+                isStatic,
+                isReadonly,
+                isConst,
+                isVirtual,
+                isOverride,
+                isAbstract,
+                isSealed,
+                isExported,
+                isExternC,
+                explicitFieldOffset.has_value()},
+            beginIndex);
     }
 
     if (!canStartType(current()) && !at(TokenKind::Identifier))
@@ -3356,16 +3656,6 @@ ast::AstNode* Parser::parseMethodTail(
     }
 
     parseGenericParameterList(method);
-    if (atContextualKeyword("where"))
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "generic constraints are deferred beyond Stage 44");
-        synchronizeStatement();
-        return method;
-    }
 
     expect(TokenKind::LeftParen, "'('");
     if (!at(TokenKind::RightParen))
@@ -3384,6 +3674,9 @@ ast::AstNode* Parser::parseMethodTail(
         }
     }
     expect(TokenKind::RightParen, "')'");
+    // NSC-LIMIT-007: `void M<T>(T x) where T : class { ... }` -- despues de la lista de
+    // parametros y antes del cuerpo o del punto y coma.
+    parseGenericConstraintClauses(method);
 
     if (isAbstract)
     {
@@ -3606,16 +3899,6 @@ ast::AstNode* Parser::parseFunctionTail(
     function->setFlag(externalOnly);
 
     parseGenericParameterList(function);
-    if (atContextualKeyword("where"))
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            current().range(),
-            "generic constraints are deferred beyond Stage 44");
-        synchronizeGlobal();
-        return function;
-    }
 
     expect(TokenKind::LeftParen, "'('");
     if (!at(TokenKind::RightParen))
@@ -3634,6 +3917,29 @@ ast::AstNode* Parser::parseFunctionTail(
         }
     }
     expect(TokenKind::RightParen, "')'");
+    // NSC-LIMIT-007: igual que un metodo -- despues de los parametros, antes del cuerpo o del ';'.
+    parseGenericConstraintClauses(function);
+    // ...SALVO QUE UNA FUNCION GLOBAL GENERICA NO SE MATERIALIZA.
+    //
+    // `isGenericMethodTemplateNode` reconoce MethodDeclaration y nada mas, de modo que una
+    // `F<T>(...)` de namespace nunca entra en el modelo generico y por tanto nunca produce una
+    // especializacion. Aceptar aqui la clausula habria dejado un `where` que NADIE comprueba: la
+    // peor de las dos respuestas posibles, porque el autor lo lee como una garantia.
+    //
+    // Se rechaza y se borra del nodo. La clausula se parsea antes a proposito --y no se salta el
+    // texto-- para que sus propios errores de forma se sigan reportando y para que el parser
+    // recupere en el mismo sitio que con un metodo.
+    if (!function->genericConstraints().empty())
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            function->genericConstraints().front().range,
+            "a generic constraint on a global function is not supported yet: a global generic "
+            "function is not materialized, so the clause would never be checked; declare '" +
+                function->text() + "' as a static method of a class");
+        function->clearGenericConstraints();
+    }
 
     if (externalOnly)
     {

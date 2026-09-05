@@ -1,0 +1,143 @@
+STAGE NSC-LIMIT-007 / NSC-LIMIT-009 -- sexta vuelta: las cinco propiedades -- 2026-09-05
+Ficheros modificados en A:\nsc-devel
+
+EL ENCUADRE, porque explica por que esta vuelta toca sitios que las cinco anteriores no tocaron.
+Las vueltas 1-5 corrigieron EL CASO REPORTADO. Esta corrige LA PROPIEDAD, y la propiedad se
+comprueba en TODOS los sitios que la necesitan, no en el que salio en la revision. Las cinco:
+
+  1  una llamada generica NUNCA materializa una plantilla que su receptor no puede nombrar.
+  2  una especializacion que incumple su clausula NUNCA analiza ni baja su cuerpo -- metodo o
+     tipo, agrupada o no.
+  3  una especializacion cacheada reporta SIEMPRE el rango de la llamada actual.
+  4  toda prueba nueva se pone ROJA contra la implementacion anterior, y recorre exactamente la
+     funcion que dice verificar.
+  5  el nombre C depende SOLO de la identidad del tipo, nunca del orden de declaracion.
+
+MODIFICADOS -- COMPILADOR
+
+  src/Frontend/ProjectGenericModel.cpp                       (invariante 1)
+      receiverOwnerChain se sustituye por receiverSourceSpelling: la escritura del receptor se
+      conserva CON PUNTOS y no se convierte a la forma canonica con `+`. Se anade
+      templateSourceSpelling, la escritura fuente completa de cada plantilla.
+
+      sourceSpellingNames --booleano-- pasa a sourceSpellingRank, que devuelve un ESCALON:
+        0  la escritura es la del registro, exacta
+        1  la escritura vacia, o relativa al namespace del que llama
+        2  sufijo de SEGMENTOS (exacto o precedido por punto, nunca a media palabra)
+        3  no coincide
+      collectMethodTemplates hace dos pasadas --busca el escalon minimo, despues recoge SOLO ese
+      escalon-- y aplica ademas una regla de DUENO UNICO: si el mejor escalon abarca dos
+      escrituras de dueno distintas, la llamada es ambigua y se devuelve vacio.
+
+      resolveMethodTemplate recibe el MISMO tratamiento. Ese fue el tropiezo de la vuelta: se
+      aplico el escalon a collectMethodTemplates y se olvido su gemela, y `C.F<int>()` con un `C`
+      en cada namespace paso a declararse ambigua.
+
+  include/nativesharp/Frontend/ProjectGenericModel.h
+      callerNamespace en las dos firmas. Y la documentacion de los CUATRO filtros -- nombre y
+      aridad, cuenta de argumentos de valor, escritura del receptor, namespace del que llama --
+      con lo que tapa cada uno, mas la nota de que las dos funciones tienen que decidir igual.
+      Se borra un comentario que decia que la identidad de un metodo generico se desempata por
+      la cuenta de parametros: no es cierto, se desempata por indice de declaracion.
+
+  include/nativesharp/Frontend/ProjectGenericConstraintModel.h  (invariante 2)
+      invalidSpecializations_, un unordered_set aparte de deferredBySpecialization_. Son dos
+      preguntas distintas y estaban colapsadas en un mapa: «hay que diferir este diagnostico» y
+      «esta especializacion es invalida». La documentacion de specializationSatisfiesConstraints
+      dice ahora que acepta indistintamente el nodo de un miembro y el del tipo que lo declara.
+
+  src/Frontend/ProjectGenericConstraintModel.cpp
+      invalidSpecializations_.clear() al construir; .insert() para TODA especializacion con
+      violaciones pendientes, ANTES de decidir si su diagnostico se aplaza; y la consulta
+      responde por ese conjunto en vez de por el mapa de diferidos.
+
+  src/Frontend/ProjectMethodBodyModel.cpp
+  src/Frontend/ProjectOopHirModel.cpp
+      los dos guardas preguntan ahora por DOS nodos: el del miembro y el del tipo que lo declara.
+      Para un TIPO generico invalido --`Caja<Valor>` con `where T : class`-- la invalidez esta en
+      el nodo del tipo y sus metodos son hijos suyos, asi que preguntar solo por member.syntax no
+      la veia nunca. Medido: los dos programas emitian un SEGUNDO error de cuerpo, y ya no.
+
+MODIFICADOS -- PRUEBAS
+
+  tests/cc1/c46_sobrecargas_genericas/Main.ns
+      codigo 15 -- RECEPTOR ABREVIADO. `Caja.Corto<int>(0)` escrito dentro de `c46uno` alcanza
+      solo a su propia `Caja`; la de `c46dos` tiene un cuerpo que no compila con `T = int`.
+      VERIFICADO ROJO contra el binario anterior: «member access requires a class/interface
+      reference ... 'builtin:int'».
+
+      codigo 16 -- CLAUSULA APLAZADA. Dos candidatas de la MISMA cuenta de argumentos, una con
+      `where` que el argumento incumple. NO es una regresion, es COBERTURA, y esta marcado como
+      tal en la fixture: ya funcionaba. Que ninguna otra fixture lo recorria se midio mutando el
+      compilador para que la rama agrupada emitiera como la no agrupada -- c46 en rojo, c35 y c44
+      en verde.
+
+  tests/cc1/c35_sobrecarga_generica/Main.ns
+      COMENTARIO FALSO. Decia que la identidad incluye la cuenta de parametros de valor. No la
+      incluye: esa fue la primera version del arreglo y esta descartada porque la clave sale del
+      compilador por HIR, MIR y los metadatos de biblioteca. El desempate real es el INDICE DE
+      DECLARACION, puesto solo donde dos plantillas comparten `nombre``aridad`. El mensaje de
+      metodo duplicado que se cita se volvio a medir y se completo con su clausula final.
+
+  tests/cc1/c44_constraints_genericos/Main.ns
+      COMENTARIO FALSO. Decia que sus dos `Elegir` se materializan las dos. No se materializan:
+      el volcado de genericos de ese programa tiene UNA especializacion. La llamada trae un
+      argumento y la que incumple toma dos, asi que el filtro de cuenta la deja fuera.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      SE BORRA la prueba del rango de llamada, que era un FALSO VERDE: usaba `F<Pieza>` y
+      `F<Valor>` --especializaciones DISTINTAS, cada una con su rango-- y sobrecargas de uno y
+      dos parametros, que el filtro separa antes de formar grupo. Nunca llegaba al camino
+      cacheado ni al de diferido.
+
+      cc1-limit007-sitio-cacheado -- dos llamadas que cierran el MISMO `<Valor>`, dos sobrecargas
+      de UN argumento. Compara por OFFSET que la diagnosis apunta a la segunda y NO a la primera.
+      Medido bajo mutacion: sustituyendo callRange por el rango guardado, el offset salta de 367
+      a 311 y las dos comprobaciones se ponen rojas.
+
+      cc1-limit007-invalida-sin-grupo y cc1-limit007-invalida-de-tipo -- tabla de dos casos que
+      exige el mensaje de constraint y la AUSENCIA del mensaje de cuerpo. Los dos VERIFICADOS
+      ROJOS contra el binario anterior.
+
+  tests/unit/Stage48_1CHeaderGeneratorTests.cpp                (invariante 5)
+      testQualifiedNamesAreInjective era otro FALSO VERDE: usaba `Ns.Inner` contra `Ns_Inner`,
+      que se distinguen por el NOMBRE SIMPLE y por tanto no llegan nunca al codificador.
+      Ahora usa dos `Pair` -- `A.B+Pair` anidado y `A_B.Pair` de namespace -- y comprueba las dos
+      cadenas mas la AUSENCIA de sufijo `_2`. Las tres cadenas se midieron con el generador real.
+      Con el saneador viejo, medido sustituyendolo: las dos identidades dan
+      NS_Injective__A_B_Pair y NS_Injective__A_B_Pair_2, y las tres comprobaciones caen.
+
+DOCUMENTACION
+
+  mkdown/121_limit_007_constraints_genericos.md
+      seccion 13 -- las cinco propiedades, los invariantes 1/2/3, el hueco de la clausula
+      aplazada, la tabla de los TRES falsos verdes con por que cada uno no media lo que decia,
+      los dos comentarios falsos, y las mediciones.
+
+  mkdown/122_limit_009_tipos_anidados.md
+      seccion 13 -- la prueba de inyectividad, el par que si provoca la colision, y las cadenas
+      del saneador viejo medidas por sustitucion.
+
+MEDIDO EN EL CONTENEDOR (clang 18 + libLLVM-18, frontend real, reconstruccion completa)
+
+  barrido bodies                     OK=191  FAIL=5    (los 5 negativos intencionados)
+  barrido llvm                       OK=191  FAIL=5
+  CompilationModelTests              PASS 67 checks
+  ClassMemberSyntaxTests             PASS 58 checks
+  ProjectNameLookupTests             PASS 64 checks
+  ProjectMemberModelTests            PASS 64 checks
+  Cc1CorrectnessTests                compila limpio; NO ENLAZA aqui (Driver::run arrastra
+                                     LldLinker, WindowsExecutableBuilder y LlvmOptimizer, que
+                                     necesitan la API C de LLVM 23). Sus tres casos nuevos se
+                                     comprobaron reproduciendo sus asertos con ProjectCompilation
+                                     directamente, que es lo que las propias pruebas usan.
+  Stage48_1CHeaderGeneratorTests     compila limpio; NO ENLAZA aqui. Comprobado llamando a
+                                     CHeaderGenerator::writeHeader directamente.
+  IR de c46: definiciones de Aplazar 1, la de (int, string)
+
+NO MEDIDO AQUI
+  El enlace y la ejecucion de las fixtures. Este contenedor no enlaza PE ni ejecuta Windows: las
+  fixtures se miden hasta LLVM IR. La corrida de nscbuilder.py en la maquina es lo que cierra
+  esta vuelta.
+
+  NSC-LIMIT-005 / divergencias O1-O2. Sin tocar. Requiere LLVM 23 y no se puede compilar aqui.

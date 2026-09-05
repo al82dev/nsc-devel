@@ -6456,7 +6456,23 @@ private:
         const std::string stemText(stem);
         LLVMValueRef address = byteOffset(base, leaf->immediate, (stemText + ".addr").c_str());
         LLVMValueRef value = LLVMBuildLoad2(builder_, loadType, address, stemText.c_str());
-        LLVMSetAlignment(value, static_cast<unsigned>(leaf->secondaryImmediate));
+        // ALINEACION 1, Y NO EL ANCHO DEL CAMPO.
+        //
+        // Esta linea decia `LLVMSetAlignment(value, leaf->secondaryImmediate)` -- la alineacion
+        // NATURAL del escalar-- y eso es una PROMESA, no una descripcion. En un struct `pack=1`
+        // un `int` puede vivir en el offset 1, de modo que el modulo afirmaba `load i32 align 4`
+        // sobre una direccion impar: comportamiento indefinido, y de la clase peor, porque el
+        // codigo sale bien en O0 y el optimizador tiene derecho a romperlo en O2.
+        //
+        // La alineacion REAL de una hoja depende de dos cosas que aqui no se conocen: la del
+        // agregado --que `pack(N)` puede bajar hasta 1-- y el offset. Sin las dos, el unico valor
+        // que nunca miente es 1.
+        //
+        // Y no cuesta nada donde importa: en x86-64 una carga escalar desalineada es la misma
+        // instruccion `mov`, asi que lo unico que se pierde es que el optimizador funda varias
+        // cargas en una vectorial -- en una funcion de igualdad de cuatro hojas, nada. Prometer
+        // de menos es gratis; prometer de mas es un miscompile.
+        LLVMSetAlignment(value, 1);
         if (leaf->secondaryImmediate == 8) return value;
         return LLVMBuildZExt(builder_, value, i64, (stemText + ".bits").c_str());
     }

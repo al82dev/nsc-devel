@@ -19,6 +19,7 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
@@ -747,6 +748,41 @@ int main(int argc, char** argv)
         "tests/cc1/c43_igualdad_de_structs/c43_igualdad_de_structs.nsproj",
         "cc1-c43-igualdad-de-structs", 42);
 
+    // NSC-LIMIT-007. `where T : class, IComponente`. La fixture mide la mitad POSITIVA: las CUATRO
+    // posiciones gramaticales que se admiten --clase con lista de bases delante, struct, metodo y
+    // delegado--, el cuerpo generico llamando a un miembro de la interfaz del constraint, la
+    // derivacion, la IDENTIDAD (`where T : Base` lo satisface `Base` misma) y una interfaz que
+    // extiende otra. La quinta posicion, una FUNCION GLOBAL generica, se rechaza --no se
+    // materializa, de modo que su clausula no la comprobaria nadie-- y ese rechazo vive abajo,
+    // con los demas negativos, que tampoco caben aqui: una fixture tiene que compilar entera.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c44_constraints_genericos/c44_constraints_genericos.nsproj",
+        "cc1-c44-constraints-genericos", 42);
+
+    // NSC-LIMIT-009. Dos identidades que se distinguen --`c45.Caja+Pieza` y `c45.Caja.Pieza`--
+    // llevadas hasta HIR, LLVM, enlace y ejecucion. Las pruebas de tipos anidados llegaban al
+    // modelo de nombres y al de miembros, donde las identidades ya eran distintas; el defecto
+    // vivia una fase mas abajo, en los cuatro saneadores que aplastaban `+` y `.` al mismo `_`.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c45_tipos_anidados/c45_tipos_anidados.nsproj",
+        "cc1-c45-tipos-anidados", 42);
+
+    // NSC-LIMIT-007. Que plantillas genericas alcanza una llamada. Programas VALIDOS que el
+    // compilador rechazaba: dos `C.F<T>` en namespaces distintos --que no compilaban NINGUNA de
+    // las dos--, una sobrecarga de dos parametros que se materializaba para una llamada de uno y
+    // cuyo cuerpo sustituido rechazaba el programa --con y sin `where`, porque son dos huecos--,
+    // y un receptor ABREVIADO que alcanzaba a la clase homonima del otro namespace.
+    //
+    // Y un caso que NO es una regresion sino cobertura, marcado como tal en la fixture: dos
+    // candidatas de la MISMA cuenta de argumentos, una con una clausula que el argumento
+    // incumple. Es el unico sitio del arbol que recorre el APLAZAMIENTO de esa clausula.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c46_sobrecargas_genericas/c46_sobrecargas_genericas.nsproj",
+        "cc1-c46-sobrecargas-genericas", 42);
+
 
     // A PARTIR DE AQUI NADA ES UNA FIXTURE: son rechazos y comprobaciones sobre el IR. Los corre
     // la entrada `--rest`, y nadie mas -- una entrada por fixture que ademas arrastrara todo esto
@@ -995,13 +1031,19 @@ namespace limit004pad
         // bytes. Una cuenta sobre el modulo mediria a los vecinos y se rompria el dia que
         // alguien anadiera una comparacion de agregados al runtime -- un rojo que no habla de
         // este contrato. Recortada, cada cuenta de abajo es exacta.
-        const std::string cuerpo = sliceFunction(text, "limit004pad_P__Iguales");
+        const std::string cuerpo = sliceFunction(text, "limit004pad$2EP__Iguales");
         // ESTA GUARDA NO ES UNA FORMALIDAD. Si `sliceFunction` no encuentra la funcion --un
         // nombre mal escrito basta-- `cuerpo` queda vacio, los conteos dan cero y fallan... pero
         // las aserciones de AUSENCIA (`find(...) == npos`) pasan solas sobre una cadena vacia.
         // Un verde falso entre los rojos, que es peor que un rojo limpio. Medido: la primera
         // version de esta prueba buscaba `padir_P__Iguales`, el nombre de un programa de scratch,
         // en un modulo cuyo namespace es `limit004pad`.
+        //
+        // Y LA GUARDA VOLVIO A SALVARLA. La segunda version corrigio el namespace pero dejo el
+        // separador del saneador VIEJO --`limit004pad_P`--, que desde NSC-LIMIT-009 es
+        // `limit004pad$2EP`: `.` ya no se aplasta a `_`. El recorte devolvia vacio otra vez, y lo
+        // que lo dijo fue esta linea y no las cuentas de abajo, que sobre una cadena vacia habrian
+        // dado sus ausencias por buenas.
         tests.expect(!cuerpo.empty(), "cc1-limit004-padding: encuentra la funcion en el modulo");
         if (cuerpo.empty()) return tests.result();
 
@@ -1051,8 +1093,8 @@ namespace limit004pad
         //
         // `Padded` y `Lleno` dan la misma cuenta a proposito: lo que separa a los tres no es el
         // relleno sino cuantos campos hay, que es exactamente el contrato.
-        const std::string tres = sliceFunction(text, "limit004pad_P__TresIguales");
-        const std::string lleno = sliceFunction(text, "limit004pad_P__LlenoIguales");
+        const std::string tres = sliceFunction(text, "limit004pad$2EP__TresIguales");
+        const std::string lleno = sliceFunction(text, "limit004pad$2EP__LlenoIguales");
         tests.expect(
             !tres.empty() && !lleno.empty(),
             "cc1-limit004-padding: encuentra las dos funciones de control");
@@ -1066,6 +1108,816 @@ namespace limit004pad
             countOccurrences(lleno, "getelementptr i8, ptr %struct.root.operand, i64 ") == 2,
             "cc1-limit004-padding: dos campos sin relleno dan DOS hojas");
     }
+
+
+    // =====================================================================================
+    // NSC-LIMIT-007 -- invariantes de especializacion, cada uno por su mecanismo.
+    // =====================================================================================
+    //
+    // Las tres comprobaciones de aqui reemplazan a una anterior que NO probaba lo que decia: usaba
+    // `F<Pieza>` y `F<Valor>` --dos especializaciones DISTINTAS-- y sobrecargas de uno y dos
+    // parametros, que el filtro separa antes de formar grupo. O sea, no pasaba por la
+    // especializacion cacheada ni por el codigo de diferido, y habria seguido verde con el rango
+    // viejo.
+    //
+    // Aqui las dos llamadas cierran el MISMO `<Valor>` y las dos sobrecargas toman UN argumento,
+    // de modo que forman grupo, se cachean, y la segunda llamada reutiliza la especializacion que
+    // creo la primera.
+    {
+        const std::string source = R"NS(
+namespace limit007cache
+{
+    interface IComponente { int Peso(); }
+    class Valor { public int x; }
+    class P
+    {
+        private static int F<T>(string s) { return 0; }
+        private static int F<T>(int n) where T : IComponente { return n; }
+        public static int Main()
+        {
+            if (F<Valor>("hola") != 0) { return 1; }
+            return F<Valor>(7);
+        }
+    }
+}
+)NS";
+        const auto directory = root / "reject" / "cc1-limit007-sitio-cacheado";
+        writeFile(
+            directory / "reject.nsproj",
+            "<Project><PropertyGroup><Name>reject</Name></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+        writeFile(directory / "Main.ns", source);
+
+        ProjectCompilation compilation;
+        std::string error;
+        compilation.compileProjectMethodBodies(directory / "reject.nsproj", error);
+        tests.expect(compilation.diagnostics().hasErrors(),
+            "cc1-limit007-cache: the second call is rejected");
+
+        const std::size_t primera = source.find("F<Valor>(\"hola\")");
+        const std::size_t segunda = source.find("F<Valor>(7)");
+        tests.expect(primera != std::string::npos && segunda != std::string::npos &&
+                primera < segunda,
+            "cc1-limit007-cache: the fixture really has two calls that close the same T");
+
+        bool segundaSenalada = false;
+        bool primeraSenalada = false;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+        {
+            if (diagnostic.message().find("requires an implementation of") == std::string::npos)
+                continue;
+            if (!diagnostic.range().has_value()) continue;
+            (diagnostic.range()->begin().offset() >= segunda ? segundaSenalada : primeraSenalada) =
+                true;
+        }
+        // El rango que la especializacion guarda es el de la PRIMERA instanciacion, porque se
+        // cachea por clave y no se actualiza. Que el diagnostico apunte a la segunda es lo que
+        // demuestra que el sitio manda sobre el guardado.
+        //
+        // Y QUE ESTE PROGRAMA PASA DE VERDAD POR AHI ESTA MEDIDO, no supuesto: sustituyendo
+        // `callRange` por el rango guardado en `reportSpecializationConstraintViolations`, el
+        // unico diagnostico pasa del desplazamiento 367 --la segunda llamada-- al 311 --la
+        // primera--, y las dos comprobaciones de abajo se ponen rojas. La version anterior de
+        // esta prueba usaba `F<Pieza>` y `F<Valor>` --especializaciones DISTINTAS, cada una con
+        // su propio rango-- y sobrecargas de uno y dos parametros, que el filtro de cuenta separa
+        // antes de formar grupo: con esa misma sustitucion se habria quedado VERDE.
+        tests.expect(segundaSenalada,
+            "cc1-limit007-cache: the cached specialization reports the CURRENT call site");
+        tests.expect(!primeraSenalada,
+            "cc1-limit007-cache: and never the earlier call, whose overload resolves fine");
+    }
+
+    // UNA ESPECIALIZACION INVALIDA NO ANALIZA SU CUERPO, tenga grupo o no lo tenga.
+    //
+    // Se mide por AUSENCIA, que es lo unico que lo distingue: el error de constraint aparecia ya
+    // antes: lo que sobraba era un SEGUNDO error, salido del cuerpo sustituido. Una comprobacion
+    // que solo buscara el primer mensaje habria estado verde con el defecto puesto.
+    //
+    // Los dos programas se pasaron por el compilador ANTERIOR y los dos emitian ese segundo
+    // mensaje: el de `Solo<int>` decia ademas «member access requires a class/interface
+    // reference [...] receiver has type 'builtin:int'», y el de `Caja<Valor>` anadia
+    // «[...] has no compatible member named 'MetodoInexistente'». Con este, uno cada uno.
+    {
+        struct Caso final
+        {
+            const char* label;
+            const char* source;
+            const char* constraintMessage;
+            const char* bodyMessage;
+        };
+        const Caso casos[] = {
+            // Sin grupo: una sola plantilla, asi que su diagnostico se emite de inmediato y nunca
+            // entraba en el mapa de diferidos -- que era el unico sitio que se consultaba.
+            {"cc1-limit007-invalida-sin-grupo",
+             R"NS(
+namespace limit007sola
+{
+    interface IComponente { int Peso(); }
+    class P
+    {
+        private static int Solo<T>(T x) where T : IComponente { return x.Peso(); }
+        public static int Main() { return Solo<int>(1); }
+    }
+}
+)NS",
+             "requires 'IComponente'",
+             "member access requires a class/interface reference"},
+            // De TIPO: la invalidez esta en el nodo de `Caja<Valor>`, y sus metodos son hijos
+            // suyos, asi que preguntar solo por el nodo del metodo no la veia.
+            {"cc1-limit007-invalida-de-tipo",
+             R"NS(
+namespace limit007tipo
+{
+    struct Valor { public int x; }
+    class Caja<T> where T : class
+    {
+        public int Medir(T v) { return v.MetodoInexistente(); }
+    }
+    class P { public static int Main() { Caja<Valor> c = new Caja<Valor>(); return 42; } }
+}
+)NS",
+             "requires a reference type",
+             "has no compatible member named"},
+            // LA TERCERA INVALIDEZ: la PLANTILLA esta mal declarada, y eso no depende de ningun
+            // argumento. `int` no puede ser constraint, de modo que la segunda pasada SALTA esa
+            // clausula --no hay nada que comprobar contra el argumento--, `pending` queda vacio y
+            // la especializacion no entraba en `invalidSpecializations_`. Su cuerpo se analizaba y
+            // el usuario recibia, encima del error suyo, un `MetodoInexistente` derivado.
+            //
+            // Se marca ahora desde `invalidTemplateOrdinals_`, que se llena de las violaciones de
+            // DECLARACION de la primera pasada.
+            {"cc1-limit007-plantilla-mal-declarada",
+             R"NS(
+namespace limit007mala
+{
+    class Mala<T> where T : int
+    {
+        public int Medir(T x) { return x.MetodoInexistente(); }
+    }
+    class P { public static int Main() { Mala<int> m = new Mala<int>(); return 42; } }
+}
+)NS",
+             "cannot constrain 'T'",
+             "MetodoInexistente"},
+        };
+
+        for (const Caso& caso : casos)
+        {
+            const auto directory = root / "reject" / caso.label;
+            writeFile(
+                directory / "reject.nsproj",
+                "<Project><PropertyGroup><Name>reject</Name></PropertyGroup>"
+                "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+            writeFile(directory / "Main.ns", caso.source);
+
+            ProjectCompilation compilation;
+            std::string error;
+            compilation.compileProjectMethodBodies(directory / "reject.nsproj", error);
+
+            bool dijoElConstraint = false;
+            bool dijoElCuerpo = false;
+            for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+            {
+                if (diagnostic.message().find(caso.constraintMessage) != std::string::npos)
+                    dijoElConstraint = true;
+                if (diagnostic.message().find(caso.bodyMessage) != std::string::npos)
+                    dijoElCuerpo = true;
+            }
+            tests.expect(dijoElConstraint,
+                std::string(caso.label) + ": the constraint violation is reported");
+            tests.expect(!dijoElCuerpo,
+                std::string(caso.label) +
+                    ": and the substituted body is NOT analysed, so it adds no second error");
+            // Y NI UN ERROR MAS, sea cual sea su texto. Buscar la ausencia de UN mensaje concreto
+            // deja pasar cualquier otro diagnostico derivado que aparezca manana; contar los
+            // errores dice lo que de verdad se quiere decir: el programa tiene UN defecto y el
+            // compilador cuenta UNO.
+            std::size_t errores = 0;
+            for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+            {
+                if (diagnostic.severity() == nativesharp::diagnostics::DiagnosticSeverity::Error)
+                    ++errores;
+            }
+            tests.expect(errores == 1,
+                std::string(caso.label) + ": exactly one error, not a cascade");
+        }
+    }
+
+    // NSC-LIMIT-007 -- LA ESCALA DE NOMBRES, medida sobre las ESPECIALIZACIONES y no sobre el
+    // codigo de salida.
+    //
+    // c46 codigos 17-20 comprueban que cada llamada devuelve lo suyo. Eso es la mitad: un programa
+    // puede devolver lo correcto y HABER CLONADO IGUALMENTE la plantilla ajena, y entonces la
+    // fixture esta midiendo otra cosa. Lo que cierra el invariante --«una llamada nunca materializa
+    // una plantilla que su receptor no puede nombrar»-- es que esas plantillas no aparezcan en el
+    // modelo generico, y eso solo se ve aqui.
+    //
+    // Las cuatro ajenas tienen ademas cuerpos que no compilan con `T = int`, asi que un clon las
+    // delataria tambien por el otro lado. Las dos medidas juntas, no una.
+    {
+        const std::filesystem::path projectPath = std::filesystem::path(NSC_SOURCE_DIR) /
+            "tests/cc1/c46_sobrecargas_genericas/c46_sobrecargas_genericas.nsproj";
+        ProjectCompilation compilation;
+        std::string error;
+        const bool built = compilation.compileProjectMethodBodies(projectPath, error);
+        tests.expect(built && compilation.genericModel() != nullptr,
+            "cc1-limit007-escala: c46 compiles up to method bodies");
+        if (built && compilation.genericModel() != nullptr)
+        {
+            static constexpr std::string_view kAjenas[] = {
+                "c46ajeno.C.F",
+                "c46anidado.Helper.F",
+                "c46intruso.Caja.F",
+                "c46intruso.Caja.G"};
+            for (const std::string_view ajena : kAjenas)
+            {
+                bool clonada = false;
+                for (const auto& record : compilation.genericModel()->specializations())
+                {
+                    if (record.templateKey.find(ajena) != std::string::npos) clonada = true;
+                }
+                tests.expect(!clonada,
+                    std::string("cc1-limit007-escala: '") + std::string(ajena) +
+                        "' is never materialised -- the call names a different owner");
+            }
+            // Y EL CONTROL POSITIVO: las que SI se nombran estan. Sin esto, una fase generica que
+            // no materializara nada pasaria las cuatro comprobaciones de arriba.
+            static constexpr std::string_view kPropias[] = {
+                "c46hijo.C.F",
+                "c46anidado.Marco+Helper.F",
+                "c46lejos.dentro.Caja.F",
+                "c46lejos.dentro.Caja.G"};
+            for (const std::string_view propia : kPropias)
+            {
+                bool clonada = false;
+                for (const auto& record : compilation.genericModel()->specializations())
+                {
+                    if (record.templateKey.find(propia) != std::string::npos) clonada = true;
+                }
+                tests.expect(clonada,
+                    std::string("cc1-limit007-escala: '") + std::string(propia) +
+                        "' IS materialised -- it is the owner the call names");
+            }
+        }
+    }
+
+    // =====================================================================================
+    // NSC-LIMIT-009 -- que los dos simbolos existan, medido en el IR.
+    // =====================================================================================
+    //
+    // La fixture c45 prueba el COMPORTAMIENTO: si los simbolos colapsaran, uno de los dos cuerpos
+    // ganaria y sus codigos de retorno lo dirian. Esto prueba la CAUSA, que es otra cosa: que el
+    // modulo contiene dos funciones con nombres distintos, y que el que corresponde al anidado
+    // lleva la marca que ningun identificador de usuario puede producir.
+    //
+    // Hacen falta las dos. Un comportamiento correcto por casualidad --porque el enlazador eligio
+    // el cuerpo bueno-- pasaria la fixture; y dos nombres distintos que no se ejecutan no prueban
+    // que el programa haga lo correcto.
+    {
+        const std::string text = lowerToLlvmText(
+            tests, root, "cc1-limit009-simbolos-anidados",
+            R"NS(
+namespace limit009sym.Caja
+{
+    public class Pieza { public int Peso() { return 20; } }
+}
+namespace limit009sym
+{
+    public class Caja
+    {
+        public class Pieza { public int Peso() { return 21; } }
+        public int Interno() { Pieza p = new Pieza(); return p.Peso(); }
+    }
+    class P
+    {
+        public static int Main()
+        {
+            Caja c = new Caja();
+            limit009sym.Caja.Pieza n = new limit009sym.Caja.Pieza();
+            return c.Interno() + n.Peso();
+        }
+    }
+}
+)NS");
+
+        // Alfanumerico y `_` se copian; todo lo demas se escribe `$` + dos digitos hex. `+` es
+        // `$2B` y `.` es `$2E`, de modo que los dos nombres son distintos POR CONSTRUCCION y no
+        // por una excepcion. El saneador anterior aplastaba los dos a `_`.
+        // lowerToLlvmText crea siempre un proyecto llamado ir. TypeIdentity::key incluye el
+        // modulo (ir::...) y el codificador convierte esos dos puntos a $3A$3A.
+        const std::string anidadoTipo = "ir$3A$3Alimit009sym$2ECaja$2BPieza";
+        const std::string deNamespaceTipo = "ir$3A$3Alimit009sym$2ECaja$2EPieza";
+        const std::string anidado = anidadoTipo + "__Peso";
+        const std::string deNamespace = deNamespaceTipo + "__Peso";
+        tests.expect(text.find(anidado) != std::string::npos,
+            "cc1-limit009-simbolos: el metodo del tipo ANIDADO lleva '$' en su simbolo");
+        tests.expect(text.find(deNamespace) != std::string::npos,
+            "cc1-limit009-simbolos: el metodo del tipo de NAMESPACE conserva su simbolo de siempre");
+        tests.expect(anidado != deNamespace,
+            "cc1-limit009-simbolos: los dos simbolos son distintos");
+        // Y los descriptores de clase, que es la otra mitad del choque: dos tipos que comparten
+        // descriptor comparten identidad en tiempo de ejecucion -- `is`, casts y destruccion.
+        tests.expect(
+            text.find("__nsc_classdesc_" + anidadoTipo) != std::string::npos &&
+                text.find("__nsc_classdesc_" + deNamespaceTipo) != std::string::npos,
+            "cc1-limit009-simbolos: cada tipo tiene su propio descriptor de clase");
+        tests.expect(
+            text.find("__nsc_destroy_" + anidadoTipo) != std::string::npos &&
+                text.find("__nsc_destroy_" + deNamespaceTipo) != std::string::npos,
+            "cc1-limit009-simbolos: cada tipo tiene su propia entrada de destruccion");
+
+        // Y EL PAR QUE LA PRIMERA CORRECCION NO SEPARABA: un namespace `A` con una clase `B`
+        // frente a una clase llamada `A_B`. Los dos daban `..._A_B` cuando el saneador aplastaba
+        // el punto; ahora el punto es `$2E` y el subrayado sigue siendo un subrayado.
+        const std::string ir2 = lowerToLlvmText(
+            tests, root, "cc1-limit009-simbolos-subrayado",
+            R"NS(
+namespace limit009u
+{
+    public class A_B { public int Valor() { return 10; } }
+    class P
+    {
+        public static int Main()
+        {
+            A_B directo = new A_B();
+            limit009u.A.B anidado = new limit009u.A.B();
+            return directo.Valor() + anidado.Valor();
+        }
+    }
+}
+namespace limit009u.A
+{
+    public class B { public int Valor() { return 20; } }
+}
+)NS");
+        tests.expect(
+            ir2.find("__nsc_method_ir$3A$3Alimit009u$2EA_B__Valor") != std::string::npos,
+            "cc1-limit009-simbolos: el subrayado de un identificador sigue siendo un subrayado");
+        tests.expect(
+            ir2.find("__nsc_method_ir$3A$3Alimit009u$2EA$2EB__Valor") != std::string::npos,
+            "cc1-limit009-simbolos: el punto de un namespace NO es un subrayado");
+    }
+
+    // =====================================================================================
+    // NSC-LIMIT-007 -- los constraints que NO se satisfacen, y las clausulas mal escritas.
+    // =====================================================================================
+    //
+    // Los cinco primeros son SEMANTICOS: la clausula esta bien escrita y el argumento no la
+    // cumple. Salen de ProjectGenericConstraintModel, que corre entre las interfaces y los
+    // cuerpos, y por eso el mensaje puede nombrar el argumento -- antes de esa fase no existe
+    // quien responda «este tipo implementa esa interfaz».
+    //
+    // Los cinco ultimos son SINTACTICOS y salen del parser. Van aqui y no en las pruebas de
+    // parsing porque lo que se mide es el mensaje: cada uno de estos errores tenia antes una
+    // sola respuesta --«generic constraints are deferred beyond Stage 44»-- y la entrega
+    // consiste precisamente en que ahora digan cual de los cinco defectos es.
+
+    checkRejected(
+        tests, root, "cc1-limit007-class-con-struct",
+        R"NS(
+namespace limit007clase
+{
+    struct Valor { public int x; }
+    class Caja<T> where T : class
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { Caja<Valor> c = new Caja<Valor>(); return 42; } }
+}
+)NS",
+        "requires a reference type ('where T : class'), but the argument 'Valor' is not a class, "
+        "interface, delegate, string or dynamic array");
+
+    // El argumento no es un tipo declarado desde el punto de vista de la herencia --es un struct--
+    // y aun asi el mensaje tiene que hablar de la INTERFAZ, no repetir el de `class`.
+    checkRejected(
+        tests, root, "cc1-limit007-interfaz-con-struct",
+        R"NS(
+namespace limit007ifazvalor
+{
+    interface IComponente { int Peso(); }
+    struct Valor { public int x; }
+    class Caja<T> where T : IComponente
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { Caja<Valor> c = new Caja<Valor>(); return 42; } }
+}
+)NS",
+        "requires an implementation of 'IComponente', but the argument 'Valor' does not implement it");
+
+    // Una CLASE que no implementa la interfaz. Distinto del anterior: aqui el argumento si esta
+    // en la tabla de tipos, asi que se consulta el modelo de interfaces de verdad.
+    checkRejected(
+        tests, root, "cc1-limit007-interfaz-no-implementada",
+        R"NS(
+namespace limit007ifazclase
+{
+    interface IComponente { int Peso(); }
+    class Suelta { public int y; }
+    class Caja<T> where T : IComponente
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { Caja<Suelta> c = new Caja<Suelta>(); return 42; } }
+}
+)NS",
+        "requires an implementation of 'IComponente', but the argument 'Suelta' does not implement it");
+
+    // Clase base. La fixture positiva mide que la identidad basta; aqui se mide que no derivar
+    // no basta, que es la otra mitad de la misma regla.
+    checkRejected(
+        tests, root, "cc1-limit007-base-no-derivada",
+        R"NS(
+namespace limit007base
+{
+    class Base { public int Marca() { return 3; } }
+    class Suelta { public int y; }
+    class Derivada<T> where T : Base
+    {
+        public int Marcar(T valor) { return 0; }
+    }
+    class P { public static int Main() { Derivada<Suelta> d = new Derivada<Suelta>(); return 42; } }
+}
+)NS",
+        "requires a type derived from 'Base', but the argument 'Suelta' does not derive from it");
+
+    // Un constraint que no nombra ni clase ni interfaz es un error DE LA DECLARACION, y por eso
+    // este mensaje no menciona ningun argumento: el sitio de instanciacion no tiene nada que
+    // corregir, lo tiene quien escribio el `where`. Notese que `Caja` NO se instancia en este
+    // programa: la comprobacion corre sobre la PLANTILLA, y esa es la mitad que faltaba -- una
+    // biblioteca con la clausula mal escrita y sin un solo uso salia verde.
+    checkRejected(
+        tests, root, "cc1-limit007-constraint-que-no-es-tipo-referencia",
+        R"NS(
+namespace limit007enum
+{
+    enum Color { Rojo, Verde }
+    class Caja<T> where T : Color
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "'Color' cannot constrain 'T': a generic constraint names a base class or an interface");
+
+    // A PARTIR DE AQUI, EL PARSER. Restringir un parametro que la declaracion no declara.
+    checkRejected(
+        tests, root, "cc1-limit007-parametro-inexistente",
+        R"NS(
+namespace limit007param
+{
+    class Caja<T> where U : class
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "'U' is not a generic type parameter of this declaration");
+
+    // Dos clausulas para el mismo parametro. C# tampoco lo permite, y aceptarlo aqui obligaria a
+    // decidir si se fusionan o si gana la ultima -- una decision que nadie necesita.
+    checkRejected(
+        tests, root, "cc1-limit007-clausula-duplicada",
+        R"NS(
+namespace limit007dupclausula
+{
+    interface IComponente { int Peso(); }
+    class Caja<T> where T : class where T : IComponente
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "duplicate 'where' clause for generic type parameter 'T'");
+
+    // `class` fuera de la primera posicion. Es una regla de orden, no de contenido: la clausula
+    // de abajo dice exactamente lo mismo que `where T : class, IComponente`, y aun asi se
+    // rechaza, porque aceptar las dos formas convierte el orden en algo que hay que recordar.
+    checkRejected(
+        tests, root, "cc1-limit007-class-fuera-de-la-primera-posicion",
+        R"NS(
+namespace limit007ordenclass
+{
+    interface IComponente { int Peso(); }
+    class Caja<T> where T : IComponente, class
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "'class' must be the first constraint of its 'where' clause");
+
+    // El mismo tipo dos veces. Es inofensivo --la validacion daria el mismo veredicto-- y se
+    // rechaza igualmente: casi siempre es el sintoma de una fusion mal hecha.
+    checkRejected(
+        tests, root, "cc1-limit007-constraint-duplicado",
+        R"NS(
+namespace limit007dupconstraint
+{
+    interface IComponente { int Peso(); }
+    class Caja<T> where T : IComponente, IComponente
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "duplicate constraint 'IComponente' for 'T'");
+
+    // Los constraints de C# que este compilador NO implementa. El mensaje los nombra uno a uno
+    // en vez de decir «no soportado», porque quien escribe `where T : struct` necesita saber que
+    // el compilador entiende la palabra y ha decidido no aceptarla todavia, no que la clausula
+    // entera es ilegible.
+    checkRejected(
+        tests, root, "cc1-limit007-constraint-no-implementado",
+        R"NS(
+namespace limit007struct
+{
+    class Caja<T> where T : struct
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "the 'struct' generic constraint is not supported yet; this compiler implements 'class', a base class and interfaces");
+
+    // NSC-LIMIT-007, SEGUNDA VUELTA. Los cinco de abajo salen de una revision que encontro que la
+    // primera entrega prometia mas de lo que comprobaba.
+
+    // Una FUNCION GLOBAL generica acepta la clausula gramaticalmente y despues nadie la
+    // materializa --`isGenericMethodTemplateNode` reconoce MethodDeclaration y nada mas-- de modo
+    // que el `where` quedaba escrito y sin comprobar. Un constraint que no se comprueba es peor
+    // que no tenerlo: el autor lo lee como una garantia.
+    checkRejected(
+        tests, root, "cc1-limit007-where-en-funcion-global",
+        R"NS(
+namespace limit007funcion
+{
+    interface IComponente { int Peso(); }
+    int Medir<T>(T pieza) where T : class, IComponente { return 0; }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "a generic constraint on a global function is not supported yet");
+
+    // `where T : U` con `U` otro parametro de la misma declaracion. Se rechaza en el parser para
+    // que la resolucion de nombres no acabe diciendo «unknown type name 'U'», que manda al lector
+    // a buscar un tipo que nunca hubo.
+    checkRejected(
+        tests, root, "cc1-limit007-constraint-es-parametro-generico",
+        R"NS(
+namespace limit007paramconstraint
+{
+    class Caja<T, U> where T : U
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "is a generic type parameter of this declaration and cannot be used as a constraint");
+
+    // El MISMO tipo nombrado dos veces bajo dos escrituras. El parser compara texto --es lo unico
+    // que puede hacer sin resolver-- y las dos escrituras se le escapan; la comprobacion
+    // semantica compara identidades canonicas, que es donde el alias deja de esconder nada.
+    checkRejected(
+        tests, root, "cc1-limit007-constraint-duplicado-por-alias",
+        R"NS(
+using IAlias = limit007alias.IComponente;
+namespace limit007alias
+{
+    interface IComponente { int Peso(); }
+    class Caja<T> where T : IComponente, IAlias
+    {
+        public int Medir(T pieza) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "name the same type");
+
+    // Un PUNTERO no es un tipo referencia. Es el control de la fixture: alli `class` lo satisfacen
+    // un delegado, `string` y un arreglo, y sin este caso «se acepta casi todo» seria
+    // indistinguible de «se acepta todo».
+    checkRejected(
+        tests, root, "cc1-limit007-class-con-puntero",
+        R"NS(
+namespace limit007puntero
+{
+    struct Valor { public int x; }
+    class Caja<T> where T : class
+    {
+        public int Medir() { return 0; }
+    }
+    class P { public static int Main() { Caja<Valor*> c = new Caja<Valor*>(); return 42; } }
+}
+)NS",
+        "is not a class, interface, delegate, string or dynamic array");
+
+    // Un ARREGLO FIJO tampoco. `T[]` es una referencia --objeto con cabecera, longitud y vida
+    // propia-- y `T[N]` es almacenamiento inline, tantos bytes seguidos dentro de quien lo
+    // declara. Este compilador ya los separa asi; meter los dos bajo `class` prometia sobre
+    // `int[4]` lo que solo es cierto de `int[]`. El positivo de `int[]` vive en la fixture c44.
+    checkRejected(
+        tests, root, "cc1-limit007-class-con-arreglo-fijo",
+        R"NS(
+namespace limit007arreglofijo
+{
+    class Caja<T> where T : class
+    {
+        public int Uno() { return 1; }
+    }
+    class P { public static int Main() { Caja<int[4]> c = new Caja<int[4]>(); return 42; } }
+}
+)NS",
+        "is not a class, interface, delegate, string or dynamic array");
+
+    // NSC-LIMIT-007, TERCERA VUELTA. Una sobrecarga que NO acepta la llamada no puede salvar al
+    // grupo: `F<T>(T x, int extra)` no atiende `F<int>(1)`, asi que la unica candidata aplicable
+    // es la que exige `class` -- y la incumple. La version anterior de la regla de grupo miraba
+    // solo el nombre y la aridad generica, y este programa salia verde.
+    checkRejected(
+        tests, root, "cc1-limit007-sobrecarga-no-aplicable-no-salva",
+        R"NS(
+namespace limit007aplicable
+{
+    class P
+    {
+        private static int F<T>(T x) where T : class { return 0; }
+        private static int F<T>(T x, int extra) { return extra; }
+        public static int Main() { return F<int>(1); }
+    }
+}
+)NS",
+        "requires a reference type");
+
+    // LA REGLA DE CONSTRAINT PRIMARIO, en sus tres formas. Ninguna se rechazaba: el parser admite
+    // cualquier combinacion --no sabe cual de los nombres es una clase-- y la validacion solo
+    // miraba que cada uno fuera clase o interfaz, nunca cuantos ni en que orden.
+    checkRejected(
+        tests, root, "cc1-limit007-class-y-clase-base",
+        R"NS(
+namespace limit007primario
+{
+    class Base { public int Marca() { return 3; } }
+    class Caja<T> where T : class, Base
+    {
+        public int Medir(T v) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "are both primary constraints");
+
+    checkRejected(
+        tests, root, "cc1-limit007-dos-clases-base",
+        R"NS(
+namespace limit007dosbases
+{
+    class Base1 { public int A() { return 1; } }
+    class Base2 { public int B() { return 2; } }
+    class Caja<T> where T : Base1, Base2
+    {
+        public int Medir(T v) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "cannot be constrained by two base classes");
+
+    checkRejected(
+        tests, root, "cc1-limit007-clase-base-detras-de-interfaz",
+        R"NS(
+namespace limit007orden
+{
+    interface IComponente { int Peso(); }
+    class Base { public int Marca() { return 3; } }
+    class Caja<T> where T : IComponente, Base
+    {
+        public int Medir(T v) { return 0; }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "must be the first constraint of the 'where' clause");
+
+    // NSC-LIMIT-009. `protected` sobre un anidado, visto desde un tipo que NO deriva del
+    // contenedor. Su gemelo positivo --la derivada, y el propio contenedor-- vive en la fixture
+    // c45, codigos 14 y 15.
+    checkRejected(
+        tests, root, "cc1-limit009-anidado-protected-desde-fuera",
+        R"NS(
+namespace limit009protegido
+{
+    class Base { protected class Reservada { public int Codigo() { return 40; } } }
+    class Ajena
+    {
+        public int Usar() { Base.Reservada r = new Base.Reservada(); return r.Codigo(); }
+    }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "is protected and is not accessible here");
+
+    // NSC-LIMIT-007, CUARTA VUELTA. El caso que la regla por CUENTA DE ARGUMENTOS no separaba:
+    // dos sobrecargas que toman lo mismo --uno-- y difieren en el TIPO. `F<T>(T[] x)` no tiene
+    // constraint y no puede atender `F<int>(1)`; la unica que puede lo incumple. La decision ya
+    // no la toma el modelo de constraints, que no conoce los tipos: la toma la resolucion de
+    // sobrecargas, y por eso este programa se rechaza.
+    checkRejected(
+        tests, root, "cc1-limit007-sobrecarga-mismo-conteo-tipos-distintos",
+        R"NS(
+namespace limit007tipos
+{
+    class P
+    {
+        private static int F<T>(T x) where T : class { return 1; }
+        private static int F<T>(T[] x) { return 2; }
+        public static int Main() { return F<int>(1); }
+    }
+}
+)NS",
+        "requires a reference type");
+
+    // Y SU CONTROL POSITIVO, sin el cual «se rechaza» sería indistinguible de «se rechaza
+    // siempre»: con un argumento de tipo arreglo la llamada resuelve a la sobrecarga sin
+    // constraint, y el programa es válido.
+    checkAccepted(
+        tests, root, "cc1-limit007-sobrecarga-arreglo-se-selecciona",
+        R"NS(
+namespace limit007tiposok
+{
+    class P
+    {
+        private static int F<T>(T x) where T : class { return 1; }
+        private static int F<T>(T[] x) { return 2; }
+        public static int Main()
+        {
+            int[] values = new int[1];
+            if (F<int>(values) != 2) { return 1; }
+            return 42;
+        }
+    }
+}
+)NS");
+
+    // NSC-LIMIT-009. El anidado protegido alcanzado SIN escribir un tipo: el receptor de
+    // `Base.Reservada.Codigo()` es una expresion, no un TypeSyntax, de modo que producia un
+    // ExpressionTypeNameBinding -- que la comprobacion diferida no recorria. Un tipo ajeno
+    // llegaba al anidado protegido con solo llamar a un miembro estatico.
+    checkRejected(
+        tests, root, "cc1-limit009-protected-por-receptor-estatico",
+        R"NS(
+namespace limit009receptor
+{
+    class Base { protected class Reservada { public static int Codigo() { return 40; } } }
+    class Ajena { public int Usar() { return Base.Reservada.Codigo(); } }
+    class P { public static int Main() { return 42; } }
+}
+)NS",
+        "is protected and is not accessible here");
+
+    checkAccepted(
+        tests, root, "cc1-limit009-protected-receptor-estatico-desde-derivada",
+        R"NS(
+namespace limit009receptorok
+{
+    class Base { protected class Reservada { public static int Codigo() { return 42; } } }
+    class Derivada : Base { public int Usar() { return Base.Reservada.Codigo(); } }
+    class P { public static int Main() { Derivada d = new Derivada(); return d.Usar(); } }
+}
+)NS");
+
+    // Y el positivo que la revision pedia: dos plantillas con el mismo nombre y la misma aridad se
+    // materializan las dos, y que UNA incumpla no dice nada del programa -- la llamada resuelve a
+    // la otra. Antes se rechazaba por la candidata que nadie eligio.
+    checkAccepted(
+        tests, root, "cc1-limit007-sobrecarga-descartada-no-es-error",
+        R"NS(
+namespace limit007sobrecarga
+{
+    interface IComponente { int Peso(); }
+    interface IPesado : IComponente { int Extra(); }
+    class Pieza : IComponente { public int Peso() { return 7; } }
+    class P
+    {
+        private static int Elegir<T>(T unica) where T : IComponente { return unica.Peso(); }
+        private static int Elegir<T>(T primera, T segunda) where T : IPesado { return 2; }
+        public static int Main()
+        {
+            Pieza p = new Pieza();
+            if (Elegir<Pieza>(p) != 7) { return 1; }
+            return 42;
+        }
+    }
+}
+)NS");
 
     // =====================================================================================
     // EH -- EH-001, medido en el IR.

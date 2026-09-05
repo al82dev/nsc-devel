@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"A:/nsc-devel/build-tests/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

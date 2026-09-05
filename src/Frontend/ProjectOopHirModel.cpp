@@ -1,5 +1,8 @@
+#include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+
+#include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 
@@ -416,7 +419,10 @@ std::string typeSuffix(const ClassMemberSymbol& member)
             result += "__";
             result += parameterPassKindKeyword(parameter.passKind);
         }
-        result += "__" + sanitize(parameter.typeKey);
+        // NSC-LIMIT-009: mismo motivo que en mangleCallable. Un parametro de tipo anidado
+        // colapsaba con uno del tipo homonimo de namespace, y dos sobrecargas distintas se
+        // convertian en una sola funcion LLVM.
+        result += "__" + compilation::symbolFragmentForIdentityKey(parameter.typeKey);
     }
     return result;
 }
@@ -617,7 +623,11 @@ std::string ProjectOopHirModel::mangleCallable(
         : member.kind == ClassMemberKind::Destructor
             ? "__nsc_dtor_body_"
             : "__nsc_method_";
-    return prefix + sanitize(type.identity.key()) + "__" + sanitize(member.name) + typeSuffix(member);
+    // NSC-LIMIT-009: la identidad pasa por el codificador que conserva el `+`, no por `sanitize`.
+    // El nombre del MIEMBRO si usa `sanitize`: no puede contener `+`, y cambiarlo moveria todos
+    // los simbolos ya existentes.
+    return prefix + compilation::symbolFragmentForIdentityKey(type.identity.key()) + "__" +
+        sanitize(member.name) + typeSuffix(member);
 }
 
 bool ProjectOopHirModel::build(
@@ -628,9 +638,11 @@ bool ProjectOopHirModel::build(
     const ProjectMethodBodyModel& methodBodyModel,
     const ProjectConstructionModel& constructionModel,
     const ProjectObjectLayoutModel& objectLayoutModel,
-    std::string& error)
+    std::string& error,
+    const ProjectGenericConstraintModel* genericConstraintModel)
 {
     error.clear();
+    genericConstraintModel_ = genericConstraintModel;
     if (built_)
     {
         error = "ProjectOopHirModel instances are single-use";
@@ -735,6 +747,23 @@ bool ProjectOopHirModel::build(
             continue;
         }
         if (member.isAbstract)
+        {
+            continue;
+        }
+        // NSC-LIMIT-007. La misma pregunta que hace el modelo de cuerpos, y hace falta aqui
+        // TAMBIEN: este bucle vuelve a recorrer todos los miembros y baja sus cuerpos, asi que
+        // saltarla solo alla dejaria un miembro con cuerpo sin analizar del que HIR pediria
+        // bindings que nadie escribio.
+        //
+        // Se preguntan DOS nodos, y hacen falta los dos. Para un METODO generico la invalidez
+        // esta en su propio nodo; para un TIPO generico --`Caja<int>` con `where T : class`--
+        // esta en el nodo del tipo, y sus metodos son hijos suyos, asi que preguntar solo por
+        // `member.syntax` no la veria nunca.
+        if (genericConstraintModel_ != nullptr &&
+            (!genericConstraintModel_->specializationSatisfiesConstraints(member.syntax) ||
+             (member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+              !genericConstraintModel_->specializationSatisfiesConstraints(
+                  nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax))))
         {
             continue;
         }

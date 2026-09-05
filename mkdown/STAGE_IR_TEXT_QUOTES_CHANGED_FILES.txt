@@ -1,0 +1,121 @@
+STAGE -- las comillas del texto del IR: 18 comprobaciones rojas, una causa -- 2026-09-05
+Ficheros modificados en A:\nsc-devel
+
+LA CAUSA, UNA SOLA. En `TypeIdentity.h` yo escribi que «`$` es un caracter ordinario en un simbolo
+COFF y en un identificador de LLVM». La primera mitad es cierta. La segunda es falsa:
+`AsmWriter::PrintLLVMName` entrecomilla un nombre en cuanto lleva un byte que no sea alfanumerico,
+`-`, `.` o `_`. Lo impreso es
+
+    define i32 @"__nsc_method_Mod$3A$3AA$2EB__F"(...)
+
+y no
+
+    define i32 @__nsc_method_Mod$3A$3AA$2EB__F(...)
+
+Y como `TypeIdentity::key()` es siempre `Modulo::...`, el `::` esta siempre, su codificacion
+`$3A$3A` esta siempre, y TODO simbolo derivado de una identidad va SIEMPRE entrecomillado. No es
+una casualidad del conjunto de nombres de hoy: es un invariante.
+
+EL CONTROL QUE LO DEMUESTRA SIN EJECUTAR NADA. En Stage36RecoveryTests la linea 615
+--`%nativesharp.interface_map_entry`, nombre fijo-- PASA y la 619 --`@__nsc_ifmap_`, derivado--
+FALLA. Misma suite, mismo modulo, misma llamada a `find`. El mismo contraste esta en DriverTests,
+donde `@__nativesharp_alloc` y `@__nsc_ctor_` conviven en la MISMA asercion y solo cae la segunda.
+
+QUE NO ROMPIO, COMPROBADO Y NO SUPUESTO. Las comillas son de la representacion TEXTUAL: el objeto,
+la tabla de simbolos, el mapa del enlazador y las bibliotecas de importacion no las ven. Hay codigo
+de PRODUCCION que si lee el texto del IR --el escaneo de imports de `createWindowsImportLibraries`,
+al que llegan WindowsExecutableBuilder y WindowsLibraryBuilder con el IR de los dos modulos
+concatenado-- y se reviso: busca CUATRO nombres, `@__C_specific_handler`, `@llvm.memset`,
+`@llvm.memcpy` y `@llvm.memmove`, los cuatro fijos y sin `$`, asi que salen sin comillas y el
+escaneo esta intacto. Eso es una propiedad de lo que busca hoy, no una garantia, y por eso queda
+anotado en el propio escaner: un cero ahi no da un rojo, da un import que falta.
+
+POR QUE NO SE CAMBIO EL CARACTER DE ESCAPE. La salida obvia era pasar de `$` a `.` o `-` --los dos
+estan en la lista de LLVM-- y que dejara de entrecomillar. Se descarto: el formato de simbolo YA se
+cambio una vez esta semana y esta documentado como incompatible a proposito; cambiarlo otra vez le
+entrega al carril del enlazador un segundo formato incompatible por una cuestion de COSMETICA del
+texto. `$` y `.` son igual de inyectivos y el enlazador no distingue uno de otro. No hay ganancia
+funcional: nada de produccion lee esos nombres del texto.
+
+MODIFICADOS -- COMPILADOR
+
+  include/nativesharp/Compilation/TypeIdentity.h
+      El parrafo falso, sustituido por el hecho medido, el invariante «siempre entrecomillado» y la
+      consecuencia para quien escriba una busqueda sobre el texto del IR.
+      Nuevos: `symbolNeedsIrTextQuotes`, `irTextSymbolReference`, `irTextIdentitySymbolPrefix`.
+
+  src/Compilation/TypeIdentity.cpp
+      La regla de LLVM escrita UNA VEZ, para no depender de que alguien la recuerde. Se comprueba a
+      mano contra los rangos ASCII y no con `std::isalnum`, por el mismo motivo que la codificacion:
+      el nombre de un simbolo no puede cambiar segun el locale de la maquina que compile.
+
+  src/Linker/WindowsRuntimeImports.cpp
+      Anotado lo que el escaneo ASUME --sus cuatro nombres son fijos y sin comillas-- y que hacer el
+      dia que haya que decidir un import mirando un simbolo NUESTRO: construir la busqueda con
+      `irTextSymbolReference`.
+      NOTA: este fichero se refresco desde disco antes de editarlo. La copia del contenedor era
+      anterior al cambio a `std::to_array` de las tres tablas y no compilaba.
+
+MODIFICADOS -- PRUEBAS (18 comprobaciones)
+
+  DOCE eran las comillas y nada mas. `@__nsc_...` -> `@"__nsc_...`:
+
+    tests/unit/ProjectOopLoweringTests.cpp     x4  (ctor, method, y las dos con nombre completo)
+    tests/unit/Stage35RecoveryTests.cpp        x4  (destroy, dtor_body, la firma de la entrada de
+                                                    destruccion, y la ausencia de classdesc)
+    tests/unit/Stage36RecoveryTests.cpp        x2  (ifmap, iftable)
+    tests/unit/Stage47HostCAbiTests.cpp        x1
+    tests/unit/Stage56C8TypeRootTests.cpp      x1  (typename)
+    tests/unit/Stage56C1InteropCompletionTests.cpp x1 (el `(` del thunk va detras de la comilla)
+    tests/unit/Stage56C6StructMembersTests.cpp x1  (get_LengthSquared)
+    tests/unit/DriverTests.cpp                 x1
+      NOTA: Stage47HostCAbiTests tambien se refresco desde disco --la copia del contenedor era
+      anterior a `evidenceRoot`--, igual que tests/support/TestContext.h.
+
+  CUATRO exigian la salida del SANEADOR VIEJO, el que aplastaba `.` y `:` al mismo `_`. Esa forma no
+  puede volver bajo NINGUNA codificacion inyectiva, que es lo que se pidio y se implemento:
+
+    Stage40StructValueAbiTests   __Demo_S1__Echo__   ->  Demo$2ES1__Echo__     (y S2, S4, S8)
+                                 __Demo_S8__Mutate__builtin_int(ptr %this, i32 %p0)
+                                 ->  Demo$2ES8__Mutate__builtin$3Aint"(ptr %this, i32 %p0)
+    Stage56C6StructMembersTests  set_X__builtin_float(ptr -> set_X__builtin$3Afloat"(ptr
+    Cc1CorrectnessTests          limit004pad_P__Iguales   -> limit004pad$2EP__Iguales
+                                 (y TresIguales, LlenoIguales)
+
+  Y UNA QUE ESTABA EN VERDE Y ERA FALSA:
+
+    Stage40StructValueAbiTests comprobaba la AUSENCIA de `classdesc_Stage40Abi__Demo_S8` --la forma
+    vieja--, que desde el cambio de codificacion no puede aparecer jamas. Pasaba sola, sobre una
+    cadena imposible, y habria seguido pasando aunque un struct SI recibiera descriptor.
+
+  DOS CONTRATOS QUE CAMBIARON A PROPOSITO, sin relacion con los simbolos:
+
+    Stage44GenericsMonomorphizationTests
+      «duplicate generic template identity» -> «duplicate generic type identity». Dos plantillas de
+      METODO con el mismo nombre y aridad ya no son un error, son sobrecargas (doc 121 §12); la
+      deteccion quedo solo para tipos y el mensaje se reescribio. El rechazo del programa se sigue
+      comprobando: lo que cambio es el texto.
+
+      «generic constraints are deferred beyond Stage 44» -> ese mensaje SE BORRO al implementar
+      NSC-LIMIT-007. El programa de la prueba, `class Box<T> where T { ... }`, sigue siendo un
+      `where` mal escrito y el parser lo sigue rechazando, ahora por lo que de verdad le pasa:
+      «expected ':' after the constrained type parameter». La prueba pasa a llamarse
+      `ConstraintWithoutConstraintList`, porque su nombre anterior afirmaba algo que ya es falso.
+
+AÑADIDO -- PRUEBA DE LA REGLA
+
+  tests/unit/CompilationModelTests.cpp
+      Los tres ayudantes, al lado de la codificacion, porque son la misma decision mirada desde el
+      otro lado. En los DOS sentidos: un nombre fijo del runtime NO lleva comillas y uno derivado de
+      una identidad SI. Con solo el segundo, un ayudante que entrecomillara siempre pasaria.
+
+MEDIDO
+  Reconstruccion completa del contenedor tras tocar TypeIdentity.h  -> OK
+  Barrido bodies                                                     -> OK=191 FAIL=5
+  Las doce suites tocadas, -Wall -Wextra                             -> compilan sin avisos
+
+NO MEDIDO AQUI
+  La corrida de ctest. Este contenedor no enlaza PE ni ejecuta Windows, y las suites que fallaban
+  arrastran el Driver y el enlazador. El diagnostico de las 18 se hizo por ANALISIS del log
+  `_nscbuilder/history/20260905-012711-fc06cbb6/stages/CTest_lld-link.log` y del arbol, con el
+  control de la §14.2 del doc 122: en la misma suite, un nombre fijo pasa y uno derivado falla.

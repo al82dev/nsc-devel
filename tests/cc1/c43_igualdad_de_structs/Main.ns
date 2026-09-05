@@ -22,6 +22,8 @@
 //          expresar en NativeSharp, porque no son direccionables. Que se ignoran se comprueba en
 //          el IR, contando las hojas comparadas: son las declaradas y ninguna mas.
 //   16-17  struct ANIDADO y arreglo de tamanio fijo: las hojas se aplanan recursivamente.
+//   24-27  un struct `pack=1`, donde `entero` cae en el offset 1 y `largo` en el 5. Ninguna hoja
+//          esta alineada a su ancho, que es exactamente lo que la carga afirmaba antes.
 //   18-19  el tamanio de un solo byte y el de 32, que viajan por caminos de ABI distintos.
 //   20-21  coma flotante, con la misma regla de bits que `Struct.Equals` ya fija.
 //   22-23  dentro de un generico MATERIALIZADO, que es donde el reporte original lo vio.
@@ -63,6 +65,21 @@ namespace c43igualdaddestructs
         public long b;
         public long c;
         public long d;
+    }
+
+    // NSC-LIMIT-004, segunda vuelta. `pack=1`: los campos van SEGUIDOS, sin relleno, de modo que
+    // `entero` empieza en el offset 1 y `largo` en el 5 -- ninguno de los dos alineado a su ancho.
+    //
+    // Esto es lo que casi se convierte en un miscompile exclusivo de O2. La carga de cada hoja
+    // llevaba escrita la alineacion NATURAL del escalar --`load i32 align 4`-- que es una PROMESA
+    // al optimizador, y sobre una direccion impar esa promesa es falsa. En O0 no se nota; en O2 el
+    // optimizador tiene derecho a creersela. Ahora las hojas se cargan con `align 1`, que nunca
+    // miente y que en x86-64 es la misma instruccion.
+    pack(1) public struct Empacado
+    {
+        public byte marca;
+        public int entero;
+        public long largo;
     }
 
     public struct ConFlotante
@@ -146,6 +163,26 @@ namespace c43igualdaddestructs
             if (!(f1 == f2)) { return 20; }
             f2.valor = 2.5;
             if (f1 == f2) { return 21; }
+
+            Empacado e1;
+            e1.marca = 1;
+            e1.entero = 200000;
+            e1.largo = 9000000000;
+            Empacado e2;
+            e2.marca = 1;
+            e2.entero = 200000;
+            e2.largo = 9000000000;
+            if (!(e1 == e2)) { return 24; }
+            // Cada campo por separado, porque una carga desalineada mal resuelta puede acertar en
+            // uno y fallar en otro segun donde caiga.
+            e2.marca = 2;
+            if (e1 == e2) { return 25; }
+            e2.marca = 1;
+            e2.entero = 200001;
+            if (e1 == e2) { return 26; }
+            e2.entero = 200000;
+            e2.largo = 9000000001;
+            if (e1 == e2) { return 27; }
 
             Caja<Punto> caja = new Caja<Punto>();
             if (!caja.Iguales(a, b)) { return 22; }

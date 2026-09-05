@@ -459,9 +459,14 @@ void testDestructionPlanAndDynamicDelete(TestContext& tests, const std::filesyst
     std::string verifyError;
     tests.expect(module->verify(verifyError), "Stage 35 destruction LLVM is verifier-clean before optimization");
     const std::string llvm = module->text();
-    tests.expect(llvm.find("define void @__nsc_destroy_") != std::string::npos,
+    // NSC-LIMIT-009. LA BUSQUEDA LLEVA `@\"` Y NO `@`, y no es un adorno: todo simbolo que sale
+    // de una identidad lleva el `$3A$3A` del `::` del modulo, y LLVM entrecomilla cualquier
+    // nombre con un byte que no sea alfanumerico, `-`, `.` o `_`. Lo impreso es
+    // `@\"__nsc_...\"`. Escrito a mano sin la comilla encuentra CERO, y en una asercion de
+    // ausencia eso seria un verde falso. Ver TypeIdentity.h e `irTextSymbolReference`.
+    tests.expect(llvm.find("define void @\"__nsc_destroy_") != std::string::npos,
         "LLVM contains compiler-generated dynamic destruction entry functions");
-    tests.expect(llvm.find("@__nsc_dtor_body_") != std::string::npos,
+    tests.expect(llvm.find("@\"__nsc_dtor_body_") != std::string::npos,
         "LLVM preserves source destructor bodies as separate compiler-callable functions");
     tests.expect(llvm.find("call void @__nativesharp_free") != std::string::npos,
         "generated destruction entry owns the final native free operation");
@@ -481,13 +486,14 @@ void testDestructionPlanAndDynamicDelete(TestContext& tests, const std::filesyst
 
     if (leafDispatch != nullptr)
     {
-        const std::string signature = "define void @" + leafDispatch->destructionEntryName;
+        const std::string signature =
+            "define void @\"" + leafDispatch->destructionEntryName;
         const std::size_t begin = llvm.find(signature);
         const std::size_t end = begin == std::string::npos ? std::string::npos : llvm.find("\n}", begin);
         const std::string_view body = begin != std::string::npos && end != std::string::npos
             ? std::string_view(llvm).substr(begin, end - begin)
             : std::string_view{};
-        tests.expect(!body.empty() && body.find("store ptr @__nsc_classdesc_") == std::string_view::npos,
+        tests.expect(!body.empty() && body.find("store ptr @\"__nsc_classdesc_") == std::string_view::npos,
             "Stage 35 destruction keeps the allocation-time dynamic descriptor immutable until final free");
     }
 

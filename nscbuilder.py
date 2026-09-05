@@ -7,6 +7,12 @@ Requisitos:
 Los resultados se guardan como archivos ordinarios bajo:
     <repo>\\_nscbuilder\\history\\<fecha-id>\\
 
+Los productos de construcción permanecen físicamente separados:
+    <repo>\\build-clang\\            compilador nsc
+    <repo>\\build-test-lldlinker\\   CTest para la pasada LLD-link
+    <repo>\\build-test-nslink\\      CTest para la pasada NSLink
+    <repo>\\_nscbuilder\\work\\tests\\ programas generados por nsc
+
 No usa una base de datos. Cada corrida deja metadata.json, console.log,
 report.md y logs separados por etapa y por caso.
 """
@@ -14,6 +20,7 @@ report.md y logs separados por etapa y por caso.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import queue
@@ -25,6 +32,7 @@ import threading
 import time
 import traceback
 import uuid
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -72,10 +80,13 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depende de la máquina 
 APP_NAME = "NSC Builder"
 ROOT = Path(__file__).resolve().parent
 DEFAULT_BUILD = ROOT / "build-clang"
+DEFAULT_TEST_BUILD_LLD = ROOT / "build-test-lldlinker"
+DEFAULT_TEST_BUILD_NSLINK = ROOT / "build-test-nslink"
 DEFAULT_PREFIX = Path(r"C:\native-sharp")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
+TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
 CASE_TIMEOUT_SECONDS = 300
 
 INTEROP_CASES: tuple[tuple[str, str, int | None], ...] = (
@@ -182,14 +193,17 @@ class CaseSpec:
 
 @dataclass
 class RunPlan:
+    operation: str
     root: str
-    build_dir: str
+    compiler_build_dir: str
     prefix: str
     llvm_root: str
     nslink_exe: str
     build_mode: str
     build_target: str
     build_runner: str
+    test_build_mode: str
+    test_build_dirs: dict[str, str]
     linkers: list[str]
     optimizations: list[str]
     jobs: int
@@ -231,6 +245,49 @@ def write_json(path: Path, value: object) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding="utf-8")
     temporary.replace(path)
+
+
+def project_inputs(project: Path) -> list[Path]:
+    """Devuelve fuentes y ProjectReference transitivos para el cache incremental."""
+    pending = [project.resolve()]
+    visited: set[Path] = set()
+    inputs: set[Path] = set()
+    while pending:
+        current = pending.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        if not current.is_file():
+            inputs.add(current)
+            continue
+        inputs.add(current)
+        try:
+            contents = current.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for pattern in re.findall(r'<Compile\s+Include="([^"]+)"', contents, re.IGNORECASE):
+            normalized = pattern.replace("\\", "/")
+            for source in current.parent.glob(normalized):
+                if source.is_file():
+                    inputs.add(source.resolve())
+        for reference in re.findall(
+            r'<ProjectReference\s+Include="([^"]+)"', contents, re.IGNORECASE
+        ):
+            pending.append((current.parent / reference).resolve())
+    return sorted(inputs, key=lambda path: str(path).casefold())
+
+
+def incremental_fingerprint(project: Path, compiler: Path, linker: Path) -> str:
+    digest = hashlib.sha256()
+    for path in [*project_inputs(project), compiler.resolve(), linker.resolve()]:
+        digest.update(str(path).casefold().encode("utf-8", errors="replace"))
+        try:
+            stat = path.stat()
+        except OSError:
+            digest.update(b"\0missing")
+            continue
+        digest.update(f"\0{stat.st_size}\0{stat.st_mtime_ns}".encode("ascii"))
+    return digest.hexdigest()
 
 
 def import_case_table(root: Path) -> list[CaseSpec]:
@@ -367,6 +424,7 @@ class PipelineWorker(QObject):
         self.failed = 0
         self.completed_units = 0
         self.total_units = 1
+        self.ctest_ready_linkers: set[str] = set()
 
     def cancel(self) -> None:
         self.cancel_event.set()
@@ -380,32 +438,41 @@ class PipelineWorker(QObject):
         self,
         text: str,
         level: str = "info",
-        channel: str = "General",
+        channel: str = "",
         optimization: str = "General",
     ) -> None:
         line = text.rstrip("\r\n")
         if not line:
             return
         stamped = f"[{datetime.now().strftime('%H:%M:%S')}] {line}"
+        channels = (
+            [channel]
+            if channel
+            else (["Compilador"] if self.plan.operation == "compiler" else self.plan.linkers)
+        )
+        if not channels:
+            channels = ["Compilador"]
         with self.console_lock:
             if self.console_path is not None:
                 with self.console_path.open("a", encoding="utf-8", errors="replace") as handle:
                     handle.write(stamped + "\n")
             if self.run_dir is not None:
-                channel_path = (
-                    self.run_dir
-                    / safe_name(channel)
-                    / safe_name(optimization)
-                    / "console.log"
-                )
-                channel_path.parent.mkdir(parents=True, exist_ok=True)
-                with channel_path.open("a", encoding="utf-8", errors="replace") as handle:
-                    handle.write(stamped + "\n")
-        self.output.emit(stamped, level, channel, optimization)
+                for current_channel in channels:
+                    channel_path = (
+                        self.run_dir
+                        / safe_name(current_channel)
+                        / safe_name(optimization)
+                        / "console.log"
+                    )
+                    channel_path.parent.mkdir(parents=True, exist_ok=True)
+                    with channel_path.open("a", encoding="utf-8", errors="replace") as handle:
+                        handle.write(stamped + "\n")
+        for current_channel in channels:
+            self.output.emit(stamped, level, current_channel, optimization)
 
     def _report_failure(self, failure: dict) -> None:
         row = dict(failure)
-        row.setdefault("linker", "General")
+        row.setdefault("linker", "Compilador")
         row.setdefault("optimization", "General")
         self.failure_rows.append(row)
         self.metadata["failures"] = self.failure_rows
@@ -454,7 +521,7 @@ class PipelineWorker(QObject):
         log_path: Path,
         timeout: int | None = None,
         prefix: str = "",
-        channel: str = "General",
+        channel: str = "",
         optimization: str = "General",
     ) -> ProcessResult:
         started = time.monotonic()
@@ -623,15 +690,26 @@ class PipelineWorker(QObject):
             self.failed += 1
             if report_failure:
                 linker_match = re.search(r"\[([^]]+)\]$", name)
-                self._report_failure(
-                    {
-                        "linker": linker_match.group(1) if linker_match else "—",
-                        "optimization": "General",
-                        "source": name,
-                        "detail": f"La etapa terminó con código {exit_code}",
-                        "error_log": str(log.resolve()),
-                    }
+                channels = (
+                    [linker_match.group(1)]
+                    if linker_match
+                    else (["Compilador"] if self.plan.operation == "compiler" else self.plan.linkers)
                 )
+                for channel in channels:
+                    self._report_failure(
+                        {
+                            "linker": channel,
+                            "optimization": "General",
+                            "kind": (
+                                "Compilador"
+                                if self.plan.operation == "compiler"
+                                else "Infraestructura de pruebas"
+                            ),
+                            "source": name,
+                            "detail": f"La etapa terminó con código {exit_code}",
+                            "error_log": str(log.resolve()),
+                        }
+                    )
         self._advance()
 
     def _command_stage(
@@ -640,11 +718,19 @@ class PipelineWorker(QObject):
         command: list[str],
         env: dict[str, str],
         timeout: int | None = None,
+        channel: str = "",
     ) -> bool:
         assert self.run_dir is not None
         self.stage_started.emit(name)
         log = self.run_dir / "stages" / f"{safe_name(name)}.log"
-        result = self._run_process(command, Path(self.plan.root), env, log, timeout=timeout)
+        result = self._run_process(
+            command,
+            Path(self.plan.root),
+            env,
+            log,
+            timeout=timeout,
+            channel=channel,
+        )
         if result.cancelled:
             status = "cancelled"
         else:
@@ -659,8 +745,9 @@ class PipelineWorker(QObject):
     def _validate_paths(self) -> list[str]:
         required: list[Path] = []
         building = self.plan.run_build and self.plan.build_mode != "skip"
+        building_tests = self.plan.operation == "tests" and self.plan.run_ctest
         running_tests = self.plan.run_ctest or self.plan.run_cases or self.plan.run_triage
-        if building:
+        if building or building_tests:
             required.extend(
                 [
                     Path(self.plan.llvm_root) / "bin" / "clang-cl.exe",
@@ -675,22 +762,34 @@ class PipelineWorker(QObject):
             if self.plan.build_runner == "ninja" and shutil.which("ninja") is None:
                 required.append(Path("ninja.exe (PATH)"))
         if running_tests:
-            if not building:
-                required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
+            required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
             if "lld-link" in self.plan.linkers:
                 required.append(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
             if "NSLink" in self.plan.linkers:
                 required.append(Path(self.plan.nslink_exe))
         return [str(path) for path in required if not path.is_file()]
 
-    def _configure_command(self) -> list[str]:
+    def _test_build_dir(self, linker: str) -> Path:
+        configured = self.plan.test_build_dirs.get(linker)
+        if not configured:
+            raise ValueError(f"No hay directorio de CTest configurado para {linker}")
+        return Path(configured)
+
+    def _configure_command(
+        self,
+        build_tests: bool,
+        build_dir: str | Path | None = None,
+    ) -> list[str]:
         llvm = Path(self.plan.llvm_root).as_posix()
+        selected_build = str(
+            build_dir if build_dir is not None else self.plan.compiler_build_dir
+        )
         return [
             "cmake",
             "-S",
             self.plan.root,
             "-B",
-            self.plan.build_dir,
+            selected_build,
             "-G",
             "Ninja",
             "-DCMAKE_BUILD_TYPE=Release",
@@ -701,19 +800,38 @@ class PipelineWorker(QObject):
             "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
             "-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE",
             f"-DNSC_LLVM_MONOLITHIC_LIBRARY={llvm}/lib/LLVM-C.lib",
-            "-DNSC_BUILD_TESTS=ON",
+            f"-DNSC_BUILD_TESTS={'ON' if build_tests else 'OFF'}",
             "-DNSC_WARNINGS_AS_ERRORS=ON",
         ]
+
+    def _configure_tests_command(self, linker: str) -> list[str]:
+        command = self._configure_command(
+            build_tests=True,
+            build_dir=self._test_build_dir(linker),
+        )
+        compiler = (Path(self.plan.prefix) / "bin" / "nsc.exe").as_posix()
+        command.append(f"-DNSC_TEST_COMPILER={compiler}")
+        return command
 
     def _build(self) -> bool:
         if not self.plan.run_build or self.plan.build_mode == "skip":
             return True
         root = Path(self.plan.root).resolve()
-        build = Path(self.plan.build_dir).resolve()
+        build = Path(self.plan.compiler_build_dir).resolve()
         if self.plan.build_mode == "clean":
             if build.parent != root or not build.name.lower().startswith("build-"):
-                self._emit(f"Se rechazó borrar un build fuera del destino permitido: {build}", "error")
+                detail = f"Se rechazó borrar un build fuera del destino permitido: {build}"
+                self._emit(detail, "error")
                 self.failed += 1
+                self._report_failure(
+                    {
+                        "linker": "Compilador",
+                        "kind": "Validación",
+                        "source": "Directorio de build",
+                        "detail": detail,
+                        "error_log": str(self.console_path.resolve()) if self.console_path else "",
+                    }
+                )
                 return False
             self.stage_started.emit("Limpiar build")
             started = time.monotonic()
@@ -735,7 +853,11 @@ class PipelineWorker(QObject):
 
         cache = build / "CMakeCache.txt"
         if self.plan.build_mode == "clean" or not cache.is_file():
-            if not self._command_stage("Configurar", self._configure_command(), self._base_environment()):
+            if not self._command_stage(
+                "Configurar",
+                self._configure_command(build_tests=False),
+                self._base_environment(),
+            ):
                 return False
 
         targets = [] if self.plan.build_target == "all" else [
@@ -745,7 +867,7 @@ class PipelineWorker(QObject):
             command = [
                 "ninja",
                 "-C",
-                self.plan.build_dir,
+                self.plan.compiler_build_dir,
                 "-j",
                 str(self.plan.jobs),
                 "-k",
@@ -753,7 +875,7 @@ class PipelineWorker(QObject):
                 *targets,
             ]
         else:
-            command = ["cmake", "--build", self.plan.build_dir]
+            command = ["cmake", "--build", self.plan.compiler_build_dir]
             if targets:
                 command.extend(["--target", *targets])
             command.extend(["--parallel", str(self.plan.jobs), "--", "-k", "0"])
@@ -761,9 +883,104 @@ class PipelineWorker(QObject):
             return False
         return self._command_stage(
             "Instalar",
-            ["cmake", "--install", self.plan.build_dir, "--prefix", self.plan.prefix],
+            ["cmake", "--install", self.plan.compiler_build_dir, "--prefix", self.plan.prefix],
             self._base_environment(),
         )
+
+    def _build_tests(self) -> bool:
+        if self.plan.operation != "tests" or not self.plan.run_ctest:
+            self.ctest_ready_linkers = set(self.plan.linkers)
+            return True
+        root = Path(self.plan.root).resolve()
+        self.ctest_ready_linkers.clear()
+
+        for linker in self.plan.linkers:
+            if self.cancel_event.is_set():
+                return False
+            build = self._test_build_dir(linker).resolve()
+            if build.parent != root or not build.name.casefold().startswith("build-test-"):
+                detail = (
+                    "Se rechazó usar o limpiar el árbol de CTest porque no es un "
+                    f"build-test-* directo de {root}: {build}"
+                )
+                self._emit(detail, "error", linker)
+                self.failed += 1
+                self._report_failure(
+                    {
+                        "linker": linker,
+                        "kind": "Validación",
+                        "source": f"Directorio CTest [{linker}]",
+                        "detail": detail,
+                        "error_log": str(self.console_path.resolve()) if self.console_path else "",
+                    }
+                )
+                continue
+
+            if self.plan.test_build_mode == "clean":
+                name = f"Limpiar CTest [{linker}]"
+                self.stage_started.emit(name)
+                started = time.monotonic()
+                status = "passed"
+                code = 0
+                detail = f"Árbol CTest limpio para {linker}: {build}"
+                try:
+                    if build.exists():
+                        shutil.rmtree(build)
+                except OSError as exc:
+                    status = "failed"
+                    code = 1
+                    detail = f"No se pudo limpiar {build}: {exc}"
+                self._emit(detail, "info" if status == "passed" else "error", linker)
+                assert self.run_dir is not None
+                log = self.run_dir / "stages" / f"{safe_name(name)}.log"
+                log.parent.mkdir(parents=True, exist_ok=True)
+                log.write_text(detail + "\n", encoding="utf-8", errors="replace")
+                self._record_stage(
+                    name,
+                    status,
+                    time.monotonic() - started,
+                    code,
+                    "limpieza interna",
+                    log,
+                )
+                if status != "passed":
+                    continue
+
+            if not (build / "CMakeCache.txt").is_file():
+                if not self._command_stage(
+                    f"Configurar CTest [{linker}]",
+                    self._configure_tests_command(linker),
+                    self._base_environment(linker),
+                    channel=linker,
+                ):
+                    continue
+
+            targets = [
+                target for target in dict.fromkeys(self.plan.build_target.split(";")) if target
+            ]
+            if self.plan.build_runner == "ninja":
+                command = [
+                    "ninja",
+                    "-C",
+                    str(build),
+                    "-j",
+                    str(self.plan.jobs),
+                    "-k",
+                    "0",
+                    *targets,
+                ]
+            else:
+                command = ["cmake", "--build", str(build), "--target", *targets]
+                command.extend(["--parallel", str(self.plan.jobs), "--", "-k", "0"])
+            if self._command_stage(
+                f"Construir CTest [{linker}]",
+                command,
+                self._base_environment(linker),
+                channel=linker,
+            ):
+                self.ctest_ready_linkers.add(linker)
+
+        return not self.cancel_event.is_set()
 
     def _sync_libraries(self) -> bool:
         if not self.plan.sync_libraries:
@@ -813,15 +1030,65 @@ class PipelineWorker(QObject):
         self._record_stage(name, status, elapsed, code, "sincronización interna", log)
         return status == "passed"
 
+    def _prepare_test_outputs(self) -> bool:
+        """Prepara el área persistente donde nsc genera los programas de prueba.
+
+        El modo limpio elimina únicamente los artefactos de los enlazadores elegidos. El modo
+        incremental conserva objetos y ejecutables anteriores y vuelve a generar sólo los casos
+        seleccionados por esta corrida.
+        """
+        if (
+            self.plan.operation != "tests"
+            or self.plan.test_build_mode != "clean"
+            or not (self.plan.run_cases or self.plan.run_triage)
+        ):
+            return True
+        assert self.run_dir is not None
+        root = TEST_WORK_ROOT.resolve()
+        for linker in self.plan.linkers:
+            name = f"Limpiar pruebas [{linker}]"
+            self.stage_started.emit(name)
+            started = time.monotonic()
+            target = (root / safe_name(linker)).resolve()
+            log = self.run_dir / "stages" / f"{safe_name(name)}.log"
+            status = "passed"
+            code = 0
+            try:
+                if target.parent != root:
+                    raise ValueError(f"Destino de pruebas fuera del área permitida: {target}")
+                if target.exists():
+                    shutil.rmtree(target)
+                target.mkdir(parents=True, exist_ok=True)
+                detail = f"Área limpia: {target}"
+                self._emit(detail, "info", linker)
+            except (OSError, ValueError) as exc:
+                status = "failed"
+                code = 1
+                detail = f"No se pudo limpiar el área de pruebas: {exc}"
+                self._emit(detail, "error", linker)
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text(detail + "\n", encoding="utf-8", errors="replace")
+            self._record_stage(name, status, time.monotonic() - started, code, "limpieza interna", log)
+            if status != "passed":
+                return False
+        return True
+
     def _ctest(self, linker: str) -> None:
         if not self.plan.run_ctest or self.cancel_event.is_set():
+            return
+        if linker not in self.ctest_ready_linkers:
+            self._emit(
+                f"CTest [{linker}] omitido porque su árbol de pruebas no pudo construirse.",
+                "error",
+                linker,
+            )
             return
         assert self.run_dir is not None
         name = f"CTest [{linker}]"
         command = [
             "ctest",
             "--test-dir",
-            self.plan.build_dir,
+            str(self._test_build_dir(linker)),
             "--output-on-failure",
             "-j",
             str(self.plan.jobs),
@@ -852,12 +1119,17 @@ class PipelineWorker(QObject):
         )
         if status != "failed":
             return
+        failure_status = r"(?:Failed|Timeout|Not Run|Exception|SEGFAULT|BAD_COMMAND)"
         failed_names = re.findall(
-            r"^\s*\d+\s+-\s+([^\s]+)\s+\([^)]+\)\s*$", result.output, re.MULTILINE
+            rf"^\s*\d+\s+-\s+([^\s]+)\s+\({failure_status}\)\s*$",
+            result.output,
+            re.MULTILINE | re.IGNORECASE,
         )
         if not failed_names:
             failed_names = re.findall(
-                r"Test\s+#\d+:\s+([^\s]+).*?\*{3}(?:Failed|Timeout)", result.output
+                rf"Test\s+#\d+:\s+([^\s]+).*?\*{{3}}\s*{failure_status}",
+                result.output,
+                re.IGNORECASE,
             )
         if not failed_names and len(self.plan.selected_ctests) == 1:
             failed_names = list(self.plan.selected_ctests)
@@ -866,6 +1138,7 @@ class PipelineWorker(QObject):
                 {
                     "linker": linker,
                     "optimization": "General",
+                    "kind": "CTest",
                     "source": failed_name,
                     "detail": f"CTest terminó con código {result.exit_code}",
                     "error_log": str(log.resolve()),
@@ -887,7 +1160,13 @@ class PipelineWorker(QObject):
         key = f"{case.label}_{optimization.lstrip('-')}"
         pass_dir = self.run_dir / safe_name(linker)
         log = pass_dir / "cases" / f"{safe_name(key)}.log"
-        exe = pass_dir / "bin" / f"{safe_name(key)}.exe"
+        artifact_dir = (
+            TEST_WORK_ROOT
+            / safe_name(linker)
+            / optimization.lstrip("-").upper()
+            / safe_name(case.label)
+        )
+        exe = artifact_dir / f"{safe_name(case.label)}.exe"
         exe.parent.mkdir(parents=True, exist_ok=True)
         env = self._base_environment(linker)
         env["NSC_OPT"] = optimization
@@ -902,42 +1181,86 @@ class PipelineWorker(QObject):
             if not project.is_file():
                 raise FileNotFoundError(f"Proyecto no encontrado: {project}")
             object_command, executable_command = self._case_commands(case, exe, optimization)
-            object_build = self._run_process(
-                object_command,
-                Path(self.plan.root),
-                env,
-                log.with_suffix(".obj.log"),
-                timeout=CASE_TIMEOUT_SECONDS,
-                prefix=prefix,
-                channel=linker,
-                optimization=optimization.lstrip("-"),
-            )
-            if object_build.cancelled:
-                status, actual, detail = "cancelled", None, "cancelado"
-            elif object_build.exit_code != 0:
-                status, detail = "failed", object_build.error or "falló la emisión del objeto"
-                error_log = log.with_suffix(".obj.log")
+            compiler = Path(self.plan.prefix) / "bin" / "nsc.exe"
+            linker_exe = Path(env.get("NSC_LLD_LINK", ""))
+            fingerprint = incremental_fingerprint(project, compiler, linker_exe)
+            manifest = artifact_dir / "incremental.json"
+            obj = exe.with_suffix(".obj")
+            cached = False
+            if self.plan.test_build_mode == "incremental" and obj.is_file() and exe.is_file():
+                try:
+                    cache = json.loads(manifest.read_text(encoding="utf-8"))
+                    cached = cache.get("fingerprint") == fingerprint
+                except (OSError, ValueError, TypeError):
+                    cached = False
+            if cached:
+                self._emit(
+                    f"{prefix} INCREMENTAL — sin cambios; se reutiliza {exe}",
+                    "success",
+                    linker,
+                    optimization.lstrip("-"),
+                )
+                executable_ready = True
             else:
-                executable_build = self._run_process(
-                    executable_command,
+                try:
+                    manifest.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                object_build = self._run_process(
+                    object_command,
                     Path(self.plan.root),
                     env,
-                    log.with_suffix(".exe.log"),
+                    log.with_suffix(".obj.log"),
                     timeout=CASE_TIMEOUT_SECONDS,
                     prefix=prefix,
                     channel=linker,
                     optimization=optimization.lstrip("-"),
                 )
-                if executable_build.cancelled:
-                    status, detail = "cancelled", "cancelado"
-                elif executable_build.exit_code != 0:
-                    status, detail = (
-                        "failed",
-                        executable_build.error or "falló la emisión o el enlace del ejecutable",
+                if object_build.cancelled:
+                    status, actual, detail = "cancelled", None, "cancelado"
+                    executable_ready = False
+                elif object_build.exit_code != 0:
+                    status, detail = "failed", object_build.error or "falló la emisión del objeto"
+                    error_log = log.with_suffix(".obj.log")
+                    executable_ready = False
+                else:
+                    executable_build = self._run_process(
+                        executable_command,
+                        Path(self.plan.root),
+                        env,
+                        log.with_suffix(".exe.log"),
+                        timeout=CASE_TIMEOUT_SECONDS,
+                        prefix=prefix,
+                        channel=linker,
+                        optimization=optimization.lstrip("-"),
                     )
-                    error_log = log.with_suffix(".exe.log")
-                elif case.expected is None:
-                    status, detail = "passed", "compila y enlaza"
+                    if executable_build.cancelled:
+                        status, detail = "cancelled", "cancelado"
+                        executable_ready = False
+                    elif executable_build.exit_code != 0:
+                        status, detail = (
+                            "failed",
+                            executable_build.error or "falló la emisión o el enlace del ejecutable",
+                        )
+                        error_log = log.with_suffix(".exe.log")
+                        executable_ready = False
+                    else:
+                        write_json(
+                            manifest,
+                            {
+                                "fingerprint": fingerprint,
+                                "project": str(project.resolve()),
+                                "compiler": str(compiler.resolve()),
+                                "linker": str(linker_exe.resolve()),
+                                "optimization": optimization,
+                                "built_at": utc_stamp(),
+                            },
+                        )
+                        executable_ready = True
+            if executable_ready:
+                if case.expected is None:
+                    status = "passed"
+                    detail = "sin cambios" if cached else "compila y enlaza"
                 else:
                     run = self._run_process(
                         [str(exe)],
@@ -956,7 +1279,8 @@ class PipelineWorker(QObject):
                         status, detail = "failed", run.error
                         error_log = log.with_suffix(".run.log")
                     elif actual == case.expected:
-                        status, detail = "passed", f"exit {actual}"
+                        suffix = "; binario incremental" if cached else ""
+                        status, detail = "passed", f"exit {actual}{suffix}"
                     else:
                         status, detail = "failed", f"exit {actual}; se esperaba {case.expected}"
                         error_log = log.with_suffix(".run.log")
@@ -1035,6 +1359,7 @@ class PipelineWorker(QObject):
                         {
                             "linker": row["linker"],
                             "optimization": row["optimization"].lstrip("-"),
+                            "kind": "Fixtures y ejemplos",
                             "source": f"{row['label']} {row['optimization']}",
                             "detail": row["detail"],
                             "error_log": row["error_log"],
@@ -1110,6 +1435,7 @@ class PipelineWorker(QObject):
                         {
                             "linker": row["linker"],
                             "optimization": row["optimization"].lstrip("-"),
+                            "kind": "Bug triage",
                             "source": f"{row['label']} {row['optimization']}",
                             "detail": row["detail"],
                             "error_log": row["error_log"],
@@ -1160,12 +1486,27 @@ class PipelineWorker(QObject):
         if self.plan.run_build and self.plan.build_mode != "skip":
             if self.plan.build_mode == "clean":
                 total += 4  # limpiar, configurar, construir, instalar
-            elif not (Path(self.plan.build_dir) / "CMakeCache.txt").is_file():
+            elif not (Path(self.plan.compiler_build_dir) / "CMakeCache.txt").is_file():
                 total += 3  # configurar, construir, instalar
             else:
                 total += 2  # construir, instalar
+        if self.plan.operation == "tests" and self.plan.run_ctest:
+            for linker in self.plan.linkers:
+                build = self._test_build_dir(linker)
+                if self.plan.test_build_mode == "clean":
+                    total += 3  # limpiar, configurar y construir SU árbol de CTest
+                elif not (build / "CMakeCache.txt").is_file():
+                    total += 2  # configurar y construir SU árbol de CTest
+                else:
+                    total += 1  # construcción incremental de SU árbol de CTest
         if self.plan.sync_libraries:
             total += 1
+        if (
+            self.plan.operation == "tests"
+            and self.plan.test_build_mode == "clean"
+            and (self.plan.run_cases or self.plan.run_triage)
+        ):
+            total += len(self.plan.linkers)
         selected = set(self.plan.selected_cases)
         case_count = len([case for case in self.cases if not selected or case.label in selected])
         for _ in self.plan.linkers:
@@ -1179,14 +1520,18 @@ class PipelineWorker(QObject):
     def _write_error_reports(self) -> list[dict]:
         assert self.run_dir is not None
         reports: list[dict] = []
-        linkers = list(dict.fromkeys(["General", *self.plan.linkers]))
+        linkers = list(dict.fromkeys(["Compilador", *self.plan.linkers]))
         optimizations = ("General", "O0", "O2")
         for linker in linkers:
             for optimization in optimizations:
                 rows = [
                     row
                     for row in self.failure_rows
-                    if (row.get("linker") if row.get("linker") in self.plan.linkers else "General")
+                    if (
+                        row.get("linker")
+                        if row.get("linker") in self.plan.linkers
+                        else "Compilador"
+                    )
                     == linker
                     and str(row.get("optimization", "General")).lstrip("-") == optimization
                 ]
@@ -1301,7 +1646,7 @@ class PipelineWorker(QObject):
         self.run_dir.mkdir(parents=True, exist_ok=False)
         self.console_path = self.run_dir / "console.log"
         self.console_path.touch()
-        for channel in dict.fromkeys(["General", *self.plan.linkers]):
+        for channel in dict.fromkeys(["Compilador", *self.plan.linkers]):
             for optimization in ("General", "O0", "O2"):
                 channel_console = (
                     self.run_dir
@@ -1332,18 +1677,35 @@ class PipelineWorker(QObject):
             if missing:
                 for path in missing:
                     self._emit(f"Falta herramienta: {path}", "error")
-                    self._report_failure(
-                        {
-                            "linker": "General",
-                            "optimization": "General",
-                            "source": "Validación de herramientas",
-                            "detail": f"Falta herramienta: {path}",
-                            "error_log": str(self.console_path.resolve()),
-                        }
+                    channels = (
+                        ["Compilador"]
+                        if self.plan.operation == "compiler"
+                        else self.plan.linkers
                     )
+                    for channel in channels:
+                        self._report_failure(
+                            {
+                                "linker": channel,
+                                "optimization": "General",
+                                "kind": "Validación",
+                                "source": "Validación de herramientas",
+                                "detail": f"Falta herramienta: {path}",
+                                "error_log": str(self.console_path.resolve()),
+                            }
+                        )
                 self.failed += len(missing)
-            elif self._build() and not self.cancel_event.is_set():
-                if self._sync_libraries() and not self.cancel_event.is_set():
+            elif (
+                self._build()
+                and not self.cancel_event.is_set()
+                and self._prepare_test_outputs()
+                and not self.cancel_event.is_set()
+                and self._build_tests()
+                and not self.cancel_event.is_set()
+            ):
+                if (
+                    self._sync_libraries()
+                    and not self.cancel_event.is_set()
+                ):
                     for linker in self.plan.linkers:
                         self._ctest(linker)
                         self._run_case_group(linker)
@@ -1357,15 +1719,20 @@ class PipelineWorker(QObject):
             exception_log.write_text(
                 traceback.format_exc(), encoding="utf-8", errors="replace"
             )
-            self._report_failure(
-                {
-                    "linker": "General",
-                    "optimization": "General",
-                    "source": "Runner interno",
-                    "detail": repr(exc),
-                    "error_log": str(exception_log.resolve()),
-                }
+            channels = (
+                ["Compilador"] if self.plan.operation == "compiler" else self.plan.linkers
             )
+            for channel in channels:
+                self._report_failure(
+                    {
+                        "linker": channel,
+                        "optimization": "General",
+                        "kind": "Runner interno",
+                        "source": "Runner interno",
+                        "detail": repr(exc),
+                        "error_log": str(exception_log.resolve()),
+                    }
+                )
         finally:
             elapsed = time.monotonic() - started
             if self.cancel_event.is_set():
@@ -1388,6 +1755,7 @@ class PipelineWorker(QObject):
             self._emit(f"Corrida {status.upper()} en {elapsed:.2f} s", "success" if status == "passed" else "error")
             self.finished.emit(
                 {
+                    "operation": self.plan.operation,
                     "status": status,
                     "seconds": elapsed,
                     "failed": self.failed,
@@ -1412,9 +1780,9 @@ class MainWindow(QMainWindow):
         self.inventory_process: QProcess | None = None
         self.inventory_bytes = bytearray()
         self.current_run_dir: Path | None = None
-        self.stage_row_by_name: dict[str, int] = {}
+        self.stage_rows_by_name: dict[str, list[tuple[str, int]]] = {}
+        self.active_result_channels: list[str] = ["Compilador"]
         self.close_after_cancel = False
-        self.applying_run_mode = False
         self._build_ui()
         self._load_settings()
         self._populate_cases()
@@ -1428,27 +1796,17 @@ class MainWindow(QMainWindow):
         config_panel = QWidget()
         config_layout = QVBoxLayout(config_panel)
 
-        options = QGroupBox("Ejecución")
+        options = QGroupBox("Construcción de nsc")
         grid = QGridLayout(options)
-        self.run_mode = QComboBox()
-        self.run_mode.addItem("Construir y ejecutar pruebas", "build_and_tests")
-        self.run_mode.addItem("Sólo pruebas — no reconstruir ni instalar nsc", "tests_only")
-        self.run_mode.addItem("Sólo construir e instalar nsc", "build_only")
-        self.run_mode.addItem("Personalizado", "custom")
         self.build_mode = QComboBox()
         self.build_mode.addItem("Desde cero", "clean")
         self.build_mode.addItem("Incremental", "incremental")
-        self.build_mode.addItem("Omitir build", "skip")
-        self.build_target = QComboBox()
-        self.build_target.addItem("Automático según las pruebas elegidas", "auto")
-        self.build_target.addItem("Compilador y todas las pruebas", "all")
-        self.build_target.addItem("Sólo el compilador nsc", "nsc")
         self.build_runner = QComboBox()
         self.build_runner.addItem("CMake (cmake --build)", "cmake")
         self.build_runner.addItem("Ninja directo", "ninja")
-        self.jobs = QSpinBox()
-        self.jobs.setRange(1, 128)
-        self.jobs.setValue(min(os.cpu_count() or 4, 16))
+        self.compiler_jobs = QSpinBox()
+        self.compiler_jobs.setRange(1, 128)
+        self.compiler_jobs.setValue(min(os.cpu_count() or 4, 16))
         self.opt_o0 = QCheckBox("O0")
         self.opt_o0.setChecked(True)
         self.opt_o2 = QCheckBox("O2")
@@ -1460,21 +1818,29 @@ class MainWindow(QMainWindow):
         opt_layout.addWidget(self.opt_o2)
         opt_layout.addStretch()
 
-        grid.addWidget(QLabel("Modo"), 0, 0)
-        grid.addWidget(self.run_mode, 0, 1, 1, 7)
-        grid.addWidget(QLabel("Build"), 1, 0)
-        grid.addWidget(self.build_mode, 1, 1)
-        grid.addWidget(QLabel("Objetivos"), 1, 2)
-        grid.addWidget(self.build_target, 1, 3)
-        grid.addWidget(QLabel("Paralelismo (build y pruebas)"), 1, 4)
-        grid.addWidget(self.jobs, 1, 5)
-        grid.addWidget(QLabel("Optimización"), 1, 6)
-        grid.addWidget(opt_box, 1, 7)
+        grid.addWidget(QLabel("Construcción"), 0, 0)
+        grid.addWidget(self.build_mode, 0, 1)
+        grid.addWidget(QLabel("Motor"), 1, 0)
+        grid.addWidget(self.build_runner, 1, 1)
+        grid.addWidget(QLabel("Procesos en paralelo"), 2, 0)
+        grid.addWidget(self.compiler_jobs, 2, 1)
+        build_note = QLabel(
+            "Sólo reconstruye e instala nsc. El compilador usa siempre clang-cl + lld-link; "
+            "NSLink no participa en esta operación."
+        )
+        build_note.setWordWrap(True)
+        build_note.setObjectName("muted")
+        grid.addWidget(build_note, 3, 0, 1, 2)
+        self.compiler_summary = QLabel()
+        self.compiler_summary.setWordWrap(True)
+        self.compiler_summary.setObjectName("planSummary")
+        grid.addWidget(self.compiler_summary, 4, 0, 1, 2)
+        self.compiler_start_button = QPushButton("Construir e instalar nsc")
+        self.compiler_start_button.clicked.connect(self._start_compiler)
+        grid.addWidget(self.compiler_start_button, 5, 0, 1, 2)
+        config_layout.addWidget(options)
 
-        self.stage_build = QCheckBox("Construir e instalar")
-        self.stage_build.setChecked(True)
-        self.stage_sync = QCheckBox("Sincronizar bibliotecas")
-        self.stage_sync.setChecked(True)
+        # Estos controles pertenecen exclusivamente al panel de pruebas.
         self.stage_ctest = QCheckBox("CTest")
         self.stage_ctest.setChecked(True)
         self.stage_cases = QCheckBox("Fixtures y ejemplos")
@@ -1482,84 +1848,105 @@ class MainWindow(QMainWindow):
         self.stage_triage = QCheckBox("Bug triage")
         self.stage_triage.setChecked(True)
         self.keep_temps = QCheckBox("Conservar temporales de enlace")
-        stages = QWidget()
-        stages_layout = QHBoxLayout(stages)
-        stages_layout.setContentsMargins(0, 0, 0, 0)
-        for widget in (
-            self.stage_build,
-            self.stage_sync,
-            self.stage_ctest,
-            self.stage_cases,
-            self.stage_triage,
-            self.keep_temps,
-        ):
-            stages_layout.addWidget(widget)
-        stages_layout.addStretch()
-        grid.addWidget(QLabel("Motor de construcción"), 2, 0)
-        grid.addWidget(self.build_runner, 2, 1, 1, 3)
-        runner_note = QLabel("CMake siempre configura e instala; aquí eliges cmake --build o Ninja para compilar.")
-        runner_note.setWordWrap(True)
-        runner_note.setObjectName("muted")
-        grid.addWidget(runner_note, 2, 4, 1, 4)
-        grid.addWidget(stages, 3, 0, 1, 8)
-        build_note = QLabel(
-            "La construcción del compilador usa siempre clang-cl + lld-link. "
-            "El enlazador NSLink sólo puede seleccionarse para los programas de prueba."
-        )
-        build_note.setWordWrap(True)
-        build_note.setObjectName("muted")
-        grid.addWidget(build_note, 4, 0, 1, 8)
-        config_layout.addWidget(options)
 
-        paths = QGroupBox("Rutas")
+        paths = QGroupBox("Rutas del compilador")
         form = QFormLayout(paths)
         self.build_path = QLineEdit(str(DEFAULT_BUILD))
         self.prefix_path = QLineEdit(str(DEFAULT_PREFIX))
         self.llvm_path = QLineEdit(str(DEFAULT_LLVM))
-        self.nslink_path = QLineEdit(str(DEFAULT_NSLINK))
-        form.addRow("Build", self.build_path)
-        form.addRow("Instalación", self.prefix_path)
+        form.addRow("Build de nsc", self.build_path)
+        form.addRow("Instalar en", self.prefix_path)
         form.addRow("LLVM", self.llvm_path)
-        form.addRow("NSLink", self.nslink_path)
         config_layout.addWidget(paths)
         config_layout.addStretch()
-        self.config_dock = self._create_dock(
-            "Construcción", config_panel, Qt.DockWidgetArea.LeftDockWidgetArea, "dock_build"
-        )
 
         selection = QWidget()
         self.test_panel = selection
         selection_layout = QVBoxLayout(selection)
-        test_options = QGroupBox("Configuración de pruebas")
+        test_options = QGroupBox("Compilación y ejecución de pruebas")
         test_grid = QGridLayout(test_options)
+        self.test_build_mode = QComboBox()
+        self.test_build_mode.addItem("Desde cero", "clean")
+        self.test_build_mode.addItem("Incremental", "incremental")
+        self.test_build_lld_path = QLineEdit(str(DEFAULT_TEST_BUILD_LLD))
+        self.test_build_nslink_path = QLineEdit(str(DEFAULT_TEST_BUILD_NSLINK))
+        self.test_prefix_path = QLineEdit(str(DEFAULT_PREFIX))
+        self.test_llvm_path = QLineEdit(str(DEFAULT_LLVM))
+        self.nslink_path = QLineEdit(str(DEFAULT_NSLINK))
+        self.test_build_runner = QComboBox()
+        self.test_build_runner.addItem("CMake", "cmake")
+        self.test_build_runner.addItem("Ninja", "ninja")
         self.linker_mode = QComboBox()
-        self.linker_mode.addItem("lld-link", ["lld-link"])
+        self.linker_mode.addItem("LLD-link", ["lld-link"])
         self.linker_mode.addItem("NSLink", ["NSLink"])
-        self.linker_mode.addItem("Ambos (dos pasadas)", ["lld-link", "NSLink"])
-        test_grid.addWidget(QLabel("Enlazador usado por nsc para los programas de prueba"), 0, 0)
-        test_grid.addWidget(self.linker_mode, 0, 1)
+        self.linker_mode.addItem("Ambos (corridas independientes)", ["lld-link", "NSLink"])
+        self.test_jobs = QSpinBox()
+        self.test_jobs.setRange(1, 128)
+        self.test_jobs.setValue(min(os.cpu_count() or 4, 16))
+        test_grid.addWidget(QLabel("Compilación de pruebas"), 0, 0)
+        test_grid.addWidget(self.test_build_mode, 0, 1)
+        test_grid.addWidget(QLabel("Motor"), 0, 2)
+        test_grid.addWidget(self.test_build_runner, 0, 3)
+        test_grid.addWidget(QLabel("Build CTest — LLD-link"), 1, 0)
+        test_grid.addWidget(self.test_build_lld_path, 1, 1, 1, 3)
+        test_grid.addWidget(QLabel("Build CTest — NSLink"), 2, 0)
+        test_grid.addWidget(self.test_build_nslink_path, 2, 1, 1, 3)
+        test_grid.addWidget(QLabel("Enlazador usado por nsc"), 3, 0)
+        test_grid.addWidget(self.linker_mode, 3, 1)
+        test_grid.addWidget(QLabel("Optimización"), 3, 2)
+        test_grid.addWidget(opt_box, 3, 3)
+        test_grid.addWidget(QLabel("Procesos en paralelo"), 4, 0)
+        test_grid.addWidget(self.test_jobs, 4, 1)
+        test_grid.addWidget(QLabel("Instalación de nsc"), 5, 0)
+        test_grid.addWidget(self.test_prefix_path, 5, 1, 1, 3)
+        test_grid.addWidget(QLabel("LLVM / LLD-link"), 6, 0)
+        test_grid.addWidget(self.test_llvm_path, 6, 1, 1, 3)
+        test_grid.addWidget(QLabel("Ejecutable NSLink"), 7, 0)
+        test_grid.addWidget(self.nslink_path, 7, 1, 1, 3)
+        test_grid.addWidget(self.keep_temps, 8, 0, 1, 4)
         linker_note = QLabel(
-            "Esto no cambia cómo se construye nsc.exe; sólo fija el enlazador que usará nsc "
-            "cuando CTest, los fixtures o bug triage le pidan producir un ejecutable."
+            "Esta sección nunca reconstruye ni instala nsc. Usa el nsc ya instalado para "
+            "compilar los programas elegidos. LLD-link y NSLink tienen árboles CTest separados; "
+            "cada enlazador y cada nivel O0/O2 conserva además su propia consola, lista de errores "
+            "e informe."
         )
         linker_note.setWordWrap(True)
         linker_note.setObjectName("muted")
-        test_grid.addWidget(linker_note, 1, 0, 1, 2)
+        test_grid.addWidget(linker_note, 9, 0, 1, 4)
+        test_grid.setColumnStretch(1, 1)
+        test_grid.setColumnStretch(3, 2)
         selection_layout.addWidget(test_options)
+
+        test_sets = QGroupBox("Conjuntos que se ejecutarán")
+        test_sets_layout = QHBoxLayout(test_sets)
+        for widget in (self.stage_ctest, self.stage_cases, self.stage_triage):
+            test_sets_layout.addWidget(widget)
+        test_sets_layout.addStretch()
+        selection_layout.addWidget(test_sets)
         selection_tabs = QTabWidget()
         selection_tabs.addTab(self._ctest_page(), "CTest")
-        selection_tabs.addTab(self._case_page(), "Fixtures")
+        selection_tabs.addTab(self._case_page(), "Programas nsc")
         selection_layout.addWidget(selection_tabs, 1)
-        self.tests_dock = self._create_dock(
-            "Pruebas", selection, Qt.DockWidgetArea.LeftDockWidgetArea, "dock_tests"
+        self.test_summary = QLabel()
+        self.test_summary.setWordWrap(True)
+        self.test_summary.setObjectName("planSummary")
+        selection_layout.addWidget(self.test_summary)
+        self.tests_start_button = QPushButton("Compilar y ejecutar pruebas")
+        self.tests_start_button.clicked.connect(self._start_tests)
+        selection_layout.addWidget(self.tests_start_button)
+        self.operation_tabs = QTabWidget()
+        self.operation_tabs.addTab(config_panel, "Compilador")
+        self.operation_tabs.addTab(selection, "Pruebas")
+        self.operations_dock = self._create_dock(
+            "Operaciones",
+            self.operation_tabs,
+            Qt.DockWidgetArea.LeftDockWidgetArea,
+            "dock_operations",
         )
-        self.splitDockWidget(self.config_dock, self.tests_dock, Qt.Orientation.Vertical)
 
         console_panel = QWidget()
         right_layout = QVBoxLayout(console_panel)
         controls = QHBoxLayout()
-        self.start_button = QPushButton("Iniciar")
-        self.start_button.clicked.connect(self.start_run)
         self.cancel_button = QPushButton("Cancelar")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_run)
@@ -1569,90 +1956,90 @@ class MainWindow(QMainWindow):
         self.clear_button = QPushButton("Limpiar consola")
         self.clear_button.clicked.connect(self.clear_current_console)
         self.status_label = QLabel("Listo")
-        controls.addWidget(self.start_button)
         controls.addWidget(self.cancel_button)
         controls.addWidget(self.open_button)
         controls.addWidget(self.clear_button)
         controls.addWidget(self.status_label, 1)
         right_layout.addLayout(controls)
 
-        self.plan_summary = QLabel()
-        self.plan_summary.setWordWrap(True)
-        self.plan_summary.setObjectName("planSummary")
-        right_layout.addWidget(self.plan_summary)
-
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         right_layout.addWidget(self.progress_bar)
 
-        self.output_channels = ("General", "lld-link", "NSLink")
+        self.output_channels = ("Compilador", "LLD-link", "NSLink")
         self.output_optimizations = ("General", "O0", "O2")
         self.channel_consoles: dict[tuple[str, str], QTextEdit] = {}
-        self.channel_error_tables: dict[tuple[str, str], QTableWidget] = {}
-        self.channel_inner_tabs: dict[tuple[str, str], QTabWidget] = {}
-        self.channel_error_tab_indices: dict[tuple[str, str], int] = {}
+        self.channel_error_tables: dict[str, QTableWidget] = {}
+        self.channel_error_counts: dict[str, int] = {}
+        self.channel_output_tabs: dict[str, QTabWidget] = {}
+        self.channel_error_tab_indices: dict[str, int] = {}
+        self.channel_results_tab_indices: dict[str, int] = {}
         self.channel_outer_indices: dict[str, int] = {}
+        self.channel_titles: dict[str, str] = {}
         self.channel_optimization_tabs: dict[str, QTabWidget] = {}
         self.channel_optimization_indices: dict[tuple[str, str], int] = {}
+        self.stage_tables: dict[str, QTableWidget] = {}
         self.output_channel_tabs = QTabWidget()
         for channel in self.output_channels:
-            optimization_tabs = QTabWidget()
-            for optimization in self.output_optimizations:
+            channel_tabs = QTabWidget()
+            channel_optimizations = (
+                ("General",) if channel == "Compilador" else self.output_optimizations
+            )
+            for optimization in channel_optimizations:
                 key = (channel, optimization)
                 console = self._create_console()
-                error_table = self._create_error_table()
-                inner_tabs = QTabWidget()
-                inner_tabs.addTab(console, "Consola")
-                error_index = inner_tabs.addTab(error_table, "Errores (0)")
-                optimization_index = optimization_tabs.addTab(inner_tabs, optimization)
+                label = "Consola general" if optimization == "General" else f"Consola {optimization}"
+                optimization_index = channel_tabs.addTab(console, label)
                 self.channel_consoles[key] = console
-                self.channel_error_tables[key] = error_table
-                self.channel_inner_tabs[key] = inner_tabs
-                self.channel_error_tab_indices[key] = error_index
                 self.channel_optimization_indices[key] = optimization_index
-            outer_index = self.output_channel_tabs.addTab(optimization_tabs, channel)
-            self.channel_optimization_tabs[channel] = optimization_tabs
+            error_table = self._create_error_table()
+            error_index = channel_tabs.addTab(error_table, "Errores (0)")
+            stage_table = self._create_stage_table()
+            results_index = channel_tabs.addTab(stage_table, "Resultados")
+            title = channel
+            outer_index = self.output_channel_tabs.addTab(channel_tabs, title)
+            self.channel_titles[channel] = title
+            self.channel_error_tables[channel] = error_table
+            self.channel_error_counts[channel] = 0
+            self.channel_output_tabs[channel] = channel_tabs
+            self.channel_error_tab_indices[channel] = error_index
+            self.channel_results_tab_indices[channel] = results_index
+            self.channel_optimization_tabs[channel] = channel_tabs
             self.channel_outer_indices[channel] = outer_index
+            self.stage_tables[channel] = stage_table
         right_layout.addWidget(self.output_channel_tabs, 3)
         self.console_dock = self._create_dock(
-            "Salida", console_panel, Qt.DockWidgetArea.RightDockWidgetArea, "dock_console"
-        )
-
-        self.stage_table = QTableWidget(0, 4)
-        self.stage_table.setHorizontalHeaderLabels(["Etapa", "Estado", "Tiempo", "Exit"])
-        self.stage_table.verticalHeader().setVisible(False)
-        self.stage_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.stage_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.results_dock = self._create_dock(
-            "Resultados de etapas",
-            self.stage_table,
+            "Salida y resultados",
+            console_panel,
             Qt.DockWidgetArea.RightDockWidgetArea,
-            "dock_results",
+            "dock_console",
         )
-        self.splitDockWidget(self.console_dock, self.results_dock, Qt.Orientation.Vertical)
 
         self.view_menu = self.menuBar().addMenu("Ver")
-        for dock in (self.config_dock, self.tests_dock, self.console_dock, self.results_dock):
+        for dock in (
+            self.operations_dock,
+            self.console_dock,
+        ):
             self.view_menu.addAction(dock.toggleViewAction())
 
-        self.run_mode.currentIndexChanged.connect(self._apply_run_mode)
         for widget in (
             self.build_mode,
-            self.build_target,
             self.build_runner,
+            self.test_build_mode,
+            self.test_build_runner,
             self.linker_mode,
         ):
             widget.currentIndexChanged.connect(self._update_plan_summary)
-        for widget in (
-            self.stage_build,
-            self.stage_sync,
-            self.stage_ctest,
-            self.stage_cases,
-            self.stage_triage,
-        ):
-            widget.toggled.connect(self._stage_selection_changed)
-        self._apply_run_mode()
+        for widget in (self.stage_ctest, self.stage_cases, self.stage_triage, self.opt_o0, self.opt_o2):
+            widget.toggled.connect(self._update_plan_summary)
+        self.compiler_jobs.valueChanged.connect(self._update_plan_summary)
+        self.test_jobs.valueChanged.connect(self._update_plan_summary)
+        self.test_build_lld_path.textChanged.connect(self._update_plan_summary)
+        self.test_build_nslink_path.textChanged.connect(self._update_plan_summary)
+        self.test_prefix_path.textChanged.connect(self._update_plan_summary)
+        self.test_llvm_path.textChanged.connect(self._update_plan_summary)
+        self._update_plan_summary()
 
     def _create_console(self) -> QTextEdit:
         console = QTextEdit()
@@ -1663,17 +2050,32 @@ class MainWindow(QMainWindow):
         return console
 
     def _create_error_table(self) -> QTableWidget:
-        table = QTableWidget(0, 4)
-        table.setHorizontalHeaderLabels(["Enlazador", "Prueba o etapa", "Error", "Log"])
+        table = QTableWidget(0, 5)
+        table.setHorizontalHeaderLabels(
+            ["Optimización", "Conjunto", "Prueba o etapa", "Error", "Log"]
+        )
         table.verticalHeader().setVisible(False)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         table.itemDoubleClicked.connect(self.open_error_log)
+        return table
+
+    def _create_stage_table(self) -> QTableWidget:
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(["Etapa", "Estado", "Tiempo", "Exit"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         return table
 
     def _create_dock(
@@ -1714,14 +2116,11 @@ class MainWindow(QMainWindow):
         self.ctest_filter.textChanged.connect(lambda text: self._filter_list(self.ctest_list, text))
         refresh = QPushButton("Actualizar")
         refresh.clicked.connect(self.refresh_ctests)
-        run_one = QPushButton("Sólo ejecutar esta prueba")
-        run_one.clicked.connect(self._run_one_ctest_without_build)
-        prepare = QPushButton("Construir nsc y ejecutar esta prueba")
-        prepare.clicked.connect(self._run_one_ctest_with_build)
+        run_one = QPushButton("Ejecutar esta prueba")
+        run_one.clicked.connect(self._run_one_ctest)
         row.addWidget(self.ctest_filter, 1)
         row.addWidget(refresh)
         row.addWidget(run_one)
-        row.addWidget(prepare)
         layout.addLayout(row)
         self.ctest_scope_label = QLabel()
         self.ctest_scope_label.setWordWrap(True)
@@ -1756,13 +2155,10 @@ class MainWindow(QMainWindow):
         self.case_filter = QLineEdit()
         self.case_filter.setPlaceholderText("Filtrar casos...")
         self.case_filter.textChanged.connect(lambda text: self._filter_list(self.case_list, text))
-        run_one = QPushButton("Sólo ejecutar este caso")
-        run_one.clicked.connect(self._run_one_case_without_build)
-        prepare = QPushButton("Construir nsc y ejecutar este caso")
-        prepare.clicked.connect(self._run_one_case_with_build)
+        run_one = QPushButton("Compilar y ejecutar este caso")
+        run_one.clicked.connect(self._run_one_case)
         row.addWidget(self.case_filter, 1)
         row.addWidget(run_one)
-        row.addWidget(prepare)
         layout.addLayout(row)
         self.case_scope_label = QLabel()
         self.case_scope_label.setWordWrap(True)
@@ -1877,147 +2273,43 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.case_one_combo.setCurrentIndex(index)
 
-    def _set_stages(
-        self, build: bool, sync: bool, ctest: bool, cases: bool, triage: bool
-    ) -> None:
-        self.applying_run_mode = True
-        try:
-            self.stage_build.setChecked(build)
-            self.stage_sync.setChecked(sync)
-            self.stage_ctest.setChecked(ctest)
-            self.stage_cases.setChecked(cases)
-            self.stage_triage.setChecked(triage)
-        finally:
-            self.applying_run_mode = False
+    @Slot()
+    def _start_compiler(self) -> None:
+        self.start_run("compiler")
 
     @Slot()
-    def _apply_run_mode(self, *_args: object) -> None:
-        if self.applying_run_mode:
-            return
-        mode = str(self.run_mode.currentData())
-        if mode == "custom":
-            self._update_mode_enabled_state(mode)
-            self._update_plan_summary()
-            return
-        if mode == "tests_only":
-            self.build_mode.setCurrentIndex(self.build_mode.findData("skip"))
-            self._set_stages(False, True, True, True, True)
-        elif mode == "build_only":
-            if self.build_mode.currentData() == "skip":
-                self.build_mode.setCurrentIndex(self.build_mode.findData("incremental"))
-            self._set_stages(True, False, False, False, False)
-        else:
-            if self.build_mode.currentData() == "skip":
-                self.build_mode.setCurrentIndex(self.build_mode.findData("incremental"))
-            self._set_stages(True, True, True, True, True)
-        self._update_mode_enabled_state(mode)
-        self._update_plan_summary()
+    def _start_tests(self) -> None:
+        self.start_run("tests")
 
-    def _update_mode_enabled_state(self, mode: str) -> None:
-        tests_only = mode == "tests_only"
-        build_only = mode == "build_only"
-        for widget in (self.build_mode, self.build_target, self.build_runner):
-            widget.setEnabled(not tests_only)
-        self.stage_build.setEnabled(not tests_only and not build_only)
-        self.test_panel.setEnabled(not build_only)
-        for widget in (
-            self.stage_sync,
-            self.stage_ctest,
-            self.stage_cases,
-            self.stage_triage,
-            self.opt_o0,
-            self.opt_o2,
-            self.keep_temps,
-        ):
-            widget.setEnabled(not build_only)
-        # El paralelismo se usa tanto al construir como al ejecutar pruebas.
-        self.jobs.setEnabled(True)
-
-    @Slot()
-    def _stage_selection_changed(self, *_args: object) -> None:
-        mode = str(self.run_mode.currentData())
-        if not self.applying_run_mode and mode != "tests_only":
-            custom = self.run_mode.findData("custom")
-            if custom >= 0 and self.run_mode.currentIndex() != custom:
-                self.run_mode.setCurrentIndex(custom)
-        self._update_plan_summary()
-
-    def _run_one_ctest_without_build(self) -> None:
-        self._prepare_one_ctest(False)
-
-    def _run_one_ctest_with_build(self) -> None:
-        self._prepare_one_ctest(True)
-
-    def _prepare_one_ctest(self, build_compiler: bool) -> None:
+    def _run_one_ctest(self) -> None:
         if self.ctest_one_combo.count() == 0:
             QMessageBox.warning(self, APP_NAME, "No hay pruebas CTest disponibles en este build.")
             return
         self.ctest_scope.setCurrentIndex(self.ctest_scope.findData("one"))
-        self.build_mode.setCurrentIndex(
-            self.build_mode.findData("incremental" if build_compiler else "skip")
-        )
-        self.build_target.setCurrentIndex(self.build_target.findData("auto"))
-        if build_compiler:
-            self._set_stages(True, True, True, False, False)
-            self.run_mode.setCurrentIndex(self.run_mode.findData("custom"))
-        else:
-            self.run_mode.setCurrentIndex(self.run_mode.findData("tests_only"))
-            self._set_stages(False, True, True, False, False)
-        self.status_label.setText("Plan preparado; pulsa Iniciar")
-        self._update_plan_summary()
+        self.stage_ctest.setChecked(True)
+        self.stage_cases.setChecked(False)
+        self.stage_triage.setChecked(False)
+        self._start_tests()
 
-    def _run_one_case_without_build(self) -> None:
-        self._prepare_one_case(False)
-
-    def _run_one_case_with_build(self) -> None:
-        self._prepare_one_case(True)
-
-    def _prepare_one_case(self, build_compiler: bool) -> None:
+    def _run_one_case(self) -> None:
         if self.case_one_combo.count() == 0:
             QMessageBox.warning(self, APP_NAME, "No hay fixtures o ejemplos disponibles.")
             return
         self.case_scope.setCurrentIndex(self.case_scope.findData("one"))
-        self.build_mode.setCurrentIndex(
-            self.build_mode.findData("incremental" if build_compiler else "skip")
-        )
-        self.build_target.setCurrentIndex(self.build_target.findData("auto"))
-        if build_compiler:
-            self._set_stages(True, True, False, True, False)
-            self.run_mode.setCurrentIndex(self.run_mode.findData("custom"))
-        else:
-            self.run_mode.setCurrentIndex(self.run_mode.findData("tests_only"))
-            self._set_stages(False, True, False, True, False)
-        self.status_label.setText("Plan preparado; pulsa Iniciar")
-        self._update_plan_summary()
-
-    def _resolved_build_target(self, selected_ctests: list[str]) -> str:
-        requested = str(self.build_target.currentData())
-        if requested != "auto":
-            return requested
-        if self.stage_ctest.isChecked():
-            if str(self.ctest_scope.currentData()) == "one" and len(selected_ctests) == 1:
-                test_target = self.ctest_targets.get(selected_ctests[0], "")
-                if test_target:
-                    return f"nsc;{test_target}" if test_target != "nsc" else "nsc"
-            return "all"
-        return "nsc"
+        self.stage_ctest.setChecked(False)
+        self.stage_cases.setChecked(True)
+        self.stage_triage.setChecked(False)
+        self._start_tests()
 
     def _update_plan_summary(self, *_args: object) -> None:
-        if not hasattr(self, "plan_summary") or not hasattr(self, "ctest_scope"):
+        if not hasattr(self, "compiler_summary") or not hasattr(self, "ctest_scope"):
             return
+        compiler_mode = "desde cero" if self.build_mode.currentData() == "clean" else "incremental"
+        self.compiler_summary.setText(
+            f"nsc se construirá {compiler_mode} con {self.build_runner.currentText()} y "
+            f"{self.compiler_jobs.value()} proceso(s); después se instalará. No se ejecutarán pruebas."
+        )
         selected_ctests = self._selected_ctest_values()
-        target = self._resolved_build_target(selected_ctests)
-        runner = self.build_runner.currentText()
-        if not self.stage_build.isChecked() or self.build_mode.currentData() == "skip":
-            build_sentence = "No se reconstruirá ni instalará nsc."
-        elif target == "all":
-            build_sentence = (
-                f"Se construirán nsc y todos los binarios de CTest usando {runner}."
-            )
-        else:
-            build_sentence = (
-                f"Se construirá {' + '.join(target.split(';'))} usando {runner}."
-            )
         tests: list[str] = []
         if self.stage_ctest.isChecked():
             tests.append(
@@ -2035,34 +2327,70 @@ class MainWindow(QMainWindow):
         if self.stage_triage.isChecked():
             tests.append("bug triage")
         test_text = ", ".join(tests) if tests else "ninguna prueba"
-        linker_text = self.linker_mode.currentText()
-        if tests:
-            test_sentence = (
-                f"Se ejecutará: {test_text}. Los programas de prueba se enlazarán con "
-                f"{linker_text}."
-            )
-        else:
-            test_sentence = "No se ejecutarán pruebas."
-        self.plan_summary.setText(f"Plan: {build_sentence} {test_sentence}")
+        test_mode = (
+            "desde cero, eliminando sus artefactos anteriores"
+            if self.test_build_mode.currentData() == "clean"
+            else "incremental, conservando sus artefactos anteriores"
+        )
+        optimizations = [name for checked, name in ((self.opt_o0.isChecked(), "O0"), (self.opt_o2.isChecked(), "O2")) if checked]
+        selected_linkers = list(self.linker_mode.currentData())
+        build_paths = {
+            "lld-link": self.test_build_lld_path.text().strip(),
+            "NSLink": self.test_build_nslink_path.text().strip(),
+        }
+        selected_build_text = " · ".join(
+            f"{'LLD-link' if linker == 'lld-link' else linker}: {build_paths[linker]}"
+            for linker in selected_linkers
+        )
+        self.test_summary.setText(
+            f"{test_text} · {test_mode} · {self.linker_mode.currentText()} · "
+            f"{', '.join(optimizations) or 'sin optimización'} · "
+            f"{self.test_jobs.value()} proceso(s).\n"
+            f"Árboles independientes: {selected_build_text}. El nsc instalado no se modifica."
+        )
 
     def _load_settings(self) -> None:
         self.build_path.setText(self.settings.value("build_path", str(DEFAULT_BUILD)))
+        self.test_build_lld_path.setText(
+            self.settings.value("test_build_lld_path", str(DEFAULT_TEST_BUILD_LLD))
+        )
+        self.test_build_nslink_path.setText(
+            self.settings.value("test_build_nslink_path", str(DEFAULT_TEST_BUILD_NSLINK))
+        )
         self.prefix_path.setText(self.settings.value("prefix_path", str(DEFAULT_PREFIX)))
         self.llvm_path.setText(self.settings.value("llvm_path", str(DEFAULT_LLVM)))
+        self.test_prefix_path.setText(
+            self.settings.value("test_prefix_path", str(DEFAULT_PREFIX))
+        )
+        self.test_llvm_path.setText(
+            self.settings.value("test_llvm_path", str(DEFAULT_LLVM))
+        )
         self.nslink_path.setText(self.settings.value("nslink_path", str(DEFAULT_NSLINK)))
-        self.jobs.setValue(int(self.settings.value("jobs", min(os.cpu_count() or 4, 16))))
+        old_jobs = int(self.settings.value("jobs", min(os.cpu_count() or 4, 16)))
+        self.compiler_jobs.setValue(int(self.settings.value("compiler_jobs", old_jobs)))
+        self.test_jobs.setValue(int(self.settings.value("test_jobs", old_jobs)))
+        build_mode_index = self.build_mode.findData(self.settings.value("build_mode", "incremental"))
+        if build_mode_index >= 0:
+            self.build_mode.setCurrentIndex(build_mode_index)
+        test_build_mode_index = self.test_build_mode.findData(
+            self.settings.value("test_build_mode", "incremental")
+        )
+        if test_build_mode_index >= 0:
+            self.test_build_mode.setCurrentIndex(test_build_mode_index)
         runner_index = self.build_runner.findData(self.settings.value("build_runner", "cmake"))
         if runner_index >= 0:
             self.build_runner.setCurrentIndex(runner_index)
+        test_runner_index = self.test_build_runner.findData(
+            self.settings.value("test_build_runner", "cmake")
+        )
+        if test_runner_index >= 0:
+            self.test_build_runner.setCurrentIndex(test_runner_index)
         linker_index = int(self.settings.value("linker_index", 0))
         if 0 <= linker_index < self.linker_mode.count():
             self.linker_mode.setCurrentIndex(linker_index)
-        run_mode_index = self.run_mode.findData(
-            self.settings.value("run_mode", "build_and_tests")
-        )
-        if run_mode_index >= 0:
-            self.run_mode.setCurrentIndex(run_mode_index)
-            self._apply_run_mode()
+        operation_tab_index = int(self.settings.value("operation_tab_index", 0))
+        if 0 <= operation_tab_index < self.operation_tabs.count():
+            self.operation_tabs.setCurrentIndex(operation_tab_index)
         geometry = self.settings.value("window_geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
@@ -2072,24 +2400,41 @@ class MainWindow(QMainWindow):
 
     def _save_settings(self) -> None:
         self.settings.setValue("build_path", self.build_path.text())
+        self.settings.setValue("test_build_lld_path", self.test_build_lld_path.text())
+        self.settings.setValue("test_build_nslink_path", self.test_build_nslink_path.text())
         self.settings.setValue("prefix_path", self.prefix_path.text())
         self.settings.setValue("llvm_path", self.llvm_path.text())
+        self.settings.setValue("test_prefix_path", self.test_prefix_path.text())
+        self.settings.setValue("test_llvm_path", self.test_llvm_path.text())
         self.settings.setValue("nslink_path", self.nslink_path.text())
-        self.settings.setValue("jobs", self.jobs.value())
+        self.settings.setValue("compiler_jobs", self.compiler_jobs.value())
+        self.settings.setValue("test_jobs", self.test_jobs.value())
+        self.settings.setValue("build_mode", self.build_mode.currentData())
+        self.settings.setValue("test_build_mode", self.test_build_mode.currentData())
         self.settings.setValue("build_runner", self.build_runner.currentData())
+        self.settings.setValue("test_build_runner", self.test_build_runner.currentData())
         self.settings.setValue("linker_index", self.linker_mode.currentIndex())
-        self.settings.setValue("run_mode", self.run_mode.currentData())
+        self.settings.setValue("operation_tab_index", self.operation_tabs.currentIndex())
         self.settings.setValue("window_geometry", self.saveGeometry())
         self.settings.setValue("dock_state", self.saveState(1))
 
     def refresh_ctests(self) -> None:
         if self.inventory_process is not None:
             return
-        build = Path(self.build_path.text().strip())
+        builds = {
+            "lld-link": Path(self.test_build_lld_path.text().strip()),
+            "NSLink": Path(self.test_build_nslink_path.text().strip()),
+        }
+        selected_linkers = list(self.linker_mode.currentData())
+        candidates = [builds[name] for name in selected_linkers]
+        build = next(
+            (candidate for candidate in candidates if (candidate / "CTestTestfile.cmake").is_file()),
+            candidates[0],
+        )
         if not (build / "CTestTestfile.cmake").is_file():
-            self.status_label.setText("CTest: el build aún no está configurado")
+            self.status_label.setText(f"CTest: {build.name} aún no está configurado")
             return
-        self.status_label.setText("Leyendo inventario de CTest...")
+        self.status_label.setText(f"Leyendo CTest desde {build.name}...")
         self.inventory_bytes = bytearray()
         process = QProcess(self)
         self.inventory_process = process
@@ -2133,9 +2478,9 @@ class MainWindow(QMainWindow):
             command = test.get("command", [])
             if command:
                 executable = Path(str(command[0]))
-                if executable.suffix.casefold() == ".exe" and (
-                    executable.stem == "nsc" or executable.stem.startswith("nsc_")
-                ):
+                # Sólo los ejecutables físicos de los árboles CTest son objetivos construibles aquí.
+                # El `nsc.exe` instalado es el compilador BAJO prueba, nunca un target de pruebas.
+                if executable.suffix.casefold() == ".exe" and executable.stem.startswith("nsc_"):
                     self.ctest_targets[name] = executable.stem
         self.ctest_list.clear()
         self.ctest_one_combo.clear()
@@ -2150,7 +2495,67 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"CTest: {len(names)} pruebas")
         self._update_ctest_scope()
 
-    def _make_plan(self) -> RunPlan | None:
+    def _test_build_target(self, selected_ctests: list[str]) -> str:
+        if not self.stage_ctest.isChecked() or not selected_ctests:
+            return "pruebas"
+        targets = [self.ctest_targets.get(name, "") for name in selected_ctests]
+        if any(not target for target in targets):
+            return "pruebas"
+        return ";".join(dict.fromkeys(targets))
+
+    def _make_plan(self, operation: str) -> RunPlan | None:
+        compiler_build = Path(self.build_path.text().strip()).resolve()
+        test_build_dirs = {
+            "lld-link": self.test_build_lld_path.text().strip(),
+            "NSLink": self.test_build_nslink_path.text().strip(),
+        }
+        resolved_test_builds = {
+            linker: Path(path).resolve() for linker, path in test_build_dirs.items()
+        }
+        if compiler_build in resolved_test_builds.values():
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "El compilador no puede compartir directorio con ninguno de los árboles de CTest.",
+            )
+            return None
+        if operation == "compiler":
+            if compiler_build.name.casefold().startswith("build-test"):
+                QMessageBox.warning(
+                    self,
+                    APP_NAME,
+                    "El directorio del compilador no puede ser un árbol build-test-*.",
+                )
+                return None
+            return RunPlan(
+                operation="compiler",
+                root=str(ROOT),
+                compiler_build_dir=self.build_path.text().strip(),
+                prefix=self.prefix_path.text().strip(),
+                llvm_root=self.llvm_path.text().strip(),
+                nslink_exe=self.nslink_path.text().strip(),
+                build_mode=str(self.build_mode.currentData()),
+                build_target="nsc",
+                build_runner=str(self.build_runner.currentData()),
+                test_build_mode="incremental",
+                test_build_dirs={},
+                linkers=[],
+                optimizations=[],
+                jobs=self.compiler_jobs.value(),
+                run_build=True,
+                sync_libraries=False,
+                run_ctest=False,
+                run_cases=False,
+                run_triage=False,
+                keep_link_temps=False,
+                selected_ctests=[],
+                selected_cases=[],
+            )
+        if not any(
+            (self.stage_ctest.isChecked(), self.stage_cases.isChecked(), self.stage_triage.isChecked())
+        ):
+            QMessageBox.warning(self, APP_NAME, "Selecciona por lo menos un conjunto de pruebas.")
+            return None
         optimizations = []
         if self.opt_o0.isChecked():
             optimizations.append("-O0")
@@ -2168,20 +2573,31 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP_NAME, "El alcance de fixtures elegido no contiene casos.")
             return None
         linkers = list(self.linker_mode.currentData())
+        selected_builds = [resolved_test_builds[linker] for linker in linkers]
+        if len(set(selected_builds)) != len(selected_builds):
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "LLD-link y NSLink deben usar directorios CTest diferentes.",
+            )
+            return None
         return RunPlan(
+            operation="tests",
             root=str(ROOT),
-            build_dir=self.build_path.text().strip(),
-            prefix=self.prefix_path.text().strip(),
-            llvm_root=self.llvm_path.text().strip(),
+            compiler_build_dir="",
+            prefix=self.test_prefix_path.text().strip(),
+            llvm_root=self.test_llvm_path.text().strip(),
             nslink_exe=self.nslink_path.text().strip(),
-            build_mode=str(self.build_mode.currentData()),
-            build_target=self._resolved_build_target(selected_ctests),
-            build_runner=str(self.build_runner.currentData()),
+            build_mode="skip",
+            build_target=self._test_build_target(selected_ctests),
+            build_runner=str(self.test_build_runner.currentData()),
+            test_build_mode=str(self.test_build_mode.currentData()),
+            test_build_dirs={linker: test_build_dirs[linker] for linker in linkers},
             linkers=linkers,
             optimizations=optimizations,
-            jobs=self.jobs.value(),
-            run_build=self.stage_build.isChecked(),
-            sync_libraries=self.stage_sync.isChecked(),
+            jobs=self.test_jobs.value(),
+            run_build=False,
+            sync_libraries=True,
             run_ctest=self.stage_ctest.isChecked(),
             run_cases=self.stage_cases.isChecked(),
             run_triage=self.stage_triage.isChecked(),
@@ -2190,11 +2606,10 @@ class MainWindow(QMainWindow):
             selected_cases=selected_cases,
         )
 
-    @Slot()
-    def start_run(self) -> None:
+    def start_run(self, operation: str) -> None:
         if self.worker is not None:
             return
-        plan = self._make_plan()
+        plan = self._make_plan(operation)
         if plan is None:
             return
         if not any((plan.run_build, plan.sync_libraries, plan.run_ctest, plan.run_cases, plan.run_triage)):
@@ -2204,46 +2619,69 @@ class MainWindow(QMainWindow):
             answer = QMessageBox.question(
                 self,
                 APP_NAME,
-                f"Se borrará por completo:\n{plan.build_dir}\n\n¿Continuar?",
+                f"Se borrará por completo:\n{plan.compiler_build_dir}\n\n¿Continuar?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        if (
-            plan.run_build
-            and plan.build_mode != "skip"
-            and plan.build_target == "nsc"
-            and plan.run_ctest
-        ):
+        if plan.operation == "tests" and plan.test_build_mode == "clean":
+            clean_targets: list[Path] = []
+            if plan.run_ctest:
+                clean_targets.extend(
+                    Path(plan.test_build_dirs[linker]).resolve() for linker in plan.linkers
+                )
+            if plan.run_cases or plan.run_triage:
+                clean_targets.extend(
+                    (TEST_WORK_ROOT / safe_name(linker)).resolve() for linker in plan.linkers
+                )
+            targets = "\n".join(str(path) for path in clean_targets)
             answer = QMessageBox.question(
                 self,
                 APP_NAME,
-                "Se construirá sólo `nsc`, pero después se ejecutará CTest. Los binarios de "
-                "prueba podrían estar ausentes o desactualizados.\n\n¿Continuar de todos modos?",
+                f"Se borrarán los artefactos anteriores de estas pruebas:\n{targets}\n\n¿Continuar?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
         self._save_settings()
-        for channel in self.output_channels:
-            for optimization in self.output_optimizations:
+        self.active_result_channels = (
+            ["Compilador"]
+            if plan.operation == "compiler"
+            else ["LLD-link" if linker == "lld-link" else linker for linker in plan.linkers]
+        )
+        channels_to_clear = self.active_result_channels
+        for channel in dict.fromkeys(channels_to_clear):
+            channel_optimizations = (
+                ("General",) if channel == "Compilador" else self.output_optimizations
+            )
+            for optimization in channel_optimizations:
                 key = (channel, optimization)
                 self.channel_consoles[key].clear()
-                self.channel_error_tables[key].setRowCount(0)
-                tabs = self.channel_inner_tabs[key]
-                tabs.setTabText(self.channel_error_tab_indices[key], "Errores (0)")
-                tabs.setCurrentIndex(0)
+            self.channel_error_tables[channel].setRowCount(0)
+            self.channel_error_counts[channel] = 0
+            tabs = self.channel_output_tabs[channel]
+            tabs.setTabText(self.channel_error_tab_indices[channel], "Errores (0)")
+            tabs.setTabText(self.channel_results_tab_indices[channel], "Resultados")
+            tabs.setCurrentIndex(0)
+            self.output_channel_tabs.setTabText(
+                self.channel_outer_indices[channel], self.channel_titles[channel]
+            )
             self.channel_optimization_tabs[channel].setCurrentIndex(
                 self.channel_optimization_indices[(channel, "General")]
             )
-        self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices["General"])
-        self.stage_table.setRowCount(0)
-        self.stage_row_by_name.clear()
+        initial_channel = (
+            "LLD-link" if plan.linkers and plan.linkers[0] == "lld-link" else plan.linkers[0]
+        ) if plan.operation == "tests" and plan.linkers else "Compilador"
+        self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices[initial_channel])
+        for channel in self.active_result_channels:
+            self.stage_tables[channel].setRowCount(0)
+        self.stage_rows_by_name.clear()
         self.current_run_dir = None
         self.open_button.setEnabled(False)
-        self.start_button.setEnabled(False)
+        self.compiler_start_button.setEnabled(False)
+        self.tests_start_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText("Ejecutando...")
 
@@ -2272,7 +2710,9 @@ class MainWindow(QMainWindow):
             self.cancel_button.setEnabled(False)
 
     def _known_output_channel(self, channel: str) -> str:
-        return channel if channel in self.output_channels else "General"
+        aliases = {"General": "Compilador", "lld-link": "LLD-link"}
+        normalized = aliases.get(channel, channel)
+        return normalized if normalized in self.output_channels else "Compilador"
 
     def _known_optimization(self, optimization: str) -> str:
         normalized = optimization.lstrip("-")
@@ -2287,7 +2727,7 @@ class MainWindow(QMainWindow):
                 for name, channel_index in self.channel_outer_indices.items()
                 if channel_index == index
             ),
-            "General",
+            "Compilador",
         )
         optimization_tabs = self.channel_optimization_tabs[channel]
         optimization_index = optimization_tabs.currentIndex()
@@ -2312,6 +2752,8 @@ class MainWindow(QMainWindow):
         }
         channel = self._known_output_channel(channel)
         optimization = self._known_optimization(optimization)
+        if channel == "Compilador":
+            optimization = "General"
         key = (channel, optimization)
         console = self.channel_consoles[key]
         cursor = console.textCursor()
@@ -2321,23 +2763,30 @@ class MainWindow(QMainWindow):
         cursor.insertText(line + "\n", fmt)
         console.setTextCursor(cursor)
         console.ensureCursorVisible()
-        self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices[channel])
-        self.channel_optimization_tabs[channel].setCurrentIndex(
-            self.channel_optimization_indices[key]
-        )
 
     @Slot(dict)
     def on_failure_found(self, failure: dict) -> None:
-        channel = self._known_output_channel(str(failure.get("linker", "General")))
+        channel = self._known_output_channel(str(failure.get("linker", "Compilador")))
         optimization = self._known_optimization(str(failure.get("optimization", "General")))
-        key = (channel, optimization)
-        error_table = self.channel_error_tables[key]
+        error_table = self.channel_error_tables[channel]
         row = error_table.rowCount()
         error_table.insertRow(row)
         log_path = str(failure.get("error_log", ""))
+        source = str(failure.get("source", ""))
+        failure_set = str(failure.get("kind", ""))
+        if not failure_set:
+            if source.startswith("nsc."):
+                failure_set = "CTest"
+            elif re.match(r"b\d+_", source):
+                failure_set = "Bug triage"
+            elif re.search(r"(?:cc1_)?c\d+_", source):
+                failure_set = "Fixtures"
+            else:
+                failure_set = "Infraestructura"
         values = (
-            str(failure.get("linker", "—")),
-            str(failure.get("source", "")),
+            optimization,
+            failure_set,
+            source,
             str(failure.get("detail", "")),
             Path(log_path).name if log_path else "",
         )
@@ -2347,14 +2796,16 @@ class MainWindow(QMainWindow):
             item.setToolTip(f"Abrir {log_path}" if log_path else "No hay log asociado")
             error_table.setItem(row, column, item)
         count = error_table.rowCount()
-        inner_tabs = self.channel_inner_tabs[key]
-        error_index = self.channel_error_tab_indices[key]
-        inner_tabs.setTabText(error_index, f"Errores ({count})")
-        inner_tabs.setCurrentIndex(error_index)
-        self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices[channel])
-        self.channel_optimization_tabs[channel].setCurrentIndex(
-            self.channel_optimization_indices[key]
+        self.channel_error_counts[channel] = count
+        channel_tabs = self.channel_output_tabs[channel]
+        error_index = self.channel_error_tab_indices[channel]
+        channel_tabs.setTabText(error_index, f"Errores ({count})")
+        channel_tabs.setCurrentIndex(error_index)
+        self.output_channel_tabs.setTabText(
+            self.channel_outer_indices[channel],
+            f"{self.channel_titles[channel]} · {count} error(es)",
         )
+        self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices[channel])
 
     @Slot(QTableWidgetItem)
     def open_error_log(self, item: QTableWidgetItem) -> None:
@@ -2364,25 +2815,42 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.warning(self, APP_NAME, f"El log no existe:\n{log_path}")
 
+    def _result_channels_for_stage(self, name: str) -> list[str]:
+        if name.endswith("[lld-link]"):
+            return ["LLD-link"]
+        if name.endswith("[NSLink]"):
+            return ["NSLink"]
+        return list(self.active_result_channels)
+
     @Slot(str)
     def on_stage_started(self, name: str) -> None:
-        row = self.stage_table.rowCount()
-        self.stage_table.insertRow(row)
-        self.stage_row_by_name[name] = row
-        self.stage_table.setItem(row, 0, QTableWidgetItem(name))
-        self.stage_table.setItem(row, 1, QTableWidgetItem("ejecutando"))
-        self.stage_table.setItem(row, 2, QTableWidgetItem(""))
-        self.stage_table.setItem(row, 3, QTableWidgetItem(""))
+        rows: list[tuple[str, int]] = []
+        for channel in self._result_channels_for_stage(name):
+            table = self.stage_tables[channel]
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QTableWidgetItem(name))
+            table.setItem(row, 1, QTableWidgetItem("ejecutando"))
+            table.setItem(row, 2, QTableWidgetItem(""))
+            table.setItem(row, 3, QTableWidgetItem(""))
+            self.channel_output_tabs[channel].setTabText(
+                self.channel_results_tab_indices[channel],
+                f"Resultados ({table.rowCount()})",
+            )
+            rows.append((channel, row))
+        self.stage_rows_by_name[name] = rows
         self.status_label.setText(name)
 
     @Slot(str, str, float, int)
     def on_stage_finished(self, name: str, status: str, seconds: float, exit_code: int) -> None:
-        row = self.stage_row_by_name.get(name)
-        if row is None:
+        rows = self.stage_rows_by_name.get(name)
+        if not rows:
             return
-        self.stage_table.item(row, 1).setText(status)
-        self.stage_table.item(row, 2).setText(f"{seconds:.3f} s")
-        self.stage_table.item(row, 3).setText(str(exit_code))
+        for channel, row in rows:
+            table = self.stage_tables[channel]
+            table.item(row, 1).setText(status)
+            table.item(row, 2).setText(f"{seconds:.3f} s")
+            table.item(row, 3).setText(str(exit_code))
 
     @Slot(int, int)
     def on_progress(self, value: int, total: int) -> None:
@@ -2392,12 +2860,15 @@ class MainWindow(QMainWindow):
     @Slot(dict)
     def on_finished(self, summary: dict) -> None:
         self.current_run_dir = Path(summary["run_dir"])
-        self.start_button.setEnabled(True)
+        self.compiler_start_button.setEnabled(True)
+        self.tests_start_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.open_button.setEnabled(True)
         self.status_label.setText(
             f"{summary['status']} — {summary['seconds']:.2f} s — {summary['failed']} fallo(s)"
         )
+        if summary.get("operation") == "tests":
+            QTimer.singleShot(0, self.refresh_ctests)
 
     @Slot()
     def _thread_finished(self) -> None:

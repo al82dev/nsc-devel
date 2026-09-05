@@ -234,6 +234,7 @@ ExitCode Driver::run(
             action == "--check-project-members" || action == "--dump-project-members" ||
             action == "--check-project-inheritance" || action == "--dump-project-inheritance" ||
             action == "--check-project-interfaces" || action == "--dump-project-interfaces" ||
+            action == "--check-project-generic-constraints" ||
             action == "--check-project-method-bodies" || action == "--dump-project-method-bodies" ||
             action == "--check-project-virtual-dispatch" || action == "--dump-project-virtual-dispatch" ||
             action == "--check-project-destruction" || action == "--dump-project-destruction" ||
@@ -328,6 +329,7 @@ void Driver::printHelp(std::ostream& output)
         << "  nsc --check-project-inheritance <file.nsproj>\n"
         << "  nsc --dump-project-inheritance <file.nsproj>\n"
         << "  nsc --check-project-interfaces <file.nsproj>\n"
+        << "  nsc --check-project-generic-constraints <file.nsproj>\n"
         << "  nsc --dump-project-interfaces <file.nsproj>\n"
         << "  nsc --check-project-method-bodies <file.nsproj>\n"
         << "  nsc --dump-project-method-bodies <file.nsproj>\n"
@@ -779,7 +781,14 @@ ExitCode Driver::runProject(
         action == "--check-project-virtual-dispatch" || action == "--dump-project-virtual-dispatch";
     const bool methodBodyAction = virtualDispatchAction ||
         action == "--check-project-method-bodies" || action == "--dump-project-method-bodies";
-    const bool interfaceAction = methodBodyAction ||
+    // NSC-LIMIT-007. FASE PROPIA, entre las interfaces y los cuerpos. Va DEBAJO de methodBodyAction
+    // --toda fase posterior la arrastra-- y ENCIMA de interfaceAction, que es lo ultimo que
+    // necesita. Antes se sumaba a `methodBodyAction`, y entonces pedir la comprobacion de
+    // constraints analizaba tambien todos los cuerpos: un rojo podia venir de un error que no
+    // tenia nada que ver con un `where`.
+    const bool genericConstraintAction = methodBodyAction ||
+        action == "--check-project-generic-constraints";
+    const bool interfaceAction = genericConstraintAction ||
         action == "--check-project-interfaces" || action == "--dump-project-interfaces";
     const bool inheritanceAction = interfaceAction ||
         action == "--check-project-inheritance" || action == "--dump-project-inheritance";
@@ -803,6 +812,9 @@ ExitCode Driver::runProject(
             ? projectCompilation.compileProjectVirtualDispatch(std::filesystem::path(path), loadError)
         : methodBodyAction
             ? projectCompilation.compileProjectMethodBodies(std::filesystem::path(path), loadError)
+        : genericConstraintAction
+            ? projectCompilation.compileProjectGenericConstraints(
+                  std::filesystem::path(path), loadError)
         : interfaceAction
             ? projectCompilation.compileProjectInterfaces(std::filesystem::path(path), loadError)
         : inheritanceAction
@@ -1022,6 +1034,14 @@ ExitCode Driver::runProject(
                << (projectCompilation.interfaceModel()->interfaces().size() == 1 ? "" : "s")
                << ", " << projectCompilation.interfaceModel()->tablePlans().size() << " class-interface table"
                << (projectCompilation.interfaceModel()->tablePlans().size() == 1 ? "" : "s") << ")\n";
+    }
+    else if (action == "--check-project-generic-constraints" &&
+             projectCompilation.genericConstraintModel() != nullptr)
+    {
+        const std::size_t violations =
+            projectCompilation.genericConstraintModel()->violations().size();
+        output << "project generic constraint check: ok (" << violations << " violation"
+               << (violations == 1 ? "" : "s") << ")\n";
     }
     else if (action == "--check-project-virtual-dispatch" &&
              projectCompilation.virtualDispatchModel() != nullptr)

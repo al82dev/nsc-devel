@@ -48,6 +48,16 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    // NSC-LIMIT-009. `protected` sobre un tipo ANIDADO, comprobado aqui y no en la resolucion de
+    // nombres. Es la primera fase que puede responder «el sitio de uso deriva del contenedor?»,
+    // que es literalmente lo que la palabra significa; antes de la herencia no hay con que.
+    void checkProtectedNestedTypeUses(diagnostics::DiagnosticEngine& diagnostics);
+    // El eslabon protegido de la cadena de `typeOrdinal` que NO alcanza ninguno de los tipos
+    // lexicos dados, o nullopt si el nombre entero es alcanzable. Devuelve el eslabon --y no un
+    // bool-- porque el diagnostico tiene que nombrar el contenedor concreto que cierra el paso.
+    std::optional<std::size_t> firstUnreachableProtectedLink(
+        std::size_t typeOrdinal,
+        std::span<const std::size_t> enclosingTypes) const;
     enum class VisitState
     {
         Unvisited,

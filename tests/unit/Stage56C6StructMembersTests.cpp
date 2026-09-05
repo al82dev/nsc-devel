@@ -305,8 +305,8 @@ namespace proj {
     // A property on a struct is an ordinary instance method taking the receiver's ADDRESS -- the
     // same shape a struct method has had since Stage 40, which is why nothing had to be built for
     // this and only the refusal had to be removed.
-    expectContains(tests, ir, "get_LengthSquared(ptr", "StructProperties");
-    expectContains(tests, ir, "set_X__builtin_float(ptr", "StructProperties");
+    expectContains(tests, ir, "get_LengthSquared\"(ptr", "StructProperties");
+    expectContains(tests, ir, "set_X__builtin$3Afloat\"(ptr", "StructProperties");
 }
 
 void testIndexersOnStructs(TestContext& tests, const std::filesystem::path& root)

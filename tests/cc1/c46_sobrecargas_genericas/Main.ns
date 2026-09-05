@@ -1,0 +1,251 @@
+// NSC-LIMIT-007 -- QUE PLANTILLAS GENERICAS ALCANZA UNA LLAMADA, y cuales no.
+//
+// Los casos 10 a 15 son programas VALIDOS que el compilador rechazaba. Todos tienen la misma causa
+// de fondo: el conjunto de plantillas que una llamada podia estar nombrando se formaba con el
+// nombre del metodo, su aridad generica y el nombre CORTO del contenedor -- y nada mas.
+//
+// Faltaban dos filtros y sobraba una interpretacion:
+//
+//   * no se miraba cuantos argumentos de VALOR trae la llamada, asi que una sobrecarga de dos
+//     parametros se materializaba para una llamada de uno. El clon sobrante se analizaba, y su
+//     cuerpo --sustituido con un `T` que a el no le corresponde-- rechazaba el programa entero.
+//   * no se miraba el namespace, asi que dos clases homonimas en namespaces distintos entraban en
+//     el mismo conjunto.
+//   * y el receptor escrito se convertia a la forma de identidad canonica --`N1.C` pasaba a
+//     `N1+C`-- afirmando que `N1` era un tipo contenedor. Esta fase corre ANTES de la resolucion
+//     de nombres: no puede saber cual de los dos segmentos es un namespace, asi que no debe
+//     decidirlo. La comparacion es ahora TEXTUAL contra la escritura fuente completa de cada
+//     plantilla, por sufijo de SEGMENTOS -- exacto, o precedido por un punto, nunca a media
+//     palabra.
+//
+// LO QUE SE MIDE:
+//
+//   10   dos `C.F<T>` en namespaces distintos, llamadas completamente calificadas. Antes NINGUNA
+//        de las dos compilaba: el filtro descartaba ambas y el fallback las declaraba ambiguas.
+//   11   la segunda, para que quede claro que cada llamada llega a SU cuerpo y no al otro.
+//   12   una sobrecarga de dos parametros que ademas incumple su `where`, junto a una de uno que
+//        no lo incumple. La llamada trae un argumento: la de dos ni siquiera se materializa.
+//   13   el mismo caso SIN constraint, que aisla el filtro de cuenta de argumentos del de
+//        constraints -- son dos huecos distintos y este lo prueba solo.
+//   14   la sobrecarga de dos parametros SI se elige cuando la llamada trae dos.
+//   15   un receptor ABREVIADO --`Caja.Corto<int>(0)` dentro de `c46uno`-- alcanza solo a su
+//        propia `Caja`. La `Caja` de `c46dos` tiene un cuerpo que no compila con `T = int`, asi
+//        que si el filtro la alcanzara el programa no pasaria de la fase de cuerpos.
+//   16   DOS candidatas con la MISMA cuenta de argumentos y una con `where` que el argumento
+//        incumple. Este NO es un fallo corregido: es un HUECO DE COBERTURA. Ver abajo.
+//
+//   Y LOS CUATRO ESCALONES DE LA RESOLUCION DE NOMBRES, que esta fase no aplicaba:
+//
+//   17   NAMESPACE EXTERIOR. `C.F<int>(0)` escrito en `c46hijo.dentro` nombra a `c46hijo.C`,
+//        porque el namespace que encierra al sitio se prueba antes que nada de fuera. La `C` de
+//        `c46ajeno` tambien termina en `.C` y no debe entrar.
+//   18   TIPO CONTENEDOR. `Helper.F<int>(0)` escrito dentro de `Marco` nombra a `Marco.Helper`
+//        antes que a la `Helper` del namespace. Es el escalon que va PRIMERO, incluso antes de
+//        los alias.
+//   19   `using` DE NAMESPACE. El receptor llega por un import, no por el namespace del sitio.
+//   20   ALIAS de namespace. `LD.Caja` con `using LD = c46lejos.dentro;`.
+//   42   todo correcto.
+//
+// EL CASO 16, APARTE. Los quince anteriores son regresiones: cada uno falla contra el compilador
+// de antes del arreglo. El 16 no --ya funcionaba--. Esta aqui porque el camino que recorre, el
+// APLAZAMIENTO de la clausula de una candidata que forma GRUPO con otras, no lo recorria ninguna
+// fixture: c35 tiene el mismo par de sobrecargas de misma cuenta y tipos distintos pero SIN
+// `where`, y c44 tiene el par con `where` pero con cuentas distintas, que el filtro separa antes.
+//
+// Que este programa SI lo recorre no se afirma, se midio: mutando el compilador para que la rama
+// agrupada emitiera como la no agrupada, este programa se puso en ROJO
+//
+//     generic parameter 'T' of 'Aplazar' requires 'IComponente', but the argument 'int' does not
+//     satisfy it
+//
+// mientras c35 --el mismo par sin clausula-- y c44 --el par con clausula pero de cuentas
+// distintas-- siguieron los dos en VERDE. Esa es la medida de que el hueco existia: ninguna de las
+// dos fixtures que parecian cubrirlo lo tocaba. La mutacion se revirtio.
+//
+// LOS CASOS 17-20, Y POR QUE NO BASTA CON QUE DEVUELVAN LO ESPERADO. Cada uno tiene una plantilla
+// AJENA del mismo nombre cuyo cuerpo NO COMPILA con `T = int`. Que el programa entero pase es la
+// mitad de la medida: la otra es que el volcado de genericos tenga UNA sola especializacion de ese
+// nombre. Un programa puede devolver lo correcto y haber clonado igualmente la plantilla ajena --y
+// entonces lo que se esta midiendo es otra cosa--. Aqui no puede: si se clona, no compila.
+//
+// Los cuatro se pasaron por el compilador ANTERIOR y los cuatro fallan alli: tres con
+// «member access requires a class/interface reference ... 'builtin:int'» --el cuerpo ajeno
+// analizado-- y el del alias con «does not name a unique visible Stage 44 generic method
+// template».
+using NativeSharp.Core;
+
+namespace c46uno
+{
+    public class Caja
+    {
+        public static int Medir<T>(T valor) { return 10; }
+
+        // EL RECEPTOR ABREVIADO, que es el caso que la primera version de esta fixture no medía.
+        // `Caja.Corto<int>(0)` escrito AQUI DENTRO nombra a `c46uno.Caja` y a nadie mas. Como
+        // `c46dos.Caja` tambien termina en `.Caja`, un filtro por sufijo la alcanzaba tambien: se
+        // materializaban las dos y el cuerpo de la ajena --que habla de SU `T`-- rechazaba el
+        // programa. El cuerpo de `c46dos.Caja.Corto` esta escrito para fallar si eso ocurre.
+        public static int Desde() { return Caja.Corto<int>(0); }
+        public static int Corto<T>(T valor) { return 15; }
+    }
+}
+
+namespace c46dos
+{
+    public class Caja
+    {
+        public static int Medir<T>(T valor) { return 11; }
+        // Si esta plantilla se materializa con `T = int`, su cuerpo no compila. Es la trampa: el
+        // programa entero solo pasa si la llamada de `c46uno` NO la alcanza.
+        public static int Corto<T>(T valor) { return valor.MetodoInexistente(); }
+    }
+}
+
+// EL NAMESPACE EXTERIOR (17). Dentro de `c46hijo.dentro`, el nombre `C` se busca primero en
+// `c46hijo.dentro`, despues en `c46hijo` --donde esta-- y ya no se sigue bajando. Que exista una
+// `c46ajeno.C` no puede cambiar lo que `C` significa aqui: eso es sombreado, y es la regla que el
+// modelo de nombres aplica desde siempre y que esta fase no aplicaba.
+namespace c46hijo
+{
+    public class C
+    {
+        public static int F<T>(T x) { return 17; }
+    }
+
+    namespace dentro
+    {
+        public class Llamador
+        {
+            public static int Desde() { return C.F<int>(0); }
+        }
+    }
+}
+
+namespace c46ajeno
+{
+    // La trampa: mismo nombre corto, cuerpo que no compila con `T = int`.
+    public class C
+    {
+        public static int F<T>(T x) { return x.Inexistente(); }
+    }
+}
+
+// EL TIPO CONTENEDOR (18). Dentro de `Marco`, `Helper` significa `Marco.Helper`. Este escalon va
+// el PRIMERO de todos --antes incluso que los alias-- porque es el mismo sombreado, aplicado a la
+// cadena de tipos en vez de a la de namespaces.
+namespace c46anidado
+{
+    public class Marco
+    {
+        public class Helper
+        {
+            public static int F<T>(T x) { return 18; }
+        }
+
+        public static int Ejecutar() { return Helper.F<int>(0); }
+    }
+
+    public class Helper
+    {
+        public static int F<T>(T x) { return x.Inexistente(); }
+    }
+}
+
+// EL `using` DE NAMESPACE (19) Y EL ALIAS (20). Los dos traen el dueno de fuera del namespace del
+// sitio; sin ellos la escala no encuentra ninguno y la llamada cae al camino sin dueno, que es el
+// que materializa cualquier plantilla del mismo nombre -- incluida la de `c46intruso`.
+namespace c46lejos.dentro
+{
+    public class Caja
+    {
+        public static int F<T>(T x) { return 19; }
+        public static int G<T>(T x) { return 20; }
+    }
+}
+
+namespace c46intruso
+{
+    public class Caja
+    {
+        public static int F<T>(T x) { return x.Inexistente(); }
+        public static int G<T>(T x) { return x.Inexistente(); }
+    }
+}
+
+namespace c46importa
+{
+    using c46lejos.dentro;
+
+    public class Llamador
+    {
+        public static int Desde() { return Caja.F<int>(0); }
+    }
+}
+
+namespace c46aliasa
+{
+    using LD = c46lejos.dentro;
+
+    public class Llamador
+    {
+        public static int Desde() { return LD.Caja.G<int>(0); }
+    }
+}
+
+namespace c46
+{
+    public interface IComponente
+    {
+        int Peso();
+    }
+
+    public class Program
+    {
+        // La de dos parametros pide `IComponente`; `int` no lo implementa. Con la llamada de un
+        // argumento no debe materializarse, asi que su cuerpo nunca se analiza y `x.Peso()` no
+        // llega a preguntarse sobre un `int`.
+        private static int Elegir<T>(T x) { return 12; }
+        private static int Elegir<T>(T x, int extra) where T : IComponente { return x.Peso(); }
+
+        // El mismo par sin `where`, para aislar el filtro de cuenta de argumentos.
+        private static int Contar<T>(T x) { return 13; }
+        private static int Contar<T>(T x, int extra) { return x.Peso(); }
+
+        // Y el control: dos argumentos SI eligen la de dos.
+        private static int Par<T>(T x) { return 1; }
+        private static int Par<T>(T x, T y) { return 14; }
+
+        // MISMA CUENTA DE ARGUMENTOS, TIPOS DISTINTOS. El filtro de cuenta no separa a estas dos:
+        // las dos toman dos, y elegir necesita los TIPOS, que la pasada generica no conoce. Asi
+        // que se materializan LAS DOS bajo el mismo nombre especializado y a partir de ahi son
+        // sobrecargas ORDINARIAS.
+        //
+        // La segunda pide `IComponente`, que `int` no implementa, y su cuerpo no compilaria con
+        // `T = int`. Como forma GRUPO con la primera, su violacion se GUARDA en vez de emitirse
+        // --quien decide cual usa el programa es la resolucion de sobrecargas, que si tiene los
+        // tipos-- y la especializacion queda marcada como no analizable, de modo que `x.Peso()`
+        // nunca se pregunta sobre un `int`. En el IR de este programa hay UNA sola definicion de
+        // `Aplazar`: la de `(int, string)`.
+        private static int Aplazar<T>(T x, string etiqueta) { return 16; }
+        private static int Aplazar<T>(T x, int extra) where T : IComponente { return x.Peso(); }
+
+        public static int Main()
+        {
+            if (c46uno.Caja.Medir<int>(0) != 10) { return 10; }
+            if (c46dos.Caja.Medir<int>(0) != 11) { return 11; }
+
+            if (Elegir<int>(0) != 12) { return 12; }
+            if (Contar<int>(0) != 13) { return 13; }
+            if (Par<int>(0, 0) != 14) { return 14; }
+            if (c46uno.Caja.Desde() != 15) { return 15; }
+            if (Aplazar<int>(0, "a") != 16) { return 16; }
+
+            if (c46hijo.dentro.Llamador.Desde() != 17) { return 17; }
+            if (c46anidado.Marco.Ejecutar() != 18) { return 18; }
+            if (c46importa.Llamador.Desde() != 19) { return 19; }
+            if (c46aliasa.Llamador.Desde() != 20) { return 20; }
+
+            return 42;
+        }
+    }
+}

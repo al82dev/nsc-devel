@@ -207,5 +207,119 @@ int main()
         tests.expect(fixture.diagnostics.hasErrors(), "const/static-like class member is outside Stage 28");
     }
 
+    // NSC-LIMIT-009 -- TIPOS ANIDADOS, en el parser.
+    //
+    // Antes de esta entrega las cinco formas caian en el mismo sitio: `class`, `struct`,
+    // `interface`, `enum` y `delegate` no son comienzos de tipo ni identificadores, de modo que
+    // `parseClassMember` llegaba a su guarda final y respondia «expected an instance field or
+    // method declaration in class body» -- el mensaje de una errata, para algo que no lo era.
+    {
+        Fixture fixture;
+        parse(
+            fixture,
+            "class Outer {\n"
+            "  public struct Item { public int a; }\n"
+            "  private class Detalle { public int b; }\n"
+            "  internal interface IContrato { int Peso(); }\n"
+            "  public enum Modo { A, B }\n"
+            "  public delegate int Transformar(int x);\n"
+            "  public int Campo;\n"
+            "}\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "the five nested type forms parse inside a class body");
+        tests.expect(fixture.root != nullptr && fixture.root->children().size() == 1,
+            "nested type fixture produces one outer class");
+        if (fixture.root != nullptr && fixture.root->children().size() == 1)
+        {
+            const AstNode* outer = fixture.root->children()[0];
+            tests.expect(outer->children().size() == 6,
+                "the nested types are children of the outer type, not of the compilation unit");
+            if (outer->children().size() == 6)
+            {
+                tests.expect(outer->children()[0]->kind() == AstNodeKind::StructDeclaration &&
+                        outer->children()[0]->text() == "Item",
+                    "a nested struct keeps its own declaration kind");
+                // La accesibilidad viaja por el MISMO canal que la de un tipo de namespace --el
+                // tokenKind del nodo-- y por eso el modelo semantico no necesita saber si el tipo
+                // estaba dentro de otro para leerla. Lo unico que cambia con el sitio es el valor
+                // POR OMISION, y eso se decide al predeclarar, no aqui.
+                tests.expect(outer->children()[0]->tokenKind() == TokenKind::KwPublic,
+                    "an explicit accessibility on a nested type reaches the AST");
+                tests.expect(outer->children()[1]->kind() == AstNodeKind::ClassDeclaration &&
+                        outer->children()[1]->tokenKind() == TokenKind::KwPrivate,
+                    "a nested class records 'private' as written");
+                tests.expect(outer->children()[2]->kind() == AstNodeKind::InterfaceDeclaration,
+                    "a nested interface keeps its own declaration kind");
+                tests.expect(outer->children()[3]->kind() == AstNodeKind::EnumDeclaration,
+                    "a nested enum keeps its own declaration kind");
+                tests.expect(outer->children()[4]->kind() == AstNodeKind::DelegateDeclaration,
+                    "a nested delegate keeps its own declaration kind");
+                tests.expect(outer->children()[5]->kind() == AstNodeKind::FieldDeclaration,
+                    "an ordinary field after five nested types still parses as a field");
+            }
+        }
+    }
+
+    // Un struct tambien contiene tipos: `parseStructDeclaration` usa el mismo `parseClassMember`,
+    // de modo que la entrada vale para los dos sin duplicar la gramatica.
+    {
+        Fixture fixture;
+        parse(
+            fixture,
+            "struct Contenedor {\n"
+            "  public struct Dentro { public int c; }\n"
+            "  public enum Modo { A, B }\n"
+            "}\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "nested types parse inside a struct body as well");
+        tests.expect(fixture.root != nullptr && fixture.root->children().size() == 1 &&
+                fixture.root->children()[0]->children().size() == 2,
+            "a struct keeps its two nested types");
+    }
+
+    // Los modificadores que NO significan nada en un tipo. Cada uno da su propio mensaje: quien
+    // escribe `static class` dentro de una clase viene de C#, donde eso existe, y necesita saber
+    // que aqui no -- no que su linea es ilegible.
+    for (const char* source : {
+             "class Outer { static struct Item { int a; } }\n",
+             "class Outer { readonly struct Item { int a; } }\n",
+             "class Outer { const struct Item { int a; } }\n",
+             "class Outer { virtual class Item { int a; } }\n",
+             "class Outer { override class Item { int a; } }\n",
+             "class Outer { partial class Item { int a; } }\n",
+             "class Outer { abstract struct Item { int a; } }\n",
+             "class Outer { public struct Item<T> { int a; } }\n"})
+    {
+        Fixture fixture;
+        parse(fixture, source);
+        tests.expect(fixture.diagnostics.hasErrors(),
+            std::string("nested type rejects an incompatible modifier: ") + source);
+        tests.expect(hasDiagnostic(fixture, diagnostics::DiagnosticId::ExpectedDeclaration),
+            std::string("the nested-type rejection is a declaration diagnostic: ") + source);
+    }
+
+    // `abstract` y `sealed` SI valen, pero solo sobre una clase anidada. Es el control de la
+    // lista de arriba: sin este caso, «se rechaza abstract» podria estar rechazandolo siempre.
+    {
+        Fixture fixture;
+        parse(fixture, "class Outer { public abstract class Base { public int a; } }\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "abstract IS valid on a nested class, which is what makes the struct rejection meaningful");
+    }
+
+    // Y `protected` tambien vale, que es el segundo control. El parser lo acepta y lo guarda; que
+    // el USO sea legitimo o no lo decide ProjectInheritanceModel, que es la primera fase capaz de
+    // responder «el sitio deriva del contenedor?». Aqui solo se mide que llega al AST.
+    {
+        Fixture fixture;
+        parse(fixture, "class Outer { protected struct Item { public int a; } }\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "protected IS valid on a nested type; whether a USE of it is legal is decided later");
+        tests.expect(fixture.root != nullptr && fixture.root->children().size() == 1 &&
+                fixture.root->children()[0]->children().size() == 1 &&
+                fixture.root->children()[0]->children()[0]->tokenKind() == TokenKind::KwProtected,
+            "the nested type records 'protected' as written");
+    }
+
     return tests.result();
 }

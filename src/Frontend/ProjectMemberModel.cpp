@@ -191,6 +191,22 @@ void appendExpandedMemberNodes(
     {
         return;
     }
+    // NSC-LIMIT-009. UN TIPO ANIDADO NO ES UN MIEMBRO EJECUTABLE, y se dice aqui en vez de
+    // dejar que caiga por el final de la funcion sin coincidir con ninguna rama.
+    //
+    // La diferencia entre las dos cosas es que la segunda es un accidente: bastaria que alguien
+    // anadiera una rama nueva para que un `struct` anidado empezara a registrarse como campo, y
+    // el sintoma seria un miembro fantasma en el layout, no un error. `ProjectNameLookup` ya lo
+    // registro como TIPO --con su identidad, su contenedor y su accesibilidad-- y esa es la
+    // unica tabla en la que un tipo anidado tiene que aparecer.
+    if (node->kind() == ast::AstNodeKind::ClassDeclaration ||
+        node->kind() == ast::AstNodeKind::StructDeclaration ||
+        node->kind() == ast::AstNodeKind::InterfaceDeclaration ||
+        node->kind() == ast::AstNodeKind::EnumDeclaration ||
+        node->kind() == ast::AstNodeKind::DelegateDeclaration)
+    {
+        return;
+    }
     if (isClassMemberNode(node->kind()))
     {
         output.push_back(node);

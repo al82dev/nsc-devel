@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
+#include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
+
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -90,8 +92,25 @@ OwnershipArgumentFit classifyOwnershipArgument(
             ? OwnershipArgumentFit::Ok
             : OwnershipArgumentFit::BorrowedRequiresCheckedSource;
     }
-    // Parametro sin calificador. Ni una transferencia ni un prestamo pueden colarse dentro: se
-    // perderia el contrato en silencio, que es justo lo que Stage 50 existe para impedir.
+    // Parametro sin calificador. Lo que no puede colarse dentro es un CONTRATO: una transferencia
+    // o un prestamo se perderian en silencio, que es justo lo que Stage 50 existe para impedir.
+    //
+    // UN OWNER RECIEN CREADO NO ES UN CONTRATO, y por eso NO se rechaza aqui. Se midio: anadir
+    // `argumentIsFreshOwner` a esta condicion --que es lo que el comentario de
+    // ExpressionResult::ownershipFreshOwner llego a afirmar que pasaba-- rompe cinco de los
+    // ejemplos del libro con `no viable overload of 'Insert'`, sobre la forma mas ordinaria que
+    // hay en este lenguaje:
+    //
+    //     public void Insert(Student value)   // parametro sin calificador
+    //     tree.Insert(new Student(50, "Ana", 90));
+    //
+    // Y rechazarlo seria ademas arbitrario: `Student s = new Student(...); tree.Insert(s);` hace
+    // exactamente lo mismo con el mismo objeto y siempre fue legal. Lo que un parametro sin
+    // calificador no hace es RASTREAR la vida del valor; eso vale igual para un objeto recien
+    // creado que para uno que ya existia, y no es algo que esta funcion pueda arreglar.
+    //
+    // `ownershipFreshOwner` existe para RELAJAR el requisito de un parametro `owned` --que no
+    // podia recibir un `new` porque no hay de donde mover-- y no para endurecer este.
     if (argumentTransfer || argumentOwnership == sema::OwnershipKind::Borrowed)
     {
         return OwnershipArgumentFit::UnqualifiedRejectsOwnership;
@@ -323,8 +342,10 @@ bool ProjectMethodBodyModel::build(
     const ProjectMemberModel& memberModel,
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericConstraintModel* genericConstraintModel)
 {
+    genericConstraintModel_ = genericConstraintModel;
     if (built_)
     {
         return !diagnostics.hasErrors();
@@ -352,6 +373,28 @@ bool ProjectMethodBodyModel::build(
         if ((member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
              member.kind != ClassMemberKind::Destructor) ||
             member.syntax == nullptr || member.syntax->first() == nullptr)
+        {
+            continue;
+        }
+        // NSC-LIMIT-007. UNA ESPECIALIZACION QUE YA INCUMPLIO SU `where` NO SE ANALIZA.
+        //
+        // Su cuerpo se sustituyo con un `T` que la clausula prohibe, de modo que analizarlo
+        // produce errores sobre codigo que el programa no usa: `F<int>(1)` con una sobrecarga
+        // `F<T>(T, int) where T : IComponente` fallaba dentro de un `x.Peso()` que nadie llama.
+        //
+        // No se BORRA el registro: la fase de constraints lo necesita para poder explicar, si al
+        // final ninguna candidata sirve, POR QUE ninguna servia. Lo que no se hace es tratarlo
+        // como codigo del programa. HIR lo salta por la misma pregunta y en el mismo sentido.
+        //
+        // Se preguntan DOS nodos, y hacen falta los dos. Para un METODO generico la invalidez
+        // esta en su propio nodo; para un TIPO generico --`Caja<int>` con `where T : class`--
+        // esta en el nodo del tipo, y sus metodos son hijos suyos, asi que preguntar solo por
+        // `member.syntax` no la veria nunca.
+        if (genericConstraintModel_ != nullptr &&
+            (!genericConstraintModel_->specializationSatisfiesConstraints(member.syntax) ||
+             (member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+              !genericConstraintModel_->specializationSatisfiesConstraints(
+                  nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax))))
         {
             continue;
         }
@@ -6944,6 +6987,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     };
 
     bool hasMatchingArity = false;
+    // Las candidatas que eran viables por tipos y propiedad y cayeron SOLO por su `where`. Si al
+    // final no queda ninguna viable, estas son las que explican por que.
+    std::vector<const ast::AstNode*> constraintRejectedSyntaxes;
     if (memberModel_ != nullptr)
     {
         for (const std::size_t candidateOrdinal : callee.methodCandidates)
@@ -7014,6 +7060,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 }
                 candidateBinding.conversions.push_back(std::move(conversion));
             }
+            // NSC-LIMIT-007, tercera vuelta. LOS CONSTRAINTS SE CONSULTAN AQUI, y solo despues
+            // de que la candidata sea viable por tipos y por propiedad.
+            //
+            // El orden importa: una candidata que no acepta estos argumentos no incumple nada
+            // --nadie la va a llamar-- y acusarla llenaria la salida de errores sobre
+            // sobrecargas que el programa descarta. Y a la inversa: si es viable, su `where` es
+            // parte del contrato que la llamada tiene que cumplir, exactamente igual que los
+            // tipos de sus parametros.
+            //
+            // El modelo de constraints guarda estas violaciones sin emitirlas precisamente
+            // porque solo aqui se sabe cual de las candidatas es la que el programa usa.
+            if (candidateBinding.viable && genericConstraintModel_ != nullptr &&
+                !genericConstraintModel_->specializationSatisfiesConstraints(candidate.syntax))
+            {
+                candidateBinding.viable = false;
+                constraintRejectedSyntaxes.push_back(candidate.syntax);
+            }
             if (candidateBinding.viable)
             {
                 call.viableCandidateMemberOrdinals.push_back(candidateOrdinal);
@@ -7046,6 +7109,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
     if (viableEvaluationOrdinals.empty())
     {
+        // Ninguna candidata sobrevivio. Si alguna cayo por su `where` --y no por tipos-- ese es
+        // el error del programa, y se dice con el mensaje del constraint en vez de con un
+        // «ninguna sobrecarga acepta estos argumentos» que no explica nada.
+        if (!constraintRejectedSyntaxes.empty() && genericConstraintModel_ != nullptr)
+        {
+            for (const ast::AstNode* rejected : constraintRejectedSyntaxes)
+            {
+                genericConstraintModel_->reportSpecializationConstraintViolations(
+                    rejected, expression->range(), diagnostics);
+            }
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
         bool reportedOwnershipDiagnostic = false;
         if (memberModel_ != nullptr)
         {

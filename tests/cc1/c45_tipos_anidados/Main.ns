@@ -1,0 +1,165 @@
+// NSC-LIMIT-009 -- tipos anidados, y la COLISION DE SIMBOLOS que casi se cuela.
+//
+// LO QUE MIDE ESTA FIXTURE, y por que existe aparte de las pruebas de lookup.
+//
+// Las identidades canonicas de estos dos tipos son distintas y siempre lo fueron:
+//
+//     c45_tipos_anidados::c45.Caja+Pieza     el tipo ANIDADO en la clase `Caja`
+//     c45_tipos_anidados::c45.Caja.Pieza     el tipo `Pieza` del NAMESPACE `c45.Caja`
+//
+// Pero el nombre NATIVO no salia de la identidad: salia de un saneador que aplastaba a `_` todo
+// lo que no fuera alfanumerico, y habia CUATRO copias de el --HIR, MIR, destruccion y el
+// lowerer--. Las cuatro convertian `+` y `.` en el mismo `_`, de modo que los dos tipos producian
+// el MISMO `__nsc_method_`, el mismo `__nsc_classdesc_`, el mismo `__nsc_destroy_` y la misma
+// tabla de dispatch. Dos tipos, un cuerpo.
+//
+// Y no lo cazaba nada, porque las pruebas de tipos anidados llegaban hasta el modelo de nombres y
+// el de miembros, donde las identidades SI se distinguen. El defecto vivia una fase mas abajo.
+// Por eso esta fixture existe: lleva las dos identidades hasta HIR, LLVM, enlace y ejecucion, y
+// comprueba el valor que devuelve cada una. Si los simbolos vuelven a colapsar, uno de los dos
+// cuerpos gana y estos codigos lo dicen.
+//
+// LO QUE SE MIDE:
+//
+//   10   el anidado `Caja+Pieza`, alcanzado por su nombre corto DESDE DENTRO de `Caja`.
+//   11   el tipo de namespace `c45.Caja.Pieza`, alcanzado desde fuera.
+//   12   los dos en la misma expresion, para que ningun plegado los una.
+//   13   struct anidado frente a struct de namespace homonimo: el mismo choque, sin descriptor
+//        de clase de por medio.
+//   14   un anidado `protected`, usado desde una clase DERIVADA del contenedor. Es lo que
+//        obliga a comprobar `protected` en el modelo de herencia y no al resolver nombres.
+//   15   el mismo anidado protegido, usado desde el propio contenedor.
+//   16-17 dos metodos GENERICOS homonimos bajo dos anidados homonimos: `A.Inner.F<T>` y
+//        `B.Inner.F<T>`. El modelo generico llevaba UN nombre de dueno --el del contenedor mas
+//        interno-- y lo reemplazaba al bajar, de modo que los dos eran «Inner» y compartian clave
+//        canonica: falso duplicado, o peor, una especializacion compartida con el cuerpo
+//        equivocado. Los codigos comprueban que cada uno devuelve LO SUYO.
+//   42   todo correcto.
+using NativeSharp.Core;
+
+namespace c45.Caja
+{
+    // Tipo del NAMESPACE `c45.Caja`. Identidad `c45.Caja.Pieza`.
+    public class Pieza
+    {
+        public int Peso() { return 20; }
+    }
+
+    public struct Medida
+    {
+        public int Valor() { return 30; }
+    }
+}
+
+namespace c45
+{
+    // Clase `Caja`, homonima del namespace de arriba. Su anidado tiene identidad
+    // `c45.Caja+Pieza`, que es una cosa distinta de `c45.Caja.Pieza`.
+    public class Caja
+    {
+        public class Pieza
+        {
+            public int Peso() { return 21; }
+        }
+
+        public struct Medida
+        {
+            public int Valor() { return 31; }
+        }
+
+        // DESDE DENTRO el nombre corto resuelve al anidado, no al del namespace: es el escalon
+        // de busqueda que los contenedores lexicos anaden delante del namespace.
+        public int Interno()
+        {
+            Pieza p = new Pieza();
+            return p.Peso();
+        }
+
+        public int InternoMedida()
+        {
+            Medida m;
+            return m.Valor();
+        }
+    }
+
+    public class Base
+    {
+        protected class Reservada
+        {
+            public int Codigo() { return 40; }
+        }
+
+        // El contenedor ve lo suyo.
+        public int DesdeElContenedor()
+        {
+            Reservada r = new Reservada();
+            return r.Codigo();
+        }
+    }
+
+    // Una DERIVADA ve el anidado protegido de su base. Esto es lo que la resolucion de nombres no
+    // puede responder --la herencia se construye despues-- y por lo que la comprobacion vive en
+    // ProjectInheritanceModel.
+    //
+    // SE ESCRIBE `Base.Reservada`, CALIFICADO, y conviene saber por que: la busqueda por nombre
+    // CORTO sube por los contenedores lexicos, no por la cadena de herencia. Resolver `Reservada`
+    // a secas desde aqui exigiria recorrer las bases al resolver nombres, que es la fase anterior
+    // a la que las conoce. Es una carencia real y esta anotada; lo que esta entrega sostiene es
+    // que el nombre calificado resuelve y que la ACCESIBILIDAD se decide bien.
+    public class Derivada : Base
+    {
+        public int DesdeLaDerivada()
+        {
+            Base.Reservada r = new Base.Reservada();
+            return r.Codigo();
+        }
+    }
+
+    // Dos contenedores distintos, el mismo nombre de anidado, el mismo nombre de metodo generico
+    // y la misma aridad. Todo igual salvo la cadena de contenedores, que es lo unico que los
+    // separa.
+    public class PrimeraCaja
+    {
+        public class Interna
+        {
+            public static int Valor<T>(T x) { return 16; }
+        }
+    }
+
+    public class SegundaCaja
+    {
+        public class Interna
+        {
+            public static int Valor<T>(T x) { return 17; }
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Caja caja = new Caja();
+            if (caja.Interno() != 21) { return 10; }
+
+            c45.Caja.Pieza delNamespace = new c45.Caja.Pieza();
+            if (delNamespace.Peso() != 20) { return 11; }
+
+            // Los dos en la misma expresion. Si sus simbolos colapsaran, esta suma no daria 41.
+            if (caja.Interno() + delNamespace.Peso() != 41) { return 12; }
+
+            c45.Caja.Medida medidaNamespace;
+            if (caja.InternoMedida() + medidaNamespace.Valor() != 61) { return 13; }
+
+            Derivada derivada = new Derivada();
+            if (derivada.DesdeLaDerivada() != 40) { return 14; }
+
+            Base b = new Base();
+            if (b.DesdeElContenedor() != 40) { return 15; }
+
+            if (PrimeraCaja.Interna.Valor<int>(0) != 16) { return 16; }
+            if (SegundaCaja.Interna.Valor<int>(0) != 17) { return 17; }
+
+            return 42;
+        }
+    }
+}

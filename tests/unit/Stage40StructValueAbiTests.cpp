@@ -259,20 +259,32 @@ namespace Demo
     std::string verifyError;
     tests.expect(module->verify(verifyError), "Stage 40 direct carrier LLVM verifies before optimization");
     const std::string llvm = module->text();
-    tests.expect(llvm.find("__Demo_S1__Echo__") != std::string::npos && llvm.find("define i8 @") != std::string::npos,
+    // NSC-LIMIT-009. ESTAS CADENAS SE ACTUALIZARON, y conviene decir por que no es «ajustar la
+    // prueba hasta que pase». Decian `__Demo_S1__Echo__`, que es la salida del saneador VIEJO: el
+    // que aplastaba `.` y `:` al mismo `_` y hacia que `Mod::A.B` y `Mod::A_B` produjeran el mismo
+    // simbolo. Esa forma no puede volver bajo NINGUNA codificacion inyectiva, que es lo que se
+    // pidio y se implemento. El nombre real hoy es `Stage40Abi$3A$3ADemo$2ES1__Echo__...`.
+    //
+    // Y la de `Mutate` lleva ademas la comilla de cierre: el nombre va entrecomillado, asi que el
+    // `(` de la lista de parametros no viene pegado al nombre sino a la comilla.
+    tests.expect(llvm.find("Demo$2ES1__Echo__") != std::string::npos && llvm.find("define i8 @") != std::string::npos,
         "1-byte struct uses an i8 direct carrier");
-    tests.expect(llvm.find("__Demo_S2__Echo__") != std::string::npos && llvm.find("define i16 @") != std::string::npos,
+    tests.expect(llvm.find("Demo$2ES2__Echo__") != std::string::npos && llvm.find("define i16 @") != std::string::npos,
         "2-byte struct uses an i16 direct carrier");
-    tests.expect(llvm.find("__Demo_S4__Echo__") != std::string::npos && llvm.find("define i32 @") != std::string::npos,
+    tests.expect(llvm.find("Demo$2ES4__Echo__") != std::string::npos && llvm.find("define i32 @") != std::string::npos,
         "4-byte struct uses an i32 direct carrier");
-    tests.expect(llvm.find("__Demo_S8__Echo__") != std::string::npos && llvm.find("define i64 @") != std::string::npos,
+    tests.expect(llvm.find("Demo$2ES8__Echo__") != std::string::npos && llvm.find("define i64 @") != std::string::npos,
         "8-byte struct uses an i64 direct carrier");
-    tests.expect(llvm.find("__Demo_S8__Mutate__builtin_int(ptr %this, i32 %p0)") != std::string::npos,
+    tests.expect(llvm.find("Demo$2ES8__Mutate__builtin$3Aint\"(ptr %this, i32 %p0)") != std::string::npos,
         "struct instance receiver ABI is an address-first ptr, not a copied value");
     tests.expect(llvm.find("%p0.addr = alloca i64") != std::string::npos &&
             llvm.find("store i64 %p0, ptr %p0.addr") != std::string::npos,
         "by-value S8 parameter is copied into callee-owned addressable storage");
-    tests.expect(llvm.find("classdesc_Stage40Abi__Demo_S8") == std::string::npos,
+    // ESTA ERA UN VERDE FALSO Y NADIE LO VIO. Buscaba la AUSENCIA de `classdesc_Stage40Abi__Demo_S8`
+    // --la forma vieja--, que desde el cambio de codificacion no puede aparecer jamas: la
+    // comprobacion pasaba sola, sobre una cadena imposible, y habria seguido pasando aunque un
+    // struct SI recibiera descriptor. Con el nombre real vuelve a medir lo que dice medir.
+    tests.expect(llvm.find("classdesc_Stage40Abi$3A$3ADemo$2ES8") == std::string::npos,
         "struct values do not receive a ClassDescriptor");
 
     std::string targetError;

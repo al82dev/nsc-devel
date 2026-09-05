@@ -9,9 +9,23 @@
 // `Spans.Of`, y `Algorithm.SortWith` en vez de una sobrecarga de `Sort`. Dos nombres peores puestos
 // a proposito, con su motivo anotado en el codigo.
 //
-// QUE CAMBIO. La identidad incluye ahora la CUENTA DE PARAMETROS DE VALOR, y la resolucion de una
-// llamada generica filtra por cuantos argumentos trae. `Algorithm.Sort` ya es una sobrecarga de
-// verdad, y esta fixture es el consumidor que lo fija.
+// QUE CAMBIO. Dos cosas, y NINGUNA de las dos es «meter la cuenta de parametros en la identidad».
+// Esa fue la primera version del arreglo y esta descartada: la clave sale del compilador por el
+// volcado de HIR, el de MIR y los METADATOS DE BIBLIOTECA que lee un host, y cambiarle el formato
+// a una identidad que ya es publica rompe a quien la lea.
+//
+//   * LA CLAVE SE QUEDA EXACTAMENTE COMO ESTABA mientras sea unica. Solo cuando dos plantillas
+//     comparten `nombre``aridad` se les anade a LAS DOS un `#<indice de declaracion>`. El
+//     desempate es la POSICION EN LA FUENTE, no la cuenta de parametros -- porque la cuenta
+//     separa `Cuenta<T>(T[])` de `Cuenta<T>(T[], int, int)` pero NO separa `Solo<T>(T)` de
+//     `Solo<T>(T[])`, que es la segunda mitad de este mismo dia. Si la clave no las separara,
+//     compartirian tambien la clave de especializacion, la segunda daria en la cache de la
+//     primera y una de las dos sobrecargas DESAPARECERIA en silencio.
+//   * LA RESOLUCION DE UNA LLAMADA FILTRA POR CUANTOS ARGUMENTOS DE VALOR TRAE.
+//
+// El sufijo se pone solo donde antes habia un error, que es el unico sitio donde no puede haber
+// nada escrito que dependa del formato anterior. `Algorithm.Sort` ya es una sobrecarga de verdad,
+// y esta fixture es el consumidor que lo fija.
 //
 // Y LA SEGUNDA MITAD, del mismo dia: dos sobrecargas con la MISMA cuenta de parametros y tipos
 // distintos -- `F<T>(T)` contra `F<T>(T[])`. Esas no se pueden separar por la cuenta, y elegir
@@ -27,7 +41,8 @@
 // Y si dos especializaciones acaban con la MISMA lista de parametros, el choque lo detecta la
 // deteccion de metodos duplicados de siempre:
 //
-//     duplicate method signature 'F__g1__int(builtin:int)' in type 'pz.U'
+//     duplicate method signature 'F__g1__int(builtin:int)' in type 'pz.U'; return type is not
+//     part of overload identity
 //
 // que es un mensaje mejor que el de antes, y en su sitio.
 //

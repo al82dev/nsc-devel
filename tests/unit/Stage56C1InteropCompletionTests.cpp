@@ -593,7 +593,7 @@ namespace proj {
         tests, root / "CallbackAddressIsStable" / "CallbackAddressIsStable.nsproj",
         "CallbackAddressIsStable");
     tests.expect(
-        countOccurrences(ir, "__c_boundary(i32 %0, i32 %1) #") == 1,
+        countOccurrences(ir, "__c_boundary\"(i32 %0, i32 %1) #") == 1,
         "CallbackAddressIsStable: one target, exactly one boundary thunk definition");
 }
 

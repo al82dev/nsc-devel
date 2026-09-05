@@ -352,7 +352,7 @@ class H { public static void F() { Box<int> value = null; } }
     expectGenericReject("DuplicateGenericIdentity", R"NS(
 class Box<T> { public T A; }
 class Box<U> { public U B; }
-)NS", "duplicate generic template identity");
+)NS", "duplicate generic type identity");
 
     const auto syntaxReject = [&](std::string_view name, std::string_view source, std::string_view expected) {
         const auto directory = root / std::string(name);
@@ -369,9 +369,13 @@ class Box<U> { public U B; }
 class Box<T, T> { public T Value; }
 )NS", "duplicate generic type parameter");
 
-    syntaxReject("ConstraintsDeferred", R"NS(
+    // YA NO SE APLAZAN: NSC-LIMIT-007 implemento los constraints, y con ellos desaparecio el
+    // mensaje «generic constraints are deferred beyond Stage 44» que esta comprobacion exigia.
+    // Lo que este programa sigue siendo es un `where` MAL ESCRITO --una clausula sin `:` ni lista
+    // de constraints-- y el parser lo sigue rechazando, ahora por lo que de verdad le pasa.
+    syntaxReject("ConstraintWithoutConstraintList", R"NS(
 class Box<T> where T { public T Value; }
-)NS", "generic constraints are deferred beyond Stage 44");
+)NS", "expected ':' after the constrained type parameter");
 }
 }
 

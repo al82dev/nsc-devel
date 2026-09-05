@@ -68,6 +68,99 @@ std::string qualifiedName(std::string_view ns, std::string_view name)
     return std::string(ns) + "." + std::string(name);
 }
 
+// NSC-LIMIT-009. La cadena de tipos contenedores extendida con uno mas, unida con `+` igual que
+// `TypeIdentity::fullyQualifiedName`.
+//
+// Este modelo llevaba UN nombre de dueno --el del contenedor mas interno-- y lo REEMPLAZABA al
+// bajar, de modo que `A.Inner` y `B.Inner` eran los dos «Inner». Con eso, dos plantillas sin
+// ninguna relacion compartian clave canonica, se agrupaban como sobrecargas la una de la otra y
+// podian compartir especializacion. La cadena entera es lo unico que las separa.
+std::string appendOwner(std::string_view chain, std::string_view name)
+{
+    if (chain.empty()) return std::string(name);
+    return std::string(chain) + "+" + std::string(name);
+}
+
+// El receptor de `N1.C.F<int>(x)` TAL COMO SE ESCRIBIO: `N1.C`. Con puntos, sin interpretar.
+//
+// LA VERSION ANTERIOR LO CONVERTIA A `N1+C`, y eso era un error de principio, no de detalle: esta
+// fase corre ANTES de la resolucion de nombres, de modo que no puede saber que en `N1.C` el primero
+// es un namespace y el segundo un tipo, ni que en `A.Inner` los dos son tipos. Poner `+` es afirmar
+// una de las dos lecturas sin datos para elegir.
+//
+// Medido con la version anterior: `N1.C.F<int>(1)` producia `N1+C`, que no coincide con NINGUN
+// registro --el de N1 tiene owner `C`-- de modo que el filtro de dueno descartaba las dos
+// plantillas y solo el fallback rescataba la llamada. Con dos `F<T>` visibles de la misma aridad,
+// ese fallback no es ambiguo a veces: lo es siempre, y dos llamadas completamente calificadas no
+// compilaban.
+//
+// Devuelve vacio si el receptor no es una cadena de identificadores --una expresion, un indice, una
+// llamada--; entonces se conserva el comportamiento anterior.
+std::string receiverSourceSpelling(const ast::AstNode* receiver)
+{
+    if (receiver == nullptr) return {};
+    if (receiver->kind() == ast::AstNodeKind::IdentifierExpression) return receiver->text();
+    if (receiver->kind() != ast::AstNodeKind::MemberExpression) return {};
+    const std::string prefix = receiverSourceSpelling(receiver->first());
+    if (prefix.empty()) return {};
+    return prefix + "." + receiver->text();
+}
+
+// La escritura fuente COMPLETA de una plantilla: `N1.C`, `a3.A.Inner`. El registro guarda el
+// namespace y la cadena de contenedores por separado, y la cadena usa `+` porque es la identidad
+// canonica; aqui se vuelve a puntos, que es lo que el programador escribe.
+std::string templateSourceSpelling(std::string_view namespaceName, std::string_view ownerChain)
+{
+    std::string owner(ownerChain);
+    for (char& character : owner)
+    {
+        if (character == '+') character = '.';
+    }
+    return qualifiedName(namespaceName, owner);
+}
+
+// LOS SEGMENTOS DE UN NOMBRE PUNTEADO. `A.B` -> {"A","B"}; el vacio no da segmentos.
+std::vector<std::string> splitDotted(std::string_view text)
+{
+    std::vector<std::string> segments;
+    std::size_t begin = 0;
+    while (begin <= text.size())
+    {
+        const std::size_t dot = text.find('.', begin);
+        const std::size_t stop = dot == std::string_view::npos ? text.size() : dot;
+        if (stop > begin) segments.emplace_back(text.substr(begin, stop - begin));
+        if (dot == std::string_view::npos) break;
+        begin = dot + 1;
+    }
+    return segments;
+}
+
+// LA ESCRITURA COMPLETA DE CADA TIPO CONTENEDOR DEL SITIO, de fuera adentro. El modelo guarda la
+// cadena de duenos con `+` --es la identidad canonica-- y aqui hace falta con puntos y ACUMULADA:
+// dentro de `A.Outer+Medio` los contenedores son `A.Outer` y `A.Outer.Medio`, en ese orden, que es
+// lo que el escalon de contenedores necesita para probar de dentro afuera.
+std::vector<std::string> enclosingTypeSpellings(
+    std::string_view namespaceName, std::string_view ownerChain)
+{
+    std::vector<std::string> spellings;
+    std::string current(namespaceName);
+    std::size_t begin = 0;
+    while (begin <= ownerChain.size())
+    {
+        const std::size_t plus = ownerChain.find('+', begin);
+        const std::size_t stop = plus == std::string_view::npos ? ownerChain.size() : plus;
+        if (stop > begin)
+        {
+            if (!current.empty()) current.push_back('.');
+            current.append(ownerChain.substr(begin, stop - begin));
+            spellings.push_back(current);
+        }
+        if (plus == std::string_view::npos) break;
+        begin = plus + 1;
+    }
+    return spellings;
+}
+
 std::string stableHashSuffix(std::string_view text)
 {
     std::uint64_t hash = 1469598103934665603ULL;
@@ -169,14 +262,14 @@ bool ProjectGenericModel::build(
                 diagnostics::DiagnosticId::DuplicateSymbol,
                 diagnostics::DiagnosticSeverity::Error,
                 state.syntax != nullptr ? state.syntax->range() : SourceRange{},
-                // ID 132. El mensaje dice POR QUE chocan, porque desde que la cuenta de
-                // parametros desambigua, llegar aqui significa que dos plantillas comparten
-                // nombre, aridad generica Y cuenta de parametros -- y eso el compilador no lo
-                // puede separar: elegir entre ellas necesita los TIPOS de los argumentos, y esta
-                // pasada corre antes del modelo semantico.
-                "duplicate generic template identity '" + state.record.canonicalKey +
-                    "'; two generic methods can differ by how many parameters they take, but not "
-                    "by their types alone -- rename one");
+                // Este bucle salta los METODOS --la linea de arriba-- asi que aqui solo llegan
+                // TIPOS genericos, y el mensaje tiene que hablar de tipos. Decia «dos metodos
+                // genericos», que era el texto del caso vecino: un tipo generico no tiene
+                // parametros por los que desambiguar, de modo que dos con el mismo nombre, el
+                // mismo namespace y la misma aridad son sencillamente el mismo tipo dos veces.
+                "duplicate generic type identity '" + state.record.canonicalKey +
+                    "'; two generic types in the same namespace cannot share a name and an "
+                    "arity -- rename one, or declare it 'partial' at namespace scope");
         }
     }
 
@@ -187,7 +280,7 @@ bool ProjectGenericModel::build(
     {
         if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
         ProjectSyntaxUnit& unit = *unitPtr;
-        processNode(unit, unit.syntaxTree(), "", "", false, diagnostics);
+        processNode(unit, unit.syntaxTree(), "", "", GenericLookupScope{}, false, diagnostics);
     }
 
     built_ = true;
@@ -245,10 +338,17 @@ void ProjectGenericModel::collectTemplates(
         record.moduleName = std::string(unit.moduleName());
         record.namespaceName = currentNamespace;
         record.name = node->text();
+        record.ownerName = ownerName;
         record.parameters = node->genericParameters();
-        record.canonicalKey = record.moduleName + "::" + qualifiedName(currentNamespace, record.name) +
+        record.constraints = node->genericConstraints();
+        // NSC-LIMIT-009: `ns.A+Inner`1`, no `ns.Inner`1`. Hoy el parser rechaza un tipo anidado
+        // generico, de modo que esta cadena esta siempre vacia; se escribe igualmente porque el
+        // dia que deje de rechazarlo la clave tiene que salir completa, no ambigua.
+        record.qualifiedTypeName = appendOwner(ownerName, record.name);
+        record.canonicalKey = record.moduleName + "::" +
+            qualifiedName(currentNamespace, record.qualifiedTypeName) +
             "`" + std::to_string(record.parameters.size());
-        templateStates_.push_back(TemplateState{record, &unit, node, parent});
+        templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 
     if (isGenericMethodTemplateNode(node))
@@ -271,14 +371,18 @@ void ProjectGenericModel::collectTemplates(
         record.ownerName = ownerName;
         record.name = node->text();
         record.parameters = node->genericParameters();
+        record.constraints = node->genericConstraints();
+        record.qualifiedTypeName = ownerName;
         record.canonicalKey = record.moduleName + "::" + qualifiedName(currentNamespace, ownerName) +
             "." + record.name + "``" + std::to_string(record.parameters.size());
-        templateStates_.push_back(TemplateState{record, &unit, node, parent});
+        templateStates_.push_back(TemplateState{record, &unit, node, parent, templateStates_.size()});
     }
 
+    // NSC-LIMIT-009: se APILA. La version anterior reemplazaba, de modo que al entrar en
+    // `A { Inner { ... } }` el dueno pasaba a ser «Inner» y `A` desaparecia.
     const std::string childOwner =
         (node->kind() == ast::AstNodeKind::ClassDeclaration || node->kind() == ast::AstNodeKind::StructDeclaration)
-            ? node->text() : ownerName;
+            ? appendOwner(ownerName, node->text()) : ownerName;
     const bool childInsideGeneric = insideGenericType || genericType;
     const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
     for (ast::AstNode* child : children)
@@ -292,6 +396,7 @@ void ProjectGenericModel::processNode(
     ast::AstNode* node,
     const std::string& namespaceName,
     const std::string& ownerName,
+    const GenericLookupScope& scope,
     bool insideTemplate,
     diagnostics::DiagnosticEngine& diagnostics)
 {
@@ -301,6 +406,54 @@ void ProjectGenericModel::processNode(
     if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
     {
         currentNamespace = namespaceAppend(namespaceName, node->text());
+    }
+
+    // LOS `using` DE ESTE AMBITO, recogidos como los recoge ProjectNameLookup::bindScope: del
+    // mismo AST, en el mismo sitio, y heredando los de fuera.
+    GenericLookupScope currentScope = scope;
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr) continue;
+        if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
+        {
+            // LAS DOS FORMAS. `using Otro;` dentro de `namespace A` puede significar `Otro` o
+            // `A.Otro`, y aqui no hay tabla de namespaces con la que decidirlo --el modelo de
+            // nombres todavia no existe--. Se guardan las dos: el escalon de imports las prueba
+            // ambas, y la que no exista sencillamente no acierta.
+            const std::string written = child->text();
+            if (written.empty()) continue;
+            const auto add = [&](std::string candidate)
+            {
+                if (std::find(
+                        currentScope.importedNamespaces.begin(),
+                        currentScope.importedNamespaces.end(),
+                        candidate) == currentScope.importedNamespaces.end())
+                {
+                    currentScope.importedNamespaces.push_back(std::move(candidate));
+                }
+            };
+            const std::vector<std::string> segments = splitDotted(currentNamespace);
+            for (std::size_t depth = segments.size(); depth > 0; --depth)
+            {
+                std::string prefixed;
+                for (std::size_t index = 0; index < depth; ++index)
+                {
+                    if (!prefixed.empty()) prefixed.push_back('.');
+                    prefixed += segments[index];
+                }
+                prefixed.push_back('.');
+                prefixed += written;
+                add(std::move(prefixed));
+            }
+            add(written);
+        }
+        else if (child->kind() == ast::AstNodeKind::UsingAliasDirective)
+        {
+            if (!child->auxiliaryText().empty())
+            {
+                currentScope.aliases[child->text()] = child->auxiliaryText();
+            }
+        }
     }
 
     const bool templateNode = isGenericTypeTemplateNode(node) || isGenericMethodTemplateNode(node);
@@ -313,7 +466,7 @@ void ProjectGenericModel::processNode(
 
     if (node->kind() == ast::AstNodeKind::CallExpression && !node->typeSyntaxes().empty())
     {
-        processGenericCall(unit, node, currentNamespace, ownerName, diagnostics);
+        processGenericCall(unit, node, currentNamespace, ownerName, currentScope, diagnostics);
     }
     else
     {
@@ -325,19 +478,21 @@ void ProjectGenericModel::processNode(
 
     const auto processChild = [&](ast::AstNode* child)
     {
-        processNode(unit, child, currentNamespace, ownerName, false, diagnostics);
+        processNode(unit, child, currentNamespace, ownerName, currentScope, false, diagnostics);
     };
     processChild(node->first());
     processChild(node->second());
     processChild(node->third());
 
+    // NSC-LIMIT-009: se APILA. La version anterior reemplazaba, de modo que al entrar en
+    // `A { Inner { ... } }` el dueno pasaba a ser «Inner» y `A` desaparecia.
     const std::string childOwner =
         (node->kind() == ast::AstNodeKind::ClassDeclaration || node->kind() == ast::AstNodeKind::StructDeclaration)
-            ? node->text() : ownerName;
+            ? appendOwner(ownerName, node->text()) : ownerName;
     const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
     for (ast::AstNode* child : children)
     {
-        processNode(unit, child, currentNamespace, childOwner, false, diagnostics);
+        processNode(unit, child, currentNamespace, childOwner, currentScope, false, diagnostics);
     }
 }
 
@@ -388,6 +543,9 @@ bool ProjectGenericModel::processTypeSyntax(
 
     currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
     currentInstantiationNamespace_ = namespaceName;
+    // NSC-LIMIT-007: el SITIO. Un `Caja<int>` invalido tiene que sonar donde alguien lo escribio,
+    // no sobre la declaracion de `Caja<T>`, que es correcta.
+    currentInstantiationRange_ = syntax->range();
     const std::string specialized = ensureTypeSpecialization(
         *state, syntax->typeArguments(), diagnostics);
     if (specialized.empty()) return false;
@@ -401,6 +559,7 @@ bool ProjectGenericModel::processGenericCall(
     ast::AstNode* call,
     const std::string& namespaceName,
     const std::string& ownerName,
+    const GenericLookupScope& scope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression) return false;
@@ -411,11 +570,13 @@ bool ProjectGenericModel::processGenericCall(
 
     ast::AstNode* callee = methodCalleeSyntax(call);
     const std::string methodName = methodCalleeName(call);
-    std::string requestedOwner = ownerName;
-    if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression &&
-        callee->first() != nullptr && callee->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    // La escritura del receptor, o --si no hay receptor escrito-- la del tipo desde el que se
+    // llama, que es como se nombra a un metodo estatico del propio tipo.
+    std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);
+    if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression)
     {
-        requestedOwner = callee->first()->text();
+        const std::string written = receiverSourceSpelling(callee->first());
+        if (!written.empty()) requestedOwner = written;
     }
 
     // ID 132. Los argumentos de VALOR de la llamada. Los hijos de un nodo de llamada son sus
@@ -436,8 +597,19 @@ bool ProjectGenericModel::processGenericCall(
     // No se adivina nada: se le pasa el problema a la capa que tiene los datos. Y si dos
     // especializaciones acaban con la MISMA lista de parametros --`F<int>(int)` y `F<T>(int)`--
     // el choque lo detecta la deteccion de metodos duplicados de siempre, que es su sitio.
-    std::vector<TemplateState*> shared =
-        collectMethodTemplates(unit, requestedOwner, methodName, call->typeSyntaxes().size());
+    // EL SITIO DE LA LLAMADA, en la forma que entiende la escala compartida.
+    const std::vector<std::string> namespaceSegments = splitDotted(namespaceName);
+    const std::vector<std::string> enclosingTypes =
+        enclosingTypeSpellings(namespaceName, ownerName);
+    QualifiedNameSite site;
+    site.namespaceSegments = namespaceSegments;
+    site.enclosingTypeNames = enclosingTypes;
+    site.aliases = &scope.aliases;
+    site.importedNamespaces = scope.importedNamespaces;
+
+    std::vector<TemplateState*> shared = collectMethodTemplates(
+        unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
+        argumentCount);
     if (shared.size() > 1U)
     {
         std::string sharedName = methodName + "__g" +
@@ -447,26 +619,33 @@ bool ProjectGenericModel::processGenericCall(
 
         currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
         currentInstantiationNamespace_ = namespaceName;
+        currentInstantiationRange_ = call->range();
+        // NSC-LIMIT-007: las que salen de aqui son ALTERNATIVAS entre si, no obligaciones
+        // simultaneas. Se marcan con un grupo comun para que la validacion de constraints exija
+        // que fallen todas antes de decir nada.
+        currentOverloadGroup_ = ++nextOverloadGroup_;
         for (TemplateState* candidate : shared)
         {
             if (call->typeSyntaxes().size() != candidate->record.parameters.size()) continue;
             if (ensureMethodSpecialization(
                     *candidate, call->typeSyntaxes(), diagnostics, sharedName).empty())
             {
+                currentOverloadGroup_ = 0;
                 return false;
             }
         }
+        currentOverloadGroup_ = 0;
         if (callee != nullptr) callee->setText(sharedName);
         call->clearTypeSyntaxes();
         return true;
     }
 
     TemplateState* state = resolveMethodTemplate(
-        unit, requestedOwner, methodName, call->typeSyntaxes().size(), argumentCount);
+        unit, site, requestedOwner, methodName, call->typeSyntaxes().size(), argumentCount);
     if (state == nullptr)
         state = resolveMethodTemplate(
-            unit, requestedOwner, methodName, std::numeric_limits<std::size_t>::max(),
-            argumentCount);
+            unit, site, requestedOwner, methodName,
+            std::numeric_limits<std::size_t>::max(), argumentCount);
     if (state == nullptr)
     {
         diagnostics.report(
@@ -490,6 +669,7 @@ bool ProjectGenericModel::processGenericCall(
 
     currentInstantiationProjectOrdinal_ = unit.projectOrdinal();
     currentInstantiationNamespace_ = namespaceName;
+    currentInstantiationRange_ = call->range();
     const std::string specialized = ensureMethodSpecialization(
         *state, call->typeSyntaxes(), diagnostics);
     if (specialized.empty()) return false;
@@ -510,7 +690,8 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     {
         if (state.record.kind == GenericTemplateKind::Method || !projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) continue;
         if (arity != std::numeric_limits<std::size_t>::max() && state.record.parameters.size() != arity) continue;
-        const std::string candidate = qualifiedName(state.record.namespaceName, state.record.name);
+        const std::string candidate =
+            qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
         if (writtenName.find('.') != std::string_view::npos)
         {
             if (candidate == writtenName) return &state;
@@ -526,72 +707,145 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     return fallback;
 }
 
-// ID 132. TODAS las plantillas de metodo visibles con este nombre y esta aridad generica. Es el
-// conjunto que, si tiene mas de una, se materializa entero con un nombre compartido para que la
-// resolucion de sobrecargas ordinaria elija por tipos.
+// NSC-LIMIT-007. QUE PLANTILLAS NOMBRA UNA LLAMADA -- con la escala del modelo de nombres, no
+// con una propia.
+//
+// La version anterior tenia tres escalones inventados aqui: exacto, relativo al namespace del que
+// llama, y sufijo de segmentos. Eso no es lo que hace este compilador. Dentro de `A.B`, el nombre
+// `C` significa `A.B.C` si existe, si no `A.C`, si no lo que traiga un `using`, si no el global --y
+// antes que todo eso, un tipo contenedor del sitio: dentro de `Outer`, `Helper` es `Outer.Helper`--.
+// Con los tres escalones inventados, `A.C` y `Z.C` eran los DOS sufijos de `.C` y empataban, de
+// modo que una llamada perfectamente legal se declaraba ambigua o clonaba la plantilla ajena --con
+// su cuerpo, que habla de SU `T`--.
+//
+// Ahora la escala viene de `qualifiedNameLadder`, que es la MISMA funcion que recorre
+// ProjectNameLookup. Lo que cambia entre las dos fases es que se sondea: alli la tabla de tipos,
+// aqui la de plantillas. Ver QualifiedNameLadder.h.
+std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesNamedBy(
+    const ProjectSyntaxUnit& unit,
+    const QualifiedNameSite& site,
+    std::string_view writtenOwner,
+    std::string_view methodName,
+    std::size_t arity,
+    std::size_t argumentCount)
+{
+    const auto sinFiltro = std::numeric_limits<std::size_t>::max();
+    const auto aplicable = [&](const TemplateState& state)
+    {
+        if (state.record.kind != GenericTemplateKind::Method) return false;
+        if (!projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) return false;
+        if (state.record.name != methodName) return false;
+        if (arity != sinFiltro && state.record.parameters.size() != arity) return false;
+        if (argumentCount != sinFiltro && valueParameterCount(state.syntax) != argumentCount)
+            return false;
+        return true;
+    };
+
+    // EL PRIMER ESCALON QUE PRODUCE ALGO DECIDE, y los de abajo ya no se miran. Es la regla de
+    // sombreado: que exista un `Z.C` en otro namespace no puede cambiar lo que `C` significa aqui.
+    for (const QualifiedNameRung& rung : qualifiedNameLadder(site, writtenOwner))
+    {
+        std::vector<TemplateState*> found;
+        for (TemplateState& state : templateStates_)
+        {
+            if (!aplicable(state)) continue;
+            const std::string owner =
+                templateSourceSpelling(state.record.namespaceName, state.record.ownerName);
+            for (const std::string& candidate : rung.spellings)
+            {
+                if (owner == candidate)
+                {
+                    found.push_back(&state);
+                    break;
+                }
+            }
+        }
+        if (!found.empty()) return found;
+    }
+    return {};
+}
+
 std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::collectMethodTemplates(
     const ProjectSyntaxUnit& unit,
-    std::string_view ownerName,
+    const QualifiedNameSite& site,
+    std::string_view writtenOwner,
     std::string_view methodName,
-    std::size_t arity)
+    std::size_t arity,
+    std::size_t argumentCount)
 {
-    std::vector<TemplateState*> result;
-    for (TemplateState& state : templateStates_)
+    std::vector<TemplateState*> result =
+        templatesNamedBy(unit, site, writtenOwner, methodName, arity, argumentCount);
+
+    // UN SOLO DUENO. Un escalon puede empatar --dos `using` que traen dos `Caja`, por ejemplo--.
+    // Materializar las dos significa clonar y analizar un cuerpo que este codigo no nombra, y ese
+    // cuerpo habla de SU `T`. Si el empate cruza duenos la llamada es realmente ambigua y no se
+    // materializa nada: `resolveMethodTemplate` da entonces su diagnostico, que es su sitio.
+    std::string owner;
+    for (const TemplateState* state : result)
     {
-        if (state.record.kind != GenericTemplateKind::Method) continue;
-        if (!projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) continue;
-        if (state.record.name != methodName) continue;
-        if (state.record.parameters.size() != arity) continue;
-        if (!ownerName.empty() && state.record.ownerName != ownerName) continue;
-        result.push_back(&state);
+        const std::string candidate =
+            templateSourceSpelling(state->record.namespaceName, state->record.ownerName);
+        if (owner.empty()) owner = candidate;
+        else if (owner != candidate) return {};
     }
     return result;
 }
 
 ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     const ProjectSyntaxUnit& unit,
-    std::string_view ownerName,
+    const QualifiedNameSite& site,
+    std::string_view writtenOwner,
     std::string_view methodName,
     std::size_t arity,
     std::size_t argumentCount)
 {
-    // ID 132. `argumentCount` es cuantos argumentos de VALOR trae la llamada, y sirve para elegir
-    // entre sobrecargas genericas que antes eran el mismo simbolo. `max()` significa "no filtres
-    // por eso" y es lo que usan los reintentos de abajo.
     const auto sinFiltro = std::numeric_limits<std::size_t>::max();
-    const auto coincide = [&](const TemplateState& state, bool exigirDueno, bool exigirArgumentos)
+
+    // CON DUENO: la misma funcion que usa `collectMethodTemplates`, no una copia de sus reglas.
+    // Primero exigiendo la cuenta de argumentos y despues sin ella, que es el aflojamiento que
+    // este metodo ya tenia.
+    for (const std::size_t cuenta : {argumentCount, sinFiltro})
     {
-        if (state.record.kind != GenericTemplateKind::Method ||
-            !projectVisible(unit.projectOrdinal(), state.record.projectOrdinal))
-            return false;
+        const std::vector<TemplateState*> named =
+            templatesNamedBy(unit, site, writtenOwner, methodName, arity, cuenta);
+        if (named.size() == 1) return named.front();
+        // Mas de una en el escalon ganador y del mismo nombre: ambigua de verdad. Aflojar la
+        // cuenta de argumentos no la desambigua, asi que se sigue al siguiente intento solo
+        // cuando no hubo NINGUNA.
+        if (!named.empty()) break;
+        if (cuenta == sinFiltro) break;
+    }
+
+    // SIN DUENO -- y solo aqui, cuando la escala no encontro ninguno.
+    //
+    // Es lo unico que esta fase tiene para sospechar que el receptor escrito no era un tipo sino un
+    // VALOR: `objeto.F<int>()` produce la escritura `objeto`, que no nombra ninguna plantilla
+    // porque no nombra ningun tipo. Tomar este camino cuando el dueno SI se resolvio seria
+    // deshacer el filtro que se acaba de aplicar, y era justamente lo que hacia antes.
+    const auto coincideSinDueno = [&](const TemplateState& state, bool exigirArgumentos)
+    {
+        if (state.record.kind != GenericTemplateKind::Method) return false;
+        if (!projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) return false;
         if (arity != sinFiltro && state.record.parameters.size() != arity) return false;
         if (state.record.name != methodName) return false;
-        if (exigirDueno && !ownerName.empty() && state.record.ownerName != ownerName) return false;
         if (exigirArgumentos && argumentCount != sinFiltro &&
             valueParameterCount(state.syntax) != argumentCount)
             return false;
         return true;
     };
-
-    const auto unico = [&](bool exigirDueno, bool exigirArgumentos) -> TemplateState*
+    const auto unico = [&](bool exigirArgumentos) -> TemplateState*
     {
         TemplateState* result = nullptr;
         for (TemplateState& state : templateStates_)
         {
-            if (!coincide(state, exigirDueno, exigirArgumentos)) continue;
+            if (!coincideSinDueno(state, exigirArgumentos)) continue;
             if (result != nullptr) return nullptr;
             result = &state;
         }
         return result;
     };
-
-    // Con dueno y con cuenta de argumentos: lo mas especifico. Luego se va aflojando, en el mismo
-    // orden que antes tenia este metodo -- lo unico nuevo es el primer intento.
-    if (TemplateState* result = unico(true, true); result != nullptr) return result;
-    if (TemplateState* result = unico(true, false); result != nullptr) return result;
-    // Unqualified fallback is allowed only when exactly one template of that name exists.
-    if (TemplateState* result = unico(false, true); result != nullptr) return result;
-    return unico(false, false);
+    if (TemplateState* result = unico(true); result != nullptr) return result;
+    return unico(false);
 }
 
 std::string ProjectGenericModel::ensureTypeSpecialization(
@@ -631,7 +885,11 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         key,
         specializedName,
         spellings,
-        ordinal});
+        ordinal,
+        state.ordinal,
+        nullptr,
+        currentInstantiationRange_,
+        currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     for (std::size_t index = 0; index < state.record.parameters.size(); ++index)
@@ -655,7 +913,9 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     state.parent->addChild(clone);
     specializations_[ordinal].specializedSyntax = clone;
 
-    processNode(*state.unit, clone, state.record.namespaceName, specializedName, false, diagnostics);
+    processNode(
+        *state.unit, clone, state.record.namespaceName, specializedName,
+        GenericLookupScope{}, false, diagnostics);
     return specializedName;
 }
 
@@ -714,7 +974,11 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         key,
         specializedName,
         spellings,
-        ordinal});
+        ordinal,
+        state.ordinal,
+        nullptr,
+        currentInstantiationRange_,
+        currentOverloadGroup_});
 
     std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
     for (std::size_t index = 0; index < state.record.parameters.size(); ++index)
@@ -736,7 +1000,9 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     clone->setAuxiliaryText("stage44-specialization:" + key);
     state.parent->addChild(clone);
     specializations_[ordinal].specializedSyntax = clone;
-    processNode(*state.unit, clone, state.record.namespaceName, state.record.ownerName, false, diagnostics);
+    processNode(
+        *state.unit, clone, state.record.namespaceName, state.record.ownerName,
+        GenericLookupScope{}, false, diagnostics);
     return specializedName;
 }
 
@@ -858,6 +1124,29 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     result->setFloatingValue(source->floatingValue());
     for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
     for (const std::string& parameter : source->genericParameters()) result->addGenericParameter(parameter);
+    // NSC-LIMIT-007. Las clausulas se clonan con la sustitucion aplicada a sus tipos, igual que
+    // cualquier otro TypeSyntax del nodo. Copiar los punteros originales dejaria la
+    // especializacion apuntando a sintaxis de la PLANTILLA -- viva, pero de otro arbol, y con `T`
+    // sin sustituir dentro. El nodo especializado ya no es generico, asi que estas clausulas no
+    // se vuelven a validar; viajan para que un volcado del AST especializado diga la verdad.
+    for (const ast::GenericConstraintClause& clause : source->genericConstraints())
+    {
+        ast::GenericConstraintClause copy;
+        copy.parameterName = clause.parameterName;
+        copy.parameterRange = clause.parameterRange;
+        copy.requiresClass = clause.requiresClass;
+        copy.range = clause.range;
+        for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+            copy.typeConstraints.push_back(cloneType(arena, constraint, substitutions));
+        // El argumento con el que se cerro este parametro, colgado de la clausula para que la
+        // resolucion de nombres lo alcance. Ver GenericConstraintClause::substitutedArgument.
+        if (const auto found = substitutions.find(clause.parameterName);
+            found != substitutions.end())
+        {
+            copy.substitutedArgument = cloneType(arena, found->second, substitutions);
+        }
+        result->addGenericConstraint(std::move(copy));
+    }
 
     if (!rewrittenContainingTypeName.empty() && !originalContainingTypeName.empty() &&
         (source->kind() == ast::AstNodeKind::ConstructorDeclaration ||

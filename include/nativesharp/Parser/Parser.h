@@ -45,6 +45,11 @@ private:
     ast::TypeSyntax* parseType();
     ast::TypeSyntax* parseAllocationElementType();
     bool parseGenericParameterList(ast::AstNode* declaration);
+    // NSC-LIMIT-007. Cero o mas clausulas `where T : class, Base, IFoo`, en la posicion donde el
+    // lenguaje las admite: despues de la lista de parametros de un metodo o funcion, despues de
+    // las bases de una clase, despues de la lista de parametros de un delegado, y despues del
+    // nombre en un struct. Devuelve false si alguna clausula estaba mal formada.
+    bool parseGenericConstraintClauses(ast::AstNode* declaration);
     bool parseTypeArgumentList(std::vector<ast::TypeSyntax*>& arguments);
     bool consumeGenericGreater();
     static bool canAppearInTypeArgumentList(lexer::TokenKind kind) noexcept;
@@ -70,6 +75,31 @@ private:
     ast::AstNode* parseDelegateDeclaration();
     ast::AstNode* parseInterfaceMember();
     ast::AstNode* parseClassMember(std::string_view className, bool allowUnresolvedNamedTypes = false);
+    // NSC-LIMIT-009. Los modificadores que `parseClassMember` ya leyo cuando descubre que lo que
+    // sigue no es un campo ni un metodo sino una DECLARACION DE TIPO. Viajan juntos porque el
+    // diagnostico tiene que poder decir cual de ellos sobra, y decirlo por su nombre.
+    struct NestedTypeModifiers final
+    {
+        lexer::TokenKind accessibility = lexer::TokenKind::Invalid;
+        bool isStatic = false;
+        bool isReadonly = false;
+        bool isConst = false;
+        bool isVirtual = false;
+        bool isOverride = false;
+        bool isAbstract = false;
+        bool isSealed = false;
+        bool isExported = false;
+        bool isExternC = false;
+        bool hasExplicitFieldOffset = false;
+    };
+    // NSC-LIMIT-009. Cierto cuando el token actual abre una declaracion de tipo anidada.
+    bool atNestedTypeDeclaration() const noexcept;
+    // NSC-LIMIT-009. Delega en los CINCO parsers de tipo que ya existen --no reimplementa ninguna
+    // gramatica-- y despues aplica al nodo devuelto lo que el contexto de miembro aporta: la
+    // accesibilidad escrita y el rechazo de todo modificador que no signifique nada en un tipo.
+    ast::AstNode* parseNestedTypeDeclaration(
+        const NestedTypeModifiers& modifiers,
+        std::size_t beginIndex);
     ast::AstNode* parseEventTail(
         lexer::TokenKind accessibility,
         bool isStatic,

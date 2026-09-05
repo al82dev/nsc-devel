@@ -16,6 +16,10 @@ using nativesharp::compilation::PartialTypeAggregator;
 using nativesharp::compilation::ProjectSourceSet;
 using nativesharp::compilation::TypeDeclarationKind;
 using nativesharp::compilation::TypeIdentity;
+using nativesharp::compilation::symbolFragmentForIdentityKey;
+using nativesharp::compilation::symbolNeedsIrTextQuotes;
+using nativesharp::compilation::irTextSymbolReference;
+using nativesharp::compilation::irTextIdentitySymbolPrefix;
 using nativesharp::compilation::TypeNameSegment;
 using nativesharp::compilation::TypePartDescriptor;
 using nativesharp::tests::TestContext;
@@ -108,6 +112,57 @@ void testTypeIdentity(TestContext& tests)
     tests.expect(nested.fullyQualifiedName() == "Game.World`1+Entity`2", "nested generic arity is encoded");
     const TypeIdentity namespaceType("Game", {"Game", "World"}, {}, "Entity", 2);
     tests.expect(nested.key() != namespaceType.key(), "nested type cannot collide with a namespace type");
+
+    // NSC-LIMIT-009. LA CODIFICACION DE SIMBOLO, medida como lo que es: una funcion inyectiva.
+    //
+    // Las dos comprobaciones cubren los dos pares que colapsaron, en ese orden historico. El
+    // segundo es el que la primera correccion no separaba: codificaba `+` y dejaba `.` yendo a
+    // `_`, que si puede venir de un identificador de usuario.
+    tests.expect(
+        symbolFragmentForIdentityKey("M::A+Item") != symbolFragmentForIdentityKey("M::A.Item"),
+        "nested-type separators cannot collide with namespace separators");
+    tests.expect(
+        symbolFragmentForIdentityKey("M::A.B") != symbolFragmentForIdentityKey("M::A_B"),
+        "namespace separators cannot collide with underscores in identifiers");
+    tests.expect(
+        symbolFragmentForIdentityKey("M::A_B") == "M$3A$3AA_B",
+        "an underscore written by the user survives as an underscore");
+    tests.expect(
+        symbolFragmentForIdentityKey("M::A.B") == "M$3A$3AA$2EB",
+        "every other separator becomes an escape, so the encoding is reversible");
+
+    // NSC-LIMIT-009, SEGUNDA MITAD: COMO SE VE ESE NOMBRE EN EL TEXTO DEL IR.
+    //
+    // La codificacion de arriba es correcta e inyectiva, y aun asi costo dieciocho comprobaciones
+    // rojas repartidas por nueve suites -- porque el comentario que la acompanaba afirmaba que
+    // `$` era un caracter ordinario en un identificador de LLVM. No lo es: `AsmWriter` entrecomilla
+    // cualquier nombre con un byte que no sea alfanumerico, `-`, `.` o `_`.
+    //
+    // Se prueba AQUI, al lado de la codificacion, porque es la misma decision mirada desde el otro
+    // lado: quien escriba una busqueda sobre `LlvmModule::text()` tiene que encontrarse las dos
+    // juntas. Y se prueban los DOS sentidos: un nombre fijo del runtime NO lleva comillas, uno
+    // derivado de una identidad SI. Con solo el segundo, un ayudante que entrecomillara siempre
+    // pasaria.
+    tests.expect(!symbolNeedsIrTextQuotes("__nativesharp_alloc"),
+        "a fixed runtime symbol needs no quotes in the IR text");
+    tests.expect(irTextSymbolReference("__nativesharp_alloc") == "@__nativesharp_alloc",
+        "and it is referenced bare");
+    tests.expect(symbolNeedsIrTextQuotes("__nsc_method_M$3A$3AA$2EB__F"),
+        "a symbol built from an identity key always needs quotes: '$' is not an LLVM name char");
+    tests.expect(
+        irTextSymbolReference("__nsc_method_M$3A$3AA$2EB__F") ==
+            "@\"__nsc_method_M$3A$3AA$2EB__F\"",
+        "and it is referenced quoted, which is what an IR-text search has to look for");
+    tests.expect(irTextIdentitySymbolPrefix("__nsc_method_") == "@\"__nsc_method_",
+        "the prefix helper carries the opening quote, because every identity key holds '::'");
+    tests.expect(symbolNeedsIrTextQuotes("0leading"),
+        "a name starting with a digit needs quotes too, like LLVM's own rule");
+
+    // Y la aridad, que tambien viaja en la clave y tambien tiene que quedar separada.
+    tests.expect(
+        symbolFragmentForIdentityKey("M::Outer`2+Item") !=
+            symbolFragmentForIdentityKey("M::Outer2+Item"),
+        "the arity marker is not folded into the name it follows");
 
     const TypeIdentity invalidModule("bad-module", {}, {}, "Player");
     tests.expect(!invalidModule.isValid(), "invalid module identifier is rejected");

@@ -304,7 +304,7 @@ namespace proj {
     // The type name is a CONSTANT with the exact layout a NativeSharp string has -- a length
     // followed by the bytes -- which is what makes the default ToString() a load and not an
     // allocation.
-    expectContains(tests, ir, "@__nsc_typename_", "ClassRootMembers");
+    expectContains(tests, ir, "@\"__nsc_typename_", "ClassRootMembers");
     expectContains(tests, ir, "c\"Widget\\00\"", "ClassRootMembers");
     expectContains(tests, ir, "c\"Gadget\\00\"", "ClassRootMembers");
     // Field 6 of the descriptor is where it lives, and the root's ToString() reads it there.
@@ -434,8 +434,8 @@ namespace proj {
     const std::string ir = dumpIr(tests, projectPath, "StructRootMembers");
     // A struct pays for none of this. No vtable, no descriptor, no boxing allocation -- the
     // members are inline code over the value's own bytes.
-    expectLacks(tests, ir, "__nsc_vtable_StructRootMembers__proj_Vec2", "StructRootMembers");
-    expectLacks(tests, ir, "__nsc_classdesc_StructRootMembers__proj_Vec2", "StructRootMembers");
+    expectLacks(tests, ir, "__nsc_vtable_StructRootMembers$3A$3Aproj$2EVec2", "StructRootMembers");
+    expectLacks(tests, ir, "__nsc_classdesc_StructRootMembers$3A$3Aproj$2EVec2", "StructRootMembers");
 }
 
 void testADeclaredMemberWinsOverTheSynthesizedOne(

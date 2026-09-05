@@ -178,6 +178,16 @@ bool createWindowsImportLibraries(
     // LLVM passes can materialize @llvm.memcpy/memset/memmove (LoopIdiomRecognize rewriting a
     // hand-rolled copy loop) or reference the SEH personality in either module, so the caller
     // hands in BOTH modules' IR text concatenated and the scan decides.
+    //
+    // LOS CUATRO NOMBRES DE ABAJO SE BUSCAN SIN COMILLAS, Y ESO NO ES UN DESCUIDO. LLVM
+    // entrecomilla un nombre en cuanto lleva un byte que no sea alfanumerico, `-`, `.` o `_`;
+    // estos cuatro son fijos y no llevan ninguno, asi que salen impresos tal cual.
+    //
+    // Un simbolo NUESTRO no: todo el que sale de una identidad lleva el `$3A$3A` del `::` del
+    // modulo y va SIEMPRE entre comillas --ver symbolFragmentForIdentityKey en TypeIdentity.h--.
+    // Si algun dia hay que decidir un import mirando uno de esos, la busqueda tiene que
+    // construirse con `irTextSymbolReference`: escrita a mano encontraria cero coincidencias, y
+    // aqui un cero no da un rojo, da una biblioteca de importacion a la que le falta una entrada.
     std::vector<std::string_view> ucrtSymbols = {"strlen"};
     if (combinedIrText.find("@__C_specific_handler") != std::string_view::npos)
     {

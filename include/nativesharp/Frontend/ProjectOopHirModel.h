@@ -21,6 +21,8 @@
 
 namespace nativesharp::frontend
 {
+class ProjectGenericConstraintModel;
+
 enum class ProjectOopHirNodeKind
 {
     Block,
@@ -454,7 +456,8 @@ public:
         const ProjectMethodBodyModel& methodBodyModel,
         const ProjectConstructionModel& constructionModel,
         const ProjectObjectLayoutModel& objectLayoutModel,
-        std::string& error);
+        std::string& error,
+        const ProjectGenericConstraintModel* genericConstraintModel = nullptr);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
@@ -595,6 +598,7 @@ private:
     const ProjectMethodBodyModel* methodBodyModel_ = nullptr;
     const ProjectConstructionModel* constructionModel_ = nullptr;
     const ProjectObjectLayoutModel* objectLayoutModel_ = nullptr;
+    const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;
     std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
     std::vector<std::optional<std::size_t>> functionByMember_;

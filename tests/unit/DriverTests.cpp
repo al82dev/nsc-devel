@@ -505,9 +505,14 @@ int main()
         const std::vector<std::string_view> arguments = {"--dump-project-oop-llvm", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--dump-project-oop-llvm emits verified Stage 30 LLVM IR");
+        // NSC-LIMIT-009. `@__nativesharp_alloc` es un nombre FIJO del runtime y sale sin comillas;
+        // `__nsc_ctor_` sale de una identidad, lleva el `$3A$3A` del `::` del modulo, y LLVM
+        // entrecomilla todo nombre con un byte que no sea alfanumerico, `-`, `.` o `_`. Las dos
+        // formas conviven en la misma linea a proposito: es el control de que la diferencia es la
+        // que se dice y no otra cosa.
         tests.expect(output.str().find("declare ptr @__nativesharp_alloc(i64)") != std::string::npos &&
                 output.str().find("getelementptr i8, ptr %this, i64 12") != std::string::npos &&
-                output.str().find("call void @__nsc_ctor_") != std::string::npos,
+                output.str().find("call void @\"__nsc_ctor_") != std::string::npos,
             "Stage 30 LLVM dump exposes allocator, physical field addressing and constructor call");
         tests.expect(error.str().empty(), "valid Stage 30 LLVM dump keeps stderr empty");
     }

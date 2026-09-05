@@ -1,3 +1,4 @@
+#include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
@@ -15,16 +16,12 @@ namespace nativesharp::frontend
 {
 namespace
 {
+// NSC-LIMIT-009. Solo se llama sobre claves de identidad, de modo que delega en el codificador
+// que conserva el `+`. Antes aplastaba `+` y `.` al mismo `_` y el descriptor, la vtable y el mapa
+// de interfaces de `N.Outer+Item` chocaban con los de `N.Outer.Item`.
 std::string sanitizeDispatchName(std::string_view value)
 {
-    std::string result;
-    result.reserve(value.size());
-    for (const char ch : value)
-    {
-        const unsigned char byte = static_cast<unsigned char>(ch);
-        result.push_back(std::isalnum(byte) != 0 ? ch : '_');
-    }
-    return result;
+    return compilation::symbolFragmentForIdentityKey(value);
 }
 
 std::uint64_t stableTypeId(std::string_view value) noexcept

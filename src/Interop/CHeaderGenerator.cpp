@@ -62,6 +62,57 @@ std::string sanitizeIdentifier(std::string_view text)
     return result;
 }
 
+// NSC-LIMIT-009. La identidad completa como identificador C VALIDO, estable e inyectivo.
+//
+// `sanitizeIdentifier` aplasta a `_` todo lo que no sea alfanumerico, de modo que `Mod::A.B` y
+// `Mod::A_B` daban el mismo nombre. NO producia dos typedefs iguales --el bucle de mas abajo
+// detecta el choque y anade `_2`-- pero eso es peor de lo que parece: cual de los dos se queda con
+// el nombre limpio y cual con el `_2` depende del ORDEN en que se recorren los tipos. Mover una
+// declaracion de sitio cambiaba el header, y un header generado es un contrato con el codigo C
+// que lo incluye.
+//
+// La codificacion escapa TODO, empezando por el propio `_`:
+//
+//     alfanumerico  ->  el mismo caracter
+//     `_`           ->  `__`
+//     cualquier otro->  `_` + dos digitos hexadecimales en mayuscula
+//
+// Es reversible, y por tanto inyectiva: `_` siempre abre un escape, y `_` no es un digito hex, asi
+// que `__` nunca se confunde con `_HH`. Y a diferencia del simbolo nativo NO puede usar `$`: esto
+// tiene que ser un identificador de C.
+std::string stableHostIdentifier(std::string_view text)
+{
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    std::string result;
+    result.reserve(text.size() * 3);
+    for (const char character : text)
+    {
+        const auto byte = static_cast<unsigned char>(character);
+        const bool asciiAlphaNumeric =
+            (byte >= 'a' && byte <= 'z') ||
+            (byte >= 'A' && byte <= 'Z') ||
+            (byte >= '0' && byte <= '9');
+        if (asciiAlphaNumeric)
+        {
+            result.push_back(static_cast<char>(byte));
+            continue;
+        }
+        result.push_back('_');
+        if (byte == '_')
+        {
+            result.push_back('_');
+            continue;
+        }
+        result.push_back(kHex[byte >> 4]);
+        result.push_back(kHex[byte & 0x0F]);
+    }
+    if (result.empty() || std::isdigit(static_cast<unsigned char>(result.front())) != 0)
+    {
+        result.insert(result.begin(), '_');
+    }
+    return result;
+}
+
 std::string upperIdentifier(std::string_view text)
 {
     std::string result = sanitizeIdentifier(text);
@@ -107,20 +158,42 @@ std::unordered_map<std::string, std::string> buildHostTypeNames(const ProjectNam
     std::unordered_map<std::string, std::size_t> simpleCounts;
     for (const NamedTypeDeclaration& type : names.namedTypes()) ++simpleCounts[type.identity.name()];
 
+    // EN ORDEN CANONICO, no en orden de declaracion. El desempate de mas abajo asigna nombres
+    // distintos a candidatos iguales, asi que quien llega primero se queda el nombre limpio: en
+    // orden de declaracion eso hace que mover una clase de sitio cambie el header. Ordenar por
+    // clave de identidad --que no depende de donde se escribio-- lo vuelve reproducible.
+    std::vector<const NamedTypeDeclaration*> ordered;
+    ordered.reserve(names.namedTypes().size());
+    for (const NamedTypeDeclaration& type : names.namedTypes()) ordered.push_back(&type);
+    std::sort(
+        ordered.begin(), ordered.end(),
+        [](const NamedTypeDeclaration* left, const NamedTypeDeclaration* right)
+        {
+            return left->identity.key() < right->identity.key();
+        });
+
     std::unordered_map<std::string, std::string> result;
     std::unordered_set<std::string> used;
-    for (const NamedTypeDeclaration& type : names.namedTypes())
+    for (const NamedTypeDeclaration* type : ordered)
     {
-        std::string base = simpleCounts[type.identity.name()] == 1
-            ? "NS_" + sanitizeIdentifier(type.identity.name())
-            : "NS_" + sanitizeIdentifier(type.identity.key());
+        // Nombre CORTO cuando es unico en todo el programa --que es lo que hace legible un header
+        // generado-- y la IDENTIDAD COMPLETA codificada cuando no lo es. La segunda forma es
+        // inyectiva por construccion, asi que dos tipos distintos ya no pueden pedir el mismo
+        // nombre por ese camino.
+        std::string base = simpleCounts[type->identity.name()] == 1
+            ? "NS_" + sanitizeIdentifier(type->identity.name())
+            : "NS_" + stableHostIdentifier(type->identity.key());
+        // El desempate se conserva como DEFENSA, no como mecanismo: con la codificacion de arriba
+        // los choques dentro de cada familia son imposibles, y el unico residuo concebible es que
+        // un nombre corto coincida con la codificacion de otra identidad. Si llegara a pasar, el
+        // orden canonico de arriba garantiza al menos que el resultado es el mismo en cada build.
         std::string candidate = base;
         std::size_t suffix = 2;
         while (!used.insert(candidate).second)
         {
             candidate = base + '_' + std::to_string(suffix++);
         }
-        result.emplace(type.identity.key(), std::move(candidate));
+        result.emplace(type->identity.key(), std::move(candidate));
     }
     return result;
 }
@@ -129,7 +202,7 @@ std::string hostNamedTypeName(const HostContext& context, const NamedTypeDeclara
 {
     const auto found = context.cNames.find(type.identity.key());
     if (found != context.cNames.end()) return found->second;
-    return "NS_" + sanitizeIdentifier(type.identity.key());
+    return "NS_" + stableHostIdentifier(type.identity.key());
 }
 
 std::string hostType(std::string_view typeKey, const HostContext& context, std::string& error)

@@ -1,0 +1,151 @@
+STAGE NSC-LIMIT-009 -- tipos anidados en clases y structs -- 2026-09-05
+Ficheros modificados y creados en A:\nsc-devel. Detalle y razones: mkdown/122.
+
+MODIFICADOS
+  include/nativesharp/Parser/Parser.h
+  src/Parser/Parser.cpp
+      parseClassMember reconoce las cinco formas antes de su guarda final y delega en los
+      CINCO parsers que ya existen. Rechaza uno a uno, por su nombre, lo que no significa
+      nada en un tipo; `abstract`/`sealed` solo en clase; `partial` con mensaje propio; y
+      un anidado GENERICO se rechaza, porque una identidad sin aridad por segmento no es un
+      limite sino una colision silenciosa.
+
+  include/nativesharp/Compilation/TypeIdentity.h
+  src/Compilation/TypeIdentity.cpp
+      symbolFragmentForIdentityKey: `+` -> `$`, el resto como siempre. Es la correccion del
+      defecto P0: cuatro copias del saneador aplastaban `+` y `.` al mismo `_`, y un tipo
+      anidado compartia metodo, descriptor, destruccion y tabla de dispatch con el tipo
+      homonimo del namespace.
+
+  src/Frontend/ProjectCompilation.cpp
+      collectTypeSeedsInScope recibe la cadena de contenedores y BAJA al cuerpo en vez de
+      saltarlo; avanza hasta el `{` real, que antes no reconocia si habia genericos o bases.
+
+  include/nativesharp/Frontend/ProjectNameLookup.h
+  src/Frontend/ProjectNameLookup.cpp
+      Private/Protected en NamedTypeAccessibility; isNested y containingTypeOrdinal;
+      predeclareNode recursivo con la cadena; indice de nombres FUENTE aparte del canonico;
+      escalon de busqueda por contenedores lexicos; visibilidad; y el diagnostico que dice
+      «es private» en vez de «no existe».
+
+  include/nativesharp/Frontend/ProjectInheritanceModel.h
+  src/Frontend/ProjectInheritanceModel.cpp
+      checkProtectedNestedTypeUses. `protected` no se puede decidir al resolver nombres --la
+      pregunta es si el sitio DERIVA del contenedor-- asi que el binding guarda la cadena
+      del sitio y esta fase, la primera que tiene herencia, responde.
+
+  src/Frontend/ProjectMemberModel.cpp
+      un tipo anidado se descarta EXPLICITAMENTE como miembro ejecutable, en vez de por no
+      coincidir con ninguna rama.
+
+  src/Frontend/ProjectOopHirModel.cpp
+  src/Frontend/ProjectOopMirModel.cpp
+  src/Frontend/ProjectDestructionModel.cpp
+      las tres copias que solo se llamaban sobre claves de identidad delegan en
+      symbolFragmentForIdentityKey. La cuarta, la del lowerer, se deja: solo ve nombres de
+      campo.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      c45, la prueba de IR de los simbolos, y los rechazos de accesibilidad protegida.
+
+  tests/unit/ClassMemberSyntaxTests.cpp
+  tests/unit/ProjectNameLookupTests.cpp
+  tests/unit/ProjectMemberModelTests.cpp
+      las cinco formas, la identidad con `+`, el private por omision, el cruce de proyecto,
+      y que un anidado no es miembro.
+
+CREADOS
+  tests/cc1/c45_tipos_anidados/{c45_tipos_anidados.nsproj,Main.ns}
+  mkdown/122_limit_009_tipos_anidados.md
+  mkdown/STAGE_LIMIT_009_CHANGED_FILES.txt
+
+MEDIDO EN EL CONTENEDOR (clang 18 + libLLVM-18, frontend real)
+  barrido --stage=bodies : OK=190 FAIL=5   (era 189; la que sube es c45)
+  barrido --stage=llvm   : OK=190 FAIL=5
+  ClassMemberSyntaxTests 58 checks / ProjectNameLookupTests 61 / ProjectMemberModelTests 64
+  simbolos de c45 medidos en el IR: tres familias, seis nombres, ninguno repetido
+  todas las unidades tocadas compilan con -Wall -Wextra sin un solo aviso
+
+NO MEDIDO AQUI
+  El enlace y el PE. `$` es un caracter ordinario en COFF y en LLVM, pero eso es un
+  argumento, no una medicion: la primera corrida de c45 en Windows lo convierte en un hecho.
+
+================================================================================
+SEGUNDA VUELTA -- codificacion inyectiva y los dos agujeros de `protected`.
+Ver mkdown/122 seccion 9 y mkdown/121 seccion 11.
+================================================================================
+
+  src/Compilation/TypeIdentity.cpp, include/.../TypeIdentity.h
+      symbolFragmentForIdentityKey pasa a ser una codificacion REVERSIBLE: alfanumerico
+      ASCII y `_` se copian, todo lo demas es `$` + dos hex. La version anterior solo
+      codificaba `+` y seguia colapsando `Mod::A.B` con `Mod::A_B`.
+
+  src/Frontend/ProjectNameLookup.cpp, include/.../ProjectNameLookup.h
+      typeIsPubliclyVisible deja cruzar un eslabon ANIDADO `protected`, para que la
+      comprobacion de herencia llegue a verlo. ExpressionTypeNameBinding guarda la cadena
+      lexica y expressionTypeBindings() la expone.
+
+  src/Frontend/ProjectInheritanceModel.cpp, include/.../ProjectInheritanceModel.h
+      firstUnreachableProtectedLink, compartida por los dos tipos de binding. Cierra el
+      bypass por receptor estatico.
+
+  include/.../ProjectGenericModel.h, src/Frontend/ProjectGenericModel.cpp
+      se elimina overloadApplicable: contar parametros no equivale a resolver sobrecargas.
+
+  include/.../ProjectGenericConstraintModel.h, src/Frontend/ProjectGenericConstraintModel.cpp
+      las violaciones de especializaciones AGRUPADAS se guardan sin emitir;
+      specializationSatisfiesConstraints / reportSpecializationConstraintViolations.
+
+  include/.../ProjectMethodBodyModel.h, src/Frontend/ProjectMethodBodyModel.cpp
+      la resolucion de sobrecargas consulta los constraints DESPUES de tipos y propiedad, y
+      los reporta solo si ninguna candidata viable los esquiva.
+
+  src/Frontend/ProjectCompilation.cpp
+      pasa el modelo de constraints al de cuerpos.
+
+  tests/unit/CompilationModelTests.cpp        inyectividad medida como propiedad
+  tests/unit/ProjectOopLoweringTests.cpp      dos nombres completos, formato nuevo
+  tests/unit/Stage45LinkerPeEhTests.cpp       entry-symbol, formato nuevo
+  tests/unit/Stage56C8TypeRootTests.cpp       dos nombres completos, formato nuevo
+  tests/unit/ProjectNameLookupTests.cpp       protected entre proyectos, hasta herencia
+  tests/unit/Cc1CorrectnessTests.cpp          4 casos nuevos y el par A.B / A_B en el IR
+
+================================================================================
+TERCERA VUELTA -- alineacion, cadena de contenedores en genericos, arreglo fijo.
+Ver mkdown/122 secciones 10 y 11.
+================================================================================
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      loadLeafBits carga las hojas con `align 1`. Escribia la alineacion NATURAL del
+      escalar, que en un struct `pack=1` es una promesa FALSA --un `int` en el offset 1
+      declarado `align 4`--: comportamiento indefinido, invisible en O0 y explotable en O2.
+
+  include/.../ProjectGenericModel.h, src/Frontend/ProjectGenericModel.cpp
+      ownerName pasa a ser la CADENA de contenedores unida con `+`, y se apila en vez de
+      reemplazar. qualifiedTypeName en el registro; la clave canonica, la resolucion y la
+      agrupacion de sobrecargas la usan. receiverOwnerChain lee `A.Inner.F<T>` entero.
+      El diagnostico de tipos genericos duplicados deja de hablar de metodos.
+
+  src/Frontend/ProjectGenericConstraintModel.cpp
+      `where T : class` acepta solo el arreglo DINAMICO. `T[N]` es almacenamiento inline.
+
+  include/.../ProjectGenericConstraintModel.h, src/Frontend/ProjectGenericConstraintModel.cpp
+  src/Frontend/ProjectMethodBodyModel.cpp
+      reportSpecializationConstraintViolations recibe el rango de ESTA llamada. La
+      especializacion se cachea, de modo que guardaba el de la primera instanciacion.
+
+  include/.../ProjectMethodBodyModel.h, src/Frontend/ProjectMethodBodyModel.cpp
+      el comentario de ownershipFreshOwner decia que un parametro sin calificador rechaza un
+      owner recien creado. Era falso; ahora dice lo que el codigo hace y por que. NO se
+      cambio el codigo: hacerlo rompe cinco ejemplos del libro (ver mkdown/122 seccion 11).
+
+  include/.../ProjectNameLookup.h
+      el comentario de NamedTypeAccessibility::Protected decia que el parser lo rechaza.
+
+  tests/cc1/c43_igualdad_de_structs/Main.ns    struct pack(1), codigos 24-27
+  tests/cc1/c45_tipos_anidados/Main.ns         dos Inner.Valor<T> homonimos, codigos 16-17
+  tests/unit/Cc1CorrectnessTests.cpp           rechazo de `Caja<int[4]>`, comentario de c44
+
+MEDIDO
+  barrido bodies y llvm: OK=190 FAIL=5. CompilationModelTests 67, ClassMemberSyntax 58,
+  ProjectNameLookup 64, ProjectMemberModel 64. `align 1` verificado en el IR de c43.

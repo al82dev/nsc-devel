@@ -261,7 +261,12 @@ void testLlvmThunks(TestContext& tests, const std::filesystem::path& root)
             llvm.find("define void @SetCallback(ptr") != std::string::npos &&
             llvm.find("define i32 @CallCallback(i32") != std::string::npos,
         "extern C callbacks can persist in NativeSharp storage without a temporary delegate-cell lifetime");
-    tests.expect(llvm.find("@__nsc_method_") != std::string::npos,
+    // NSC-LIMIT-009. LA BUSQUEDA LLEVA `@\"` Y NO `@`, y no es un adorno: todo simbolo que sale
+    // de una identidad lleva el `$3A$3A` del `::` del modulo, y LLVM entrecomilla cualquier
+    // nombre con un byte que no sea alfanumerico, `-`, `.` o `_`. Lo impreso es
+    // `@\"__nsc_...\"`. Escrito a mano sin la comilla encuentra CERO, y en una asercion de
+    // ausencia eso seria un verde falso. Ver TypeIdentity.h e `irTextSymbolReference`.
+    tests.expect(llvm.find("@\"__nsc_method_") != std::string::npos,
         "internal NativeSharp methods remain mangled behind the stable C ABI thunks");
     tests.expect(llvm.find("define ptr @CounterCreate(i32") != std::string::npos,
         "class references cross the host boundary as opaque pointer-sized handles");

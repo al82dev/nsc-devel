@@ -91,10 +91,41 @@ void skipBalancedBlock(std::span<const Token> tokens, std::size_t& index)
     }
 }
 
+// NSC-LIMIT-009. Las formas bajo las que un tipo puede escribirse, sembradas todas. Para un tipo
+// de namespace son las dos de siempre --`Item` y `ns.Item`--; para uno ANIDADO son ademas las
+// intermedias, `Outer.Item` y `ns.Outer.Item`, porque el nombre fuente de un anidado lleva punto y
+// el parser tiene que reconocerlo escrito desde dentro del contenedor y desde fuera.
+//
+// Aqui NO hay identidad canonica: esto es la lista de nombres con la que el parser desambigua
+// `Foo x;` de una expresion, y nada mas. La identidad --con `+`-- la construye TypeIdentity, en
+// otra fase y a partir del arbol, no de esta tabla.
+void insertTypeSeeds(
+    std::set<std::string>& names,
+    const std::vector<std::string>& namespacePrefix,
+    const std::vector<std::string>& typeChain)
+{
+    if (typeChain.empty())
+    {
+        return;
+    }
+    for (std::size_t start = 0; start < typeChain.size(); ++start)
+    {
+        std::string spelling;
+        for (std::size_t index = start; index < typeChain.size(); ++index)
+        {
+            if (!spelling.empty()) spelling.push_back('.');
+            spelling += typeChain[index];
+        }
+        names.insert(spelling);
+        names.insert(joinName(namespacePrefix, spelling));
+    }
+}
+
 void collectTypeSeedsInScope(
     std::span<const Token> tokens,
     std::size_t& index,
     const std::vector<std::string>& namespacePrefix,
+    const std::vector<std::string>& containingTypes,
     TokenKind terminator,
     std::set<std::string>& names)
 {
@@ -119,13 +150,14 @@ void collectTypeSeedsInScope(
             if (index < tokens.size() && tokens[index].kind() == TokenKind::Semicolon)
             {
                 ++index;
-                collectTypeSeedsInScope(tokens, index, nested, terminator, names);
+                collectTypeSeedsInScope(tokens, index, nested, containingTypes, terminator, names);
                 return;
             }
             if (index < tokens.size() && tokens[index].kind() == TokenKind::LeftBrace)
             {
                 ++index;
-                collectTypeSeedsInScope(tokens, index, nested, TokenKind::RightBrace, names);
+                collectTypeSeedsInScope(
+                    tokens, index, nested, containingTypes, TokenKind::RightBrace, names);
                 if (index < tokens.size() && tokens[index].kind() == TokenKind::RightBrace)
                 {
                     ++index;
@@ -141,16 +173,41 @@ void collectTypeSeedsInScope(
             tokens[index].kind() == TokenKind::KwEnum)
         {
             ++index;
+            std::vector<std::string> chain = containingTypes;
             if (index < tokens.size() && tokens[index].kind() == TokenKind::Identifier)
             {
-                const std::string simple(tokens[index].lexeme());
-                names.insert(simple);
-                names.insert(joinName(namespacePrefix, simple));
+                chain.emplace_back(tokens[index].lexeme());
+                insertTypeSeeds(names, namespacePrefix, chain);
+                ++index;
+            }
+            // NSC-LIMIT-009. Avanzar HASTA el cuerpo, y despues BAJAR a el.
+            //
+            // Las dos mitades importan. La primera porque entre el nombre y el `{` cabe una lista
+            // de parametros genericos, una lista de bases, el tipo subyacente de un enum y una
+            // clausula `where`: la version anterior solo miraba si el token siguiente al nombre
+            // era `{`, de modo que en `class C<T> : Base { ... }` no reconocia el cuerpo y seguia
+            // leyendo sus tokens en linea recta, como si fueran declaraciones del namespace.
+            //
+            // Y la segunda porque un cuerpo de tipo YA NO se salta: dentro puede haber otro tipo.
+            // Bajar es lo unico que hace que `Outer.Item` exista para el parser. Los cuerpos de
+            // metodo de dentro se saltan solos: los cierra la rama `LeftBrace` de mas abajo.
+            while (index < tokens.size() &&
+                   tokens[index].kind() != TokenKind::LeftBrace &&
+                   tokens[index].kind() != TokenKind::Semicolon &&
+                   tokens[index].kind() != TokenKind::RightBrace &&
+                   tokens[index].kind() != TokenKind::EndOfFile)
+            {
                 ++index;
             }
             if (index < tokens.size() && tokens[index].kind() == TokenKind::LeftBrace)
             {
-                skipBalancedBlock(tokens, index);
+                ++index;
+                collectTypeSeedsInScope(
+                    tokens, index, namespacePrefix, chain, TokenKind::RightBrace, names);
+                if (index < tokens.size() && tokens[index].kind() == TokenKind::RightBrace)
+                {
+                    ++index;
+                }
             }
             continue;
         }
@@ -187,9 +244,9 @@ void collectTypeSeedsInScope(
                     (tokens[index + 1].kind() == TokenKind::Less ||
                      tokens[index + 1].kind() == TokenKind::LeftParen))
                 {
-                    const std::string simple(tokens[index].lexeme());
-                    names.insert(simple);
-                    names.insert(joinName(namespacePrefix, simple));
+                    std::vector<std::string> chain = containingTypes;
+                    chain.emplace_back(tokens[index].lexeme());
+                    insertTypeSeeds(names, namespacePrefix, chain);
                     ++index;
                     break;
                 }
@@ -267,7 +324,7 @@ std::vector<std::string> collectParserKnownTypeNames(
             continue;
         }
         std::size_t index = 0;
-        collectTypeSeedsInScope(unit->tokens(), index, {}, TokenKind::Invalid, names);
+        collectTypeSeedsInScope(unit->tokens(), index, {}, {}, TokenKind::Invalid, names);
         collectUsingAliases(unit->tokens(), aliases);
     }
 
@@ -351,7 +408,25 @@ bool ProjectCompilation::compileProjectInheritance(
     return inheritanceModel_->build(*nameLookup_, diagnostics_);
 }
 
-bool ProjectCompilation::compileProjectMethodBodies(
+// NSC-LIMIT-007. LOS CONSTRAINTS SE VALIDAN AQUI, y este es el unico punto posible de toda la
+// cadena. La materializacion generica corre en la fase 2 --antes que nombres, miembros, herencia
+// e interfaces-- asi que no puede validar; y si se dejara para despues, los cuerpos ya se habrian
+// analizado sobre una especializacion invalida y el error saldria de DENTRO del cuerpo sustituido,
+// apuntando a las tripas de la biblioteca en vez de al sitio de la llamada.
+//
+// Es una FASE, no un trozo de la de cuerpos, y la diferencia es medible: `--check-project-generic-
+// constraints` tiene que poder fallar por un `where` y solo por un `where`. Cuando la validacion
+// vivia dentro de `compileProjectMethodBodies`, esa entrada analizaba ademas cada cuerpo del
+// proyecto y devolvia rojo por errores ajenos al ID.
+bool ProjectCompilation::buildGenericConstraintModel()
+{
+    genericConstraintModel_ = std::make_unique<ProjectGenericConstraintModel>();
+    return genericConstraintModel_->build(
+        *genericModel_, *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_,
+        diagnostics_);
+}
+
+bool ProjectCompilation::compileProjectGenericConstraints(
     const std::filesystem::path& projectFile,
     std::string& loadError)
 {
@@ -359,10 +434,31 @@ bool ProjectCompilation::compileProjectMethodBodies(
     {
         return false;
     }
+    return buildGenericConstraintModel();
+}
+
+bool ProjectCompilation::compileProjectMethodBodies(
+    const std::filesystem::path& projectFile,
+    std::string& loadError)
+{
+    // LA CADENA SE ENCADENA POR `compileProjectInterfaces`, NO POR LA FASE DE CONSTRAINTS, y la
+    // distincion no es de estilo: la fase de constraints devuelve `false` tambien cuando el
+    // programa es valido en todo salvo en un `where`, y eso NO es motivo para parar --se sigue
+    // analizando el resto del fichero, o un solo `Caja<int>` mal escrito ocultaria todos los
+    // demas diagnosticos--. Encadenar por su valor de retorno confundia las dos cosas: cuando
+    // una fase ANTERIOR fallaba sin dejar `loadError` --un error de diagnostico, no de carga--
+    // se seguia adelante con los modelos sin construir, y el modelo de cuerpos deferenciaba un
+    // puntero nulo. Medido: segfault en ProjectMemberModel::isBuilt.
+    if (!compileProjectInterfaces(projectFile, loadError))
+    {
+        return false;
+    }
+    buildGenericConstraintModel();
 
     methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
     return methodBodyModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, diagnostics_);
+        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
+        genericConstraintModel_.get());
 }
 
 bool ProjectCompilation::compileProjectInterfaces(
@@ -446,7 +542,7 @@ bool ProjectCompilation::compileProjectOopHir(
     oopHirModel_ = std::make_unique<ProjectOopHirModel>();
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
-            *constructionModel_, *objectLayoutModel_, loadError))
+            *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get()))
     {
         return true;
     }
@@ -599,6 +695,11 @@ const ProjectNameLookup* ProjectCompilation::nameLookup() const noexcept
 const ProjectGenericModel* ProjectCompilation::genericModel() const noexcept
 {
     return genericModel_.get();
+}
+
+const ProjectGenericConstraintModel* ProjectCompilation::genericConstraintModel() const noexcept
+{
+    return genericConstraintModel_.get();
 }
 
 const ProjectMemberModel* ProjectCompilation::memberModel() const noexcept

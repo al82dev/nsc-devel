@@ -154,7 +154,7 @@ class Program
         "successful OOP EH executable generation keeps stderr empty");
     tests.expect(output.find("project OOP PE executable emission: ok") != std::string::npos,
         "driver reports successful project OOP PE emission");
-    tests.expect(output.find("entry-symbol: __nsc_method_EhPeApp__Program__Main") != std::string::npos,
+    tests.expect(output.find("entry-symbol: __nsc_method_EhPeApp$3A$3AProgram__Main") != std::string::npos,
         "driver exposes the selected mangled static Main entry symbol");
     tests.expect(std::filesystem::is_regular_file(executable) &&
             std::filesystem::file_size(executable) > 1024,
