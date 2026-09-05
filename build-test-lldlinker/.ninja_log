@@ -423,3 +423,12 @@
 70974	71206	8103373367495533	tests/nsc_windows_linker_tests.exe	6356f38ad013eb16
 66138	72015	8103373319129225	CMakeFiles/nsc_driver_tests.dir/tests/unit/DriverTests.cpp.obj	87ae3cbf6c7a2593
 72015	72126	8103373377905779	tests/nsc_driver_tests.exe	81d85889d54d19ed
+36	54	8103418363939888	A:/nsc-devel/build-test-lldlinker/CMakeFiles/cmake.verify_globs	87cab4c50edfaf37
+70	99	8103418364288178	CMakeFiles/nsc_build_identity	6667cfbf5dfd2664
+70	99	8103418364288178	generated/nativesharp/Basic/BuildId.h	6667cfbf5dfd2664
+70	99	8103418364288178	A:/nsc-devel/build-test-lldlinker/CMakeFiles/nsc_build_identity	6667cfbf5dfd2664
+70	99	8103418364288178	A:/nsc-devel/build-test-lldlinker/generated/nativesharp/Basic/BuildId.h	6667cfbf5dfd2664
+100	627	8103418364577731	CMakeFiles/nsc_driver.dir/src/Basic/Version.cpp.obj	a38c22ac031935fd
+627	652	8103418369846568	lib/nsc_driver.lib	fb6229419a46a595
+101	1708	8103418364588940	CMakeFiles/nsc.dir/src/nsc/main.cpp.obj	baa7b8ad3b0900a7
+1708	1818	8103418380667383	bin/nsc.exe	ade321ef350d68eb
