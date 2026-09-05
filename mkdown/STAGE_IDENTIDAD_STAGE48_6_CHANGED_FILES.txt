@@ -1,0 +1,90 @@
+STAGE -- la identidad del compilador que se quedó atrás -- 2026-09-05
+Ficheros modificados en A:\nsc-devel
+
+EL FALLO. `nsc.stage48_6.cppcli-stage48-closure` estaba en rojo por UNA comprobación, la última de
+`testConsolidatedStage48Surface`:
+
+    tests.expect(kCompilerVersion.starts_with("0.1.0-dev") && !kCompilerStage.empty(), ...)
+
+LA CAUSA, Y NO ES DEL COMPILADOR. Esa línea fue cierta mientras `Version.h` llevaba el literal
+`kCompilerVersion = "0.1.0-dev55"`. Dejó de serlo cuando entró la identidad de build: hoy
+`kCompilerVersion` es `extern`, la define `src/Basic/Version.cpp` desde el header que genera CMake
+a partir de `BuildId.h.in`, y vale `<release>+build.<marca>.<hash>`. Medido en el disco de hoy:
+
+    kCompilerVersion = '0.7.4-alpha+build.20260905T104114Z.9f3ac21e4b'
+
+EL ÁRBOL AFIRMABA DOS COSAS INCOMPATIBLES, y esto es lo que convierte el diagnóstico en certeza en
+vez de en una opinión sobre qué prueba tiene la razón. `CMakeLists.txt` (1424-1427) exige de
+`nsc --version`:
+
+    nsc 0.7.4-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57
+
+y `Stage48_6` exigía `0.1.0-dev`. Las dos pruebas no pueden pasar a la vez, así que una de ellas
+estaba describiendo un árbol que ya no existe. La que quedó atrás es la de Stage 48.6: el propio
+`BuildId.h.in` documenta el cambio que la dejó obsoleta --antes «every build of every stage
+reported `0.1.0-dev55`»-- y `nsc.version` se actualizó entonces.
+
+EL ERROR NO FUE FIJAR UN LITERAL. Fijarlo es el propósito: una comprobación de identidad TIENE que
+ponerse roja cuando la identidad se mueve, que es lo que significa «user-selected» en su mensaje. El
+error fue fijar la mitad que SE MUEVE --la versión del build-- en vez de la que no. `Version.h` lo
+dice sin rodeos: la versión del lenguaje y la compatibilidad del compilador son estables, y la
+versión visible añade metadata SemVer de cada build. Por eso ahora se fija `kLanguageVersion`, y
+sigue siendo un literal a propósito.
+
+MODIFICADOS -- PRUEBAS (1 comprobación)
+
+  tests/unit/Stage48_6CppCliHostClosureTests.cpp
+      La aserción pasa a comprobar tres cosas que sí son estables:
+
+        kLanguageVersion == "0.1"
+        kCompilerVersion.starts_with(kCompilerReleaseVersion)
+        kCompilerVersion.size() > kCompilerReleaseVersion.size()
+        !kCompilerStage.empty()
+
+      Las dos del medio comprueban DERIVACIÓN, no igualdad. `starts_with` a solas aceptaría también
+      un `kCompilerVersion` que hubiera perdido su sufijo `+build.<...>` y hubiera vuelto a ser la
+      release pelada: una coincidencia de prefijo que en realidad es una igualdad disfrazada.
+      Exigir que sea estrictamente más larga es lo que hace que la comprobación signifique «deriva
+      de» y no «es igual a». La FORMA del sufijo es asunto de `nsc.version` y no se duplica aquí.
+
+      El mensaje dice ahora «language line» y no «development line», porque la línea de desarrollo
+      `0.1.0-dev` es justamente lo que ya no existe.
+
+MEDIDO
+  La expresión corregida, compilada con clang++ -std=c++20 -Wall -Wextra contra los `Version.h`,
+  `Version.cpp` y `BuildId.h.in` REALES del disco, con el `BuildId.h` generado a mano con la forma
+  que produce CMake:
+
+    valores de hoy                                            -> PASA
+    kLanguageVersion movida a "0.2"                           -> ROJO
+    kCompilerVersion sin el sufijo +build (igual a la release) -> ROJO   <- el caso que justifica
+                                                                            la cláusula del tamaño;
+                                                                            con solo `starts_with`
+                                                                            habría pasado
+    kCompilerVersion que deja de derivar de la release        -> ROJO
+    kCompilerStage vacía                                      -> ROJO
+    la línea VIEJA contra los valores de hoy                  -> ROJO   <- el fallo que se arregla
+
+  Sin los cuatro casos rojos esto sería una aserción que nadie ha visto fallar, que es tanto como
+  no tener aserción.
+
+NO MEDIDO AQUÍ
+  La compilación de la suite completa y la corrida de ctest. `Stage48_6CppCliHostClosureTests.cpp`
+  arrastra Driver, Linker e Interop, y este contenedor ni enlaza PE ni ejecuta Windows. Lo que se
+  compiló y ejecutó es la expresión exacta de la aserción contra las cabeceras de versión reales;
+  el resto del fichero no se tocó.
+
+LO QUE ESTO NO ARREGLA
+  Nada del alcance de C++/CLI. Se planteó recortarlo --Stage 48.5 ya cubre callbacks, pinning de
+  buffers, handles opacos con ownership, layout y bool, así que C++/CLI no aporta cobertura de ABI
+  nueva-- y se decidió DEJARLO COMO ESTÁ por ahora. Queda anotado que 48.3 y 48.4 compilan con
+  clang y que 48.6 es el único punto del árbol que llega a MSVC (msbuild -> cl.exe consumiendo el
+  .lib y el .h que emite NativeSharp), aunque ese bloque se salta entero si faltan `msbuild` o
+  `dotnet`.
+
+RELACIÓN CON EL GATE 0 DEL DOC 123
+  Este era el único fallo real de la corrida `20260905-110955-5a91fc80`, y no tenía gate asignado en
+  el plan. Con la regla 13 --«un gate no se marca LANDED mientras conserve fallos»-- G0 no podía
+  aterrizar por un fallo ajeno a su alcance, y Gate 0 «no modifica el compilador». Esta corrección
+  no toca el compilador: toca una prueba que afirmaba un hecho que el proyecto cambió a propósito y
+  documentó.

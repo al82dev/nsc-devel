@@ -86,6 +86,19 @@ DEFAULT_PREFIX = Path(r"C:\native-sharp")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
+# Gate 0 del plan 123. Todo lo que produce la certificacion ABI vive bajo `_abi`, separado del
+# historial ordinario de corridas: `_nscbuilder` se puede borrar sin perder un baseline.
+ABI_ROOT = ROOT / "_abi"
+ABI_GATES_ROOT = ABI_ROOT / "gates"
+ABI_ARCHIVES_ROOT = ABI_ROOT / "archives"
+# El manifiesto de fuentes del Gate 0. El plan 123 fija que se incluye y que se excluye; se escribe
+# aqui una sola vez para que la respuesta no dependa de quien lance la accion.
+ABI_SOURCE_DIRECTORIES: tuple[str, ...] = ("src", "include", "lib", "tests", "examples")
+ABI_SOURCE_FILES: tuple[str, ...] = ("CMakeLists.txt", "nscbuilder.py")
+ABI_SOURCE_EXCLUDED_NAMES: frozenset[str] = frozenset(
+    {".git", "_abi", "_nscbuilder", "__pycache__", ".vs", ".vscode", ".cache"}
+)
+ABI_SOURCE_EXCLUDED_SUFFIXES: tuple[str, ...] = (".obj", ".pdb", ".ilk", ".exp", ".tmp", ".log")
 TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
 CASE_TIMEOUT_SECONDS = 300
 
@@ -240,6 +253,77 @@ def command_text(command: Iterable[str]) -> str:
     return subprocess.list2cmdline([str(part) for part in command])
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def canonical_manifest(root: Path, files: Iterable[Path]) -> list[dict]:
+    """Manifiesto canonico del plan 123 §4.3: (ruta relativa, tamano, sha256).
+
+    Las reglas no son adorno. Las rutas van relativas y con `/` para que el manifiesto no dependa
+    de la unidad ni del sistema; el orden es BYTE A BYTE sobre UTF-8 y no el de `str` de Python,
+    que ordena por punto de codigo y daria otro digest para el mismo contenido; y no entra ninguna
+    fecha, porque un timestamp haria que el mismo arbol tuviera dos identidades.
+
+    Dos rutas que solo difieran en mayusculas se RECHAZAN: en Windows son el mismo fichero, y un
+    manifiesto que las liste por separado describiria un arbol que no existe.
+    """
+    entries: list[dict] = []
+    seen: dict[str, str] = {}
+    for path in files:
+        relative = path.relative_to(root).as_posix()
+        folded = relative.casefold()
+        previous = seen.get(folded)
+        if previous is not None and previous != relative:
+            raise ValueError(
+                f"Colision de rutas que solo difieren en mayusculas: {previous!r} y {relative!r}"
+            )
+        seen[folded] = relative
+        entries.append(
+            {"path": relative, "size": path.stat().st_size, "sha256": sha256_file(path)}
+        )
+    entries.sort(key=lambda row: row["path"].encode("utf-8"))
+    return entries
+
+
+def manifest_digest(entries: list[dict]) -> str:
+    payload = json.dumps(entries, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def collect_source_files(root: Path) -> list[Path]:
+    """Los ficheros que forman la identidad del arbol para el Gate 0."""
+    files: list[Path] = []
+    for name in ABI_SOURCE_FILES:
+        candidate = root / name
+        if candidate.is_file():
+            files.append(candidate)
+    for name in ABI_SOURCE_DIRECTORIES:
+        directory = root / name
+        if not directory.is_dir():
+            continue
+        for path in directory.rglob("*"):
+            if not path.is_file():
+                continue
+            parts = set(path.relative_to(root).parts)
+            if parts & ABI_SOURCE_EXCLUDED_NAMES:
+                continue
+            if any(part.casefold().startswith("build-") for part in parts):
+                continue
+            if path.suffix.casefold() in ABI_SOURCE_EXCLUDED_SUFFIXES:
+                continue
+            files.append(path)
+    return files
+
+
+def collect_tree_files(root: Path) -> list[Path]:
+    return [path for path in root.rglob("*") if path.is_file()]
+
+
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -327,6 +411,34 @@ def import_case_table(root: Path) -> list[CaseSpec]:
                 known_projects.add(key)
 
     return result
+
+
+# LA EXPRESION `-R` NO ES UN REGEX DE PYTHON, y confundirlas costo una corrida entera.
+#
+# MEDIDO el 2026-09-05. Esta funcion construia el filtro con `"^(?:" + "|".join(re.escape(n)) +
+# ")$"`. ctest no usa el motor de Python sino `cmsys::RegularExpression`, que no conoce los grupos
+# no capturantes ni el `\-` que `re.escape` produce. La respuesta fue:
+#
+#     RegularExpression::compile(): ?+* follows nothing.
+#     No tests were found!!!
+#
+# --y codigo de salida 0, asi que la corrida se registro como PASSED sin ejecutar una sola prueba.
+#
+# El dialecto que ctest si entiende es el basico: `^ $ . [ ] ( ) | * + ?` y `\` como escape. Ni
+# grupos no capturantes, ni `{n,m}`, ni clases como `\d`. De ahi las dos diferencias con
+# `re.escape`: el grupo se abre con `(` a secas, y solo se escapan los metacaracteres de ESE motor
+# --el `-` de `cppcli-stage48-closure` no es uno de ellos y escaparlo es justo lo que rompia--.
+CTEST_REGEX_SPECIALS = frozenset("\\^$.[]()|*+?")
+
+
+def ctest_name_filter(names: list[str]) -> str:
+    """Filtro `-R` que casa EXACTAMENTE los nombres dados, en el dialecto de ctest."""
+    alternatives = [
+        "".join("\\" + character if character in CTEST_REGEX_SPECIALS else character
+                for character in name)
+        for name in names
+    ]
+    return "^(" + "|".join(alternatives) + ")$"
 
 
 def ctest_group(name: str) -> str:
@@ -742,10 +854,18 @@ class PipelineWorker(QObject):
         self.completed_units += count
         self.progress.emit(self.completed_units, self.total_units)
 
+    def _runs_test_stages(self) -> bool:
+        """Las etapas de prueba las comparten `tests` y `baseline`.
+
+        El Gate 0 necesita construir, instalar Y ejecutar la matriz en UNA sola corrida: los hashes
+        que toma antes y despues tienen que abarcar todo, o no demuestran que nada se movio.
+        """
+        return self.plan.operation in ("tests", "baseline")
+
     def _validate_paths(self) -> list[str]:
         required: list[Path] = []
         building = self.plan.run_build and self.plan.build_mode != "skip"
-        building_tests = self.plan.operation == "tests" and self.plan.run_ctest
+        building_tests = self._runs_test_stages() and self.plan.run_ctest
         running_tests = self.plan.run_ctest or self.plan.run_cases or self.plan.run_triage
         if building or building_tests:
             required.extend(
@@ -762,7 +882,10 @@ class PipelineWorker(QObject):
             if self.plan.build_runner == "ninja" and shutil.which("ninja") is None:
                 required.append(Path("ninja.exe (PATH)"))
         if running_tests:
-            required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
+            # En `baseline` el compilador instalado lo produce esta misma corrida, asi que exigirlo
+            # de entrada rechazaria una maquina limpia por no tener todavia lo que va a construir.
+            if self.plan.operation != "baseline":
+                required.append(Path(self.plan.prefix) / "bin" / "nsc.exe")
             if "lld-link" in self.plan.linkers:
                 required.append(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
             if "NSLink" in self.plan.linkers:
@@ -888,7 +1011,7 @@ class PipelineWorker(QObject):
         )
 
     def _build_tests(self) -> bool:
-        if self.plan.operation != "tests" or not self.plan.run_ctest:
+        if not self._runs_test_stages() or not self.plan.run_ctest:
             self.ctest_ready_linkers = set(self.plan.linkers)
             return True
         root = Path(self.plan.root).resolve()
@@ -914,6 +1037,49 @@ class PipelineWorker(QObject):
                         "error_log": str(self.console_path.resolve()) if self.console_path else "",
                     }
                 )
+                continue
+
+            # «NO CONSTRUIR»: la pestana de Pruebas no reconstruye nada, usa lo que ya hay.
+            #
+            # POR QUE ES EL MODO POR DEFECTO. Construir y probar son dos decisiones distintas y no
+            # tiene sentido encadenarlas: si el compilador no construye, no hay nada que probar, y
+            # correr pruebas contra un nsc.exe que se acaba de tocar no responde la pregunta que se
+            # estaba haciendo. Se construye en la pestana de construccion, a proposito, y despues se
+            # prueba lo construido.
+            #
+            # Y HAY UN MOTIVO CONCRETO, no solo de orden. `nsc_build_identity` esta SIEMPRE
+            # desactualizado a proposito (CMakeLists.txt:12-16, CC1-000): reescribe BuildId.h con
+            # marca de tiempo y numero aleatorio en CADA construccion. `nsc_driver` depende de el y
+            # 56 targets enlazan `nsc_driver`, asi que cualquier construccion en este arbol
+            # recompila Version.cpp, re-archiva nsc_driver y re-enlaza todo lo que cuelgue de ahi
+            # --tambien cuando lo unico que cambio fue una prueba, o nada--. Medido: 66 s para no
+            # ejecutar ni una sola prueba.
+            if self.plan.test_build_mode == "skip":
+                if not (build / "CMakeCache.txt").is_file():
+                    detail = (
+                        f"«No construir» necesita un árbol de CTest ya configurado y {build} no lo "
+                        "está. Constrúyelo una vez y vuelve a intentarlo."
+                    )
+                    self._emit(detail, "error", linker)
+                    self.failed += 1
+                    self._report_failure(
+                        {
+                            "linker": linker,
+                            "kind": "Validación",
+                            "source": f"Directorio CTest [{linker}]",
+                            "detail": detail,
+                            "error_log": str(self.console_path.resolve())
+                            if self.console_path
+                            else "",
+                        }
+                    )
+                    continue
+                self._emit(
+                    f"CTest [{linker}]: se usa el árbol ya construido, sin reconstruir nada.",
+                    "info",
+                    linker,
+                )
+                self.ctest_ready_linkers.add(linker)
                 continue
 
             if self.plan.test_build_mode == "clean":
@@ -1038,7 +1204,7 @@ class PipelineWorker(QObject):
         seleccionados por esta corrida.
         """
         if (
-            self.plan.operation != "tests"
+            not self._runs_test_stages()
             or self.plan.test_build_mode != "clean"
             or not (self.plan.run_cases or self.plan.run_triage)
         ):
@@ -1090,12 +1256,15 @@ class PipelineWorker(QObject):
             "--test-dir",
             str(self._test_build_dir(linker)),
             "--output-on-failure",
+            # Una corrida que no ejecuta ninguna prueba no es una corrida verde. Sin esto ctest
+            # sale con 0 cuando el filtro no casa nada, que es como «No tests were found!!!» acabo
+            # registrandose como PASSED. Requiere CMake 3.18 o posterior.
+            "--no-tests=error",
             "-j",
             str(self.plan.jobs),
         ]
         if self.plan.selected_ctests:
-            expression = "^(?:" + "|".join(re.escape(name) for name in self.plan.selected_ctests) + ")$"
-            command.extend(["-R", expression])
+            command.extend(["-R", ctest_name_filter(self.plan.selected_ctests)])
         self.stage_started.emit(name)
         log = self.run_dir / "stages" / f"{safe_name(name)}.log"
         result = self._run_process(
@@ -1108,6 +1277,27 @@ class PipelineWorker(QObject):
         status = "cancelled" if result.cancelled else (
             "passed" if result.exit_code == 0 else "failed"
         )
+
+        # CASOS SIN EJECUTAR. La regla 13 del plan los cuenta igual que un fallo --«ni casos sin
+        # ejecutar»-- y hasta aqui no se veian: el estado salia solo del codigo de salida.
+        #
+        # `--no-tests=error` cubre el caso de CERO. Esto cubre el PARCIAL, que es el mismo fallo y
+        # se ve peor: pedir cinco pruebas por nombre, que solo tres existan --un nombre mal escrito,
+        # una prueba renombrada, un `add_test` que se cayo del CMakeLists-- y que las tres verdes
+        # tapen a las dos que no llegaron a existir. ctest sale con 0 porque, de lo que corrio, no
+        # fallo nada; la pregunta que importa es otra: corrio lo que se pidio.
+        #
+        # Solo se comprueba con `selected_ctests`, que es el unico caso donde se sabe de antemano
+        # cuantas debian correr.
+        executed = 0
+        shortfall = 0
+        if self.plan.selected_ctests:
+            counter = re.search(r"out of\s+(\d+)", result.output)
+            executed = int(counter.group(1)) if counter is not None else 0
+            shortfall = len(self.plan.selected_ctests) - executed
+            if shortfall != 0 and status == "passed":
+                status = "failed"
+
         self._record_stage(
             name,
             status,
@@ -1119,6 +1309,23 @@ class PipelineWorker(QObject):
         )
         if status != "failed":
             return
+        if shortfall != 0:
+            detail = (
+                f"ctest ejecuto {executed} de las {len(self.plan.selected_ctests)} pruebas pedidas"
+            )
+            self._emit(f"{name}: {detail}.", "error", linker)
+            self._report_failure(
+                {
+                    "linker": linker,
+                    "optimization": "General",
+                    "kind": "CTest",
+                    "source": name,
+                    "detail": detail,
+                    "error_log": str(log.resolve()),
+                }
+            )
+            if result.exit_code == 0:
+                return
         failure_status = r"(?:Failed|Timeout|Not Run|Exception|SEGFAULT|BAD_COMMAND)"
         failed_names = re.findall(
             rf"^\s*\d+\s+-\s+([^\s]+)\s+\({failure_status}\)\s*$",
@@ -1481,6 +1688,205 @@ class PipelineWorker(QObject):
         self._save_metadata()
         self.stage_finished.emit(name, status, elapsed, stage_row["exit_code"])
 
+    # ------------------------------------------------------------------ Gate 0 del plan 123
+
+    def _abi_measure(self, moment: str, *, sources: bool = True, binaries: bool = True) -> dict:
+        """La foto del arbol y de los binarios en un instante.
+
+        Se toma TRES veces, y el orden lo fija G0.2 del plan 123: `S0` antes de construir --si se
+        tomara despues incluiria lo que la propia construccion toque--, `B0`/`I0` justo despues de
+        instalar y antes de probar, y todo otra vez al terminar la matriz. Sin la ultima, unos logs
+        verdes pueden pertenecer a un binario o a unas fuentes que ya no son las que se archivan,
+        que es exactamente el fallo que el Gate 0 existe para impedir.
+        """
+        root = Path(self.plan.root).resolve()
+        prefix = Path(self.plan.prefix).resolve()
+        build = Path(self.plan.compiler_build_dir).resolve() if self.plan.compiler_build_dir else None
+
+        measurement: dict = {"moment": moment, "binaries": {}, "tools": {}}
+        if sources:
+            manifest = canonical_manifest(root, collect_source_files(root))
+            measurement["source_digest"] = manifest_digest(manifest)
+            measurement["source_file_count"] = len(manifest)
+        if not binaries:
+            return measurement
+        # B: el compilador CONSTRUIDO. I: el INSTALADO. Son dos ficheros distintos y las fixtures
+        # usan el instalado, asi que hay que probar que son el mismo antes de certificar nada.
+        built = (build / "bin" / "nsc.exe") if build is not None else None
+        if built is not None and built.is_file():
+            measurement["binaries"]["built_nsc"] = sha256_file(built)
+        installed = prefix / "bin" / "nsc.exe"
+        if installed.is_file():
+            measurement["binaries"]["installed_nsc"] = sha256_file(installed)
+        for label, path in (
+            ("lld-link", Path(self.plan.llvm_root) / "bin" / "lld-link.exe"),
+            ("nslink", Path(self.plan.nslink_exe)),
+        ):
+            if path.is_file():
+                measurement["tools"][label] = sha256_file(path)
+        for linker in self.plan.linkers:
+            try:
+                test_build = self._test_build_dir(linker).resolve()
+            except ValueError:
+                continue
+            for executable in sorted(test_build.rglob("nsc_*tests.exe")):
+                key = f"{linker}/{executable.name}"
+                measurement["tools"][key] = sha256_file(executable)
+        return measurement
+
+    def _abi_compare(self, s0: dict, built: dict, final: dict) -> list[str]:
+        """Las cinco igualdades que el plan 123 exige en G0.2, una a una y con su nombre."""
+        problems: list[str] = []
+        if s0.get("source_digest") != final.get("source_digest"):
+            problems.append(
+                "S0 != S1: el arbol de fuentes cambio durante la corrida "
+                f"({str(s0.get('source_digest'))[:16]} -> {str(final.get('source_digest'))[:16]})"
+            )
+        b0 = built["binaries"].get("built_nsc")
+        i0 = built["binaries"].get("installed_nsc")
+        b1 = final["binaries"].get("built_nsc")
+        i1 = final["binaries"].get("installed_nsc")
+        if b0 is None or b1 is None:
+            problems.append("No se pudo hashear el nsc.exe construido antes y despues de la matriz")
+        elif b0 != b1:
+            problems.append("B0 != B1: el nsc.exe construido cambio durante la matriz")
+        if i0 is None or i1 is None:
+            problems.append("No se pudo hashear el nsc.exe instalado antes y despues de la matriz")
+        elif i0 != i1:
+            problems.append("I0 != I1: el nsc.exe instalado cambio durante la matriz")
+        if b0 is not None and i0 is not None and b0 != i0:
+            problems.append(
+                "B0 != I0: lo instalado no es lo que se acaba de construir"
+            )
+        if b1 is not None and i1 is not None and b1 != i1:
+            problems.append(
+                "B1 != I1: el nsc.exe construido y el instalado no son el mismo fichero, "
+                "y las fixtures usan el instalado"
+            )
+        for key, value in built["tools"].items():
+            if final["tools"].get(key) != value:
+                problems.append(
+                    f"La herramienta o ejecutable de prueba '{key}' cambio durante la matriz"
+                )
+        for key in final["tools"]:
+            if key not in built["tools"]:
+                problems.append(f"Aparecio '{key}' durante la matriz y no estaba al empezar")
+        return problems
+
+    def _abi_gate_state(self, state: str, payload: dict) -> Path:
+        gate_dir = ABI_GATES_ROOT / "G00"
+        gate_dir.mkdir(parents=True, exist_ok=True)
+        record = dict(payload)
+        record["state"] = state
+        record["recorded_at"] = utc_stamp()
+        write_json(gate_dir / "gate.json", record)
+        return gate_dir
+
+    def _abi_baseline(self, s0: dict, built: dict | None) -> None:
+        """Cierra el Gate 0: ultima medicion, comparacion, y estado en `_abi/gates/G00`."""
+        assert self.run_dir is not None
+        name = "Certificar baseline (Gate 0)"
+        self.stage_started.emit(name)
+        started = time.monotonic()
+        log = self.run_dir / "stages" / "gate0_baseline.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        lines: list[str] = []
+        try:
+            if built is None:
+                built = {"moment": "after-build", "binaries": {}, "tools": {}}
+            after = self._abi_measure("after-run")
+            problems = self._abi_compare(s0, built, after)
+            payload = {
+                "gate": "G00",
+                "run_id": self.metadata.get("id"),
+                "run_dir": str(self.run_dir.resolve()),
+                "root": self.plan.root,
+                "prefix": self.plan.prefix,
+                "llvm_root": self.plan.llvm_root,
+                "compiler_build_dir": self.plan.compiler_build_dir,
+                "linkers": list(self.plan.linkers),
+                "optimizations": list(self.plan.optimizations),
+                "s0_sources": s0,
+                "after_build": built,
+                "after_run": after,
+                "results": {
+                    "failed": self.failed,
+                    "stages": [
+                        {
+                            "name": row.get("name"),
+                            "status": row.get("status"),
+                            "exit_code": row.get("exit_code"),
+                        }
+                        for row in self.stage_rows
+                    ],
+                    "cases": [
+                        {
+                            "label": row.get("label"),
+                            "linker": row.get("linker"),
+                            "optimization": row.get("optimization"),
+                            "status": row.get("status"),
+                            "expected": row.get("expected"),
+                            "actual": row.get("actual"),
+                        }
+                        for row in self.case_rows
+                    ],
+                },
+                "problems": problems,
+            }
+            # DOS CONDICIONES DISTINTAS, Y NO SE MEZCLAN.
+            #
+            # CERTIFICAR EL BASELINE es lo que pide el paso 10 de G0.2, y lo que el Cierre G0
+            # exige para ello es que el arbol permaneciera inmovil durante la medicion: eso es
+            # `problems`, las cinco igualdades del paso 9. Una corrida con pruebas en rojo mide la
+            # inmovilidad exactamente igual de bien --el hash de un binario no deja de ser cierto
+            # porque un caso falle-- asi que el baseline se calcula y se guarda igual.
+            #
+            # ATERRIZAR EL GATE es otra cosa. Regla 13: «Un gate no se marca `LANDED` mientras
+            # conserve fallos, pendientes obligatorios o casos sin ejecutar», y la §2 define
+            # aterrizar como «un gate termino verde». Por eso `self.failed` decide el ESTADO y no
+            # la certificacion.
+            #
+            # Separarlas importa por lo que pasa cuando difieren: un G0 en `FAILED` por un fallo
+            # ajeno al gate --Gate 0 no modifica el compilador-- conserva aun asi el baseline
+            # medido, que es justamente la red de seguridad para la que existe el gate. Fundirlas
+            # en una sola condicion tiraria la medicion buena junto con el fallo.
+            certified = not problems
+            state = "LANDED" if certified and self.failed == 0 else "FAILED"
+            payload["certified"] = certified
+            gate_dir = self._abi_gate_state(state, payload)
+            lines.append(f"estado: {state}")
+            lines.append(
+                "baseline certificado: " + ("si" if certified else "no (el arbol se movio)"))
+            lines.append(f"fallos registrados en la corrida: {self.failed}")
+            if certified and self.failed:
+                lines.append(
+                    f"NO LANDED por la regla 13: el arbol permanecio inmovil y el baseline quedo "
+                    f"certificado, pero la corrida conserva {self.failed} fallo(s)")
+            lines.append(f"S0: {s0.get('source_digest')}")
+            lines.append(f"S1: {after.get('source_digest')}")
+            for key, value in sorted(after["binaries"].items()):
+                lines.append(f"{key}: {value}")
+            for problem in problems:
+                lines.append(f"problema: {problem}")
+            lines.append(f"estado escrito en: {gate_dir}")
+            status = "passed" if state == "LANDED" else "failed"
+            code = 0 if state == "LANDED" else 1
+            for problem in problems:
+                self._emit(problem, "error")
+            if state == "LANDED":
+                self._emit(f"Gate 0 LANDED. Baseline registrado en {gate_dir}", "success")
+            elif certified:
+                self._emit(
+                    f"Gate 0 FAILED por la regla 13: {self.failed} fallo(s) en la corrida. El "
+                    f"baseline SI quedo certificado y registrado en {gate_dir}",
+                    "error")
+        except Exception as exc:  # pragma: no cover - depende del arbol del usuario
+            status, code = "failed", -1
+            lines.append(f"excepcion: {exc!r}")
+            self._emit(f"Gate 0 no pudo completarse: {exc!r}", "error")
+        log.write_text("\n".join(lines) + "\n", encoding="utf-8", errors="replace")
+        self._record_stage(name, status, time.monotonic() - started, code, "", log)
+
     def _calculate_total(self) -> int:
         total = 0
         if self.plan.run_build and self.plan.build_mode != "skip":
@@ -1490,10 +1896,12 @@ class PipelineWorker(QObject):
                 total += 3  # configurar, construir, instalar
             else:
                 total += 2  # construir, instalar
-        if self.plan.operation == "tests" and self.plan.run_ctest:
+        if self._runs_test_stages() and self.plan.run_ctest:
             for linker in self.plan.linkers:
                 build = self._test_build_dir(linker)
-                if self.plan.test_build_mode == "clean":
+                if self.plan.test_build_mode == "skip":
+                    pass  # no se construye nada: no hay etapa que contar
+                elif self.plan.test_build_mode == "clean":
                     total += 3  # limpiar, configurar y construir SU árbol de CTest
                 elif not (build / "CMakeCache.txt").is_file():
                     total += 2  # configurar y construir SU árbol de CTest
@@ -1501,8 +1909,10 @@ class PipelineWorker(QObject):
                     total += 1  # construcción incremental de SU árbol de CTest
         if self.plan.sync_libraries:
             total += 1
+        if self.plan.operation == "baseline":
+            total += 1  # la etapa de cierre del Gate 0
         if (
-            self.plan.operation == "tests"
+            self._runs_test_stages()
             and self.plan.test_build_mode == "clean"
             and (self.plan.run_cases or self.plan.run_triage)
         ):
@@ -1694,24 +2104,36 @@ class PipelineWorker(QObject):
                             }
                         )
                 self.failed += len(missing)
-            elif (
-                self._build()
-                and not self.cancel_event.is_set()
-                and self._prepare_test_outputs()
-                and not self.cancel_event.is_set()
-                and self._build_tests()
-                and not self.cancel_event.is_set()
-            ):
-                if (
-                    self._sync_libraries()
-                    and not self.cancel_event.is_set()
-                ):
-                    for linker in self.plan.linkers:
-                        self._ctest(linker)
-                        self._run_case_group(linker)
-                        self._triage(linker)
-                        if self.cancel_event.is_set():
-                            break
+            else:
+                # Gate 0. La primera medicion se toma ANTES de construir: si se tomara despues, el
+                # digest de fuentes ya incluiria cualquier cosa que la propia construccion tocara.
+                # Gate 0. El orden de las mediciones lo fija G0.2 y no es intercambiable: `S0`
+                # antes de construir, `B0`/`I0` justo despues de instalar, y todo otra vez al
+                # terminar la matriz.
+                is_baseline = self.plan.operation == "baseline"
+                baseline_sources = (
+                    self._abi_measure("before-build", binaries=False) if is_baseline else None
+                )
+                baseline_built: dict | None = None
+                if self._build() and not self.cancel_event.is_set():
+                    if is_baseline:
+                        baseline_built = self._abi_measure("after-build", sources=False)
+                    if (
+                        self._prepare_test_outputs()
+                        and not self.cancel_event.is_set()
+                        and self._build_tests()
+                        and not self.cancel_event.is_set()
+                        and self._sync_libraries()
+                        and not self.cancel_event.is_set()
+                    ):
+                        for linker in self.plan.linkers:
+                            self._ctest(linker)
+                            self._run_case_group(linker)
+                            self._triage(linker)
+                            if self.cancel_event.is_set():
+                                break
+                if baseline_sources is not None and not self.cancel_event.is_set():
+                    self._abi_baseline(baseline_sources, baseline_built)
         except BaseException as exc:
             self.failed += 1
             self._emit(f"Fallo interno del runner: {exc!r}", "error")
@@ -1866,6 +2288,9 @@ class MainWindow(QMainWindow):
         test_options = QGroupBox("Compilación y ejecución de pruebas")
         test_grid = QGridLayout(test_options)
         self.test_build_mode = QComboBox()
+        # Primero, y por tanto el que sale por defecto: probar no es construir. Ver la rama
+        # correspondiente en `_build_tests`.
+        self.test_build_mode.addItem("No construir (usar lo ya construido)", "skip")
         self.test_build_mode.addItem("Desde cero", "clean")
         self.test_build_mode.addItem("Incremental", "incremental")
         self.test_build_lld_path = QLineEdit(str(DEFAULT_TEST_BUILD_LLD))
@@ -1937,6 +2362,7 @@ class MainWindow(QMainWindow):
         self.operation_tabs = QTabWidget()
         self.operation_tabs.addTab(config_panel, "Compilador")
         self.operation_tabs.addTab(selection, "Pruebas")
+        self.operation_tabs.addTab(self._abi_page(), "ABI")
         self.operations_dock = self._create_dock(
             "Operaciones",
             self.operation_tabs,
@@ -2503,6 +2929,147 @@ class MainWindow(QMainWindow):
             return "pruebas"
         return ";".join(dict.fromkeys(targets))
 
+    # ------------------------------------------------------------------ Gate 0 del plan 123
+
+    def _abi_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        explanation = QLabel(
+            "Gate 0 del plan 123. Preserva el estado verde actual antes de tocar el compilador.\n\n"
+            "G0.1 archiva el arbol INSTALADO tal como esta ahora mismo, junto a los ultimos logs "
+            "verdes. Es evidencia historica: no certifica nada por si sola.\n\n"
+            "G0.2 mide el arbol y los binarios, construye, instala, ejecuta la matriz completa "
+            "--CTest, fixtures y bug triage, con los dos enlazadores y O0/O2--, vuelve a medir y "
+            "exige que nada se haya movido. Solo entonces escribe el baseline certificado."
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        historical = QGroupBox("G0.1 — archivo historico")
+        historical_layout = QVBoxLayout(historical)
+        self.abi_archive_button = QPushButton("Archivar el arbol instalado ahora")
+        self.abi_archive_button.clicked.connect(self._archive_historical)
+        historical_layout.addWidget(self.abi_archive_button)
+        self.abi_archive_status = QLabel("Sin archivar en esta sesion.")
+        self.abi_archive_status.setWordWrap(True)
+        historical_layout.addWidget(self.abi_archive_status)
+        layout.addWidget(historical)
+
+        certified = QGroupBox("G0.2 — baseline certificado")
+        certified_layout = QVBoxLayout(certified)
+        certified_note = QLabel(
+            "Usa las rutas de la pestana Compilador. La matriz no es configurable: un baseline "
+            "parcial no es un baseline."
+        )
+        certified_note.setWordWrap(True)
+        certified_layout.addWidget(certified_note)
+        self.abi_baseline_button = QPushButton("Construir, medir y certificar el baseline")
+        self.abi_baseline_button.clicked.connect(self._start_baseline)
+        certified_layout.addWidget(self.abi_baseline_button)
+        layout.addWidget(certified)
+        layout.addStretch(1)
+        return page
+
+    def _last_green_run(self) -> Path | None:
+        """La corrida verde mas reciente del historial, o None si no hay ninguna."""
+        if not HISTORY_ROOT.is_dir():
+            return None
+        candidates: list[tuple[str, Path]] = []
+        for directory in HISTORY_ROOT.iterdir():
+            metadata = directory / "metadata.json"
+            if not metadata.is_file():
+                continue
+            try:
+                payload = json.loads(metadata.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, ValueError):
+                continue
+            if payload.get("status") == "passed" and not payload.get("failed"):
+                candidates.append((str(payload.get("finished_at") or directory.name), directory))
+        if not candidates:
+            return None
+        candidates.sort()
+        return candidates[-1][1]
+
+    @Slot()
+    def _archive_historical(self) -> None:
+        """G0.1. Copia el arbol instalado tal como esta. Nunca sobrescribe, nunca borra."""
+        if self.worker is not None:
+            QMessageBox.warning(self, APP_NAME, "Hay una corrida en curso.")
+            return
+        prefix = Path(self.prefix_path.text().strip())
+        if not (prefix / "bin" / "nsc.exe").is_file():
+            QMessageBox.warning(
+                self, APP_NAME, f"No hay un compilador instalado en:\n{prefix}"
+            )
+            return
+        destination = ABI_ARCHIVES_ROOT / "historical" / datetime.now().strftime("%Y%m%d-%H%M%S")
+        if destination.exists():
+            QMessageBox.warning(self, APP_NAME, f"Ya existe:\n{destination}")
+            return
+        answer = QMessageBox.question(
+            self,
+            APP_NAME,
+            f"Se copiara el arbol instalado\n{prefix}\n\na\n{destination}\n\n"
+            "No se borra ni se modifica nada. ¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            payload_root = destination / "prefix"
+            shutil.copytree(prefix, payload_root)
+            entries = canonical_manifest(payload_root, collect_tree_files(payload_root))
+            green = self._last_green_run()
+            # El plan exige decir en voz alta que esto NO es un baseline certificado: los logs
+            # verdes del historial no contienen el hash del binario que los produjo, asi que
+            # asociarlos es una pista, no una prueba.
+            record = {
+                "gate": "G00",
+                "part": "G0.1",
+                "kind": "historical-archive",
+                "certified_baseline": False,
+                "reason": (
+                    "Los logs verdes del historial no registran el hash del nsc.exe que los "
+                    "produjo, de modo que la asociacion es evidencia historica y no un baseline "
+                    "certificado. El baseline lo produce G0.2."
+                ),
+                "created_at": utc_stamp(),
+                "prefix": str(prefix.resolve()),
+                "destination": str(destination.resolve()),
+                "installed_nsc_sha256": sha256_file(prefix / "bin" / "nsc.exe"),
+                "file_count": len(entries),
+                "manifest_digest": manifest_digest(entries),
+                "green_run": str(green.resolve()) if green is not None else None,
+            }
+            write_json(destination / "manifest.json", {"record": record, "files": entries})
+            write_json(ABI_GATES_ROOT / "G00" / "historical.json", record)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, APP_NAME, f"No se pudo archivar:\n{exc!r}")
+            self.abi_archive_status.setText(f"Fallo: {exc!r}")
+            return
+        self.abi_archive_status.setText(
+            f"Archivado: {destination}\n{record['file_count']} ficheros, "
+            f"digest {record['manifest_digest'][:16]}…\n"
+            "No es un baseline certificado: eso lo produce G0.2."
+        )
+        QMessageBox.information(self, APP_NAME, f"Archivo historico creado en:\n{destination}")
+
+    @Slot()
+    def _start_baseline(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            APP_NAME,
+            "El Gate 0 construira, instalara y ejecutara la matriz completa con los dos "
+            "enlazadores y O0/O2, y despues exigira que fuentes y binarios no se hayan movido.\n\n"
+            "¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.start_run("baseline")
+
     def _make_plan(self, operation: str) -> RunPlan | None:
         compiler_build = Path(self.build_path.text().strip()).resolve()
         test_build_dirs = {
@@ -2581,6 +3148,34 @@ class MainWindow(QMainWindow):
                 "LLD-link y NSLink deben usar directorios CTest diferentes.",
             )
             return None
+        if operation == "baseline":
+            # G0.2 no es configurable a proposito. Un baseline parcial --un solo enlazador, un solo
+            # nivel de optimizacion, sin fixtures-- seria un certificado que no dice lo que parece
+            # decir, y el Gate 0 existe justamente para que no exista esa clase de verde.
+            return RunPlan(
+                operation="baseline",
+                root=str(ROOT),
+                compiler_build_dir=self.build_path.text().strip(),
+                prefix=self.prefix_path.text().strip(),
+                llvm_root=self.llvm_path.text().strip(),
+                nslink_exe=self.nslink_path.text().strip(),
+                build_mode="incremental",
+                build_target="nsc",
+                build_runner=str(self.build_runner.currentData()),
+                test_build_mode="incremental",
+                test_build_dirs=test_build_dirs,
+                linkers=["lld-link", "NSLink"],
+                optimizations=["-O0", "-O2"],
+                jobs=self.test_jobs.value(),
+                run_build=True,
+                sync_libraries=True,
+                run_ctest=True,
+                run_cases=True,
+                run_triage=True,
+                keep_link_temps=False,
+                selected_ctests=[],
+                selected_cases=[],
+            )
         return RunPlan(
             operation="tests",
             root=str(ROOT),
@@ -2646,11 +3241,15 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 return
         self._save_settings()
-        self.active_result_channels = (
-            ["Compilador"]
-            if plan.operation == "compiler"
-            else ["LLD-link" if linker == "lld-link" else linker for linker in plan.linkers]
-        )
+        test_channels = ["LLD-link" if linker == "lld-link" else linker for linker in plan.linkers]
+        if plan.operation == "compiler":
+            self.active_result_channels = ["Compilador"]
+        elif plan.operation == "baseline":
+            # El Gate 0 construye el compilador Y ejecuta la matriz en la misma corrida, asi que
+            # produce mensajes de las dos clases y necesita los dos canales.
+            self.active_result_channels = ["Compilador", *test_channels]
+        else:
+            self.active_result_channels = test_channels
         channels_to_clear = self.active_result_channels
         for channel in dict.fromkeys(channels_to_clear):
             channel_optimizations = (
@@ -2682,6 +3281,8 @@ class MainWindow(QMainWindow):
         self.open_button.setEnabled(False)
         self.compiler_start_button.setEnabled(False)
         self.tests_start_button.setEnabled(False)
+        self.abi_baseline_button.setEnabled(False)
+        self.abi_archive_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText("Ejecutando...")
 
@@ -2862,6 +3463,8 @@ class MainWindow(QMainWindow):
         self.current_run_dir = Path(summary["run_dir"])
         self.compiler_start_button.setEnabled(True)
         self.tests_start_button.setEnabled(True)
+        self.abi_baseline_button.setEnabled(True)
+        self.abi_archive_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.open_button.setEnabled(True)
         self.status_label.setText(

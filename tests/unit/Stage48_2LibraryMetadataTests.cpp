@@ -423,7 +423,13 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     incompatible.producerVersion = "0.2.0-dev-old";
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("producer version") != std::string::npos,
-        "compiler-version compatibility gate rejects metadata produced by a different compiler identity");
+        "compiler-version compatibility gate rejects metadata produced by a different compiler release");
+    incompatible = metadata;
+    incompatible.producerVersion = std::string(nativesharp::kCompilerReleaseVersion) +
+        "+build.20000101T000000Z.0000000000000000";
+    error.clear();
+    tests.expect(codec.verifyCurrentCompiler(incompatible, error),
+        "SemVer build metadata identifies the producer without breaking release compatibility");
     incompatible = metadata;
     incompatible.pointerSize = 4;
     error.clear();

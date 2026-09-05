@@ -47,6 +47,12 @@ constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
 constexpr std::uint32_t kMaximumStringSize = 16U * 1024U * 1024U;
 
+std::string_view compilerReleasePart(std::string_view version) noexcept
+{
+    const std::size_t buildMetadata = version.find('+');
+    return version.substr(0, buildMetadata);
+}
+
 class ByteWriter final
 {
 public:
@@ -1302,10 +1308,15 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         error = "metadata target ABI does not match NativeSharp 0.1 Windows x64";
         return false;
     }
-    if (metadata.producerVersion != kCompilerVersion)
+    // El productor conserva la identidad exacta del ejecutable para poder rastrear el artefacto,
+    // pero `+build...` es metadata SemVer y NO una frontera de compatibilidad. Sin separar ambas
+    // preguntas, cada build incremental rechazaria las bibliotecas del build inmediatamente
+    // anterior aunque compartieran lenguaje, formato y ABI.
+    if (compilerReleasePart(metadata.producerVersion) != kCompilerReleaseVersion)
     {
         error = "metadata producer version '" + metadata.producerVersion +
-            "' does not match compiler version '" + std::string(kCompilerVersion) + "'";
+            "' is not compatible with compiler release '" +
+            std::string(kCompilerReleaseVersion) + "'";
         return false;
     }
     return true;

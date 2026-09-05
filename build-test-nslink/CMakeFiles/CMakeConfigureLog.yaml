@@ -2165,8 +2165,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-492om7"
-      binary: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-492om7"
+      source: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-w3f3qo"
+      binary: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-w3f3qo"
     cmakeVariables:
       CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "C:/clang-llvm/bin/clang-scan-deps.exe"
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
@@ -2178,11 +2178,11 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: false
       stdout: |
-        Change Dir: 'A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-492om7'
+        Change Dir: 'A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-w3f3qo'
         
-        Run Build Command(s): A:/apps/ninja/bin/ninja.exe -v cmTC_f6656
-        [1/2] C:\\clang-llvm\\bin\\clang-cl.exe  /nologo -TP -D_MBCS  /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od /RTC1 -MDd -Zi -clang:-MD -clang:-MTCMakeFiles\\cmTC_f6656.dir\\CMakeCXXCompilerABI.cpp.obj -clang:-MFCMakeFiles\\cmTC_f6656.dir\\CMakeCXXCompilerABI.cpp.obj.d /FoCMakeFiles\\cmTC_f6656.dir\\CMakeCXXCompilerABI.cpp.obj /FdCMakeFiles\\cmTC_f6656.dir\\ -c -- A:\\apps\\cmake\\share\\cmake-4.4\\Modules\\CMakeCXXCompilerABI.cpp
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && A:\\apps\\cmake\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\\cmTC_f6656.dir --rc=C:\\clang-llvm\\bin\\llvm-rc.exe --mt=C:\\clang-llvm\\bin\\llvm-mt.exe --manifests  -- C:\\clang-llvm\\bin\\lld-link.exe /nologo CMakeFiles\\cmTC_f6656.dir\\CMakeCXXCompilerABI.cpp.obj  /out:cmTC_f6656.exe /implib:cmTC_f6656.lib /pdb:cmTC_f6656.pdb /version:0.0 -fuse-ld=lld  /debug /INCREMENTAL /subsystem:console   && cd ."
+        Run Build Command(s): A:/apps/ninja/bin/ninja.exe -v cmTC_81be1
+        [1/2] C:\\clang-llvm\\bin\\clang-cl.exe  /nologo -TP -D_MBCS  /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od /RTC1 -MDd -Zi -clang:-MD -clang:-MTCMakeFiles\\cmTC_81be1.dir\\CMakeCXXCompilerABI.cpp.obj -clang:-MFCMakeFiles\\cmTC_81be1.dir\\CMakeCXXCompilerABI.cpp.obj.d /FoCMakeFiles\\cmTC_81be1.dir\\CMakeCXXCompilerABI.cpp.obj /FdCMakeFiles\\cmTC_81be1.dir\\ -c -- A:\\apps\\cmake\\share\\cmake-4.4\\Modules\\CMakeCXXCompilerABI.cpp
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && A:\\apps\\cmake\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\\cmTC_81be1.dir --rc=C:\\clang-llvm\\bin\\llvm-rc.exe --mt=C:\\clang-llvm\\bin\\llvm-mt.exe --manifests  -- C:\\clang-llvm\\bin\\lld-link.exe /nologo CMakeFiles\\cmTC_81be1.dir\\CMakeCXXCompilerABI.cpp.obj  /out:cmTC_81be1.exe /implib:cmTC_81be1.lib /pdb:cmTC_81be1.pdb /version:0.0 -fuse-ld=lld  /debug /INCREMENTAL /subsystem:console   && cd ."
         
       exitCode: 0
   -
@@ -2213,8 +2213,8 @@ events:
     checks:
       - "Detecting CXX compile features"
     directories:
-      source: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-45horr"
-      binary: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-45horr"
+      source: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-axlh0w"
+      binary: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-axlh0w"
     cmakeVariables:
       CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "C:/clang-llvm/bin/clang-scan-deps.exe"
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
@@ -2225,11 +2225,11 @@ events:
       variable: "CMAKE_CXX_FEATURE_TEST"
       cached: false
       stdout: |
-        Change Dir: 'A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-45horr'
+        Change Dir: 'A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-axlh0w'
         
-        Run Build Command(s): A:/apps/ninja/bin/ninja.exe -v cmTC_6abdd
-        [1/2] C:\\clang-llvm\\bin\\clang-cl.exe  /nologo -TP -D_MBCS  /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od /RTC1 -MDd -Zi   -std:c++14 -clang:-MD -clang:-MTCMakeFiles\\cmTC_6abdd.dir\\feature_tests.cxx.obj -clang:-MFCMakeFiles\\cmTC_6abdd.dir\\feature_tests.cxx.obj.d /FoCMakeFiles\\cmTC_6abdd.dir\\feature_tests.cxx.obj /FdCMakeFiles\\cmTC_6abdd.dir\\ -c -- A:\\nsc-devel\\build-test-nslink\\CMakeFiles\\CMakeScratch\\TryCompile-45horr\\feature_tests.cxx
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && A:\\apps\\cmake\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\\cmTC_6abdd.dir --rc=C:\\clang-llvm\\bin\\llvm-rc.exe --mt=C:\\clang-llvm\\bin\\llvm-mt.exe --manifests  -- C:\\clang-llvm\\bin\\lld-link.exe /nologo CMakeFiles\\cmTC_6abdd.dir\\feature_tests.cxx.obj  /out:cmTC_6abdd.exe /implib:cmTC_6abdd.lib /pdb:cmTC_6abdd.pdb /version:0.0 -fuse-ld=lld  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        Run Build Command(s): A:/apps/ninja/bin/ninja.exe -v cmTC_085e9
+        [1/2] C:\\clang-llvm\\bin\\clang-cl.exe  /nologo -TP -D_MBCS  /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od /RTC1 -MDd -Zi   -std:c++14 -clang:-MD -clang:-MTCMakeFiles\\cmTC_085e9.dir\\feature_tests.cxx.obj -clang:-MFCMakeFiles\\cmTC_085e9.dir\\feature_tests.cxx.obj.d /FoCMakeFiles\\cmTC_085e9.dir\\feature_tests.cxx.obj /FdCMakeFiles\\cmTC_085e9.dir\\ -c -- A:\\nsc-devel\\build-test-nslink\\CMakeFiles\\CMakeScratch\\TryCompile-axlh0w\\feature_tests.cxx
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && A:\\apps\\cmake\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\\cmTC_085e9.dir --rc=C:\\clang-llvm\\bin\\llvm-rc.exe --mt=C:\\clang-llvm\\bin\\llvm-mt.exe --manifests  -- C:\\clang-llvm\\bin\\lld-link.exe /nologo CMakeFiles\\cmTC_085e9.dir\\feature_tests.cxx.obj  /out:cmTC_085e9.exe /implib:cmTC_085e9.lib /pdb:cmTC_085e9.pdb /version:0.0 -fuse-ld=lld  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
         
       exitCode: 0
   -
@@ -2244,8 +2244,8 @@ events:
     checks:
       - "Detecting CXX compile features"
     directories:
-      source: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-8fqdjx"
-      binary: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-8fqdjx"
+      source: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-yhsbou"
+      binary: "A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-yhsbou"
     cmakeVariables:
       CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "C:/clang-llvm/bin/clang-scan-deps.exe"
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
@@ -2256,11 +2256,11 @@ events:
       variable: "CMAKE_CXX_FEATURE_TEST"
       cached: false
       stdout: |
-        Change Dir: 'A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-8fqdjx'
+        Change Dir: 'A:/nsc-devel/build-test-nslink/CMakeFiles/CMakeScratch/TryCompile-yhsbou'
         
-        Run Build Command(s): A:/apps/ninja/bin/ninja.exe -v cmTC_fc13f
-        [1/2] C:\\clang-llvm\\bin\\clang-cl.exe  /nologo -TP -D_MBCS  /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od /RTC1 -MDd -Zi -clang:-MD -clang:-MTCMakeFiles\\cmTC_fc13f.dir\\feature_tests.cxx.obj -clang:-MFCMakeFiles\\cmTC_fc13f.dir\\feature_tests.cxx.obj.d /FoCMakeFiles\\cmTC_fc13f.dir\\feature_tests.cxx.obj /FdCMakeFiles\\cmTC_fc13f.dir\\ -c -- A:\\nsc-devel\\build-test-nslink\\CMakeFiles\\CMakeScratch\\TryCompile-8fqdjx\\feature_tests.cxx
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && A:\\apps\\cmake\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\\cmTC_fc13f.dir --rc=C:\\clang-llvm\\bin\\llvm-rc.exe --mt=C:\\clang-llvm\\bin\\llvm-mt.exe --manifests  -- C:\\clang-llvm\\bin\\lld-link.exe /nologo CMakeFiles\\cmTC_fc13f.dir\\feature_tests.cxx.obj  /out:cmTC_fc13f.exe /implib:cmTC_fc13f.lib /pdb:cmTC_fc13f.pdb /version:0.0 -fuse-ld=lld  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        Run Build Command(s): A:/apps/ninja/bin/ninja.exe -v cmTC_c06b9
+        [1/2] C:\\clang-llvm\\bin\\clang-cl.exe  /nologo -TP -D_MBCS  /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od /RTC1 -MDd -Zi -clang:-MD -clang:-MTCMakeFiles\\cmTC_c06b9.dir\\feature_tests.cxx.obj -clang:-MFCMakeFiles\\cmTC_c06b9.dir\\feature_tests.cxx.obj.d /FoCMakeFiles\\cmTC_c06b9.dir\\feature_tests.cxx.obj /FdCMakeFiles\\cmTC_c06b9.dir\\ -c -- A:\\nsc-devel\\build-test-nslink\\CMakeFiles\\CMakeScratch\\TryCompile-yhsbou\\feature_tests.cxx
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && A:\\apps\\cmake\\bin\\cmake.exe -E vs_link_exe --msvc-ver=1951 --intdir=CMakeFiles\\cmTC_c06b9.dir --rc=C:\\clang-llvm\\bin\\llvm-rc.exe --mt=C:\\clang-llvm\\bin\\llvm-mt.exe --manifests  -- C:\\clang-llvm\\bin\\lld-link.exe /nologo CMakeFiles\\cmTC_c06b9.dir\\feature_tests.cxx.obj  /out:cmTC_c06b9.exe /implib:cmTC_c06b9.lib /pdb:cmTC_c06b9.pdb /version:0.0 -fuse-ld=lld  /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
         
       exitCode: 0
 ...

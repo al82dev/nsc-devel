@@ -1,0 +1,81 @@
+STAGE Gate 0 -- preservar y certificar el baseline (plan 123) -- 2026-09-05
+Ficheros modificados en A:\nsc-devel
+
+ALCANCE. El Gate 0 no modifica el compilador. Todo lo que pide es orquestacion, y la regla 5 del
+plan 123 la pone dentro de `nscbuilder.py`: nada de BAT/CMD, ningun script Python auxiliar, ninguna
+base de datos, logs como ficheros normales, biblioteca estandar.
+
+MODIFICADO
+
+  nscbuilder.py                                   +467 / -29 lineas, 18 bloques
+
+    CONSTANTES. `_abi` como raiz propia --separada de `_nscbuilder`, que se puede borrar sin
+    perder un baseline-- con `gates/`, `archives/` y `toolchains/`. Y la definicion del manifiesto
+    de fuentes: que directorios y ficheros entran (src, include, lib, tests, examples,
+    CMakeLists.txt, nscbuilder.py) y que se excluye (.git, builds, logs, _abi, _nscbuilder, cachés
+    y temporales), escrita UNA vez para que la respuesta no dependa de quien lance la accion.
+
+    MANIFIESTO CANONICO (§4.3). `sha256_file`, `canonical_manifest`, `manifest_digest`,
+    `collect_source_files`, `collect_tree_files`. Las reglas no son adorno y cada una tapa un
+    agujero:
+      * rutas relativas con `/`      -> el manifiesto no depende de la unidad ni del sistema
+      * orden BYTE A BYTE sobre UTF-8 -> el orden de `str` en Python es por punto de codigo y daria
+                                        otro digest para el mismo contenido
+      * sin fechas                   -> un timestamp le daria dos identidades al mismo arbol
+      * colision que solo difiere en mayusculas -> se RECHAZA: en Windows son el mismo fichero, y
+                                        un manifiesto que las liste por separado describe un arbol
+                                        que no existe
+
+    OPERACION `baseline`. El Gate 0 necesita construir, instalar Y ejecutar la matriz en UNA sola
+    corrida, o los hashes que toma antes y despues no abarcan todo. Se anade `_runs_test_stages()`
+    --`tests` o `baseline`-- y se usa en los cinco guardas que hasta ahora decian `== "tests"`.
+    En `baseline` no se exige el `nsc.exe` instalado al validar rutas: lo produce esa misma corrida.
+
+    LAS TRES MEDICIONES, en el orden que fija G0.2 y que NO es intercambiable:
+      S0        antes de construir   -- si se tomara despues incluiria lo que la construccion toque
+      B0 / I0   despues de instalar  -- B es el compilador CONSTRUIDO, I el INSTALADO
+      todo      al terminar la matriz
+    Y las igualdades, una a una y con su nombre en el diagnostico: S0==S1, B0==B1, I0==I1, B0==I0,
+    B1==I1, y ninguna herramienta ni ejecutable de prueba cambiado. Se registran ademas los hashes
+    de lld-link.exe, nslink.exe y los ejecutables de CTest de los dos arboles.
+
+    POR QUE DOS BINARIOS Y NO UNO. Las fixtures y el bug triage usan el `nsc.exe` INSTALADO, no el
+    construido. Hashear solo uno dejaria certificar unos logs verdes contra un binario que no es el
+    que los produjo -- que es el fallo que este gate existe para impedir, un nivel mas abajo.
+
+    CIERRE. `_abi_baseline` escribe `_abi/gates/G00/gate.json` con estado `LANDED` o `FAILED`, las
+    tres mediciones completas y la lista de problemas. Un baseline solo se certifica sobre una
+    corrida sin fallos: si la matriz dejo alguno, el estado es `FAILED` aunque los hashes cuadren.
+
+    G0.1 -- ARCHIVO HISTORICO. Accion explicita, nunca automatica y nunca destructiva: pide
+    confirmacion, se niega a sobrescribir, y no borra nada. Copia el arbol instalado, calcula el
+    manifiesto canonico completo, localiza la ultima corrida verde del historial y escribe
+    `certified_baseline: false` CON su motivo -- los logs del historial no registran el hash del
+    `nsc.exe` que los produjo, de modo que asociarlos es una pista y no una prueba. El baseline lo
+    produce G0.2.
+
+    UI. Pestana «ABI» con los dos botones. La matriz de G0.2 NO es configurable a proposito: los
+    dos enlazadores, O0 y O2, CTest, fixtures y bug triage. Un baseline parcial seria un certificado
+    que no dice lo que parece decir. Los botones se bloquean y liberan como los otros dos.
+
+MEDIDO EN EL CONTENEDOR
+
+  py_compile                                      OK
+  Finales de linea CRLF conservados               si (la primera version los perdio; corregido)
+  Diff                                            +467 / -29 en 18 bloques localizados
+
+  Reglas del manifiesto canonico, en un arbol de prueba:
+    orden byte a byte                             OK
+    exclusiones (.obj, __pycache__, build-*)      OK
+    determinista frente al orden de entrada       OK
+    un byte de contenido cambia el digest         OK
+    colision de mayusculas rechazada              OK  (ValueError con las dos rutas)
+    la fecha no altera la identidad               OK
+
+NO MEDIDO AQUI
+  La ejecucion. Este contenedor no tiene Windows, ni PySide6, ni el arbol instalado, ni los
+  enlazadores. Lo verificable sin ejecutar era la sintaxis, los finales de linea, el alcance del
+  diff y las reglas del manifiesto; eso es lo que esta medido y nada mas.
+
+  El primer arranque hay que hacerlo en la maquina: pestana ABI -> «Archivar el arbol instalado
+  ahora» (G0.1), y despues «Construir, medir y certificar el baseline» (G0.2).

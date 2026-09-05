@@ -346,8 +346,30 @@ void testConsolidatedStage48Surface(TestContext& tests)
         "Stage 48 consolidation retains 48.4 C++ host certification");
     tests.expect(std::filesystem::is_regular_file(testsRoot / "Stage48_5CSharpPInvokeHostTests.cpp"),
         "Stage 48 consolidation retains 48.5 C# host certification");
-    tests.expect(nativesharp::kCompilerVersion.starts_with("0.1.0-dev") && !nativesharp::kCompilerStage.empty(),
-        "compiler identity remains on the user-selected NativeSharp 0.1 development line after the Stage 48 host-SDK closure");
+    // IDENTITY, NOT BUILD NUMBER. This used to read `kCompilerVersion.starts_with("0.1.0-dev")`,
+    // which held only while Version.h carried that literal. It stopped holding when the build
+    // identity landed -- `kCompilerVersion` is generated per build now and reads
+    // `<release>+build.<timestamp>.<hash>` -- and the tree was left asserting two contradictory
+    // things: nsc.version in CMakeLists demands `0.7.4-alpha`, this demanded `0.1.0-dev`, and both
+    // cannot hold at once.
+    //
+    // The mistake was not pinning a literal. Pinning one is the point: an identity check has to go
+    // red when the identity moves, which is what "user-selected" means in the message. The mistake
+    // was pinning the half that MOVES -- the build version -- instead of the half that does not.
+    // Version.h says it outright: the language version and the compiler compatibility are stable,
+    // the visible version adds per-build SemVer metadata. So the language version is what gets
+    // pinned, and it stays a literal on purpose.
+    //
+    // The middle two clauses check DERIVATION, not equality. `starts_with` alone would also accept
+    // a `kCompilerVersion` that had lost its `+build.<...>` suffix and collapsed back to a bare
+    // release string -- a prefix match that is really an equality in disguise. Requiring it to be
+    // strictly longer is what makes the check mean "derives from" rather than "equals". The shape
+    // of the suffix itself is nsc.version's business and is not duplicated here.
+    tests.expect(nativesharp::kLanguageVersion == "0.1"
+            && nativesharp::kCompilerVersion.starts_with(nativesharp::kCompilerReleaseVersion)
+            && nativesharp::kCompilerVersion.size() > nativesharp::kCompilerReleaseVersion.size()
+            && !nativesharp::kCompilerStage.empty(),
+        "compiler identity remains on the user-selected NativeSharp 0.1 language line after the Stage 48 host-SDK closure");
 }
 
 void testCppCliBuildWhenAvailable(TestContext& tests, const std::filesystem::path& root)

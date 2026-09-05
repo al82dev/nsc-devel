@@ -666,11 +666,9 @@ ExitCode Driver::runExecutableGeneration(
 
 void Driver::printVersion(std::ostream& output)
 {
-    // CC1-000: the build id goes on its own line and is always printed. It is the only field here
-    // that distinguishes two compilers built from different source -- `kCompilerVersion` is the
-    // release identity and stays put -- so a consumer asking "is this the compiler I was just
-    // handed?" reads this line instead of hashing the binary, which is what one had to do on
-    // 2026-08-31.
+    // CC1-000: the unique build id appears both in the SemVer build metadata of
+    // `kCompilerVersion` and on its own machine-friendly line. A consumer can compare either one
+    // without hashing nsc.exe.
     output
         << "nsc " << kCompilerVersion
         << " (NativeSharp " << kLanguageVersion

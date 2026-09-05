@@ -6,7 +6,7 @@
 // constante escrita a mano que nadie actualiza entre snapshots. El consumidor tuvo que calcular
 // una huella del binario para poder distinguirlos.
 //
-// `kCompilerBuildId` lo arregla, pero un valor generado por CMake puede quedarse vacio en silencio
+// `kCompilerVersion` incluye ahora el build id, pero un valor generado por CMake puede quedarse vacio en silencio
 // -- una sustitucion @NSC_BUILD_ID@ que no ocurre produce un string vacio, no un error de
 // compilacion. Ese es exactamente el modo de falla que este test cubre: si la generacion se rompe,
 // el build se pone rojo aqui en vez de volver a producir compiladores indistinguibles.
@@ -41,11 +41,17 @@ int main()
             [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }),
         "build id is lowercase hexadecimal");
 
-    // La identidad de release NO cambia entre snapshots y por eso no sirve para distinguir builds.
-    // Se fija aqui para que quede escrito que esa estabilidad es intencional y no un descuido.
+    // La parte compatible queda estable, mientras la version visible contiene la identidad exacta
+    // de esta construccion como metadata SemVer.
     tests.expect(
-        nativesharp::kCompilerVersion == "0.1.0-dev55",
-        "release identity is deliberately stable across snapshots");
+        nativesharp::kCompilerReleaseVersion == "0.7.4-alpha",
+        "compiler compatibility identity is the selected 0.7.4 alpha release");
+    tests.expect(
+        nativesharp::kCompilerVersion.starts_with("0.7.4-alpha+build."),
+        "visible compiler version contains SemVer build metadata");
+    tests.expect(
+        nativesharp::kCompilerVersion.ends_with(buildId),
+        "visible compiler version contains the exact build id");
     tests.expect(nativesharp::kLanguageVersion == "0.1", "language version is 0.1");
     tests.expect(nativesharp::kCompilerStage == "57", "compiler stage tracks the real snapshot");
 

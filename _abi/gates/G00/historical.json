@@ -1,0 +1,14 @@
+{
+  "gate": "G00",
+  "part": "G0.1",
+  "kind": "historical-archive",
+  "certified_baseline": false,
+  "reason": "Los logs verdes del historial no registran el hash del nsc.exe que los produjo, de modo que la asociacion es evidencia historica y no un baseline certificado. El baseline lo produce G0.2.",
+  "created_at": "2026-09-05T11:09:50-06:00",
+  "prefix": "C:\\native-sharp",
+  "destination": "A:\\nsc-devel\\_abi\\archives\\historical\\20260905-110948",
+  "installed_nsc_sha256": "94440877803b705826de3915b752c5565c272edf92728e3eb3c4e3b82cf68833",
+  "file_count": 226,
+  "manifest_digest": "57628a58e13dd0278b38ecacf446a3dae8cb53a0ffedeb9f994551d4a41790e5",
+  "green_run": "A:\\nsc-devel\\_nscbuilder\\history\\20260905-105619-a4b613f2"
+}

@@ -2,47 +2,51 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     NativeSharp
-    VERSION 0.1.0
+    VERSION 0.7.4
     DESCRIPTION "NativeSharp stage 57 -- language completion and CC1 correctness"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
-# CC1-000 "build identity". Ver include/nativesharp/Basic/BuildId.h.in para el porque completo:
-# hasta que esto existio, TODOS los builds de TODAS las stages reportaban `0.1.0-dev55`, asi que
-# dos compiladores distintos eran indistinguibles para cualquier consumidor.
-#
-# El id es el mtime mas nuevo del arbol de fuentes mas el timestamp de este configure, hasheados.
-# Se regenera en cada configure, de modo que no puede quedarse viejo como una constante escrita a
-# mano -- que es precisamente el modo de falla que se esta arreglando.
-#
-# El header generado se llama BuildId.h y NO Version.h a proposito: si se generara con el mismo
-# nombre que el header que ya vive en include/, habria dos archivos con la misma ruta logica y cual
-# gana dependeria del orden de los include paths de cada target. Nombres distintos, cero ambiguedad.
-file(GLOB_RECURSE NSC_IDENTITY_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
-set(NSC_NEWEST_SOURCE_STAMP "00000000000000")
-foreach(nsc_identity_source IN LISTS NSC_IDENTITY_SOURCES)
-    file(TIMESTAMP "${nsc_identity_source}" nsc_identity_stamp "%Y%m%d%H%M%S" UTC)
-    if(nsc_identity_stamp STRGREATER NSC_NEWEST_SOURCE_STAMP)
-        set(NSC_NEWEST_SOURCE_STAMP "${nsc_identity_stamp}")
-    endif()
-endforeach()
-string(TIMESTAMP NSC_CONFIGURE_STAMP "%Y%m%d%H%M%S" UTC)
-string(SHA256 NSC_BUILD_ID_FULL "${NSC_NEWEST_SOURCE_STAMP}-${NSC_CONFIGURE_STAMP}")
-string(SUBSTRING "${NSC_BUILD_ID_FULL}" 0 16 NSC_BUILD_ID)
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Basic/BuildId.h.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/Basic/BuildId.h"
-    @ONLY)
-# Directory-scoped a proposito: aplica a todos los targets declarados despues (que son todos, el
-# primer add_library viene mas abajo), sin tener que tocar las decenas de
-# target_include_directories que ya existen.
+# CC1-000 / version de build. La version compatible es estable; la identidad visible cambia en
+# CADA construccion real de nsc, incluso en un build incremental que no vuelve a configurar CMake.
+# `nsc_build_identity` es un target siempre desactualizado y nsc_driver depende de el. Solo
+# Version.cpp incluye el header generado: asi no existe una carrera con los muchos tests que
+# incluyen Version.h y tampoco se obliga a recompilar todo el frontend por cambiar un string.
+set(NSC_COMPILER_RELEASE_VERSION "${PROJECT_VERSION}-alpha")
+set(NSC_GENERATED_BASIC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/Basic")
+set(NSC_GENERATED_BUILD_ID_HEADER "${NSC_GENERATED_BASIC_DIR}/BuildId.h")
+set(NSC_BUILD_ID_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBuildIdentity.cmake")
+set(NSC_BUILD_ID_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Basic/BuildId.h.in")
+file(MAKE_DIRECTORY "${NSC_GENERATED_BASIC_DIR}")
+
+# La copia inicial permite que el primer analisis de dependencias encuentre el header. El target
+# de build lo reemplaza justo antes de compilar nsc_driver y esa segunda identidad es la que queda
+# dentro del ejecutable.
+execute_process(
+    COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_OUTPUT=${NSC_GENERATED_BUILD_ID_HEADER}"
+        "-DNSC_TEMPLATE=${NSC_BUILD_ID_TEMPLATE}"
+        "-DNSC_VERSION_BASE=${NSC_COMPILER_RELEASE_VERSION}"
+        -P "${NSC_BUILD_ID_GENERATOR}"
+    RESULT_VARIABLE NSC_INITIAL_BUILD_ID_RESULT)
+if(NOT NSC_INITIAL_BUILD_ID_RESULT EQUAL 0)
+    message(FATAL_ERROR "No se pudo generar la identidad inicial de nsc")
+endif()
+
+add_custom_target(nsc_build_identity
+    COMMAND "${CMAKE_COMMAND}"
+        "-DNSC_OUTPUT=${NSC_GENERATED_BUILD_ID_HEADER}"
+        "-DNSC_TEMPLATE=${NSC_BUILD_ID_TEMPLATE}"
+        "-DNSC_VERSION_BASE=${NSC_COMPILER_RELEASE_VERSION}"
+        -P "${NSC_BUILD_ID_GENERATOR}"
+    BYPRODUCTS "${NSC_GENERATED_BUILD_ID_HEADER}"
+    COMMENT "Generando version unica para esta construccion de nsc"
+    VERBATIM)
+
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
-message(STATUS "NativeSharp build identity: ${NSC_BUILD_ID} (fuentes ${NSC_NEWEST_SOURCE_STAMP})")
+message(STATUS "NativeSharp compiler release: ${NSC_COMPILER_RELEASE_VERSION}; build id generado al construir")
 
 # Organizacion explicita de la salida del build, dentro de ${CMAKE_BINARY_DIR} (el directorio
 # que le pasas a "cmake -B"), no en otro lado y no por accidente de donde CMake decida ponerla
@@ -331,6 +335,7 @@ target_compile_features(nsc_linker PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_linker)
 
 add_library(nsc_driver STATIC
+    src/Basic/Version.cpp
     src/Driver/Driver.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryMetadata.cpp)
@@ -339,6 +344,7 @@ target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
 target_compile_features(nsc_driver PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_driver)
+add_dependencies(nsc_driver nsc_build_identity)
 
 # nsc cae en build/bin/ -- CMAKE_RUNTIME_OUTPUT_DIRECTORY ya quedo en ${CMAKE_BINARY_DIR}/bin
 # desde el bloque de arriba (justo despues de los option()), asi que no hace falta reasignarla
@@ -822,6 +828,7 @@ if(NSC_BUILD_TESTS)
         nsc_cc1_build_identity_tests
         tests/unit/Cc1BuildIdentityTests.cpp
         nsc.version.identity)
+    target_link_libraries(nsc_cc1_build_identity_tests PRIVATE nsc_driver)
 
     # CC1-102/CC1-103/CC1-104: el evaluador entero tipado compartido. Unit test puro.
     nsc_add_unit_test(
@@ -1418,7 +1425,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 0.1.0-dev55.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
+            "nsc 0.7.4-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

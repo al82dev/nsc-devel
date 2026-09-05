@@ -1,0 +1,72 @@
+STAGE -- el filtro que no filtraba y la corrida vacía que salía verde -- 2026-09-05
+Ficheros modificados en A:\nsc-devel
+
+LO OBSERVADO. Al pedir una sola prueba por nombre:
+
+    $ ctest --test-dir A:\nsc-devel\build-test-lldlinker --output-on-failure -j 16 \
+        -R ^(?:nsc\.stage48_6\.cppcli\-stage48\-closure)$
+    RegularExpression::compile(): ?+* follows nothing.
+    RegularExpression::compile(): Error in compile.
+    No tests were found!!!
+    Corrida PASSED en 66.37 s
+
+DOS DEFECTOS, Y EL SEGUNDO ES EL GRAVE.
+
+1. LA EXPRESIÓN ESTABA EN EL DIALECTO EQUIVOCADO. `_ctest` construía el filtro con
+   `"^(?:" + "|".join(re.escape(n)) + ")$"`, que es un regex de PYTHON. ctest no usa el motor de
+   Python sino `cmsys::RegularExpression`, que no conoce los grupos no capturantes `(?:` --de ahí
+   el «?+* follows nothing», el `?` no sigue a nada-- ni el `\-` que `re.escape` produce. El
+   dialecto que sí entiende es el básico: `^ $ . [ ] ( ) | * + ?` y `\` como escape.
+
+2. UNA CORRIDA QUE NO EJECUTÓ NADA SE REGISTRÓ COMO PASSED. ctest salió con código 0 --no falló
+   ninguna prueba, porque no corrió ninguna-- y `_ctest` decidía el estado solo con
+   `result.exit_code == 0`. Esto es peor que el filtro roto: el filtro roto se arregla y ya, pero
+   mientras el estado salga únicamente del código de salida, CUALQUIER forma de no ejecutar las
+   pruebas se presenta como verde. La regla 13 del doc 123 lo dice explícitamente --«ni casos sin
+   ejecutar»-- y el runner no lo estaba comprobando.
+
+MODIFICADOS
+
+  nscbuilder.py
+      `CTEST_REGEX_SPECIALS` y `ctest_name_filter(names)`, al lado de `ctest_group`. Construye el
+      filtro en el dialecto de ctest: `(` en vez de `(?:`, y escapa solo los metacaracteres de ESE
+      motor --el `-` de `cppcli-stage48-closure` no es uno de ellos, y escaparlo es justo lo que
+      rompía--.
+
+      `--no-tests=error` en el comando. Cierra el caso de CERO pruebas en el propio ctest, que es
+      donde debe cerrarse. Requiere CMake 3.18 o posterior; si la versión instalada fuera anterior,
+      ctest rechazaría la opción y la etapa saldría en rojo --ruidoso y visible, no silencioso--.
+
+      Comprobación de CASOS SIN EJECUTAR en `_ctest`. `--no-tests=error` no cubre el caso PARCIAL,
+      que es el mismo fallo y se ve peor: pedir cinco pruebas por nombre, que solo tres existan --un
+      nombre mal escrito, una prueba renombrada, un `add_test` caído del CMakeLists-- y que las tres
+      verdes tapen a las dos que no llegaron a existir. ctest sale con 0 porque de lo que corrió no
+      falló nada; la pregunta que importa es otra: ¿corrió lo que se pidió? Se compara el
+      `out of <n>` de ctest contra `len(selected_ctests)` y la diferencia se reporta como fallo con
+      su propio texto, no como «CTest terminó con código 0», que no habría explicado nada.
+
+MEDIDO -- contra ctest 3.28.3 de verdad, con un proyecto CMake que declara los mismos nombres
+
+  caso                                exit   corrió   faltan   estado
+  filtro VIEJO (dialecto Python)         8        0        1   failed
+  nuevo, la prueba existe                0        1        0   passed
+  nuevo, nombre inexistente              8        0        1   failed
+  nuevo, PARCIAL 1 de 2                  0        1        1   failed   <- el que --no-tests=error
+                                                                           NO caza, y el que
+                                                                           justifica el bloque
+  nuevo, las 2 existen                   0        2        0   passed
+
+  El mensaje del defecto se reprodujo literalmente antes de arreglarlo: con el filtro viejo y sin
+  `--no-tests=error`, ctest responde «?+* follows nothing» / «No tests were found!!!» y sale con
+  código 0. Ese cero es el verde silencioso.
+
+NO MEDIDO AQUÍ
+  La corrida real en A:\nsc-devel. Este contenedor no tiene el árbol de pruebas construido ni
+  enlaza PE; lo que se ejecutó fue ctest sobre un proyecto de sonda con los nombres reales, que es
+  lo que ejercita el filtro y el conteo, no las pruebas del compilador.
+
+CONSECUENCIA PARA LAS CORRIDAS ANTERIORES
+  Cualquier etapa CTest registrada como `passed` en la que el log diga «No tests were found!!!» no
+  ejecutó nada, y su verde no significa lo que parece. Conviene mirarlo antes de apoyarse en un
+  histórico: el defecto no falsea resultados de pruebas que corrieron, pero sí puede haber contado
+  como verde una selección que nunca llegó a ejecutarse.
