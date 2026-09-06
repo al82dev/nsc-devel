@@ -18,6 +18,8 @@ const std::string& AstNode::text() const noexcept { return text_; }
 void AstNode::setText(std::string text) { text_ = std::move(text); }
 const std::string& AstNode::auxiliaryText() const noexcept { return auxiliaryText_; }
 void AstNode::setAuxiliaryText(std::string text) { auxiliaryText_ = std::move(text); }
+const std::string& AstNode::argumentName() const noexcept { return argumentName_; }
+void AstNode::setArgumentName(std::string name) { argumentName_ = std::move(name); }
 lexer::TokenKind AstNode::tokenKind() const noexcept { return tokenKind_; }
 void AstNode::setTokenKind(lexer::TokenKind kind) noexcept { tokenKind_ = kind; }
 void AstNode::addModifier(lexer::TokenKind kind) { modifiers_.push_back(kind); }

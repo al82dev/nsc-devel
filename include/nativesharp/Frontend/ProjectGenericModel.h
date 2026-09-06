@@ -8,6 +8,7 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -108,6 +109,18 @@ private:
         std::size_t ordinal = 0;
     };
 
+    // A lightweight predeclaration used only while the generic pass is choosing a cache key.
+    // Full name binding deliberately still belongs to ProjectNameLookup, which runs after
+    // monomorphization. This table answers the narrower question "which declaration does this
+    // type argument name?" so one declaration keeps one generic identity across projects.
+    struct DeclaredTypeIdentity final
+    {
+        std::size_t projectOrdinal = 0;
+        std::string sourceName;
+        std::string identityKey;
+        bool isPublic = false;
+    };
+
     void collectTemplates(
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
@@ -147,6 +160,7 @@ private:
         ProjectSyntaxUnit& unit,
         ast::TypeSyntax* syntax,
         const std::string& namespaceName,
+        const GenericLookupScope& scope,
         diagnostics::DiagnosticEngine& diagnostics);
 
     bool processGenericCall(
@@ -240,6 +254,12 @@ private:
 
     std::string typeSpelling(const ast::TypeSyntax* syntax) const;
     std::string typeSpecializationIdentity(const ast::TypeSyntax* syntax) const;
+    std::optional<std::string> resolveDeclaredTypeIdentity(
+        const ast::TypeSyntax* syntax,
+        std::size_t projectOrdinal,
+        std::string_view namespaceName,
+        const GenericLookupScope& scope) const;
+    static void appendTypeModifiers(std::string& identity, const ast::TypeSyntax* syntax);
     static std::string namespaceAppend(std::string_view prefix, std::string_view suffix);
     static std::string sanitize(std::string_view text);
     static std::string methodCalleeName(const ast::AstNode* call);
@@ -248,9 +268,11 @@ private:
     bool projectVisible(std::size_t from, std::size_t target) const noexcept;
 
     std::vector<TemplateState> templateStates_;
+    std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;
     std::unordered_map<std::string, std::size_t> specializationByKey_;
+    std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::vector<std::vector<std::size_t>> visibleProjects_;
     std::vector<std::string> projectModuleNames_;
     bool built_ = false;

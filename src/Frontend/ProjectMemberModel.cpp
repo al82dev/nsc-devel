@@ -927,6 +927,7 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);
+            symbol.isNewSlot = memberNode->hasModifier(lexer::TokenKind::KwNew);
             symbol.isReadonly = symbol.kind == ClassMemberKind::Field &&
                 memberNode->hasModifier(lexer::TokenKind::KwReadonly);
             // Bloque 1: a STATIC field cannot be `owned`, and this has to be said here rather than

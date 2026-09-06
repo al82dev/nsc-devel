@@ -61,6 +61,7 @@ struct NamedTypeDeclarationPart final
     bool isPartial = false;
     bool isAbstract = false;
     bool isSealed = false;
+    bool isStatic = false;
     std::size_t projectOrdinal = 0;
     std::size_t sourceOrdinal = 0;
     FileId fileId;
@@ -81,6 +82,7 @@ struct NamedTypeDeclaration final
     bool isPartial = false;
     bool isAbstract = false;
     bool isSealed = false;
+    bool isStatic = false;
     std::size_t projectOrdinal = 0;
     std::size_t sourceOrdinal = 0;
     FileId fileId;

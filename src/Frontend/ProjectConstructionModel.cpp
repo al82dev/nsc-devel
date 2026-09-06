@@ -12,6 +12,55 @@ namespace nativesharp::frontend
 {
 namespace
 {
+struct NamedConstructorArgumentMap final
+{
+    bool valid = false;
+    std::vector<std::size_t> explicitParameterOrdinals;
+    std::vector<std::size_t> defaultedParameterOrdinals;
+};
+
+NamedConstructorArgumentMap mapConstructorArguments(
+    std::span<ast::AstNode* const> arguments,
+    const ClassMemberSymbol& constructor)
+{
+    NamedConstructorArgumentMap result;
+    std::vector<bool> assigned(constructor.parameters.size(), false);
+    std::size_t nextPositional = 0;
+    for (const ast::AstNode* argument : arguments)
+    {
+        if (argument == nullptr) return result;
+        std::optional<std::size_t> parameterOrdinal;
+        if (!argument->argumentName().empty())
+        {
+            for (std::size_t index = 0; index < constructor.parameters.size(); ++index)
+            {
+                if (constructor.parameters[index].name == argument->argumentName())
+                {
+                    parameterOrdinal = index;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
+            if (nextPositional < assigned.size()) parameterOrdinal = nextPositional;
+        }
+        if (!parameterOrdinal.has_value() || assigned[*parameterOrdinal]) return result;
+        assigned[*parameterOrdinal] = true;
+        result.explicitParameterOrdinals.push_back(*parameterOrdinal);
+        while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
+    }
+    for (std::size_t index = 0; index < constructor.parameters.size(); ++index)
+    {
+        if (assigned[index]) continue;
+        if (constructor.parameters[index].defaultValueSyntax == nullptr) return result;
+        result.defaultedParameterOrdinals.push_back(index);
+    }
+    result.valid = true;
+    return result;
+}
+
 bool sameProject(
     std::size_t leftTypeOrdinal,
     std::size_t rightTypeOrdinal,
@@ -548,15 +597,12 @@ void ProjectConstructionModel::bindConstructorInitializer(
         candidate.accessible = binding.kind == ConstructorInitializerKind::ExplicitThis ||
             constructorAccessible(candidateSymbol, constructorMemberOrdinal, true);
         anyAccessible = anyAccessible || candidate.accessible;
-        const bool matchingArity = candidateSymbol.parameters.size() >= argumentTypes.size() &&
-            std::ranges::all_of(
-                candidateSymbol.parameters.begin() +
-                    static_cast<std::ptrdiff_t>(argumentTypes.size()),
-                candidateSymbol.parameters.end(),
-                [](const MethodParameterSymbol& parameter)
-                {
-                    return parameter.defaultValueSyntax != nullptr;
-                });
+        const NamedConstructorArgumentMap argumentMapping = mapConstructorArguments(
+            binding.initializerSyntax != nullptr
+                ? std::span<ast::AstNode* const>(binding.initializerSyntax->children())
+                : std::span<ast::AstNode* const>{},
+            candidateSymbol);
+        const bool matchingArity = argumentMapping.valid;
         anyMatchingArity = anyMatchingArity || matchingArity;
         if (!candidate.accessible || !matchingArity)
         {
@@ -566,13 +612,16 @@ void ProjectConstructionModel::bindConstructorInitializer(
 
         accessibleMatchingArity = true;
         candidate.viable = true;
-        candidate.defaultedParameterCount =
-            candidateSymbol.parameters.size() - argumentTypes.size();
+        candidate.argumentParameterOrdinals = argumentMapping.explicitParameterOrdinals;
+        candidate.defaultedParameterOrdinals = argumentMapping.defaultedParameterOrdinals;
+        candidate.defaultedParameterCount = argumentMapping.defaultedParameterOrdinals.size();
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < argumentTypes.size(); ++argumentOrdinal)
         {
+            const std::size_t parameterOrdinal =
+                candidate.argumentParameterOrdinals[argumentOrdinal];
             ProjectImplicitConversion conversion = conversions.classifyImplicit(
                 argumentTypes[argumentOrdinal].typeKey,
-                candidateSymbol.parameters[argumentOrdinal].typeKey,
+                candidateSymbol.parameters[parameterOrdinal].typeKey,
                 argumentTypes[argumentOrdinal].integerConstant);
             if (!conversion.exists())
             {
@@ -587,8 +636,8 @@ void ProjectConstructionModel::bindConstructorInitializer(
             // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
             // candidato cuando la fisica ya lo habia aceptado.
             const OwnershipArgumentFit fit = classifyOwnershipArgument(
-                methodBodyModel_->typeKeyIsOwnable(candidateSymbol.parameters[argumentOrdinal].typeKey),
-                candidateSymbol.parameters[argumentOrdinal].ownership,
+                methodBodyModel_->typeKeyIsOwnable(candidateSymbol.parameters[parameterOrdinal].typeKey),
+                candidateSymbol.parameters[parameterOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownershipTransfer,
                 argumentTypes[argumentOrdinal].ownershipFreshOwner);
@@ -600,7 +649,7 @@ void ProjectConstructionModel::bindConstructorInitializer(
             if (fit == OwnershipArgumentFit::Ok && argumentTypes[argumentOrdinal].ownershipTransfer)
             {
                 ConstructorOwnershipTransfer transfer;
-                transfer.parameterOrdinal = argumentOrdinal;
+                transfer.parameterOrdinal = parameterOrdinal;
                 transfer.sourceLocalOrdinal =
                     argumentTypes[argumentOrdinal].ownershipSourceLocalOrdinal;
                 transfer.sourceParameterOrdinal =
@@ -695,13 +744,14 @@ void ProjectConstructionModel::bindConstructorInitializer(
             binding.selectedConstructorMemberOrdinal = selected.memberOrdinal;
             binding.selectedEntryConstructorMemberOrdinal = selected.memberOrdinal;
             binding.selectedConversions = selected.conversions;
+            binding.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
             const ClassMemberSymbol& selectedSymbol =
                 memberModel_->members()[*selected.memberOrdinal];
-            for (std::size_t parameterOrdinal = argumentTypes.size();
-                 parameterOrdinal < selectedSymbol.parameters.size(); ++parameterOrdinal)
+            for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
             {
                 binding.selectedDefaultArguments.push_back(
                     selectedSymbol.parameters[parameterOrdinal].defaultValueSyntax);
+                binding.selectedDefaultArgumentParameterOrdinals.push_back(parameterOrdinal);
             }
             // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
             binding.selectedOwnershipTransfers = selected.ownershipTransfers;
@@ -854,6 +904,18 @@ void ProjectConstructionModel::bindConstruction(
         constructions_.push_back(std::move(binding));
         return;
     }
+    if (nameLookup_->namedTypes()[*targetOrdinal].isStatic)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAllocationType,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "cannot instantiate static class '" +
+                nameLookup_->namedTypes()[*targetOrdinal].identity.key() + "'");
+        binding.resolution = ConstructionResolutionKind::InvalidTarget;
+        constructions_.push_back(std::move(binding));
+        return;
+    }
 
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(*targetOrdinal))
     {
@@ -956,15 +1018,9 @@ void ProjectConstructionModel::bindConstruction(
         candidate.memberOrdinal = constructorOrdinal;
         candidate.accessible = constructorAccessible(constructor, callerMemberOrdinal, false);
         anyAccessible = anyAccessible || candidate.accessible;
-        const bool matchingArity = constructor.parameters.size() >= argumentTypes.size() &&
-            std::ranges::all_of(
-                constructor.parameters.begin() +
-                    static_cast<std::ptrdiff_t>(argumentTypes.size()),
-                constructor.parameters.end(),
-                [](const MethodParameterSymbol& parameter)
-                {
-                    return parameter.defaultValueSyntax != nullptr;
-                });
+        const NamedConstructorArgumentMap argumentMapping =
+            mapConstructorArguments(expression->children(), constructor);
+        const bool matchingArity = argumentMapping.valid;
         anyMatchingArity = anyMatchingArity || matchingArity;
         if (!candidate.accessible || !matchingArity)
         {
@@ -974,12 +1030,16 @@ void ProjectConstructionModel::bindConstruction(
 
         accessibleMatchingArity = true;
         candidate.viable = true;
-        candidate.defaultedParameterCount = constructor.parameters.size() - argumentTypes.size();
+        candidate.argumentParameterOrdinals = argumentMapping.explicitParameterOrdinals;
+        candidate.defaultedParameterOrdinals = argumentMapping.defaultedParameterOrdinals;
+        candidate.defaultedParameterCount = argumentMapping.defaultedParameterOrdinals.size();
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < argumentTypes.size(); ++argumentOrdinal)
         {
+            const std::size_t parameterOrdinal =
+                candidate.argumentParameterOrdinals[argumentOrdinal];
             ProjectImplicitConversion conversion = conversions.classifyImplicit(
                 argumentTypes[argumentOrdinal].typeKey,
-                constructor.parameters[argumentOrdinal].typeKey,
+                constructor.parameters[parameterOrdinal].typeKey,
                 argumentTypes[argumentOrdinal].integerConstant);
             if (!conversion.exists())
             {
@@ -994,8 +1054,8 @@ void ProjectConstructionModel::bindConstruction(
             // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
             // candidato cuando la fisica ya lo habia aceptado.
             const OwnershipArgumentFit fit = classifyOwnershipArgument(
-                methodBodyModel_->typeKeyIsOwnable(constructor.parameters[argumentOrdinal].typeKey),
-                constructor.parameters[argumentOrdinal].ownership,
+                methodBodyModel_->typeKeyIsOwnable(constructor.parameters[parameterOrdinal].typeKey),
+                constructor.parameters[parameterOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownershipTransfer,
                 argumentTypes[argumentOrdinal].ownershipFreshOwner);
@@ -1007,7 +1067,7 @@ void ProjectConstructionModel::bindConstruction(
             if (fit == OwnershipArgumentFit::Ok && argumentTypes[argumentOrdinal].ownershipTransfer)
             {
                 ConstructorOwnershipTransfer transfer;
-                transfer.parameterOrdinal = argumentOrdinal;
+                transfer.parameterOrdinal = parameterOrdinal;
                 transfer.sourceLocalOrdinal =
                     argumentTypes[argumentOrdinal].ownershipSourceLocalOrdinal;
                 transfer.sourceParameterOrdinal =
@@ -1136,12 +1196,13 @@ void ProjectConstructionModel::bindConstruction(
     binding.resolution = ConstructionResolutionKind::ResolvedExplicit;
     binding.selectedConstructorMemberOrdinal = selected.memberOrdinal;
     binding.selectedConversions = selected.conversions;
+    binding.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
     const ClassMemberSymbol& selectedSymbol = memberModel_->members()[*selected.memberOrdinal];
-    for (std::size_t parameterOrdinal = argumentTypes.size();
-         parameterOrdinal < selectedSymbol.parameters.size(); ++parameterOrdinal)
+    for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
     {
         binding.selectedDefaultArguments.push_back(
             selectedSymbol.parameters[parameterOrdinal].defaultValueSyntax);
+        binding.selectedDefaultArgumentParameterOrdinals.push_back(parameterOrdinal);
     }
     // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
     binding.selectedOwnershipTransfers = selected.ownershipTransfers;

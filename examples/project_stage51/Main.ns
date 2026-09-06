@@ -4,6 +4,10 @@ class Program
 {
     public static int Main()
     {
+        if (String.Empty == null || String.Empty.Length != 0)
+        {
+            return 90;
+        }
         string hello = "Hello";
         string world = " World";
         raii string joined = hello + world;

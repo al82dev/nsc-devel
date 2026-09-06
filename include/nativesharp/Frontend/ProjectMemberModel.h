@@ -106,6 +106,7 @@ struct ClassMemberSymbol final
     bool hasImplicitThis = false;
     bool declaringTypeIsStruct = false;
     bool isStatic = false;
+    bool isNewSlot = false;
     bool isReadonly = false;
     bool isConst = false;
     bool isVirtual = false;

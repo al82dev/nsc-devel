@@ -404,6 +404,9 @@ struct ProjectOopHirNode final
     bool interfaceCleanupDispatch = false;
     std::size_t argumentCount = 0;
     std::vector<std::string> argumentTypeKeys;
+    // Children remain in source evaluation order.  Calls use this map to place the resulting
+    // values in ABI parameter order only after every source expression has been evaluated.
+    std::vector<std::size_t> argumentParameterOrdinals;
     std::vector<std::unique_ptr<ProjectOopHirNode>> children;
 };
 

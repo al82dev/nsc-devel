@@ -957,6 +957,13 @@ bool ProjectOopHirModel::build(
                                 std::move(argument), initializerBinding->selectedConversions[index], argumentSyntax);
                         }
                         initializerCall->children.push_back(std::move(argument));
+                        if (index >= initializerBinding->selectedArgumentParameterOrdinals.size())
+                        {
+                            error = "named constructor initializer argument has no parameter ordinal";
+                            return false;
+                        }
+                        initializerCall->argumentParameterOrdinals.push_back(
+                            initializerBinding->selectedArgumentParameterOrdinals[index]);
                     }
                     if (!initializerBinding->selectedDefaultArguments.empty())
                     {
@@ -968,12 +975,16 @@ bool ProjectOopHirModel::build(
                         }
                         const ClassMemberSymbol& selectedConstructor = memberModel.members()[
                             *initializerBinding->selectedEntryConstructorMemberOrdinal];
-                        const std::size_t firstDefaultParameter =
-                            initializerBinding->initializerSyntax->children().size();
                         for (std::size_t index = 0;
                              index < initializerBinding->selectedDefaultArguments.size(); ++index)
                         {
-                            const std::size_t parameterIndex = firstDefaultParameter + index;
+                            if (index >= initializerBinding->selectedDefaultArgumentParameterOrdinals.size())
+                            {
+                                error = "selected constructor initializer default has no parameter ordinal";
+                                return false;
+                            }
+                            const std::size_t parameterIndex =
+                                initializerBinding->selectedDefaultArgumentParameterOrdinals[index];
                             if (parameterIndex >= selectedConstructor.parameters.size())
                             {
                                 error = "NSC-LIMIT-020 constructor initializer default has no parameter";
@@ -985,6 +996,7 @@ bool ProjectOopHirModel::build(
                                 error);
                             if (argument == nullptr) return false;
                             initializerCall->children.push_back(std::move(argument));
+                            initializerCall->argumentParameterOrdinals.push_back(parameterIndex);
                         }
                     }
                 }
@@ -3831,6 +3843,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         std::move(receiver), binding->selectedConversions.front(), binding->receiverSyntax);
                 }
                 node->children.push_back(std::move(receiver));
+                node->argumentParameterOrdinals.push_back(0U);
                 conversionOffset = 1;
             }
             else if (!binding->staticCall)
@@ -3851,18 +3864,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 {
                     return nullptr;
                 }
-                const std::size_t parameterIndex = index + conversionOffset;
-                if (parameterIndex < binding->selectedConversions.size() &&
-                    binding->selectedConversions[parameterIndex].kind != ProjectConversionKind::Identity)
+                const std::size_t selectedIndex = index + conversionOffset;
+                if (selectedIndex >= binding->selectedArgumentParameterOrdinals.size())
+                {
+                    error = "named call argument has no selected parameter ordinal";
+                    return nullptr;
+                }
+                const std::size_t parameterIndex =
+                    binding->selectedArgumentParameterOrdinals[selectedIndex];
+                if (selectedIndex < binding->selectedConversions.size() &&
+                    binding->selectedConversions[selectedIndex].kind != ProjectConversionKind::Identity)
                 {
                     argument = wrapImplicitConversion(
-                        std::move(argument), binding->selectedConversions[parameterIndex], expression->children()[index]);
+                        std::move(argument), binding->selectedConversions[selectedIndex], expression->children()[index]);
                 }
                 const ast::AstNode* argumentSyntax = expression->children()[index];
                 argument = wrapCallArgumentBorrow(
                     std::move(argument), argumentSyntax, *binding->selectedMemberOrdinal,
                     parameterIndex, hasOwnedTemporary);
                 node->children.push_back(std::move(argument));
+                node->argumentParameterOrdinals.push_back(parameterIndex);
             }
             if (memberModel_ == nullptr ||
                 *binding->selectedMemberOrdinal >= memberModel_->members().size())
@@ -3872,11 +3893,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             const ClassMemberSymbol& selectedMember =
                 memberModel_->members()[*binding->selectedMemberOrdinal];
-            const std::size_t firstDefaultParameter =
-                expression->children().size() + conversionOffset;
             for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
             {
-                const std::size_t parameterIndex = firstDefaultParameter + index;
+                if (index >= binding->selectedDefaultArgumentParameterOrdinals.size())
+                {
+                    error = "selected default argument has no parameter ordinal";
+                    return nullptr;
+                }
+                const std::size_t parameterIndex =
+                    binding->selectedDefaultArgumentParameterOrdinals[index];
                 if (parameterIndex >= selectedMember.parameters.size())
                 {
                     error = "NSC-LIMIT-020 selected default argument has no matching parameter";
@@ -3888,6 +3913,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error);
                 if (argument == nullptr) return nullptr;
                 node->children.push_back(std::move(argument));
+                node->argumentParameterOrdinals.push_back(parameterIndex);
             }
             return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
         }
@@ -4081,6 +4107,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         std::move(argument), binding->selectedConversions[index], expression->children()[index]);
                 }
                 node->children.push_back(std::move(argument));
+                if (index >= binding->selectedArgumentParameterOrdinals.size())
+                {
+                    error = "named construction argument has no selected parameter ordinal";
+                    return nullptr;
+                }
+                node->argumentParameterOrdinals.push_back(
+                    binding->selectedArgumentParameterOrdinals[index]);
             }
             if (!binding->selectedDefaultArguments.empty())
             {
@@ -4092,10 +4125,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 const ClassMemberSymbol& selectedConstructor =
                     memberModel_->members()[*binding->selectedConstructorMemberOrdinal];
-                const std::size_t firstDefaultParameter = expression->children().size();
                 for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
                 {
-                    const std::size_t parameterIndex = firstDefaultParameter + index;
+                    if (index >= binding->selectedDefaultArgumentParameterOrdinals.size())
+                    {
+                        error = "selected construction default has no parameter ordinal";
+                        return nullptr;
+                    }
+                    const std::size_t parameterIndex =
+                        binding->selectedDefaultArgumentParameterOrdinals[index];
                     if (parameterIndex >= selectedConstructor.parameters.size())
                     {
                         error = "NSC-LIMIT-020 construction default has no parameter";
@@ -4107,6 +4145,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         error);
                     if (argument == nullptr) return nullptr;
                     node->children.push_back(std::move(argument));
+                    node->argumentParameterOrdinals.push_back(parameterIndex);
                 }
             }
             if (binding->selectedImplicitDefault)

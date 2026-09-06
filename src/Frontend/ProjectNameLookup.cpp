@@ -546,6 +546,8 @@ void ProjectNameLookup::predeclareNode(
                 node->hasModifier(lexer::TokenKind::KwAbstract),
             node->kind() == ast::AstNodeKind::ClassDeclaration &&
                 node->hasModifier(lexer::TokenKind::KwSealed),
+            node->kind() == ast::AstNodeKind::ClassDeclaration &&
+                node->hasModifier(lexer::TokenKind::KwStatic),
             unit.projectOrdinal(),
             unit.sourceOrdinal(),
             unit.fileId(),
@@ -626,7 +628,7 @@ void ProjectNameLookup::finalizePredeclarations(
                 part.isPartial,
                 part.isAbstract,
                 part.isSealed,
-                false,
+                part.isStatic,
                 std::nullopt,
                 part.sourceOrdinal,
                 part.range.begin().offset(),
@@ -669,6 +671,7 @@ void ProjectNameLookup::finalizePredeclarations(
         bool finalPartial = primary.part.isPartial;
         bool finalAbstract = primary.part.isAbstract;
         bool finalSealed = primary.part.isSealed;
+        bool finalStatic = primary.part.isStatic;
         // NSC-LIMIT-009. El agregador de partes solo conoce internal/public --es lo unico que un
         // tipo de namespace puede ser-- asi que para un ANIDADO se le deja hacer su trabajo
         // (duplicados, `partial`) y se ignora su veredicto de accesibilidad, que convertiria
@@ -683,6 +686,7 @@ void ProjectNameLookup::finalizePredeclarations(
             finalAccessibility = namedAccessibility(aggregator.types().front().accessibility);
             finalAbstract = aggregator.types().front().isAbstract;
             finalSealed = aggregator.types().front().isSealed;
+            finalStatic = aggregator.types().front().isStatic;
             finalPartial = std::any_of(
                 aggregator.types().front().parts.begin(),
                 aggregator.types().front().parts.end(),
@@ -719,6 +723,7 @@ void ProjectNameLookup::finalizePredeclarations(
             finalPartial,
             finalAbstract,
             finalSealed,
+            finalStatic,
             primary.part.projectOrdinal,
             primary.part.sourceOrdinal,
             primary.part.fileId,

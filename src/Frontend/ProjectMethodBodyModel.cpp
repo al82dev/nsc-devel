@@ -170,6 +170,61 @@ constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 // ID 129. El gemelo del de arriba para el `ToString()` sintetizado de un enum.
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 
+struct NamedArgumentMap final
+{
+    bool valid = false;
+    std::vector<std::size_t> explicitParameterOrdinals;
+    std::vector<std::size_t> defaultedParameterOrdinals;
+};
+
+NamedArgumentMap mapArgumentsToParameters(
+    std::span<ast::AstNode* const> arguments,
+    const ClassMemberSymbol& candidate,
+    std::size_t reservedLeadingParameters = 0)
+{
+    NamedArgumentMap result;
+    if (reservedLeadingParameters > candidate.parameters.size()) return result;
+
+    std::vector<bool> assigned(candidate.parameters.size(), false);
+    for (std::size_t index = 0; index < reservedLeadingParameters; ++index) assigned[index] = true;
+
+    std::size_t nextPositional = reservedLeadingParameters;
+    for (const ast::AstNode* argument : arguments)
+    {
+        if (argument == nullptr) return result;
+        std::optional<std::size_t> parameterOrdinal;
+        if (!argument->argumentName().empty())
+        {
+            for (std::size_t index = reservedLeadingParameters; index < candidate.parameters.size(); ++index)
+            {
+                if (candidate.parameters[index].name == argument->argumentName())
+                {
+                    parameterOrdinal = index;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
+            if (nextPositional < assigned.size()) parameterOrdinal = nextPositional;
+        }
+        if (!parameterOrdinal.has_value() || assigned[*parameterOrdinal]) return result;
+        assigned[*parameterOrdinal] = true;
+        result.explicitParameterOrdinals.push_back(*parameterOrdinal);
+        while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
+    }
+
+    for (std::size_t index = reservedLeadingParameters; index < candidate.parameters.size(); ++index)
+    {
+        if (assigned[index]) continue;
+        if (candidate.parameters[index].defaultValueSyntax == nullptr) return result;
+        result.defaultedParameterOrdinals.push_back(index);
+    }
+    result.valid = true;
+    return result;
+}
+
 std::string typeCandidateList(
     std::span<const std::size_t> candidates,
     const ProjectNameLookup& lookup)
@@ -6833,6 +6888,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         return result;
     }
 
+    // Native string instance syntax forwards to a static Core.String method whose first
+    // parameter is the receiver.  Named source arguments must never be allowed to bind that
+    // compiler-supplied parameter.
+    bool coreStringForwarding = false;
+    if (callee.receiverSyntax != nullptr && !callee.receiverTypeKey.empty() &&
+        memberModel_ != nullptr && nameLookup_ != nullptr && !callee.methodCandidates.empty())
+    {
+        coreStringForwarding = std::ranges::all_of(callee.methodCandidates, [&](std::size_t ordinal)
+        {
+            if (ordinal >= memberModel_->members().size()) return false;
+            const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+            return member.kind == ClassMemberKind::Method && member.isStatic &&
+                member.declaringTypeOrdinal < nameLookup_->namedTypes().size() &&
+                nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.fullyQualifiedName() ==
+                    "NativeSharp.Core.String";
+        });
+    }
+
     std::vector<std::string> lambdaTargetTypes(expression->children().size());
     const auto seedLambdaTargetsFromSignature = [&](const std::vector<std::string>& parameterTypes)
     {
@@ -6867,15 +6940,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     }
     else if (callee.methodGroup && memberModel_ != nullptr)
     {
-        std::vector<const ClassMemberSymbol*> arityMatches;
+        std::vector<std::pair<const ClassMemberSymbol*, NamedArgumentMap>> arityMatches;
         for (const std::size_t candidateOrdinal : callee.methodCandidates)
         {
             if (candidateOrdinal >= memberModel_->members().size()) continue;
             const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-            if (candidate.kind == ClassMemberKind::Method &&
-                candidate.parameters.size() == expression->children().size())
+            const NamedArgumentMap mapping = mapArgumentsToParameters(
+                expression->children(), candidate, coreStringForwarding ? 1U : 0U);
+            if (candidate.kind == ClassMemberKind::Method && mapping.valid)
             {
-                arityMatches.push_back(&candidate);
+                arityMatches.emplace_back(&candidate, mapping);
             }
         }
         if (!arityMatches.empty())
@@ -6883,10 +6957,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             for (std::size_t index = 0; index < expression->children().size(); ++index)
             {
                 if (expression->children()[index]->kind() != ast::AstNodeKind::LambdaExpression) continue;
-                const std::string& firstType = arityMatches.front()->parameters[index].typeKey;
-                const bool agreed = std::ranges::all_of(arityMatches, [&](const ClassMemberSymbol* candidate)
+                const std::size_t firstParameter =
+                    arityMatches.front().second.explicitParameterOrdinals[index];
+                const std::string& firstType = arityMatches.front().first->parameters[firstParameter].typeKey;
+                const bool agreed = std::ranges::all_of(arityMatches, [&](const auto& candidate)
                 {
-                    return candidate->parameters[index].typeKey == firstType;
+                    const std::size_t parameter = candidate.second.explicitParameterOrdinals[index];
+                    return candidate.first->parameters[parameter].typeKey == firstType;
                 });
                 if (agreed && isDelegateTypeKey(firstType)) lambdaTargetTypes[index] = firstType;
             }
@@ -7061,20 +7138,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     // resolves to the static Core.String signature Trim(string).  The receiver is
     // parameter zero for overload resolution and lowering, but is never an ownership
     // transfer merely because instance syntax was used.
-    bool coreStringForwarding = false;
-    if (callee.receiverSyntax != nullptr && !callee.receiverTypeKey.empty() &&
-        memberModel_ != nullptr && nameLookup_ != nullptr && !callee.methodCandidates.empty())
-    {
-        coreStringForwarding = std::ranges::all_of(callee.methodCandidates, [&](std::size_t ordinal)
-        {
-            if (ordinal >= memberModel_->members().size()) return false;
-            const ClassMemberSymbol& member = memberModel_->members()[ordinal];
-            return member.kind == ClassMemberKind::Method && member.isStatic &&
-                member.declaringTypeOrdinal < nameLookup_->namedTypes().size() &&
-                nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.fullyQualifiedName() ==
-                    "NativeSharp.Core.String";
-        });
-    }
     call.forwardedReceiver = coreStringForwarding;
     if (coreStringForwarding) call.interfaceCall = false;
 
@@ -7163,30 +7226,32 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
             MethodCallCandidate candidateBinding;
             candidateBinding.memberOrdinal = candidateOrdinal;
-            const bool aritySupported = candidate.parameters.size() >= resolvedArguments.size() &&
-                std::ranges::all_of(
-                    candidate.parameters.begin() +
-                        static_cast<std::ptrdiff_t>(resolvedArguments.size()),
-                    candidate.parameters.end(),
-                    [](const MethodParameterSymbol& parameter)
-                    {
-                        return parameter.defaultValueSyntax != nullptr;
-                    });
-            if (!aritySupported)
+            const NamedArgumentMap explicitMapping = mapArgumentsToParameters(
+                expression->children(), candidate, coreStringForwarding ? 1U : 0U);
+            if (!explicitMapping.valid)
             {
                 call.evaluatedCandidates.push_back(std::move(candidateBinding));
                 continue;
             }
 
+            candidateBinding.argumentParameterOrdinals = explicitMapping.explicitParameterOrdinals;
+            candidateBinding.defaultedParameterOrdinals = explicitMapping.defaultedParameterOrdinals;
+            if (coreStringForwarding)
+            {
+                candidateBinding.argumentParameterOrdinals.insert(
+                    candidateBinding.argumentParameterOrdinals.begin(), 0U);
+            }
+
             hasMatchingArity = true;
             candidateBinding.viable = true;
-            candidateBinding.defaultedParameterCount =
-                candidate.parameters.size() - resolvedArguments.size();
+            candidateBinding.defaultedParameterCount = explicitMapping.defaultedParameterOrdinals.size();
             for (std::size_t argumentOrdinal = 0; argumentOrdinal < resolvedArguments.size(); ++argumentOrdinal)
             {
+                const std::size_t parameterOrdinal =
+                    candidateBinding.argumentParameterOrdinals[argumentOrdinal];
                 ProjectImplicitConversion conversion = classifyImplicit(
                     resolvedArguments[argumentOrdinal].typeKey,
-                    candidate.parameters[argumentOrdinal].typeKey,
+                    candidate.parameters[parameterOrdinal].typeKey,
                     resolvedArguments[argumentOrdinal].integerConstant);
                 if (!conversion.exists())
                 {
@@ -7195,7 +7260,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 else
                 {
                     const sema::OwnershipKind parameterOwnership =
-                        candidate.parameters[argumentOrdinal].ownership;
+                        candidate.parameters[parameterOrdinal].ownership;
                     // Stage 52: an owned/borrowed qualifier written on a generic parameter
                     // ("owned T", "borrowed T") monomorphizes to a real qualifier even when T
                     // is closed over a plain value type (int, bool, a struct, ...) that never
@@ -7209,14 +7274,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     // actually ownable (a class/interface reference or native string) enforces
                     // the transfer contract.
                     const bool parameterOwnable =
-                        typeKeyIsOwnable(candidate.parameters[argumentOrdinal].typeKey);
+                        typeKeyIsOwnable(candidate.parameters[parameterOrdinal].typeKey);
                     // NSC-LIMIT-010: la regla vive ahora en classifyOwnershipArgument, arriba de
                     // este fichero, y la comparte ProjectConstructionModel. Lo que sigue a este
                     // bloque es el comentario historico de Stage 52 que explica POR QUE el orden
                     // de las comprobaciones es el que es; se conserva porque esa razon no esta en
                     // ningun otro sitio.
                     if (!isFullExpressionBorrow(
-                            candidate, argumentOrdinal, resolvedArguments[argumentOrdinal]) &&
+                            candidate, parameterOrdinal, resolvedArguments[argumentOrdinal]) &&
                         classifyOwnershipArgument(
                             parameterOwnable,
                             parameterOwnership,
@@ -7489,18 +7554,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
     const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
     checkArgumentPassKinds(
-        expression, call.methodName, selected.memberOrdinal, arguments, diagnostics);
+        expression, call.methodName, selected.memberOrdinal, arguments, diagnostics,
+        std::span<const std::size_t>(selected.argumentParameterOrdinals).subspan(
+            coreStringForwarding ? 1U : 0U));
     call.resolution = MethodCallResolutionKind::Resolved;
     call.selectedMemberOrdinal = selected.memberOrdinal;
     call.selectedConversions = selected.conversions;
+    call.selectedArgumentParameterOrdinals = selected.argumentParameterOrdinals;
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
-        for (std::size_t parameterOrdinal = resolvedArguments.size();
-             parameterOrdinal < selectedMember.parameters.size(); ++parameterOrdinal)
+        for (const std::size_t parameterOrdinal : selected.defaultedParameterOrdinals)
         {
             call.selectedDefaultArguments.push_back(
                 selectedMember.parameters[parameterOrdinal].defaultValueSyntax);
+            call.selectedDefaultArgumentParameterOrdinals.push_back(parameterOrdinal);
         }
         call.resultTypeKey = selectedMember.declaredTypeKey;
         result.ownership = selectedMember.declaredOwnership;
@@ -7533,9 +7601,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         const ClassMemberSymbol* callerMember = methodSymbol(methodMemberOrdinal);
         for (std::size_t argumentOrdinal = 0; callerMember != nullptr &&
              argumentOrdinal < resolvedArguments.size() &&
-             argumentOrdinal < selectedMember.parameters.size(); ++argumentOrdinal)
+             argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
         {
-            if (selectedMember.parameters[argumentOrdinal].passKind != ParameterPassKind::Out ||
+            const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+            if (parameterOrdinal >= selectedMember.parameters.size() ||
+                selectedMember.parameters[parameterOrdinal].passKind != ParameterPassKind::Out ||
                 resolvedArguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Out)
             {
                 continue;
@@ -7561,9 +7631,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
 
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < resolvedArguments.size() &&
-             argumentOrdinal < selectedMember.parameters.size(); ++argumentOrdinal)
+             argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
         {
-            if (selectedMember.parameters[argumentOrdinal].ownership != sema::OwnershipKind::Owned)
+            const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+            if (parameterOrdinal >= selectedMember.parameters.size() ||
+                selectedMember.parameters[parameterOrdinal].ownership != sema::OwnershipKind::Owned)
             {
                 continue;
             }
@@ -7574,8 +7646,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             transfer.sourceLocalOrdinal = resolvedArguments[argumentOrdinal].ownershipSourceLocalOrdinal;
             transfer.sourceParameterOrdinal = resolvedArguments[argumentOrdinal].ownershipSourceParameterOrdinal;
             transfer.targetMemberOrdinal = selected.memberOrdinal;
-            transfer.targetParameterOrdinal = argumentOrdinal;
-            transfer.typeKey = selectedMember.parameters[argumentOrdinal].typeKey;
+            transfer.targetParameterOrdinal = parameterOrdinal;
+            transfer.typeKey = selectedMember.parameters[parameterOrdinal].typeKey;
             if (transfer.sourceLocalOrdinal.has_value())
             {
                 transfer.kind = MethodOwnershipTransferKind::MoveLocalToOwnedParameter;
@@ -7592,11 +7664,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
 
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < resolvedArguments.size() &&
-             argumentOrdinal < selectedMember.parameters.size(); ++argumentOrdinal)
+             argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
         {
+            const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+            if (parameterOrdinal >= selectedMember.parameters.size()) continue;
             const bool freshTemporaryBorrow = isFullExpressionBorrow(
-                selectedMember, argumentOrdinal, resolvedArguments[argumentOrdinal]);
-            if (selectedMember.parameters[argumentOrdinal].ownership != sema::OwnershipKind::Borrowed &&
+                selectedMember, parameterOrdinal, resolvedArguments[argumentOrdinal]);
+            if (selectedMember.parameters[parameterOrdinal].ownership != sema::OwnershipKind::Borrowed &&
                 !freshTemporaryBorrow)
             {
                 continue;
@@ -7610,8 +7684,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 : resolvedArguments[argumentOrdinal].ownershipSourceLocalOrdinal;
             borrow.sourceParameterOrdinal = resolvedArguments[argumentOrdinal].ownershipSourceParameterOrdinal;
             borrow.targetMemberOrdinal = selected.memberOrdinal;
-            borrow.targetParameterOrdinal = argumentOrdinal;
-            borrow.typeKey = selectedMember.parameters[argumentOrdinal].typeKey;
+            borrow.targetParameterOrdinal = parameterOrdinal;
+            borrow.typeKey = selectedMember.parameters[parameterOrdinal].typeKey;
             if (freshTemporaryBorrow)
             {
                 borrow.kind = MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
@@ -11818,13 +11892,16 @@ void ProjectMethodBodyModel::checkArgumentPassKinds(
     std::string_view methodName,
     std::size_t memberOrdinal,
     const std::vector<ExpressionResult>& arguments,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::span<const std::size_t> parameterOrdinals) const
 {
     if (memberModel_ == nullptr || memberOrdinal >= memberModel_->members().size()) return;
     const ClassMemberSymbol& chosen = memberModel_->members()[memberOrdinal];
     for (std::size_t index = 0; index < arguments.size() && index < chosen.parameters.size(); ++index)
     {
-        const ParameterPassKind expected = chosen.parameters[index].passKind;
+        const std::size_t parameterOrdinal = parameterOrdinals.empty() ? index : parameterOrdinals[index];
+        if (parameterOrdinal >= chosen.parameters.size()) continue;
+        const ParameterPassKind expected = chosen.parameters[parameterOrdinal].passKind;
         const ParameterPassKind written = arguments[index].argumentPassKind;
         if (expected == written) continue;
         diagnostics.report(

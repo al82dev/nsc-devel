@@ -59,6 +59,12 @@ public:
     const std::string& auxiliaryText() const noexcept;
     void setAuxiliaryText(std::string text);
 
+    // Set only when this expression is the value of a named call argument (`M(value: expr)`).
+    // This cannot reuse auxiliaryText: ref/out/in and other expressions already store semantic
+    // information there.
+    const std::string& argumentName() const noexcept;
+    void setArgumentName(std::string name);
+
     lexer::TokenKind tokenKind() const noexcept;
     void setTokenKind(lexer::TokenKind kind) noexcept;
 
@@ -105,6 +111,7 @@ private:
     SourceRange range_;
     std::string text_;
     std::string auxiliaryText_;
+    std::string argumentName_;
     lexer::TokenKind tokenKind_ = lexer::TokenKind::Invalid;
     std::vector<lexer::TokenKind> modifiers_;
     TypeSyntax* typeSyntax_ = nullptr;

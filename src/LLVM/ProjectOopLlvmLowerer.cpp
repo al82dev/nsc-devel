@@ -7281,6 +7281,10 @@ private:
         // never dereferenced.
         LLVMTypeRef elementType = llvmType(node->elementTypeKey, error);
         if (elementType == nullptr) return nullptr;
+        std::vector<LLVMValueRef> sourceArguments;
+        std::vector<LLVMTypeRef> sourceParameterTypes;
+        sourceArguments.reserve(node->children.size() - 1);
+        sourceParameterTypes.reserve(node->children.size() - 1);
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
@@ -7646,6 +7650,36 @@ private:
         return phi;
     }
 
+    bool callArgumentOrder(
+        const frontend::ProjectOopMirNode* node,
+        std::size_t sourceCount,
+        std::vector<std::size_t>& parameterToSource,
+        std::string& error)
+    {
+        parameterToSource.resize(sourceCount);
+        if (node->argumentParameterOrdinals.empty())
+        {
+            for (std::size_t index = 0; index < sourceCount; ++index) parameterToSource[index] = index;
+            return true;
+        }
+        if (node->argumentParameterOrdinals.size() != sourceCount)
+        {
+            return fail(error, "named call argument map does not match the evaluated argument count");
+        }
+        std::vector<bool> assigned(sourceCount, false);
+        for (std::size_t source = 0; source < sourceCount; ++source)
+        {
+            const std::size_t parameter = node->argumentParameterOrdinals[source];
+            if (parameter >= sourceCount || assigned[parameter])
+            {
+                return fail(error, "named call argument map is not a parameter permutation");
+            }
+            assigned[parameter] = true;
+            parameterToSource[parameter] = source;
+        }
+        return true;
+    }
+
     LLVMValueRef lowerCall(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         const auto found = functions_.find(node->calleeName);
@@ -7688,6 +7722,8 @@ private:
             sretSlot = entryBlockAlloca(carrier, structAlignmentFor(node->typeKey), "abi.sret.slot");
             arguments.push_back(sretSlot);
         }
+        std::vector<LLVMValueRef> sourceArguments;
+        sourceArguments.reserve(node->children.size() - 1);
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
@@ -7697,8 +7733,11 @@ private:
             }
             value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
             if (value == nullptr) return nullptr;
-            arguments.push_back(value);
+            sourceArguments.push_back(value);
         }
+        std::vector<std::size_t> parameterToSource;
+        if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
+        for (const std::size_t source : parameterToSource) arguments.push_back(sourceArguments[source]);
         LLVMValueRef call = buildPotentiallyThrowingCall(
             found->second.functionType, found->second.function,
             arguments.data(), static_cast<unsigned>(arguments.size()),
@@ -7776,6 +7815,8 @@ private:
             sretSlot = entryBlockAlloca(carrier, structAlignmentFor(node->typeKey), "abi.sret.slot");
             arguments.push_back(sretSlot);
         }
+        std::vector<LLVMValueRef> sourceArguments;
+        sourceArguments.reserve(node->children.size());
         for (const auto& child : node->children)
         {
             LLVMValueRef value = lowerExpression(child.get(), error);
@@ -7785,8 +7826,11 @@ private:
             }
             value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
-            arguments.push_back(value);
+            sourceArguments.push_back(value);
         }
+        std::vector<std::size_t> parameterToSource;
+        if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
+        for (const std::size_t source : parameterToSource) arguments.push_back(sourceArguments[source]);
         LLVMValueRef call = buildPotentiallyThrowingCall(
             found->second.functionType, found->second.function,
             arguments.empty() ? nullptr : arguments.data(),
@@ -7861,6 +7905,10 @@ private:
             arguments.push_back(sretSlot);
             parameterTypes.push_back(ptr);
         }
+        std::vector<LLVMValueRef> sourceArguments;
+        std::vector<LLVMTypeRef> sourceParameterTypes;
+        sourceArguments.reserve(node->children.size() - 1);
+        sourceParameterTypes.reserve(node->children.size() - 1);
         for (std::size_t index = 1; index < node->children.size(); ++index)
         {
             LLVMValueRef value = lowerExpression(node->children[index].get(), error);
@@ -7871,8 +7919,15 @@ private:
             }
             value = wrapIndirectArgument(value, node->children[index]->typeKey, error);
             if (value == nullptr) return nullptr;
-            arguments.push_back(value);
-            parameterTypes.push_back(parameterType);
+            sourceArguments.push_back(value);
+            sourceParameterTypes.push_back(parameterType);
+        }
+        std::vector<std::size_t> parameterToSource;
+        if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
+        for (const std::size_t source : parameterToSource)
+        {
+            arguments.push_back(sourceArguments[source]);
+            parameterTypes.push_back(sourceParameterTypes[source]);
         }
         LLVMTypeRef returnType = sretSlot != nullptr
             ? LLVMVoidTypeInContext(context_)
@@ -8020,6 +8075,10 @@ private:
             arguments.push_back(sretSlot);
             parameterTypes.push_back(ptr);
         }
+        std::vector<LLVMValueRef> sourceArguments;
+        std::vector<LLVMTypeRef> sourceParameterTypes;
+        sourceArguments.reserve(node->children.size() - 1);
+        sourceParameterTypes.reserve(node->children.size() - 1);
         for (std::size_t childIndex = 1; childIndex < node->children.size(); ++childIndex)
         {
             LLVMValueRef value = lowerExpression(node->children[childIndex].get(), error);
@@ -8030,8 +8089,15 @@ private:
             }
             value = wrapIndirectArgument(value, node->children[childIndex]->typeKey, error);
             if (value == nullptr) return nullptr;
-            arguments.push_back(value);
-            parameterTypes.push_back(parameterType);
+            sourceArguments.push_back(value);
+            sourceParameterTypes.push_back(parameterType);
+        }
+        std::vector<std::size_t> parameterToSource;
+        if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
+        for (const std::size_t source : parameterToSource)
+        {
+            arguments.push_back(sourceArguments[source]);
+            parameterTypes.push_back(sourceParameterTypes[source]);
         }
         LLVMTypeRef returnType = sretSlot != nullptr
             ? LLVMVoidTypeInContext(context_)
@@ -8111,6 +8177,12 @@ private:
             if (value == nullptr) return nullptr;
             evaluatedArguments.push_back(value);
         }
+        std::vector<std::size_t> parameterToSource;
+        if (!callArgumentOrder(node, evaluatedArguments.size(), parameterToSource, error)) return nullptr;
+        std::vector<LLVMValueRef> orderedArguments;
+        orderedArguments.reserve(evaluatedArguments.size());
+        for (const std::size_t source : parameterToSource)
+            orderedArguments.push_back(evaluatedArguments[source]);
 
         LLVMTypeRef carrier = llvmType(node->typeKey, error);
         if (carrier == nullptr) return nullptr;
@@ -8134,9 +8206,9 @@ private:
             if (target == functions_.end())
                 return failValue(error, "C6 struct constructor target missing: " + node->calleeName);
             std::vector<LLVMValueRef> ctorArgs;
-            ctorArgs.reserve(1 + evaluatedArguments.size());
+            ctorArgs.reserve(1 + orderedArguments.size());
             ctorArgs.push_back(slot);
-            ctorArgs.insert(ctorArgs.end(), evaluatedArguments.begin(), evaluatedArguments.end());
+            ctorArgs.insert(ctorArgs.end(), orderedArguments.begin(), orderedArguments.end());
             if (buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function, ctorArgs.data(),
                     static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr && !error.empty())
@@ -8266,6 +8338,12 @@ private:
             if (value == nullptr) return nullptr;
             evaluatedArguments.push_back(value);
         }
+        std::vector<std::size_t> parameterToSource;
+        if (!callArgumentOrder(node, evaluatedArguments.size(), parameterToSource, error)) return nullptr;
+        std::vector<LLVMValueRef> orderedArguments;
+        orderedArguments.reserve(evaluatedArguments.size());
+        for (const std::size_t source : parameterToSource)
+            orderedArguments.push_back(evaluatedArguments[source]);
 
         LLVMValueRef size = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
         LLVMValueRef allocArgs[] = {size};
@@ -8300,9 +8378,9 @@ private:
             const auto target = functions_.find(node->calleeName);
             if (target == functions_.end()) return failValue(error, "Stage 34 constructor target missing: " + node->calleeName);
             std::vector<LLVMValueRef> ctorArgs;
-            ctorArgs.reserve(1 + evaluatedArguments.size());
+            ctorArgs.reserve(1 + orderedArguments.size());
             ctorArgs.push_back(object);
-            ctorArgs.insert(ctorArgs.end(), evaluatedArguments.begin(), evaluatedArguments.end());
+            ctorArgs.insert(ctorArgs.end(), orderedArguments.begin(), orderedArguments.end());
             if (buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function,
                     ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr &&

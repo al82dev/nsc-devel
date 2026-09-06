@@ -297,6 +297,7 @@ struct ProjectOopMirNode final
     bool catchAll = false;
     bool interfaceCleanupDispatch = false;
     std::size_t argumentCount = 0;
+    std::vector<std::size_t> argumentParameterOrdinals;
     std::string calleeName;
     std::vector<std::string> argumentTypeKeys;
     std::vector<std::unique_ptr<ProjectOopMirNode>> children;

@@ -169,6 +169,16 @@ bool ProjectVirtualDispatchModel::buildClass(
         }
 
         const std::optional<std::size_t> inherited = inheritedMethodWithSignature(typeOrdinal, method);
+        if (method.isNewSlot && method.isOverride)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOverride,
+                diagnostics::DiagnosticSeverity::Error,
+                method.range,
+                "method '" + method.signatureKey + "' cannot be both new and override");
+            ok = false;
+            continue;
+        }
         if (method.isOverride)
         {
             if (!inherited.has_value())
@@ -275,7 +285,7 @@ bool ProjectVirtualDispatchModel::buildClass(
                 ok = false;
                 continue;
             }
-            if (inherited.has_value())
+            if (inherited.has_value() && !method.isNewSlot)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOverride,
@@ -299,7 +309,7 @@ bool ProjectVirtualDispatchModel::buildClass(
             continue;
         }
 
-        if (inherited.has_value() && virtualMethod(*inherited) != nullptr)
+        if (inherited.has_value() && virtualMethod(*inherited) != nullptr && !method.isNewSlot)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOverride,

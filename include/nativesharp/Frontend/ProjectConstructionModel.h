@@ -50,6 +50,8 @@ struct ConstructorCandidateBinding final
     bool accessible = false;
     bool viable = false;
     std::vector<ProjectImplicitConversion> conversions;
+    std::vector<std::size_t> argumentParameterOrdinals;
+    std::vector<std::size_t> defaultedParameterOrdinals;
     std::size_t defaultedParameterCount = 0;
     // NSC-LIMIT-010. Viabilidad de PROPIEDAD por argumento, en paralelo a `conversions`, que solo
     // lleva la fisica. Un candidato puede ser fisicamente valido y aun asi incumplir el contrato:
@@ -97,7 +99,9 @@ struct ConstructorInitializerBinding final
     std::optional<std::size_t> selectedEntryConstructorMemberOrdinal;
     bool selectedImplicitDefault = false;
     std::vector<ProjectImplicitConversion> selectedConversions;
+    std::vector<std::size_t> selectedArgumentParameterOrdinals;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
+    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     // NSC-LIMIT-010: `this(...)` y `base(...)` transfieren propiedad con las mismas reglas
     // que un `new`, asi que registran las mismas transferencias.
     std::vector<ConstructorOwnershipTransfer> selectedOwnershipTransfers;
@@ -141,7 +145,9 @@ struct ObjectConstructionBinding final
     bool selectedImplicitDefault = false;
     std::optional<std::size_t> implicitDefaultBaseConstructorMemberOrdinal;
     std::vector<ProjectImplicitConversion> selectedConversions;
+    std::vector<std::size_t> selectedArgumentParameterOrdinals;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
+    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     // NSC-LIMIT-010. Las transferencias del candidato ELEGIDO, copiadas aqui para que quien
     // lea el binding final no tenga que volver a recorrer los candidatos evaluados.
     std::vector<ConstructorOwnershipTransfer> selectedOwnershipTransfers;

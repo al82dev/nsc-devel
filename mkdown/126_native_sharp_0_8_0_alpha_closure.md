@@ -2,7 +2,9 @@
 
 **Fecha:** 2026-09-06  
 **Versión:** `nsc 0.8.0-alpha`  
-**Build instalado y certificado:** `0.8.0-alpha+build.20260906T081445Z.b9aa99a37c342041`  
+**Baseline instalado anterior:** `0.8.0-alpha+build.20260906T081445Z.b9aa99a37c342041`
+
+**Árbol actual:** matriz local 297/297 verde; instalación y G00 de la nueva identidad pendientes.
 **Dominio:** lenguaje y compilador nativo para juegos, gráficos y plataforma.
 
 ## Decisión de versión
@@ -10,8 +12,9 @@
 Esta entrega merece el salto a `0.8.0-alpha`: no es una suma de APIs, sino una mejora coherente
 de semántica del lenguaje bajo un consumidor grande. El juego ya compilaba con expansiones y
 ownership manual; 0.8 incorpora al compilador las formas seguras y generales descubiertas por ese
-port. La identidad alpha ya está certificada; promover el texto de versión a `0.8.0` produciría
-una identidad nueva y exige un último baseline, aunque no cambie la semántica.
+port. La identidad alpha anterior está certificada; las correcciones posteriores de identidad
+genérica y compatibilidad C# útil movieron el árbol. Promover el texto de versión a `0.8.0`
+requiere instalar y certificar esta identidad exacta.
 
 No forman parte del objetivo web, SQL, LINQ, bases de datos ni aplicaciones empresariales. Añadir
 esas superficies diluiría el lenguaje y no cerraría ningún problema de código nativo, FPS,
@@ -88,8 +91,71 @@ NSLink en O0/O2. `c25`, `c26`, `c27` y `c28` devolvieron 42 en las cuatro combin
 
 ## Después de 0.8.0-alpha
 
-El trabajo inmediato es decidir si se conserva esta entrega como `0.8.0-alpha` certificada o se
-promueve a `0.8.0` y se repite el baseline de la nueva identidad. Después siguen metadata de
-defaults y estabilización. Calendario/hora local pertenece a Core/plataforma; finalización de
-estado estático sólo se reconsiderará si puede ofrecer ownership real. Ninguno de esos puntos abre
-la puerta a web, SQL o enterprise: no son el propósito de NativeSharp.
+Después del baseline apareció `NSC-LIMIT-022` en el consumidor: un
+`Dictionary<char, FontChar>` retornado por un proyecto recibía una identidad de especialización
+distinta al cruzar al proyecto de pruebas, aunque la forma textual del tipo fuera idéntica. Era un
+defecto de identidad canónica/ABI del compilador, no de la lógica del juego ni una razón para
+cambiar su API.
+
+La causa estaba en `ProjectGenericModel`: para separar homónimos, la clave persistente incorporaba
+el módulo del sitio donde se escribía el argumento. Esa regla confundía procedencia sintáctica con
+identidad nominal. `FontChar` escrito en Saru y el mismo `FontChar` escrito en el proyecto de
+pruebas resolvían a una sola declaración, pero producían hashes y nombres especializados distintos.
+
+La corrección añade una predeclaración nominal ligera antes de monomorfizar, resuelve el argumento
+con la misma escala de nombres y visibilidad entre proyectos y fija la clave de la declaración en
+el nodo de tipo. Esa clave se conserva al clonar y sustituir una plantilla. Los tipos homónimos de
+dos consumidores continúan separados porque sus declaraciones incluyen módulos distintos.
+
+El repro de tres proyectos pasó de dos especializaciones incompatibles a una sola:
+
+```text
+Limit022GenericLib::Limit022GenericLib.Carrier`1<type:Limit022Producer::Saru.FontChar>
+```
+
+La prueba de regresión llega hasta objeto COFF y la suite Stage 52 pasa 138/138. El ejecutable
+mínimo devuelve 65 tanto en O0 como en O2 con `lld-link` y con `NSLink`; `Saru.Core.Tests` vuelve a
+verificar sus 7,145 callables. Los 128 ejecutables de prueba construidos para la entrega pasan; la
+única negativa inicial fue el sandbox impidiendo a .NET leer `NuGet.Config`, y la repetición con
+acceso normal pasó sus 56/56 comprobaciones. El baseline anterior sigue siendo evidencia válida de
+la entrega anterior, pero el cambio deliberado de identidad y mangling exige una nueva corrida G00
+con ambos linkers antes de promover a `0.8.0`.
+
+Después siguen metadata de defaults y estabilización. Calendario/hora local pertenece a
+Core/plataforma; finalización de estado estático sólo se reconsiderará si puede ofrecer ownership
+real. Ninguno de esos puntos abre la puerta a web, SQL o enterprise: no son el propósito de
+NativeSharp.
+
+## Compatibilidad fuente C# útil, sin convertir NativeSharp en .NET
+
+La revisión posterior del port separó seis formas que parecían una sola carencia:
+
+- `static class` ya es una construcción real del lenguaje. El marcador llega al modelo nominal;
+  una clase estática no puede declarar bases, ser instanciada, servir como base ni contener estado
+  o métodos de instancia. También funciona como tipo anidado.
+- Los inicializadores de auto-propiedades (`T X { get; set; } = valor;`) reutilizan el backing
+  field y toda la ruta certificada de inicialización de campos. Funcionan para almacenamiento de
+  instancia y estático; no se aceptan sobre propiedades con accessors explícitos o abstractos.
+- `new` explícito en miembros conserva la intención de ocultamiento. En métodos no virtuales deja
+  intacto el slot heredado; en `new virtual` abre un slot independiente. La omisión accidental de
+  `override` sigue diagnosticándose.
+- `String.Empty` existe como propiedad estática prestada sobre el literal canónico vacío. No crea
+  un campo `static owned`, no necesita finalizador de módulo y no debilita ownership.
+- Los argumentos con nombre ya se resuelven contra el nombre real de cada parámetro en cada
+  candidata. Funcionan en métodos estáticos, de instancia y virtuales, en `new T(...)` y en
+  `this(...)`/`base(...)`; pueden dejar huecos cubiertos por valores por defecto y conservan
+  `ref`/`out`/`in` y ownership. Las expresiones se evalúan una sola vez y en orden fuente; sólo
+  sus valores se permutan al orden ABI después de evaluarlas. La fixture C51 lo ejecuta en O0 y
+  O2, incluyendo una llamada escrita en orden `tercero, primero, segundo` y un constructor
+  escrito en orden `segundo, primero`.
+
+Los “lectores/escritores de flujo de .NET” no son una obligación del lenguaje. Core ya ofrece
+`BinaryReader`, `BinaryWriter`, `ByteBuffer`, `TextWriter`, `ConsoleTextWriter`,
+`StringTextWriter` y `FileTextWriter` con ownership y errores nativos. No se copiará la jerarquía
+de `System.IO` sólo por paridad nominal; se añadirá una pieza concreta cuando un consumidor de
+juegos, assets, compilación o plataforma demuestre que falta.
+
+**Validación del árbol actual:** 296/296 pruebas pasaron dentro del entorno restringido y la única
+prueba excluida allí, el host C# por P/Invoke, pasó fuera de ese aislamiento. Total lógico:
+297/297. Esto valida el código fuente; todavía no sustituye la certificación G00 del compilador
+instalado.

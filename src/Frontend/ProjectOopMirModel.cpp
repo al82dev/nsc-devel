@@ -1056,6 +1056,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->catchAll = node->catchAll;
     result->interfaceCleanupDispatch = node->interfaceCleanupDispatch;
     result->argumentCount = node->argumentCount;
+    result->argumentParameterOrdinals = node->argumentParameterOrdinals;
     result->argumentTypeKeys = node->argumentTypeKeys;
 
     switch (node->kind)

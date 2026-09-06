@@ -402,6 +402,17 @@ bool ProjectInheritanceModel::resolveBaseSpecifications(
                 ok = false;
                 continue;
             }
+            if (nameLookup_->namedTypes()[*candidate].isStatic)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidBaseType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    baseSyntax->range(),
+                    "class '" + type.identity.key() + "' cannot derive from static class '" +
+                        nameLookup_->namedTypes()[*candidate].identity.key() + "'");
+                ok = false;
+                continue;
+            }
             if (*candidate == info.typeOrdinal)
             {
                 diagnostics.report(

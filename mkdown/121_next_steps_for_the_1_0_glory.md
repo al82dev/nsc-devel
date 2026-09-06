@@ -170,6 +170,7 @@ aceptado debe convertirse en una prueba autocontenida dentro de `nsc`.
 | NSC-LIMIT-019 | Corregido en 0.7.6 | bindings en dos pasos, plegado calificado/transitivo/cross-project y detección real de ciclos |
 | NSC-LIMIT-020 | Corregido en 0.8.0-alpha para código fuente | métodos, constructores y encadenamiento admiten defaults literales; metadata precompilada queda como cierre posterior |
 | NSC-LIMIT-021 | Corregido en 0.8.0-alpha | un owner string fresco puede prestarse durante la expresión completa con cleanup normal y excepcional exacto |
+| NSC-LIMIT-022 | Corregido después del baseline 0.8.0-alpha; recertificación pendiente | la identidad de un argumento genérico se deriva de su declaración canónica y se conserva al clonar; productor y consumidor comparten una monomorfización |
 | CORE-LUNAR-003 / BIND-LUNAR-002 | Abierto, P2 de plataforma | `DateTime` y el binding Win32 no cubren calendario/hora local |
 
 La evolución es correcta: Native Sharp dejó de acumular sintaxis aislada y empezó a corregir las
@@ -1094,8 +1095,8 @@ Además:
 0.7.5  Runner G00 corregido; baseline LANDED/certificado; NSC-LIMIT-011 cerrado
 0.7.6  Entrega grande: NSC-LIMIT-012/013/015/019 + NSC-LUNAR-007 cerrados
 0.8.0-alpha  Entrega concentrada certificada; NSC-LIMIT-005/016/017/018/020/021 cerrados
-0.8.0        Promoción de versión sin features nuevas + baseline de la identidad final
-0.8.1        Defaults en metadata `.lib` + compatibilidad binaria comprobada
+0.8.0        Recertificar NSC-LIMIT-022 + compatibilidad C# útil y promover sin features nuevas
+0.8.1        Defaults en metadata `.lib` para omisiones entre bibliotecas
 0.8.2        CodeView/PDB
 0.8.3        builds reproducibles + identidad + instalación limpia
 0.8.4        paridad NSLink/lld-link en el dominio soportado

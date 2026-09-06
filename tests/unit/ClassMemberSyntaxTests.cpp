@@ -167,6 +167,52 @@ int main()
 
     {
         Fixture fixture;
+        parse(
+            fixture,
+            "class Valid { public int Count { get; set; } = 7; "
+            "public static string Name { get; } = \"NativeSharp\"; }\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "automatic properties accept C#-style declaration initializers");
+        const AstNode* classNode = fixture.root != nullptr && !fixture.root->children().empty()
+            ? fixture.root->children()[0]
+            : nullptr;
+        bool sawInstanceInitializer = false;
+        bool sawStaticInitializer = false;
+        if (classNode != nullptr)
+        {
+            for (const AstNode* property : classNode->children())
+            {
+                if (property->kind() != AstNodeKind::PropertyDeclaration) continue;
+                for (const AstNode* child : property->children())
+                {
+                    if (child->kind() != AstNodeKind::FieldDeclaration || child->first() == nullptr)
+                        continue;
+                    sawInstanceInitializer = sawInstanceInitializer ||
+                        (property->text() == "Count" &&
+                         child->first()->kind() == AstNodeKind::IntegerLiteralExpression);
+                    sawStaticInitializer = sawStaticInitializer ||
+                        (property->text() == "Name" && child->hasModifier(TokenKind::KwStatic) &&
+                         child->first()->kind() == AstNodeKind::StringLiteralExpression);
+                }
+            }
+        }
+        tests.expect(sawInstanceInitializer,
+            "an instance auto-property initializer is attached to its generated backing field");
+        tests.expect(sawStaticInitializer,
+            "a static auto-property initializer is attached to its static backing field");
+    }
+
+    {
+        Fixture fixture;
+        parse(fixture, "class Invalid { public int Count { get { return 1; } } = 7; }\n");
+        tests.expect(fixture.diagnostics.hasErrors(),
+            "an explicit property body cannot pretend to own an automatic initializer");
+        tests.expect(hasDiagnostic(fixture, diagnostics::DiagnosticId::ExpectedDeclaration),
+            "invalid property initializer reports a declaration diagnostic");
+    }
+
+    {
+        Fixture fixture;
         parse(fixture, "class Invalid { const int value; }\n");
         tests.expect(fixture.diagnostics.hasErrors(), "const field requires a declaration initializer in Stage 37");
         tests.expect(hasDiagnostic(fixture, diagnostics::DiagnosticId::ExpectedDeclaration),
@@ -277,9 +323,7 @@ int main()
             "a struct keeps its two nested types");
     }
 
-    // Los modificadores que NO significan nada en un tipo. Cada uno da su propio mensaje: quien
-    // escribe `static class` dentro de una clase viene de C#, donde eso existe, y necesita saber
-    // que aqui no -- no que su linea es ilegible.
+    // Los modificadores que no significan nada en estas formas de tipo anidado.
     for (const char* source : {
              "class Outer { static struct Item { int a; } }\n",
              "class Outer { readonly struct Item { int a; } }\n",
@@ -296,6 +340,37 @@ int main()
             std::string("nested type rejects an incompatible modifier: ") + source);
         tests.expect(hasDiagnostic(fixture, diagnostics::DiagnosticId::ExpectedDeclaration),
             std::string("the nested-type rejection is a declaration diagnostic: ") + source);
+    }
+
+    {
+        Fixture fixture;
+        parse(
+            fixture,
+            "public static class Utilities { public static int Value = 7; "
+            "public static int Get() { return Value; } "
+            "public class Nested { public int item; } }\n"
+            "class Outer { public static class NestedUtilities { "
+            "public static int Get() { return 9; } } }\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "top-level and nested C#-style static classes parse with static members and nested types");
+        tests.expect(fixture.root != nullptr && fixture.root->children().size() == 2 &&
+                fixture.root->children()[0]->hasModifier(TokenKind::KwStatic) &&
+                fixture.root->children()[1]->children()[0]->hasModifier(TokenKind::KwStatic),
+            "the static-class marker survives on both top-level and nested declarations");
+    }
+
+    for (const char* source : {
+             "static class Bad { int value; }\n",
+             "static class Bad { int Get() { return 1; } }\n",
+             "static class Bad { Bad() { } }\n",
+             "static class Bad : Base { public static int Get() { return 1; } }\n"})
+    {
+        Fixture fixture;
+        parse(fixture, source);
+        tests.expect(fixture.diagnostics.hasErrors(),
+            std::string("static class rejects instance construction/state or bases: ") + source);
+        tests.expect(hasDiagnostic(fixture, diagnostics::DiagnosticId::ExpectedDeclaration),
+            std::string("static-class rule reports a declaration diagnostic: ") + source);
     }
 
     // `abstract` y `sealed` SI valen, pero solo sobre una clase anidada. Es el control de la

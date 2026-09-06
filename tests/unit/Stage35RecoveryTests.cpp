@@ -307,6 +307,93 @@ void testAbstractAndSealedNegatives(TestContext& tests, const std::filesystem::p
         "a class cannot declare more than one source destructor");
 }
 
+void testStaticClasses(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "StaticClasses";
+    writeProject(directory, "StaticClasses");
+    writeFile(
+        directory / "Main.ns",
+        "public static class MathUtil { "
+        "public static int Seed { get; } = 20; "
+        "public static int Double(int value) { return value + value; } } "
+        "class Harness { public static int Run() { return MathUtil.Double(MathUtil.Seed); } }");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(directory / "StaticClasses.nsproj", error);
+    tests.expect(ok && error.empty(),
+        "static class plus initialized static auto-property compiles through OOP MIR");
+    const auto utility = findType(compilation, "MathUtil");
+    tests.expect(utility.has_value() && compilation.nameLookup() != nullptr &&
+            compilation.nameLookup()->namedTypes()[*utility].isStatic,
+        "static class identity survives into the semantic named-type model");
+
+    struct Negative final
+    {
+        const char* name;
+        const char* source;
+        DiagnosticId diagnostic;
+    };
+    const Negative negatives[] = {
+        {"InstantiateStatic", "static class A { public static int F() { return 1; } } "
+            "class H { public A Make() { return new A(); } }", DiagnosticId::InvalidAllocationType},
+        {"DeriveStatic", "static class A { public static int F() { return 1; } } class B : A { }",
+            DiagnosticId::InvalidBaseType}
+    };
+    for (const Negative& negative : negatives)
+    {
+        const auto negativeDirectory = root / negative.name;
+        writeProject(negativeDirectory, negative.name);
+        writeFile(negativeDirectory / "Main.ns", negative.source);
+        ProjectCompilation negativeCompilation;
+        std::string negativeError;
+        const bool negativeOk = negativeCompilation.compileProjectOopMir(
+            negativeDirectory / (std::string(negative.name) + ".nsproj"), negativeError);
+        tests.expect(!negativeOk,
+            std::string("static class semantic misuse is rejected: ") + negative.name);
+        tests.expect(diagnosticCount(negativeCompilation, negative.diagnostic) >= 1,
+            std::string("static class misuse has its precise semantic diagnostic: ") + negative.name);
+    }
+}
+
+void testExplicitNewSlotHiding(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "ExplicitNewSlot";
+    writeProject(directory, "ExplicitNewSlot");
+    writeFile(
+        directory / "Main.ns",
+        "class Base { public virtual int Value() { return 1; } } "
+        "class Hidden : Base { public new int Value() { return 2; } } "
+        "class NewVirtual : Base { public new virtual int Value() { return 3; } }");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectVirtualDispatch(
+        directory / "ExplicitNewSlot.nsproj", error);
+    tests.expect(ok && error.empty(),
+        "explicit new accepts intentional hiding of an inherited virtual signature");
+    if (!ok || compilation.memberModel() == nullptr ||
+        compilation.virtualDispatchModel() == nullptr) return;
+
+    const auto hiddenType = findType(compilation, "Hidden");
+    const auto newVirtualType = findType(compilation, "NewVirtual");
+    const auto hiddenMethod = hiddenType.has_value()
+        ? findMember(compilation, *hiddenType, "Value") : std::nullopt;
+    const auto newVirtualMethod = newVirtualType.has_value()
+        ? findMember(compilation, *newVirtualType, "Value") : std::nullopt;
+    tests.expect(hiddenMethod.has_value() &&
+            compilation.memberModel()->members()[*hiddenMethod].isNewSlot &&
+            !compilation.virtualDispatchModel()->isVirtualMethod(*hiddenMethod),
+        "new non-virtual method hides without replacing the inherited vtable slot");
+    const auto* newVirtualInfo = newVirtualMethod.has_value()
+        ? compilation.virtualDispatchModel()->virtualMethod(*newVirtualMethod) : nullptr;
+    tests.expect(newVirtualMethod.has_value() &&
+            compilation.memberModel()->members()[*newVirtualMethod].isNewSlot &&
+            newVirtualInfo != nullptr &&
+            newVirtualInfo->rootVirtualMemberOrdinal == *newVirtualMethod,
+        "new virtual method starts an independent vtable slot instead of overriding the base slot");
+}
+
 void testAbstractSlotRecovery(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "AbstractSlotRecovery";
@@ -532,6 +619,8 @@ int main()
 
     testLexingParsingAndFlags(tests, root);
     testAbstractAndSealedNegatives(tests, root);
+    testStaticClasses(tests, root);
+    testExplicitNewSlotHiding(tests, root);
     testAbstractSlotRecovery(tests, root);
     testDestructionPlanAndDynamicDelete(tests, root);
 

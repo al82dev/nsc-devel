@@ -71,7 +71,11 @@ private:
     ast::AstNode* parseStructDeclaration(
         StructLayoutForm form = StructLayoutForm::Struct,
         bool isBorrowedView = false);
-    ast::AstNode* parseClassDeclaration(bool isPartial, bool isAbstract, bool isSealed);
+    ast::AstNode* parseClassDeclaration(
+        bool isPartial,
+        bool isAbstract,
+        bool isSealed,
+        bool isStatic = false);
     ast::AstNode* parseInterfaceDeclaration(bool isPartial);
     ast::AstNode* parseDelegateDeclaration();
     ast::AstNode* parseInterfaceMember();
@@ -82,6 +86,7 @@ private:
     struct NestedTypeModifiers final
     {
         lexer::TokenKind accessibility = lexer::TokenKind::Invalid;
+        bool isNew = false;
         bool isStatic = false;
         bool isReadonly = false;
         bool isConst = false;
@@ -103,6 +108,7 @@ private:
         std::size_t beginIndex);
     ast::AstNode* parseEventTail(
         lexer::TokenKind accessibility,
+        bool isNew,
         bool isStatic,
         std::size_t beginIndex);
     ast::AstNode* parseDestructorTail(std::string_view className, std::size_t beginIndex);
@@ -110,6 +116,7 @@ private:
         ast::TypeSyntax* propertyType,
         const lexer::Token& name,
         lexer::TokenKind accessibility,
+        bool isNew,
         bool isStatic,
         bool isVirtual,
         bool isOverride,
@@ -120,6 +127,7 @@ private:
     ast::AstNode* parseIndexerTail(
         ast::TypeSyntax* elementType,
         lexer::TokenKind accessibility,
+        bool isNew,
         bool isVirtual,
         bool isOverride,
         bool isAbstract,
@@ -162,6 +170,7 @@ private:
         ast::TypeSyntax* returnType,
         const lexer::Token& name,
         lexer::TokenKind accessibility,
+        bool isNew,
         bool isStatic,
         bool isVirtual,
         bool isOverride,
@@ -208,6 +217,7 @@ private:
     ast::AstNode* parseUsingStatement();
 
     ast::AstNode* parseExpression();
+    ast::AstNode* parseArgument();
     ast::AstNode* parseAssignmentExpression();
     ast::AstNode* parseLambdaExpression();
     bool looksLikeLambdaExpression() const noexcept;

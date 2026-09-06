@@ -30,6 +30,15 @@ bool isGenericTypeTemplateNode(const ast::AstNode* node) noexcept
         node->kind() == ast::AstNodeKind::DelegateDeclaration;
 }
 
+bool isNamedTypeDeclaration(ast::AstNodeKind kind) noexcept
+{
+    return kind == ast::AstNodeKind::ClassDeclaration ||
+        kind == ast::AstNodeKind::InterfaceDeclaration ||
+        kind == ast::AstNodeKind::StructDeclaration ||
+        kind == ast::AstNodeKind::EnumDeclaration ||
+        kind == ast::AstNodeKind::DelegateDeclaration;
+}
+
 GenericTemplateKind genericTypeTemplateKind(const ast::AstNode* node) noexcept
 {
     if (node->kind() == ast::AstNodeKind::ClassDeclaration) return GenericTemplateKind::Class;
@@ -319,6 +328,25 @@ void ProjectGenericModel::collectTemplates(
         currentNamespace = namespaceAppend(namespaceName, node->text());
     }
 
+    // NSC-LIMIT-022. Generic specialization happens before ProjectNameLookup exists, but its
+    // cache key still has to identify the DECLARATION of an argument, not the project in which
+    // that argument happened to be written. Record ordinary named types now, from the same
+    // already-parsed graph. Generic declarations are represented by TemplateState and nested
+    // declarations inside a generic type are not predeclared by the later name model either.
+    if (!insideGenericType && isNamedTypeDeclaration(node->kind()) &&
+        node->genericParameters().empty())
+    {
+        const std::string qualifiedTypeName = appendOwner(ownerName, node->text());
+        std::string sourceName = qualifiedName(currentNamespace, qualifiedTypeName);
+        std::replace(sourceName.begin(), sourceName.end(), '+', '.');
+        declaredTypeIdentities_.push_back(DeclaredTypeIdentity{
+            unit.projectOrdinal(),
+            std::move(sourceName),
+            std::string(unit.moduleName()) + "::" +
+                qualifiedName(currentNamespace, qualifiedTypeName),
+            node->tokenKind() == lexer::TokenKind::KwPublic});
+    }
+
     const bool genericType = isGenericTypeTemplateNode(node);
     if (genericType)
     {
@@ -461,7 +489,7 @@ void ProjectGenericModel::processNode(
 
     if (node->typeSyntax() != nullptr)
     {
-        processTypeSyntax(unit, node->typeSyntax(), currentNamespace, diagnostics);
+        processTypeSyntax(unit, node->typeSyntax(), currentNamespace, currentScope, diagnostics);
     }
 
     if (node->kind() == ast::AstNodeKind::CallExpression && !node->typeSyntaxes().empty())
@@ -472,7 +500,7 @@ void ProjectGenericModel::processNode(
     {
         for (ast::TypeSyntax* syntax : node->typeSyntaxes())
         {
-            processTypeSyntax(unit, syntax, currentNamespace, diagnostics);
+            processTypeSyntax(unit, syntax, currentNamespace, currentScope, diagnostics);
         }
     }
 
@@ -500,12 +528,13 @@ bool ProjectGenericModel::processTypeSyntax(
     ProjectSyntaxUnit& unit,
     ast::TypeSyntax* syntax,
     const std::string& namespaceName,
+    const GenericLookupScope& scope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (syntax == nullptr) return true;
     for (ast::TypeSyntax* argument : syntax->typeArguments())
     {
-        if (!processTypeSyntax(unit, argument, namespaceName, diagnostics)) return false;
+        if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
     }
 
     TemplateState* state = resolveTypeTemplate(
@@ -525,6 +554,15 @@ bool ProjectGenericModel::processTypeSyntax(
                 syntax->range(),
                 "type '" + syntax->baseName() + "' is not a visible generic class/struct template in Stage 44");
             return false;
+        }
+        if (const std::optional<std::string> identity =
+                resolveDeclaredTypeIdentity(
+                    syntax, unit.projectOrdinal(), namespaceName, scope);
+            identity.has_value())
+        {
+            std::string canonical = "type:" + *identity;
+            appendTypeModifiers(canonical, syntax);
+            resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
         }
         return true;
     }
@@ -549,6 +587,18 @@ bool ProjectGenericModel::processTypeSyntax(
     const std::string specialized = ensureTypeSpecialization(
         *state, syntax->typeArguments(), diagnostics);
     if (specialized.empty()) return false;
+
+    // Keep the closed template's canonical key on this exact syntax node before erasing its
+    // arguments. An outer specialization can then use that declaration-derived identity instead
+    // of reinterpreting the generated name under a caller project.
+    for (auto iterator = specializations_.rbegin(); iterator != specializations_.rend(); ++iterator)
+    {
+        if (iterator->specializedName != specialized) continue;
+        std::string canonical = "generic:" + iterator->specializationKey;
+        appendTypeModifiers(canonical, syntax);
+        resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+        break;
+    }
     syntax->setBaseName(specialized);
     syntax->clearTypeArguments();
     return true;
@@ -565,7 +615,7 @@ bool ProjectGenericModel::processGenericCall(
     if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression) return false;
     for (ast::TypeSyntax* argument : call->typeSyntaxes())
     {
-        if (!processTypeSyntax(unit, argument, namespaceName, diagnostics)) return false;
+        if (!processTypeSyntax(unit, argument, namespaceName, scope, diagnostics)) return false;
     }
 
     ast::AstNode* callee = methodCalleeSyntax(call);
@@ -1102,6 +1152,23 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
             modifier.kind,
             cloneNode(arena, modifier.arrayCount, substitutions, "", ""),
             modifier.range});
+        // In the substitution branch `result` already carries the argument's canonical identity
+        // (including modifiers written on that argument). Modifiers written on the template
+        // parameter occurrence are outer modifiers and must be appended as well: substituting
+        // Foo for T in T[] identifies Foo[], not Foo.
+        if (substituted)
+        {
+            if (auto identity = resolvedTypeIdentityBySyntax_.find(result);
+                identity != resolvedTypeIdentityBySyntax_.end())
+            {
+                if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer)
+                    identity->second.push_back('*');
+                else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray)
+                    identity->second += "[]";
+                else
+                    identity->second += "[fixed]";
+            }
+        }
     }
     // Stage 52 fix: an ownership qualifier (owned/borrowed) belongs to THIS occurrence of the
     // type -- e.g. the "owned" in a parameter declared "owned T" -- not to whatever concrete
@@ -1124,6 +1191,11 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     if (!substituted)
     {
         result->setRange(source->range());
+        if (const auto identity = resolvedTypeIdentityBySyntax_.find(source);
+            identity != resolvedTypeIdentityBySyntax_.end())
+        {
+            resolvedTypeIdentityBySyntax_[result] = identity->second;
+        }
     }
     return result;
 }
@@ -1232,6 +1304,15 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
 
 std::string ProjectGenericModel::typeSpecializationIdentity(const ast::TypeSyntax* syntax) const
 {
+    if (syntax != nullptr)
+    {
+        if (const auto resolved = resolvedTypeIdentityBySyntax_.find(syntax);
+            resolved != resolvedTypeIdentityBySyntax_.end())
+        {
+            return resolved->second;
+        }
+    }
+
     const std::string spelling = typeSpelling(syntax);
     if (syntax == nullptr || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
     {
@@ -1257,6 +1338,95 @@ std::string ProjectGenericModel::typeSpecializationIdentity(const ast::TypeSynta
     return spelling + "@origin-module[" + std::to_string(moduleName.size()) + "]=" +
         std::string(moduleName) +
         ";namespace[" + std::to_string(namespaceName.size()) + "]=" + namespaceName;
+}
+
+std::optional<std::string> ProjectGenericModel::resolveDeclaredTypeIdentity(
+    const ast::TypeSyntax* syntax,
+    std::size_t projectOrdinal,
+    std::string_view namespaceName,
+    const GenericLookupScope& scope) const
+{
+    if (syntax == nullptr || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
+        !syntax->typeArguments().empty())
+    {
+        return std::nullopt;
+    }
+
+    projectOrdinal = syntax->originProjectOrdinal().value_or(projectOrdinal);
+    const std::string effectiveNamespace = syntax->originNamespace().has_value()
+        ? syntax->originNamespace().value()
+        : (syntax->originProjectOrdinal().has_value() ? std::string{} : std::string(namespaceName));
+    const std::vector<std::string> namespaceSegments = splitDotted(effectiveNamespace);
+    const std::vector<std::string> noContainingTypes;
+
+    // A substituted node carries the original project/namespace, but not its using directives.
+    // Its declaration identity was normally copied before substitution. If an older/unannotated
+    // node reaches this fallback, do not accidentally apply the template's imports to the
+    // consumer's source name.
+    const std::vector<std::string> noImports;
+    const std::unordered_map<std::string, std::string> noAliases;
+    QualifiedNameSite site;
+    site.namespaceSegments = namespaceSegments;
+    site.enclosingTypeNames = noContainingTypes;
+    site.aliases = syntax->originProjectOrdinal().has_value() ? &noAliases : &scope.aliases;
+    site.importedNamespaces = syntax->originProjectOrdinal().has_value()
+        ? std::span<const std::string>(noImports)
+        : std::span<const std::string>(scope.importedNamespaces);
+
+    for (const QualifiedNameRung& rung : qualifiedNameLadder(site, syntax->baseName()))
+    {
+        std::vector<std::string> identities;
+        for (const std::string& spelling : rung.spellings)
+        {
+            for (const DeclaredTypeIdentity& declaration : declaredTypeIdentities_)
+            {
+                if (declaration.sourceName != spelling) continue;
+
+                const bool sameProject = declaration.projectOrdinal == projectOrdinal;
+                bool visible = false;
+                switch (rung.tier)
+                {
+                    case QualifiedNameTier::EnclosingType:
+                    case QualifiedNameTier::LexicalNamespace:
+                    case QualifiedNameTier::Global:
+                        visible = sameProject;
+                        break;
+                    case QualifiedNameTier::ImportedNamespace:
+                        visible = sameProject ||
+                            (declaration.isPublic &&
+                             projectVisible(projectOrdinal, declaration.projectOrdinal));
+                        break;
+                    case QualifiedNameTier::ReferencedModule:
+                        visible = !sameProject && declaration.isPublic &&
+                            projectVisible(projectOrdinal, declaration.projectOrdinal);
+                        break;
+                }
+                if (!visible || std::find(
+                        identities.begin(), identities.end(), declaration.identityKey) !=
+                        identities.end())
+                {
+                    continue;
+                }
+                identities.push_back(declaration.identityKey);
+            }
+        }
+        if (identities.size() == 1) return identities.front();
+        if (identities.size() > 1) return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+void ProjectGenericModel::appendTypeModifiers(
+    std::string& identity,
+    const ast::TypeSyntax* syntax)
+{
+    if (syntax == nullptr) return;
+    for (const ast::TypeModifierSyntax& modifier : syntax->modifiers())
+    {
+        if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer) identity.push_back('*');
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray) identity += "[]";
+        else identity += "[fixed]";
+    }
 }
 
 std::string ProjectGenericModel::namespaceAppend(std::string_view prefix, std::string_view suffix)

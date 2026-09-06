@@ -89,6 +89,13 @@ namespace NativeSharp.Core
             return Substring(value, 0, value.Length);
         }
 
+        // Familiar C# spelling without static owned storage.  The literal has process lifetime,
+        // so this property returns the canonical borrowed empty string and needs no destructor.
+        public static string Empty
+        {
+            get { return ""; }
+        }
+
         public static bool IsNullOrEmpty(string value)
         {
             return value == null || value.Length == 0;

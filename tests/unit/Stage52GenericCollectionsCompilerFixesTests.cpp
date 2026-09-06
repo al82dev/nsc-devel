@@ -589,6 +589,121 @@ namespace CrossProjectAppB
         "(both builtin- and consumer-type-closed instantiations resolve and specialize identically)");
 }
 
+// ---------------------------------------------------------------------------------------
+// NSC-LIMIT-022: the type argument is declared by a producer project, while the generic
+// template lives in a library and the same closed type is written again by a consumer. Both
+// `Carrier<FontChar>` occurrences resolve to the one Producer::Saru.FontChar declaration and
+// must therefore share one monomorphization, despite being written in different projects.
+// ---------------------------------------------------------------------------------------
+
+void testCrossProjectClosedGenericReturnKeepsOneIdentity(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto genericDirectory = root / "Limit022GenericLib";
+    writeProject(genericDirectory, "Limit022GenericLib");
+    writeFile(genericDirectory / "Carrier.ns", R"NS(
+namespace Limit022GenericLib
+{
+    public class Carrier<T>
+    {
+        public T Value;
+    }
+}
+)NS");
+
+    const auto producerDirectory = root / "Limit022Producer";
+    writeProjectWithReference(
+        producerDirectory,
+        "Limit022Producer",
+        genericDirectory / "Limit022GenericLib.nsproj");
+    writeFile(producerDirectory / "FontParser.ns", R"NS(
+using Limit022GenericLib;
+
+namespace Saru
+{
+    public struct FontChar
+    {
+        public int Id;
+    }
+
+    public class FontParser
+    {
+        public static owned Carrier<FontChar> Parse()
+        {
+            raii Carrier<FontChar> result = new Carrier<FontChar>();
+            result.Value.Id = 65;
+            return move(result);
+        }
+    }
+}
+)NS");
+
+    const auto consumerDirectory = root / "Limit022Consumer";
+    writeFile(
+        consumerDirectory / "Limit022Consumer.nsproj",
+        "<Project><PropertyGroup><Name>Limit022Consumer</Name></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" /><ProjectReference Include=\"" +
+            producerDirectory.generic_string() + "/Limit022Producer.nsproj\" />"
+        "<ProjectReference Include=\"" + genericDirectory.generic_string() +
+            "/Limit022GenericLib.nsproj\" /></ItemGroup></Project>");
+    writeFile(consumerDirectory / "Main.ns", R"NS(
+using Limit022GenericLib;
+
+namespace Saru
+{
+    public class Runner
+    {
+        public static int Main()
+        {
+            raii Carrier<FontChar> glyphs = FontParser.Parse();
+            FontChar glyph = glyphs.Value;
+            return glyph.Id;
+        }
+    }
+}
+)NS");
+
+    ProjectCompilation identityCompilation;
+    std::string identityError;
+    const bool identitiesBuilt = identityCompilation.compileProjectGenerics(
+        consumerDirectory / "Limit022Consumer.nsproj", identityError);
+    tests.expect(identitiesBuilt && identityError.empty() &&
+            identityCompilation.genericModel() != nullptr,
+        "cross-project closed generic return builds its specialization model");
+    if (identitiesBuilt && identityCompilation.genericModel() != nullptr)
+    {
+        std::size_t carrierCount = 0;
+        bool namesProducerDeclaration = false;
+        bool containsWritingSiteFallback = false;
+        for (const auto& specialization : identityCompilation.genericModel()->specializations())
+        {
+            if (specialization.templateKey.find(
+                    "Limit022GenericLib::Limit022GenericLib.Carrier`1") == std::string::npos)
+            {
+                continue;
+            }
+            ++carrierCount;
+            namesProducerDeclaration = namesProducerDeclaration ||
+                specialization.specializationKey.find(
+                    "type:Limit022Producer::Saru.FontChar") != std::string::npos;
+            containsWritingSiteFallback = containsWritingSiteFallback ||
+                specialization.specializationKey.find("@origin-module") != std::string::npos;
+        }
+        tests.expect(carrierCount == 1,
+            "producer and consumer share exactly one Carrier<FontChar> monomorphization");
+        tests.expect(namesProducerDeclaration,
+            "the specialization key names FontChar's declaring module, not its writing site");
+        tests.expect(!containsWritingSiteFallback,
+            "a resolved cross-project type argument does not use the origin-module fallback");
+    }
+
+    const std::string llvm = compileAndEmitObject(
+        tests, consumerDirectory, "cross-project closed generic return identity (NSC-LIMIT-022)");
+    tests.expect(!llvm.empty(),
+        "a closed generic returned by a producer is assignable to the identical type in its consumer");
+}
+
 std::size_t countOccurrences(std::string_view text, std::string_view needle)
 {
     if (needle.empty()) return 0;
@@ -1390,6 +1505,7 @@ int main()
     testMoveFromArrayElementForBothValueAndReferenceT(tests, root);
     testMoveStillRejectsNonNativeArrayIndexSource(tests, root);
     testCrossProjectGenericDelegateAndClassInstantiation(tests, root);
+    testCrossProjectClosedGenericReturnKeepsOneIdentity(tests, root);
     testCrossProjectGenericConstraintWithConsumerType(tests, root);
     testCrossProjectGenericConstraintWithGlobalConsumerType(tests, root);
     testCrossProjectGenericConstraintKeepsHomonymousConsumersDistinct(tests, root);

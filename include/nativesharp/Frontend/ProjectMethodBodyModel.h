@@ -1032,6 +1032,10 @@ struct MethodCallCandidate final
     std::size_t memberOrdinal = 0;
     bool viable = false;
     std::vector<ProjectImplicitConversion> conversions;
+    // One entry per explicit argument, in source evaluation order.  The value is the selected
+    // callable's parameter ordinal.
+    std::vector<std::size_t> argumentParameterOrdinals;
+    std::vector<std::size_t> defaultedParameterOrdinals;
     std::size_t defaultedParameterCount = 0;
 };
 
@@ -1056,7 +1060,9 @@ struct MethodCallBinding final
     std::vector<std::size_t> viableCandidateMemberOrdinals;
     std::optional<std::size_t> selectedMemberOrdinal;
     std::vector<ProjectImplicitConversion> selectedConversions;
+    std::vector<std::size_t> selectedArgumentParameterOrdinals;
     std::vector<const ast::AstNode*> selectedDefaultArguments;
+    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
     std::string resultTypeKey;
 };
 
@@ -1559,7 +1565,8 @@ private:
         std::string_view methodName,
         std::size_t memberOrdinal,
         const std::vector<ExpressionResult>& arguments,
-        diagnostics::DiagnosticEngine& diagnostics) const;
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::span<const std::size_t> parameterOrdinals = {}) const;
     // C4 "language references": (method member ordinal, parameter ordinal) pairs an `out`
     // parameter was assigned through. See verifyOutParameterAssignments for what is checked with
     // it and for the precise limit of that check.

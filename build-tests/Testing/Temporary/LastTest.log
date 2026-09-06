@@ -1,3 +1,19 @@
-Start testing: Sep 05 01:57 Central Standard Time (Mexico)
+Start testing: Sep 06 13:44 Central Standard Time (Mexico)
 ----------------------------------------------------------
-End testing: Sep 05 01:57 Central Standard Time (Mexico)
+118/297 Testing: nsc.stage48_5.csharp-pinvoke-host
+118/297 Test: nsc.stage48_5.csharp-pinvoke-host
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage48_5_csharp_host_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage48_5.csharp-pinvoke-host" start time: Sep 06 13:44 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 56 checks
+<end of output>
+Test time =   3.75 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage48_5.csharp-pinvoke-host" end time: Sep 06 13:44 Central Standard Time (Mexico)
+"nsc.stage48_5.csharp-pinvoke-host" time elapsed: 00:00:03
+----------------------------------------------------------
+
+End testing: Sep 06 13:44 Central Standard Time (Mexico)

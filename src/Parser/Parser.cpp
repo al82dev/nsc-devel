@@ -1153,6 +1153,7 @@ ast::AstNode* Parser::parseNamespaceDeclaration()
         }
     }
     expect(TokenKind::RightBrace, "'}'");
+
     node->setRange(tokenRangeFrom(beginIndex));
     return node;
 }
@@ -1231,6 +1232,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     bool isPartial = false;
     bool isAbstract = false;
     bool isSealed = false;
+    bool isStatic = false;
     // C2.2 "union and explicit layout": `pack(N)` and `align(N)` are contextual-keyword layout
     // modifiers on a struct/union declaration -- the NativeSharp spellings of C's
     // `#pragma pack(N)` and `__declspec(align(N))`. They are contextual (an ordinary identifier
@@ -1367,6 +1369,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwInternal ||
              peek().kind() == TokenKind::KwAbstract ||
              peek().kind() == TokenKind::KwSealed ||
+             peek().kind() == TokenKind::KwStatic ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "partial"));
         if (partialModifier)
         {
@@ -1405,6 +1408,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
              peek().kind() == TokenKind::KwInternal ||
              peek().kind() == TokenKind::KwAbstract ||
              peek().kind() == TokenKind::KwSealed ||
+             peek().kind() == TokenKind::KwStatic ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "union") ||
              (peek().kind() == TokenKind::Identifier && peek().lexeme() == "partial"));
         if (borrowedTypeModifier)
@@ -1449,35 +1453,49 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             isSealed = true;
             continue;
         }
+        if (at(TokenKind::KwStatic))
+        {
+            const lexer::Token& modifier = consume();
+            if (isStatic)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate static modifier on type declaration");
+            }
+            isStatic = true;
+            continue;
+        }
         break;
     }
 
     ast::AstNode* declaration = nullptr;
     if (at(TokenKind::KwDelegate))
     {
-        if (isPartial || isAbstract || isSealed)
+        if (isPartial || isAbstract || isSealed || isStatic)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 tokens_[declarationBeginIndex].range(),
-                "delegate declarations cannot be partial, abstract, or sealed in Stage 42");
+                "delegate declarations cannot be partial, abstract, sealed, or static");
         }
         declaration = parseDelegateDeclaration();
     }
     else if (at(TokenKind::KwClass))
     {
-        declaration = parseClassDeclaration(isPartial, isAbstract, isSealed);
+        declaration = parseClassDeclaration(isPartial, isAbstract, isSealed, isStatic);
     }
     else if (at(TokenKind::KwInterface))
     {
-        if (isAbstract || isSealed)
+        if (isAbstract || isSealed || isStatic)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 tokens_[declarationBeginIndex].range(),
-                "interfaces are implicitly abstract and cannot use abstract/sealed type modifiers in Stage 36");
+                "interfaces cannot use abstract, sealed, or static type modifiers");
         }
         declaration = parseInterfaceDeclaration(isPartial);
     }
@@ -1495,13 +1513,13 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 tokens_[declarationBeginIndex].range(),
                 "'borrowed' declares a view type and applies only to struct declarations");
         }
-        if (isAbstract || isSealed)
+        if (isAbstract || isSealed || isStatic)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 tokens_[declarationBeginIndex].range(),
-                "abstract/sealed modifiers are supported only for class declarations in Stage 35");
+                "abstract, sealed, and static modifiers are supported only for class declarations");
         }
         if (isPartial)
         {
@@ -1517,13 +1535,13 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     }
     else if (at(TokenKind::KwEnum))
     {
-        if (isAbstract || isSealed)
+        if (isAbstract || isSealed || isStatic)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 tokens_[declarationBeginIndex].range(),
-                "abstract/sealed modifiers are supported only for class declarations in Stage 35");
+                "abstract, sealed, and static modifiers are supported only for class declarations");
         }
         if (isPartial)
         {
@@ -1552,13 +1570,13 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         //
         // An `extern C { ... }` BLOCK is not a type and has no accessibility of its own -- its
         // members carry their own -- so a modifier on it is still an error, with its own reason.
-        if (isPartial || isAbstract || isSealed)
+        if (isPartial || isAbstract || isSealed || isStatic)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 tokens_[declarationBeginIndex].range(),
-                "extern declarations cannot be partial, abstract, or sealed");
+                "extern declarations cannot be partial, abstract, sealed, or static");
         }
         ast::AstNode* externDeclaration = parseExternCDeclaration();
         if (externDeclaration != nullptr &&
@@ -1591,13 +1609,13 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         synchronizeGlobal();
         return nullptr;
     }
-    else if (isAbstract || isSealed)
+    else if (isAbstract || isSealed || isStatic)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             current().range(),
-            "abstract/sealed modifiers are supported only for class declarations in Stage 35");
+            "abstract, sealed, and static modifiers are supported only for class declarations");
         synchronizeGlobal();
         return nullptr;
     }
@@ -1865,7 +1883,11 @@ ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form, bool isBorro
     return node;
 }
 
-ast::AstNode* Parser::parseClassDeclaration(bool isPartial, bool isAbstract, bool isSealed)
+ast::AstNode* Parser::parseClassDeclaration(
+    bool isPartial,
+    bool isAbstract,
+    bool isSealed,
+    bool isStatic)
 {
     const std::size_t beginIndex = index_;
     consume();
@@ -1894,9 +1916,21 @@ ast::AstNode* Parser::parseClassDeclaration(bool isPartial, bool isAbstract, boo
     {
         node->addModifier(TokenKind::KwSealed);
     }
+    if (isStatic)
+    {
+        node->addModifier(TokenKind::KwStatic);
+    }
 
     if (consumeIf(TokenKind::Colon))
     {
+        if (isStatic)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "a static class cannot specify a base class or interfaces");
+        }
         bool first = true;
         do
         {
@@ -1943,6 +1977,23 @@ ast::AstNode* Parser::parseClassDeclaration(bool isPartial, bool isAbstract, boo
         ast::AstNode* member = parseClassMember(className);
         if (member != nullptr)
         {
+            const bool nestedType = member->kind() == ast::AstNodeKind::ClassDeclaration ||
+                member->kind() == ast::AstNodeKind::StructDeclaration ||
+                member->kind() == ast::AstNodeKind::InterfaceDeclaration ||
+                member->kind() == ast::AstNodeKind::EnumDeclaration ||
+                member->kind() == ast::AstNodeKind::DelegateDeclaration;
+            const bool staticMember = member->hasModifier(TokenKind::KwStatic) ||
+                (member->kind() == ast::AstNodeKind::FieldDeclaration &&
+                 member->hasModifier(TokenKind::KwConst)) ||
+                member->kind() == ast::AstNodeKind::ExternCDeclaration;
+            if (isStatic && !nestedType && !staticMember)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member->range(),
+                    "a static class can contain only static members (nested types are allowed)");
+            }
             node->addChild(member);
         }
         if (index_ == before)
@@ -2074,7 +2125,7 @@ ast::AstNode* Parser::parseInterfaceMember()
     if (at(TokenKind::KwThis))
     {
         return parseIndexerTail(
-            returnType, accessibility, false, false, true, false, beginIndex, true);
+            returnType, accessibility, false, false, false, true, false, beginIndex, true);
     }
 
     if (!at(TokenKind::Identifier))
@@ -2088,13 +2139,13 @@ ast::AstNode* Parser::parseInterfaceMember()
     {
         return parseMethodTail(
             returnType, name, accessibility,
-            false, false, false, true, false, false, false, beginIndex);
+            false, false, false, false, true, false, false, false, beginIndex);
     }
     if (at(TokenKind::LeftBrace))
     {
         return parsePropertyTail(
             returnType, name, accessibility,
-            false, false, false, true, false, beginIndex, true);
+            false, false, false, false, true, false, beginIndex, true);
     }
 
     diagnostics_.report(
@@ -2131,11 +2182,9 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
             tokens_[beginIndex].range(),
             std::string("'") + modifierName + "' is not valid on a nested type declaration: " + reason);
     };
-    if (modifiers.isStatic)
-    {
-        refuse("static", "a type is not an instance of its container; a nested type is reached "
-                         "as Outer.Item whether or not anything of Outer exists");
-    }
+    const bool nestedClass = at(TokenKind::KwClass);
+    if (modifiers.isStatic && !nestedClass)
+        refuse("static", "only a nested class can be static");
     if (modifiers.isReadonly) refuse("readonly", "a type is not storage");
     if (modifiers.isConst) refuse("const", "a type is not a value");
     if (modifiers.isVirtual) refuse("virtual", "a type is not dispatched");
@@ -2152,7 +2201,6 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     // `abstract` y `sealed` SI significan algo, pero solo en una clase. Se dejan pasar y el
     // parser de clase los aplica; en cualquier otra forma se rechazan aqui, que es donde se sabe
     // cual de las cinco se esta abriendo.
-    const bool nestedClass = at(TokenKind::KwClass);
     if ((modifiers.isAbstract || modifiers.isSealed) && !nestedClass)
     {
         diagnostics_.report(
@@ -2165,7 +2213,8 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     ast::AstNode* declaration = nullptr;
     if (at(TokenKind::KwClass))
     {
-        declaration = parseClassDeclaration(false, modifiers.isAbstract, modifiers.isSealed);
+        declaration = parseClassDeclaration(
+            false, modifiers.isAbstract, modifiers.isSealed, modifiers.isStatic);
     }
     else if (at(TokenKind::KwInterface))
     {
@@ -2211,6 +2260,10 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     {
         declaration->setTokenKind(modifiers.accessibility);
     }
+    if (modifiers.isNew)
+    {
+        declaration->addModifier(TokenKind::KwNew);
+    }
     if (beginIndex < tokens_.size())
     {
         declaration->setRange(join(tokens_[beginIndex].range(), declaration->range()));
@@ -2223,6 +2276,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
     (void)allowUnresolvedNamedTypes;
     const std::size_t beginIndex = index_;
     TokenKind accessibility = TokenKind::Invalid;
+    bool isNew = false;
     bool isStatic = false;
     bool isReadonly = false;
     bool isConst = false;
@@ -2276,7 +2330,8 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
         parseExplicitFieldOffset();
         if (!(at(TokenKind::KwPublic) || at(TokenKind::KwInternal) ||
               at(TokenKind::KwProtected) || at(TokenKind::KwPrivate) ||
-              at(TokenKind::KwStatic) || at(TokenKind::KwReadonly) || at(TokenKind::KwConst) ||
+              at(TokenKind::KwNew) || at(TokenKind::KwStatic) ||
+              at(TokenKind::KwReadonly) || at(TokenKind::KwConst) ||
               at(TokenKind::KwVirtual) || at(TokenKind::KwOverride) ||
               at(TokenKind::KwAbstract) || at(TokenKind::KwSealed) ||
               at(TokenKind::KwExport) || at(TokenKind::KwExtern)))
@@ -2285,6 +2340,19 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
         }
         {
         const lexer::Token& modifier = consume();
+        if (modifier.kind() == TokenKind::KwNew)
+        {
+            if (isNew)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate new modifier on class member");
+            }
+            isNew = true;
+            continue;
+        }
         if (modifier.kind() == TokenKind::KwVirtual)
         {
             if (isVirtual)
@@ -2522,6 +2590,14 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
             current().range(),
             "a method cannot be declared both virtual and override");
     }
+    if (isNew && isOverride)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "a member cannot be both new and override");
+    }
     if (isStatic && (isVirtual || isOverride || isAbstract || isSealed))
     {
         diagnostics_.report(
@@ -2573,7 +2649,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
 
     if (at(TokenKind::Tilde))
     {
-        if (accessibility != TokenKind::Invalid || isStatic || isReadonly || isConst ||
+        if (accessibility != TokenKind::Invalid || isNew || isStatic || isReadonly || isConst ||
             isVirtual || isOverride || isAbstract || isSealed || isExported || isExternC)
         {
             diagnostics_.report(
@@ -2588,7 +2664,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
     if (at(TokenKind::Identifier) && current().lexeme() == className &&
         peek().kind() == TokenKind::LeftParen)
     {
-        if (isVirtual || isOverride || isStatic || isReadonly || isConst || isAbstract || isSealed ||
+        if (isNew || isVirtual || isOverride || isStatic || isReadonly || isConst || isAbstract || isSealed ||
             isExported || isExternC)
         {
             diagnostics_.report(
@@ -2610,7 +2686,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isReadonly || isConst || isVirtual || isOverride || isAbstract || isSealed)
+        if (isNew || isReadonly || isConst || isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -2633,7 +2709,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isReadonly || isConst || isVirtual || isOverride || isAbstract || isSealed)
+        if (isNew || isReadonly || isConst || isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -2641,7 +2717,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 current().range(),
                 "Stage 42 events support accessibility and optional static only");
         }
-        return parseEventTail(accessibility, isStatic, beginIndex);
+        return parseEventTail(accessibility, isNew, isStatic, beginIndex);
     }
 
     // NSC-LIMIT-009. `partial` no entra en el bucle de modificadores de arriba --es contextual, y
@@ -2671,6 +2747,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
         return parseNestedTypeDeclaration(
             NestedTypeModifiers{
                 accessibility,
+                isNew,
                 isStatic,
                 isReadonly,
                 isConst,
@@ -2737,7 +2814,8 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 "indexers are instance members and cannot be static, readonly, or const");
         }
         return parseIndexerTail(
-            type, accessibility, isVirtual, isOverride, isAbstract, isSealed, beginIndex, false);
+            type, accessibility, isNew, isVirtual, isOverride, isAbstract, isSealed,
+            beginIndex, false);
     }
 
     if (!at(TokenKind::Identifier))
@@ -2769,7 +2847,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 "readonly and const modifiers are valid only on fields in Stage 37");
         }
         return parseMethodTail(
-            type, name, accessibility, isStatic, isVirtual, isOverride, isAbstract, isSealed,
+            type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
             isExported, isExternC, beginIndex);
     }
 
@@ -2792,7 +2870,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 "readonly and const modifiers are not property modifiers; use accessor restrictions instead");
         }
         return parsePropertyTail(
-            type, name, accessibility, isStatic, isVirtual, isOverride, isAbstract, isSealed,
+            type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
             beginIndex, false);
     }
 
@@ -2845,6 +2923,10 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
     {
         field->addModifier(TokenKind::KwStatic);
     }
+    if (isNew)
+    {
+        field->addModifier(TokenKind::KwNew);
+    }
     if (isReadonly)
     {
         field->addModifier(TokenKind::KwReadonly);
@@ -2876,6 +2958,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
 
 ast::AstNode* Parser::parseEventTail(
     TokenKind accessibility,
+    bool isNew,
     bool isStatic,
     std::size_t beginIndex)
 {
@@ -2908,6 +2991,7 @@ ast::AstNode* Parser::parseEventTail(
         event->addModifier(accessibility);
     }
     if (isStatic) event->addModifier(TokenKind::KwStatic);
+    if (isNew) event->addModifier(TokenKind::KwNew);
 
     // Stage 42 event storage is an implementation detail.  Keep it as a native
     // pointer-sized field of the delegate type so layout/static-init machinery is reused.
@@ -3015,6 +3099,7 @@ ast::AstNode* Parser::parsePropertyTail(
     ast::TypeSyntax* propertyType,
     const lexer::Token& name,
     TokenKind accessibility,
+    bool isNew,
     bool isStatic,
     bool isVirtual,
     bool isOverride,
@@ -3034,6 +3119,7 @@ ast::AstNode* Parser::parsePropertyTail(
         property->addModifier(accessibility);
     }
     if (isStatic) property->addModifier(TokenKind::KwStatic);
+    if (isNew) property->addModifier(TokenKind::KwNew);
     if (isVirtual) property->addModifier(TokenKind::KwVirtual);
     if (isOverride) property->addModifier(TokenKind::KwOverride);
     if (isAbstract || interfaceContext) property->addModifier(TokenKind::KwAbstract);
@@ -3113,6 +3199,7 @@ ast::AstNode* Parser::parsePropertyTail(
             isSealed,
             std::string("property:") + (getter ? "get:" : "set:") + propertyName,
             accessorRange);
+        if (isNew) accessor->addModifier(TokenKind::KwNew);
         if (setter)
         {
             ast::AstNode* value = arena_.make<ast::AstNode>(
@@ -3165,6 +3252,27 @@ ast::AstNode* Parser::parsePropertyTail(
     }
     expect(TokenKind::RightBrace, "'}'");
 
+    // C#-compatible auto-property initializer.  A property is represented by accessor methods
+    // plus a compiler-generated backing field, so the initializer belongs to that field: this
+    // deliberately reuses the complete Stage 37 field-initializer pipeline (type checking,
+    // ownership and instance/static lowering) instead of inventing a second initialization path.
+    ast::AstNode* propertyInitializer = nullptr;
+    if (consumeIf(TokenKind::Equal))
+    {
+        propertyInitializer = at(TokenKind::LeftBrace)
+            ? parseAggregateInitializer()
+            : parseExpression();
+        expect(TokenKind::Semicolon, "';'");
+        if (!sawAutomatic || sawExplicit || interfaceContext || isAbstract)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                property->range(),
+                "a property initializer requires a non-abstract automatic property");
+        }
+    }
+
     // Set-only properties: NO soportadas, y el motivo real esta un piso mas abajo que aqui.
     //
     // Se intento permitirlas quitando este rechazo, porque un setter con cuerpo explicito es un
@@ -3213,6 +3321,7 @@ ast::AstNode* Parser::parsePropertyTail(
         backing->setTokenKind(TokenKind::KwPrivate);
         backing->addModifier(TokenKind::KwPrivate);
         if (isStatic) backing->addModifier(TokenKind::KwStatic);
+        backing->setFirst(propertyInitializer);
         property->addChild(backing);
     }
     for (ast::AstNode* accessor : accessors)
@@ -3226,6 +3335,7 @@ ast::AstNode* Parser::parsePropertyTail(
 ast::AstNode* Parser::parseIndexerTail(
     ast::TypeSyntax* elementType,
     TokenKind accessibility,
+    bool isNew,
     bool isVirtual,
     bool isOverride,
     bool isAbstract,
@@ -3245,6 +3355,7 @@ ast::AstNode* Parser::parseIndexerTail(
         indexer->addModifier(accessibility);
     }
     if (isVirtual) indexer->addModifier(TokenKind::KwVirtual);
+    if (isNew) indexer->addModifier(TokenKind::KwNew);
     if (isOverride) indexer->addModifier(TokenKind::KwOverride);
     if (isAbstract || interfaceContext) indexer->addModifier(TokenKind::KwAbstract);
     if (isSealed) indexer->addModifier(TokenKind::KwSealed);
@@ -3328,6 +3439,7 @@ ast::AstNode* Parser::parseIndexerTail(
             isSealed,
             std::string("indexer:") + (getter ? "get:Item" : "set:Item"),
             accessorRange);
+        if (isNew) accessor->addModifier(TokenKind::KwNew);
         for (ast::AstNode* parameter : indexParameters) accessor->addChild(parameter);
         if (setter)
         {
@@ -3681,7 +3793,7 @@ ast::AstNode* Parser::parseConstructorTail(
             {
                 while (true)
                 {
-                    ast::AstNode* argument = parseExpression();
+                    ast::AstNode* argument = parseArgument();
                     if (argument != nullptr)
                     {
                         initializer->addChild(argument);
@@ -3720,6 +3832,7 @@ ast::AstNode* Parser::parseMethodTail(
     ast::TypeSyntax* returnType,
     const lexer::Token& name,
     TokenKind accessibility,
+    bool isNew,
     bool isStatic,
     bool isVirtual,
     bool isOverride,
@@ -3742,6 +3855,10 @@ ast::AstNode* Parser::parseMethodTail(
     if (isStatic)
     {
         method->addModifier(TokenKind::KwStatic);
+    }
+    if (isNew)
+    {
+        method->addModifier(TokenKind::KwNew);
     }
     if (isVirtual)
     {
@@ -5467,7 +5584,7 @@ ast::AstNode* Parser::parseUnaryExpression()
             {
                 while (true)
                 {
-                    creation->addChild(parseAssignmentExpression());
+                    creation->addChild(parseArgument());
                     if (!consumeIf(TokenKind::Comma))
                     {
                         break;
@@ -5547,6 +5664,43 @@ ast::AstNode* Parser::parseUnaryExpression()
     return parsePostfixExpression();
 }
 
+ast::AstNode* Parser::parseArgument()
+{
+    std::string argumentName;
+    if (at(TokenKind::Identifier) && peek().kind() == TokenKind::Colon)
+    {
+        argumentName = std::string(consume().lexeme());
+        consume();
+    }
+
+    // A named by-reference argument is written `name: ref value`, as in C#.
+    const bool refArgument = (atContextualKeyword("ref") || atContextualKeyword("out") ||
+        at(TokenKind::KwIn)) && peek().kind() != TokenKind::Comma &&
+        peek().kind() != TokenKind::RightParen;
+    ast::AstNode* argument = nullptr;
+    if (refArgument)
+    {
+        const lexer::Token& keyword = consume();
+        const std::string spelling =
+            keyword.kind() == TokenKind::KwIn ? "in" : std::string(keyword.lexeme());
+        ast::AstNode* operand = parseAssignmentExpression();
+        argument = arena_.make<ast::AstNode>(ast::AstNodeKind::UnaryExpression, keyword.range());
+        argument->setTokenKind(TokenKind::Amp);
+        argument->setFirst(operand);
+        argument->setAuxiliaryText("pass:" + spelling);
+        if (operand != nullptr) argument->setRange(join(keyword.range(), operand->range()));
+    }
+    else
+    {
+        argument = parseAssignmentExpression();
+    }
+    if (argument != nullptr && !argumentName.empty())
+    {
+        argument->setArgumentName(std::move(argumentName));
+    }
+    return argument;
+}
+
 ast::AstNode* Parser::parsePostfixExpression()
 {
     // ID 131. `Caja<int>.Make(...)`: el receptor es un TIPO CERRADO, no una expresion. Se lee con
@@ -5597,30 +5751,7 @@ ast::AstNode* Parser::parsePostfixExpression()
                     // parameter expects -- one shape, already certified -- and the keyword is
                     // recorded so the frontend can insist that the call site and the signature
                     // agree about it.
-                    const bool refArgument = (atContextualKeyword("ref") || atContextualKeyword("out") ||
-                        at(TokenKind::KwIn)) && peek().kind() != TokenKind::Comma &&
-                        peek().kind() != TokenKind::RightParen;
-                    if (refArgument)
-                    {
-                        const lexer::Token& keyword = consume();
-                        const std::string spelling =
-                            keyword.kind() == TokenKind::KwIn ? "in" : std::string(keyword.lexeme());
-                        ast::AstNode* operand = parseAssignmentExpression();
-                        ast::AstNode* address = arena_.make<ast::AstNode>(
-                            ast::AstNodeKind::UnaryExpression, keyword.range());
-                        address->setTokenKind(TokenKind::Amp);
-                        address->setFirst(operand);
-                        address->setAuxiliaryText("pass:" + spelling);
-                        if (operand != nullptr)
-                        {
-                            address->setRange(join(keyword.range(), operand->range()));
-                        }
-                        call->addChild(address);
-                    }
-                    else
-                    {
-                        call->addChild(parseAssignmentExpression());
-                    }
+                    call->addChild(parseArgument());
                     if (!consumeIf(TokenKind::Comma))
                     {
                         break;

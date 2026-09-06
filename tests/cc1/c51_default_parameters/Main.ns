@@ -12,8 +12,55 @@ namespace c51defaultparameters
         }
     }
 
+    public class Encoder
+    {
+        public virtual int Encode(int first, int second = 2, int third = 3)
+        {
+            return first * 100 + second * 10 + third;
+        }
+    }
+
+    public class BasePair
+    {
+        public int Value;
+
+        public BasePair(int first, int second = 2)
+        {
+            Value = first + second;
+        }
+    }
+
+    public class DerivedPair : BasePair
+    {
+        public DerivedPair() : base(second: 2, first: 40)
+        {
+        }
+    }
+
+    public class DelegatingPair
+    {
+        public int Value;
+
+        public DelegatingPair() : this(second: 2, first: 40)
+        {
+        }
+
+        public DelegatingPair(int first, int second)
+        {
+            Value = first + second;
+        }
+    }
+
     public class Program
     {
+        private static int trace = 0;
+
+        private static int Mark(int value, int digit)
+        {
+            trace = trace * 10 + digit;
+            return value;
+        }
+
         private static float AddBoxObstacle(float value, float angle = 0.0f)
         {
             return value + angle;
@@ -39,6 +86,11 @@ namespace c51defaultparameters
             return value.Length;
         }
 
+        private static int Encode(int first, int second = 2, int third = 3)
+        {
+            return first * 100 + second * 10 + third;
+        }
+
         public static int Main()
         {
             if (AddBoxObstacle(42.0f) != 42.0f) { return 1; }
@@ -48,6 +100,38 @@ namespace c51defaultparameters
             Offset offset = new Offset(40);
             if (offset.Value != 42) { return 5; }
             if (TextLength() != 11) { return 6; }
+
+            // Named arguments bind by declaration name, while every expression is still
+            // evaluated exactly once and in source order (3, 1, 2), not parameter order.
+            trace = 0;
+            if (Encode(
+                    third: Mark(3, 3),
+                    first: Mark(1, 1),
+                    second: Mark(2, 2)) != 123) { return 7; }
+            if (trace != 312) { return 8; }
+
+            // A named argument may skip an optional parameter in the middle.
+            if (Sum(third: 2, first: 20) != 42) { return 9; }
+
+            // Constructors use the same mapping and the same source-order evaluation rule.
+            trace = 0;
+            Offset namedOffset = new Offset(
+                amount: Mark(2, 2),
+                value: Mark(40, 1));
+            if (namedOffset.Value != 42) { return 10; }
+            if (trace != 21) { return 11; }
+
+            trace = 0;
+            Encoder encoder = new Encoder();
+            if (encoder.Encode(
+                    third: Mark(3, 3),
+                    first: Mark(1, 1),
+                    second: Mark(2, 2)) != 123) { return 12; }
+            if (trace != 312) { return 13; }
+            DerivedPair derived = new DerivedPair();
+            if (derived.Value != 42) { return 14; }
+            DelegatingPair delegated = new DelegatingPair();
+            if (delegated.Value != 42) { return 15; }
             return Choose(0);
         }
     }

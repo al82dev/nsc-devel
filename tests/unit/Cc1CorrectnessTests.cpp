@@ -750,8 +750,9 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c50_inferred_array_initializer/c50_inferred_array_initializer.nsproj",
         "cc1-c50-inferred-array-initializer", 42);
 
-    // NSC-LIMIT-020. Literal defaults are supplied for omitted trailing parameters, explicit
-    // arguments still win, and overload resolution prefers the candidate requiring no defaults.
+    // NSC-LIMIT-020 + C#-compatible named arguments. Literal defaults fill omitted parameters,
+    // names select declaration ordinals, and evaluation remains left-to-right even when ABI
+    // parameter order differs. The fixture covers static calls and constructors at O0 and O2.
     checkFixture(
         tests, root, "tests/cc1/c51_default_parameters/c51_default_parameters.nsproj",
         "cc1-c51-default-parameters", 42);
