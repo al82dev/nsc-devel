@@ -451,6 +451,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::MoveValue: return "move-value";
         case ProjectOopMirNodeKind::MoveArrayElement: return "move-array-element";
         case ProjectOopMirNodeKind::MoveOwnedField: return "move-owned-field";
+        case ProjectOopMirNodeKind::OwnedTemporaryBorrow: return "owned-temporary-borrow";
+        case ProjectOopMirNodeKind::FullExpressionCleanup: return "full-expression-cleanup";
         case ProjectOopMirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopMirNodeKind::RawElementAddress: return "raw-element-address";
         case ProjectOopMirNodeKind::StackAllocation: return "stack-allocation";
@@ -1093,6 +1095,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::MoveOwnedField:
             result->kind = ProjectOopMirNodeKind::MoveOwnedField;
+            break;
+        case ProjectOopHirNodeKind::OwnedTemporaryBorrow:
+            result->kind = ProjectOopMirNodeKind::OwnedTemporaryBorrow;
+            break;
+        case ProjectOopHirNodeKind::FullExpressionCleanup:
+            result->kind = ProjectOopMirNodeKind::FullExpressionCleanup;
             break;
         case ProjectOopHirNodeKind::RawElementAddress:
         {

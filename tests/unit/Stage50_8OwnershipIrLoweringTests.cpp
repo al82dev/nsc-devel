@@ -78,6 +78,11 @@ class Api
         return value;
     }
 
+    public static int InspectString(borrowed string value)
+    {
+        return 0;
+    }
+
     public static int Run()
     {
         raii Resource first = new Resource(1);
@@ -91,7 +96,30 @@ class Api
         raii Resource fourth = Forward(move(third));
         borrowed Resource finalView = fourth;
         Inspect(finalView);
+        int temporaryObserved = InspectString("a" + "b");
         return fourth.Read();
+    }
+}
+
+class ArrayOwner
+{
+    private owned int[] items;
+
+    public ArrayOwner()
+    {
+        items = new int[4];
+    }
+
+    public void Grow()
+    {
+        const int[] replacement = new int[8];
+        delete[] items;
+        items = replacement;
+    }
+
+    ~ArrayOwner()
+    {
+        delete[] items;
     }
 }
 )NS");
@@ -196,6 +224,12 @@ void testOwnershipIr(TestContext& tests, const std::filesystem::path& root)
         "HIR explicitly materializes borrow operations at local, call and return boundaries");
     tests.expect(countKind(mirNodes, ProjectOopMirNodeKind::BorrowValue) >= 5,
         "MIR preserves explicit borrow operations without turning them into owners");
+    tests.expect(countKind(hirNodes, ProjectOopHirNodeKind::OwnedTemporaryBorrow) == 1 &&
+            countKind(hirNodes, ProjectOopHirNodeKind::FullExpressionCleanup) == 1,
+        "HIR gives a fresh string argument one hidden owner bounded by its full expression");
+    tests.expect(countKind(mirNodes, ProjectOopMirNodeKind::OwnedTemporaryBorrow) == 1 &&
+            countKind(mirNodes, ProjectOopMirNodeKind::FullExpressionCleanup) == 1,
+        "MIR preserves the temporary owner and its exact cleanup boundary");
     tests.expect(std::ranges::any_of(hirNodes, [](const ProjectOopHirNode* node)
         {
             return node != nullptr && node->kind == ProjectOopHirNodeKind::MoveValue &&
@@ -271,6 +305,11 @@ void testOwnershipIr(TestContext& tests, const std::filesystem::path& root)
     tests.expect(ir.find("personality ptr @__C_specific_handler") != std::string::npos &&
             ir.find("cleanuppad within none") != std::string::npos,
         "owned-parameter cleanups reuse the existing Win64 exceptional cleanup machinery");
+    tests.expect(ir.find("string.concat") != std::string::npos &&
+            ir.find("raii.owner.cleanup") != std::string::npos,
+        "LLVM materializes and releases the fresh string owner on the successful call path");
+    tests.expect(ir.find("owned.field.previous.descriptor") == std::string::npos,
+        "owned native-array field replacement keeps explicit delete[] semantics instead of class dispatch");
 }
 }
 

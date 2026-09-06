@@ -201,6 +201,32 @@ void testPositiveBorrowCalls(TestContext& tests, const std::filesystem::path& ro
         "method-body dump exposes Stage 50.4 borrow categories");
 }
 
+void testFreshOwnedStringTemporaryBorrow(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "FreshOwnedStringTemporary";
+    writeProject(directory, "FreshOwnedStringTemporary", R"NS(
+class Api
+{
+    public static int Inspect(borrowed string value) { return 2; }
+    public static int Run() { return Inspect("a" + "b"); }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectMethodBodies(
+        directory / "FreshOwnedStringTemporary.nsproj", error);
+    tests.expect(ok, "a fresh owned string temporary may be borrowed for one complete call expression");
+    tests.expect(error.empty(), "fresh owned string temporary borrow has no loader/internal error");
+    if (!ok || compilation.methodBodyModel() == nullptr) return;
+    tests.expect(std::ranges::count_if(
+        compilation.methodBodyModel()->borrowBindings(), [](const auto& borrow)
+        {
+            return borrow.kind == MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+        }) == 1,
+        "the temporary borrow is explicit in the semantic model rather than accepted as an untracked alias");
+}
+
 void testNegativeBorrowCalls(TestContext& tests, const std::filesystem::path& root)
 {
     const std::string prefix = resourcePrefix();
@@ -262,6 +288,14 @@ class Api
     public static void Run() { Inspect(new Resource(1)); }
 }
 )NS", "borrowed parameter 'value' requires a checked owner or borrowed source");
+
+    expectInvalid(tests, root, "TemporaryIntoPotentiallyRetainingParameter", R"NS(
+class Api
+{
+    public static int Retain(string value) { return 2; }
+    public static int Run() { return Retain("a" + "b"); }
+}
+)NS", "ownership-transfer argument requires an owned parameter");
 }
 }
 
@@ -275,6 +309,7 @@ int main()
     std::filesystem::create_directories(root);
 
     testPositiveBorrowCalls(tests, root);
+    testFreshOwnedStringTemporaryBorrow(tests, root);
     testNegativeBorrowCalls(tests, root);
 
     std::filesystem::remove_all(root, ignored);

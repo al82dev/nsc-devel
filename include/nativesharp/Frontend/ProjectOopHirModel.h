@@ -60,6 +60,10 @@ enum class ProjectOopHirNodeKind
     // nulling the vacated slot. Address-shaped exactly like MoveArrayElement; kept as its own
     // kind so IR dumps say what the source actually was.
     MoveOwnedField,
+    // NSC-LIMIT-021. The inner value is a fresh owner lent as a call argument. The node gives it
+    // a hidden slot/cleanup identity; FullExpressionCleanup below closes that lifetime.
+    OwnedTemporaryBorrow,
+    FullExpressionCleanup,
     // Interop Foundation: `*pointer` as a VALUE -- load of the pointee type through a raw
     // pointer. (`&lvalue` and `*p` as an assignment target need no node of their own: they are
     // the operand's address / the pointer's value, respectively.)
@@ -534,6 +538,20 @@ private:
         std::unique_ptr<ProjectOopHirNode> value,
         const ProjectImplicitConversion& conversion,
         const ast::AstNode* syntax);
+    std::unique_ptr<ProjectOopHirNode> wrapCallArgumentBorrow(
+        std::unique_ptr<ProjectOopHirNode> value,
+        const ast::AstNode* argumentSyntax,
+        std::size_t targetMemberOrdinal,
+        std::size_t targetParameterOrdinal,
+        bool& hasOwnedTemporary);
+    std::unique_ptr<ProjectOopHirNode> wrapFullExpressionCleanup(
+        std::unique_ptr<ProjectOopHirNode> value,
+        const ast::AstNode* syntax,
+        bool hasOwnedTemporary);
+    std::unique_ptr<ProjectOopHirNode> lowerDefaultArgument(
+        const ast::AstNode* syntax,
+        std::string_view parameterTypeKey,
+        std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerInstanceFieldInitialization(
         std::size_t fieldMemberOrdinal,
         std::string& error);
@@ -630,6 +648,8 @@ private:
     std::vector<std::size_t> activeHirCleanupRegions_;
     std::vector<HirExceptionHandlerContext> activeHirExceptionHandlers_;
     std::size_t nextHirRegionOrdinal_ = 0;
+    std::size_t nextSyntheticLocalOrdinal_ = 0;
+    std::size_t nextSyntheticCleanupRegionOrdinal_ = 0;
     bool built_ = false;
 };
 

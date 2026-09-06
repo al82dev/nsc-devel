@@ -7519,7 +7519,7 @@ build install\local: phony CMakeFiles\install\local.util
 # Custom command for CMakeFiles\nsc_build_identity
 
 build CMakeFiles\nsc_build_identity generated\nativesharp\Basic\BuildId.h | ${cmake_ninja_workdir}CMakeFiles\nsc_build_identity ${cmake_ninja_workdir}generated\nativesharp\Basic\BuildId.h: CUSTOM_COMMAND
-  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D A:\nsc-devel\build-test-lldlinker && A:\apps\cmake\bin\cmake.exe -DNSC_OUTPUT=A:/nsc-devel/build-test-lldlinker/generated/nativesharp/Basic/BuildId.h -DNSC_TEMPLATE=A:/nsc-devel/include/nativesharp/Basic/BuildId.h.in -DNSC_VERSION_BASE=0.7.6-alpha -P A:/nsc-devel/cmake/GenerateBuildIdentity.cmake"
+  COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D A:\nsc-devel\build-test-lldlinker && A:\apps\cmake\bin\cmake.exe -DNSC_OUTPUT=A:/nsc-devel/build-test-lldlinker/generated/nativesharp/Basic/BuildId.h -DNSC_TEMPLATE=A:/nsc-devel/include/nativesharp/Basic/BuildId.h.in -DNSC_VERSION_BASE=0.8.0-alpha -P A:/nsc-devel/cmake/GenerateBuildIdentity.cmake"
   DESC = Generando version unica para esta construccion de nsc
   restat = 1
 

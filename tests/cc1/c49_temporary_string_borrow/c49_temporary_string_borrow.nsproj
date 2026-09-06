@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>c49_temporary_string_borrow</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

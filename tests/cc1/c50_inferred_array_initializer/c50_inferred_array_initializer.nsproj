@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>c50_inferred_array_initializer</Name></PropertyGroup>
+  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+</Project>

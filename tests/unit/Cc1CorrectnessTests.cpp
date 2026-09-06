@@ -736,6 +736,32 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c48_constraints_cross_project/c48_constraints_cross_project.nsproj",
         "cc1-c48-constraints-cross-project", 42);
 
+    // NSC-LIMIT-021. Fresh owned strings are materialized as hidden full-expression owners when
+    // lent to an explicit borrowed parameter or to the audited non-retaining Core surface. Two
+    // simultaneous temporaries pin reverse cleanup; String.Copy and Console pin both lowering
+    // paths that originally forced Saru to introduce named `raii` workarounds.
+    checkFixture(
+        tests, root, "tests/cc1/c49_temporary_string_borrow/c49_temporary_string_borrow.nsproj",
+        "cc1-c49-temporary-string-borrow", 42);
+
+    // NSC-LIMIT-017. Count inference, trailing comma, left-to-right single evaluation and value
+    // conversion/storage for primitive and struct elements.
+    checkFixture(
+        tests, root, "tests/cc1/c50_inferred_array_initializer/c50_inferred_array_initializer.nsproj",
+        "cc1-c50-inferred-array-initializer", 42);
+
+    // NSC-LIMIT-020. Literal defaults are supplied for omitted trailing parameters, explicit
+    // arguments still win, and overload resolution prefers the candidate requiring no defaults.
+    checkFixture(
+        tests, root, "tests/cc1/c51_default_parameters/c51_default_parameters.nsproj",
+        "cc1-c51-default-parameters", 42);
+
+    // NSC-LIMIT-018. Unused members of a closed generic type do not impose operations on T;
+    // List<Pair>.Add/indexer compile although Pair deliberately has no natural ordering.
+    checkFixture(
+        tests, root, "tests/cc1/c52_lazy_generic_members/c52_lazy_generic_members.nsproj",
+        "cc1-c52-lazy-generic-members", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,
@@ -1483,6 +1509,75 @@ namespace limit009u.A
             ir2.find("__nsc_method_ir$3A$3Alimit009u$2EA$2EB__Valor") != std::string::npos,
             "cc1-limit009-simbolos: el punto de un namespace NO es un subrayado");
     }
+
+    // NSC-LIMIT-018, lado negativo. La pereza elimina requisitos de miembros NO usados; no
+    // convierte un cuerpo invalido en valido cuando el programa realmente lo selecciona.
+    checkRejected(
+        tests, root, "cc1-limit018-used-generic-member-still-validates",
+        R"NS(
+namespace limit018used
+{
+    struct Pair { public int X; }
+    class Box<T>
+    {
+        public int Good(T value) { return 42; }
+        public bool NeedsOrder(T left, T right) { return left < right; }
+    }
+    class P
+    {
+        public static int Main()
+        {
+            Box<Pair> box = new Box<Pair>();
+            Pair a; Pair b;
+            return box.NeedsOrder(a, b) ? 1 : 0;
+        }
+    }
+}
+)NS",
+        "there is no ordering over its fields");
+
+    checkRejected(
+        tests, root, "cc1-limit020-required-after-optional",
+        R"NS(
+namespace limit020order
+{
+    class P
+    {
+        static int F(int first = 1, int second) { return first + second; }
+        public static int Main() { return 42; }
+    }
+}
+)NS",
+        "cannot follow a parameter with a default value");
+
+    checkRejected(
+        tests, root, "cc1-limit020-default-must-be-constant",
+        R"NS(
+namespace limit020constant
+{
+    class P
+    {
+        static int Value() { return 1; }
+        static int F(int value = Value()) { return value; }
+        public static int Main() { return 42; }
+    }
+}
+)NS",
+        "default parameter value must be a literal constant");
+
+    checkRejected(
+        tests, root, "cc1-limit020-default-type",
+        R"NS(
+namespace limit020type
+{
+    class P
+    {
+        static int F(int value = "wrong") { return value; }
+        public static int Main() { return 42; }
+    }
+}
+)NS",
+        "default value cannot convert to parameter type 'builtin:int'");
 
     // =====================================================================================
     // NSC-LIMIT-007 -- los constraints que NO se satisfacen, y las clausulas mal escritas.

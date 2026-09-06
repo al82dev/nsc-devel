@@ -1,0 +1,44 @@
+// NSC-LIMIT-017 -- compact native-array initialization is equivalent to new T[n] followed by
+// left-to-right indexed stores. The runner executes this at -O0 and -O2; success is 42.
+namespace c50arrayinitializer
+{
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+        public Pair(int left, int right) { Left = left; Right = right; }
+    }
+
+    public class Program
+    {
+        private static int sequence;
+
+        private static int Next(int value)
+        {
+            sequence = sequence * 10 + value;
+            return value;
+        }
+
+        private static int ScopedArrayBuffer()
+        {
+            raii int[] first = new int[] { 20, 22 };
+            raii int[] owner = move(first);
+            return owner[0] + owner[1];
+        }
+
+        public static int Main()
+        {
+            int[] values = new int[] { Next(1), Next(2), Next(3), };
+            if (sequence != 123) { return 8; }
+            if (values.Length != 3) { return 9; }
+            if (ScopedArrayBuffer() != 42) { return 11; }
+
+            Pair[] pairs = new Pair[] { new Pair(10, 11), new Pair(9, 12) };
+            int result = values[0] + values[1] + values[2] +
+                pairs[0].Left + pairs[0].Right + pairs[1].Right;
+            delete[] pairs;
+            delete[] values;
+            return result == 39 ? 42 : 10;
+        }
+    }
+}

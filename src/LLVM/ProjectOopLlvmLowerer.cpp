@@ -2556,6 +2556,7 @@ private:
     {
         if (node == nullptr || !error.empty()) return;
         if ((node->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
+             node->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow ||
              node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
              node->kind == frontend::ProjectOopMirNodeKind::CatchRegion) &&
             node->localOrdinal.has_value())
@@ -2631,6 +2632,7 @@ private:
             case frontend::ProjectOopMirNodeKind::FinallyRegion:
             case frontend::ProjectOopMirNodeKind::UsingRegion:
             case frontend::ProjectOopMirNodeKind::LocalDeclaration:
+            case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
             case frontend::ProjectOopMirNodeKind::OwnedParameterCleanup:
                 if (node->cleanupRegionOrdinal.has_value()) return true;
                 break;
@@ -2667,6 +2669,7 @@ private:
         if ((node->kind == frontend::ProjectOopMirNodeKind::FinallyRegion ||
              node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
              node->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
+             node->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow ||
              node->kind == frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) &&
             node->cleanupRegionOrdinal.has_value())
         {
@@ -3121,7 +3124,9 @@ private:
 
     bool emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error)
     {
-        if (node == nullptr || node->kind != frontend::ProjectOopMirNodeKind::LocalDeclaration ||
+        if (node == nullptr ||
+            (node->kind != frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+             node->kind != frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow) ||
             !node->localOrdinal.has_value() || !node->cleanupRegionOrdinal.has_value())
         {
             return fail(error, "Stage 49 RAII cleanup is missing local/region identity");
@@ -3140,7 +3145,7 @@ private:
         // pointer") turned out not to, so this LLVM layer no longer assumes it silently here
         // either -- if a future MIR change ever let a value-typed cleanup node through, this
         // still degrades to a safe no-op instead of loading/storing an alloca as a pointer.
-        if (!requiresOwnedDestruction(node->typeKey))
+        if (!requiresOwnedDestruction(node->typeKey) && !node->typeKey.ends_with("[]"))
         {
             return true;
         }
@@ -3157,7 +3162,7 @@ private:
         // scope exit. The volatile flag below is what turns "the cleanup may be entered twice" into
         // "the destructor runs exactly once".
         emitCleanupGuardBranch(found->second, value, destroyBlock, doneBlock, "raii.owner");
-        if (node->typeKey == "builtin:string")
+        if (node->typeKey == "builtin:string" || node->typeKey.ends_with("[]"))
         {
             LLVMValueRef arguments[] = {value};
             buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
@@ -3274,7 +3279,8 @@ private:
         {
             return emitUsingDispose(cleanup, error);
         }
-        if (cleanup->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+        if ((cleanup->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
+             cleanup->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow) &&
             cleanup->cleanupRegionOrdinal.has_value())
         {
             return emitRaiiDestroy(cleanup, error);
@@ -4662,6 +4668,46 @@ private:
                 }
                 return value;
             }
+            case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
+            {
+                if (node->children.size() != 1 || node->children.front() == nullptr ||
+                    !node->localOrdinal.has_value() || !node->cleanupRegionOrdinal.has_value())
+                {
+                    return failValue(
+                        error, "NSC-LIMIT-021 owned temporary borrow is missing value/storage/cleanup identity");
+                }
+                const auto storage = localStorage_.find(*node->localOrdinal);
+                if (storage == localStorage_.end() || storage->second == nullptr)
+                {
+                    return failValue(error, "NSC-LIMIT-021 owned temporary borrow has no hidden owner slot");
+                }
+                // Evaluate before activating the cleanup: if construction itself throws, no owner
+                // exists. Once stored, later arguments and the call see this region and unwind it.
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMBuildStore(builder_, value, storage->second);
+                activeCleanupRegions_.push_back(*node->cleanupRegionOrdinal);
+                return value;
+            }
+            case frontend::ProjectOopMirNodeKind::FullExpressionCleanup:
+            {
+                if (node->children.size() != 1 || node->children.front() == nullptr)
+                {
+                    return failValue(error, "NSC-LIMIT-021 full expression requires exactly one value");
+                }
+                const std::size_t retainedDepth = activeCleanupRegions_.size();
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                std::vector<std::size_t> temporaries(
+                    activeCleanupRegions_.begin() + static_cast<std::ptrdiff_t>(retainedDepth),
+                    activeCleanupRegions_.end());
+                activeCleanupRegions_.resize(retainedDepth);
+                for (auto it = temporaries.rbegin(); it != temporaries.rend(); ++it)
+                {
+                    if (!emitCleanupAction(*it, error)) return nullptr;
+                }
+                return value;
+            }
             case frontend::ProjectOopMirNodeKind::Conditional:
                 return lowerConditional(node, error);
             case frontend::ProjectOopMirNodeKind::BorrowValue:
@@ -5749,6 +5795,12 @@ private:
                     // field closed over a value type a no-op here -- the HIR flags every owned
                     // field store type-agnostically and this is the single point that decides, the
                     // same way the owned-parameter and raii-local cleanups already decide.
+                    //
+                    // Native array fields deliberately stay out of this path. Core containers use
+                    // the explicit low-level contract `delete[] field; field = replacement;`.
+                    // Dispatching the dangling old array as though its length header were a class
+                    // descriptor double-frees on the first capacity growth. `raii T[]` locals are
+                    // handled by emitRaiiDestroy and do not need field replacement semantics here.
                     LLVMTypeRef ptrType = LLVMPointerTypeInContext(context_, 0);
                     LLVMValueRef previous = LLVMBuildLoad2(
                         builder_, ptrType, address, "owned.field.previous");
@@ -7180,8 +7232,10 @@ private:
 
     LLVMValueRef lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
     {
-        if (node->children.size() != 1 || node->immediate == 0 || node->alignment == 0)
+        if (node->children.empty() || node->immediate == 0 || node->alignment == 0)
             return failValue(error, "Stage 41 array allocation has invalid MIR layout/count");
+        if (!node->booleanValue && node->children.size() != 1)
+            return failValue(error, "Stage 41 counted array allocation cannot carry initializer elements");
         LLVMValueRef count = normalizeNativeIndex(node->children.front().get(), error);
         if (count == nullptr) return nullptr;
         if (isSignedInteger(node->children.front()->typeKey))
@@ -7221,6 +7275,20 @@ private:
             LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
         buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArgs, 4, "");
         LLVMBuildStore(builder_, count, memory);
+        // NSC-LIMIT-017. The first child is the inferred count; the remaining children are
+        // already converted element values. Initialize directly in the successful-allocation
+        // block, in source order, so every expression is evaluated once and a null allocation is
+        // never dereferenced.
+        LLVMTypeRef elementType = llvmType(node->elementTypeKey, error);
+        if (elementType == nullptr) return nullptr;
+        for (std::size_t index = 1; index < node->children.size(); ++index)
+        {
+            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            if (value == nullptr) return nullptr;
+            const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
+            LLVMValueRef address = byteOffset(memory, bytePosition, "array.init.element.addr");
+            LLVMBuildStore(builder_, value, address);
+        }
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);
         LLVMPositionBuilderAtEnd(builder_, mergeBlock);

@@ -43,6 +43,8 @@ enum class ProjectOopMirNodeKind
     MoveValue,
     MoveArrayElement,
     MoveOwnedField,
+    OwnedTemporaryBorrow,
+    FullExpressionCleanup,
     PointerLoad,
     // C2.1 "fixed arrays" -- see ProjectOopHirNodeKind::RawElementAddress. `immediate` carries the
     // element size in bytes, `alignment` its alignment.

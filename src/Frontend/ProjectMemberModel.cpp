@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -1099,6 +1100,7 @@ bool ProjectMemberModel::collectTypeMembers(
             if (symbol.kind == ClassMemberKind::Method || symbol.kind == ClassMemberKind::Constructor)
             {
                 std::unordered_map<std::string, const ast::AstNode*> parameterNames;
+                bool sawOptionalParameter = false;
                 for (const ast::AstNode* parameterNode : memberNode->children())
                 {
                     if (parameterNode == nullptr ||
@@ -1115,6 +1117,7 @@ bool ProjectMemberModel::collectTypeMembers(
                     parameter.fileId = part.fileId;
                     parameter.range = parameterNode->range();
                     parameter.syntax = parameterNode;
+                    parameter.defaultValueSyntax = parameterNode->first();
                     // C4 "language references": the parser already turned the written type into a
                     // pointer, so `typeKey` is `T*`. `pointeeTypeKey` is what the programmer
                     // wrote, and it is what a USE of the parameter inside the body evaluates to --
@@ -1130,6 +1133,101 @@ bool ProjectMemberModel::collectTypeMembers(
                         parameter.pointeeTypeKey = parameter.typeKey.empty() || parameter.typeKey.back() != '*'
                             ? parameter.typeKey
                             : parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
+                    }
+
+                    if (parameter.defaultValueSyntax != nullptr)
+                    {
+                        sawOptionalParameter = true;
+                        const ast::AstNodeKind defaultKind = parameter.defaultValueSyntax->kind();
+                        const bool literal = defaultKind == ast::AstNodeKind::IntegerLiteralExpression ||
+                            defaultKind == ast::AstNodeKind::FloatingLiteralExpression ||
+                            defaultKind == ast::AstNodeKind::CharacterLiteralExpression ||
+                            defaultKind == ast::AstNodeKind::StringLiteralExpression ||
+                            defaultKind == ast::AstNodeKind::BooleanLiteralExpression ||
+                            defaultKind == ast::AstNodeKind::NullLiteralExpression;
+                        const bool signedLiteral = defaultKind == ast::AstNodeKind::UnaryExpression &&
+                            (parameter.defaultValueSyntax->tokenKind() == lexer::TokenKind::Plus ||
+                             parameter.defaultValueSyntax->tokenKind() == lexer::TokenKind::Minus) &&
+                            parameter.defaultValueSyntax->first() != nullptr &&
+                            (parameter.defaultValueSyntax->first()->kind() ==
+                                 ast::AstNodeKind::IntegerLiteralExpression ||
+                             parameter.defaultValueSyntax->first()->kind() ==
+                                 ast::AstNodeKind::FloatingLiteralExpression);
+                        if (!literal && !signedLiteral)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.defaultValueSyntax->range(),
+                                "default parameter value must be a literal constant");
+                        }
+                        else
+                        {
+                            const ast::AstNode* valueSyntax = signedLiteral
+                                ? parameter.defaultValueSyntax->first()
+                                : parameter.defaultValueSyntax;
+                            const ast::AstNodeKind valueKind = valueSyntax->kind();
+                            bool compatible = false;
+                            if (valueKind == ast::AstNodeKind::IntegerLiteralExpression ||
+                                valueKind == ast::AstNodeKind::CharacterLiteralExpression)
+                            {
+                                compatible = ProjectTypeConversion::isNumeric(parameter.typeKey) &&
+                                    parameter.typeKey != "builtin:bool";
+                            }
+                            else if (valueKind == ast::AstNodeKind::FloatingLiteralExpression)
+                            {
+                                compatible = parameter.typeKey == "builtin:float" ||
+                                    parameter.typeKey == "builtin:double";
+                            }
+                            else if (valueKind == ast::AstNodeKind::BooleanLiteralExpression)
+                            {
+                                compatible = parameter.typeKey == "builtin:bool";
+                            }
+                            else if (valueKind == ast::AstNodeKind::StringLiteralExpression)
+                            {
+                                compatible = parameter.typeKey == "builtin:string" ||
+                                    parameter.typeKey == "builtin:char*";
+                            }
+                            else if (valueKind == ast::AstNodeKind::NullLiteralExpression)
+                            {
+                                const NamedTypeDeclaration* named =
+                                    namedTypeForKey(parameter.typeKey, nameLookup);
+                                compatible = parameter.typeKey == "builtin:string" ||
+                                    ProjectTypeConversion::isPointer(parameter.typeKey) ||
+                                    ProjectTypeConversion::isNativeArray(parameter.typeKey) ||
+                                    (named != nullptr &&
+                                     (named->kind == NamedTypeDeclarationKind::Class ||
+                                      named->kind == NamedTypeDeclarationKind::Interface ||
+                                      named->kind == NamedTypeDeclarationKind::Delegate));
+                            }
+                            if (!compatible)
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidConversion,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    parameter.defaultValueSyntax->range(),
+                                    "default value cannot convert to parameter type '" +
+                                        parameter.typeKey + "'");
+                            }
+                        }
+                        if (parameter.passKind != ParameterPassKind::Value ||
+                            parameter.ownership != sema::OwnershipKind::None)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                parameter.range,
+                                "default values are allowed only on unqualified value parameters");
+                        }
+                    }
+                    else if (sawOptionalParameter)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            parameter.range,
+                            "required parameter '" + parameter.name +
+                                "' cannot follow a parameter with a default value");
                     }
 
                     const std::string callableKind = symbol.kind == ClassMemberKind::Constructor

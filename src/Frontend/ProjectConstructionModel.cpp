@@ -548,7 +548,15 @@ void ProjectConstructionModel::bindConstructorInitializer(
         candidate.accessible = binding.kind == ConstructorInitializerKind::ExplicitThis ||
             constructorAccessible(candidateSymbol, constructorMemberOrdinal, true);
         anyAccessible = anyAccessible || candidate.accessible;
-        const bool matchingArity = candidateSymbol.parameters.size() == argumentTypes.size();
+        const bool matchingArity = candidateSymbol.parameters.size() >= argumentTypes.size() &&
+            std::ranges::all_of(
+                candidateSymbol.parameters.begin() +
+                    static_cast<std::ptrdiff_t>(argumentTypes.size()),
+                candidateSymbol.parameters.end(),
+                [](const MethodParameterSymbol& parameter)
+                {
+                    return parameter.defaultValueSyntax != nullptr;
+                });
         anyMatchingArity = anyMatchingArity || matchingArity;
         if (!candidate.accessible || !matchingArity)
         {
@@ -558,6 +566,8 @@ void ProjectConstructionModel::bindConstructorInitializer(
 
         accessibleMatchingArity = true;
         candidate.viable = true;
+        candidate.defaultedParameterCount =
+            candidateSymbol.parameters.size() - argumentTypes.size();
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < argumentTypes.size(); ++argumentOrdinal)
         {
             ProjectImplicitConversion conversion = conversions.classifyImplicit(
@@ -685,6 +695,14 @@ void ProjectConstructionModel::bindConstructorInitializer(
             binding.selectedConstructorMemberOrdinal = selected.memberOrdinal;
             binding.selectedEntryConstructorMemberOrdinal = selected.memberOrdinal;
             binding.selectedConversions = selected.conversions;
+            const ClassMemberSymbol& selectedSymbol =
+                memberModel_->members()[*selected.memberOrdinal];
+            for (std::size_t parameterOrdinal = argumentTypes.size();
+                 parameterOrdinal < selectedSymbol.parameters.size(); ++parameterOrdinal)
+            {
+                binding.selectedDefaultArguments.push_back(
+                    selectedSymbol.parameters[parameterOrdinal].defaultValueSyntax);
+            }
             // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
             binding.selectedOwnershipTransfers = selected.ownershipTransfers;
         }
@@ -938,7 +956,15 @@ void ProjectConstructionModel::bindConstruction(
         candidate.memberOrdinal = constructorOrdinal;
         candidate.accessible = constructorAccessible(constructor, callerMemberOrdinal, false);
         anyAccessible = anyAccessible || candidate.accessible;
-        const bool matchingArity = constructor.parameters.size() == argumentTypes.size();
+        const bool matchingArity = constructor.parameters.size() >= argumentTypes.size() &&
+            std::ranges::all_of(
+                constructor.parameters.begin() +
+                    static_cast<std::ptrdiff_t>(argumentTypes.size()),
+                constructor.parameters.end(),
+                [](const MethodParameterSymbol& parameter)
+                {
+                    return parameter.defaultValueSyntax != nullptr;
+                });
         anyMatchingArity = anyMatchingArity || matchingArity;
         if (!candidate.accessible || !matchingArity)
         {
@@ -948,6 +974,7 @@ void ProjectConstructionModel::bindConstruction(
 
         accessibleMatchingArity = true;
         candidate.viable = true;
+        candidate.defaultedParameterCount = constructor.parameters.size() - argumentTypes.size();
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < argumentTypes.size(); ++argumentOrdinal)
         {
             ProjectImplicitConversion conversion = conversions.classifyImplicit(
@@ -1109,6 +1136,13 @@ void ProjectConstructionModel::bindConstruction(
     binding.resolution = ConstructionResolutionKind::ResolvedExplicit;
     binding.selectedConstructorMemberOrdinal = selected.memberOrdinal;
     binding.selectedConversions = selected.conversions;
+    const ClassMemberSymbol& selectedSymbol = memberModel_->members()[*selected.memberOrdinal];
+    for (std::size_t parameterOrdinal = argumentTypes.size();
+         parameterOrdinal < selectedSymbol.parameters.size(); ++parameterOrdinal)
+    {
+        binding.selectedDefaultArguments.push_back(
+            selectedSymbol.parameters[parameterOrdinal].defaultValueSyntax);
+    }
     // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
     binding.selectedOwnershipTransfers = selected.ownershipTransfers;
     constructions_.push_back(std::move(binding));
@@ -1296,6 +1330,10 @@ bool ProjectConstructionModel::betterCandidate(
         {
             strictlyBetter = true;
         }
+    }
+    if (!strictlyBetter && left.defaultedParameterCount != right.defaultedParameterCount)
+    {
+        return left.defaultedParameterCount < right.defaultedParameterCount;
     }
     return strictlyBetter;
 }

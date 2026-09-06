@@ -367,15 +367,45 @@ bool ProjectMethodBodyModel::build(
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
 
-    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+    // NSC-LIMIT-018. A closed generic type materializes all of its member SIGNATURES so normal
+    // lookup and overload resolution can see the complete API. Its ordinary method BODIES are
+    // template bodies, however, and must be instantiated only when selected by a real call.
+    // Constructors/destructors are lifetime machinery and virtual methods can be referenced by
+    // a vtable without a syntactic call, so those remain eager.
+    const auto isDeferredGenericMethod = [&](std::size_t ordinal) -> bool
     {
-        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
-        if ((member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
-             member.kind != ClassMemberKind::Destructor) ||
-            member.syntax == nullptr || member.syntax->first() == nullptr)
+        if (ordinal >= memberModel.members().size()) return false;
+        const ClassMemberSymbol& candidate = memberModel.members()[ordinal];
+        if (candidate.kind != ClassMemberKind::Method || candidate.isVirtual || candidate.isOverride ||
+            candidate.isAbstract)
         {
-            continue;
+            return false;
         }
+        constexpr std::string_view prefix = "stage44-specialization:";
+        if (candidate.syntax != nullptr && candidate.syntax->auxiliaryText().starts_with(prefix))
+        {
+            return true;
+        }
+        return candidate.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+            nameLookup.namedTypes()[candidate.declaringTypeOrdinal].syntax != nullptr &&
+            nameLookup.namedTypes()[candidate.declaringTypeOrdinal].syntax->auxiliaryText().starts_with(prefix);
+    };
+
+    std::unordered_set<std::size_t> demandedGenericMethods;
+    while (true)
+    {
+        for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+        {
+            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            if (analyzedCallableMembers_.contains(memberOrdinal) ||
+                ((member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
+                  member.kind != ClassMemberKind::Destructor) ||
+                 member.syntax == nullptr || member.syntax->first() == nullptr) ||
+                (isDeferredGenericMethod(memberOrdinal) &&
+                 !demandedGenericMethods.contains(memberOrdinal)))
+            {
+                continue;
+            }
         // NSC-LIMIT-007. UNA ESPECIALIZACION QUE YA INCUMPLIO SU `where` NO SE ANALIZA.
         //
         // Su cuerpo se sustituyo con un `T` que la clausula prohibe, de modo que analizarlo
@@ -390,14 +420,16 @@ bool ProjectMethodBodyModel::build(
         // esta en su propio nodo; para un TIPO generico --`Caja<int>` con `where T : class`--
         // esta en el nodo del tipo, y sus metodos son hijos suyos, asi que preguntar solo por
         // `member.syntax` no la veria nunca.
-        if (genericConstraintModel_ != nullptr &&
-            (!genericConstraintModel_->specializationSatisfiesConstraints(member.syntax) ||
-             (member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
-              !genericConstraintModel_->specializationSatisfiesConstraints(
-                  nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax))))
-        {
-            continue;
-        }
+            if (genericConstraintModel_ != nullptr &&
+                (!genericConstraintModel_->specializationSatisfiesConstraints(member.syntax) ||
+                 (member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+                  !genericConstraintModel_->specializationSatisfiesConstraints(
+                      nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax))))
+            {
+                continue;
+            }
+
+            analyzedCallableMembers_.insert(memberOrdinal);
 
         const MethodScopeKind rootKind = member.kind == ClassMemberKind::Constructor
             ? MethodScopeKind::Constructor
@@ -473,7 +505,31 @@ bool ProjectMethodBodyModel::build(
                 memberOrdinal,
                 rootScopeOrdinal);
         }
-        activeCleanupRegions_.clear();
+            activeCleanupRegions_.clear();
+        }
+
+        bool discoveredDemand = false;
+        for (const MethodCallBinding& call : calls_)
+        {
+            if (call.resolution != MethodCallResolutionKind::Resolved ||
+                !call.selectedMemberOrdinal.has_value() ||
+                !isDeferredGenericMethod(*call.selectedMemberOrdinal))
+            {
+                continue;
+            }
+            discoveredDemand |= demandedGenericMethods.insert(*call.selectedMemberOrdinal).second;
+        }
+        for (const MethodDelegateBinding& binding : delegateBindings_)
+        {
+            if (binding.kind != MethodDelegateOperationKind::Create ||
+                !binding.selectedMemberOrdinal.has_value() ||
+                !isDeferredGenericMethod(*binding.selectedMemberOrdinal))
+            {
+                continue;
+            }
+            discoveredDemand |= demandedGenericMethods.insert(*binding.selectedMemberOrdinal).second;
+        }
+        if (!discoveredDemand) break;
     }
 
     // Stage 37: field initializers are semantic executable contexts too.  They deliberately have
@@ -606,6 +662,7 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind != ClassMemberKind::Method || member.isAbstract) continue;
         if (member.syntax == nullptr || member.syntax->first() == nullptr) continue;
+        if (!analyzedCallableMembers_.contains(memberOrdinal)) continue;
         for (std::size_t index = 0; index < member.parameters.size(); ++index)
         {
             if (member.parameters[index].passKind != ParameterPassKind::Out) continue;
@@ -1106,6 +1163,11 @@ std::span<const MethodEventBinding> ProjectMethodBodyModel::eventBindings() cons
 std::span<const MethodCallBinding> ProjectMethodBodyModel::calls() const noexcept
 {
     return calls_;
+}
+
+bool ProjectMethodBodyModel::callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept
+{
+    return analyzedCallableMembers_.contains(memberOrdinal);
 }
 
 bool ProjectMethodBodyModel::isBuilt() const noexcept
@@ -2491,14 +2553,17 @@ void ProjectMethodBodyModel::analyzeVariable(
     // the wrong keyword.
     const char* const ownerSpelling = ownedQualifierOwnsStorage ? "owned local" : "raii local";
     std::optional<MethodLocalBorrowBinding> pendingLocalBorrow;
-    if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string")
+    const bool raiiOwnsNativeArrayBuffer =
+        variable->hasModifier(TokenKind::KwRaii) && ProjectTypeConversion::isNativeArray(typeKey);
+    if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string" &&
+        !raiiOwnsNativeArrayBuffer)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             variable->range(),
             std::string(ownerSpelling) +
-                " requires a NativeSharp class/interface reference type or native string");
+                " requires a NativeSharp class/interface reference type or native string, or a native array buffer");
     }
     if (isRaii && variable->first() == nullptr)
     {
@@ -2577,7 +2642,8 @@ void ProjectMethodBodyModel::analyzeVariable(
         // case would make it impossible to write `int x = list.Pop();` for a generic
         // collection. Only enforce the raii-destination / borrowed-local requirement when the
         // local's own declared type actually needs ownership tracking.
-        const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string";
+        const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
+            raiiOwnsNativeArrayBuffer;
         if (!isRaii && initializer.valid && initializer.ownership == sema::OwnershipKind::Owned &&
             initializer.ownershipTransfer && !isBorrowed && localTypeOwnable)
         {
@@ -2590,6 +2656,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         const bool ownedReturningInitializer = initializer.valid &&
             initializer.ownership == sema::OwnershipKind::Owned && initializer.ownershipTransfer;
         if (isRaii && variable->first()->kind() != ast::AstNodeKind::ObjectCreationExpression &&
+            variable->first()->kind() != ast::AstNodeKind::NewExpression &&
             variable->first()->kind() != ast::AstNodeKind::MoveExpression &&
             variable->first()->kind() != ast::AstNodeKind::NullLiteralExpression &&
             !ownedReturningInitializer)
@@ -4420,7 +4487,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.sourceLocalOrdinal = source->semanticOrdinal;
                 move.typeKey = local.typeKey;
                 move.elementIsReferenceLike =
-                    isReferenceTypeKey(local.typeKey) || local.typeKey == "builtin:string";
+                    isReferenceTypeKey(local.typeKey) || local.typeKey == "builtin:string" ||
+                    ProjectTypeConversion::isNativeArray(local.typeKey);
                 moveBindings_.push_back(std::move(move));
                 maybeMovedRaiiLocals_.erase(source->semanticOrdinal);
                 movedRaiiLocals_.insert(source->semanticOrdinal);
@@ -4492,7 +4560,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 move.sourceParameterOrdinal = source->semanticOrdinal;
                 move.typeKey = parameter.typeKey;
                 move.elementIsReferenceLike =
-                    isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string";
+                    isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string" ||
+                    ProjectTypeConversion::isNativeArray(parameter.typeKey);
                 moveBindings_.push_back(std::move(move));
                 maybeMovedOwnedParameters_.erase(source->semanticOrdinal);
                 movedOwnedParameters_.insert(source->semanticOrdinal);
@@ -5201,8 +5270,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     expression->flag();
                 if (dynamicArrayNew)
                 {
-                    const bool countValid = count.valid &&
-                        ProjectTypeConversion::isIntegral(count.typeKey);
+                    const bool inferredInitializer =
+                        expression->auxiliaryText() == "inferred-array-initializer";
+                    bool countValid = inferredInitializer
+                        ? expression->first() == nullptr
+                        : count.valid && ProjectTypeConversion::isIntegral(count.typeKey);
+                    if (inferredInitializer && expression->first() != nullptr)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidArrayCount,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->range(),
+                            "an inferred native array initializer must omit the element count");
+                        countValid = false;
+                    }
                     if (!countValid)
                     {
                         diagnostics.report(
@@ -5219,8 +5300,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                             expression->range(),
                             "native arrays cannot have void elements");
                     }
+                    bool elementsValid = true;
+                    if (inferredInitializer)
+                    {
+                        for (const ast::AstNode* initializer : expression->children())
+                        {
+                            const ExpressionResult value = analyzeExpression(
+                                initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                                /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+                            if (!value.valid || !classifyImplicit(
+                                    value.typeKey, element, value.integerConstant).exists())
+                            {
+                                diagnostics.report(
+                                    diagnostics::DiagnosticId::InvalidConversion,
+                                    diagnostics::DiagnosticSeverity::Error,
+                                    initializer->range(),
+                                    "native array initializer element is not implicitly convertible to '" +
+                                        element + "'");
+                                elementsValid = false;
+                            }
+                        }
+                    }
                     result.typeKey = element + "[]";
-                    result.valid = !isErrorType(element) && element != "builtin:void" && countValid;
+                    result.valid = !isErrorType(element) && element != "builtin:void" &&
+                        countValid && elementsValid;
                     if (result.valid)
                     {
                         coreBindings_.push_back(MethodCoreBinding{
@@ -6999,6 +7102,47 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         return ordinal < expression->children().size() ? expression->children()[ordinal] : nullptr;
     };
 
+    // NSC-LIMIT-021. A transfer-shaped value with no named owner may be borrowed for exactly the
+    // containing call. Explicit `borrowed` parameters state that contract themselves. A very
+    // small Core allow-list covers the native operations whose public source signature predates
+    // `borrowed` but whose implementation is compiler/runtime-owned and demonstrably does not
+    // retain the pointer. User-defined unqualified parameters are deliberately NOT included: an
+    // API that may retain a reference must keep rejecting a temporary owner.
+    const auto isFullExpressionBorrow = [&] (
+        const ClassMemberSymbol& candidate,
+        std::size_t argumentOrdinal,
+        const ExpressionResult& argument) -> bool
+    {
+        if (!argument.valid || !argument.ownershipFreshOwner || !argument.ownershipTransfer ||
+            argument.ownership != sema::OwnershipKind::Owned ||
+            argumentOrdinal >= candidate.parameters.size() ||
+            candidate.parameters[argumentOrdinal].typeKey != "builtin:string" ||
+            candidate.declaredOwnership == sema::OwnershipKind::Borrowed)
+        {
+            return false;
+        }
+        if (candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed)
+        {
+            return true;
+        }
+        if (candidate.parameters[argumentOrdinal].ownership != sema::OwnershipKind::None ||
+            nameLookup_ == nullptr || candidate.declaringTypeOrdinal >= nameLookup_->namedTypes().size() ||
+            !candidate.isStatic)
+        {
+            return false;
+        }
+        const std::string declaringName =
+            nameLookup_->namedTypes()[candidate.declaringTypeOrdinal].identity.fullyQualifiedName();
+        if (declaringName == "NativeSharp.Core.String")
+        {
+            return candidate.name == "Copy" || candidate.name == "Concat" ||
+                candidate.name == "Equals" || candidate.name == "Substring";
+        }
+        return declaringName == "NativeSharp.Core.Console" &&
+            (candidate.name == "WriteLine" || candidate.name == "Write" ||
+             candidate.name == "ErrorWriteLine" || candidate.name == "ErrorWrite");
+    };
+
     bool hasMatchingArity = false;
     // Las candidatas que eran viables por tipos y propiedad y cayeron SOLO por su `where`. Si al
     // final no queda ninguna viable, estas son las que explican por que.
@@ -7019,7 +7163,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
             MethodCallCandidate candidateBinding;
             candidateBinding.memberOrdinal = candidateOrdinal;
-            if (candidate.parameters.size() != resolvedArguments.size())
+            const bool aritySupported = candidate.parameters.size() >= resolvedArguments.size() &&
+                std::ranges::all_of(
+                    candidate.parameters.begin() +
+                        static_cast<std::ptrdiff_t>(resolvedArguments.size()),
+                    candidate.parameters.end(),
+                    [](const MethodParameterSymbol& parameter)
+                    {
+                        return parameter.defaultValueSyntax != nullptr;
+                    });
+            if (!aritySupported)
             {
                 call.evaluatedCandidates.push_back(std::move(candidateBinding));
                 continue;
@@ -7027,6 +7180,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
             hasMatchingArity = true;
             candidateBinding.viable = true;
+            candidateBinding.defaultedParameterCount =
+                candidate.parameters.size() - resolvedArguments.size();
             for (std::size_t argumentOrdinal = 0; argumentOrdinal < resolvedArguments.size(); ++argumentOrdinal)
             {
                 ProjectImplicitConversion conversion = classifyImplicit(
@@ -7060,7 +7215,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     // bloque es el comentario historico de Stage 52 que explica POR QUE el orden
                     // de las comprobaciones es el que es; se conserva porque esa razon no esta en
                     // ningun otro sitio.
-                    if (classifyOwnershipArgument(
+                    if (!isFullExpressionBorrow(
+                            candidate, argumentOrdinal, resolvedArguments[argumentOrdinal]) &&
+                        classifyOwnershipArgument(
                             parameterOwnable,
                             parameterOwnership,
                             resolvedArguments[argumentOrdinal].ownership,
@@ -7144,7 +7301,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 if (candidateOrdinal >= memberModel_->members().size()) continue;
                 const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
                 if (candidate.kind != ClassMemberKind::Method ||
-                    candidate.parameters.size() != resolvedArguments.size()) continue;
+                    candidate.parameters.size() < resolvedArguments.size() ||
+                    !std::ranges::all_of(
+                        candidate.parameters.begin() +
+                            static_cast<std::ptrdiff_t>(resolvedArguments.size()),
+                        candidate.parameters.end(),
+                        [](const MethodParameterSymbol& parameter)
+                        {
+                            return parameter.defaultValueSyntax != nullptr;
+                        })) continue;
                 for (std::size_t argumentOrdinal = 0; argumentOrdinal < resolvedArguments.size(); ++argumentOrdinal)
                 {
                     const ProjectImplicitConversion physical = classifyImplicit(
@@ -7331,9 +7496,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        for (std::size_t parameterOrdinal = resolvedArguments.size();
+             parameterOrdinal < selectedMember.parameters.size(); ++parameterOrdinal)
+        {
+            call.selectedDefaultArguments.push_back(
+                selectedMember.parameters[parameterOrdinal].defaultValueSyntax);
+        }
         call.resultTypeKey = selectedMember.declaredTypeKey;
         result.ownership = selectedMember.declaredOwnership;
-        result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
+            result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
+            // An owned return crosses the call boundary without a named owner. It is therefore a
+            // fresh owner in the caller, just like `new T(...)`, and may participate in the
+            // full-expression borrowing rule below.
+            result.ownershipFreshOwner = result.ownershipTransfer;
         call.staticCall = selectedMember.isStatic;
         if (call.staticCall)
         {
@@ -7419,7 +7594,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         for (std::size_t argumentOrdinal = 0; argumentOrdinal < resolvedArguments.size() &&
              argumentOrdinal < selectedMember.parameters.size(); ++argumentOrdinal)
         {
-            if (selectedMember.parameters[argumentOrdinal].ownership != sema::OwnershipKind::Borrowed)
+            const bool freshTemporaryBorrow = isFullExpressionBorrow(
+                selectedMember, argumentOrdinal, resolvedArguments[argumentOrdinal]);
+            if (selectedMember.parameters[argumentOrdinal].ownership != sema::OwnershipKind::Borrowed &&
+                !freshTemporaryBorrow)
             {
                 continue;
             }
@@ -7434,7 +7612,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             borrow.targetMemberOrdinal = selected.memberOrdinal;
             borrow.targetParameterOrdinal = argumentOrdinal;
             borrow.typeKey = selectedMember.parameters[argumentOrdinal].typeKey;
-            if (resolvedArguments[argumentOrdinal].borrowedLocalOrdinal.has_value())
+            if (freshTemporaryBorrow)
+            {
+                borrow.kind = MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+            }
+            else if (resolvedArguments[argumentOrdinal].borrowedLocalOrdinal.has_value())
             {
                 borrow.kind = MethodBorrowKind::BorrowedLocalToBorrowedParameter;
             }
@@ -9131,6 +9313,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
             result.valid = true;
             result.ownership = sema::OwnershipKind::Owned;
             result.ownershipTransfer = true;
+            result.ownershipFreshOwner = true;
             coreBindings_.push_back(MethodCoreBinding{
                 MethodCoreOperationKind::StringConcat,
                 expression,
@@ -11872,6 +12055,10 @@ bool ProjectMethodBodyModel::betterCandidate(
             strictlyBetter = true;
         }
     }
+    if (!strictlyBetter && left.defaultedParameterCount != right.defaultedParameterCount)
+    {
+        return left.defaultedParameterCount < right.defaultedParameterCount;
+    }
     return strictlyBetter;
 }
 
@@ -12064,6 +12251,8 @@ const char* methodBorrowKindName(MethodBorrowKind kind) noexcept
         case MethodBorrowKind::BorrowedParameterToBorrowedParameter: return "borrowed-parameter-to-borrowed-parameter";
         case MethodBorrowKind::BorrowedLocalToBorrowedParameter: return "borrowed-local-to-borrowed-parameter";
         case MethodBorrowKind::BorrowedReturnToBorrowedParameter: return "borrowed-return-to-borrowed-parameter";
+        case MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter:
+            return "fresh-owned-temporary-to-borrowed-parameter";
         case MethodBorrowKind::BorrowedParameterToBorrowedReturn: return "borrowed-parameter-to-borrowed-return";
         case MethodBorrowKind::BorrowedLocalToBorrowedReturn: return "borrowed-local-to-borrowed-return";
         case MethodBorrowKind::BorrowedReturnForward: return "borrowed-return-forward";

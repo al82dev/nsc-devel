@@ -1,23 +1,24 @@
 # 121 — Next Steps for the 1.0 Glory
 
-**Fecha:** 2026-09-05
-**Punto de partida:** entrega `nsc 0.7.6-alpha`; NativeSharp 0.1 / Stage 57. La identidad
+**Fecha:** 2026-09-06
+**Punto de partida:** candidato `nsc 0.8.0-alpha`; NativeSharp 0.1 / Stage 57. La identidad
 `+build.<UTC>.<hash>` se genera de nuevo para cada binario y se registra al certificar.
 **Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
 herramientas gráficas y software de plataforma con rendimiento predecible.
 
-**Estado de la entrega más reciente:** G00 fue corregido y repetido. El resultado es `LANDED`,
-`certified: true`, cero fallos y cero problemas; `built_nsc` e `installed_nsc` coincidieron en
-`e8300abe7b20a18bf35957c5d14f6db865d068d83ffef6a35435c16a92e7121c`. La entrega 0.7.6 añade
-regresiones propias y revalida los repros exactos de `011`, `012`, `013`, `015` y `019`. Antes de
-instalar 0.7.6 debe repetirse la misma matriz sobre su identidad de build definitiva; el verde de
-un binario anterior no se hereda por texto.
+**Estado de la entrega más reciente:** `nsc 0.8.0-alpha+build.20260906T081445Z.b9aa99a37c342041`
+está instalado y certificado. G00 `20260906-021445-7c15dc93` terminó `LANDED`, `certified: true`;
+`built_nsc` e `installed_nsc` comparten el SHA-256
+`6d93b1645af25b85a0e5a92133ba1a5801ff2a621e0f368c063e7f5cab13e934`. Las 12 etapas pasaron y
+los 308 casos terminaron sin fallos ni omitidos, con CTest, fixtures y bug triage en lld-link y
+NSLink, O0/O2.
 
-**Validación local de 0.7.6:** reconstrucción completa correcta; la matriz de 293 casos dejó 287
-verdes y seis emisiones `.obj` bloqueadas transitoriamente por Windows. Las seis pasaron al
-repetirse en serie, sin fallo funcional persistente. Los repros externos exactos `011`, `012`,
-`013`, `015`, `019` y `shift-width` pasan con el build local. Falta únicamente instalación + G00
-para certificar esta identidad como distribución.
+**Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
+que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
+crecimiento de campos `owned T[]`, tanto en O0/O2 como con lld-link/NSLink. La corrección mantiene
+`raii T[]` y restaura para campos array el contrato explícito `delete[] campo; campo = reemplazo;`.
+El baseline certificado posterior ejecuta las cuatro fixtures y obtiene 42 en ambos niveles y con
+ambos linkers. La regresión de IR que impide restaurar el doble free pasa 32/32.
 
 ---
 
@@ -151,7 +152,7 @@ aceptado debe convertirse en una prueba autocontenida dentro de `nsc`.
 | Hallazgo | Estado | Lectura para 1.0 |
 |---|---|---|
 | NSC-LIMIT-004 | Corregido | igualdad de agregados dejó de producir LLVM inválido |
-| NSC-LIMIT-005 | Abierto | O2 sigue fuera del contrato y bloquea Release confiable |
+| NSC-LIMIT-005 | Corregido y certificado en 0.8.0-alpha | observación del pipeline, fixture diferencial y matriz O0/O2 pasan con ambos linkers |
 | NSC-LIMIT-006 | Corregido | `out` ya conserva definite assignment al reenviarse |
 | NSC-LIMIT-007 | Corregido localmente | existen constraints; falta completar la frontera de proyecto |
 | NSC-LIMIT-008 | Corregido | los temporales struct producidos por propiedades son utilizables |
@@ -161,20 +162,22 @@ aceptado debe convertirse en una prueba autocontenida dentro de `nsc`.
 | NSC-LIMIT-012 | Corregido en 0.7.6 | `|`, `&`, `^`, `~` y asignaciones compuestas conservan el enum; mezcla de enums se rechaza |
 | NSC-LIMIT-013 | Corregido en 0.7.6 | el parser exige la forma real `tipo identificador`; `GL Gl; Gl = gl;` y referencias estáticas coexisten |
 | NSC-LUNAR-007 | Corregido en 0.7.6 | el backend normaliza el contador al ancho LLVM del valor en shifts simples y compuestos |
-| NSC-LIMIT-014 | Abierto, P1 de lifetime | `static owned` se rechaza porque no existe destrucción del estado estático |
+| NSC-LIMIT-014 | Excluido explícitamente de 0.8 | `static owned` sigue rechazado: sin GC ni finalización de módulo no existe una destrucción honesta; se conserva ownership manual explícito |
 | NSC-LIMIT-015 | Corregido en 0.7.6 | el RHS se evalúa antes de destruir el owner desplazado; clases y strings pasan O0/O2 |
-| NSC-LIMIT-016 | Abierto, P1 | los arrays poseídos no pueden ser locales `raii` con cleanup compuesto |
-| NSC-LIMIT-017 | Abierto, P1 | no se acepta `new T[] { ... }` con longitud inferida por el inicializador |
-| NSC-LIMIT-018 | Abierto, P1 | una clase genérica valida miembros no usados que requieren operaciones ausentes en `T` |
+| NSC-LIMIT-016 | Corregido en 0.8.0-alpha | `raii T[]` posee y libera el buffer, admite retorno owned y `move`; los elementos conservan la semántica explícita de arrays nativos |
+| NSC-LIMIT-017 | Corregido en 0.8.0-alpha | `new T[] { ... }` infiere longitud y evalúa/almacena una vez, de izquierda a derecha |
+| NSC-LIMIT-018 | Corregido en 0.8.0-alpha | las firmas genéricas son visibles, pero los cuerpos ordinarios sólo se instancian al ser llamados o convertidos a delegate |
 | NSC-LIMIT-019 | Corregido en 0.7.6 | bindings en dos pasos, plegado calificado/transitivo/cross-project y detección real de ciclos |
-| NSC-LIMIT-020 | Abierto, P2 | el parser no admite parámetros con valor predeterminado |
-| NSC-LIMIT-021 | Abierto, P1 de lifetime | un temporal `owned string` no puede prestarse a un parámetro no retenedor durante la expresión |
+| NSC-LIMIT-020 | Corregido en 0.8.0-alpha para código fuente | métodos, constructores y encadenamiento admiten defaults literales; metadata precompilada queda como cierre posterior |
+| NSC-LIMIT-021 | Corregido en 0.8.0-alpha | un owner string fresco puede prestarse durante la expresión completa con cleanup normal y excepcional exacto |
 | CORE-LUNAR-003 / BIND-LUNAR-002 | Abierto, P2 de plataforma | `DateTime` y el binding Win32 no cubren calendario/hora local |
 
 La evolución es correcta: Native Sharp dejó de acumular sintaxis aislada y empezó a corregir las
-interacciones que aparecen en software nativo real. Pero todavía es una **0.7.6-alpha**. El salto a
-0.8 no lo concede la cantidad de casos verdes, sino cerrar los dos riesgos estructurales actuales:
-semántica equivalente O0/O2 y composición fiable entre proyectos.
+interacciones que aparecen en software nativo real. **0.8.0-alpha** cierra los workarounds de
+compilador que bloqueaban el port del juego salvo una exclusión deliberada: el estado global
+`static owned` no forma parte del contrato mientras no exista finalización de módulo real.
+La identidad `0.8.0-alpha` ya obtuvo certificación instalada. Promoverla a `0.8.0` cambia la
+identidad del artefacto y requiere repetir el baseline una última vez; no requiere añadir features.
 
 Native Sharp ya sabe qué lenguaje quiere ser. El trabajo hacia 1.0 consiste en demostrar que puede
 mantener esa identidad bajo programas grandes, optimización, errores, interoperabilidad y uso
@@ -230,6 +233,8 @@ resultado anterior.
   fallos funcionales sea cero.
 
 ### 5.2 Cerrar `NSC-LIMIT-005`: observabilidad del optimizador
+
+**Estado 0.8.0-alpha:** cerrado y certificado por G00 con lld-link/NSLink y O0/O2.
 
 El caso de enums estrechos negativos demostró que `LLVMRunPasses` y `opt.exe` pueden divergir. Para
 1.0 no puede existir un miscompile cuya única explicación sea «LLVM decidió otra cosa».
@@ -454,6 +459,11 @@ en O0/O2. Este P0 debe cerrarse antes que cualquier feature nueva.
 
 ### 5.10 Cerrar `NSC-LIMIT-016`: arrays poseídos como locales `raii`
 
+**Estado 0.8.0-alpha:** cerrado con semántica de buffer nativo. `raii T[]` libera exactamente el
+buffer, participa en unwind y puede transferirse con `move`. No recorre ni destruye implícitamente
+los elementos: un array NativeSharp sigue siendo almacenamiento de bajo nivel y la propiedad de
+sus elementos continúa explícita. Esa decisión evita introducir comportamiento de GC disfrazado.
+
 El frontend rechaza una local como:
 
 ```csharp
@@ -474,6 +484,10 @@ transferencia completa, excepción y destrucción exactamente una vez en O0/O2.
 transferirse después sin fuga, doble destrucción ni pérdida del valor anterior del destino.
 
 ### 5.11 Cerrar `NSC-LIMIT-017`: inicializadores de arrays con longitud inferida
+
+**Estado 0.8.0-alpha:** cerrado para arrays nativos de valores. El parser acepta la longitud
+omitida, HIR conserva conversiones y orden, y LLVM inicializa longitud y elementos una sola vez.
+La fixture `c50` cubre primitivos, structs, coma final, longitud y orden O0/O2.
 
 La actualización todavía rechaza la forma:
 
@@ -514,6 +528,12 @@ misma destrucción, y una fixture propia impide la regresión.
 
 ### 5.12 Cerrar `NSC-LIMIT-018`: especialización genérica por miembro alcanzado
 
+**Estado 0.8.0-alpha:** cerrado. Las firmas se materializan para lookup, mientras que un método
+ordinario especializado sólo se analiza y emite si una llamada o conversión a delegate lo exige.
+Constructores, destructores y virtuales permanecen eager por lifetime/despacho. `List<Pair>` usa
+`Add`, `Count` e indexador sin exigir `<`; llamar realmente el miembro que ordena vuelve a activar
+el diagnóstico.
+
 Crear `List<Pair>` y usar únicamente `Add` no debe fallar porque `Sort` o `BinarySearch`
 contengan `<` y `Pair` no tenga orden natural. El modelo actual clona y valida todos los miembros
 de la clase genérica al especializar el tipo, incluso los que el programa nunca usa.
@@ -547,6 +567,10 @@ cross-project y ciclos directos e indirectos.
 
 ### 5.14 Cerrar `NSC-LIMIT-020`: parámetros con valor predeterminado
 
+**Estado 0.8.0-alpha:** cerrado en el grafo fuente. Métodos y constructores aceptan defaults
+literales, overload resolution prefiere menos argumentos predeterminados y HIR materializa los
+omitidos con el tipo formal. La serialización de defaults en metadata `.lib` no se declara cerrada.
+
 El parser debe aceptar firmas como `void Add(float amount = 1.0f)`, conservar la expresión en AST
 y metadata, considerarla durante overload resolution y materializar el argumento omitido también
 a través de `ProjectReference`.
@@ -557,6 +581,11 @@ valor fijado en el contrato de la llamada. Se requieren casos omitido/explícito
 overloads, métodos genéricos y consumo cross-project.
 
 ### 5.15 Cerrar `NSC-LIMIT-021`: préstamo de temporales `owned string`
+
+**Estado 0.8.0-alpha:** cerrado. Un temporal fresco se guarda en un owner oculto durante toda la
+expresión; la llamada lo recibe prestado y el cleanup lo libera exactamente una vez tanto en el
+camino normal como en unwind. Parámetros de usuario sin `borrowed` continúan rechazándose si
+podrían retener la referencia.
 
 El diagnóstico preciso reemplaza la clasificación provisional anterior: `"a" + "b"` sí se tipa
 correctamente como un string nuevo y `owned`. El fallo aparece al prestar ese temporal a un
@@ -1064,23 +1093,17 @@ Además:
 0.7.4  Build instalado; el primer G00 detectó orden de medición inválido
 0.7.5  Runner G00 corregido; baseline LANDED/certificado; NSC-LIMIT-011 cerrado
 0.7.6  Entrega grande: NSC-LIMIT-012/013/015/019 + NSC-LUNAR-007 cerrados
-0.7.7  NSC-LIMIT-021: lifetime de expresión para préstamos de temporales owned
-0.7.8  NSC-LIMIT-016/017: lifetime e inicialización declarativa de arrays
-0.7.9  NSC-LIMIT-014: implementar o excluir ownership estático
-0.7.10 NSC-LIMIT-018: especialización genérica por miembro alcanzado
-0.7.11 NSC-LIMIT-005: observabilidad, corrección y equivalencia O0/O2
-0.7.12 NSC-LIMIT-020: parámetros predeterminados completos, incluida metadata
-0.7.13 Consolidación semántica, certificación propia y cero P0/P1
+0.8.0-alpha  Entrega concentrada certificada; NSC-LIMIT-005/016/017/018/020/021 cerrados
+0.8.0        Promoción de versión sin features nuevas + baseline de la identidad final
+0.8.1        Defaults en metadata `.lib` + compatibilidad binaria comprobada
+0.8.2        CodeView/PDB
+0.8.3        builds reproducibles + identidad + instalación limpia
+0.8.4        paridad NSLink/lld-link en el dominio soportado
+0.8.5        calendario UTC/local mínimo en Core, sin framework de globalización
 
-0.8.0  .nsproj externo + .lib + Debug/Release
-0.8.1  CodeView/PDB
-0.8.2  builds reproducibles + identidad + instalación limpia
-0.8.3  paridad NSLink/lld-link en el dominio soportado
-0.8.4  calendario UTC/local mínimo en Core, sin framework de globalización
-
-0.8.5  COM estático
-0.8.6  SIMD e intrínsecos guiados por consumidor
-0.8.7  aplicación completa de ventana/input/render/audio/assets
+0.8.6        COM estático
+0.8.7        SIMD e intrínsecos guiados por consumidor
+0.8.8        aplicación completa de ventana/input/render/audio/assets
 
 0.9.0  juego piloto y congelación de lenguaje/ABI
 0.9.x  bugs, rendimiento, soak, documentación y compatibilidad

@@ -4113,6 +4113,11 @@ ast::AstNode* Parser::parseParameter()
     parameter->setTypeSyntax(type);
     parameter->setText(std::string(name.lexeme()));
     if (!passKind.empty()) parameter->setAuxiliaryText("pass:" + passKind);
+    if (consumeIf(TokenKind::Equal))
+    {
+        parameter->setFirst(parseAssignmentExpression());
+        parameter->setRange(tokenRangeFrom(beginIndex));
+    }
     return parameter;
 }
 
@@ -5479,8 +5484,28 @@ ast::AstNode* Parser::parseUnaryExpression()
         if (consumeIf(TokenKind::LeftBracket))
         {
             node->setFlag(true);
-            node->setFirst(parseExpression());
+            if (!at(TokenKind::RightBracket))
+            {
+                node->setFirst(parseExpression());
+            }
             expect(TokenKind::RightBracket, "']'");
+            // NSC-LIMIT-017. `new T[] { a, b }`: the omitted count is intentional and the
+            // initializer supplies it. Keep values as children in source order; semantic analysis
+            // freezes their conversions and HIR materializes the inferred count.
+            if (consumeIf(TokenKind::LeftBrace))
+            {
+                node->setAuxiliaryText("inferred-array-initializer");
+                if (!at(TokenKind::RightBrace))
+                {
+                    while (true)
+                    {
+                        node->addChild(parseAssignmentExpression());
+                        if (!consumeIf(TokenKind::Comma)) break;
+                        if (at(TokenKind::RightBrace)) break;
+                    }
+                }
+                expect(TokenKind::RightBrace, "'}'");
+            }
         }
         node->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
         return node;

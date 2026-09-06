@@ -1,0 +1,33 @@
+// NSC-LIMIT-021 -- a fresh owned string may be borrowed for one complete expression.
+//
+// These are the source shapes that the Saru port had to expand into named `raii` locals. The
+// compiler must give every concatenation a hidden owner, lend it during the call, and release it
+// after the call in reverse creation order. The CC1 runner executes this fixture at both -O0 and
+// -O2; success is 42.
+using NativeSharp.Core;
+
+namespace c49temporaryborrow
+{
+    public class Program
+    {
+        private static int CombinedLength(borrowed string first, borrowed string second)
+        {
+            return first.Length + second.Length;
+        }
+
+        public static int Main()
+        {
+            // Trusted Core method with a legacy unqualified string parameter.
+            raii string copied = String.Copy("a" + "b");
+            if (copied != "ab") { return 8; }
+
+            // Two simultaneous fresh owners lent to an explicitly borrowed user method.
+            int total = CombinedLength("c" + "d", "e" + "f");
+            if (total != 4) { return 9; }
+
+            // Core intrinsic path: this used to require a named raii string too.
+            Console.Write("g" + "h");
+            return 42;
+        }
+    }
+}

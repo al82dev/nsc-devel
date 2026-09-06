@@ -467,6 +467,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::MoveValue: return "move-value";
         case ProjectOopHirNodeKind::MoveArrayElement: return "move-array-element";
         case ProjectOopHirNodeKind::MoveOwnedField: return "move-owned-field";
+        case ProjectOopHirNodeKind::OwnedTemporaryBorrow: return "owned-temporary-borrow";
+        case ProjectOopHirNodeKind::FullExpressionCleanup: return "full-expression-cleanup";
         case ProjectOopHirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopHirNodeKind::RawElementAddress: return "raw-element-address";
         case ProjectOopHirNodeKind::StackAllocation: return "stack-allocation";
@@ -663,6 +665,8 @@ bool ProjectOopHirModel::build(
     methodBodyModel_ = &methodBodyModel;
     constructionModel_ = &constructionModel;
     objectLayoutModel_ = &objectLayoutModel;
+    nextSyntheticLocalOrdinal_ = methodBodyModel.locals().size();
+    nextSyntheticCleanupRegionOrdinal_ = methodBodyModel.cleanupRegions().size();
 
     for (const MethodNameBinding& binding : methodBodyModel.nameBindings())
     {
@@ -747,6 +751,25 @@ bool ProjectOopHirModel::build(
             continue;
         }
         if (member.isAbstract)
+        {
+            continue;
+        }
+        // NSC-LIMIT-018. Signatures of a closed generic type are eager; ordinary template
+        // method bodies are instantiated by ProjectMethodBodyModel only after a real call or
+        // delegate conversion selects them. A body with no bindings is intentionally absent,
+        // not malformed.
+        constexpr std::string_view kDeferredSpecializationPrefix = "stage44-specialization:";
+        const ast::AstNode* declaringSyntaxForDemand =
+            member.declaringTypeOrdinal < nameLookup.namedTypes().size()
+                ? nameLookup.namedTypes()[member.declaringTypeOrdinal].syntax
+                : nullptr;
+        const bool deferredGenericMethod = member.kind == ClassMemberKind::Method &&
+            !member.isVirtual && !member.isOverride && !member.isAbstract &&
+            ((member.syntax != nullptr &&
+              member.syntax->auxiliaryText().starts_with(kDeferredSpecializationPrefix)) ||
+             (declaringSyntaxForDemand != nullptr &&
+              declaringSyntaxForDemand->auxiliaryText().starts_with(kDeferredSpecializationPrefix)));
+        if (deferredGenericMethod && !methodBodyModel.callableBodyAnalyzed(memberOrdinal))
         {
             continue;
         }
@@ -934,6 +957,35 @@ bool ProjectOopHirModel::build(
                                 std::move(argument), initializerBinding->selectedConversions[index], argumentSyntax);
                         }
                         initializerCall->children.push_back(std::move(argument));
+                    }
+                    if (!initializerBinding->selectedDefaultArguments.empty())
+                    {
+                        if (!initializerBinding->selectedEntryConstructorMemberOrdinal.has_value() ||
+                            *initializerBinding->selectedEntryConstructorMemberOrdinal >= memberModel.members().size())
+                        {
+                            error = "NSC-LIMIT-020 selected constructor initializer has no callable metadata";
+                            return false;
+                        }
+                        const ClassMemberSymbol& selectedConstructor = memberModel.members()[
+                            *initializerBinding->selectedEntryConstructorMemberOrdinal];
+                        const std::size_t firstDefaultParameter =
+                            initializerBinding->initializerSyntax->children().size();
+                        for (std::size_t index = 0;
+                             index < initializerBinding->selectedDefaultArguments.size(); ++index)
+                        {
+                            const std::size_t parameterIndex = firstDefaultParameter + index;
+                            if (parameterIndex >= selectedConstructor.parameters.size())
+                            {
+                                error = "NSC-LIMIT-020 constructor initializer default has no parameter";
+                                return false;
+                            }
+                            auto argument = lowerDefaultArgument(
+                                initializerBinding->selectedDefaultArguments[index],
+                                selectedConstructor.parameters[parameterIndex].typeKey,
+                                error);
+                            if (argument == nullptr) return false;
+                            initializerCall->children.push_back(std::move(argument));
+                        }
                     }
                 }
                 prefix.push_back(std::move(initializerCall));
@@ -1896,6 +1948,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             if (receiver == nullptr) return nullptr;
             node->children.push_back(std::move(receiver));
         }
+        bool hasOwnedTemporary = false;
         for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
         {
             const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
@@ -1909,20 +1962,35 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 argument = wrapImplicitConversion(
                     std::move(argument), binding->selectedConversions[index], argumentSyntax);
             }
-            if (const MethodBorrowBinding* borrow = borrowBinding(argumentSyntax);
-                borrow != nullptr && borrow->targetMemberOrdinal == binding->selectedMemberOrdinal &&
-                borrow->targetParameterOrdinal == index)
-            {
-                auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, argumentSyntax, argument->typeKey);
-                borrowed->borrowKind = borrow->kind;
-                borrowed->localOrdinal = borrow->sourceLocalOrdinal;
-                borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
-                borrowed->children.push_back(std::move(argument));
-                argument = std::move(borrowed);
-            }
+            argument = wrapCallArgumentBorrow(
+                std::move(argument), argumentSyntax, *binding->selectedMemberOrdinal, index,
+                hasOwnedTemporary);
             node->children.push_back(std::move(argument));
         }
-        return node;
+        if (memberModel_ == nullptr ||
+            *binding->selectedMemberOrdinal >= memberModel_->members().size())
+        {
+            error = "NSC-LIMIT-020 selected call has no callable metadata";
+            return nullptr;
+        }
+        const ClassMemberSymbol& selectedMember =
+            memberModel_->members()[*binding->selectedMemberOrdinal];
+        for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
+        {
+            const std::size_t parameterIndex = argumentSyntaxes.size() + index;
+            if (parameterIndex >= selectedMember.parameters.size())
+            {
+                error = "NSC-LIMIT-020 selected default argument has no matching parameter";
+                return nullptr;
+            }
+            auto argument = lowerDefaultArgument(
+                binding->selectedDefaultArguments[index],
+                selectedMember.parameters[parameterIndex].typeKey,
+                error);
+            if (argument == nullptr) return nullptr;
+            node->children.push_back(std::move(argument));
+        }
+        return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
     };
 
     const auto lowerEventBacking = [&](
@@ -3360,6 +3428,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     argument = wrapImplicitConversion(
                         std::move(argument), call->selectedConversions.front(), expression->children().front());
                 }
+                bool hasOwnedTemporary = false;
+                if (call != nullptr && call->selectedMemberOrdinal.has_value())
+                {
+                    argument = wrapCallArgumentBorrow(
+                        std::move(argument), expression->children().front(),
+                        *call->selectedMemberOrdinal, 0, hasOwnedTemporary);
+                }
                 const bool appendNewline =
                     core->kind == MethodCoreOperationKind::ConsoleWriteLine ||
                     core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine;
@@ -3369,7 +3444,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 auto node = makeNode(ProjectOopHirNodeKind::CoreConsoleWriteLine, expression, "builtin:void");
                 node->integerValue = (appendNewline ? 1u : 0u) | (useStandardError ? 2u : 0u);
                 node->children.push_back(std::move(argument));
-                return node;
+                return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
             }
             // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador.
             //
@@ -3768,6 +3843,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 node->children.push_back(std::move(receiver));
             }
+            bool hasOwnedTemporary = false;
             for (std::size_t index = 0; index < expression->children().size(); ++index)
             {
                 auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);
@@ -3783,20 +3859,37 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         std::move(argument), binding->selectedConversions[parameterIndex], expression->children()[index]);
                 }
                 const ast::AstNode* argumentSyntax = expression->children()[index];
-                if (const MethodBorrowBinding* borrow = borrowBinding(argumentSyntax);
-                    borrow != nullptr && borrow->targetMemberOrdinal == binding->selectedMemberOrdinal &&
-                    borrow->targetParameterOrdinal == parameterIndex)
-                {
-                    auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, argumentSyntax, argument->typeKey);
-                    borrowed->borrowKind = borrow->kind;
-                    borrowed->localOrdinal = borrow->sourceLocalOrdinal;
-                    borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
-                    borrowed->children.push_back(std::move(argument));
-                    argument = std::move(borrowed);
-                }
+                argument = wrapCallArgumentBorrow(
+                    std::move(argument), argumentSyntax, *binding->selectedMemberOrdinal,
+                    parameterIndex, hasOwnedTemporary);
                 node->children.push_back(std::move(argument));
             }
-            return node;
+            if (memberModel_ == nullptr ||
+                *binding->selectedMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "NSC-LIMIT-020 selected call has no callable metadata";
+                return nullptr;
+            }
+            const ClassMemberSymbol& selectedMember =
+                memberModel_->members()[*binding->selectedMemberOrdinal];
+            const std::size_t firstDefaultParameter =
+                expression->children().size() + conversionOffset;
+            for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
+            {
+                const std::size_t parameterIndex = firstDefaultParameter + index;
+                if (parameterIndex >= selectedMember.parameters.size())
+                {
+                    error = "NSC-LIMIT-020 selected default argument has no matching parameter";
+                    return nullptr;
+                }
+                auto argument = lowerDefaultArgument(
+                    binding->selectedDefaultArguments[index],
+                    selectedMember.parameters[parameterIndex].typeKey,
+                    error);
+                if (argument == nullptr) return nullptr;
+                node->children.push_back(std::move(argument));
+            }
+            return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
         }
 
         // CC1 fase 4B -- `stackalloc T[n]`. Un alloca de arreglo y nada mas: sin cabecera de
@@ -3909,11 +4002,46 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 error = "Stage 41 array allocation result is a reference value, not addressable storage";
                 return nullptr;
             }
-            auto count = lowerExpression(expression->first(), memberOrdinal, false, error);
-            if (count == nullptr) return nullptr;
+            const bool inferredInitializer =
+                expression->auxiliaryText() == "inferred-array-initializer";
+            std::unique_ptr<ProjectOopHirNode> count;
+            if (inferredInitializer)
+            {
+                count = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+                count->integerValue = expression->children().size();
+            }
+            else
+            {
+                count = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (count == nullptr) return nullptr;
+            }
             auto node = makeNode(ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
             node->elementTypeKey = core->elementTypeKey;
+            node->booleanValue = inferredInitializer;
             node->children.push_back(std::move(count));
+            for (const ast::AstNode* initializer : expression->children())
+            {
+                auto value = lowerExpression(initializer, memberOrdinal, false, error);
+                if (value == nullptr) return nullptr;
+                const MethodExpressionTypeBinding* valueType = expressionType(initializer);
+                if (valueType == nullptr)
+                {
+                    error = "NSC-LIMIT-017 array initializer element has no semantic type";
+                    return nullptr;
+                }
+                const ProjectImplicitConversion conversion = classifyImplicit(
+                    valueType->typeKey, core->elementTypeKey, valueType->integerConstant);
+                if (!conversion.exists())
+                {
+                    error = "NSC-LIMIT-017 array initializer lost its validated conversion";
+                    return nullptr;
+                }
+                if (conversion.kind != ProjectConversionKind::Identity)
+                {
+                    value = wrapImplicitConversion(std::move(value), conversion, initializer);
+                }
+                node->children.push_back(std::move(value));
+            }
             return node;
         }
 
@@ -3937,7 +4065,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             node->constructionOrdinal = ordinal;
             node->targetTypeOrdinal = binding->targetTypeOrdinal;
             node->memberOrdinal = binding->selectedConstructorMemberOrdinal;
-            node->argumentCount = expression->children().size();
+            node->argumentCount =
+                expression->children().size() + binding->selectedDefaultArguments.size();
             for (std::size_t index = 0; index < expression->children().size(); ++index)
             {
                 auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);
@@ -3952,6 +4081,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         std::move(argument), binding->selectedConversions[index], expression->children()[index]);
                 }
                 node->children.push_back(std::move(argument));
+            }
+            if (!binding->selectedDefaultArguments.empty())
+            {
+                if (!binding->selectedConstructorMemberOrdinal.has_value() ||
+                    *binding->selectedConstructorMemberOrdinal >= memberModel_->members().size())
+                {
+                    error = "NSC-LIMIT-020 selected construction has no callable metadata";
+                    return nullptr;
+                }
+                const ClassMemberSymbol& selectedConstructor =
+                    memberModel_->members()[*binding->selectedConstructorMemberOrdinal];
+                const std::size_t firstDefaultParameter = expression->children().size();
+                for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
+                {
+                    const std::size_t parameterIndex = firstDefaultParameter + index;
+                    if (parameterIndex >= selectedConstructor.parameters.size())
+                    {
+                        error = "NSC-LIMIT-020 construction default has no parameter";
+                        return nullptr;
+                    }
+                    auto argument = lowerDefaultArgument(
+                        binding->selectedDefaultArguments[index],
+                        selectedConstructor.parameters[parameterIndex].typeKey,
+                        error);
+                    if (argument == nullptr) return nullptr;
+                    node->children.push_back(std::move(argument));
+                }
             }
             if (binding->selectedImplicitDefault)
             {
@@ -4314,6 +4470,128 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
     node->conversion = conversion;
     node->children.push_back(std::move(value));
     return node;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapCallArgumentBorrow(
+    std::unique_ptr<ProjectOopHirNode> value,
+    const ast::AstNode* argumentSyntax,
+    std::size_t targetMemberOrdinal,
+    std::size_t targetParameterOrdinal,
+    bool& hasOwnedTemporary)
+{
+    const MethodBorrowBinding* borrow = borrowBinding(argumentSyntax);
+    if (borrow == nullptr || borrow->targetMemberOrdinal != targetMemberOrdinal ||
+        borrow->targetParameterOrdinal != targetParameterOrdinal)
+    {
+        return value;
+    }
+
+    auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, argumentSyntax, value->typeKey);
+    borrowed->borrowKind = borrow->kind;
+    borrowed->localOrdinal = borrow->sourceLocalOrdinal;
+    borrowed->parameterOrdinal = borrow->sourceParameterOrdinal;
+    borrowed->children.push_back(std::move(value));
+    value = std::move(borrowed);
+
+    if (borrow->kind != MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter)
+    {
+        return value;
+    }
+
+    // The slot is both the owner and the exactly-once guard. It is initialized only after the
+    // fresh expression succeeds; from that point until FullExpressionCleanup finishes, every
+    // potentially-throwing nested call sees the synthetic cleanup as active.
+    auto temporary = makeNode(ProjectOopHirNodeKind::OwnedTemporaryBorrow, argumentSyntax, value->typeKey);
+    temporary->localOrdinal = nextSyntheticLocalOrdinal_++;
+    temporary->cleanupRegionOrdinal = nextSyntheticCleanupRegionOrdinal_++;
+    temporary->children.push_back(std::move(value));
+    hasOwnedTemporary = true;
+    return temporary;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFullExpressionCleanup(
+    std::unique_ptr<ProjectOopHirNode> value,
+    const ast::AstNode* syntax,
+    bool hasOwnedTemporary)
+{
+    if (!hasOwnedTemporary) return value;
+    auto fullExpression = makeNode(ProjectOopHirNodeKind::FullExpressionCleanup, syntax, value->typeKey);
+    fullExpression->children.push_back(std::move(value));
+    return fullExpression;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDefaultArgument(
+    const ast::AstNode* syntax,
+    std::string_view parameterTypeKey,
+    std::string& error)
+{
+    if (syntax == nullptr)
+    {
+        error = "NSC-LIMIT-020 selected optional parameter has no default expression";
+        return nullptr;
+    }
+    const std::string target(parameterTypeKey);
+    switch (syntax->kind())
+    {
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+            if (target == "builtin:float" || target == "builtin:double")
+            {
+                auto value = makeNode(ProjectOopHirNodeKind::FloatingConstant, syntax, target);
+                value->floatingValue = static_cast<double>(syntax->integerValue());
+                return value;
+            }
+            else
+            {
+                auto value = makeNode(ProjectOopHirNodeKind::IntegerConstant, syntax, target);
+                value->integerValue = syntax->integerValue();
+                return value;
+            }
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        {
+            auto value = makeNode(ProjectOopHirNodeKind::FloatingConstant, syntax, target);
+            value->floatingValue = syntax->floatingValue();
+            return value;
+        }
+        case ast::AstNodeKind::BooleanLiteralExpression:
+        {
+            auto value = makeNode(ProjectOopHirNodeKind::BooleanConstant, syntax, "builtin:bool");
+            value->booleanValue = syntax->tokenKind() == lexer::TokenKind::KwTrue;
+            return value;
+        }
+        case ast::AstNodeKind::StringLiteralExpression:
+        {
+            auto value = makeNode(ProjectOopHirNodeKind::StringLiteral, syntax, "string-literal");
+            value->stringValue = syntax->text();
+            const ProjectImplicitConversion conversion =
+                classifyImplicit("string-literal", target, std::nullopt);
+            if (!conversion.exists())
+            {
+                error = "NSC-LIMIT-020 string default cannot convert to parameter type '" +
+                    target + "'";
+                return nullptr;
+            }
+            if (conversion.kind != ProjectConversionKind::Identity)
+            {
+                value = wrapImplicitConversion(std::move(value), conversion, syntax);
+            }
+            return value;
+        }
+        case ast::AstNodeKind::NullLiteralExpression:
+            return makeNode(ProjectOopHirNodeKind::NullConstant, syntax, target);
+        case ast::AstNodeKind::UnaryExpression:
+        {
+            auto operand = lowerDefaultArgument(syntax->first(), parameterTypeKey, error);
+            if (operand == nullptr) return nullptr;
+            auto value = makeNode(ProjectOopHirNodeKind::Unary, syntax, target);
+            value->operation = syntax->tokenKind();
+            value->children.push_back(std::move(operand));
+            return value;
+        }
+        default:
+            error = "NSC-LIMIT-020 default argument is not a supported literal constant";
+            return nullptr;
+    }
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitialization(

@@ -345,6 +345,10 @@ enum class MethodBorrowKind
     BorrowedParameterToBorrowedParameter,
     BorrowedLocalToBorrowedParameter,
     BorrowedReturnToBorrowedParameter,
+    // NSC-LIMIT-021. A fresh owned result may be lent for one full expression. Unlike a
+    // BorrowedReturn, this value still needs an owner: HIR materializes a hidden RAII slot and
+    // destroys it after the containing call, including the exceptional path.
+    FreshOwnedTemporaryToBorrowedParameter,
     BorrowedParameterToBorrowedReturn,
     BorrowedLocalToBorrowedReturn,
     BorrowedReturnForward
@@ -1028,6 +1032,7 @@ struct MethodCallCandidate final
     std::size_t memberOrdinal = 0;
     bool viable = false;
     std::vector<ProjectImplicitConversion> conversions;
+    std::size_t defaultedParameterCount = 0;
 };
 
 struct MethodCallBinding final
@@ -1051,6 +1056,7 @@ struct MethodCallBinding final
     std::vector<std::size_t> viableCandidateMemberOrdinals;
     std::optional<std::size_t> selectedMemberOrdinal;
     std::vector<ProjectImplicitConversion> selectedConversions;
+    std::vector<const ast::AstNode*> selectedDefaultArguments;
     std::string resultTypeKey;
 };
 
@@ -1097,6 +1103,10 @@ public:
     std::span<const MethodDelegateBinding> delegateBindings() const noexcept;
     std::span<const MethodEventBinding> eventBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
+    // NSC-LIMIT-018. A generic specialization exposes all member signatures, but only bodies
+    // reached from real source code are instantiated. HIR uses this exact set so a deferred,
+    // unbound body can never be lowered accidentally.
+    bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -1554,6 +1564,7 @@ private:
     // parameter was assigned through. See verifyOutParameterAssignments for what is checked with
     // it and for the precise limit of that check.
     std::set<std::pair<std::size_t, std::size_t>> assignedOutParameters_;
+    std::unordered_set<std::size_t> analyzedCallableMembers_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     // C7 "definite assignment". Three questions, one per helper:
     //

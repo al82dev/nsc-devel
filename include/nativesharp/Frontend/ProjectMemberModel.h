@@ -80,6 +80,9 @@ struct MethodParameterSymbol final
     FileId fileId;
     SourceRange range;
     const ast::AstNode* syntax = nullptr;
+    // NSC-LIMIT-020. Defaults remain attached to the declaration AST so ProjectReference calls
+    // materialize the value fixed by the callee's contract, not a caller-side reparse.
+    const ast::AstNode* defaultValueSyntax = nullptr;
 };
 
 struct ClassMemberSymbol final

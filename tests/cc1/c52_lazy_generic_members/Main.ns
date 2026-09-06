@@ -1,0 +1,30 @@
+// NSC-LIMIT-018 -- List<Pair> may use Add/indexer without instantiating the unused natural-order
+// Sort/BinarySearch bodies. Pair intentionally has no comparison operators.
+using NativeSharp.Core.Collections.Generic;
+
+namespace c52lazygenericmembers
+{
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+
+        public Pair(int left, int right)
+        {
+            Left = left;
+            Right = right;
+        }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            raii List<Pair> pairs = new List<Pair>();
+            pairs.Add(new Pair(20, 1));
+            pairs.Add(new Pair(2, 19));
+            if (pairs.Count() != 2) { return 1; }
+            return pairs[0].Left + pairs[0].Right + pairs[1].Left + pairs[1].Right;
+        }
+    }
+}

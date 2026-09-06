@@ -44,10 +44,10 @@ int main()
     // La parte compatible queda estable, mientras la version visible contiene la identidad exacta
     // de esta construccion como metadata SemVer.
     tests.expect(
-        nativesharp::kCompilerReleaseVersion == "0.7.6-alpha",
-        "compiler compatibility identity is the selected 0.7.6 alpha release");
+        nativesharp::kCompilerReleaseVersion == "0.8.0-alpha",
+        "compiler compatibility identity is the selected 0.8.0 alpha release");
     tests.expect(
-        nativesharp::kCompilerVersion.starts_with("0.7.6-alpha+build."),
+        nativesharp::kCompilerVersion.starts_with("0.8.0-alpha+build."),
         "visible compiler version contains SemVer build metadata");
     tests.expect(
         nativesharp::kCompilerVersion.ends_with(buildId),
