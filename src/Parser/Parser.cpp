@@ -322,6 +322,119 @@ bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
     return knownTypeNames_.contains(candidate);
 }
 
+// NSC-LIMIT-013. Un nombre que TAMBIEN es tipo no convierte por si solo una
+// sentencia en declaracion. La forma sintactica minima de una declaracion es
+// `tipo identificador`; si tras el tipo viene `=`, `.`, `(`, un operador
+// compuesto, etc., es una expresion. Esto importa cuando un grafo importado
+// contiene `Raw.Gl` y la clase actual declara el campo C#-idiomatico `GL Gl`:
+// dentro del constructor, `Gl = gl;` empieza por un nombre que existe como tipo
+// EN OTRO namespace, pero el `=` demuestra que no puede ser una declaracion.
+bool Parser::looksLikeVariableDeclaration() const noexcept
+{
+    std::size_t cursor = index_;
+    if (!canStartTypeAt(cursor))
+    {
+        return false;
+    }
+
+    if (lexer::isOwnershipQualifierKeyword(tokens_[cursor].kind()))
+    {
+        ++cursor;
+    }
+    if (cursor >= tokens_.size())
+    {
+        return false;
+    }
+
+    // Nombre builtin o nombre calificado.
+    if (tokens_[cursor].kind() == TokenKind::Identifier)
+    {
+        ++cursor;
+        while (cursor + 1 < tokens_.size() &&
+               tokens_[cursor].kind() == TokenKind::Dot &&
+               tokens_[cursor + 1].kind() == TokenKind::Identifier)
+        {
+            cursor += 2;
+        }
+    }
+    else
+    {
+        ++cursor;
+    }
+
+    // Argumentos genericos, incluidos cierres `>>` de tipos anidados.
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Less)
+    {
+        int depth = 0;
+        do
+        {
+            const TokenKind kind = tokens_[cursor].kind();
+            if (kind == TokenKind::Less)
+            {
+                ++depth;
+            }
+            else if (kind == TokenKind::Greater)
+            {
+                --depth;
+            }
+            else if (kind == TokenKind::GreaterGreater)
+            {
+                depth -= 2;
+            }
+            else if (kind == TokenKind::EndOfFile)
+            {
+                return false;
+            }
+            ++cursor;
+        }
+        while (cursor < tokens_.size() && depth > 0);
+        if (depth != 0)
+        {
+            return false;
+        }
+    }
+
+    // Modificadores de tipo que pueden aparecer antes del nombre de variable.
+    while (cursor < tokens_.size())
+    {
+        if (tokens_[cursor].kind() == TokenKind::Star)
+        {
+            ++cursor;
+            continue;
+        }
+        if (tokens_[cursor].kind() == TokenKind::LeftBracket)
+        {
+            int depth = 1;
+            ++cursor;
+            while (cursor < tokens_.size() && depth != 0)
+            {
+                if (tokens_[cursor].kind() == TokenKind::LeftBracket)
+                {
+                    ++depth;
+                }
+                else if (tokens_[cursor].kind() == TokenKind::RightBracket)
+                {
+                    --depth;
+                }
+                else if (tokens_[cursor].kind() == TokenKind::EndOfFile)
+                {
+                    return false;
+                }
+                ++cursor;
+            }
+            if (depth != 0)
+            {
+                return false;
+            }
+            continue;
+        }
+        break;
+    }
+
+    return cursor < tokens_.size() &&
+        tokens_[cursor].kind() == TokenKind::Identifier;
+}
+
 bool Parser::looksLikeParenthesizedType() const noexcept
 {
     if (!at(TokenKind::LeftParen))
@@ -4063,7 +4176,7 @@ ast::AstNode* Parser::parseStatement()
     // pedia un nombre de variable, y el error era "expected variable name, found '.'": un
     // diagnostico que no menciona ni genericos ni miembros estaticos y manda a mirar donde no es.
     if (at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVar) ||
-        (canStartTypeAt(index_) && !looksLikeClosedGenericTypeReference()))
+        (looksLikeVariableDeclaration() && !looksLikeClosedGenericTypeReference()))
     {
         return parseVariableDeclaration(true);
     }

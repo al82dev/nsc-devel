@@ -1,0 +1,30 @@
+namespace bugtriage
+{
+    using Imported.Api;
+
+    class Holder
+    {
+        private GL Gl;
+
+        public Holder(GL gl)
+        {
+            Gl = gl;
+        }
+
+        public int Read()
+        {
+            return Gl.Value;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            GL value = new GL();
+            value.Value = GL.Kind + 2;
+            Holder holder = new Holder(value);
+            return holder.Read();
+        }
+    }
+}

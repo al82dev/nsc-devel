@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup><Name>b11_const_field_reference</Name></PropertyGroup>
+  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../lib/Limits.nsproj" /></ItemGroup>
+</Project>

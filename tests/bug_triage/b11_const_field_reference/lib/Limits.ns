@@ -1,0 +1,7 @@
+namespace Imported
+{
+    public class SourceLimits
+    {
+        public const int Source = 59;
+    }
+}

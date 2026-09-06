@@ -383,8 +383,19 @@ void testStaticAccessAndConstNegatives(TestContext& tests, const std::filesystem
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectMethodBodies(directory / "ConstForward.nsproj", error);
+        tests.expect(ok && error.empty(),
+            "NSC-LIMIT-019 const dependencies may point forward when the dependency graph is acyclic");
+    }
+    {
+        const auto directory = root / "ConstCycle";
+        writeProject(directory, "ConstCycle");
+        writeFile(directory / "Main.ns",
+            "class Constants { const int A = B + 1; const int B = A + 1; }");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMethodBodies(directory / "ConstCycle.nsproj", error);
         tests.expect(!ok && diagnosticCount(compilation, DiagnosticId::InvalidOperand) >= 1,
-            "Stage 37 const dependencies are backward-only, rejecting forward/self cycles deterministically");
+            "NSC-LIMIT-019 detects real const dependency cycles independently of declaration order");
     }
     {
         const auto directory = root / "ConstAssignment";

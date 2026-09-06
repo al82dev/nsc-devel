@@ -324,8 +324,8 @@ void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path
         const bool ok = compilation.compileProjectMethodBodies(directory / "DirectCtorCall.nsproj", error);
         tests.expect(!ok,
             "constructor declarations do not participate in ordinary implicit method lookup");
-        tests.expect(diagnosticCount(compilation, DiagnosticId::ExpectedToken) >= 1,
-            "constructor-shaped Box() expression is rejected by the ordinary statement grammar; construction requires new Box()");
+        tests.expect(diagnosticCount(compilation, DiagnosticId::UnknownIdentifier) == 1,
+            "constructor-shaped Box() expression is parsed as a call and rejected as an unknown callable; construction requires new Box()");
     }
 
     {

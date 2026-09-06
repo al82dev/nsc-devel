@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>b9_enum_bitwise</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Main.ns" /></ItemGroup>
+</Project>

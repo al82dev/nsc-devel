@@ -4607,6 +4607,13 @@ private:
                 {
                     LLVMValueRef operand = lowerExpression(node->children[1].get(), error);
                     if (operand == nullptr) return nullptr;
+                    if (node->operation == lexer::TokenKind::LessLess ||
+                        node->operation == lexer::TokenKind::GreaterGreater)
+                    {
+                        operand = normalizeShiftCount(
+                            operand, node->children[1]->typeKey, node->typeKey, error);
+                        if (operand == nullptr) return nullptr;
+                    }
                     updated = applyBinaryOperation(
                         node->operation, previous, operand, node->typeKey, error);
                 }
@@ -5711,6 +5718,12 @@ private:
                 if (node->children.size() != 2) return failValue(error, "store MIR requires target and value");
                 LLVMValueRef address = lowerExpression(node->children[0].get(), error);
                 if (address == nullptr) return nullptr;
+                // NSC-LIMIT-015: evaluate the target address and the complete RHS before releasing
+                // the owner displaced by the store. The old order made `text = Concat(text, value)`
+                // pass freed memory to Concat. The materialized SSA value dominates the release and
+                // ready blocks and is transferred by the final store.
+                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                if (value == nullptr) return nullptr;
                 if (node->booleanValue && node->localOrdinal.has_value())
                 {
                     const auto cleanup = std::find_if(
@@ -5788,8 +5801,6 @@ private:
                     LLVMBuildBr(builder_, readyBlock);
                     LLVMPositionBuilderAtEnd(builder_, readyBlock);
                 }
-                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
-                if (value == nullptr) return nullptr;
                 LLVMBuildStore(builder_, value, address);
                 return value;
             }
@@ -7342,7 +7353,55 @@ private:
         LLVMValueRef left = lowerExpression(node->children[0].get(), error);
         LLVMValueRef right = left != nullptr ? lowerExpression(node->children[1].get(), error) : nullptr;
         if (left == nullptr || right == nullptr) return nullptr;
+        // NSC-LUNAR-007. LLVM requires both operands of shl/lshr/ashr to have exactly the same
+        // integer type. NativeSharp keeps the counter's semantic type, then validates and converts
+        // it immediately before emission. Thus `ulong << int` is valid without producing
+        // `shl i64 ..., i32 ...` or exposing a promotion in the language.
+        if (node->operation == lexer::TokenKind::LessLess ||
+            node->operation == lexer::TokenKind::GreaterGreater)
+        {
+            right = normalizeShiftCount(
+                right, node->children[1]->typeKey, node->children[0]->typeKey, error);
+            if (right == nullptr) return nullptr;
+        }
         return applyBinaryOperation(node->operation, left, right, node->children[0]->typeKey, error);
+    }
+
+    LLVMValueRef normalizeShiftCount(
+        LLVMValueRef count,
+        const std::string& countTypeKey,
+        const std::string& valueTypeKey,
+        std::string& error)
+    {
+        const unsigned valueWidth = integerWidth(valueTypeKey);
+        LLVMTypeRef countType = llvmType(countTypeKey, error);
+        if (valueWidth == 0 || countType == nullptr)
+        {
+            return failValue(error, "shift operands must have concrete integer widths");
+        }
+
+        LLVMValueRef belowWidth = LLVMBuildICmp(
+            builder_,
+            LLVMIntULT,
+            count,
+            LLVMConstInt(countType, valueWidth, 0),
+            "shift.below_width");
+        LLVMValueRef validCount = belowWidth;
+        if (isSignedInteger(countTypeKey))
+        {
+            LLVMValueRef nonnegative = LLVMBuildICmp(
+                builder_,
+                LLVMIntSGE,
+                count,
+                LLVMConstInt(countType, 0, 0),
+                "shift.nonnegative");
+            validCount = LLVMBuildAnd(builder_, nonnegative, belowWidth, "shift.valid");
+        }
+        if (!emitGuard(validCount, LlvmTrapReason::InvalidShiftCount, "shift.range", error))
+        {
+            return nullptr;
+        }
+        return convert(count, countTypeKey, valueTypeKey, error);
     }
 
     // IDs 79/81. La aritmetica de DOS VALORES YA BAJADOS, sacada de lowerBinary para que la

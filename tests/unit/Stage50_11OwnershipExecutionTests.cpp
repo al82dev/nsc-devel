@@ -1318,6 +1318,100 @@ void testOwnedFieldOverwriteWithOwnedCallReleasesOld(
     run(tests, root, "OwnedFieldOverwriteWithOwnedCallReleasesOld", source, 2);
 }
 
+void testOwnedFieldReplacementEvaluatesRhsBeforeDestroyingOldValue(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    // NSC-LIMIT-015: the RHS borrows the value currently stored in the destination field.
+    // Destroying the displaced owner before evaluating MakeNext is a use-after-free. This checks
+    // both observable value and exact cleanup: old owner during replacement, new owner at scope exit.
+    const std::string source = std::string(kPrelude) + R"NS(
+    class Holder
+    {
+        public owned Resource slot;
+
+        private static owned Resource MakeNext(Resource current)
+        {
+            return new Resource(current.Tag() + 1);
+        }
+
+        public void Replace()
+        {
+            slot = MakeNext(slot);
+        }
+    }
+
+    class Program
+    {
+        public static bool Scope()
+        {
+            raii Holder holder = new Holder();
+            holder.slot = new Resource(1);
+            holder.Replace();
+            return holder.slot.Tag() == 2 && Resource.Destructions() == 1;
+        }
+
+        public static int Main()
+        {
+            if (!Scope()) { return 8; }
+            if (Resource.Destructions() != 2) { return 9; }
+            return 42;
+        }
+    }
+)NS";
+    run(tests, root, "OwnedFieldReplacementEvaluatesRhsFirst", source, 42);
+}
+
+void testOwnedStringFieldReplacementPreservesRhsBorrow(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    // The exact string shape that exposed NSC-LIMIT-015: Concat reads the old field while returning
+    // a fresh owner for the same field. The old lowering produced only "c".
+    const std::string source = R"NS(
+using NativeSharp.Core;
+namespace OwnedStringRhsOrder
+{
+    class Holder
+    {
+        private owned string text;
+
+        public Holder()
+        {
+            text = String.Copy("");
+        }
+
+        public void Set(string value)
+        {
+            text = String.Copy(value);
+        }
+
+        public void Append(string value)
+        {
+            text = String.Concat(text, value);
+        }
+
+        public string Text { get { return text; } }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            raii Holder holder = new Holder();
+            holder.Set("ab");
+            holder.Append("c");
+            if (holder.Text == "abc") { return 42; }
+            return 8;
+        }
+    }
+}
+)NS";
+    const auto directory = root / "OwnedStringFieldReplacementRhsOrder";
+    writeProjectWithCoreReference(directory, "OwnedStringFieldReplacementRhsOrder");
+    writeFile(directory / "Main.ns", source);
+    compileAndRun(tests, directory, "-O0", "OwnedStringFieldReplacementRhsOrder [-O0]", 42);
+    compileAndRun(tests, directory, "-O2", "OwnedStringFieldReplacementRhsOrder [-O2]", 42);
+}
+
 void testMoveOutOfOwnedFieldTransfers(TestContext& tests, const std::filesystem::path& root)
 {
     // move(holder.slot): the slot was an ownership SINK before this existed -- values could be
@@ -1845,6 +1939,8 @@ int main()
     testOwnedFieldOverwriteWithNullReleases(tests, root);
     testOwnedFieldOverwriteWithNewReleasesOld(tests, root);
     testOwnedFieldOverwriteWithOwnedCallReleasesOld(tests, root);
+    testOwnedFieldReplacementEvaluatesRhsBeforeDestroyingOldValue(tests, root);
+    testOwnedStringFieldReplacementPreservesRhsBorrow(tests, root);
     testMoveOutOfOwnedFieldTransfers(tests, root);
     testTakeMethodReturnsOwnershipFromImplicitThisField(tests, root);
     testSecondMoveOutOfEmptiedSlotYieldsNull(tests, root);

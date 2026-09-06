@@ -40,6 +40,7 @@ private:
 
     bool canStartType(const lexer::Token& token) const noexcept;
     bool canStartTypeAt(std::size_t tokenIndex) const noexcept;
+    bool looksLikeVariableDeclaration() const noexcept;
     bool looksLikeParenthesizedType() const noexcept;
     bool parseQualifiedName(std::string& name, SourceRange& range);
     ast::TypeSyntax* parseType();

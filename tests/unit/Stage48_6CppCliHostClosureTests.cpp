@@ -350,8 +350,8 @@ void testConsolidatedStage48Surface(TestContext& tests)
     // which held only while Version.h carried that literal. It stopped holding when the build
     // identity landed -- `kCompilerVersion` is generated per build now and reads
     // `<release>+build.<timestamp>.<hash>` -- and the tree was left asserting two contradictory
-    // things: nsc.version in CMakeLists demands `0.7.4-alpha`, this demanded `0.1.0-dev`, and both
-    // cannot hold at once.
+    // things: nsc.version in CMakeLists demands the current release identity, this demanded
+    // `0.1.0-dev`, and both cannot hold at once.
     //
     // The mistake was not pinning a literal. Pinning one is the point: an identity check has to go
     // red when the identity moves, which is what "user-selected" means in the message. The mistake

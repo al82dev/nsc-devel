@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     NativeSharp
-    VERSION 0.7.4
-    DESCRIPTION "NativeSharp stage 57 -- language completion and CC1 correctness"
+    VERSION 0.7.6
+    DESCRIPTION "NativeSharp stage 57 -- ownership, enum and cross-project correctness"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -1427,7 +1427,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 0.7.4-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
+            "nsc 0.7.6-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

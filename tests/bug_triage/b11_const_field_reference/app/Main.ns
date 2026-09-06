@@ -1,0 +1,18 @@
+namespace bugtriage
+{
+    using Imported;
+
+    class ConsumerLimits
+    {
+        public const int Alias = SourceLimits.Source;
+        public const int Transitive = Alias + 1;
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            return ConsumerLimits.Transitive == 60 ? 42 : 1;
+        }
+    }
+}

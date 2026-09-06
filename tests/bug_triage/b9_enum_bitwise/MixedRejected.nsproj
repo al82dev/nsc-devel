@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>b9_enum_bitwise_mixed_rejected</Name></PropertyGroup>
+  <ItemGroup><Compile Include="MixedRejected.ns" /></ItemGroup>
+</Project>

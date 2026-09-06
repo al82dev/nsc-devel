@@ -555,7 +555,20 @@ bool ProjectMethodBodyModel::build(
                 field.syntax->range(),
                 "Stage 37 const fields are limited to integral, bool, float, and double types");
         }
-        if (field.isConst && !isCompileTimeConstantExpression(field.syntax->first(), memberOrdinal))
+    }
+
+    // NSC-LIMIT-019. Validate after every initializer has been analyzed. ProjectMemberModel orders
+    // types by stable identity rather than source order, so a transitive evaluator needs all name
+    // and expression bindings to exist before it follows qualified dependencies.
+    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+    {
+        const ClassMemberSymbol& field = memberModel.members()[memberOrdinal];
+        if (field.kind != ClassMemberKind::Field || !field.isConst || field.isEnumConstant ||
+            field.syntax == nullptr || field.syntax->first() == nullptr)
+        {
+            continue;
+        }
+        if (!isCompileTimeConstantExpression(field.syntax->first(), memberOrdinal))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -8963,7 +8976,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
 
     if (operation == TokenKind::Plus || operation == TokenKind::Minus || operation == TokenKind::Tilde)
     {
-        if (!ProjectTypeConversion::isNumeric(operand.typeKey) || operand.typeKey == "builtin:bool")
+        // NSC-LIMIT-012. `~enum` preserves the enum identity; unary + and - remain numeric-only.
+        const bool enumComplement = operation == TokenKind::Tilde && isEnumTypeKey(operand.typeKey);
+        if ((!ProjectTypeConversion::isNumeric(operand.typeKey) || operand.typeKey == "builtin:bool") &&
+            !enumComplement)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -9206,6 +9222,27 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
             return result;
         }
         result.typeKey = "builtin:bool";
+        result.valid = true;
+        return result;
+    }
+
+    // NSC-LIMIT-012. Bitwise operations between values of the exact same enum preserve that enum.
+    // Mixing enum/integer or two distinct enums remains invalid; this does not introduce general
+    // implicit numeric conversions for enums.
+    const bool bitwise = operation == TokenKind::Amp || operation == TokenKind::Pipe ||
+        operation == TokenKind::Caret;
+    if (bitwise && (isEnumTypeKey(left.typeKey) || isEnumTypeKey(right.typeKey)))
+    {
+        if (left.typeKey != right.typeKey || !isEnumTypeKey(left.typeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "bitwise enum operands must have exactly the same enum type");
+            return result;
+        }
+        result.typeKey = left.typeKey;
         result.valid = true;
         return result;
     }
@@ -10271,8 +10308,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 return {};
             }
 
-            const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
-                left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+            const TokenKind baseOperator =
+                lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+            const bool sameEnumBitwise = isEnumTypeKey(left.typeKey) &&
+                left.typeKey == right.typeKey &&
+                (baseOperator == TokenKind::Amp || baseOperator == TokenKind::Pipe ||
+                 baseOperator == TokenKind::Caret);
+            const bool shiftAssignment = isShift(baseOperator) &&
+                ProjectTypeConversion::isIntegral(left.typeKey) &&
+                ProjectTypeConversion::isIntegral(right.typeKey) &&
+                left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
+            const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
+                ? std::optional<std::string>(left.typeKey)
+                : ProjectTypeConversion::commonNumericType(
+                      left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
             if (!common.has_value())
             {
                 diagnostics.report(
@@ -10285,7 +10334,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
 
             const ProjectImplicitConversion narrowing = classifyImplicit(
                 right.typeKey, left.typeKey, right.integerConstant);
-            if (!narrowing.exists())
+            if (!shiftAssignment && !narrowing.exists())
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidConversion,
@@ -10384,8 +10433,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return left;
     }
 
-    const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
-        left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+    const TokenKind compoundBase = lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+    const bool sameEnumBitwise = isEnumTypeKey(left.typeKey) && left.typeKey == right.typeKey &&
+        (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe ||
+         compoundBase == TokenKind::Caret);
+    const bool shiftAssignment = isShift(compoundBase) &&
+        ProjectTypeConversion::isIntegral(left.typeKey) &&
+        ProjectTypeConversion::isIntegral(right.typeKey) &&
+        left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
+    const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
+        ? std::optional<std::string>(left.typeKey)
+        : ProjectTypeConversion::commonNumericType(
+              left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
     if (!common.has_value())
     {
         diagnostics.report(
@@ -10404,7 +10463,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // La conversion constante sigue valiendo, asi que `byte b; b += 1;` compila sin ceremonia.
     const ProjectImplicitConversion narrowing = classifyImplicit(
         right.typeKey, left.typeKey, right.integerConstant);
-    if (!narrowing.exists())
+    if (!shiftAssignment && !narrowing.exists())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
@@ -10675,6 +10734,11 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
         return std::nullopt;
     };
 
+    // NSC-LIMIT-019. Member ordinals are not dependency order. Track the active graph so valid
+    // forward/cross-project references work while direct and transitive cycles remain invalid.
+    std::unordered_set<std::size_t> evaluatingFields;
+    evaluatingFields.insert(contextMemberOrdinal);
+
     const auto evaluate = [&](auto&& self, const ast::AstNode* node, std::size_t context)
         -> std::optional<Stage37ConstantValue>
     {
@@ -10738,7 +10802,7 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
                         continue;
                     }
                     const std::size_t ordinal = binding.candidateMemberOrdinals.front();
-                    if (ordinal >= memberModel_->members().size() || ordinal >= context)
+                    if (ordinal >= memberModel_->members().size())
                     {
                         return std::nullopt;
                     }
@@ -10748,7 +10812,9 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
                     {
                         return std::nullopt;
                     }
+                    if (!evaluatingFields.insert(ordinal).second) return std::nullopt;
                     std::optional<Stage37ConstantValue> value = self(self, field.syntax->first(), ordinal);
+                    evaluatingFields.erase(ordinal);
                     return value.has_value() ? convertValue(*value, field.declaredTypeKey) : std::nullopt;
                 }
                 return std::nullopt;

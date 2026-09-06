@@ -1,4 +1,4 @@
-// Stage 56 -- red de regresion de los ocho bugs reportados contra el compilador.
+// Stage 56 -- red de regresion de los bugs reportados contra el compilador.
 //
 // POR QUE EXISTE. `tests/bug_triage/` nacio como un ARNES DE MEDICION: ocho reproductores
 // minimos escritos para responder "cuales de los bugs que las instancias consumidoras
@@ -6,16 +6,15 @@
 // a C1, C6, C7 y C8 y no estaba dicho cuales seguian en pie. La respuesta fue siete vivos y
 // uno ya muerto, y los siete se arreglaron (ver `68_triage_y_cierre_de_bugs_reportados.md`).
 //
-// Un arnes de medicion no es una red. Mientras estos ocho casos vivieran solo en un `.bat`
-// que hay que acordarse de correr, nada impedia que cualquiera de ellos volviera sin que
-// nadie se enterara -- que es exactamente como llegaron a acumularse en primer lugar. Esta
-// suite los pone bajo `ctest`.
+// Un arnes de medicion no es una red. Mientras los casos vivieran solo en un `.bat` que hay que
+// acordarse de correr, nada impedia que cualquiera volviera sin que nadie se enterara. Esta suite
+// puso los ocho originales bajo `ctest` y ahora crece con cada limite real que queda corregido.
 //
 // QUE VERIFICA Y QUE NO, dicho explicitamente para que nadie lea de mas en un verde:
 //
-//   * Aqui: que los ocho COMPILAN, a -O0 y a -O2. Seis de los ocho eran fallos ruidosos
-//     -- error del verifier, error interno, error de tipos, fallo de enlace -- asi que para
-//     esos seis compilar ES la regresion, y esta suite los cubre entera.
+//   * Aqui: que las fixtures positivas COMPILAN a -O0 y -O2 y, cuando existe Wine, ejecutan el
+//     resultado; las negativas exigen el diagnostico contractual. Para los fallos ruidosos
+//     -- verifier, error interno, tipos o enlace -- compilar ES la regresion.
 //   * Bajo Wine, si esta disponible: ademas se EJECUTAN y se compara el codigo de salida.
 //     En la maquina Windows de desarrollo no hay Wine, asi que ahi este paso degrada a skip
 //     explicito, igual que en el resto de las suites de este arbol.
@@ -133,6 +132,37 @@ void checkFixture(
             scenario + ": exits with " + std::to_string(expected));
     }
 }
+
+void checkRejected(
+    TestContext& tests,
+    const std::filesystem::path& outputRoot,
+    std::string_view relativeProject,
+    std::string_view label,
+    std::string_view expectedDiagnostic)
+{
+    const std::filesystem::path projectPath =
+        std::filesystem::path(NSC_SOURCE_DIR) / std::filesystem::path(relativeProject);
+    tests.expect(std::filesystem::exists(projectPath), std::string(label) + ": fixture exists");
+    if (!std::filesystem::exists(projectPath))
+    {
+        return;
+    }
+
+    const auto exePath = outputRoot / (std::string(label) + ".exe");
+    const std::string projectText = projectPath.string();
+    const std::string exeText = exePath.string();
+    const std::array<std::string_view, 5> args = {
+        "--emit-project-oop-exe", projectText, "-O0", "-o", exeText};
+    Driver driver;
+    std::ostringstream out;
+    std::ostringstream err;
+    const ExitCode result = driver.run(args, out, err);
+    const std::string diagnostic = err.str() + out.str();
+    tests.expect(result != ExitCode::Success, std::string(label) + ": compilation is rejected");
+    tests.expect(
+        diagnostic.find(expectedDiagnostic) != std::string::npos,
+        std::string(label) + ": diagnostic names the exact incompatibility (" + diagnostic + ")");
+}
 }
 
 int main()
@@ -198,6 +228,39 @@ int main()
     // `1u << 28` had no integral answer and fell through to `double`.
     checkFixture(
         tests, root, "tests/bug_triage/b8_shift_folding/b8_shift_folding.nsproj", "b8-shift-folding", 42);
+
+    // b9 / NSC-LIMIT-012 -- same-enum bitwise operations preserve their enum type, including
+    // unary complement and compound assignments over locals and properties.
+    checkFixture(
+        tests,
+        root,
+        "tests/bug_triage/b9_enum_bitwise/b9_enum_bitwise.nsproj",
+        "b9-enum-bitwise",
+        42);
+    checkRejected(
+        tests,
+        root,
+        "tests/bug_triage/b9_enum_bitwise/MixedRejected.nsproj",
+        "b9-enum-bitwise-mixed",
+        "bitwise enum operands must have exactly the same enum type");
+
+    // b10 / NSC-LIMIT-013 -- an exact field name wins expression parsing even when an unrelated
+    // imported type has the same spelling and differs from the field's declared type only by case.
+    checkFixture(
+        tests,
+        root,
+        "tests/bug_triage/b10_type_field_case_collision/app/b10_type_field_case_collision.nsproj",
+        "b10-type-field-case-collision",
+        42);
+
+    // b11 / NSC-LIMIT-019 -- qualified and transitive const references work across a project
+    // boundary; declaration/member ordering no longer stands in for cycle detection.
+    checkFixture(
+        tests,
+        root,
+        "tests/bug_triage/b11_const_field_reference/app/b11_const_field_reference.nsproj",
+        "b11-const-field-reference",
+        42);
 
     return tests.result();
 }

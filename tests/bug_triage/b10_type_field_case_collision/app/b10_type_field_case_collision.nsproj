@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup><Name>b10_type_field_case_collision</Name></PropertyGroup>
+  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../lib/Bindings.nsproj" /></ItemGroup>
+</Project>

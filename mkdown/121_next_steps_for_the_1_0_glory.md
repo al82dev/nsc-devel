@@ -1,21 +1,23 @@
 # 121 — Next Steps for the 1.0 Glory
 
 **Fecha:** 2026-09-05
-**Punto de partida:** `nsc 0.7.4-alpha+build.20260905T200353Z.55d3be8643049cfa`;
-NativeSharp 0.1 / Stage 57.  
+**Punto de partida:** entrega `nsc 0.7.6-alpha`; NativeSharp 0.1 / Stage 57. La identidad
+`+build.<UTC>.<hash>` se genera de nuevo para cada binario y se registra al certificar.
 **Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
 herramientas gráficas y software de plataforma con rendimiento predecible.
 
-**Estado de la entrega más reciente:** el compilador nuevo terminó de construirse y ya fue
-instalado. Los hashes de `built_nsc` e `installed_nsc` coinciden:
-`ffbc18d332533ef4c5bb637f6a47bc035acfb329ff823f935c0ee3d1e6f37915`. Sin embargo, la matriz
-G00 terminó en `FAILED` porque el árbol de artefactos cambió durante la corrida: varios
-ejecutables fueron modificados y muchos otros aparecieron después de tomar el inventario inicial.
-La corrida registró cero fallos de pruebas, pero **no certifica un baseline**. Instalación correcta,
-ausencia de fallos observados y certificación son tres afirmaciones distintas. La causa se aisló
-en el runner: G00 fotografiaba los ejecutables antes de que su propia etapa `_build_tests()` los
-creara o relinkara. La medición intermedia ya fue movida después de construir ambos árboles CTest;
-falta repetir la matriz, no reinterpretar la corrida inválida.
+**Estado de la entrega más reciente:** G00 fue corregido y repetido. El resultado es `LANDED`,
+`certified: true`, cero fallos y cero problemas; `built_nsc` e `installed_nsc` coincidieron en
+`e8300abe7b20a18bf35957c5d14f6db865d068d83ffef6a35435c16a92e7121c`. La entrega 0.7.6 añade
+regresiones propias y revalida los repros exactos de `011`, `012`, `013`, `015` y `019`. Antes de
+instalar 0.7.6 debe repetirse la misma matriz sobre su identidad de build definitiva; el verde de
+un binario anterior no se hereda por texto.
+
+**Validación local de 0.7.6:** reconstrucción completa correcta; la matriz de 293 casos dejó 287
+verdes y seis emisiones `.obj` bloqueadas transitoriamente por Windows. Las seis pasaron al
+repetirse en serie, sin fallo funcional persistente. Los repros externos exactos `011`, `012`,
+`013`, `015`, `019` y `shift-width` pasan con el build local. Falta únicamente instalación + G00
+para certificar esta identidad como distribución.
 
 ---
 
@@ -155,22 +157,22 @@ aceptado debe convertirse en una prueba autocontenida dentro de `nsc`.
 | NSC-LIMIT-008 | Corregido | los temporales struct producidos por propiedades son utilizables |
 | NSC-LIMIT-009 | Corregido | los tipos anidados ya son parte efectiva del lenguaje |
 | NSC-LIMIT-010 | Corregido | constructores participan correctamente en transferencia `owned` |
-| NSC-LIMIT-011 | Implementado en disco; pendiente de certificación completa | las pruebas dirigidas ya cubren tipos del consumidor, re-clonación, homónimos y sobrecargas |
-| NSC-LIMIT-012 | Abierto, P2 | faltan operadores bitwise tipados para enums del mismo tipo |
-| NSC-LIMIT-013 | Abierto, P2 | el lookup confunde un campo con un tipo importado por capitalización |
-| NSC-LUNAR-007 | Reporte externo confirmado, P1 | un shift aceptado entre `ulong` e `int` produce operandos LLVM de distinto ancho |
+| NSC-LIMIT-011 | Corregido y certificado | constraints cross-project pasan pruebas propias y el repro consumidor exacto |
+| NSC-LIMIT-012 | Corregido en 0.7.6 | `|`, `&`, `^`, `~` y asignaciones compuestas conservan el enum; mezcla de enums se rechaza |
+| NSC-LIMIT-013 | Corregido en 0.7.6 | el parser exige la forma real `tipo identificador`; `GL Gl; Gl = gl;` y referencias estáticas coexisten |
+| NSC-LUNAR-007 | Corregido en 0.7.6 | el backend normaliza el contador al ancho LLVM del valor en shifts simples y compuestos |
 | NSC-LIMIT-014 | Abierto, P1 de lifetime | `static owned` se rechaza porque no existe destrucción del estado estático |
-| NSC-LIMIT-015 | Abierto, P0 | overwrite de campo `owned` libera el destino antes de evaluar un RHS que lo lee |
+| NSC-LIMIT-015 | Corregido en 0.7.6 | el RHS se evalúa antes de destruir el owner desplazado; clases y strings pasan O0/O2 |
 | NSC-LIMIT-016 | Abierto, P1 | los arrays poseídos no pueden ser locales `raii` con cleanup compuesto |
 | NSC-LIMIT-017 | Abierto, P1 | no se acepta `new T[] { ... }` con longitud inferida por el inicializador |
 | NSC-LIMIT-018 | Abierto, P1 | una clase genérica valida miembros no usados que requieren operaciones ausentes en `T` |
-| NSC-LIMIT-019 | Abierto, P1 | un campo `const` no puede plegar una referencia calificada a otro `const` |
+| NSC-LIMIT-019 | Corregido en 0.7.6 | bindings en dos pasos, plegado calificado/transitivo/cross-project y detección real de ciclos |
 | NSC-LIMIT-020 | Abierto, P2 | el parser no admite parámetros con valor predeterminado |
 | NSC-LIMIT-021 | Abierto, P1 de lifetime | un temporal `owned string` no puede prestarse a un parámetro no retenedor durante la expresión |
 | CORE-LUNAR-003 / BIND-LUNAR-002 | Abierto, P2 de plataforma | `DateTime` y el binding Win32 no cubren calendario/hora local |
 
 La evolución es correcta: Native Sharp dejó de acumular sintaxis aislada y empezó a corregir las
-interacciones que aparecen en software nativo real. Pero todavía es una **0.7.4-alpha**. El salto a
+interacciones que aparecen en software nativo real. Pero todavía es una **0.7.6-alpha**. El salto a
 0.8 no lo concede la cantidad de casos verdes, sino cerrar los dos riesgos estructurales actuales:
 semántica equivalente O0/O2 y composición fiable entre proyectos.
 
@@ -208,13 +210,11 @@ regla de compatibilidad.
 
 ### 5.1 Certificar la entrega actual
 
-La primera matriz G00 sobre el binario instalado nuevo no es certificable: no registró fallos de
-prueba, pero detectó que el conjunto y contenido de ejecutables cambió mientras se ejecutaba. El
-estado correcto es `FAILED`, no «verde con advertencias». Los fingerprints S0/S1 coincidieron y el
-binario construido coincide con el instalado. La causa fue el orden interno del runner: capturaba
-el inventario antes de `_build_tests()` y después denunciaba como cambios los artefactos creados
-por esa misma etapa. La fotografía ahora ocurre después de construir los dos árboles y antes de
-ejecutar CTest/fixtures/triage.
+La primera matriz G00 descubrió correctamente que su propio orden de medición era inválido. Tras
+mover la fotografía después de `_build_tests()`, la repetición terminó `LANDED` y certificada, sin
+fallos ni mutaciones del árbol medido. Esa certificación cierra el baseline anterior. Cada nuevo
+binario —incluido 0.7.6— debe repetir el gate con su propia identidad; no basta reutilizar el
+resultado anterior.
 
 - reservar una ventana sin builds concurrentes o usar directorios de build aislados por corrida;
 - reconstruir e instalar el `nsc.exe` exacto que se va a medir;
@@ -246,13 +246,11 @@ Se requiere:
 
 **Cierre:** cero divergencia observable O0/O2 en todo el corpus contractual.
 
-### 5.3 Completar constraints genéricos: cerrar `NSC-LIMIT-011`
+### 5.3 `NSC-LIMIT-011` — cerrado y conservado como contrato
 
-**Estado al 2026-09-05:** implementación y pruebas dirigidas verdes; todavía no se declara cerrado
-el gate. Falta reconstruir/instalar el compilador que medirá la matriz completa, ejecutar todo
-CTest, fixtures y bug triage. El detalle técnico y la evidencia dirigida están en el documento
-125. La retirada de workarounds o revalidación en proyectos externos corresponde exclusivamente a
-sus mantenedores y no forma parte del cierre de `nsc`.
+**Estado al 2026-09-05:** implementación, pruebas propias, matriz G00 y repro consumidor exacto
+verdes. El detalle técnico está en el documento 125. La retirada de workarounds en proyectos
+externos corresponde exclusivamente a sus mantenedores.
 
 `NSC-LIMIT-007` ya demostró que el lenguaje parsea y valida las constraints mínimas necesarias para
 APIs nativas, engines y matemáticas reutilizables:
@@ -322,6 +320,9 @@ contrato y certificar que no divergen en O0/O2 ni entre proyectos.
 
 ### 5.5 Cerrar `NSC-LIMIT-012`: bitwise de enums tipados
 
+**Estado 0.7.6:** cerrado. La suite propia ejecuta las cinco formas sobre local y propiedad en O0
+y O2, y una fixture negativa exige el diagnóstico exacto al mezclar enums distintos.
+
 Para flags de APIs nativas, dos operandos del mismo enum deben conservar el tipo enum:
 
 ```csharp
@@ -335,12 +336,23 @@ necesaria para Win32, OpenGL, DirectX y otras ABI nativas.
 
 ### 5.6 Cerrar `NSC-LIMIT-013`: colisión entre valor y tipo importado
 
+**Estado 0.7.6:** cerrado. La causa era la existencia simultánea de `GL` y un tipo importado real
+`Raw.Gl`, no una comparación case-insensitive. El parser ahora reconoce una declaración sólo si
+después del tipo existe un identificador de variable; el repro de dos proyectos y una referencia
+estática legítima permanecen en la suite.
+
 El lookup de una expresión debe preferir la coincidencia exacta de una variable, parámetro, campo o
 propiedad accesible antes de reinterpretarla como un tipo importado cuya capitalización difiere.
 El patrón `GL Gl; Gl = gl;` debe ser válido también cuando `GL` viene de un `ProjectReference`, sin
 romper referencias estáticas legítimas a `GL`.
 
 ### 5.7 Promover y cerrar `NSC-LUNAR-007`: ancho del operando derecho en shifts
+
+**Estado 0.7.6:** cerrado para el defecto reportado. El tipo semántico del contador no cambia; el
+backend lo normaliza al ancho físico del operando izquierdo antes de emitir `shl`, `lshr` o
+`ashr`. La fixture cubre `ulong`/`int`, izquierda, derecha, `<<=` y `>>=` en O0/O2. La política de
+conteos fuera de rango sigue siendo la trampa explícita de NativeSharp ya fijada por CC1; no se
+delega a poison de LLVM.
 
 El frontend acepta una expresión natural para bitsets nativos:
 
@@ -410,6 +422,11 @@ fuera de 1.0 manteniendo el rechazo preciso. El workaround sólo puede retirarse
 cuando una fixture propia demuestre destrucción determinista y única.
 
 ### 5.9 Corregir `NSC-LIMIT-015`: overwrite de campo `owned`
+
+**Estado 0.7.6:** corregido el P0 reproducible. El lowerer obtiene la dirección del destino,
+evalúa el RHS completo y sólo después destruye el owner desplazado. Dos regresiones de ejecución
+—clase con contadores y `string` con `String.Concat(text, value)`— pasan en O0/O2, además del repro
+consumidor exacto a través de LLVM verificado.
 
 El repro mínimo confirmó un P0: `text = String.Concat(text, value)` compila en HIR/LLVM y enlaza
 en O0, pero libera `text` antes de evaluar el RHS que todavía necesita leerlo. El programa imprime
@@ -513,6 +530,11 @@ Las regresiones deben cubrir tipo sin `<`, uso de almacenamiento/indexador, llam
 funciona sólo con un `T` válido o falla con el constraint preciso.
 
 ### 5.13 Cerrar `NSC-LIMIT-019`: plegado transitivo de campos `const`
+
+**Estado 0.7.6:** cerrado. Todos los inicializadores se enlazan antes de evaluar dependencias;
+un conjunto de visita detecta ciclos reales en vez de usar el ordinal alfabético del miembro como
+aproximación del orden. Pasan referencia adelantada, calificada, transitiva y cross-project, y el
+ciclo directo/indirecto conserva rechazo.
 
 Una referencia calificada como `ConsumerLimits.Alias = SourceLimits.Source` debe ser una
 constante cuando el campo origen también lo sea. Se requiere plegado transitivo entre tipos y
@@ -1039,17 +1061,16 @@ Además:
 ## 12. Orden recomendado
 
 ```text
-0.7.4  Build nuevo instalado; runner G00 corregido y repetición limpia pendiente
-0.7.5  NSC-LIMIT-011: certificar constraints cross-project en pruebas propias de nsc
-0.7.6  NSC-LIMIT-015: corregir el P0 de overwrite de campos owned
+0.7.4  Build instalado; el primer G00 detectó orden de medición inválido
+0.7.5  Runner G00 corregido; baseline LANDED/certificado; NSC-LIMIT-011 cerrado
+0.7.6  Entrega grande: NSC-LIMIT-012/013/015/019 + NSC-LUNAR-007 cerrados
 0.7.7  NSC-LIMIT-021: lifetime de expresión para préstamos de temporales owned
-0.7.8  NSC-LUNAR-007: promover/corregir anchos de operandos de shift en LLVM
-0.7.9  NSC-LIMIT-016/017: lifetime e inicialización declarativa de arrays
-0.7.10 NSC-LIMIT-014: implementar o excluir ownership estático
-0.7.11 NSC-LIMIT-018/019: especialización alcanzable y constantes calificadas
-0.7.12 NSC-LIMIT-005: observabilidad, corrección y equivalencia O0/O2
-0.7.13 NSC-LIMIT-012/013/020: enums, lookup y parámetros predeterminados
-0.7.14 Consolidación semántica, certificación propia y cero P0/P1
+0.7.8  NSC-LIMIT-016/017: lifetime e inicialización declarativa de arrays
+0.7.9  NSC-LIMIT-014: implementar o excluir ownership estático
+0.7.10 NSC-LIMIT-018: especialización genérica por miembro alcanzado
+0.7.11 NSC-LIMIT-005: observabilidad, corrección y equivalencia O0/O2
+0.7.12 NSC-LIMIT-020: parámetros predeterminados completos, incluida metadata
+0.7.13 Consolidación semántica, certificación propia y cero P0/P1
 
 0.8.0  .nsproj externo + .lib + Debug/Release
 0.8.1  CodeView/PDB

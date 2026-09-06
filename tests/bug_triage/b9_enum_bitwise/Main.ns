@@ -1,0 +1,46 @@
+// NSC-LIMIT-012 -- bitwise operations preserve the exact enum type.
+namespace bugtriage
+{
+    enum Mask : uint
+    {
+        None = 0,
+        A = 1,
+        B = 2,
+        C = 4
+    }
+
+    enum OtherMask : uint
+    {
+        A = 1
+    }
+
+    class Holder
+    {
+        public Mask Value { get; set; }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            Mask combined = Mask.A | Mask.B;
+            if ((uint)combined != 3u) { return 1; }
+
+            combined &= Mask.B;
+            if ((uint)combined != 2u) { return 2; }
+
+            combined ^= Mask.C;
+            if ((uint)combined != 6u) { return 3; }
+
+            Mask inverted = ~Mask.None;
+            if ((uint)inverted != 4294967295u) { return 4; }
+
+            Holder holder = new Holder();
+            holder.Value = Mask.A;
+            holder.Value |= Mask.C;
+            if ((uint)holder.Value != 5u) { return 5; }
+
+            return 42;
+        }
+    }
+}

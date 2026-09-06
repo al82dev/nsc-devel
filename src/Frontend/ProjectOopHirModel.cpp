@@ -2748,14 +2748,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                             operand->typeKey,
                             current->typeKey,
                             rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
-                        if (!conversion.exists())
+                        const bool shift = baseOperator == lexer::TokenKind::LessLess ||
+                            baseOperator == lexer::TokenKind::GreaterGreater;
+                        if (!shift && !conversion.exists())
                         {
                             error = "compound assignment to a property/indexer cannot convert its "
                                 "right-hand side from '" + operand->typeKey + "' to '" +
                                 current->typeKey + "'";
                             return nullptr;
                         }
-                        if (conversion.kind != ProjectConversionKind::Identity)
+                        if (!shift && conversion.kind != ProjectConversionKind::Identity)
                         {
                             operand = wrapImplicitConversion(
                                 std::move(operand), conversion, expression->second());
@@ -2879,13 +2881,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         value->typeKey,
                         targetType->typeKey,
                         rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
-                    if (!conversion.exists())
+                    const bool shift = compound->operation == lexer::TokenKind::LessLess ||
+                        compound->operation == lexer::TokenKind::GreaterGreater;
+                    if (!shift && !conversion.exists())
                     {
                         error = "compound assignment cannot convert its right-hand side from '" +
                             value->typeKey + "' to '" + targetType->typeKey + "'";
                         return nullptr;
                     }
-                    if (conversion.kind != ProjectConversionKind::Identity)
+                    if (!shift && conversion.kind != ProjectConversionKind::Identity)
                     {
                         value = wrapImplicitConversion(
                             std::move(value), conversion, expression->second());

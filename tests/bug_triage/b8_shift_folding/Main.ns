@@ -46,6 +46,19 @@ namespace bugtriage
             int hi = (int)(narrow >> 8);
             if (hi != 2) { return 4; }
 
+            // NSC-LUNAR-007: C#-compatible shift typing keeps the counter as int while the
+            // result takes the left operand's ulong type. LLVM still requires both physical
+            // operands to be i64, so the backend must normalize the counter before shl/lshr.
+            ulong keyboardBits = 1UL;
+            int keyIndex = 40;
+            ulong keyMask = keyboardBits << keyIndex;
+            if (keyMask != 1099511627776UL) { return 5; }
+            if ((keyMask >> keyIndex) != 1UL) { return 6; }
+            keyMask >>= keyIndex;
+            if (keyMask != 1UL) { return 7; }
+            keyMask <<= keyIndex;
+            if (keyMask != 1099511627776UL) { return 8; }
+
             return 42;
         }
     }

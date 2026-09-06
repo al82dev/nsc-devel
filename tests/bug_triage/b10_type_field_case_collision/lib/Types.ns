@@ -1,0 +1,17 @@
+namespace Imported.Api
+{
+    public class GL
+    {
+        public static int Kind = 40;
+        public int Value;
+    }
+}
+
+namespace Imported.Raw
+{
+    // This unrelated imported type is what used to make the parser reinterpret the field name
+    // `Gl` as the start of a local declaration.
+    public class Gl
+    {
+    }
+}

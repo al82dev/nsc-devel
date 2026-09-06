@@ -1,0 +1,14 @@
+namespace bugtriage
+{
+    enum First : uint { A = 1 }
+    enum Second : uint { A = 1 }
+
+    class Program
+    {
+        public static int Main()
+        {
+            First invalid = First.A | Second.A;
+            return (int)(uint)invalid;
+        }
+    }
+}
