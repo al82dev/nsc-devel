@@ -589,6 +589,323 @@ namespace CrossProjectAppB
         "(both builtin- and consumer-type-closed instantiations resolve and specialize identically)");
 }
 
+std::size_t countOccurrences(std::string_view text, std::string_view needle)
+{
+    if (needle.empty()) return 0;
+    std::size_t count = 0;
+    std::size_t offset = 0;
+    while ((offset = text.find(needle, offset)) != std::string_view::npos)
+    {
+        ++count;
+        offset += needle.size();
+    }
+    return count;
+}
+
+// ---------------------------------------------------------------------------------------
+// NSC-LIMIT-011: a constraint belongs to the library declaration, but its substituted
+// argument belongs to the consumer. Both names must therefore be resolved under different
+// visibility contexts after the specialization has been cloned into the library's AST.
+// ---------------------------------------------------------------------------------------
+
+void testCrossProjectGenericConstraintWithConsumerType(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto libDirectory = root / "Limit011Lib";
+    writeProject(libDirectory, "Limit011Lib");
+    writeFile(libDirectory / "Catalog.ns", R"NS(
+namespace Limit011Lib
+{
+    public interface IComponent
+    {
+        int Score();
+    }
+
+    public interface INever
+    {
+        int Missing();
+    }
+
+    public class Catalog
+    {
+        public static int Read<T>(T value) where T : class, IComponent
+        {
+            return value.Score();
+        }
+
+        // Both overloads are materialized. Processing the first one's Reader<T> changes the
+        // ambient instantiation context recursively; the second clone must still use the
+        // original consumer context for its substituted constraint argument.
+        public static int Choose<T>(int value) where T : INever
+        {
+            Reader<T> ignored = new Reader<T>();
+            return value;
+        }
+
+        public static int Choose<T>(T value) where T : IComponent
+        {
+            return value.Score();
+        }
+    }
+
+    public class Reader<T> where T : class, IComponent
+    {
+        public int Read(T value) { return value.Score(); }
+    }
+
+    public class Envelope<T> where T : class, IComponent
+    {
+        public int Read(T value)
+        {
+            Reader<T> nested = new Reader<T>();
+            return nested.Read(value);
+        }
+    }
+}
+)NS");
+
+    const auto appDirectory = root / "Limit011App";
+    writeProjectWithReference(appDirectory, "Limit011App", libDirectory / "Limit011Lib.nsproj");
+    writeFile(appDirectory / "Main.ns", R"NS(
+using Limit011Lib;
+
+namespace Limit011Game
+{
+    public class Payload : IComponent
+    {
+        public int Score() { return 42; }
+    }
+
+    public class Runner
+    {
+        public static int Main()
+        {
+            raii Payload payload = new Payload();
+            Envelope<Payload> envelope = new Envelope<Payload>();
+            if (Catalog.Choose<Payload>(payload) != 42) { return 1; }
+            return Catalog.Read<Payload>(payload) + envelope.Read(payload) - 42;
+        }
+    }
+}
+)NS");
+
+    const std::string llvm = compileAndEmitObject(
+        tests, appDirectory, "cross-project generic constraint with consumer-owned argument type");
+    tests.expect(!llvm.empty(),
+        "a library constraint resolves its declaration in the library and its substituted "
+        "argument in the consuming project");
+}
+
+void testCrossProjectGenericConstraintWithGlobalConsumerType(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto libDirectory = root / "Limit011GlobalLib";
+    writeProject(libDirectory, "Limit011GlobalLib");
+    writeFile(libDirectory / "Catalog.ns", R"NS(
+namespace Limit011GlobalLib
+{
+    public interface IComponent { int Score(); }
+    public class Catalog
+    {
+        public static int Read<T>(T value) where T : class, IComponent { return value.Score(); }
+    }
+}
+)NS");
+
+    const auto appDirectory = root / "Limit011GlobalApp";
+    writeProjectWithReference(appDirectory, "Limit011GlobalApp", libDirectory / "Limit011GlobalLib.nsproj");
+    writeFile(appDirectory / "Main.ns", R"NS(
+using Limit011GlobalLib;
+
+public class GlobalPayload : IComponent
+{
+    public int Score() { return 42; }
+}
+
+public class GlobalRunner
+{
+    public static int Main()
+    {
+        raii GlobalPayload payload = new GlobalPayload();
+        return Catalog.Read<GlobalPayload>(payload);
+    }
+}
+)NS");
+
+    const std::string llvm = compileAndEmitObject(
+        tests, appDirectory, "cross-project generic constraint from the consumer global namespace");
+    tests.expect(!llvm.empty(),
+        "an explicit empty origin namespace resolves in the consumer global namespace, not in the library namespace");
+}
+
+void testCrossProjectGenericConstraintKeepsHomonymousConsumersDistinct(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto libDirectory = root / "Limit011HomonymLib";
+    writeProject(libDirectory, "Limit011HomonymLib");
+    writeFile(libDirectory / "Catalog.ns", R"NS(
+namespace Limit011HomonymLib
+{
+    public interface IComponent { int Score(); }
+    public class Catalog
+    {
+        public static int Read<T>(T value) where T : class, IComponent { return value.Score(); }
+    }
+}
+)NS");
+
+    const auto firstDirectory = root / "Limit011ConsumerA";
+    writeProjectWithReference(firstDirectory, "Limit011ConsumerA", libDirectory / "Limit011HomonymLib.nsproj");
+    writeFile(firstDirectory / "Entry.ns", R"NS(
+using Limit011HomonymLib;
+namespace Limit011SharedGame
+{
+    public class Payload : IComponent { public int Score() { return 20; } }
+    public class EntryA
+    {
+        public static int Run()
+        {
+            raii Payload value = new Payload();
+            return Catalog.Read<Payload>(value);
+        }
+    }
+}
+)NS");
+
+    const auto secondDirectory = root / "Limit011ConsumerB";
+    writeProjectWithReference(secondDirectory, "Limit011ConsumerB", libDirectory / "Limit011HomonymLib.nsproj");
+    writeFile(secondDirectory / "Entry.ns", R"NS(
+using Limit011HomonymLib;
+namespace Limit011SharedGame
+{
+    public class Payload : IComponent { public int Score() { return 22; } }
+    public class EntryB
+    {
+        public static int Run()
+        {
+            raii Payload value = new Payload();
+            return Catalog.Read<Payload>(value);
+        }
+    }
+}
+)NS");
+
+    const auto hostDirectory = root / "Limit011Host";
+    writeFile(
+        hostDirectory / "Limit011Host.nsproj",
+        "<Project><PropertyGroup><Name>Limit011Host</Name></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" /><ProjectReference Include=\"" +
+            firstDirectory.generic_string() + "/Limit011ConsumerA.nsproj\" />"
+        "<ProjectReference Include=\"" + secondDirectory.generic_string() +
+            "/Limit011ConsumerB.nsproj\" /></ItemGroup></Project>");
+    writeFile(hostDirectory / "Main.ns", R"NS(
+using Limit011SharedGame;
+public class HostRunner
+{
+    public static int Main() { return EntryA.Run() + EntryB.Run(); }
+}
+)NS");
+
+    const std::string llvm = compileAndEmitObject(
+        tests, hostDirectory, "homonymous consumer arguments of one library generic constraint");
+    tests.expect(!llvm.empty(),
+        "two consumers may close one library template over distinct same-spelled types");
+    tests.expect(countOccurrences(llvm, "Read__g1__Payload__h") >= 2,
+        "homonymous consumer types produce distinct specializations instead of sharing the first consumer's clone");
+
+    ProjectCompilation identityCompilation;
+    std::string identityError;
+    const bool identitiesBuilt = identityCompilation.compileProjectGenerics(
+        hostDirectory / "Limit011Host.nsproj", identityError);
+    tests.expect(identitiesBuilt && identityError.empty() && identityCompilation.genericModel() != nullptr,
+        "the homonymous-consumer project exposes its specialization identities");
+    if (identitiesBuilt && identityCompilation.genericModel() != nullptr)
+    {
+        bool foundConsumerA = false;
+        bool foundConsumerB = false;
+        bool foundGraphOrdinal = false;
+        for (const auto& specialization : identityCompilation.genericModel()->specializations())
+        {
+            if (specialization.templateKey.find("Limit011HomonymLib::Limit011HomonymLib.Catalog.Read") ==
+                std::string::npos)
+            {
+                continue;
+            }
+            foundConsumerA = foundConsumerA ||
+                specialization.specializationKey.find("Limit011ConsumerA") != std::string::npos;
+            foundConsumerB = foundConsumerB ||
+                specialization.specializationKey.find("Limit011ConsumerB") != std::string::npos;
+            foundGraphOrdinal = foundGraphOrdinal ||
+                specialization.specializationKey.find("origin-project=") != std::string::npos;
+        }
+        tests.expect(foundConsumerA && foundConsumerB,
+            "specialization identity records the stable module identity of each homonymous consumer");
+        tests.expect(!foundGraphOrdinal,
+            "specialization identity never exposes the graph-order-dependent project ordinal");
+    }
+}
+
+void testCrossProjectGenericConstraintRejectsAtConsumerSite(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto libDirectory = root / "Limit011RejectLib";
+    writeProject(libDirectory, "Limit011RejectLib");
+    writeFile(libDirectory / "Catalog.ns", R"NS(
+namespace Limit011RejectLib
+{
+    public interface IComponent { int Score(); }
+    public class Catalog
+    {
+        public static int Read<T>(T value) where T : class, IComponent { return value.Score(); }
+    }
+}
+)NS");
+
+    const auto appDirectory = root / "Limit011RejectApp";
+    writeProjectWithReference(appDirectory, "Limit011RejectApp", libDirectory / "Limit011RejectLib.nsproj");
+    writeFile(appDirectory / "Main.ns", R"NS(
+using Limit011RejectLib;
+namespace Limit011RejectGame
+{
+    public class Wrong { }
+    public class Runner
+    {
+        public static int Main()
+        {
+            raii Wrong wrong = new Wrong();
+            return Catalog.Read<Wrong>(wrong);
+        }
+    }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectGenericConstraints(
+        appDirectory / "Limit011RejectApp.nsproj", error);
+    tests.expect(!ok, "an invalid consumer type is rejected by the library's interface constraint");
+    tests.expect(error.empty(), "the semantic constraint rejection is not reported as a project-load failure");
+
+    std::size_t matchingDiagnostics = 0;
+    for (const nativesharp::diagnostics::Diagnostic& diagnostic : compilation.diagnostics().diagnostics())
+    {
+        if (diagnostic.message().find("argument 'Wrong' does not implement it") == std::string::npos)
+        {
+            continue;
+        }
+        ++matchingDiagnostics;
+        tests.expect(diagnostic.message().find("Limit011RejectLib") != std::string::npos,
+            "the cross-project constraint diagnostic names the library module that owns the contract");
+        tests.expect(compilation.sourceManager().getPath(diagnostic.location()).find("Limit011RejectApp") !=
+                std::string_view::npos,
+            "the cross-project constraint diagnostic points into the consuming project");
+        tests.expect(diagnostic.range().has_value() &&
+                compilation.sourceManager().getText(*diagnostic.range()).find("Catalog.Read<Wrong>(wrong)") !=
+                    std::string_view::npos,
+            "the cross-project constraint diagnostic highlights the invalid consumer call");
+    }
+    tests.expect(matchingDiagnostics == 1,
+        "the invalid cross-project specialization emits exactly one relevant constraint diagnostic");
+}
+
 // ---------------------------------------------------------------------------------------
 // Fix 8: move() into a native array element ASSIGNMENT TARGET, not just as a move() source --
 // the exact "grown[i] = move(items[i]);" shape a growable owned generic array (List<T>.
@@ -1073,6 +1390,10 @@ int main()
     testMoveFromArrayElementForBothValueAndReferenceT(tests, root);
     testMoveStillRejectsNonNativeArrayIndexSource(tests, root);
     testCrossProjectGenericDelegateAndClassInstantiation(tests, root);
+    testCrossProjectGenericConstraintWithConsumerType(tests, root);
+    testCrossProjectGenericConstraintWithGlobalConsumerType(tests, root);
+    testCrossProjectGenericConstraintKeepsHomonymousConsumersDistinct(tests, root);
+    testCrossProjectGenericConstraintRejectsAtConsumerSite(tests, root);
     testMoveIntoArrayElementAssignmentTarget(tests, root);
     testDefaultValueExpressionForBothValueAndReferenceT(tests, root);
     testDefaultOfVoidIsRejected(tests, root);

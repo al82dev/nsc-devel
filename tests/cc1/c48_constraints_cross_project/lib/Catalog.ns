@@ -1,0 +1,48 @@
+namespace ConstraintLibrary
+{
+    public interface IComponent
+    {
+        int Score();
+    }
+
+    public interface INever
+    {
+        int Missing();
+    }
+
+    public class Catalog
+    {
+        public static int Read<T>(T value) where T : class, IComponent
+        {
+            return value.Score();
+        }
+
+        public static int Choose<T>(int value) where T : INever
+        {
+            Reader<T> ignored = new Reader<T>();
+            return value;
+        }
+
+        public static int Choose<T>(T value) where T : IComponent
+        {
+            return value.Score();
+        }
+    }
+
+    public class Reader<T> where T : class, IComponent
+    {
+        public int Read(T value)
+        {
+            return value.Score();
+        }
+    }
+
+    public class Envelope<T> where T : class, IComponent
+    {
+        public int Read(T value)
+        {
+            Reader<T> reader = new Reader<T>();
+            return reader.Read(value);
+        }
+    }
+}

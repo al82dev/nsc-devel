@@ -77,6 +77,131 @@ const ProjectOopMirNode* findMirKind(const ProjectOopMirNode* node, ProjectOopMi
     return nullptr;
 }
 
+// EL GLOBAL QUE GUARDA UNA CADENA CONCRETA. Los nombres `@__nsc_str_N` son POSICIONALES: buscar
+// `@__nsc_str_1` a mano ataria la prueba al orden en que hoy se emiten los literales, y ese orden
+// no es el contrato. Se busca el global por su CONTENIDO y se devuelve el nombre que tenga.
+std::string stringGlobalHolding(std::string_view ir, std::string_view content)
+{
+    const std::string needle = "c\"" + std::string(content) + "\\00\"";
+    const std::size_t at = ir.find(needle);
+    if (at == std::string_view::npos) return {};
+    const std::size_t lineStart = ir.rfind('\n', at);
+    const std::string_view line =
+        ir.substr(lineStart == std::string_view::npos ? 0 : lineStart + 1);
+    const std::size_t nameEnd = line.find(' ');
+    if (line.empty() || line.front() != '@' || nameEnd == std::string_view::npos) return {};
+    return std::string(line.substr(0, nameEnd));
+}
+
+// EL CUERPO DE UNA FUNCION, para no confundir lo que hace una con lo que hace otra. Buscar
+// `ret ptr @X` en el modulo entero encontraria cualquier funcion que devolviera esa cadena.
+std::string functionBody(std::string_view ir, std::string_view mangledFragment)
+{
+    const std::size_t at = ir.find(mangledFragment);
+    if (at == std::string_view::npos) return {};
+    const std::size_t open = ir.find('{', at);
+    if (open == std::string_view::npos) return {};
+    const std::size_t close = ir.find("\n}", open);
+    if (close == std::string_view::npos) return {};
+    return std::string(ir.substr(open, close - open));
+}
+
+// NSC-LIMIT-005 -- EL ENUM ESTRECHO CON SIGNO, FIJADO PARA QUE NO SE PUEDA DESHACER EN SILENCIO.
+//
+// EL DEFECTO QUE ESTO CONSERVA. `c38_enum_ancho` devolvia 42 a -O0 y 39 a -O2, y `b9` reprodujo
+// el motivo: `ToString()` de un `enum : sbyte` con valor NEGATIVO devolvia la RESERVA --el nombre
+// del tipo-- despues de optimizar. El IR sin optimizar era correcto y el modulo verificaba; lo que
+// fallaba era la decision del optimizador sobre una constante negativa estrecha.
+//
+// EL ARREGLO, y por que hay que fijarlo: `lowerEnumName` promueve el receptor con `zext` a i64 y
+// compara contra el PATRON DE BITS enmascarado al ancho del tipo subyacente. Con `sext` --que es
+// el cambio de una letra que cualquiera haria «limpiando» un tipo con signo-- `-3` se convierte en
+// `i64 -3` mientras el caso sigue siendo `i64 253`, no casa ninguno, y se elige la reserva. MEDIDO:
+// con esa unica letra cambiada, esta misma sonda a O2 pasa de devolver el global de "MenosTres" a
+// devolver el de la reserva. Es exactamente el fallo original.
+//
+// POR ESO SE COMPRUEBAN LAS DOS CAPAS. La forma del IR sola no bastaria --describe la
+// implementacion de hoy-- y el resultado optimizado solo tampoco --pasaria por accidente si el
+// plegado cambiara--. Juntas dicen que la eleccion es correcta Y por que lo es.
+void testNarrowSignedEnumNameLowering(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "NarrowSignedEnumName";
+    writeProject(directory, "NarrowSignedEnumName");
+    writeFile(directory / "Main.ns",
+        "namespace Sonda; public class Prueba { "
+        "public enum ConSigno : sbyte { MenosTres = -3, Cero = 0, Tope = 127 } "
+        "public string Nombre() { return ConSigno.MenosTres.ToString(); } }");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok =
+        compilation.compileProjectOopMir(directory / "NarrowSignedEnumName.nsproj", error);
+    tests.expect(ok && compilation.oopMirModel() != nullptr,
+        "a narrow signed enum with a negative enumerator compiles through project OOP MIR");
+    if (!ok || compilation.oopMirModel() == nullptr) return;
+
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+    tests.expect(module != nullptr && lowerer.error().empty(),
+        "the narrow signed enum lowers to LLVM without backend errors");
+    if (module == nullptr) return;
+
+    std::string verifyError;
+    tests.expect(module->verify(verifyError),
+        "the enum-name switch is verifier-clean, so no two cases collapsed to the same value");
+
+    const std::string plain = module->text();
+    const std::string body = functionBody(plain, "Prueba__Nombre");
+    tests.expect(!body.empty(), "the enum-name function is found in the unoptimized module");
+
+    // CAPA 1 -- LA FORMA. Promocion SIN SIGNO a 64 bits y un `switch`, no una cadena de `select`.
+    tests.expect(body.find("zext i8 ") != std::string::npos &&
+            body.find(" to i64") != std::string::npos,
+        "the narrow receiver is promoted to i64 without sign");
+    tests.expect(body.find("sext i8 ") == std::string::npos,
+        "and never sign-extended: that is the one-letter change that reintroduces the defect");
+    tests.expect(body.find("switch i64 ") != std::string::npos,
+        "the enumerators are decided by a switch on the 64-bit bit pattern");
+    tests.expect(body.find("select ") == std::string::npos,
+        "and not by the select chain this replaced");
+
+    // CAPA 2 -- EL PATRON DE BITS. -3 en ocho bits es 253, no -3. Si el caso se escribiera con el
+    // numero fuente en vez de con sus bits, no casaria nunca con el receptor promovido sin signo.
+    tests.expect(body.find("i64 253, label") != std::string::npos,
+        "the negative enumerator is cased as its 8-bit pattern (253), not as -3");
+    tests.expect(body.find("i64 -3, label") == std::string::npos,
+        "the signed spelling of the same enumerator is not what the switch compares against");
+
+    // CAPA 3 -- EL RESULTADO DESPUES DE OPTIMIZAR, que es donde el defecto se manifestaba. Con un
+    // receptor constante, O2 pliega la funcion entera a un `ret` del global correcto. Que sea el
+    // de "MenosTres" y no el de la reserva es la prueba de que la decision sobrevive al pipeline.
+    std::string targetError;
+    auto targetMachine = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
+        nativesharp::llvm_backend::LlvmOptimizationLevel::O2, targetError);
+    tests.expect(targetMachine != nullptr, "the O2 target machine is available for the enum probe");
+    if (targetMachine == nullptr) return;
+
+    nativesharp::llvm_backend::LlvmOptimizer optimizer;
+    std::string optimizationError;
+    tests.expect(
+        optimizer.optimize(*module, *targetMachine,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O2, optimizationError),
+        "the narrow signed enum module survives the O2 pipeline");
+
+    const std::string optimized = module->text();
+    const std::string chosen = stringGlobalHolding(optimized, "MenosTres");
+    const std::string fallback = stringGlobalHolding(optimized, "Prueba+ConSigno");
+    tests.expect(!chosen.empty() && !fallback.empty() && chosen != fallback,
+        "both the enumerator name and the type-name fallback survive as distinct string globals");
+    if (chosen.empty() || fallback.empty()) return;
+
+    const std::string optimizedBody = functionBody(optimized, "Prueba__Nombre");
+    tests.expect(optimizedBody.find("ret ptr " + chosen) != std::string::npos,
+        "after O2 the constant receiver folds to the enumerator name");
+    tests.expect(optimizedBody.find("ret ptr " + fallback) == std::string::npos,
+        "and not to the type-name fallback, which is what the -O2 defect returned");
+}
+
 void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "EndToEnd";
@@ -383,6 +508,7 @@ int main()
     testEndToEndOopLowering(tests, root);
     testDeallocationContract(tests, root);
     testAggregateCallableBoundary(tests, root);
+    testNarrowSignedEnumNameLowering(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

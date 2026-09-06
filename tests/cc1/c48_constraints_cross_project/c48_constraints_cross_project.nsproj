@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>c48_constraints_cross_project</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <ProjectReference Include="lib/ConstraintLibrary.nsproj" />
+    <ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

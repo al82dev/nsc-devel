@@ -302,6 +302,8 @@ endif()
 add_library(nsc_llvm STATIC
     src/LLVM/LlvmModule.cpp
     src/LLVM/LlvmOptimizationLevel.cpp
+    src/LLVM/LlvmOptimizationObservation.cpp
+    src/LLVM/LlvmProcessTrace.cpp
     src/LLVM/LlvmOptimizer.cpp
     src/LLVM/LlvmLowerer.cpp
     src/LLVM/ProjectOopLlvmLowerer.cpp

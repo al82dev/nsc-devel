@@ -1,0 +1,30 @@
+using ConstraintLibrary;
+
+namespace c48
+{
+    // El constraint vive en ConstraintLibrary; este tipo existe solamente en el consumidor.
+    public class Payload : IComponent
+    {
+        public int Score() { return 21; }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            raii Payload payload = new Payload();
+            raii Envelope<Payload> envelope = new Envelope<Payload>();
+
+            // Las dos sobrecargas se materializan. La primera se descarta por tipo y constraint,
+            // pero antes fuerza Reader<T>: esa recursion no debe contaminar con el contexto de la
+            // biblioteca el argumento sustituido de la segunda candidata.
+            if (Catalog.Choose<Payload>(payload) != 21) { return 10; }
+
+            // La primera llamada materializa un metodo generico de la biblioteca. La segunda
+            // materializa un tipo generico y, dentro de el, Reader<T> vuelve a clonar el mismo
+            // argumento: el origen del consumidor debe propagarse, nunca recalcularse como si T
+            // hubiera nacido en la biblioteca.
+            return Catalog.Read<Payload>(payload) + envelope.Read(payload);
+        }
+    }
+}

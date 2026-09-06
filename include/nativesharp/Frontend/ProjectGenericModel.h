@@ -230,6 +230,7 @@ private:
         ast::AstArena& arena,
         const ast::TypeSyntax* source,
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
+    void preserveOrAttachInstantiationOrigin(ast::TypeSyntax* syntax) const;
     ast::AstNode* cloneNode(
         ast::AstArena& arena,
         const ast::AstNode* source,
@@ -238,6 +239,7 @@ private:
         std::string_view originalContainingTypeName);
 
     std::string typeSpelling(const ast::TypeSyntax* syntax) const;
+    std::string typeSpecializationIdentity(const ast::TypeSyntax* syntax) const;
     static std::string namespaceAppend(std::string_view prefix, std::string_view suffix);
     static std::string sanitize(std::string_view text);
     static std::string methodCalleeName(const ast::AstNode* call);
@@ -250,6 +252,7 @@ private:
     std::vector<GenericSpecializationRecord> specializations_;
     std::unordered_map<std::string, std::size_t> specializationByKey_;
     std::vector<std::vector<std::size_t>> visibleProjects_;
+    std::vector<std::string> projectModuleNames_;
     bool built_ = false;
 
     // Stage 52 fix: the project ordinal and lexical namespace of whichever call site is

@@ -150,6 +150,21 @@ void LLVMSetTarget(LLVMModuleRef module, const char* triple);
 void LLVMSetDataLayout(LLVMModuleRef module, const char* dataLayout);
 char* LLVMPrintModuleToString(LLVMModuleRef module);
 void LLVMDisposeMessage(char* message);
+// NSC-LIMIT-005. El triple y el data layout SEGUN EL MODULO, no segun el TargetMachine: entre uno
+// y otro corre `configureModuleForTarget`, y lo que hay que registrar es lo que la API C tenia
+// delante cuando decidio. Las dos cadenas pertenecen al modulo: no se liberan.
+const char* LLVMGetTarget(LLVMModuleRef module);
+const char* LLVMGetDataLayoutStr(LLVMModuleRef module);
+// La version de la biblioteca CARGADA, que no tiene por que ser contra la que se compilo.
+void LLVMGetVersion(unsigned* major, unsigned* minor, unsigned* patch);
+// NSC-LIMIT-005 -- LA SONDA QUE COMPRUEBA POR DONDE HABLA LLVM.
+//
+// `LLVMDumpType` escribe por el `errs()` de LA BIBLIOTECA. Es la unica forma de saber si la salida
+// de error de LLVM llega a nuestra captura: una marca escrita por NOSOTROS solo demuestra que
+// nuestro propio descriptor esta desviado, y en Windows la DLL de LLVM puede tener otro. Se elige
+// un TIPO y no un modulo porque imprime tres bytes --«i32»-- y no tiene ningun efecto.
+LLVMContextRef LLVMGetModuleContext(LLVMModuleRef module);
+void LLVMDumpType(LLVMTypeRef type);
 LLVMBool LLVMVerifyModule(
     LLVMModuleRef module,
     LLVMVerifierFailureAction action,
@@ -182,6 +197,14 @@ LLVMBool LLVMTargetMachineEmitToFile(
 
 LLVMPassBuilderOptionsRef LLVMCreatePassBuilderOptions();
 void LLVMPassBuilderOptionsSetVerifyEach(LLVMPassBuilderOptionsRef options, LLVMBool verifyEach);
+// NSC-LIMIT-005. El registro de pases del new pass manager, y el unico camino a «que se estaba
+// ejecutando» que no exige la API C++ de LLVM.
+//
+// LA API C NO ACEPTA UN SINK: LLVM lo escribe por la salida de error del PROCESO --`llvm::dbgs()`--
+// y no hay entrada C para redirigirlo. Por eso LlvmOptimizer captura el descriptor 2 alrededor de
+// la llamada en vez de pedirle a LLVM que le entregue el texto.
+void LLVMPassBuilderOptionsSetDebugLogging(
+    LLVMPassBuilderOptionsRef options, LLVMBool debugLogging);
 void LLVMDisposePassBuilderOptions(LLVMPassBuilderOptionsRef options);
 LLVMErrorRef LLVMRunPasses(
     LLVMModuleRef module,

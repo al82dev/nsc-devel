@@ -1,0 +1,113 @@
+STAGE -- Gate 1: cerrar NSC-LIMIT-005 -- 2026-09-05
+Ficheros modificados en A:\nsc-devel
+
+Analisis completo en mkdown/124_gate1_nsc_limit_005.md. Aqui solo el reparto y lo medido.
+
+NUEVOS
+
+  include/nativesharp/LLVM/LlvmOptimizationObservation.h
+      Lo que se observa de una corrida del optimizador: version de LLVM CARGADA, pipeline y nivel,
+      triple y data layout DEL MODULO, verificacion a los dos lados, ultimo pase y ultima unidad
+      observados, repeticion maxima del par (pase, unidad), segundos.
+      `report()` compone la linea que acompana a un fallo. Los umbrales
+      --`kLlvmRepeatedPassSuspicion` = 64, `kLlvmOptimizationTimeBudgetSeconds` = 120-- son de
+      OBSERVACION, no limites: pasarlos no aborta nada. Un limite que abortara convertiria una
+      herramienta de diagnostico en una forma nueva de romper builds.
+
+  src/LLVM/LlvmOptimizationObservation.cpp
+      `observeLlvmPassLog` y `report()`. La funcion vive FUERA del optimizador para poder probarla
+      con un registro escrito a mano: provocar una falta de convergencia real es caro y fragil, y
+      una deteccion que nadie ha visto dispararse no es una deteccion.
+
+  tests/cc1/c47_diferencial_o0_o2/{Main.ns, c47_diferencial_o0_o2.nsproj}
+      La fixture diferencial. Compara la via CONSTANTE con la via OPACA en vez de comprobar un
+      numero escrito a mano, y lo hace DENTRO de una sola corrida: no depende de que alguien
+      compare la pasada de -O0 con la de -O2.
+
+MODIFICADOS -- COMPILADOR
+
+  src/LLVM/LlvmCApi.h
+      Cuatro entradas: LLVMGetTarget, LLVMGetDataLayoutStr, LLVMGetVersion,
+      LLVMPassBuilderOptionsSetDebugLogging. Declaradas a mano como todo lo demas de este fichero;
+      el compilador sigue sin incluir ninguna cabecera de LLVM (doc 123 §7).
+
+  include/nativesharp/LLVM/LlvmOptimizer.h
+      Sobrecarga de cinco argumentos. La de cuatro delega con `nullptr` y es EXACTAMENTE
+      equivalente: sin captura, sin cronometro y sin tocar ninguna opcion del PassBuilder.
+
+  src/LLVM/LlvmOptimizer.cpp
+      `StandardErrorCapture` --desvio del descriptor 2 mientras dura `LLVMRunPasses`--, cronometro,
+      verificacion registrada a los dos lados, y el reporte anadido a CADA ruta de fallo.
+
+  src/Driver/Driver.cpp                     3 llamadas
+  src/Linker/WindowsExecutableBuilder.cpp   2 llamadas
+  src/Linker/WindowsLibraryBuilder.cpp      4 llamadas
+      Las NUEVE llamadas de produccion al optimizador pasan una observacion. Siempre, no bajo
+      bandera: un fallo que no dice contra que LLVM ni por donde iba obliga a reproducirlo, y
+      cuando el sintoma es un codigo de salida distinto a -O2 la corrida que fallo ya termino.
+
+  CMakeLists.txt
+      src/LLVM/LlvmOptimizationObservation.cpp en nsc_llvm.
+
+NO MODIFICADO, Y ES A PROPOSITO
+
+  src/LLVM/ProjectOopLlvmLowerer.cpp
+      El arreglo del enum estrecho ya estaba. Este gate no lo cambia: lo FIJA con pruebas, para que
+      no se pueda deshacer en silencio.
+
+MODIFICADOS -- PRUEBAS
+
+  tests/unit/LlvmOptimizationTests.cpp        86 -> 101 comprobaciones
+      Lo que la observacion registra; que el reporte dice «ultimo pass observado» y NUNCA
+      «culpable»; que el IR es identico con y sin observar en O0/O1/O2; y el lector del registro
+      con registros sinteticos: el umbral por los DOS lados, el mismo pase sobre unidades distintas
+      (que NO es una repeticion), «ultimo» como literalmente el ultimo, el registro vacio que se
+      dice en vez de dejarse en blanco, y las dos formas de la linea (sin unidad, y con CRLF).
+
+  tests/unit/ProjectOopLoweringTests.cpp      56 -> 71 comprobaciones
+      El enum estrecho con signo en TRES capas: la forma del IR (`zext`, nunca `sext`; `switch`,
+      nunca `select`), el patron de bits (`i64 253`, no `i64 -3`) y el resultado DESPUES de O2.
+
+  tests/unit/Cc1CorrectnessTests.cpp
+      Registro de c47. nscbuilder.py la descubre por el mismo regex de siempre (comprobado).
+
+MEDIDO -- EN CONTENEDOR (clang 18, libLLVM-18)
+
+  reconstruccion completa                          OK
+  barrido bodies                                   OK=192 FAIL=5   (los 5 negativos intencionados;
+                                                                    192 = 191 + la fixture nueva)
+  LlvmOptimizationTests                            PASS: 101 checks
+  ProjectOopLoweringTests                          PASS:  71 checks
+  Driver.cpp y los dos builders, -Wall -Wextra     compilan sin avisos
+  IR identico con y sin observacion                12/12 (c38, c44, c45, c46 x O0, O1, O2)
+  coste                                            ~4-6% del tiempo de optimizacion a O1/O2, 0% a
+                                                   O0; ~3% del build completo a O2
+
+MEDIDO -- CONTROL DE MUTACION (que las pruebas MUERDEN, no solo que pasan)
+
+  observeLlvmPassLog:
+    `>` -> `>=` en el umbral                       1 roja: el caso de igualdad
+    clave = solo el nombre del pase                1 roja: mismo pase, unidades distintas
+    se quita el recorte del \r                     1 roja: la linea CRLF
+
+  lowerEnumName:
+    zext -> sext (el bug original, una letra)      4 rojas: la forma Y el resultado tras O2
+    el caso escrito con el numero fuente           4 rojas: el patron de bits Y el resultado
+
+  c47 con zext -> sext:
+    las ocho llamadas a MismosBytes que quedan en el IR a -O2 pasan de recibir EL MISMO global en
+    los dos argumentos a recibir globales DISTINTOS en tres de ellas -- las tres de los enums CON
+    SIGNO; las de los enums sin signo no se mueven. El programa devolveria 20, 22 o 26 en vez de
+    42. Es la caracterizacion de b9 reproducida por la fixture: estrecho + con signo + negativo.
+
+NO MEDIDO AQUI
+
+  ctest, fixtures y bug triage en Windows. Este contenedor ni enlaza PE ni ejecuta Windows y, lo
+  que mas importa, ENLAZA LLVM 18 Y NO LLVM 23. El defecto original solo se manifiesta con LLVM 23:
+  que aqui no aparezca no dice nada. Lo que este contenedor si demuestra es que la observacion no
+  altera el IR, que las detecciones se disparan cuando deben, y que las mutaciones del arreglo se
+  ponen rojas.
+
+PENDIENTE DEL CIERRE (doc 123)
+  291/291 CTest por configuracion aplicable; 133/133 fixtures con lld-link y 133/133 con NSLink
+  (132 + c47); 18/18 bug triage con cada enlazador.

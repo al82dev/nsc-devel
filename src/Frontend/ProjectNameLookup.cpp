@@ -1148,7 +1148,10 @@ void ProjectNameLookup::bindTypeSyntax(
     // requesting project's OWN namespace (e.g. "Stage52LibTest").
     const std::vector<std::string> effectiveNamespaceSegments = syntax->originNamespace().has_value()
         ? splitQualifiedName(syntax->originNamespace().value())
-        : namespaceSegments;
+        // Older/current clones from a consumer in the global namespace carry the project
+        // override but no namespace string. That still means "global namespace of the origin
+        // project", never "template namespace".
+        : (syntax->originProjectOrdinal().has_value() ? std::vector<std::string>{} : namespaceSegments);
 
     TypeNameBinding binding;
     binding.syntax = syntax;

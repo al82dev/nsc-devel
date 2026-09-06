@@ -853,16 +853,27 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     std::span<ast::TypeSyntax* const> arguments,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    const std::size_t callerProjectOrdinal = currentInstantiationProjectOrdinal_;
+    const std::string callerNamespace = currentInstantiationNamespace_;
+    const SourceRange callerRange = currentInstantiationRange_;
+    const std::size_t callerOverloadGroup = currentOverloadGroup_;
+
     std::vector<std::string> spellings;
+    std::vector<std::string> identities;
     spellings.reserve(arguments.size());
-    for (const ast::TypeSyntax* argument : arguments) spellings.push_back(typeSpelling(argument));
+    identities.reserve(arguments.size());
+    for (const ast::TypeSyntax* argument : arguments)
+    {
+        spellings.push_back(typeSpelling(argument));
+        identities.push_back(typeSpecializationIdentity(argument));
+    }
 
     std::ostringstream keyBuilder;
     keyBuilder << state.record.canonicalKey << '<';
     for (std::size_t i = 0; i < spellings.size(); ++i)
     {
         if (i != 0) keyBuilder << ',';
-        keyBuilder << spellings[i];
+        keyBuilder << identities[i];
     }
     keyBuilder << '>';
     const std::string key = keyBuilder.str();
@@ -916,6 +927,14 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     processNode(
         *state.unit, clone, state.record.namespaceName, specializedName,
         GenericLookupScope{}, false, diagnostics);
+    // processNode may recursively materialize another generic and therefore replace all four
+    // current-instantiation fields. They describe a call stack, not global "last call" state:
+    // restore the caller before returning so a sibling specialization (notably the next overload
+    // candidate) cannot inherit the nested library context.
+    currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
+    currentInstantiationNamespace_ = callerNamespace;
+    currentInstantiationRange_ = callerRange;
+    currentOverloadGroup_ = callerOverloadGroup;
     return specializedName;
 }
 
@@ -925,16 +944,27 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     diagnostics::DiagnosticEngine& diagnostics,
     std::string_view sharedName)
 {
+    const std::size_t callerProjectOrdinal = currentInstantiationProjectOrdinal_;
+    const std::string callerNamespace = currentInstantiationNamespace_;
+    const SourceRange callerRange = currentInstantiationRange_;
+    const std::size_t callerOverloadGroup = currentOverloadGroup_;
+
     std::vector<std::string> spellings;
+    std::vector<std::string> identities;
     spellings.reserve(arguments.size());
-    for (const ast::TypeSyntax* argument : arguments) spellings.push_back(typeSpelling(argument));
+    identities.reserve(arguments.size());
+    for (const ast::TypeSyntax* argument : arguments)
+    {
+        spellings.push_back(typeSpelling(argument));
+        identities.push_back(typeSpecializationIdentity(argument));
+    }
 
     std::ostringstream keyBuilder;
     keyBuilder << state.record.canonicalKey << '<';
     for (std::size_t i = 0; i < spellings.size(); ++i)
     {
         if (i != 0) keyBuilder << ',';
-        keyBuilder << spellings[i];
+        keyBuilder << identities[i];
     }
     keyBuilder << '>';
     const std::string key = keyBuilder.str();
@@ -1003,6 +1033,10 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     processNode(
         *state.unit, clone, state.record.namespaceName, state.record.ownerName,
         GenericLookupScope{}, false, diagnostics);
+    currentInstantiationProjectOrdinal_ = callerProjectOrdinal;
+    currentInstantiationNamespace_ = callerNamespace;
+    currentInstantiationRange_ = callerRange;
+    currentOverloadGroup_ = callerOverloadGroup;
     return specializedName;
 }
 
@@ -1036,20 +1070,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
         // discovered while walking List<Payload>'s cloned body, not from AppB's own source) --
         // so blindly re-tagging here would silently overwrite the correct origin with the
         // library's, right back into the original bug. Once tagged, leave it tagged.
-        if (result != nullptr && !lexer::isBuiltinTypeKeyword(result->baseTokenKind()) &&
-            !result->originProjectOrdinal().has_value())
-        {
-            // Deliberately does NOT touch baseName() -- see TypeSyntax::originNamespace's
-            // comment for why an earlier version of this fix that qualified the name broke
-            // generic specialization identity. Both origin fields are read only by
-            // ProjectNameLookup::bindTypeSyntax to override which project/namespace an
-            // otherwise-untouched name resolves against.
-            result->setOriginProjectOrdinal(currentInstantiationProjectOrdinal_);
-            if (!currentInstantiationNamespace_.empty())
-            {
-                result->setOriginNamespace(currentInstantiationNamespace_);
-            }
-        }
+        preserveOrAttachInstantiationOrigin(result);
     }
     else
     {
@@ -1107,6 +1128,23 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
     return result;
 }
 
+void ProjectGenericModel::preserveOrAttachInstantiationOrigin(ast::TypeSyntax* syntax) const
+{
+    if (syntax == nullptr || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
+        syntax->originProjectOrdinal().has_value())
+    {
+        return;
+    }
+
+    // This node names an argument supplied by the current instantiation site, not a type from
+    // the template declaration that now owns the clone. Keep the spelling untouched: the origin
+    // is lookup context, not specialization identity. An empty namespace is meaningful (the
+    // consumer's global namespace), so store it explicitly instead of falling back later to the
+    // template's namespace. Once a prior substitution supplied an origin, never re-derive it.
+    syntax->setOriginProjectOrdinal(currentInstantiationProjectOrdinal_);
+    syntax->setOriginNamespace(currentInstantiationNamespace_);
+}
+
 ast::AstNode* ProjectGenericModel::cloneNode(
     ast::AstArena& arena,
     const ast::AstNode* source,
@@ -1143,7 +1181,9 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         if (const auto found = substitutions.find(clause.parameterName);
             found != substitutions.end())
         {
-            copy.substitutedArgument = cloneType(arena, found->second, substitutions);
+            ast::TypeSyntax* substitutedArgument = cloneType(arena, found->second, substitutions);
+            preserveOrAttachInstantiationOrigin(substitutedArgument);
+            copy.substitutedArgument = substitutedArgument;
         }
         result->addGenericConstraint(std::move(copy));
     }
@@ -1190,6 +1230,35 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
     return result;
 }
 
+std::string ProjectGenericModel::typeSpecializationIdentity(const ast::TypeSyntax* syntax) const
+{
+    const std::string spelling = typeSpelling(syntax);
+    if (syntax == nullptr || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()))
+    {
+        return spelling;
+    }
+
+    // The spelling remains the public/readable type argument. The cache identity additionally
+    // records where an unresolved source name came from, so AppA.Payload and AppB.Payload cannot
+    // reuse one clone merely because both were written as `Payload`. A substituted argument
+    // carries its original site explicitly; a direct call uses the current site. The persistent
+    // identity uses the module name, never the graph-order-dependent ordinal (the ordinal remains
+    // lookup-only). Length-prefix module and namespace so punctuation cannot make identities
+    // concatenate alike.
+    const std::size_t projectOrdinal =
+        syntax->originProjectOrdinal().value_or(currentInstantiationProjectOrdinal_);
+    const std::string_view moduleName = projectOrdinal < projectModuleNames_.size()
+        ? std::string_view(projectModuleNames_[projectOrdinal])
+        : std::string_view("<invalid-project>");
+    const std::string namespaceName = syntax->originNamespace().has_value()
+        ? syntax->originNamespace().value()
+        : (syntax->originProjectOrdinal().has_value() ? std::string{} : currentInstantiationNamespace_);
+
+    return spelling + "@origin-module[" + std::to_string(moduleName.size()) + "]=" +
+        std::string(moduleName) +
+        ";namespace[" + std::to_string(namespaceName.size()) + "]=" + namespaceName;
+}
+
 std::string ProjectGenericModel::namespaceAppend(std::string_view prefix, std::string_view suffix)
 {
     if (prefix.empty()) return std::string(suffix);
@@ -1229,6 +1298,12 @@ ast::AstNode* ProjectGenericModel::methodCalleeSyntax(ast::AstNode* call)
 void ProjectGenericModel::buildVisibility(const compilation::ProjectGraph& graph)
 {
     const auto projects = graph.projects();
+    projectModuleNames_.clear();
+    projectModuleNames_.reserve(projects.size());
+    for (const compilation::Project& project : projects)
+    {
+        projectModuleNames_.push_back(project.moduleName());
+    }
     visibleProjects_.assign(projects.size(), {});
     std::unordered_map<std::string, std::size_t> projectByPath;
     const auto pathKey = [](const std::filesystem::path& path)

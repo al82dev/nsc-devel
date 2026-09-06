@@ -1,0 +1,116 @@
+// NSC-LIMIT-005 -- LA FIXTURE DIFERENCIAL O0/O2. Cada propiedad se mide DOS VECES y se comparan
+// entre si las dos medidas, no contra un numero escrito a mano.
+//
+// EN QUE SE DIFERENCIA DE c38, c39 Y b9, que ya cubren enums estrechos. Aquellas comprueban que el
+// resultado es EL CORRECTO. Esta comprueba que las DOS VIAS COINCIDEN:
+//
+//   * la via CONSTANTE --`ConSigno.MenosTres.ToString()`--, que el optimizador puede plegar en
+//     tiempo de compilacion, y
+//   * la via OPACA --`PasaConSigno(ConSigno.MenosTres).ToString()`--, que no puede plegar porque
+//     el valor cruza una funcion cuyo resultado depende de `Environment.GetCommandLineArgCount()`.
+//
+// POR QUE ESA COMPARACION ES OTRA COSA. El defecto de NSC-LIMIT-005 no era un valor equivocado en
+// todas partes: era que el OPTIMIZADOR decidia distinto que el codigo sin optimizar, y solo para
+// una constante negativa estrecha. Un programa que comprueba el valor correcto lo detecta si
+// falla la via que le toco escribir; uno que compara las dos vias lo detecta caiga la que caiga, y
+// ademas dice cual de las dos se movio. Es la diferencia entre saber que algo esta mal y saber
+// donde.
+//
+// Y NO DEPENDE DE COMPARAR DOS CORRIDAS. El runner ya ejecuta cada fixture a -O0 y a -O2, asi que
+// una discrepancia acabaria apareciendo como dos codigos de salida distintos. Aqui la
+// discrepancia se detecta DENTRO de la misma corrida, en cualquiera de los dos niveles: no hace
+// falta que las dos pasadas existan ni que alguien las compare.
+//
+// EL BARRIDO: los cuatro anchos estrechos --sbyte, byte, short, ushort-- con los valores que
+// delatan el signo (-128, -3, 200, -32768, 60000), sobre las dos operaciones que el defecto
+// afectaba: la conversion a int y `ToString()`. Las cadenas se comparan byte a byte con
+// `MismosBytes` y no con el operador de igualdad, por el mismo motivo que en c39: el operador es
+// una de las cosas que podrian estar rotas.
+//
+// MEDIDO -- que esta fixture DETECTA el defecto, y no solo que pasa cuando no lo hay. Con `zext`
+// cambiado a `sext` en `lowerEnumName` --el cambio de una letra que reintroduce la regresion-- el
+// IR a -O2 pasa de llamar a `MismosBytes` con el MISMO global en los dos argumentos (las ocho
+// llamadas) a llamarlo con globales DISTINTOS en tres de ellas, las tres de los enums CON SIGNO.
+// El programa devolveria 20, 22 o 26 en vez de 42. Los enums sin signo no se mueven, que es
+// exactamente la caracterizacion de b9: estrecho + con signo + negativo.
+//
+// Codigo de salida esperado: 42. Cada fallo devuelve un codigo distinto.
+using NativeSharp.Core;
+
+namespace cc1diferencial
+{
+    public enum ConSigno : sbyte { Minimo = -128, MenosTres = -3, MenosUno = -1, Cero = 0, Tope = 127 }
+    public enum SinSigno : byte { Cero = 0, Medio = 128, Alto = 200, Maximo = 255 }
+    public enum CortoConSigno : short { Minimo = -32768, MenosUno = -1, Cero = 0, Tope = 32767 }
+    public enum CortoSinSigno : ushort { Cero = 0, Medio = 32768, Alto = 60000 }
+
+    public class Program
+    {
+        private static int Opaco(int valor)
+        {
+            int cuantos = Environment.GetCommandLineArgCount();
+            return valor + (cuantos - cuantos);
+        }
+
+        private static ConSigno PasaConSigno(ConSigno valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return ConSigno.Cero;
+        }
+
+        private static SinSigno PasaSinSigno(SinSigno valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return SinSigno.Cero;
+        }
+
+        private static CortoConSigno PasaCortoConSigno(CortoConSigno valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return CortoConSigno.Cero;
+        }
+
+        private static CortoSinSigno PasaCortoSinSigno(CortoSinSigno valor)
+        {
+            if (Opaco(0) == 0) { return valor; }
+            return CortoSinSigno.Cero;
+        }
+
+        private static bool MismosBytes(string obtenida, string esperada)
+        {
+            if (obtenida.Length != esperada.Length) { return false; }
+            int i = 0;
+            while (i < obtenida.Length)
+            {
+                if (obtenida[i] != esperada[i]) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static int Main()
+        {
+            if ((int)ConSigno.MenosTres != (int)PasaConSigno(ConSigno.MenosTres)) { return 10; }
+            if ((int)PasaConSigno(ConSigno.MenosTres) != -3) { return 11; }
+            if ((int)ConSigno.Minimo != (int)PasaConSigno(ConSigno.Minimo)) { return 12; }
+            if ((int)PasaConSigno(ConSigno.Minimo) != -128) { return 13; }
+            if ((int)SinSigno.Alto != (int)PasaSinSigno(SinSigno.Alto)) { return 14; }
+            if ((int)PasaSinSigno(SinSigno.Alto) != 200) { return 15; }
+            if ((int)CortoConSigno.Minimo != (int)PasaCortoConSigno(CortoConSigno.Minimo)) { return 16; }
+            if ((int)PasaCortoConSigno(CortoConSigno.Minimo) != -32768) { return 17; }
+            if ((int)CortoSinSigno.Alto != (int)PasaCortoSinSigno(CortoSinSigno.Alto)) { return 18; }
+            if ((int)PasaCortoSinSigno(CortoSinSigno.Alto) != 60000) { return 19; }
+
+            if (!MismosBytes(ConSigno.MenosTres.ToString(), PasaConSigno(ConSigno.MenosTres).ToString())) { return 20; }
+            if (!MismosBytes(PasaConSigno(ConSigno.MenosTres).ToString(), "MenosTres")) { return 21; }
+            if (!MismosBytes(ConSigno.Minimo.ToString(), PasaConSigno(ConSigno.Minimo).ToString())) { return 22; }
+            if (!MismosBytes(PasaConSigno(ConSigno.Minimo).ToString(), "Minimo")) { return 23; }
+            if (!MismosBytes(SinSigno.Alto.ToString(), PasaSinSigno(SinSigno.Alto).ToString())) { return 24; }
+            if (!MismosBytes(PasaSinSigno(SinSigno.Alto).ToString(), "Alto")) { return 25; }
+            if (!MismosBytes(CortoConSigno.Minimo.ToString(), PasaCortoConSigno(CortoConSigno.Minimo).ToString())) { return 26; }
+            if (!MismosBytes(CortoSinSigno.Alto.ToString(), PasaCortoSinSigno(CortoSinSigno.Alto).ToString())) { return 27; }
+
+            return 42;
+        }
+    }
+}

@@ -249,6 +249,11 @@ El compilador conserva la API C como frontera:
 
 Para Gate 1 se usa primero `LLVMPassBuilderOptionsSetDebugLogging`.
 
+En Windows el registro se captura **en el límite del proceso**: `nsc` crea un hijo con `stderr`
+redirigido antes de que `LLVM-C.dll` inicialice su CRT. No se usa `_dup2` dentro del proceso,
+porque sólo modifica el descriptor de `nsc` y no el de la DLL. El hijo delimita las ventanas de
+LLVM y el padre separa el registro de los diagnósticos ordinarios.
+
 El reporte puede decir:
 
 ```text

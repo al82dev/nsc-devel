@@ -1,10 +1,21 @@
 # 121 — Next Steps for the 1.0 Glory
 
-**Fecha:** 2026-09-04  
-**Punto de partida:** Native Sharp 0.7.0-alpha conceptual; compilador identificado todavía como
-0.1.0-dev55 / Stage 57.  
+**Fecha:** 2026-09-05
+**Punto de partida:** `nsc 0.7.4-alpha+build.20260905T200353Z.55d3be8643049cfa`;
+NativeSharp 0.1 / Stage 57.  
 **Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
 herramientas gráficas y software de plataforma con rendimiento predecible.
+
+**Estado de la entrega más reciente:** el compilador nuevo terminó de construirse y ya fue
+instalado. Los hashes de `built_nsc` e `installed_nsc` coinciden:
+`ffbc18d332533ef4c5bb637f6a47bc035acfb329ff823f935c0ee3d1e6f37915`. Sin embargo, la matriz
+G00 terminó en `FAILED` porque el árbol de artefactos cambió durante la corrida: varios
+ejecutables fueron modificados y muchos otros aparecieron después de tomar el inventario inicial.
+La corrida registró cero fallos de pruebas, pero **no certifica un baseline**. Instalación correcta,
+ausencia de fallos observados y certificación son tres afirmaciones distintas. La causa se aisló
+en el runner: G00 fotografiaba los ejecutables antes de que su propia etapa `_build_tests()` los
+creara o relinkara. La medición intermedia ya fue movida después de construir ambos árboles CTest;
+falta repetir la matriz, no reinterpretar la corrida inválida.
 
 ---
 
@@ -29,6 +40,32 @@ La promesa es concreta:
 
 1.0 no significa «tener muchas features». Significa que lo que el lenguaje promete funciona de
 punta a punta, es diagnosticable y puede sostener un proyecto real.
+
+### 1.1 Compatibilidad dirigida con C#
+
+Native Sharp debe ser lo más compatible posible con C# **sin convertirse en C#**. La meta es que
+un programador de C# reconozca la gramática, el sistema nominal, las expresiones y el comportamiento
+ordinario sin reaprender diferencias arbitrarias. No se busca compatibilidad binaria con .NET ni
+copiar su runtime, su biblioteca completa o todos sus dominios de aplicación.
+
+Regla de diseño:
+
+1. Si la semántica de C# puede implementarse sin GC, reflection dinámica, runtime pesado ni costos
+   ocultos incompatibles con el objetivo nativo, Native Sharp conserva esa sintaxis y semántica.
+2. Si ownership, lifetime, layout, ABI o rendimiento predecible exigen una diferencia, Native Sharp
+   la hace visible en el código y la documenta.
+3. Si una forma familiar no está soportada, el frontend la rechaza con un diagnóstico preciso; no
+   debe aceptarla para producir un resultado silenciosamente distinto.
+4. Una diferencia sólo se acepta por una propiedad central del lenguaje nativo, no por comodidad
+   accidental de la implementación actual.
+
+Esto favorece compatibilidad en operadores, conversiones ordinarias, control de flujo, arrays,
+genéricos, tipos anidados y APIs pequeñas de Core. Las divergencias intencionales se concentran en
+`owned`, `borrowed`, `raii`, `move`, punteros, destrucción determinista, layout y fronteras ABI.
+
+Por tanto, «compatible con C#» significa **familiaridad de fuente y comportamiento donde el costo
+es honesto**. No significa GC, LINQ, reflection, ASP.NET, SQL, ecosistema .NET ni paridad total de
+biblioteca.
 
 ---
 
@@ -92,14 +129,50 @@ El núcleo ya existe. No se vuelve a planificar:
 - frontend, HIR, MIR y backend LLVM;
 - enlace por `lld-link` y NSLink.
 
-Las correcciones del documento 120 cerraron tres interacciones de madurez:
+Las correcciones del documento 120 y los nuevos hallazgos reportados por consumidores externos
+permitieron trabajar estas interacciones de madurez:
 
 - receptor struct producido por propiedad o indexador;
 - transferencia de ownership hacia constructores;
 - igualdad de structs por hojas declaradas, sin padding.
+- reenvío correcto de parámetros `out`;
+- constraints genéricos dentro de una compilación;
+- tipos anidados, incluido lookup y uso desde consumidores reales.
 
-La medición más reciente del arnés aislado es 188 positivos y cinco negativos intencionales en las
-etapas de cuerpos e LLVM. Falta certificar esa entrega con el build completo y ejecución Windows.
+Los proyectos externos pueden descubrir combinaciones que las fixtures todavía no cubren y enviar
+repros mínimos. Ahí termina su papel dentro de este roadmap: sus fuentes, workarounds, builds y
+suites pertenecen a esos proyectos y no son responsabilidad ni gate de Native Sharp. Cada defecto
+aceptado debe convertirse en una prueba autocontenida dentro de `nsc`.
+
+### 3.1 Lectura actual después de los nuevos reportes
+
+| Hallazgo | Estado | Lectura para 1.0 |
+|---|---|---|
+| NSC-LIMIT-004 | Corregido | igualdad de agregados dejó de producir LLVM inválido |
+| NSC-LIMIT-005 | Abierto | O2 sigue fuera del contrato y bloquea Release confiable |
+| NSC-LIMIT-006 | Corregido | `out` ya conserva definite assignment al reenviarse |
+| NSC-LIMIT-007 | Corregido localmente | existen constraints; falta completar la frontera de proyecto |
+| NSC-LIMIT-008 | Corregido | los temporales struct producidos por propiedades son utilizables |
+| NSC-LIMIT-009 | Corregido | los tipos anidados ya son parte efectiva del lenguaje |
+| NSC-LIMIT-010 | Corregido | constructores participan correctamente en transferencia `owned` |
+| NSC-LIMIT-011 | Implementado en disco; pendiente de certificación completa | las pruebas dirigidas ya cubren tipos del consumidor, re-clonación, homónimos y sobrecargas |
+| NSC-LIMIT-012 | Abierto, P2 | faltan operadores bitwise tipados para enums del mismo tipo |
+| NSC-LIMIT-013 | Abierto, P2 | el lookup confunde un campo con un tipo importado por capitalización |
+| NSC-LUNAR-007 | Reporte externo confirmado, P1 | un shift aceptado entre `ulong` e `int` produce operandos LLVM de distinto ancho |
+| NSC-LIMIT-014 | Abierto, P1 de lifetime | `static owned` se rechaza porque no existe destrucción del estado estático |
+| NSC-LIMIT-015 | Abierto, P0 | overwrite de campo `owned` libera el destino antes de evaluar un RHS que lo lee |
+| NSC-LIMIT-016 | Abierto, P1 | los arrays poseídos no pueden ser locales `raii` con cleanup compuesto |
+| NSC-LIMIT-017 | Abierto, P1 | no se acepta `new T[] { ... }` con longitud inferida por el inicializador |
+| NSC-LIMIT-018 | Abierto, P1 | una clase genérica valida miembros no usados que requieren operaciones ausentes en `T` |
+| NSC-LIMIT-019 | Abierto, P1 | un campo `const` no puede plegar una referencia calificada a otro `const` |
+| NSC-LIMIT-020 | Abierto, P2 | el parser no admite parámetros con valor predeterminado |
+| NSC-LIMIT-021 | Abierto, P1 de lifetime | un temporal `owned string` no puede prestarse a un parámetro no retenedor durante la expresión |
+| CORE-LUNAR-003 / BIND-LUNAR-002 | Abierto, P2 de plataforma | `DateTime` y el binding Win32 no cubren calendario/hora local |
+
+La evolución es correcta: Native Sharp dejó de acumular sintaxis aislada y empezó a corregir las
+interacciones que aparecen en software nativo real. Pero todavía es una **0.7.4-alpha**. El salto a
+0.8 no lo concede la cantidad de casos verdes, sino cerrar los dos riesgos estructurales actuales:
+semántica equivalente O0/O2 y composición fiable entre proyectos.
 
 Native Sharp ya sabe qué lenguaje quiere ser. El trabajo hacia 1.0 consiste en demostrar que puede
 mantener esa identidad bajo programas grandes, optimización, errores, interoperabilidad y uso
@@ -135,13 +208,26 @@ regla de compatibilidad.
 
 ### 5.1 Certificar la entrega actual
 
+La primera matriz G00 sobre el binario instalado nuevo no es certificable: no registró fallos de
+prueba, pero detectó que el conjunto y contenido de ejecutables cambió mientras se ejecutaba. El
+estado correcto es `FAILED`, no «verde con advertencias». Los fingerprints S0/S1 coincidieron y el
+binario construido coincide con el instalado. La causa fue el orden interno del runner: capturaba
+el inventario antes de `_build_tests()` y después denunciaba como cambios los artefactos creados
+por esa misma etapa. La fotografía ahora ocurre después de construir los dos árboles y antes de
+ejecutar CTest/fixtures/triage.
+
+- reservar una ventana sin builds concurrentes o usar directorios de build aislados por corrida;
 - reconstruir e instalar el `nsc.exe` exacto que se va a medir;
+- terminar de producir todos los ejecutables de prueba antes de capturar el inventario inicial;
+- registrar nombre, tamaño y hash de cada herramienta/fixture al inicio y al final;
 - ejecutar CTest completo;
 - ejecutar las fixtures CC1 en O0 y O2 sobre Windows real;
 - confirmar los resultados de c41, c42 y c43;
 - correr con `lld-link` y NSLink cuando la ruta probada involucre enlace;
 - registrar build id, commit, LLVM, linker y resultado;
-- no declarar verde una prueba que usó otro compilador instalado.
+- no declarar verde una prueba que usó otro compilador instalado;
+- invalidar toda matriz donde aparezca, desaparezca o cambie un ejecutable, aunque el contador de
+  fallos funcionales sea cero.
 
 ### 5.2 Cerrar `NSC-LIMIT-005`: observabilidad del optimizador
 
@@ -160,9 +246,16 @@ Se requiere:
 
 **Cierre:** cero divergencia observable O0/O2 en todo el corpus contractual.
 
-### 5.3 Cerrar `NSC-LIMIT-007`: constraints genéricos mínimos
+### 5.3 Completar constraints genéricos: cerrar `NSC-LIMIT-011`
 
-Sólo entra la superficie necesaria para APIs nativas y matemáticas reutilizables:
+**Estado al 2026-09-05:** implementación y pruebas dirigidas verdes; todavía no se declara cerrado
+el gate. Falta reconstruir/instalar el compilador que medirá la matriz completa, ejecutar todo
+CTest, fixtures y bug triage. El detalle técnico y la evidencia dirigida están en el documento
+125. La retirada de workarounds o revalidación en proyectos externos corresponde exclusivamente a
+sus mantenedores y no forma parte del cierre de `nsc`.
+
+`NSC-LIMIT-007` ya demostró que el lenguaje parsea y valida las constraints mínimas necesarias para
+APIs nativas, engines y matemáticas reutilizables:
 
 ```csharp
 where T : class
@@ -172,21 +265,47 @@ where T : class, IInterface
 ```
 
 No se construye un solver general. Las constraints son comprobaciones estáticas sobre
-especializaciones monomorfizadas.
+especializaciones monomorfizadas. El hueco restante es más estrecho y más importante: una
+plantilla constrained declarada en una biblioteca no puede cerrarse con un tipo que sólo existe en
+el proyecto consumidor.
+
+El caso contractual es:
+
+```csharp
+// Library
+public static T Identity<T>(T value) where T : class, IComponent;
+
+// Consumer
+public class Payload : IComponent { }
+Payload output = Catalog.Identity<Payload>(input);
+```
+
+El defecto observado intentaba resolver `Payload` dentro del módulo de la biblioteca. Esto rompe
+una capacidad propia del lenguaje: una biblioteca extensible debe aceptar implementaciones válidas
+de sus interfaces declaradas por cualquier proyecto consumidor.
 
 Se requiere:
 
-- AST y parser completos;
-- validación después de resolver nombres, herencia e interfaces;
-- sustitución y clonación sin perder constraints;
-- diagnósticos que nombren parámetro, constraint y tipo recibido;
-- pruebas en clases, structs, métodos, delegates y sobrecargas;
+- preservar `originProjectOrdinal` y `originNamespace` del sitio consumidor en
+  `GenericConstraintClause::substitutedArgument` durante clonación y re-clonación;
+- aplicar la regla «propagar, nunca re-derivar» en especializaciones anidadas;
+- resolver el argumento concreto con la visibilidad del consumidor y el constraint con la
+  visibilidad de la biblioteca;
+- mantener la identidad de especialización separada de la calificación usada por name lookup;
+- diagnosticar tipos inválidos o inaccesibles en el sitio consumidor y nombrar el módulo correcto;
+- probar métodos y tipos genéricos con `class`, interfaz, clase base y combinaciones;
+- cubrir argumentos válidos, inválidos e inaccesibles, especialización anidada, tipos homónimos en
+  dos consumidores y descarte de overloads por constraint;
+- validar HIR, MIR, LLVM y emisión PE O0; después incluir el caso en la certificación O2;
 - ninguna metadata dinámica ni diccionario de tipos en runtime.
 
-### 5.4 Cerrar `NSC-LIMIT-009`: tipos anidados
+**Cierre:** los repros propios de `nsc` cubren el método y el tipo genérico cross-project, pasan de
+punta a punta y permanecen en CTest. Ningún proyecto externo es requisito para declarar el cierre.
 
-Los tipos anidados tienen valor para organizar bindings grandes y representar APIs de plataforma.
-No entran por paridad con C#.
+### 5.4 Certificar `NSC-LIMIT-009`: tipos anidados
+
+Los tipos anidados ya funcionan. Tienen valor para organizar bindings grandes y representar APIs
+de plataforma; no entraron por paridad con C#.
 
 Se requiere:
 
@@ -198,7 +317,265 @@ Se requiere:
 - pruebas con dos tipos internos del mismo nombre en contenedores diferentes;
 - ninguna búsqueda dependiente del orden de archivos.
 
-### 5.5 Consolidar reglas transversales
+El trabajo pendiente para 0.7 no es volver a implementarlos, sino mantener sus fixtures como
+contrato y certificar que no divergen en O0/O2 ni entre proyectos.
+
+### 5.5 Cerrar `NSC-LIMIT-012`: bitwise de enums tipados
+
+Para flags de APIs nativas, dos operandos del mismo enum deben conservar el tipo enum:
+
+```csharp
+ClearBufferMask mask = ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit;
+```
+
+Se requieren `|`, `&`, `^`, `~` y sus asignaciones compuestas, siempre que los operandos sean del
+mismo enum compatible. Mezclar enums distintos debe fallar con un diagnóstico preciso. No se
+agrega reflection de enums, conversión dinámica ni un subsistema de metadata: es aritmética tipada
+necesaria para Win32, OpenGL, DirectX y otras ABI nativas.
+
+### 5.6 Cerrar `NSC-LIMIT-013`: colisión entre valor y tipo importado
+
+El lookup de una expresión debe preferir la coincidencia exacta de una variable, parámetro, campo o
+propiedad accesible antes de reinterpretarla como un tipo importado cuya capitalización difiere.
+El patrón `GL Gl; Gl = gl;` debe ser válido también cuando `GL` viene de un `ProjectReference`, sin
+romper referencias estáticas legítimas a `GL`.
+
+### 5.7 Promover y cerrar `NSC-LUNAR-007`: ancho del operando derecho en shifts
+
+El frontend acepta una expresión natural para bitsets nativos:
+
+```csharp
+ulong mask = 1UL << index; // index es int
+```
+
+El backend genera actualmente la forma inválida `shl i64 ..., i32 ...`. En LLVM, ambos operandos
+de la instrucción de desplazamiento deben tener el mismo tipo entero. Tipar también el contador
+como `ulong` puede desbloquear al consumidor, pero es sólo un workaround y no forma parte del
+contrato deseado del lenguaje.
+
+Se requiere:
+
+- normalizar el operando derecho al tipo LLVM exigido por el operando izquierdo antes de emitir
+  `shl`, `lshr` o `ashr`;
+- aplicar la misma regla a `<<`, `>>`, `<<=` y `>>=`;
+- conservar la semántica de C# para el conteo: usar los cinco bits bajos en operandos de 32 bits y
+  los seis bits bajos en operandos de 64 bits, sin delegar valores negativos o grandes a poison de
+  LLVM;
+- cubrir combinaciones de enteros con distinto ancho, firmados y no firmados;
+- añadir el patrón real de bitset `ulong << int` como fixture positiva propia de `nsc`;
+- comprobar HIR, MIR, LLVM verificado, ejecución O0/O2 y que nunca se emitan operandos de tipos
+  distintos.
+
+**Cierre:** toda expresión de shift aceptada por el frontend baja a LLVM válido y produce el mismo
+resultado observable en O0 y O2. Un caso no soportado debe rechazarse antes del backend con un
+diagnóstico del compilador. Hasta que exista una entrada canónica en la carta de `nsc`, se
+conserva el identificador del reporte externo y no se reutiliza un número `NSC-LIMIT`.
+
+### 5.8 Resolver `NSC-LIMIT-014`: ownership del estado estático
+
+El compilador prohíbe correctamente una declaración como ésta bajo su modelo actual:
+
+```csharp
+private static owned Resource shared;
+```
+
+La razón no es parsing ni HIR incompleto: Native Sharp todavía no genera destrucción para estado
+estático. Aceptar el campo como `owned` sin ejecutar su cleanup violaría la promesa central del
+calificador y convertiría una fuga de recursos en comportamiento aparentemente seguro. Que el
+programa tenga conteo de referencias y una ruta manual de liberación no permite al compilador
+suponer que esa ruta se ejecutará exactamente una vez.
+
+El workaround controlado es mantener una referencia estática no propietaria y administrar de
+forma explícita la transferencia, el conteo y el `delete` al llegar a cero. Debe documentarse como
+salida temporal del verificador de ownership, con estos riesgos visibles:
+
+- fuga si no se alcanza la liberación final;
+- doble destrucción si dos rutas creen poseer el mismo recurso;
+- referencia estática colgante si no se invalida al destruir;
+- carrera entre adquisición y liberación si el estado se usa desde varios hilos;
+- cleanup incompleto ante inicialización parcial o excepción.
+
+Para soportar `static owned`, se requiere:
+
+- definir cuándo se inicializa el estado estático y en qué orden entre tipos, archivos y proyectos;
+- generar destrucción exactamente una vez al terminar normalmente el proceso;
+- definir el orden inverso de cleanup y el acceso entre estáticos durante shutdown;
+- cubrir reemplazo del valor, movimiento, liberación explícita, inicialización fallida y excepción;
+- impedir que `delete` manual y cleanup generado puedan destruir dos veces el mismo owner;
+- documentar qué garantías no existen ante terminación abrupta del proceso;
+- probar contadores de construcción/destrucción, múltiples proyectos y ejecución O0/O2.
+
+Hay dos cierres válidos para 1.0: implementar esa semántica completa o declarar `static owned`
+fuera de 1.0 manteniendo el rechazo preciso. El workaround sólo puede retirarse en el primer caso,
+cuando una fixture propia demuestre destrucción determinista y única.
+
+### 5.9 Corregir `NSC-LIMIT-015`: overwrite de campo `owned`
+
+El repro mínimo confirmó un P0: `text = String.Concat(text, value)` compila en HIR/LLVM y enlaza
+en O0, pero libera `text` antes de evaluar el RHS que todavía necesita leerlo. El programa imprime
+`"c"` y devuelve 8 en lugar de conservar `"abc"` y devolver 42. Es un use-after-free y un
+resultado incorrecto en código aceptado, no una regla pendiente de diagnóstico.
+
+El repro mínimo debe separar:
+
+- asignación directa contra `raii` + `move`;
+- target local contra campo `owned`;
+- RHS que toma prestado el valor anterior contra RHS independiente;
+- `string` contra una clase poseída pequeña con contadores de construcción y destrucción;
+- inicialización del campo contra reemplazo de un owner ya existente;
+- resultado funcional, destrucción exactamente una vez y ausencia de uso después de liberar;
+- ejecución O0 y O2, además de inspección MIR/LLVM de la transferencia.
+
+La asignación debe bajar en este orden: obtener una dirección estable del destino; evaluar y
+materializar completamente el RHS; leer y anular el owner anterior; destruirlo; guardar el owner
+nuevo sin que el cleanup del temporal vuelva a liberarlo. Esto conserva el orden de evaluación de
+C# sin debilitar el ownership explícito de Native Sharp.
+
+**Cierre:** el repro directo devuelve 42, una clase poseída con contador demuestra destrucción
+única y las variantes `this.field`, `other.field`, propiedad, excepción y alias indirecto pasan
+en O0/O2. Este P0 debe cerrarse antes que cualquier feature nueva.
+
+### 5.10 Cerrar `NSC-LIMIT-016`: arrays poseídos como locales `raii`
+
+El frontend rechaza una local como:
+
+```csharp
+raii Item[] loaded = LoadItems();
+```
+
+El modelo actual conserva `owned T[]` como buffer relocalizable, pero no promete recorrer y
+destruir sus elementos al salir del scope. El workaround puede usar asignación directa cuando el
+RHS no lee el destino anterior, o `owned T[]` más `delete[]` explícito; ninguna de las dos formas
+ofrece por sí sola exception safety equivalente a una local RAII.
+
+Se requiere cleanup del bloque y de sus elementos en orden definido, tracking de slots movidos o
+nulos, `move(array)`, unwind de inicialización parcial y prevención de doble ownership al copiar
+referencias. Las fixtures deben cubrir arrays vacíos/parciales, elementos triviales y poseídos,
+transferencia completa, excepción y destrucción exactamente una vez en O0/O2.
+
+**Cierre:** una local `raii T[]` puede recibir un retorno owned, sobrevivir a fallos intermedios y
+transferirse después sin fuga, doble destrucción ni pérdida del valor anterior del destino.
+
+### 5.11 Cerrar `NSC-LIMIT-017`: inicializadores de arrays con longitud inferida
+
+La actualización todavía rechaza la forma:
+
+```csharp
+Map[] maps = new Map[] { first, second, third };
+```
+
+El workaround soportado es una expansión puramente mecánica:
+
+```csharp
+Map[] maps = new Map[3];
+maps[0] = first;
+maps[1] = second;
+maps[2] = third;
+```
+
+Para tablas grandes, la conversión debe conservar el número exacto de elementos, índices
+continuos desde cero, cada literal sin modificación y el orden original. Los datos del consumidor
+no forman parte del compilador; el repro propio de `nsc` sólo necesita aislar la construcción y
+demostrar equivalencia.
+
+La implementación del lenguaje requiere:
+
+- parsear `new T[] { ... }` e inferir la longitud a partir del número de elementos;
+- evaluar cada expresión una sola vez y de izquierda a derecha;
+- aplicar las mismas conversiones de elemento que una asignación ordinaria al array;
+- definir el inicializador vacío y diagnosticar elementos incompatibles en su posición exacta;
+- conservar ownership y ejecutar cleanup correcto si falla una inicialización parcial;
+- cubrir valores primitivos, structs, referencias, elementos `owned` y arrays anidados;
+- validar HIR, MIR, LLVM, PE y ejecución O0/O2.
+
+La materialización como datos constantes o cualquier optimización de tablas es posterior y no
+forma parte de este límite. Primero debe existir semántica correcta equivalente a `array[n]` más
+asignaciones por índice.
+
+**Cierre:** la forma compacta y su expansión producen los mismos valores en el mismo orden, con la
+misma destrucción, y una fixture propia impide la regresión.
+
+### 5.12 Cerrar `NSC-LIMIT-018`: especialización genérica por miembro alcanzado
+
+Crear `List<Pair>` y usar únicamente `Add` no debe fallar porque `Sort` o `BinarySearch`
+contengan `<` y `Pair` no tenga orden natural. El modelo actual clona y valida todos los miembros
+de la clase genérica al especializar el tipo, incluso los que el programa nunca usa.
+
+La solución puede materializar/validar por miembro alcanzado o expresar constraints precisos en
+los miembros que requieren orden. En ambos casos debe conservar la expectativa de C#: instanciar
+una colección no obliga a que `T` satisfaga operaciones utilizadas exclusivamente por métodos no
+invocados.
+
+Las regresiones deben cubrir tipo sin `<`, uso de almacenamiento/indexador, llamada posterior a
+`Sort` con diagnóstico en ese sitio, overloads, herencia y especializaciones cross-project.
+
+**Cierre:** `List<Pair>` con `Add` compila; invocar una operación que realmente exige orden
+funciona sólo con un `T` válido o falla con el constraint preciso.
+
+### 5.13 Cerrar `NSC-LIMIT-019`: plegado transitivo de campos `const`
+
+Una referencia calificada como `ConsumerLimits.Alias = SourceLimits.Source` debe ser una
+constante cuando el campo origen también lo sea. Se requiere plegado transitivo entre tipos y
+proyectos, conversiones constantes normales, memoización y detección de ciclos con diagnóstico
+accionable.
+
+La semántica debe seguir la expectativa de C#: el consumidor observa el valor constante, no una
+lectura estática en runtime. Las fixtures deben cubrir cadenas, casts, enums, accesibilidad,
+cross-project y ciclos directos e indirectos.
+
+### 5.14 Cerrar `NSC-LIMIT-020`: parámetros con valor predeterminado
+
+El parser debe aceptar firmas como `void Add(float amount = 1.0f)`, conservar la expresión en AST
+y metadata, considerarla durante overload resolution y materializar el argumento omitido también
+a través de `ProjectReference`.
+
+Para mantener compatibilidad dirigida con C#, los defaults deben restringirse a expresiones
+constantes admitidas, respetar el orden obligatorio/opcional de parámetros y comportarse como
+valor fijado en el contrato de la llamada. Se requieren casos omitido/explícito, varios opcionales,
+overloads, métodos genéricos y consumo cross-project.
+
+### 5.15 Cerrar `NSC-LIMIT-021`: préstamo de temporales `owned string`
+
+El diagnóstico preciso reemplaza la clasificación provisional anterior: `"a" + "b"` sí se tipa
+correctamente como un string nuevo y `owned`. El fallo aparece al prestar ese temporal a un
+parámetro string sin calificador o `borrowed`:
+
+```csharp
+raii string copy = String.Copy("a" + "b");
+```
+
+La llamada se rechaza antes de HIR porque el argumento lleva
+`ownershipTransfer=true` y el parámetro seleccionado no es `owned`. No es un defecto de
+`String.Copy`, binding o linker; falta una regla general de lifetime de expresión.
+
+El workaround localizado materializa primero un owner con nombre:
+
+```csharp
+raii string temporary = String.Concat("a", "b");
+raii string copy = String.Copy(temporary);
+```
+
+Para shaders y otros textos embebidos, esa transformación debe conservar longitud, saltos de línea
+y bytes exactamente iguales. El workaround no cambia la regla futura.
+
+El soporte requerido es:
+
+- crear un owner RAII oculto para todo temporal fresco que se preste a un parámetro no retenedor;
+- mantenerlo vivo hasta terminar la expresión completa y destruirlo exactamente una vez;
+- admitir parámetros `borrowed string` y parámetros Core sin calificador cuyo contrato sea no
+  retenedor;
+- conservar evaluación de izquierda a derecha con varios temporales y llamadas anidadas;
+- ejecutar cleanup correcto si un argumento posterior o la propia llamada lanza una excepción;
+- impedir que el préstamo escape o llegue a una API que pueda conservar la referencia;
+- implementar la regla para temporales `owned` en general, usando string como caso contractual,
+  no como excepción cableada a `String.Copy`;
+- validar diagnóstico negativo, HIR, MIR, LLVM y ejecución O0 antes de habilitar O2.
+
+**Cierre:** `String.Copy("a" + "b")` compila y devuelve el contenido completo; el owner oculto
+vive durante la llamada y se destruye una vez. Las pruebas propias de `nsc` son el gate. La
+retirada de locales escalonadas en consumidores externos corresponde a esos proyectos.
+
+### 5.16 Consolidar reglas transversales
 
 Los últimos defectos repiten una forma: dos capas hacen la misma pregunta y dan respuestas
 distintas. Antes de 0.8 deben existir fuentes únicas para:
@@ -214,22 +591,23 @@ distintas. Antes de 0.8 deben existir fuentes únicas para:
 
 No es necesario reescribir el frontend. Sí es necesario impedir una cuarta copia de cada regla.
 
-### 5.6 Cerrar decisiones semánticas que todavía permiten una respuesta silenciosa
+### 5.17 Cerrar decisiones semánticas que todavía permiten una respuesta silenciosa
 
 Antes de llamar completo al lenguaje existente hay que inventariar todos los límites documentados
 y clasificarlos como bloqueo de 1.0, rechazo deliberado o feature futura. Ninguno puede quedar como
 «compila, pero nadie sabe quién responde por el resultado».
 
-El caso inmediato es el owner recién creado enviado a un parámetro sin calificador:
+NSC-LIMIT-021 define la respuesta para un owner recién creado enviado a un parámetro
+inequívocamente no retenedor:
 
 ```csharp
 Consumir(new Recurso()); // ¿quién destruye Recurso si el parámetro no es owned?
 ```
 
-Hoy esa forma puede ser aceptada aunque el receptor no adopte el objeto. Para 1.0 debe rechazarse o
-tener una regla de lifetime que demuestre destrucción exacta. No se permite resolverlo mediante una
-liberación implícita difícil de observar ni mediante ownership inferido que no aparezca en la
-firma.
+El compilador materializa un owner temporal, lo presta durante la expresión completa y lo destruye
+después. La decisión que aún debe cerrarse es si todo parámetro sin calificador garantiza que no
+retiene la referencia; si no lo garantiza, sólo un contrato `borrowed` explícito puede habilitar
+esa regla. No se permite inferir silenciosamente un lifetime más largo que el escrito en la firma.
 
 También deben recibir una decisión explícita:
 
@@ -243,7 +621,7 @@ También deben recibir una decisión explícita:
 No todas tienen que implementarse. Todas tienen que terminar en una de tres respuestas comprobables:
 funciona bajo un contrato, se rechaza con diagnóstico, o está declarada fuera de 1.0.
 
-### 5.7 Gate de salida 0.7
+### 5.18 Gate de salida 0.7
 
 - cero P0 y P1 conocidos en el lenguaje implementado;
 - cero miscompile conocido;
@@ -252,6 +630,7 @@ funciona bajo un contrato, se rechaza con diagnóstico, o está declarada fuera 
 - ownership no produce doble destrucción, fuga conocida aceptada ni use-after-move silencioso;
 - el verificador de LLVM acepta todo módulo emitido;
 - cada bug corregido tiene rojo anterior reproducido y verde posterior;
+- APIs genéricas públicas de una biblioteca aceptan tipos válidos definidos sólo por el consumidor;
 - ninguna prueba obtiene verde midiendo una función, fixture o compilador distinto.
 
 ---
@@ -327,7 +706,39 @@ fallar con claridad fuera de él.
 - mensajes útiles para símbolos y relocations no resueltos;
 - ningún fallback silencioso que cambie el linker medido.
 
-### 6.6 Gate de salida 0.8
+### 6.6 Veracidad de paquetes y bindings
+
+Los reportes de bindings pertenecen a `nsc-bindings-devel`, `nsbind`, `nsb` o `nspkg`
+según el caso; no deben corregirse dentro del frontend o backend del compilador. Aun así, un
+toolchain 1.0 no puede publicar una biblioteca como lista cuando sólo comprobó que existe un
+archivo.
+
+Para cada paquete oficial que se declare soportado:
+
+- `nsb doctor` debe exigir artifacts reales y nunca informar «LISTO» con un inventario `0/0`;
+- el manifest declara capacidades, subsistemas, features habilitadas/deshabilitadas, baseline de
+  CPU y dependencias runtime;
+- `nspkg` resuelve dependencias transitivas de `ProjectReference` y usos mediante alias;
+- los archives publicados se prueban combinados para detectar símbolos globales duplicados;
+- el DLL/archivo realmente distribuido se consulta mediante fixtures de sus capacidades;
+- una máquina limpia recibe o diagnostica todas las dependencias necesarias.
+
+Esto no convierte la amplitud máxima de los 21 bindings auditados en gate del lenguaje. Un paquete
+puede ser parcial si su nombre, manifest y documentación describen con precisión esa superficie.
+Lo inadmisible es confundir presencia con completitud.
+
+La evidencia externa deja cuatro acciones concretas para los repositorios responsables:
+
+- `BIND-LINK-001`: hacer componibles los archives STB/MP3 y probar el co-link publicado;
+- `BIND-009`: no publicar Assimp reducido como si incluyera FBX y el resto de importers;
+- `PKG-011`: detectar paquetes utilizados únicamente mediante `using Alias = ...`;
+- `nsb doctor`: corregir el falso «LISTO» cuando encontró `0/0` artifacts.
+
+`PKG-008` ya está corregido. Las superficies BIND-003 a BIND-007 continúan en el backlog de
+bindings y sólo pasan al contrato 1.0 cuando una plataforma soportada o el juego piloto las
+requiera explícitamente.
+
+### 6.7 Gate de salida 0.8
 
 Un repositorio nuevo, fuera de `A:\nsc-devel`, puede:
 
@@ -379,7 +790,54 @@ No se agrega una colección infinita de nombres de CPU. Cada familia necesita be
 - ownership de buffers y handles queda escrito;
 - errores de ABI se detectan antes del backend cuando sea posible.
 
-### 7.4 Gate de salida 0.85
+### 7.4 Amplitud de bindings guiada por capacidades reales
+
+La expansión de Assimp, ImGui, Win32, Raylib, SDL2, FreeType, STB, MP3, OpenGL y el resto del
+catálogo vive en el roadmap de bindings. Native Sharp 1.0 sólo adopta como contrato las superficies
+necesarias para su plataforma y juego piloto, más la obligación de que cada paquete describa y
+pruebe honestamente lo que publica.
+
+Prioridades transversales del ecosistema:
+
+- evitar DLL reducidos publicados bajo un nombre que sugiera soporte upstream completo;
+- generar superficies desde headers/exports con exclusiones pequeñas y auditables;
+- mantener accessors C estables para tipos C++ opacos o bitfields difíciles de representar;
+- resolver composición de archives y dependencias runtime en el paquete, no en cada consumidor;
+- probar formatos y subsistemas reales, no sólo carga del DLL.
+
+No se agrega ABI C++ general al lenguaje para compensar una fachada incompleta. Cuando un shim C es
+la frontera correcta, el trabajo pertenece al binding.
+
+### 7.5 `CORE-LUNAR-003` / `BIND-LUNAR-002`: fecha y hora mínima de plataforma
+
+`NativeSharp.Core.DateTime` expone actualmente ticks UTC, pero todavía no ofrece descomposición de
+calendario ni un equivalente de `ToLocalTime`. Esto no es un defecto del compilador. Mientras Core
+no tenga ese contrato, un consumidor Windows puede convertir mediante la API horaria nativa y
+formatear explícitamente el resultado.
+
+El workaround contractual conserva exactamente:
+
+```text
+yyyy-MM-dd HH:mm
+```
+
+La implementación mínima de Core debe incluir:
+
+- conversión entre ticks UTC y componentes de calendario;
+- conversión UTC/local delegada a las reglas de zona horaria y horario de verano del sistema;
+- componentes `year`, `month`, `day`, `hour` y `minute` sin asignaciones ocultas;
+- formato invariante y explícito para patrones numéricos pequeños;
+- pruebas de años bisiestos, cambios de día/año y transiciones de horario de verano;
+- errores claros para valores fuera del rango soportado.
+
+No se requiere un framework de culturas, calendarios empresariales, parsing libre, zonas horarias
+embebidas ni integración con SQL. Si una aplicación necesita más, puede usar un binding externo.
+
+**Retiro del workaround:** cuando Core produzca el mismo calendario local y el formato
+`yyyy-MM-dd HH:mm` mediante una API estable, el consumidor puede eliminar su llamada Win32 sin que
+ese proyecto se convierta en gate del runtime.
+
+### 7.6 Gate de salida 0.85
 
 Una aplicación Native Sharp abre una ventana propia, recibe input, inicializa una API gráfica,
 crea un dispositivo de audio, carga un asset y mantiene un loop sin thunks escritos a mano fuera
@@ -391,6 +849,11 @@ del sistema normal de bindings.
 
 Las fixtures prueban contratos aislados. No prueban convivencia prolongada. Antes de congelar 1.0
 debe existir un juego pequeño pero completo escrito en Native Sharp.
+
+Los reportes procedentes de juegos, engines o ports externos pueden originar nuevas fixtures, pero
+esos repositorios no se incorporan automáticamente al corpus ni a las obligaciones de Native
+Sharp. El juego piloto de este gate será un artefacto deliberadamente elegido y mantenido por el
+propio proyecto.
 
 ### 8.1 Vertical slice obligatorio
 
@@ -564,6 +1027,7 @@ Además:
 - una prueba no cuenta si sólo afirma su cobertura en un comentario;
 - una aserción de ausencia necesita guardia de que encontró la función o sección correcta;
 - una fixture no cuenta si usó un compilador distinto al registrado;
+- una matriz no cuenta si sus ejecutables aparecen, desaparecen o cambian durante la corrida;
 - compilar no sustituye ejecutar;
 - ejecutar correctamente no sustituye comprobar destrucción, llamadas o forma del IR cuando esos
   son parte del contrato;
@@ -575,16 +1039,23 @@ Además:
 ## 12. Orden recomendado
 
 ```text
-0.7.1  Certificar c41-c43 en Windows y cerrar la entrega actual
-0.7.2  NSC-LIMIT-005: observabilidad y corrección O2
-0.7.3  NSC-LIMIT-007: constraints genéricos mínimos
-0.7.4  NSC-LIMIT-009: tipos anidados
-0.7.5  Consolidación semántica y cero P0/P1
+0.7.4  Build nuevo instalado; runner G00 corregido y repetición limpia pendiente
+0.7.5  NSC-LIMIT-011: certificar constraints cross-project en pruebas propias de nsc
+0.7.6  NSC-LIMIT-015: corregir el P0 de overwrite de campos owned
+0.7.7  NSC-LIMIT-021: lifetime de expresión para préstamos de temporales owned
+0.7.8  NSC-LUNAR-007: promover/corregir anchos de operandos de shift en LLVM
+0.7.9  NSC-LIMIT-016/017: lifetime e inicialización declarativa de arrays
+0.7.10 NSC-LIMIT-014: implementar o excluir ownership estático
+0.7.11 NSC-LIMIT-018/019: especialización alcanzable y constantes calificadas
+0.7.12 NSC-LIMIT-005: observabilidad, corrección y equivalencia O0/O2
+0.7.13 NSC-LIMIT-012/013/020: enums, lookup y parámetros predeterminados
+0.7.14 Consolidación semántica, certificación propia y cero P0/P1
 
 0.8.0  .nsproj externo + .lib + Debug/Release
 0.8.1  CodeView/PDB
 0.8.2  builds reproducibles + identidad + instalación limpia
 0.8.3  paridad NSLink/lld-link en el dominio soportado
+0.8.4  calendario UTC/local mínimo en Core, sin framework de globalización
 
 0.8.5  COM estático
 0.8.6  SIMD e intrínsecos guiados por consumidor

@@ -152,13 +152,27 @@ bool WindowsLibraryBuilder::buildStatic(
         return false;
     }
 
+    // NSC-LIMIT-005. La observacion va SIEMPRE, no bajo bandera. Un fallo del optimizador que no
+    // dice contra que LLVM, con que pipeline ni por donde iba obliga a REPRODUCIRLO para poder
+    // diagnosticarlo, y eso es exactamente lo que no se pudo hacer con `c38_enum_ancho`: cuando el
+    // sintoma es un codigo de salida distinto a -O2, la corrida que fallo ya termino. Ver
+    // LlvmOptimizer.h y LlvmOptimizationObservation.h.
+    //
+    // COSTE MEDIDO: ~3% del tiempo de compilacion completo a -O2 y 0% a -O0, y el IR resultante es
+    // byte a byte el mismo con y sin observar --hay una prueba que lo compara en los tres
+    // niveles--. Se paga en cada construccion a cambio de que el PRIMER fallo sea legible.
     llvm_backend::LlvmOptimizer optimizer;
-    if (!optimizer.optimize(programModule, *targetMachine, optimizationLevel, targetError))
+    llvm_backend::LlvmOptimizationObservation programObservation;
+    if (!optimizer.optimize(
+            programModule, *targetMachine, optimizationLevel, &programObservation, targetError))
     {
         error = "program LLVM optimization failed: " + targetError;
         return false;
     }
-    if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel, targetError))
+    // NSC-LIMIT-005: observada, igual que la de arriba.
+    llvm_backend::LlvmOptimizationObservation runtimeObservation;
+    if (!optimizer.optimize(
+            *runtimeModule, *targetMachine, optimizationLevel, &runtimeObservation, targetError))
     {
         error = "runtime LLVM optimization failed: " + targetError;
         return false;
@@ -260,13 +274,27 @@ bool WindowsLibraryBuilder::buildDynamic(
         return false;
     }
 
+    // NSC-LIMIT-005. La observacion va SIEMPRE, no bajo bandera. Un fallo del optimizador que no
+    // dice contra que LLVM, con que pipeline ni por donde iba obliga a REPRODUCIRLO para poder
+    // diagnosticarlo, y eso es exactamente lo que no se pudo hacer con `c38_enum_ancho`: cuando el
+    // sintoma es un codigo de salida distinto a -O2, la corrida que fallo ya termino. Ver
+    // LlvmOptimizer.h y LlvmOptimizationObservation.h.
+    //
+    // COSTE MEDIDO: ~3% del tiempo de compilacion completo a -O2 y 0% a -O0, y el IR resultante es
+    // byte a byte el mismo con y sin observar --hay una prueba que lo compara en los tres
+    // niveles--. Se paga en cada construccion a cambio de que el PRIMER fallo sea legible.
     llvm_backend::LlvmOptimizer optimizer;
-    if (!optimizer.optimize(programModule, *targetMachine, optimizationLevel, targetError))
+    llvm_backend::LlvmOptimizationObservation programObservation;
+    if (!optimizer.optimize(
+            programModule, *targetMachine, optimizationLevel, &programObservation, targetError))
     {
         error = "program LLVM optimization failed: " + targetError;
         return false;
     }
-    if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel, targetError))
+    // NSC-LIMIT-005: observada, igual que la de arriba.
+    llvm_backend::LlvmOptimizationObservation runtimeObservation;
+    if (!optimizer.optimize(
+            *runtimeModule, *targetMachine, optimizationLevel, &runtimeObservation, targetError))
     {
         error = "runtime LLVM optimization failed: " + targetError;
         return false;

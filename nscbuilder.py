@@ -41,7 +41,15 @@ from typing import Callable, Iterable
 
 try:
     from PySide6.QtCore import QObject, QProcess, QSettings, QThread, QTimer, Qt, QUrl, Signal, Slot
-    from PySide6.QtGui import QColor, QDesktopServices, QFontDatabase, QTextCharFormat, QTextCursor
+    from PySide6.QtGui import (
+        QColor,
+        QDesktopServices,
+        QFontDatabase,
+        QKeySequence,
+        QShortcut,
+        QTextCharFormat,
+        QTextCursor,
+    )
     from PySide6.QtWidgets import (
         QAbstractItemView,
         QApplication,
@@ -215,6 +223,14 @@ class RunPlan:
     build_mode: str
     build_target: str
     build_runner: str
+    # CONSTRUIR LOS ARBOLES DE PRUEBA ES UNA DECISION APARTE, con su propio campo en vez de
+    # deducirse de la operacion. La pestana del LENGUAJE lo pone en falso SIEMPRE: ahi no se
+    # compila nada, se usa el `nsc.exe` ya instalado.
+    build_test_trees: bool
+    # El objetivo de ninja DENTRO del arbol de pruebas, separado del del compilador. Compartirlos
+    # hacia que el baseline pidiera `nsc` en el arbol de pruebas --que no es ninguno de sus 128
+    # ejecutables-- y solo se salvaba porque ya estaban construidos de antes.
+    test_build_target: str
     test_build_mode: str
     test_build_dirs: dict[str, str]
     linkers: list[str]
@@ -411,6 +427,169 @@ def import_case_table(root: Path) -> list[CaseSpec]:
                 known_projects.add(key)
 
     return result
+
+
+# DOS CLASES DE PRUEBA, Y NO SE MEZCLAN.
+#
+# PRUEBA UNITARIA: un ejecutable de C++ que enlaza las librerias del compilador --nsc_frontend,
+# nsc_llvm, nsc_compilation, nsc_target-- y mira el compilador POR DENTRO. Para ejecutarla hay que
+# haberla compilado, porque es C++; no hay vuelta de hoja.
+#
+# PRUEBA DE LENGUAJE: un programa `.ns` que se compila CON `nsc.exe` y se ejecuta. Mira el
+# compilador POR FUERA, usandolo. Para ejecutarla no hace falta compilar una sola linea de C++:
+# basta el compilador ya instalado.
+#
+# POR QUE ESTABAN MEZCLADAS Y POR QUE ESO ERA CARO. Las dos viven en el mismo CTest, asi que
+# pedir una prueba de lenguaje configuraba el arbol `build-test-*`, y ese arbol declara las
+# librerias del compilador con sus fuentes: recompilaba el compilador entero para correr un
+# programa de cinco lineas. Separarlas es lo que permite que la pestana del lenguaje no invoque
+# jamas una compilacion.
+#
+# EL CASO QUE NO ES OBVIO: `nsc.cc1.correctness.*`. Son 47 pruebas DE LENGUAJE --compilan fixtures
+# `.ns` con nsc.exe-- pero comparten un arnes de C++, `nsc_cc1_correctness_tests`, que si hay que
+# tener construido. Van con las de lenguaje, que es lo que miden; si su arnes falta, la pestana lo
+# DICE en vez de construirlo por su cuenta.
+CTEST_HARNESS_PREFIXES = ("nsc.cc1.correctness",)
+
+CTEST_UNIT = "unit"
+CTEST_HARNESS = "harness"
+CTEST_LANGUAGE = "language"
+
+# NINGUN CONJUNTO ARRASTRA A OTRO. Esa es la regla, y de ella salen los tres:
+#
+#   UNIT     -- ejecutable de C++ propio, mide el compilador por dentro. Construye lo suyo.
+#   HARNESS  -- mide el LENGUAJE pero cuelga de un binario de C++ compartido. Tiene una
+#               dependencia que los otros no tienen, asi que va aparte en vez de contagiarsela a
+#               nadie. Construye solo ese arnes.
+#   LANGUAGE -- solo necesita el `nsc.exe` instalado. NO CONSTRUYE NADA, nunca.
+#
+# Un conjunto que necesitara algo distinto seria un cuarto conjunto, no una excepcion metida en
+# uno de estos.
+
+
+def classify_ctest(name: str, mapping: dict[str, str]) -> str:
+    """A qué conjunto pertenece una prueba de CTest."""
+    if name.startswith(CTEST_HARNESS_PREFIXES):
+        return CTEST_HARNESS
+    return CTEST_UNIT if ctest_target_for(name, mapping) else CTEST_LANGUAGE
+
+
+# BUSCAR EN UNA LISTA DE 291 NOMBRES LARGOS Y PARECIDOS.
+#
+# El filtro era `subcadena` a secas, y con nombres como `nsc.stage56.c1-interop-completion` eso
+# obliga a escribir el trozo EXACTO y contiguo. Tres reglas, todas baratas, lo cambian:
+#
+#   VARIOS TERMINOS, en cualquier orden, y todos tienen que aparecer: `stage56 interop` encuentra
+#   `nsc.stage56.c1-interop-completion` sin acordarse de que hay un `.c1-` en medio.
+#
+#   EXCLUSION con `-`: `stage56 -bugfix` acota sin afinar el termino positivo.
+#
+#   SUBSECUENCIA cuando la subcadena falla: `s56c1` encuentra `...stage56.c1...`. Solo desde tres
+#   caracteres; con uno o dos casaria casi todo y el filtro dejaria de filtrar.
+def matches_filter(text: str, query: str) -> bool:
+    """¿Casa `text` con lo escrito en el filtro? Query vacía casa con todo."""
+    haystack = text.casefold()
+    for term in query.casefold().split():
+        negated = term.startswith("-") and len(term) > 1
+        needle = term[1:] if negated else term
+        if not needle:
+            continue
+        found = needle in haystack
+        if not found and len(needle) >= 3:
+            found = _is_subsequence(needle, haystack)
+        if found == negated:
+            return False
+    return True
+
+
+def _is_subsequence(needle: str, haystack: str) -> bool:
+    """Las letras de `needle`, en orden, aunque no seguidas."""
+    position = 0
+    for character in needle:
+        position = haystack.find(character, position)
+        if position < 0:
+            return False
+        position += 1
+    return True
+
+
+# QUE EJECUTABLE CONSTRUYE CADA PRUEBA, LEIDO DEL CMakeLists Y NO DEL ARBOL.
+#
+# EL PROBLEMA QUE RESUELVE. El mapeo prueba -> objetivo salia solo del inventario de ctest
+# (`--show-only=json-v1`), que exige un arbol YA CONFIGURADO. En cuanto se limpia el arbol de
+# pruebas --que es justo lo que hay que hacer despues de tocar una cabecera-- ese inventario no
+# existe, el mapeo queda vacio, y pedir dos pruebas concretas acababa construyendo las 101. Lo
+# mismo pasaba la primera vez, antes de configurar nada.
+#
+# El CMakeLists SI lo dice, y lo dice sin construir ni configurar:
+#
+#     add_executable(nsc_llvm_optimization_tests tests/unit/LlvmOptimizationTests.cpp)
+#     add_test(NAME nsc.llvm-optimization COMMAND nsc_llvm_optimization_tests)
+#
+# Solo se acepta como objetivo un COMMAND que sea un `add_executable` DECLARADO en el mismo
+# fichero. Las 117 pruebas cuyo comando es `${NSC_TEST_COMPILER}` ejecutan el compilador instalado
+# y no construyen nada del arbol de pruebas: para ellas no hay objetivo, y eso es un dato, no un
+# fallo.
+def ctest_targets_from_cmake(root: Path) -> dict[str, str]:
+    """{nombre de prueba: objetivo} para las pruebas que tienen ejecutable propio."""
+    cmake = root / "CMakeLists.txt"
+    if not cmake.is_file():
+        return {}
+    text = cmake.read_text(encoding="utf-8", errors="replace")
+    executables = set(re.findall(r"add_executable\(\s*([A-Za-z0-9_]+)", text))
+    mapping: dict[str, str] = {}
+
+    # LAS QUE PASAN POR EL AYUDANTE. `nsc_add_unit_test(<objetivo> <fuente> <nombre>)` hace por
+    # dentro el `add_executable` y el `add_test`, asi que su `add_test(NAME ${test_name} ...)` no
+    # dice ningun nombre concreto: los nombres estan en las 26 llamadas. Sin leerlas, un cuarto de
+    # las pruebas unitarias quedaria sin objetivo conocido y pedir una sola volveria a construirlo
+    # todo.
+    for target, name in re.findall(
+        r"nsc_add_unit_test\(\s*([A-Za-z0-9_]+)\s+\S+\s+([^\s)]+)\s*\)", text
+    ):
+        mapping[name] = target
+    for name, command in re.findall(
+        r"add_test\(\s*NAME\s+([^\s)]+)\s+COMMAND\s+([^\s)]+)", text
+    ):
+        # CADENA VACIA NO ES LO MISMO QUE AUSENTE. Vacia dice «se cual es esta prueba y no hay
+        # nada que construir para ella»; ausente dice «no se que necesita», y eso si obliga a
+        # construirlo todo. Sin esta distincion, pedir `nsc.version` --que corre el compilador
+        # instalado-- volveria a construir los 101 ejecutables.
+        target = command if command in executables else ""
+        if "${" in name:
+            # UN `add_test` DENTRO DE UN `foreach`. En el fichero se lee
+            # `NAME nsc.cc1.correctness.${_cc1_label}`: un solo add_test que en tiempo de
+            # configure se convierte en una prueba por fixture. Se guarda el prefijo con `*` para
+            # que las 130 y pico que genera se resuelvan al mismo ejecutable. Sin esto, pedir UNA
+            # fixture cc1 volvia a construirlo todo.
+            prefix = name[: name.index("${")]
+            if prefix:
+                mapping[prefix + "*"] = target
+            # Un nombre que EMPIEZA por `${` no deja prefijo alguno: es el `add_test` de dentro de
+            # `nsc_add_unit_test`, y sus nombres reales ya se leyeron de las llamadas, arriba. Un
+            # prefijo vacio casaria con cualquier prueba y daria un objetivo equivocado a todas.
+            continue
+        mapping[name] = target
+    return mapping
+
+
+# EL OBJETIVO DE UNA PRUEBA, resolviendo antes por nombre exacto y solo despues por prefijo. El
+# orden importa: `nsc.cc1.correctness` es una prueba de pleno derecho --la de las comprobaciones
+# de IR, la que corre con `--rest`-- y ademas es prefijo de las generadas en bucle. Entre varios
+# prefijos gana el mas largo, que es el mas especifico.
+def ctest_target_for(name: str, mapping: dict[str, str]) -> str | None:
+    """El objetivo, `""` si la prueba no construye nada, o None si no se reconoce."""
+    if name in mapping:
+        return mapping[name]
+    best_key = ""
+    best_target: str | None = None
+    for key, target in mapping.items():
+        if not key.endswith("*"):
+            continue
+        prefix = key[:-1]
+        if name.startswith(prefix) and len(prefix) >= len(best_key):
+            best_key, best_target = prefix, target
+    return best_target
 
 
 # LA EXPRESION `-R` NO ES UN REGEX DE PYTHON, y confundirlas costo una corrida entera.
@@ -855,17 +1034,17 @@ class PipelineWorker(QObject):
         self.progress.emit(self.completed_units, self.total_units)
 
     def _runs_test_stages(self) -> bool:
-        """Las etapas de prueba las comparten `tests` y `baseline`.
+        """Las etapas de prueba las comparten las dos pestañas de pruebas y `baseline`.
 
         El Gate 0 necesita construir, instalar Y ejecutar la matriz en UNA sola corrida: los hashes
         que toma antes y despues tienen que abarcar todo, o no demuestran que nada se movio.
         """
-        return self.plan.operation in ("tests", "baseline")
+        return self.plan.operation in ("unit", "harness", "language", "baseline")
 
     def _validate_paths(self) -> list[str]:
         required: list[Path] = []
         building = self.plan.run_build and self.plan.build_mode != "skip"
-        building_tests = self._runs_test_stages() and self.plan.run_ctest
+        building_tests = self.plan.build_test_trees
         running_tests = self.plan.run_ctest or self.plan.run_cases or self.plan.run_triage
         if building or building_tests:
             required.extend(
@@ -1011,13 +1190,18 @@ class PipelineWorker(QObject):
         )
 
     def _build_tests(self) -> bool:
-        if not self._runs_test_stages() or not self.plan.run_ctest:
+        if not self.plan.build_test_trees:
+            # NADA QUE CONSTRUIR AQUI, y es el caso normal de la pestana del lenguaje. Los arboles
+            # que ya existan sirven tal cual; el que falte se dira cuando ctest no lo encuentre, no
+            # construyendolo por sorpresa.
             self.ctest_ready_linkers = set(self.plan.linkers)
             return True
         root = Path(self.plan.root).resolve()
         self.ctest_ready_linkers.clear()
 
-        for linker in self.plan.linkers:
+        # Al construir desde la pestana del compilador el plan no lleva enlazadores --no se va a
+        # ejecutar nada-- pero los dos arboles hay que dejarlos listos igual.
+        for linker in (self.plan.linkers or list(self.plan.test_build_dirs)):
             if self.cancel_event.is_set():
                 return False
             build = self._test_build_dir(linker).resolve()
@@ -1122,8 +1306,20 @@ class PipelineWorker(QObject):
                     continue
 
             targets = [
-                target for target in dict.fromkeys(self.plan.build_target.split(";")) if target
+                target for target in dict.fromkeys(self.plan.test_build_target.split(";")) if target
             ]
+            if not targets:
+                # La seleccion no necesita ningun ejecutable de prueba --por ejemplo `nsc.version`,
+                # que corre el compilador instalado--. El arbol ya quedo configurado arriba, que es
+                # lo unico que ctest necesita para conocerlas.
+                self._emit(
+                    f"CTest [{linker}]: la selección no requiere construir ningún ejecutable de "
+                    "prueba.",
+                    "info",
+                    linker,
+                )
+                self.ctest_ready_linkers.add(linker)
+                continue
             if self.plan.build_runner == "ninja":
                 command = [
                     "ninja",
@@ -1694,10 +1890,13 @@ class PipelineWorker(QObject):
         """La foto del arbol y de los binarios en un instante.
 
         Se toma TRES veces, y el orden lo fija G0.2 del plan 123: `S0` antes de construir --si se
-        tomara despues incluiria lo que la propia construccion toque--, `B0`/`I0` justo despues de
-        instalar y antes de probar, y todo otra vez al terminar la matriz. Sin la ultima, unos logs
-        verdes pueden pertenecer a un binario o a unas fuentes que ya no son las que se archivan,
-        que es exactamente el fallo que el Gate 0 existe para impedir.
+        tomara despues incluiria lo que la propia construccion toque--, `B0`/`I0` despues de
+        construir e instalar TANTO el compilador COMO los dos arboles de pruebas, justo antes de
+        ejecutar la matriz, y todo otra vez al terminar. La foto intermedia no puede adelantarse a
+        `_build_tests()`: esa etapa crea/re-enlaza precisamente los `nsc_*tests.exe` que esta
+        medicion inventaria y haria que el gate se invalidara a si mismo. Sin la ultima foto, unos
+        logs verdes pueden pertenecer a un binario o a unas fuentes que ya no son las que se
+        archivan, que es exactamente el fallo que el Gate 0 existe para impedir.
         """
         root = Path(self.plan.root).resolve()
         prefix = Path(self.plan.prefix).resolve()
@@ -1899,14 +2098,17 @@ class PipelineWorker(QObject):
         if self._runs_test_stages() and self.plan.run_ctest:
             for linker in self.plan.linkers:
                 build = self._test_build_dir(linker)
+                # Una selección que no necesita ningún ejecutable de prueba no tiene etapa de
+                # construcción: contarla dejaría la barra de progreso mintiendo.
+                builds = bool([t for t in self.plan.build_target.split(";") if t])
                 if self.plan.test_build_mode == "skip":
                     pass  # no se construye nada: no hay etapa que contar
                 elif self.plan.test_build_mode == "clean":
-                    total += 3  # limpiar, configurar y construir SU árbol de CTest
+                    total += 2 + int(builds)  # limpiar, configurar y (quizá) construir
                 elif not (build / "CMakeCache.txt").is_file():
-                    total += 2  # configurar y construir SU árbol de CTest
+                    total += 1 + int(builds)  # configurar y (quizá) construir
                 else:
-                    total += 1  # construcción incremental de SU árbol de CTest
+                    total += int(builds)  # construcción incremental de SU árbol de CTest
         if self.plan.sync_libraries:
             total += 1
         if self.plan.operation == "baseline":
@@ -2108,16 +2310,16 @@ class PipelineWorker(QObject):
                 # Gate 0. La primera medicion se toma ANTES de construir: si se tomara despues, el
                 # digest de fuentes ya incluiria cualquier cosa que la propia construccion tocara.
                 # Gate 0. El orden de las mediciones lo fija G0.2 y no es intercambiable: `S0`
-                # antes de construir, `B0`/`I0` justo despues de instalar, y todo otra vez al
-                # terminar la matriz.
+                # antes de construir; `B0`/`I0` despues de construir/instalar el compilador Y de
+                # terminar ambos arboles CTest; todo otra vez al terminar la matriz. Medir antes
+                # de `_build_tests()` hace que la propia corrida cambie o cree los ejecutables
+                # que `_abi_measure()` vigila y vuelve imposible certificar un baseline limpio.
                 is_baseline = self.plan.operation == "baseline"
                 baseline_sources = (
                     self._abi_measure("before-build", binaries=False) if is_baseline else None
                 )
                 baseline_built: dict | None = None
                 if self._build() and not self.cancel_event.is_set():
-                    if is_baseline:
-                        baseline_built = self._abi_measure("after-build", sources=False)
                     if (
                         self._prepare_test_outputs()
                         and not self.cancel_event.is_set()
@@ -2126,6 +2328,8 @@ class PipelineWorker(QObject):
                         and self._sync_libraries()
                         and not self.cancel_event.is_set()
                     ):
+                        if is_baseline:
+                            baseline_built = self._abi_measure("after-build", sources=False)
                         for linker in self.plan.linkers:
                             self._ctest(linker)
                             self._run_case_group(linker)
@@ -2195,8 +2399,13 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("NativeSharp", "NSCBuilder")
         self.cases = import_case_table(ROOT)
         self.case_groups: dict[str, list[str]] = {}
-        self.ctest_groups: dict[str, list[str]] = {}
+        self.unit_groups: dict[str, list[str]] = {}
+        self.harness_groups: dict[str, list[str]] = {}
+        self.language_groups: dict[str, list[str]] = {}
         self.ctest_targets: dict[str, str] = {}
+        # Evita la recursion cuando marcar una categoria marca a sus miembros y estos, al cambiar,
+        # querrian recalcular la categoria.
+        self._selection_guard = False
         self.thread: QThread | None = None
         self.worker: PipelineWorker | None = None
         self.inventory_process: QProcess | None = None
@@ -2287,12 +2496,6 @@ class MainWindow(QMainWindow):
         selection_layout = QVBoxLayout(selection)
         test_options = QGroupBox("Compilación y ejecución de pruebas")
         test_grid = QGridLayout(test_options)
-        self.test_build_mode = QComboBox()
-        # Primero, y por tanto el que sale por defecto: probar no es construir. Ver la rama
-        # correspondiente en `_build_tests`.
-        self.test_build_mode.addItem("No construir (usar lo ya construido)", "skip")
-        self.test_build_mode.addItem("Desde cero", "clean")
-        self.test_build_mode.addItem("Incremental", "incremental")
         self.test_build_lld_path = QLineEdit(str(DEFAULT_TEST_BUILD_LLD))
         self.test_build_nslink_path = QLineEdit(str(DEFAULT_TEST_BUILD_NSLINK))
         self.test_prefix_path = QLineEdit(str(DEFAULT_PREFIX))
@@ -2308,16 +2511,12 @@ class MainWindow(QMainWindow):
         self.test_jobs = QSpinBox()
         self.test_jobs.setRange(1, 128)
         self.test_jobs.setValue(min(os.cpu_count() or 4, 16))
-        test_grid.addWidget(QLabel("Compilación de pruebas"), 0, 0)
-        test_grid.addWidget(self.test_build_mode, 0, 1)
-        test_grid.addWidget(QLabel("Motor"), 0, 2)
-        test_grid.addWidget(self.test_build_runner, 0, 3)
+        test_grid.addWidget(QLabel("Motor de construcción"), 0, 0)
+        test_grid.addWidget(self.test_build_runner, 0, 1)
         test_grid.addWidget(QLabel("Build CTest — LLD-link"), 1, 0)
         test_grid.addWidget(self.test_build_lld_path, 1, 1, 1, 3)
         test_grid.addWidget(QLabel("Build CTest — NSLink"), 2, 0)
         test_grid.addWidget(self.test_build_nslink_path, 2, 1, 1, 3)
-        test_grid.addWidget(QLabel("Enlazador usado por nsc"), 3, 0)
-        test_grid.addWidget(self.linker_mode, 3, 1)
         test_grid.addWidget(QLabel("Optimización"), 3, 2)
         test_grid.addWidget(opt_box, 3, 3)
         test_grid.addWidget(QLabel("Procesos en paralelo"), 4, 0)
@@ -2330,7 +2529,8 @@ class MainWindow(QMainWindow):
         test_grid.addWidget(self.nslink_path, 7, 1, 1, 3)
         test_grid.addWidget(self.keep_temps, 8, 0, 1, 4)
         linker_note = QLabel(
-            "Esta sección nunca reconstruye ni instala nsc. Usa el nsc ya instalado para "
+            "Esta sección NO COMPILA NADA: ni nsc ni ningún ejecutable de prueba. Usa el nsc "
+            "ya instalado para "
             "compilar los programas elegidos. LLD-link y NSLink tienen árboles CTest separados; "
             "cada enlazador y cada nivel O0/O2 conserva además su propia consola, lista de errores "
             "e informe."
@@ -2349,23 +2549,80 @@ class MainWindow(QMainWindow):
         test_sets_layout.addStretch()
         selection_layout.addWidget(test_sets)
         selection_tabs = QTabWidget()
-        selection_tabs.addTab(self._ctest_page(), "CTest")
+        selection_tabs.addTab(self._language_ctest_page(), "CTest de lenguaje")
         selection_tabs.addTab(self._case_page(), "Programas nsc")
         selection_layout.addWidget(selection_tabs, 1)
         self.test_summary = QLabel()
         self.test_summary.setWordWrap(True)
         self.test_summary.setObjectName("planSummary")
         selection_layout.addWidget(self.test_summary)
-        self.tests_start_button = QPushButton("Compilar y ejecutar pruebas")
+        self.tests_start_button = QPushButton("Ejecutar pruebas de lenguaje")
         self.tests_start_button.clicked.connect(self._start_tests)
         selection_layout.addWidget(self.tests_start_button)
+
+        # LA PESTANA DE UNITARIAS, autocontenida: su seleccion, su construccion y su ejecucion.
+        unit_panel = QWidget()
+        unit_layout = QVBoxLayout(unit_panel)
+        unit_note = QLabel(
+            "Ejecutables de C++ que miden el compilador POR DENTRO. Construye únicamente los "
+            "ejecutables de las pruebas marcadas; nunca reconstruye nsc."
+        )
+        unit_note.setWordWrap(True)
+        unit_note.setObjectName("muted")
+        unit_layout.addWidget(unit_note)
+        unit_layout.addWidget(self._unit_page(), 1)
+        unit_start = QPushButton("Construir y ejecutar pruebas unitarias")
+        unit_start.clicked.connect(self._start_unit)
+        unit_layout.addWidget(unit_start)
+
+        # LA PESTANA DEL ARNES. Aparte porque tiene una dependencia que las demas no tienen.
+        harness_panel = QWidget()
+        harness_layout = QVBoxLayout(harness_panel)
+        harness_note = QLabel(
+            "Miden el LENGUAJE --compilan fixtures `.ns` con el nsc instalado-- pero comparten un "
+            "arnés de C++ que sí hay que construir. Están aparte para que ni las unitarias ni las "
+            "de lenguaje carguen con esa dependencia."
+        )
+        harness_note.setWordWrap(True)
+        harness_note.setObjectName("muted")
+        harness_layout.addWidget(harness_note)
+        harness_layout.addWidget(self._harness_page(), 1)
+        harness_start = QPushButton("Construir el arnés y ejecutar")
+        harness_start.clicked.connect(self._start_harness)
+        harness_layout.addWidget(harness_start)
+        # EL ENLAZADOR ES COMUN A LAS TRES PESTANAS DE PRUEBA, asi que vive FUERA de ellas.
+        #
+        # Estaba dentro del grupo de la pestana de lenguaje, donde no se ve desde «unitarias» ni
+        # desde «con arnés» -- y las tres lo necesitan, porque decide contra que arbol de CTest se
+        # trabaja (`build-test-lldlinker` o `build-test-nslink`) y, en las de lenguaje, que
+        # enlazador usa nsc al construir los programas. Un ajuste que gobierna tres pestanas no
+        # puede vivir dentro de una.
+        linker_bar = QWidget()
+        linker_bar_layout = QHBoxLayout(linker_bar)
+        linker_bar_layout.setContentsMargins(0, 0, 0, 0)
+        linker_bar_layout.addWidget(QLabel("Enlazador usado por nsc"))
+        linker_bar_layout.addWidget(self.linker_mode, 1)
+        self.linker_bar_note = QLabel()
+        self.linker_bar_note.setObjectName("muted")
+        self.linker_bar_note.setWordWrap(True)
+        linker_bar_layout.addWidget(self.linker_bar_note, 2)
+
+        operations_panel = QWidget()
+        operations_layout = QVBoxLayout(operations_panel)
+        operations_layout.setContentsMargins(0, 0, 0, 0)
+        operations_layout.addWidget(linker_bar)
+
         self.operation_tabs = QTabWidget()
         self.operation_tabs.addTab(config_panel, "Compilador")
-        self.operation_tabs.addTab(selection, "Pruebas")
+        self.operation_tabs.addTab(unit_panel, "Pruebas unitarias")
+        self.operation_tabs.addTab(harness_panel, "Pruebas con arnés")
+        self.operation_tabs.addTab(selection, "Pruebas de lenguaje")
         self.operation_tabs.addTab(self._abi_page(), "ABI")
+        operations_layout.addWidget(self.operation_tabs, 1)
+        self.operation_tabs.currentChanged.connect(self._update_linker_note)
         self.operations_dock = self._create_dock(
             "Operaciones",
-            self.operation_tabs,
+            operations_panel,
             Qt.DockWidgetArea.LeftDockWidgetArea,
             "dock_operations",
         )
@@ -2452,7 +2709,6 @@ class MainWindow(QMainWindow):
         for widget in (
             self.build_mode,
             self.build_runner,
-            self.test_build_mode,
             self.test_build_runner,
             self.linker_mode,
         ):
@@ -2466,6 +2722,7 @@ class MainWindow(QMainWindow):
         self.test_prefix_path.textChanged.connect(self._update_plan_summary)
         self.test_llvm_path.textChanged.connect(self._update_plan_summary)
         self._update_plan_summary()
+        self._update_linker_note()
 
     def _create_console(self) -> QTextEdit:
         console = QTextEdit()
@@ -2519,185 +2776,492 @@ class MainWindow(QMainWindow):
         self.addDockWidget(area, dock)
         return dock
 
-    def _ctest_page(self) -> QWidget:
+    # SELECCION POR CASILLAS, Y POR QUE SE CAMBIO LO QUE HABIA.
+    #
+    # Antes eran tres combos --«todas / un grupo / una sola»-- y una lista de solo lectura. Con eso
+    # no se podian correr DOS pruebas concretas, ni dos categorias, que es justo lo que hace falta
+    # a diario: se toca un fichero y se quieren las tres o cuatro suites que dependen de el. La
+    # lista, ademas, no decia que se iba a ejecutar: mostraba todo y resaltaba una.
+    #
+    # Ahora hay casillas en las pruebas y casillas en las categorias, y la categoria refleja a sus
+    # miembros --marcada, vacia o A MEDIAS--. El estado a medias no es cosmetico: sin el, una
+    # categoria con tres de treinta marcadas se veria igual que una entera.
+    #
+    # NADA MARCADO SIGNIFICA TODO, que es el contrato que ya tenia el plan (`selected == []`). El
+    # resumen lo dice con todas las letras en vez de dejarlo a la adivinanza.
+    def _selection_page(
+        self,
+        group_title: str,
+        item_title: str,
+        filter_hint: str,
+        run_text: str,
+        run_slot,
+        groups,
+        refresh_slot=None,
+    ) -> tuple[QWidget, QListWidget, QListWidget, QLabel]:
         page = QWidget()
         layout = QVBoxLayout(page)
-        scope_row = QGridLayout()
-        self.ctest_scope = QComboBox()
-        self.ctest_scope.addItem("Todas las pruebas CTest", "all")
-        self.ctest_scope.addItem("Un grupo", "group")
-        self.ctest_scope.addItem("Una sola prueba", "one")
-        self.ctest_group_combo = QComboBox()
-        self.ctest_one_combo = QComboBox()
-        scope_row.addWidget(QLabel("Alcance"), 0, 0)
-        scope_row.addWidget(self.ctest_scope, 0, 1)
-        scope_row.addWidget(QLabel("Grupo"), 1, 0)
-        scope_row.addWidget(self.ctest_group_combo, 1, 1)
-        scope_row.addWidget(QLabel("Prueba"), 2, 0)
-        scope_row.addWidget(self.ctest_one_combo, 2, 1)
-        layout.addLayout(scope_row)
+
         row = QHBoxLayout()
-        self.ctest_filter = QLineEdit()
-        self.ctest_filter.setPlaceholderText("Filtrar nombres...")
-        self.ctest_filter.textChanged.connect(lambda text: self._filter_list(self.ctest_list, text))
-        refresh = QPushButton("Actualizar")
-        refresh.clicked.connect(self.refresh_ctests)
-        run_one = QPushButton("Ejecutar esta prueba")
-        run_one.clicked.connect(self._run_one_ctest)
-        row.addWidget(self.ctest_filter, 1)
-        row.addWidget(refresh)
-        row.addWidget(run_one)
+        text_filter = QLineEdit()
+        text_filter.setPlaceholderText(filter_hint)
+        text_filter.setClearButtonEnabled(True)
+        visible_label = QLabel()
+        row.addWidget(text_filter, 1)
+        row.addWidget(visible_label)
+        if refresh_slot is not None:
+            refresh = QPushButton("Actualizar")
+            refresh.clicked.connect(refresh_slot)
+            row.addWidget(refresh)
+        run = QPushButton(run_text)
+        run.clicked.connect(run_slot)
+        row.addWidget(run)
         layout.addLayout(row)
-        self.ctest_scope_label = QLabel()
-        self.ctest_scope_label.setWordWrap(True)
-        layout.addWidget(self.ctest_scope_label)
-        self.ctest_list = QListWidget()
-        self.ctest_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.ctest_list.currentItemChanged.connect(self._ctest_list_changed)
-        layout.addWidget(self.ctest_list)
-        self.ctest_scope.currentIndexChanged.connect(self._update_ctest_scope)
-        self.ctest_group_combo.currentIndexChanged.connect(self._update_ctest_scope)
-        self.ctest_one_combo.currentIndexChanged.connect(self._update_ctest_scope)
+
+        lists = QHBoxLayout()
+        group_box = QGroupBox(group_title)
+        group_layout = QVBoxLayout(group_box)
+        group_list = QListWidget()
+        group_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        group_layout.addWidget(group_list)
+        lists.addWidget(group_box, 2)
+
+        item_box = QGroupBox(item_title)
+        item_layout = QVBoxLayout(item_box)
+        item_list = QListWidget()
+        item_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        item_layout.addWidget(item_list)
+        buttons = QHBoxLayout()
+        for label, slot in (
+            ("Marcar todo", lambda: self._set_all_checks(item_list, True, visible_only=False)),
+            ("Desmarcar todo", lambda: self._set_all_checks(item_list, False, visible_only=False)),
+            # Con un filtro escrito, «marcar lo visible» es la operacion que de verdad se quiere:
+            # se busca «stage56», se marca lo que salio, y se corre eso.
+            ("Marcar lo visible", lambda: self._set_all_checks(item_list, True, visible_only=True)),
+            ("Invertir", lambda: self._invert_checks(item_list)),
+        ):
+            button = QPushButton(label)
+            button.clicked.connect(slot)
+            buttons.addWidget(button)
+        item_layout.addLayout(buttons)
+        lists.addWidget(item_box, 5)
+        layout.addLayout(lists)
+
+        summary = QLabel()
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        text_filter.textChanged.connect(
+            lambda text: self._apply_filter(item_list, group_list, groups(), visible_label, text)
+        )
+        # ENTER MARCA LO VISIBLE: escribir, mirar, ejecutar, sin soltar el teclado. SOLO con algo
+        # escrito -- con el filtro vacio «lo visible» son todas, y marcarlas de un Enter suelto
+        # seria justo la sorpresa que este panel existe para evitar.
+        text_filter.returnPressed.connect(
+            lambda: self._set_all_checks(item_list, True, visible_only=True)
+            if text_filter.text().strip()
+            else None
+        )
+        focus = QShortcut(QKeySequence.StandardKey.Find, page)
+        focus.activated.connect(text_filter.setFocus)
+        clear = QShortcut(QKeySequence(Qt.Key.Key_Escape), text_filter)
+        clear.activated.connect(text_filter.clear)
+        return page, group_list, item_list, summary
+
+    def _unit_page(self) -> QWidget:
+        """Pruebas UNITARIAS: ejecutables de C++ que miden el compilador por dentro."""
+        page, groups, items, summary = self._selection_page(
+            "Categorías",
+            "Pruebas unitarias",
+            "Filtrar nombres...",
+            "Construir y ejecutar la selección",
+            self._run_selected_unit,
+            lambda: self.unit_groups,
+            self.refresh_ctests,
+        )
+        self.unit_group_list = groups
+        self.unit_list = items
+        self.unit_scope_label = summary
+        groups.itemChanged.connect(self._unit_group_toggled)
+        items.itemChanged.connect(self._selection_item_toggled)
+        return page
+
+    def _harness_page(self) -> QWidget:
+        """Pruebas del LENGUAJE que cuelgan de un arnés de C++ compartido.
+
+        Están aparte porque tienen una dependencia que las demás pruebas de lenguaje no tienen.
+        Meterlas con ellas obligaría a construir C++ para correr un programa `.ns`; meterlas con
+        las unitarias diría que miden el compilador por dentro, que es falso.
+        """
+        page, groups, items, summary = self._selection_page(
+            "Categorías",
+            "Pruebas con arnés",
+            "Filtrar nombres...",
+            "Construir el arnés y ejecutar la selección",
+            self._run_selected_harness,
+            lambda: self.harness_groups,
+            self.refresh_ctests,
+        )
+        self.harness_group_list = groups
+        self.harness_list = items
+        self.harness_scope_label = summary
+        groups.itemChanged.connect(self._harness_group_toggled)
+        items.itemChanged.connect(self._selection_item_toggled)
+        return page
+
+    def _language_ctest_page(self) -> QWidget:
+        """Pruebas de LENGUAJE que viven en CTest: invocan el `nsc.exe` instalado."""
+        page, groups, items, summary = self._selection_page(
+            "Categorías",
+            "Pruebas de lenguaje en CTest",
+            "Filtrar nombres...",
+            "Ejecutar la selección",
+            self._run_selected_language,
+            lambda: self.language_groups,
+            self.refresh_ctests,
+        )
+        self.language_group_list = groups
+        self.language_list = items
+        self.language_scope_label = summary
+        groups.itemChanged.connect(self._language_group_toggled)
+        items.itemChanged.connect(self._selection_item_toggled)
         return page
 
     def _case_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        scope_row = QGridLayout()
-        self.case_scope = QComboBox()
-        self.case_scope.addItem("Todos los fixtures y ejemplos", "all")
-        self.case_scope.addItem("Un grupo", "group")
-        self.case_scope.addItem("Un solo caso", "one")
-        self.case_group_combo = QComboBox()
-        self.case_one_combo = QComboBox()
-        scope_row.addWidget(QLabel("Alcance"), 0, 0)
-        scope_row.addWidget(self.case_scope, 0, 1)
-        scope_row.addWidget(QLabel("Grupo"), 1, 0)
-        scope_row.addWidget(self.case_group_combo, 1, 1)
-        scope_row.addWidget(QLabel("Caso"), 2, 0)
-        scope_row.addWidget(self.case_one_combo, 2, 1)
-        layout.addLayout(scope_row)
-        row = QHBoxLayout()
-        self.case_filter = QLineEdit()
-        self.case_filter.setPlaceholderText("Filtrar casos...")
-        self.case_filter.textChanged.connect(lambda text: self._filter_list(self.case_list, text))
-        run_one = QPushButton("Compilar y ejecutar este caso")
-        run_one.clicked.connect(self._run_one_case)
-        row.addWidget(self.case_filter, 1)
-        row.addWidget(run_one)
-        layout.addLayout(row)
-        self.case_scope_label = QLabel()
-        self.case_scope_label.setWordWrap(True)
-        layout.addWidget(self.case_scope_label)
-        self.case_list = QListWidget()
-        self.case_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.case_list.currentItemChanged.connect(self._case_list_changed)
-        layout.addWidget(self.case_list)
-        self.case_scope.currentIndexChanged.connect(self._update_case_scope)
-        self.case_group_combo.currentIndexChanged.connect(self._update_case_scope)
-        self.case_one_combo.currentIndexChanged.connect(self._update_case_scope)
+        page, groups, items, summary = self._selection_page(
+            "Categorías",
+            "Fixtures y ejemplos",
+            "Filtrar casos...",
+            "Ejecutar la selección",
+            self._run_selected_cases,
+            lambda: self.case_groups,
+        )
+        self.case_group_list = groups
+        self.case_list = items
+        self.case_scope_label = summary
+        groups.itemChanged.connect(self._case_group_toggled)
+        items.itemChanged.connect(self._selection_item_toggled)
         return page
 
+    # ------------------------------------------------------------------ casillas
+
     @staticmethod
-    def _filter_list(widget: QListWidget, text: str) -> None:
-        needle = text.casefold().strip()
+    def _checkable(text: str, value: str) -> QListWidgetItem:
+        item = QListWidgetItem(text)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Unchecked)
+        item.setData(Qt.ItemDataRole.UserRole, value)
+        return item
+
+    @staticmethod
+    def _checked_values(widget: QListWidget) -> list[str]:
+        values: list[str] = []
         for index in range(widget.count()):
             item = widget.item(index)
-            item.setHidden(bool(needle) and needle not in item.text().casefold())
+            if item.checkState() == Qt.CheckState.Checked:
+                values.append(str(item.data(Qt.ItemDataRole.UserRole) or item.text()))
+        return values
 
-    def _populate_cases(self) -> None:
-        self.case_list.clear()
-        self.case_one_combo.clear()
-        self.case_groups.clear()
-        for case in sorted(self.cases, key=lambda item: item.label.casefold()):
-            item = QListWidgetItem(case.label)
-            item.setToolTip(f"{case.project}\nEsperado: {case.expected}\nFuente: {case.source}")
-            item.setData(Qt.ItemDataRole.UserRole, case.label)
-            self.case_list.addItem(item)
-            self.case_one_combo.addItem(case.label, case.label)
-            self.case_groups.setdefault(case_group(case), []).append(case.label)
-        self.case_group_combo.clear()
-        for group in sorted(self.case_groups, key=str.casefold):
-            self.case_group_combo.addItem(f"{group} ({len(self.case_groups[group])})", group)
+    def _set_all_checks(self, widget: QListWidget, checked: bool, *, visible_only: bool) -> None:
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        # Una sola pasada silenciosa y UN refresco al final: emitir itemChanged 291 veces
+        # recalcularia las categorias 291 veces y la ventana se quedaria pensando.
+        self._selection_guard = True
+        try:
+            for index in range(widget.count()):
+                item = widget.item(index)
+                if visible_only and item.isHidden():
+                    continue
+                item.setCheckState(state)
+        finally:
+            self._selection_guard = False
+        self._refresh_selection()
+
+    def _invert_checks(self, widget: QListWidget) -> None:
+        self._selection_guard = True
+        try:
+            for index in range(widget.count()):
+                item = widget.item(index)
+                item.setCheckState(
+                    Qt.CheckState.Unchecked
+                    if item.checkState() == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+        finally:
+            self._selection_guard = False
+        self._refresh_selection()
+
+    def _apply_group_check(
+        self, group_item: QListWidgetItem, item_list: QListWidget, members: list[str]
+    ) -> None:
+        """Marcar o desmarcar una categoría arrastra a sus miembros."""
+        state = group_item.checkState()
+        if state == Qt.CheckState.PartiallyChecked:
+            return
+        wanted = set(members)
+        self._selection_guard = True
+        try:
+            for index in range(item_list.count()):
+                item = item_list.item(index)
+                value = str(item.data(Qt.ItemDataRole.UserRole) or item.text())
+                if value in wanted:
+                    item.setCheckState(state)
+        finally:
+            self._selection_guard = False
+
+    def _sync_group_states(
+        self, group_list: QListWidget, item_list: QListWidget, groups: dict[str, list[str]]
+    ) -> None:
+        """El estado de cada categoría SALE de sus miembros, nunca al revés."""
+        checked = set(self._checked_values(item_list))
+        self._selection_guard = True
+        try:
+            for index in range(group_list.count()):
+                group_item = group_list.item(index)
+                name = str(group_item.data(Qt.ItemDataRole.UserRole) or "")
+                members = groups.get(name, [])
+                marked = sum(1 for member in members if member in checked)
+                if not members or marked == 0:
+                    state = Qt.CheckState.Unchecked
+                elif marked == len(members):
+                    state = Qt.CheckState.Checked
+                else:
+                    state = Qt.CheckState.PartiallyChecked
+                group_item.setCheckState(state)
+                group_item.setText(f"{name} ({marked}/{len(members)})")
+        finally:
+            self._selection_guard = False
+
+    @Slot(QListWidgetItem)
+    def _unit_group_toggled(self, item: QListWidgetItem) -> None:
+        if self._selection_guard:
+            return
+        name = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        self._apply_group_check(item, self.unit_list, self.unit_groups.get(name, []))
+        self._refresh_selection()
+
+    @Slot(QListWidgetItem)
+    def _harness_group_toggled(self, item: QListWidgetItem) -> None:
+        if self._selection_guard:
+            return
+        name = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        self._apply_group_check(item, self.harness_list, self.harness_groups.get(name, []))
+        self._refresh_selection()
+
+    @Slot(QListWidgetItem)
+    def _language_group_toggled(self, item: QListWidgetItem) -> None:
+        if self._selection_guard:
+            return
+        name = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        self._apply_group_check(item, self.language_list, self.language_groups.get(name, []))
+        self._refresh_selection()
+
+    @Slot(QListWidgetItem)
+    def _case_group_toggled(self, item: QListWidgetItem) -> None:
+        if self._selection_guard:
+            return
+        name = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        self._apply_group_check(item, self.case_list, self.case_groups.get(name, []))
+        self._refresh_selection()
+
+    @Slot(QListWidgetItem)
+    def _selection_item_toggled(self, _item: QListWidgetItem) -> None:
+        if self._selection_guard:
+            return
+        self._refresh_selection()
+
+    def _refresh_selection(self) -> None:
+        if not hasattr(self, "unit_list") or not hasattr(self, "case_list"):
+            return
+        self._sync_group_states(self.unit_group_list, self.unit_list, self.unit_groups)
+        self._sync_group_states(self.harness_group_list, self.harness_list, self.harness_groups)
+        self._sync_group_states(
+            self.language_group_list, self.language_list, self.language_groups)
+        self._sync_group_states(self.case_group_list, self.case_list, self.case_groups)
+        self._update_unit_scope()
+        self._update_harness_scope()
+        self._update_language_scope()
         self._update_case_scope()
 
-    @staticmethod
-    def _values_for_scope(
-        scope: QComboBox,
-        group_combo: QComboBox,
-        one_combo: QComboBox,
+    def _apply_filter(
+        self,
+        item_list: QListWidget,
+        group_list: QListWidget,
         groups: dict[str, list[str]],
-    ) -> list[str]:
-        mode = str(scope.currentData())
-        if mode == "all":
-            return []
-        if mode == "group":
-            return list(groups.get(str(group_combo.currentData() or ""), []))
-        value = one_combo.currentData()
-        return [str(value)] if value else []
+        visible_label: QLabel,
+        text: str,
+    ) -> None:
+        """Filtrar OCULTA, nunca desmarca: lo escondido sigue contando y el resumen lo dice."""
+        query = text.strip()
+        visible: set[str] = set()
+        for index in range(item_list.count()):
+            item = item_list.item(index)
+            value = str(item.data(Qt.ItemDataRole.UserRole) or item.text())
+            shown = not query or matches_filter(item.text(), query)
+            item.setHidden(not shown)
+            if shown:
+                visible.add(value)
+        # Las categorias se acotan igual: dejar las quince mientras la lista muestra cuatro
+        # pruebas convierte esa columna en ruido, y marcar una que ya no tiene nada visible
+        # marcaria cosas que el usuario no esta viendo.
+        for index in range(group_list.count()):
+            group_item = group_list.item(index)
+            name = str(group_item.data(Qt.ItemDataRole.UserRole) or "")
+            members = groups.get(name, [])
+            group_item.setHidden(bool(query) and not any(m in visible for m in members))
+        visible_label.setText("" if not query else f"{len(visible)} de {item_list.count()}")
+        self._refresh_selection()
 
-    def _selected_ctest_values(self) -> list[str]:
-        return self._values_for_scope(
-            self.ctest_scope,
-            self.ctest_group_combo,
-            self.ctest_one_combo,
-            self.ctest_groups,
-        )
+    def _populate_cases(self) -> None:
+        self._selection_guard = True
+        try:
+            self.case_list.clear()
+            self.case_group_list.clear()
+            self.case_groups.clear()
+            for case in sorted(self.cases, key=lambda item: item.label.casefold()):
+                item = self._checkable(case.label, case.label)
+                item.setToolTip(
+                    f"{case.project}\nEsperado: {case.expected}\nFuente: {case.source}")
+                self.case_list.addItem(item)
+                self.case_groups.setdefault(case_group(case), []).append(case.label)
+            for group in sorted(self.case_groups, key=str.casefold):
+                members = sorted(self.case_groups[group], key=str.casefold)
+                self.case_groups[group] = members
+                self.case_group_list.addItem(
+                    self._checkable(f"{group} (0/{len(members)})", group))
+        finally:
+            self._selection_guard = False
+        self._refresh_selection()
+
+    def _selected_unit_values(self) -> list[str]:
+        """Las marcadas. Vacío significa TODAS, que es el contrato del plan."""
+        return self._checked_values(self.unit_list)
+
+    def _selected_harness_values(self) -> list[str]:
+        return self._checked_values(self.harness_list)
+
+    def _selected_language_values(self) -> list[str]:
+        return self._checked_values(self.language_list)
 
     def _selected_case_values(self) -> list[str]:
-        return self._values_for_scope(
-            self.case_scope,
-            self.case_group_combo,
-            self.case_one_combo,
-            self.case_groups,
+        return self._checked_values(self.case_list)
+
+    @staticmethod
+    def _hidden_checked(widget: QListWidget) -> int:
+        """Marcadas pero escondidas por el filtro. Callarlas seria mentir sobre lo que va a correr."""
+        return sum(
+            1
+            for index in range(widget.count())
+            if widget.item(index).isHidden()
+            and widget.item(index).checkState() == Qt.CheckState.Checked
         )
 
     @Slot()
-    def _update_ctest_scope(self, *_args: object) -> None:
-        mode = str(self.ctest_scope.currentData())
-        self.ctest_group_combo.setEnabled(mode == "group")
-        self.ctest_one_combo.setEnabled(mode == "one")
-        if mode == "all":
-            detail = "Se ejecutará todo CTest."
+    def _update_linker_note(self, *_args: object) -> None:
+        """Qué significa el enlazador en la pestaña que se está mirando. No es lo mismo en cada una.
+
+        MEDIDO, y por eso el aviso: `_configure_command` genera EXACTAMENTE la misma línea para
+        `build-test-lldlinker` y `build-test-nslink` -- solo cambia el `-B`. Lo único que separa a
+        los dos árboles es la variable `NSC_LLD_LINK` en tiempo de EJECUCIÓN. De ahí que en las
+        pestañas que solo construyen y ejecutan binarios de C++, elegir «Ambos» haga dos veces
+        exactamente el mismo trabajo.
+        """
+        if not hasattr(self, "linker_bar_note"):
+            return
+        titles = {
+            "Compilador": "No aplica: nsc siempre se construye con clang y lld-link.",
+            "Pruebas unitarias": (
+                "Elige el árbol de CTest. Los dos producen los MISMOS ejecutables, así que "
+                "«Ambos» construye y ejecuta dos veces lo mismo."
+            ),
+            "Pruebas con arnés": (
+                "Elige el árbol de CTest. El arnés es idéntico en los dos; lo que cambia es el "
+                "enlazador con el que nsc construye los fixtures que el arnés compila."
+            ),
+            "Pruebas de lenguaje": (
+                "El enlazador que usa nsc al construir los programas de prueba. Aquí sí cambia lo "
+                "que se mide."
+            ),
+            "ABI": "El Gate 0 usa siempre los dos enlazadores; esta elección no lo afecta.",
+        }
+        index = self.operation_tabs.currentIndex()
+        title = self.operation_tabs.tabText(index) if index >= 0 else ""
+        self.linker_bar_note.setText(titles.get(title, ""))
+
+    @Slot()
+    def _update_unit_scope(self, *_args: object) -> None:
+        total = self.unit_list.count()
+        selected = self._selected_unit_values()
+        if not selected:
+            detail = (
+                f"Sin marcar nada: se construirán y ejecutarán las {total} pruebas unitarias."
+                if total
+                else "No hay inventario de CTest todavía. Pulsa «Actualizar»."
+            )
         else:
-            count = len(self._selected_ctest_values())
-            detail = f"Se ejecutarán exactamente {count} prueba(s) CTest."
-        self.ctest_scope_label.setText(detail)
+            target = self._targets_for_ctests(selected)
+            names = [name for name in target.split(";") if name]
+            if target == "pruebas":
+                cost = "construirá TODOS los ejecutables (alguna no se pudo resolver)"
+            else:
+                cost = f"construirá {len(names)} ejecutable(s)"
+            detail = f"Se ejecutarán {len(selected)} de {total} pruebas unitarias · {cost}."
+            hidden = self._hidden_checked(self.unit_list)
+            if hidden:
+                detail += f" ({hidden} marcada(s) están ocultas por el filtro.)"
+        self.unit_scope_label.setText(detail)
+        self._update_plan_summary()
+
+    @Slot()
+    def _update_harness_scope(self, *_args: object) -> None:
+        total = self.harness_list.count()
+        selected = self._selected_harness_values()
+        if not selected:
+            detail = f"Sin marcar nada: se ejecutarán las {total} pruebas con arnés."
+        else:
+            target = self._targets_for_ctests(selected)
+            names = [name for name in target.split(";") if name]
+            cost = (
+                "construirá TODOS los ejecutables (alguna no se pudo resolver)"
+                if target == "pruebas"
+                else f"construirá {len(names)} arnés/arneses: " + ", ".join(sorted(names))
+            )
+            detail = f"Se ejecutarán {len(selected)} de {total} pruebas con arnés · {cost}."
+            hidden = self._hidden_checked(self.harness_list)
+            if hidden:
+                detail += f" ({hidden} marcada(s) están ocultas por el filtro.)"
+        self.harness_scope_label.setText(detail)
+        self._update_plan_summary()
+
+    @Slot()
+    def _update_language_scope(self, *_args: object) -> None:
+        total = self.language_list.count()
+        selected = self._selected_language_values()
+        if not selected:
+            detail = f"Sin marcar nada: se ejecutarán las {total} pruebas de lenguaje de CTest."
+        else:
+            detail = f"Se ejecutarán {len(selected)} de {total} pruebas de lenguaje."
+            hidden = self._hidden_checked(self.language_list)
+            if hidden:
+                detail += f" ({hidden} marcada(s) están ocultas por el filtro.)"
+        # Aquí no hay nada que avisar sobre construcción: por definición, ninguna de estas
+        # pruebas necesita un ejecutable de C++. Las que lo necesitaban están en «con arnés».
+        self.language_scope_label.setText(detail)
         self._update_plan_summary()
 
     @Slot()
     def _update_case_scope(self, *_args: object) -> None:
-        mode = str(self.case_scope.currentData())
-        self.case_group_combo.setEnabled(mode == "group")
-        self.case_one_combo.setEnabled(mode == "one")
-        if mode == "all":
-            detail = f"Se ejecutarán los {len(self.cases)} fixtures y ejemplos descubiertos."
+        total = self.case_list.count()
+        selected = self._selected_case_values()
+        if not selected:
+            detail = f"Sin marcar nada: se ejecutarán los {total} fixtures y ejemplos."
         else:
-            count = len(self._selected_case_values())
-            detail = f"Se ejecutarán exactamente {count} caso(s)."
+            detail = f"Se ejecutarán {len(selected)} de {total} fixtures y ejemplos."
+            hidden = self._hidden_checked(self.case_list)
+            if hidden:
+                detail += f" ({hidden} marcado(s) están ocultos por el filtro.)"
         self.case_scope_label.setText(detail)
         self._update_plan_summary()
-
-    @Slot(QListWidgetItem, QListWidgetItem)
-    def _ctest_list_changed(
-        self, current: QListWidgetItem | None, _previous: QListWidgetItem | None
-    ) -> None:
-        if current is None:
-            return
-        index = self.ctest_one_combo.findData(current.text())
-        if index >= 0:
-            self.ctest_one_combo.setCurrentIndex(index)
-
-    @Slot(QListWidgetItem, QListWidgetItem)
-    def _case_list_changed(
-        self, current: QListWidgetItem | None, _previous: QListWidgetItem | None
-    ) -> None:
-        if current is None:
-            return
-        value = current.data(Qt.ItemDataRole.UserRole) or current.text()
-        index = self.case_one_combo.findData(value)
-        if index >= 0:
-            self.case_one_combo.setCurrentIndex(index)
 
     @Slot()
     def _start_compiler(self) -> None:
@@ -2705,43 +3269,71 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _start_tests(self) -> None:
-        self.start_run("tests")
+        """El botón grande de la pestaña del lenguaje: lo marcado, o todo si no hay nada."""
+        self.start_run("language")
 
-    def _run_one_ctest(self) -> None:
-        if self.ctest_one_combo.count() == 0:
-            QMessageBox.warning(self, APP_NAME, "No hay pruebas CTest disponibles en este build.")
+    @Slot()
+    def _start_unit(self) -> None:
+        self.start_run("unit")
+
+    @Slot()
+    def _start_harness(self) -> None:
+        self.start_run("harness")
+
+    def _run_selected_unit(self) -> None:
+        # Nada marcado NO lanza las 291 desde este boton. En el plan «vacio» significa todas, y ahi
+        # esta bien porque se eligio a proposito; aqui seria una sorpresa cara.
+        if not self._selected_unit_values():
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "Marca al menos una prueba unitaria.",
+            )
             return
-        self.ctest_scope.setCurrentIndex(self.ctest_scope.findData("one"))
+        self.start_run("unit")
+
+    def _run_selected_harness(self) -> None:
+        if not self._selected_harness_values():
+            QMessageBox.warning(self, APP_NAME, "Marca al menos una prueba con arnés.")
+            return
         self.stage_ctest.setChecked(True)
         self.stage_cases.setChecked(False)
         self.stage_triage.setChecked(False)
-        self._start_tests()
+        self.start_run("harness")
 
-    def _run_one_case(self) -> None:
-        if self.case_one_combo.count() == 0:
-            QMessageBox.warning(self, APP_NAME, "No hay fixtures o ejemplos disponibles.")
+    def _run_selected_language(self) -> None:
+        if not self._selected_language_values():
+            QMessageBox.warning(self, APP_NAME, "Marca al menos una prueba de lenguaje.")
             return
-        self.case_scope.setCurrentIndex(self.case_scope.findData("one"))
+        self.stage_ctest.setChecked(True)
+        self.stage_cases.setChecked(False)
+        self.stage_triage.setChecked(False)
+        self.start_run("language")
+
+    def _run_selected_cases(self) -> None:
+        if not self._selected_case_values():
+            QMessageBox.warning(self, APP_NAME, "Marca al menos un fixture.")
+            return
         self.stage_ctest.setChecked(False)
         self.stage_cases.setChecked(True)
         self.stage_triage.setChecked(False)
-        self._start_tests()
+        self.start_run("language")
 
     def _update_plan_summary(self, *_args: object) -> None:
-        if not hasattr(self, "compiler_summary") or not hasattr(self, "ctest_scope"):
+        if not hasattr(self, "compiler_summary") or not hasattr(self, "unit_list"):
             return
         compiler_mode = "desde cero" if self.build_mode.currentData() == "clean" else "incremental"
         self.compiler_summary.setText(
             f"nsc se construirá {compiler_mode} con {self.build_runner.currentText()} y "
             f"{self.compiler_jobs.value()} proceso(s); después se instalará. No se ejecutarán pruebas."
         )
-        selected_ctests = self._selected_ctest_values()
+        selected_ctests = self._selected_language_values()
         tests: list[str] = []
         if self.stage_ctest.isChecked():
             tests.append(
-                "CTest completo"
+                "todas las pruebas de lenguaje de CTest"
                 if not selected_ctests
-                else f"{len(selected_ctests)} prueba(s) CTest"
+                else f"{len(selected_ctests)} prueba(s) de lenguaje"
             )
         selected_cases = self._selected_case_values()
         if self.stage_cases.isChecked():
@@ -2753,11 +3345,7 @@ class MainWindow(QMainWindow):
         if self.stage_triage.isChecked():
             tests.append("bug triage")
         test_text = ", ".join(tests) if tests else "ninguna prueba"
-        test_mode = (
-            "desde cero, eliminando sus artefactos anteriores"
-            if self.test_build_mode.currentData() == "clean"
-            else "incremental, conservando sus artefactos anteriores"
-        )
+        test_mode = "sin compilar nada: solo el nsc instalado"
         optimizations = [name for checked, name in ((self.opt_o0.isChecked(), "O0"), (self.opt_o2.isChecked(), "O2")) if checked]
         selected_linkers = list(self.linker_mode.currentData())
         build_paths = {
@@ -2798,11 +3386,6 @@ class MainWindow(QMainWindow):
         build_mode_index = self.build_mode.findData(self.settings.value("build_mode", "incremental"))
         if build_mode_index >= 0:
             self.build_mode.setCurrentIndex(build_mode_index)
-        test_build_mode_index = self.test_build_mode.findData(
-            self.settings.value("test_build_mode", "incremental")
-        )
-        if test_build_mode_index >= 0:
-            self.test_build_mode.setCurrentIndex(test_build_mode_index)
         runner_index = self.build_runner.findData(self.settings.value("build_runner", "cmake"))
         if runner_index >= 0:
             self.build_runner.setCurrentIndex(runner_index)
@@ -2836,7 +3419,6 @@ class MainWindow(QMainWindow):
         self.settings.setValue("compiler_jobs", self.compiler_jobs.value())
         self.settings.setValue("test_jobs", self.test_jobs.value())
         self.settings.setValue("build_mode", self.build_mode.currentData())
-        self.settings.setValue("test_build_mode", self.test_build_mode.currentData())
         self.settings.setValue("build_runner", self.build_runner.currentData())
         self.settings.setValue("test_build_runner", self.test_build_runner.currentData())
         self.settings.setValue("linker_index", self.linker_mode.currentIndex())
@@ -2897,10 +3479,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText("CTest devolvió un inventario inválido")
             return
         self.ctest_targets.clear()
-        self.ctest_groups.clear()
         for test in tests:
             name = str(test["name"])
-            self.ctest_groups.setdefault(ctest_group(name), []).append(name)
             command = test.get("command", [])
             if command:
                 executable = Path(str(command[0]))
@@ -2908,25 +3488,78 @@ class MainWindow(QMainWindow):
                 # El `nsc.exe` instalado es el compilador BAJO prueba, nunca un target de pruebas.
                 if executable.suffix.casefold() == ".exe" and executable.stem.startswith("nsc_"):
                     self.ctest_targets[name] = executable.stem
-        self.ctest_list.clear()
-        self.ctest_one_combo.clear()
+                else:
+                    # CONOCIDA, PERO SIN OBJETIVO PROPIO. Es el `nsc.exe` instalado --el compilador
+                    # BAJO prueba, nunca un target de pruebas--. Registrarla con cadena vacia es
+                    # distinto de no registrarla: dice «se cual es y no hay que construir nada»,
+                    # mientras que la ausencia significa «no se que necesita».
+                    self.ctest_targets[name] = ""
+        # CADA PRUEBA A SU PESTANA. Las que miden el compilador por dentro a «unitarias»; las que
+        # lo usan desde fuera a «lenguaje». Ver `classify_ctest`.
+        mapping = ctest_targets_from_cmake(ROOT)
+        mapping.update(self.ctest_targets)
+        buckets: dict[str, list[str]] = {CTEST_UNIT: [], CTEST_HARNESS: [], CTEST_LANGUAGE: []}
         for name in names:
-            self.ctest_list.addItem(name)
-            self.ctest_one_combo.addItem(name, name)
-        self.ctest_group_combo.clear()
-        for group in sorted(self.ctest_groups, key=str.casefold):
-            members = sorted(self.ctest_groups[group], key=str.casefold)
-            self.ctest_groups[group] = members
-            self.ctest_group_combo.addItem(f"{group} ({len(members)})", group)
-        self.status_label.setText(f"CTest: {len(names)} pruebas")
-        self._update_ctest_scope()
+            buckets[classify_ctest(name, mapping)].append(name)
+        # Lo que ya estaba marcado se conserva al actualizar el inventario: perder la seleccion
+        # cada vez que se pulsa «Actualizar» obligaria a rehacerla entera.
+        for kind, item_list, group_list, groups in (
+            (CTEST_UNIT, self.unit_list, self.unit_group_list, self.unit_groups),
+            (CTEST_HARNESS, self.harness_list, self.harness_group_list, self.harness_groups),
+            (CTEST_LANGUAGE, self.language_list, self.language_group_list, self.language_groups),
+        ):
+            groups.clear()
+            for name in buckets[kind]:
+                groups.setdefault(ctest_group(name), []).append(name)
+            self._fill_selection(item_list, group_list, buckets[kind], groups)
+        self.status_label.setText(
+            f"CTest: {len(buckets[CTEST_UNIT])} unitarias · "
+            f"{len(buckets[CTEST_HARNESS])} con arnés · "
+            f"{len(buckets[CTEST_LANGUAGE])} de lenguaje")
+        self._refresh_selection()
 
-    def _test_build_target(self, selected_ctests: list[str]) -> str:
-        if not self.stage_ctest.isChecked() or not selected_ctests:
-            return "pruebas"
-        targets = [self.ctest_targets.get(name, "") for name in selected_ctests]
-        if any(not target for target in targets):
-            return "pruebas"
+    def _fill_selection(
+        self,
+        item_list: QListWidget,
+        group_list: QListWidget,
+        names: list[str],
+        groups: dict[str, list[str]],
+    ) -> None:
+        previous = set(self._checked_values(item_list))
+        self._selection_guard = True
+        try:
+            item_list.clear()
+            group_list.clear()
+            for name in names:
+                item = self._checkable(name, name)
+                if name in previous:
+                    item.setCheckState(Qt.CheckState.Checked)
+                item_list.addItem(item)
+            for group in sorted(groups, key=str.casefold):
+                members = sorted(groups[group], key=str.casefold)
+                groups[group] = members
+                group_list.addItem(self._checkable(f"{group} (0/{len(members)})", group))
+        finally:
+            self._selection_guard = False
+
+    def _targets_for_ctests(self, selected_ctests: list[str]) -> str:
+        """El calculo puro, sin mirar si la etapa CTest esta marcada.
+
+        Existe aparte porque el resumen de la pestana lo necesita para decir cuanto va a costar la
+        seleccion ANTES de lanzar nada, y ahi la casilla de la etapa no pinta: mezclarlas hacia que
+        el resumen dijera «construira todos» solo por tener CTest desmarcado.
+        """
+        known = ctest_targets_from_cmake(ROOT)
+        known.update(self.ctest_targets)
+        targets: list[str] = []
+        for name in selected_ctests:
+            target = ctest_target_for(name, known)
+            if target is None:
+                return "pruebas"
+            if target:
+                targets.append(target)
+        # Vacio a proposito: la seleccion no necesita ningun ejecutable de prueba. Se configura si
+        # hace falta, pero no se construye nada.
         return ";".join(dict.fromkeys(targets))
 
     # ------------------------------------------------------------------ Gate 0 del plan 123
@@ -3104,7 +3737,10 @@ class MainWindow(QMainWindow):
                 build_mode=str(self.build_mode.currentData()),
                 build_target="nsc",
                 build_runner=str(self.build_runner.currentData()),
-                test_build_mode="incremental",
+                # La pestaña del compilador construye nsc, y ya. No toca los árboles de prueba.
+                build_test_trees=False,
+                test_build_target="",
+                test_build_mode="skip",
                 test_build_dirs={},
                 linkers=[],
                 optimizations=[],
@@ -3128,17 +3764,14 @@ class MainWindow(QMainWindow):
             optimizations.append("-O0")
         if self.opt_o2.isChecked():
             optimizations.append("-O2")
-        if self.stage_cases.isChecked() and not optimizations:
+        if operation == "language" and self.stage_cases.isChecked() and not optimizations:
             QMessageBox.warning(self, APP_NAME, "Selecciona O0, O2 o ambos.")
             return None
-        selected_ctests = self._selected_ctest_values()
-        selected_cases = self._selected_case_values()
-        if self.stage_ctest.isChecked() and str(self.ctest_scope.currentData()) != "all" and not selected_ctests:
-            QMessageBox.warning(self, APP_NAME, "El alcance de CTest elegido no contiene pruebas.")
-            return None
-        if self.stage_cases.isChecked() and str(self.case_scope.currentData()) != "all" and not selected_cases:
-            QMessageBox.warning(self, APP_NAME, "El alcance de fixtures elegido no contiene casos.")
-            return None
+        selected_ctests = {
+            "unit": self._selected_unit_values,
+            "harness": self._selected_harness_values,
+        }.get(operation, self._selected_language_values)()
+        selected_cases = self._selected_case_values() if operation == "language" else []
         linkers = list(self.linker_mode.currentData())
         selected_builds = [resolved_test_builds[linker] for linker in linkers]
         if len(set(selected_builds)) != len(selected_builds):
@@ -3162,6 +3795,10 @@ class MainWindow(QMainWindow):
                 build_mode="incremental",
                 build_target="nsc",
                 build_runner=str(self.build_runner.currentData()),
+                build_test_trees=True,
+                # `pruebas` y no `nsc`: dentro del árbol de pruebas, `nsc` no es ninguno de sus
+                # 128 ejecutables. G0.2 se salvaba de eso solo porque ya estaban construidos.
+                test_build_target="pruebas",
                 test_build_mode="incremental",
                 test_build_dirs=test_build_dirs,
                 linkers=["lld-link", "NSLink"],
@@ -3177,25 +3814,39 @@ class MainWindow(QMainWindow):
                 selected_cases=[],
             )
         return RunPlan(
-            operation="tests",
+            operation=operation,
             root=str(ROOT),
             compiler_build_dir="",
             prefix=self.test_prefix_path.text().strip(),
             llvm_root=self.test_llvm_path.text().strip(),
             nslink_exe=self.nslink_path.text().strip(),
             build_mode="skip",
-            build_target=self._test_build_target(selected_ctests),
+            build_target="",
             build_runner=str(self.test_build_runner.currentData()),
-            test_build_mode=str(self.test_build_mode.currentData()),
+            # CADA CONJUNTO CONSTRUYE LO SUYO Y NADA MAS.
+            #   unit    -- sus ejecutables.
+            #   harness -- solo el arnes que comparten.
+            #   language-- nada, jamas: solo el `nsc.exe` instalado.
+            build_test_trees=operation in ("unit", "harness"),
+            test_build_target=(
+                self._targets_for_ctests(selected_ctests)
+                if operation in ("unit", "harness") and selected_ctests
+                else ("pruebas" if operation == "unit" else "")
+            ),
+            test_build_mode="incremental" if operation in ("unit", "harness") else "skip",
             test_build_dirs={linker: test_build_dirs[linker] for linker in linkers},
             linkers=linkers,
             optimizations=optimizations,
             jobs=self.test_jobs.value(),
             run_build=False,
             sync_libraries=True,
-            run_ctest=self.stage_ctest.isChecked(),
-            run_cases=self.stage_cases.isChecked(),
-            run_triage=self.stage_triage.isChecked(),
+            # Las casillas de conjuntos son de la pestaña del lenguaje. Unitarias y arnés
+            # ejecutan CTest y solo CTest: mezclarles fixtures sería el cruce que se quiere evitar.
+            run_ctest=(
+                self.stage_ctest.isChecked() if operation == "language" else True
+            ),
+            run_cases=self.stage_cases.isChecked() and operation == "language",
+            run_triage=self.stage_triage.isChecked() and operation == "language",
             keep_link_temps=self.keep_temps.isChecked(),
             selected_ctests=selected_ctests,
             selected_cases=selected_cases,

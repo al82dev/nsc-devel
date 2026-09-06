@@ -710,6 +710,32 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c39_enum_nombre_o2/c39_enum_nombre_o2.nsproj",
         "cc1-c39-enum-nombre-o2", 42);
 
+    // NSC-LIMIT-005. LA FIXTURE DIFERENCIAL. c38, c39 y b9 comprueban que el resultado es EL
+    // CORRECTO; esta comprueba que LAS DOS VIAS COINCIDEN -- la constante, que el optimizador
+    // pliega, y la opaca, que no puede plegar -- para los cuatro anchos estrechos con los valores
+    // que delatan el signo.
+    //
+    // El defecto de -O2 no era un valor equivocado en todas partes: era que el optimizador decidia
+    // distinto que el codigo sin optimizar. Comparar las dos vias lo detecta caiga la que caiga, y
+    // DENTRO de una sola corrida: no depende de que alguien compare la pasada de -O0 con la de
+    // -O2.
+    //
+    // MEDIDO que muerde: con `zext` cambiado a `sext` en `lowerEnumName`, el IR a -O2 pasa de
+    // llamar a `MismosBytes` con el mismo global en los dos argumentos a llamarlo con globales
+    // distintos en las tres comprobaciones de enums CON SIGNO -- codigo 20, 22 o 26 en vez de 42 --
+    // y deja intactas las de los enums sin signo.
+    checkFixture(
+        tests, root, "tests/cc1/c47_diferencial_o0_o2/c47_diferencial_o0_o2.nsproj",
+        "cc1-c47-diferencial-o0-o2", 42);
+
+    // NSC-LIMIT-011. El `where T : class, IComponent` se declara en una biblioteca, mientras
+    // `Payload` existe solamente en el proyecto consumidor. Tambien fuerza una especializacion
+    // anidada Reader<T> dentro de Envelope<T>, para que el origen se propague y no se vuelva a
+    // derivar desde el namespace de la biblioteca.
+    checkFixture(
+        tests, root, "tests/cc1/c48_constraints_cross_project/c48_constraints_cross_project.nsproj",
+        "cc1-c48-constraints-cross-project", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

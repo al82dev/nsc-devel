@@ -322,6 +322,8 @@ bool ProjectGenericConstraintModel::build(
         }
 
         std::vector<PendingDiagnostic> pending;
+        const std::string templateModuleSuffix =
+            "; template is declared in module '" + templateRecord.moduleName + "'";
 
         // SE LEEN LAS CLAUSULAS DEL NODO ESPECIALIZADO, no las de la plantilla, y esa es la pieza
         // que hace innecesaria una segunda resolucion de nombres: el clon esta EN EL ARBOL, asi
@@ -356,7 +358,8 @@ bool ProjectGenericConstraintModel::build(
                     "generic parameter '" + clause.parameterName + "' of '" +
                         templateRecord.name + "' requires a reference type ('where " +
                         clause.parameterName + " : class'), but the argument '" + argumentName +
-                        "' is not a class, interface, delegate, string or dynamic array",
+                        "' is not a class, interface, delegate, string or dynamic array" +
+                        templateModuleSuffix,
                     GenericConstraintViolation{
                         GenericConstraintViolationKind::RequiresReferenceType,
                         specialization.cacheOrdinal,
@@ -394,7 +397,8 @@ bool ProjectGenericConstraintModel::build(
                         specialization.instantiationRange,
                         "generic parameter '" + clause.parameterName + "' of '" +
                             templateRecord.name + "' requires '" + shortName(constraintKey) +
-                            "', but the argument '" + argumentName + "' does not satisfy it",
+                            "', but the argument '" + argumentName + "' does not satisfy it" +
+                            templateModuleSuffix,
                         GenericConstraintViolation{
                             constraint->kind == NamedTypeDeclarationKind::Interface
                                 ? GenericConstraintViolationKind::DoesNotImplementInterface
@@ -437,9 +441,9 @@ bool ProjectGenericConstraintModel::build(
                                  : "a type derived from '") +
                             shortName(constraintKey) + "', but the argument '" + argumentName +
                             "' " +
-                            (constraint->kind == NamedTypeDeclarationKind::Interface
-                                 ? "does not implement it"
-                                 : "does not derive from it"),
+                             (constraint->kind == NamedTypeDeclarationKind::Interface
+                                  ? "does not implement it"
+                                  : "does not derive from it") + templateModuleSuffix,
                         GenericConstraintViolation{
                             constraint->kind == NamedTypeDeclarationKind::Interface
                                 ? GenericConstraintViolationKind::DoesNotImplementInterface
