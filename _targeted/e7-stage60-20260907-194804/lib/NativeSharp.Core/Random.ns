@@ -1,0 +1,285 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Random -- Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29).
+    //
+    // A DIFERENCIA de cada clase de este namespace hasta ahora (Console, Environment, NativeClock,
+    // String, TimeSpan, DateTime...), Random NO envuelve ninguna llamada a Win32: es NativeSharp
+    // puro de punta a punta, cero "core operations", cero cambio de compilador -- el mismo tipo de
+    // pieza que Hashing.ns (ver NativeSharp.Core.Collections.Generic) o TimeSpan.ns ya son. La
+    // razon de ser de esta clase es puramente de BIBLIOTECA: cualquier programa NativeSharp no
+    // trivial eventualmente necesita numeros pseudoaleatorios, y hasta esta ronda no habia ninguna
+    // forma de obtenerlos sin que cada programa reinventara su propio generador a mano.
+    //
+    // == El algoritmo: xoshiro256** ==
+    //
+    // xoshiro256** (David Blackman y Sebastiano Vigna, dominio publico) es el generador elegido,
+    // por tres razones concretas:
+    //   1. Aritmetica pura de 64 bits (multiplicacion, shift, XOR) -- CERO dependencia de entropia
+    //      del sistema operativo (no necesita RtlGenRandom/BCryptGenRandom ni ningun otro import
+    //      nuevo de Win32), asi que kernel32Symbols en las cinco ubicaciones sincronizadas queda
+    //      intacto para esta clase.
+    //   2. Estado de solo 256 bits (cuatro campos `ulong`) y un paso de avance de un puñado de
+    //      instrucciones -- trivial de expresar en NativeSharp puro, sin necesitar ningun feature
+    //      de lenguaje que este compilador no tenga ya (ver la nota de "features de lenguaje
+    //      confirmadas" mas abajo).
+    //   3. Calidad estadistica real: xoshiro256** pasa BigCrush (la bateria de tests estadisticos
+    //      mas exigente de TestU01) y es el sucesor recomendado del propio autor de xorshift128+ --
+    //      muy por encima de un generador lineal congruencial simple (rand() de C, o el Random
+    //      "legacy" de .NET Framework anterior a .NET 6), sin acercarse a la complejidad de un CSPRNG
+    //      criptografico (que este compilador tampoco necesita: Random NO es apto para criptografia,
+    //      igual que System.Random en C# real).
+    //
+    // == Sembrado del estado: SplitMix64 ==
+    //
+    // xoshiro256** necesita 256 bits de estado inicial que NO sean todos cero (un estado
+    // completamente cero es un punto fijo patologico: el generador nunca se mueve de ahi). Pasarle
+    // una unica semilla de 64 bits directamente a los cuatro campos de 64 bits (repetida, o con
+    // padding trivial) produciria una correlacion inicial notoria entre los cuatro streams. La
+    // solucion estandar (la misma que recomienda el propio paper de xoshiro256**): usar SplitMix64
+    // (otro generador de dominio publico, mas simple pero de MENOR calidad estadistica que
+    // xoshiro256**) para expandir una unica semilla de 64 bits en cuatro valores de 64 bits bien
+    // distribuidos y decorrelacionados entre si -- exactamente los cuatro campos de estado inicial
+    // que xoshiro256** necesita. SplitMix64 en si nunca se usa para generar los numeros que ve el
+    // caller de Random -- es un paso de sembrado interno, invisible desde afuera.
+    //
+    // == Por que NO hay un metodo auxiliar "SplitMix64Next(ref ulong state)" ==
+    //
+    // La forma mas natural de escribir SplitMix64 en C++/C# real es una funcion que RECIBE el
+    // estado por referencia, lo incrementa, y devuelve el valor mezclado -- exactamente la firma
+    // `ulong SplitMix64Next(ref ulong state)`. NativeSharp NO tiene `ref`/`out` (ver el analisis de
+    // esta misma ronda: existe `&`/`*` estilo C++ en el backend PROCEDURAL, pero esta HARD-BLOQUEADO
+    // en la tuberia OOP/`.nsproj` que esta clase usa -- limite arquitectonico deliberado de Stage
+    // 34, no un descuido). La solucion: separar el paso "incrementar estado" (una simple
+    // reasignacion de variable local, que SI funciona sin `ref`) del paso "mezclar" (una funcion
+    // PURA `ulong -> ulong`, sin necesidad de mutar nada por referencia) -- ver SplitMix64Mix mas
+    // abajo y su unico llamador, Seed(long).
+    //
+    // == Features de lenguaje que esta clase ejercita, ya confirmadas por codigo existente ==
+    //
+    // Antes de escribir esta clase se confirmo, via grep contra Hashing.ns/String.ns/TimeSpan.ns y
+    // los tutoriales empaquetados, que el lenguaje YA soporta todo lo que xoshiro256**/SplitMix64
+    // necesitan: el tipo `ulong` con multiplicacion (Hashing.Int64: `(ulong)value * 2654435761UL`),
+    // el operador `>>` (misma linea), el operador `^` (String.ns: `hash = hash ^ (uint)value[i]`),
+    // el operador `|` y `<<` (tutorial_02_variables_tipos_operadores: `bitsA | bitsB`,
+    // `bitsA << 2`), el operador `&` (Dictionary.ns: `hasher(key) & 2147483647`), el sufijo de
+    // literal `UL` para constantes que exceden el rango de `long` (Hashing.ns, igual que las
+    // constantes de SplitMix64/xoshiro256** de mas abajo), y casts explicitos entre tipos numericos
+    // de 64 bits (`(ulong)value`/`(int)(ulong-expr)`, tambien en Hashing.ns) -- CERO feature nuevo
+    // de compilador hizo falta para esta clase, es NativeSharp puro apoyado enteramente en
+    // capacidades que Stage 51-55 ya dejaron listas.
+    //
+    // == Superficie publica ==
+    //
+    //   Random()                          -- constructor con auto-semilla (ver AutoSeed() abajo).
+    //   Random(long seed)                 -- constructor con semilla explicita, para resultados
+    //                                         reproducibles (tests, debugging determinista).
+    //   Next()                     -> int  -- entero no negativo, [0, int.MaxValue).
+    //   Next(int maxValue)         -> int  -- entero no negativo, [0, maxValue).
+    //   Next(int minValue, int maxValue) -> int -- entero, [minValue, maxValue).
+    //   NextInt64()                -> long -- cualquier valor de 64 bits con signo (rango completo).
+    //   NextDouble()                -> double -- [0.0, 1.0).
+    //   NextBool()                  -> bool  -- true/false con probabilidad ~50/50 cada uno.
+    //
+    // Simplificacion deliberada, documentada, misma disciplina de siempre: Next(int)/Next(int,int)
+    // usan reduccion por modulo (`% maxValue`), NO el algoritmo de Lemire (rechazo con reintento)
+    // que .NET real usa desde .NET 6 para eliminar el sesgo de modulo por completo. Para
+    // `maxValue` chico comparado con 2^64 (el caso casi universal de uso real: tirar un dado,
+    // elegir un indice de arreglo, etc.) el sesgo introducido es estadisticamente insignificante;
+    // documentado aca por honestidad, no porque se espere que importe en la practica.
+    public class Random
+    {
+        private ulong s0_;
+        private ulong s1_;
+        private ulong s2_;
+        private ulong s3_;
+
+        // Incrementado en cada `new Random()` sin semilla explicita -- ver AutoSeed() abajo para
+        // por que hace falta ademas de Environment.TickCount64().
+        private static long instanceCounter_;
+
+        // Constructor con auto-semilla: combina el reloj de milisegundos del sistema operativo
+        // (Environment.TickCount64(), ya disponible en este mismo namespace -- NO se uso
+        // NativeSharp.Core.Diagnostics.Process.CurrentProcessId()/NativeClock.QueryCounterRaw()
+        // aca a proposito: ambos viven en el namespace NativeSharp.Core.Diagnostics, y ese
+        // proyecto de biblioteca YA depende de NativeSharp.Core [ver
+        // NativeSharp.Core.Diagnostics.nsproj], asi que referenciarlos desde aca crearia una
+        // dependencia CIRCULAR entre los dos proyectos -- Random.ns vive en NativeSharp.Core, el
+        // mismo lugar que System.Random ocupa en el namespace System de C# real, no en
+        // Diagnostics) con un contador de instancias que aumenta en cada Random() construido.
+        // Este segundo termino existe porque TickCount64() tiene resolucion de milisegundos: dos
+        // `new Random()` construidos en el mismo milisegundo (perfectamente posible en cualquier
+        // loop ajustado) recibirian, sin el contador, la MISMA semilla y por lo tanto producirian
+        // exactamente la misma secuencia -- el mismo problema clasico que motivo a .NET Framework
+        // a agregar su propio contador interno a System.Random hace anios. NO es una fuente de
+        // entropia criptografica (un atacante que conozca aproximadamente cuando arranco el
+        // proceso y cuantos Random() van construidos podria predecir la semilla) -- exactamente la
+        // misma garantia (o ausencia de ella) que System.Random de .NET siempre documento.
+        public Random()
+        {
+            instanceCounter_ = instanceCounter_ + 1;
+            long autoSeed = Environment.TickCount64() ^ (instanceCounter_ * 2685821657736338717L);
+            Seed(autoSeed);
+        }
+
+        // Constructor con semilla explicita -- la misma semilla siempre produce exactamente la
+        // misma secuencia de valores, util para tests deterministas o para reproducir un bug que
+        // dependia de una secuencia "aleatoria" particular.
+        public Random(long seed)
+        {
+            Seed(seed);
+        }
+
+        // El sembrado real: SplitMix64, llamado cuatro veces en secuencia (ver el comentario de
+        // cabecera de la clase para por que esto reemplaza al patron habitual "funcion que recibe
+        // el estado por referencia" que NativeSharp no puede expresar sin `ref`). `state` es una
+        // variable LOCAL normal, reasignada en cada paso -- nada de esto necesita `ref`/`out`, la
+        // unica pieza que en C++/C# real seria "por referencia" (el estado que SplitMix64 mezcla)
+        // vive enteramente en variables locales de ESTE metodo, nunca cruza un limite de llamada
+        // por referencia.
+        private void Seed(long seed)
+        {
+            ulong state = (ulong)seed;
+            state = state + 11400714819323198485UL;
+            s0_ = SplitMix64Mix(state);
+            state = state + 11400714819323198485UL;
+            s1_ = SplitMix64Mix(state);
+            state = state + 11400714819323198485UL;
+            s2_ = SplitMix64Mix(state);
+            state = state + 11400714819323198485UL;
+            s3_ = SplitMix64Mix(state);
+        }
+
+        // El paso de mezcla de SplitMix64 -- una funcion PURA (`ulong -> ulong`, sin campos ni
+        // parametros por referencia). El llamador (Seed arriba) ya incremento el estado ANTES de
+        // pasarlo aca -- exactamente lo que la formula de referencia `z = (x += GOLDEN)` hace en
+        // una sola expresion en C/C++, separado aca en dos pasos porque NativeSharp no tiene el
+        // operador de asignacion-y-uso compuesto `+=` retornando el nuevo valor de esa forma
+        // dentro de una expresion mas grande (no hace falta: el llamador ya lo separa igual de
+        // claro con una linea `state = state + CONST;` seguida de la llamada).
+        private static ulong SplitMix64Mix(ulong z)
+        {
+            ulong mixed = z;
+            mixed = (mixed ^ (mixed >> 30)) * 13787848793156543929UL;
+            mixed = (mixed ^ (mixed >> 27)) * 10723151780598845931UL;
+            return mixed ^ (mixed >> 31);
+        }
+
+        // Rotacion circular a la izquierda de un `ulong` -- la unica operacion que xoshiro256**
+        // necesita que no sea una de las cuatro basicas (`<<`/`>>`/`^`/`*`) directamente: `k` bits
+        // que "se caen" por la izquierda reaparecen por la derecha. `64 - k` nunca es cero ni
+        // negativo para los tres valores de `k` que NextUInt64 usa (7, 45), asi que no hace falta
+        // un caso especial para `k == 0`.
+        //
+        // NOTA TECNICA (descubierta compilando esta misma clase): `k` llega como `int`, pero un
+        // shift con cantidad NO CONSTANTE (`k` es un parametro, no un literal) sobre un operando
+        // `ulong` no encuentra un tipo comun entre `builtin:ulong` y `builtin:int` en la tabla de
+        // promocion numerica de este compilador (ProjectTypeConversion::commonNumericType) --
+        // `int` no ensancha implicitamente a `ulong` (a diferencia de un LITERAL entero, que SI
+        // tiene una via aparte via "constantFits": por eso `s1_ << 17`/`Rotl(s3_, 45)` mas abajo,
+        // con cantidades de shift literales, compilan sin este problema) -- y el resolutor cae a
+        // la PRIMER entrada de su lista de preferencias que ambos tipos puedan ensanchar, que es
+        // `builtin:double`. El resultado: `(x << k) | (x >> (64 - k))` escrito tal cual tipa como
+        // `double`, no `ulong`, y falla al retornar. La solucion: convertir `k` a `ulong` UNA sola
+        // vez al principio, para que cada shift de abajo tenga AMBOS operandos ya `ulong` (mismo
+        // tipo exacto en los dos lados, sin pasar por la tabla de promocion en absoluto).
+        private static ulong Rotl(ulong x, int k)
+        {
+            ulong shift = (ulong)k;
+            ulong inverseShift = 64UL - shift;
+            return (x << shift) | (x >> inverseShift);
+        }
+
+        // El paso de avance de xoshiro256** en si -- calco letra por letra de la funcion de
+        // referencia `next()` del paper original (Blackman/Vigna, dominio publico), solo
+        // traducido a la sintaxis de NativeSharp. Cada llamada avanza el estado interno de 256
+        // bits Y devuelve 64 bits de salida -- todos los metodos publicos de abajo (Next/
+        // Next(int)/Next(int,int)/NextInt64/NextDouble/NextBool) se apoyan en esta unica funcion
+        // privada, cada uno quedandose con la porcion de los 64 bits que necesita.
+        private ulong NextUInt64()
+        {
+            ulong result = Rotl(s1_ * 5UL, 7) * 9UL;
+            ulong t = s1_ << 17;
+            s2_ = s2_ ^ s0_;
+            s3_ = s3_ ^ s1_;
+            s1_ = s1_ ^ s2_;
+            s0_ = s0_ ^ s3_;
+            s2_ = s2_ ^ t;
+            s3_ = Rotl(s3_, 45);
+            return result;
+        }
+
+        // Entero no negativo, [0, int.MaxValue) -- mismo contrato que System.Random.Next() en C#
+        // real (SIN limite superior explicito, pero SIEMPRE no negativo). Se queda con los 31 bits
+        // mas altos de los 64 que NextUInt64() produce (descartando los 33 bits mas bajos, no los
+        // mas altos -- los bits altos de xoshiro256** tienen mejor calidad estadistica que los
+        // bajos, una propiedad documentada del algoritmo): 64 - 33 = 31 bits, que siempre caben en
+        // un `int` sin jamas poner en 1 el bit de signo (bit 31).
+        public int Next()
+        {
+            ulong raw = NextUInt64();
+            return (int)(raw >> 33);
+        }
+
+        // Entero no negativo, [0, maxValue) -- ver el comentario de cabecera de la clase para la
+        // simplificacion deliberada (reduccion por modulo, no el algoritmo de Lemire sin sesgo).
+        // maxValue <= 0 colapsa a 0 en vez de dividir por cero o devolver un rango invertido --
+        // misma disciplina de "cualquier entrada fuera de rango colapsa a un valor seguro" que
+        // cada ronda de Stage 53+ ya aplico ante un fallo de Win32.
+        public int Next(int maxValue)
+        {
+            if (maxValue <= 0)
+            {
+                return 0;
+            }
+            ulong raw = NextUInt64();
+            ulong bounded = raw % (ulong)maxValue;
+            return (int)bounded;
+        }
+
+        // Entero, [minValue, maxValue) -- reutiliza Next(int) de arriba sobre el ancho del rango
+        // (maxValue - minValue), despues lo desplaza a partir de minValue. maxValue <= minValue
+        // colapsa a minValue (rango vacio o invertido, mismo espiritu que maxValue <= 0 arriba).
+        public int Next(int minValue, int maxValue)
+        {
+            if (maxValue <= minValue)
+            {
+                return minValue;
+            }
+            int range = maxValue - minValue;
+            return minValue + Next(range);
+        }
+
+        // Cualquier valor de 64 bits con signo -- rango COMPLETO de `long`, a diferencia de Next()
+        // (que deliberadamente nunca es negativo). Reinterpreta los 64 bits crudos de
+        // NextUInt64() tal cual, sin descartar ninguno -- el unico metodo publico de esta clase
+        // que usa el resultado de NextUInt64() completo, sin shift ni mascara.
+        public long NextInt64()
+        {
+            ulong raw = NextUInt64();
+            return (long)raw;
+        }
+
+        // [0.0, 1.0) -- misma tecnica estandar que xoshiro256**'s propia documentacion recomienda
+        // para generar un `double`: quedarse con los 53 bits mas altos de los 64 (53 es
+        // exactamente el ancho de la mantisa de un IEEE 754 double, incluyendo el bit implicito),
+        // convertirlos a double, y dividir por 2^53 (9007199254740992.0) -- el mismo idiom que
+        // TimeSpan.ns ya usa para su propia conversion double (ver `(double)Ticks / 10000.0`, la
+        // misma forma "cast a double, dividir por una constante" solo con una constante distinta).
+        public double NextDouble()
+        {
+            ulong raw = NextUInt64();
+            ulong mantissaBits = raw >> 11;
+            return (double)mantissaBits / 9007199254740992.0;
+        }
+
+        // true/false, ~50/50 -- se queda con el bit mas bajo de NextUInt64(). El bit MAS bajo de
+        // xoshiro256** tiene peor calidad estadistica que los altos (misma nota que el comentario
+        // de Next() de arriba menciona a la inversa) -- irrelevante aca, un solo bit de paridad
+        // para decidir true/false no necesita la calidad estadistica completa del generador.
+        public bool NextBool()
+        {
+            ulong raw = NextUInt64();
+            return (raw & 1UL) == 1UL;
+        }
+    }
+}

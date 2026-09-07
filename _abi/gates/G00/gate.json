@@ -1,7 +1,7 @@
 {
   "gate": "G00",
-  "run_id": "20260907-131523-7eda857d",
-  "run_dir": "A:\\nsc-devel\\_nscbuilder\\history\\20260907-131523-7eda857d",
+  "run_id": "20260907-152255-f7e1f291",
+  "run_dir": "A:\\nsc-devel\\_nscbuilder\\history\\20260907-152255-f7e1f291",
   "root": "A:\\nsc-devel",
   "prefix": "C:\\native-sharp",
   "llvm_root": "C:\\clang-llvm",
@@ -18,20 +18,20 @@
     "moment": "before-build",
     "binaries": {},
     "tools": {},
-    "source_digest": "7917ff88ca8774c624f1c7c7880de95b07e6062ec8a9b56b1f971e133dfd8b9b",
-    "source_file_count": 1013
+    "source_digest": "34bc19f5743a12f9882cbba1ce10534331ba791cce78f7f6dc1233c1a4178629",
+    "source_file_count": 1014
   },
   "after_build": {
     "moment": "after-build",
     "binaries": {
-      "built_nsc": "58c44dd8a966d526d4f83fa9e97bdcd223e3e992af0d61cce84e2018d3ba7d5c",
-      "installed_nsc": "58c44dd8a966d526d4f83fa9e97bdcd223e3e992af0d61cce84e2018d3ba7d5c"
+      "built_nsc": "0d19c7d0f1b1d7a8f9e14af4691d23cf21af704a085e0b895cfa76edd61750a3",
+      "installed_nsc": "0d19c7d0f1b1d7a8f9e14af4691d23cf21af704a085e0b895cfa76edd61750a3"
     },
     "tools": {
       "lld-link": "7efdab066cab3124fdf1173301701fd2e629602fdcb85f9ec3481a0c198f9a64",
       "nslink": "536e3a096d87574b5a1390277faf0ff2f037e5c47ca3436efdaa906409b36ce4",
-      "lld-link/nsc_cc1_build_identity_tests.exe": "a7e8cea4b227be06e78b6e0f2eb5153be4c0fb2964945de137ad17786f121738",
-      "lld-link/nsc_cc1_correctness_tests.exe": "e203cc41ac4a45ccbdefa2d408198693c5ee4ddab5cebfc008d3b26c0e4fe67f",
+      "lld-link/nsc_cc1_build_identity_tests.exe": "6fded141fc1df57bdc9b8309410ae1e84fddd48f582b586ad7a9838bfebef446",
+      "lld-link/nsc_cc1_correctness_tests.exe": "01f04936947b6538ecbf5d8a6d81c5cd18fb37cdb605ab1debea629117808a3b",
       "lld-link/nsc_cc1_integer_evaluator_tests.exe": "317f4bd5be641bb73f4ce9619fe2f78ef36ff0c27d7b93f142627a3d6501a427",
       "lld-link/nsc_cfg_tests.exe": "a23027d8f95de6f8afe1ad6e37280024ca6ff6c47e91cc84b1e3ab3a2fae63aa",
       "lld-link/nsc_cfg_verifier_tests.exe": "88e813b27760fcf1662cd8b6c791e8bbf0dbac228b1aeea0881d94c0f3593544",
@@ -43,7 +43,7 @@
       "lld-link/nsc_diagnostic_tests.exe": "e128575216b2f822b10623395ec50675dc4658aade57a1e00c5578124ae428fc",
       "lld-link/nsc_dominance_tests.exe": "bbc4a3310782ed39e247d42309af5dac64ec268945fbf04c102a6faae52bf9c4",
       "lld-link/nsc_dominance_verifier_tests.exe": "c3dfbbba3efb8b3d505aa7c35b30b62e5a96c9508b8bfb01878b068b5c76c4c6",
-      "lld-link/nsc_driver_tests.exe": "5d232fbd95af1fd9b8b5e6f6cabf604d94ac28e2ca7238f662152f407aec365f",
+      "lld-link/nsc_driver_tests.exe": "404d9a67a5f86997ced4968e46bf127552dfebf971c8c2066d0634e77e93c94d",
       "lld-link/nsc_frontend_robustness_tests.exe": "9082532e796ab0d624d08fa8ec449a25e4d6ccabee14a77fcdb691f7993d4652",
       "lld-link/nsc_hir_tests.exe": "166fcfe22134d63591625a5cae4ecb58e1649d525c7e45931aa9b9d28c5556db",
       "lld-link/nsc_hir_verifier_tests.exe": "2c243e21a460a931d8a958bcb0f33576507c6722b75c2737c618bb88721e2da1",
@@ -60,7 +60,7 @@
       "lld-link/nsc_parser_tests.exe": "8aed4310566bba2b4e19159ddc20005079aed7e9a495e046f1681555f810de6e",
       "lld-link/nsc_partial_class_aggregation_tests.exe": "d84f21bf576352b60dd29d49e751e915ee68a6c3cb6579f1e2723a5ea990011f",
       "lld-link/nsc_pass_manager_tests.exe": "8c94daee35dac6ca31b3d0777fff1d329e95536ef16ccfbeedb7fde251a0e308",
-      "lld-link/nsc_prestage56_utilities_tests.exe": "db691d9cc08daca2ebeb0f3a8f632598c7ea60c5ff6cd293f81e3c7ced79dc7d",
+      "lld-link/nsc_prestage56_utilities_tests.exe": "e45969633a778a859b8d6029c59807ccd430fab9d71588110b0828439b546ef9",
       "lld-link/nsc_project_compilation_tests.exe": "fc4d9065d0646a5f0b1330c01240a584fcfee81590b5de1f492a9d36c726fbd0",
       "lld-link/nsc_project_construction_model_tests.exe": "da6d44ae0d522ea381c6a10a71b4baf59815f1206e0965bee83b4efeb0415c53",
       "lld-link/nsc_project_graph_tests.exe": "afd64e27219429a7647553e61a40dfa016289b5c523f5d8426fea6a93ff6eaee",
@@ -80,37 +80,37 @@
       "lld-link/nsc_stage37_static_initialization_tests.exe": "ff47ba00db2da44ebb96c2ce83174561160cc3296eb6241d8852f30736858a3b",
       "lld-link/nsc_stage38_properties_indexers_operators_tests.exe": "d32db4e2179df394b218a27ad7037c6714f668dabbe8c805c837463c7fb2b290",
       "lld-link/nsc_stage39_rtti_casts_tests.exe": "44a185af9ac86a1330b122fe10ca02f4ce7148d187e6c98a5e516af73cd38b45",
-      "lld-link/nsc_stage40_2_aggregate_abi_execution_tests.exe": "ebe7db1fd10d1fa4a04aeefb45b93012d897f27b415ead09ec98773566b6d4c6",
+      "lld-link/nsc_stage40_2_aggregate_abi_execution_tests.exe": "ffa6397fcfdd7c93b19dd9d07770b818acf215d835f91995cb29501dd224c942",
       "lld-link/nsc_stage40_struct_value_abi_tests.exe": "e0f747850837fd5ed155a354773cf0a1d3235f17aaa57c7bb55369b5a0246d3f",
       "lld-link/nsc_stage41_arrays_strings_core_tests.exe": "46b449293ebc24e1a8c81fef60b79cb9e0a5afaa98bcb6eaaa1f77358bc643cd",
       "lld-link/nsc_stage42_delegates_events_tests.exe": "65dcf332d44697aa8b23d69e07da189837bb5fe1511edc045b622499317f966e",
       "lld-link/nsc_stage43_lambdas_closures_tests.exe": "5fedbc805f8f5116101ce1398b53255f356066f988f5d62b08467a94fbcadcf6",
       "lld-link/nsc_stage44_generics_monomorphization_tests.exe": "4775405bba449af98829fabba74e1647b33d8177bb037482faf4d236ef94cb7f",
-      "lld-link/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "f5549393854062dea97ca2acd79915db339e24d7d577cb1c3997e4bd09748297",
-      "lld-link/nsc_stage45_11_eh_cleanup_execution_tests.exe": "a09ddffb641842c201ea14776451a0f51dba3d092df065aa35855aa366a1fc4d",
+      "lld-link/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "b510f09f585ec4de1e1ff48e32ebd0221338a2d99152b917cfd282bd6aada553",
+      "lld-link/nsc_stage45_11_eh_cleanup_execution_tests.exe": "b1a55e155697cf1b7d8d68be7486026765635161419bc0aa4ac454e726b8dcfa",
       "lld-link/nsc_stage45_cleanup_scope_tests.exe": "21c523e9eff47bf038c1c32d1cbe90a5c4293b1f4b3c8c19ec24c29abc51dc88",
       "lld-link/nsc_stage45_exception_sema_tests.exe": "bbba2bd94c2e98e712278a5a4454008b7541a6a403cbefdc98fca53eb9f3585d",
       "lld-link/nsc_stage45_exceptions_syntax_tests.exe": "628d0c7da817a1e8a4ada944cafef97297a3fea88c27459468514af865a4787f",
       "lld-link/nsc_stage45_finally_flow_tests.exe": "7adbaabcc178ca0cf767dbd60a648275ef18b5628fdf57fb01f2d3df6d06d849",
       "lld-link/nsc_stage45_hir_exceptional_cfg_tests.exe": "a6d60a750ce29b32f93ceea8791f7a10177f193aeb922925f089ed8a42f041a6",
-      "lld-link/nsc_stage45_linker_pe_eh_tests.exe": "27733371c0a8fae8c730b44c5960730e0c3184698761bcf3ccbf768473f26b21",
+      "lld-link/nsc_stage45_linker_pe_eh_tests.exe": "f2d9d2c0858cdac793092346c6dbaac98b068b0e8a878a35eb7c62be449c6d5d",
       "lld-link/nsc_stage45_llvm_cleanup_funclet_tests.exe": "0a9d7385ed5cc08d0e34e42a1b4e063ddaf04c8f3364a51f73f903d191f74eba",
       "lld-link/nsc_stage45_llvm_win64_eh_basic_tests.exe": "d5cf3715d2a8e4faab303cce5d90f5e9ea29c724331ecd5bdbc40a2b35149a03",
       "lld-link/nsc_stage45_mir_exceptional_cfg_tests.exe": "ace8653b761c9c6625a8702a6c3453abd14596ebfb2ec23985cd6f48100e4b60",
       "lld-link/nsc_stage45_native_exception_runtime_tests.exe": "5ac4d9b43e321a6519eff25d2b0fb55aeb6294bf3dce932cab178b2f433ecba2",
       "lld-link/nsc_stage45_typed_catch_rtti_tests.exe": "c9c931c6229181ab52a75f41f57dc2740fc2fc400205a86963ef04a1da185360",
       "lld-link/nsc_stage45_using_disposable_tests.exe": "f57de5105e2d648c64f31b1f26391a55f1fa3c0ae58710a6ee2e7e47da920956",
-      "lld-link/nsc_stage46_native_libraries_tests.exe": "f1474c992788dff1adf5c99b32b0b68f414737155ec2b23625c406b198b3144b",
-      "lld-link/nsc_stage47_host_c_abi_tests.exe": "4a21ad34c74dc083643ee0c5fffeea51853cf5572e70b146c9ad516157748d73",
-      "lld-link/nsc_stage48_1_c_header_tests.exe": "dd7b6dd94bea327e48fe20f010cad6ff0b82c250e9812c90881cb6154f60f754",
-      "lld-link/nsc_stage48_2_library_metadata_tests.exe": "1a86ddb58cd81697cda3704da705b400d96c66a4b6da5289a1f69d6c7e571806",
-      "lld-link/nsc_stage48_3_c_host_tests.exe": "d474670b82905987c9cd043ed38c012e8597d95300acff9708b2bee2a77b4dce",
-      "lld-link/nsc_stage48_4_cpp_host_tests.exe": "9a7bca16c7f100f922feb272342fbd27ac189c819c92931568db0ab7f109edc4",
-      "lld-link/nsc_stage48_5_csharp_host_tests.exe": "3df785944a260d1cdd6a4e1593eee21c4ab315176557d5d6e75441dc040c4602",
-      "lld-link/nsc_stage48_6_cppcli_host_tests.exe": "b56c2c4ffd8eb18f1872ea89d3c6d8b2e39ed994196f78da6a0ff364b615b1f9",
-      "lld-link/nsc_stage49_raii_move_tests.exe": "4e5133bdac9fdd3fed8b7ddebb6e3bcd5b6646924e66377cd6d2c6adb6b3e2c2",
-      "lld-link/nsc_stage50_10_ownership_examples_documentation_tests.exe": "fbf718a9f50704c1af8a0e600e329e2ce8eed5ce0dccdf03d1a03984c7e33f38",
-      "lld-link/nsc_stage50_11_ownership_execution_tests.exe": "b0ccfdebbbedfa7bc60a34cd9f3efbb802936a9138d2ed97b9d74ebbb2e4edc1",
+      "lld-link/nsc_stage46_native_libraries_tests.exe": "44fbb2a240045df87c9bd1c6b472da72e6a7798dc9fa2d1d7f6135ca33a14ca9",
+      "lld-link/nsc_stage47_host_c_abi_tests.exe": "506cb73e44a7f8e3ec4fc58cd15ae2e600a1b78a5f48a21dfd0d7186d1530762",
+      "lld-link/nsc_stage48_1_c_header_tests.exe": "05e3ca70ec015187993988c92e9844936429f5f0b56967b96e309b31968a5255",
+      "lld-link/nsc_stage48_2_library_metadata_tests.exe": "f95c3a49ef7a548d6721c3e570a2a128ac520af270166fc7ab2e4e9dc139ea77",
+      "lld-link/nsc_stage48_3_c_host_tests.exe": "66a69798a5b658f5ef57126450da8a49b29e3da79fad1f2afc7874313a8a4bf6",
+      "lld-link/nsc_stage48_4_cpp_host_tests.exe": "d14737279f88eaebcda0414cea7fe18f63d525001e5ac8dcfca887e13b6e2771",
+      "lld-link/nsc_stage48_5_csharp_host_tests.exe": "ba4f41613bc91d33ea80c1996afe655b61ce0b198c10f8c487b6b4de221c5f9b",
+      "lld-link/nsc_stage48_6_cppcli_host_tests.exe": "42a9029d4d9383d7771a3243e0c8f35663072eca1721df4be64591f81d654ead",
+      "lld-link/nsc_stage49_raii_move_tests.exe": "628369f292e0f94751bfd90fea0001f94623081a47c5e78d4575a3f9ea818ecb",
+      "lld-link/nsc_stage50_10_ownership_examples_documentation_tests.exe": "80cb94056445b1cc24b0ea5f2a2e004421d7a07320313cf68ab5e81185d02141",
+      "lld-link/nsc_stage50_11_ownership_execution_tests.exe": "55558517d1fe9f7fea4c32a39c1b01763033036f29144a8e67cbdb01f057e37c",
       "lld-link/nsc_stage50_1_ownership_syntax_tests.exe": "a0bbb21d4f356ea02c818807855110ab0e676c68b5a2cbf219166868a1b97579",
       "lld-link/nsc_stage50_2_ownership_type_system_tests.exe": "1ed027841b1eb7ad6661062b941dc3e9ce961d5e6d0ece14e4cba80747833179",
       "lld-link/nsc_stage50_3_owned_parameters_returns_tests.exe": "8feb6242d1d5f2d5c6173cc82dd8ced4818b3c9a46876332717abb3c854867c4",
@@ -118,48 +118,49 @@
       "lld-link/nsc_stage50_5_local_borrows_lifetimes_tests.exe": "dc24db9b31d53abde8fafc0caf4ff5c46e4928fd6b2fd5682e1f3dcd33b0da40",
       "lld-link/nsc_stage50_6_ownership_control_flow_tests.exe": "36f2837f83a86ca427ba6ab07e12e35efd02dd2abec0c8b7dd885629a8f1e308",
       "lld-link/nsc_stage50_7_borrow_escape_analysis_tests.exe": "0def0f1e90bece49c3a35dd0ccea6257ddb13e1d286eb0a30628441c72594f9b",
-      "lld-link/nsc_stage50_8_ownership_ir_lowering_tests.exe": "64974a8dfab1df27df0ea37a9694b4050c2f577970bfc54cbba4ef63bf0d30f9",
-      "lld-link/nsc_stage50_9_metadata_host_compatibility_tests.exe": "00dd3450ec45c95ec33731b8457dc003b508f78d7c1ce9275480292175d06c45",
-      "lld-link/nsc_stage51_complete_string_tests.exe": "9f066d309b9c969e49cc142a96b062e9e20c2266df1381183ba668ba8f12476a",
-      "lld-link/nsc_stage51_enum_oop_support_tests.exe": "a77060fe971e539a4ce3ba266cb86b629f3bdb3461387daa4c357f6f40702e0c",
-      "lld-link/nsc_stage52_1_generic_collections_additions_tests.exe": "203e9f0afb50c0755ebf4781b6ca88bac4f7791b84be7994040f29aa3ad3df15",
-      "lld-link/nsc_stage52_2_var_keyword_tests.exe": "7aee84ce0bf255f2c8ec6b3287296aa8112f1b850db179d4dc06ac35ad93569b",
-      "lld-link/nsc_stage52_3_foreach_tests.exe": "f841d10becf67287ac890a4aa8f9c615424b6912c586925b612d1f6edcd20403",
-      "lld-link/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "bc09ddebbf46c55b56ba54e15153f44f24b64d1f10c79172d0c1e5162ea829ad",
-      "lld-link/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "9cfd34a20c8e64ffdcb6f4cac73b23cd9a5a66ae6b80e9131f71fa16bbe8aacb",
-      "lld-link/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "4e260d1e25322e3bccd8cd482978f576f04d55b16b57bce0791fd253d9c3457b",
-      "lld-link/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "bc91ca9a0d246b69774b7af04dd58f9344eb8a46f9bcbda45492fc682679ffb3",
-      "lld-link/nsc_stage53_1_time_tests.exe": "237cd61d106d2b3d2e04bb18e656e63c7c19dcaa266d4e9aea798855bae9c7ba",
-      "lld-link/nsc_stage53_2_environment_tests.exe": "b6e4ade31152712e8830f4d149acd468cf507e2a840c86412ddba8c4f364f0f0",
-      "lld-link/nsc_stage53_2b_environment_variables_tests.exe": "204a8b75e4e705d36304ee74eb6ca7594cf3baec07e194827389d6ffa6e9aebf",
-      "lld-link/nsc_stage53_3_filesystem_paths_tests.exe": "c4b194421cb0427ccfd0c345840e9d8b5753ce22a10dbebfc2169b6552637bda",
-      "lld-link/nsc_stage53_3b_filesystem_paths_content_tests.exe": "abe9d03ead8c182e99ec0e5b3c37f77a2055db363e1839a9854fb62e0b2a6b59",
-      "lld-link/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "4089089334899e55a273feda957a8e68553fb57426a301b44626cca6fe18d15c",
-      "lld-link/nsc_stage53_5_command_line_args_tests.exe": "ba57604ed320b130c60d224d7ac744cb5ce3fde7352fb545e65ddf764b07ec64",
-      "lld-link/nsc_stage53_6_directory_enumeration_tests.exe": "e968dc9c624e0244178da1f3799eb4ca5a47b2f9ad5a80ac538c0755c95a80ea",
-      "lld-link/nsc_stage54_1_threads_tests.exe": "441db94e6fb5726490c28fb2e7709708adfc6648dfd2c6b73b722b8ed4bd7898",
-      "lld-link/nsc_stage54_2_atomics_tests.exe": "737134cc99a48a16e077ed075b8d893eead082cda2dbea06a0fd6e2fef60873c",
-      "lld-link/nsc_stage54_3_mutex_tests.exe": "c15f5f92ff61927667c5d9b35ba71fbf5a4e0cabf2463488c4a4f32a52466c75",
-      "lld-link/nsc_stage54_4_monitor_tests.exe": "ee26f3b985b690887f3e43ce207b7d72f9e7719a7880e557a68cb71ed7e11045",
-      "lld-link/nsc_stage54_5_sync_primitives_tests.exe": "8d1c1a1a633a2bc26c932bd8c612340cc35fc6b8075a47c3df7a1fe003ebba3c",
-      "lld-link/nsc_stage55_1_process_tests.exe": "c8a265b13629f79e0b8c9f3a441a477df26bad9ae2458137627e4ff23ebf5e32",
-      "lld-link/nsc_stage55_2_hardware_tests.exe": "b872812ae9be017f5084f44d091cceabadf2376d9692f0d5cb545efa265cbb5d",
-      "lld-link/nsc_stage55_3_diagnostics_tests.exe": "233fb222942b272154220064ce4444351c073615b318ffdca64c9deb05d891d8",
-      "lld-link/nsc_stage55x_interop_foundation_tests.exe": "bc8b7cb3986bd15b8def743d471d84ca26cb86e0f8fd79a29c7d2a660fa60e22",
-      "lld-link/nsc_stage56_bugfix_tests.exe": "4b40296de7376f72e5e423e530b672aaea0791573dd847b3cd4a80c0304d02ee",
-      "lld-link/nsc_stage56_c1_interop_completion_tests.exe": "10e28b9257fe19dcf563bcbdc708ec31f74dcfadd700fc8dc51280361049f9cc",
-      "lld-link/nsc_stage56_c2c4_language_completion_tests.exe": "6c93a3eb2ee37f4e2e114bc669916ee0b82c609b7b26ef44640ee4ad56c9d50d",
-      "lld-link/nsc_stage56_c6_struct_members_tests.exe": "3f198e895b1d0d5f6e1c90c84d3787da603f498a0a078d0791b11d897455593b",
-      "lld-link/nsc_stage56_c7_definite_assignment_tests.exe": "f1fe99024a1cba67680005f733a9f137111a6d5fefec0b01b0e8f922d1808c00",
-      "lld-link/nsc_stage56_c8_type_root_tests.exe": "149add9ca684da7e436a7ff78a165534135934582bdcbbbcdada29c02d4cb6fe",
-      "lld-link/nsc_stage57_language_tests.exe": "094abeedec68f672851c9c92cbbd6e9c60d3cdcddcf996af197e82959fb7dbe9",
+      "lld-link/nsc_stage50_8_ownership_ir_lowering_tests.exe": "cd697c2a4e09cef4257ba7d7d7ee82cba517a9d4a028a9f21ee456c992721a3b",
+      "lld-link/nsc_stage50_9_metadata_host_compatibility_tests.exe": "51156683777d7bee390d1fde97c20419c2954f7d9252e3f3234b5ae3544fbf55",
+      "lld-link/nsc_stage51_complete_string_tests.exe": "4664dc14593037e9fb80048c1d5cdcaa4d5c73abfac4c64109ce138086a3897f",
+      "lld-link/nsc_stage51_enum_oop_support_tests.exe": "12aa76f7da87719d72e06d883c3e70f06d1b193a0f9c80377ef4e0fbf3bd176a",
+      "lld-link/nsc_stage52_1_generic_collections_additions_tests.exe": "cffada58e86e7c2b248d5e9075a43b5212b50d9e7273152bc799f2de056c6147",
+      "lld-link/nsc_stage52_2_var_keyword_tests.exe": "47ce7bca711def4206ac6e368d163e86fce46196220d6b682db4ae04fca5b9b8",
+      "lld-link/nsc_stage52_3_foreach_tests.exe": "b13935fb49f7cf633d32a048240fa44b602660c1e385992899490df916884169",
+      "lld-link/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "e9d95affc7b87f7ad7ff352305f59f39d1888e7cad19716b99c52574a3aff7b8",
+      "lld-link/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "31589067b40c37e3a954cf55a5e0c086d20124e400ee3307a3184a45f1fb7d6c",
+      "lld-link/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "9c2403b5442531cce3bfcc93b81fa3eccafdb00348e28d3b6c75ead1c7a6c480",
+      "lld-link/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "06750e21178b5cb1c74fed699c641d4dbb5ff61ad47522b0645be48a8fbfdeee",
+      "lld-link/nsc_stage53_1_time_tests.exe": "ebc37b78f9caeb4ff0076593daf8478a736242463fd39af8d1339119b5f352cd",
+      "lld-link/nsc_stage53_2_environment_tests.exe": "001423379f63f93c6bd25952f8bb02db1474c4d206de048cbe84897cd66f87e1",
+      "lld-link/nsc_stage53_2b_environment_variables_tests.exe": "6c7c0b066aafd0a373ba753b2a1df0ed361f7cce892eaaa1873cd994dc05e2c2",
+      "lld-link/nsc_stage53_3_filesystem_paths_tests.exe": "163bdd521568b2bd1c6e44f528319115da494b18e450ed7aafe87673b03e9f75",
+      "lld-link/nsc_stage53_3b_filesystem_paths_content_tests.exe": "41ce794289a7ef440341114a738a1f0d39b25fd886177a10f11a69c6ca77eb59",
+      "lld-link/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "fbab85d5308927337f4db14e5f819908dfe75ae6858c157831ffcb8d00b3d136",
+      "lld-link/nsc_stage53_5_command_line_args_tests.exe": "74c9f9b37bf24711fae0421882e27b601c24a264a90343acff4e75fe19923b3d",
+      "lld-link/nsc_stage53_6_directory_enumeration_tests.exe": "f883b919905577079df7f7f4f3ff2b60b830c36001e1186d7c6b5ca5c72e5136",
+      "lld-link/nsc_stage54_1_threads_tests.exe": "75da2459a7f06b3f7ae5d5a12f9f261bcd4892c6ae50a5194cbeee2e7c77198f",
+      "lld-link/nsc_stage54_2_atomics_tests.exe": "38c081b84a1e35dfa31b7a43a94c5a6c069e036a891289eea63b281f20a2589d",
+      "lld-link/nsc_stage54_3_mutex_tests.exe": "30bdfc359ad500b3820327b305b70bd30ce1b1cb217ee7df56d113364f6990a9",
+      "lld-link/nsc_stage54_4_monitor_tests.exe": "28fe7a1ca1ac95f4c2bd2d031228a134e26dc42e19ea55c464b08a78d66505b1",
+      "lld-link/nsc_stage54_5_sync_primitives_tests.exe": "c116257b0c2325124b7489d7edefbf5b44f1b5206f807c69ec1bbaa30e6cd409",
+      "lld-link/nsc_stage55_1_process_tests.exe": "630f6c84ca9752989133402820e486299034f9d00afada155a9187b2bf301d00",
+      "lld-link/nsc_stage55_2_hardware_tests.exe": "1af4af02b6e1513c718a108a9c4f466c1fa54d608dafb1062c54083e73c0d5e2",
+      "lld-link/nsc_stage55_3_diagnostics_tests.exe": "58dbb91eb2ca2e55681f8136705f2c64c4f4ac02778ead6d42605317f5220089",
+      "lld-link/nsc_stage55x_interop_foundation_tests.exe": "bdd77474b219923e62e0c1828e33922ade3a01ae06d7ccd4050660187d0cdc80",
+      "lld-link/nsc_stage56_bugfix_tests.exe": "834c852620f23dc1995ccfbbb017bfcb29aa2cb364469729bef2a35221d94cea",
+      "lld-link/nsc_stage56_c1_interop_completion_tests.exe": "c8475e82f4731e6ffbd3417160a7eb458504a9b1522f4dc344e70294e130aa4e",
+      "lld-link/nsc_stage56_c2c4_language_completion_tests.exe": "b5f54bff62360e607d1bd1895f93366ff7a90e654c4574c59a0b84d6bbb01132",
+      "lld-link/nsc_stage56_c6_struct_members_tests.exe": "475dddd3c0a583b398e7e7a9b840a2fab02492d7f0214c213dab9dd0905f1269",
+      "lld-link/nsc_stage56_c7_definite_assignment_tests.exe": "4dc487ff71c6ef80aee3bec2a009ab6477f88df56af0c88c1b7971f721994452",
+      "lld-link/nsc_stage56_c8_type_root_tests.exe": "76f02cd03d9246be817c50dbdd27aef299ae7a6105ddf75552b69704070dbc41",
+      "lld-link/nsc_stage57_language_tests.exe": "a07a1050c0a6c60889d9f861c0a6ab8798c19f5df9c3b914b9e494bb2742a1a4",
       "lld-link/nsc_stage58_view_lifetimes_tests.exe": "e80ba0d57f2bd22e10a160a19405abc6d5f473f1302bc0f9dcc32730a2f97b04",
       "lld-link/nsc_stage59_closed_generic_member_tests.exe": "fcd3114e54c3963b5c40ffb4a15bd6f716697aecb71835f86cd200758f4aa214",
+      "lld-link/nsc_stage60_language_contract_tests.exe": "f82526989ad2cca319945006754da01b6d47ac6de81a76be4000b0804c9efd5d",
       "lld-link/nsc_target_data_layout_tests.exe": "6bf628ea6a0bde61e2c91023d9d1f3ba34a380adf5bc043be35ab3e94c44e1f6",
       "lld-link/nsc_windows_linker_tests.exe": "66c648c9a34d6bb7f5ca4374a9908515531069383ee290bc8c011c2730680dd5",
       "lld-link/nsc_windows_runtime_tests.exe": "8babb091aa75b1fa7b3bdfacd1db47605abc0219ff84c26426a5264c760b5bcb",
-      "NSLink/nsc_cc1_build_identity_tests.exe": "5cf42529292c317efac49ed4326769e062facd0dee5b5cbb1b6761766e723ad4",
-      "NSLink/nsc_cc1_correctness_tests.exe": "41d78ff887a639760ae9cbb572c30bd6e515ef97ddfe6c8cb2b0451a203da676",
+      "NSLink/nsc_cc1_build_identity_tests.exe": "6774ddf701d0b20022fba8f4d30dce84fc69d2cc3ee6d5eb2b970a32dd602e2f",
+      "NSLink/nsc_cc1_correctness_tests.exe": "f26370e0ed6dea0c1cfc92ee74d8d214d4d15067a6c578e577c9ba9bc100ba09",
       "NSLink/nsc_cc1_integer_evaluator_tests.exe": "136acd61616455cf9686f01809d2eae3b0c731873352d464546522ddd2d690e4",
       "NSLink/nsc_cfg_tests.exe": "bf8a9062c32ebfe449c1751359f8aff2349df7abc47a720077f5ef7f8c303f30",
       "NSLink/nsc_cfg_verifier_tests.exe": "c775f9ccae8bbf9cf494fd37e9e47ba62245922d6ebf4178b0c1a6122e84d320",
@@ -171,7 +172,7 @@
       "NSLink/nsc_diagnostic_tests.exe": "44bfac1569fd34ea4a1024818b0d1b0da3584e971f324874621244d62bca0157",
       "NSLink/nsc_dominance_tests.exe": "3f62a59d948bdeb8acb19b66957a6bdfa69931e9b8ab18f9fbdd4e9eb7ba500b",
       "NSLink/nsc_dominance_verifier_tests.exe": "89160df53ddfb9d882fa4ea5bc0332c281ee175deddeb9537e1e574845d512fc",
-      "NSLink/nsc_driver_tests.exe": "c7d34d0348d8cd1279f124f5fdc57fcb7ac2e364ca8d5215a34455208649884b",
+      "NSLink/nsc_driver_tests.exe": "a873fe5b4cc4b0cd50190dcbcf2757d9bcb748b6b8e03cb03ba06b700e37aaa6",
       "NSLink/nsc_frontend_robustness_tests.exe": "b9a1915cd48706b1fbabee32e3cd2d715a07ef70b49ffb4ae162d342d93f6f6c",
       "NSLink/nsc_hir_tests.exe": "00d9511b1caed7c3787ec57e061b8036825a0c157a4b466ff50fe784d60d1ac7",
       "NSLink/nsc_hir_verifier_tests.exe": "fa7fe1d64c3dba704a8e189c784ea1f644b891a945727b9761cf769e32d93861",
@@ -188,7 +189,7 @@
       "NSLink/nsc_parser_tests.exe": "9bda5c362561d1462ee4938bc70fb3ef2a94143fcff1e843c14b7a7c30b4baaa",
       "NSLink/nsc_partial_class_aggregation_tests.exe": "50fc51424f86b5d9b2988ef99f8a66a43fd245dbee941ac1e420234f3644a45b",
       "NSLink/nsc_pass_manager_tests.exe": "625866ea619cabcc8f6c717d6fc571ec05a4b6a0c6043596ad493571e908889b",
-      "NSLink/nsc_prestage56_utilities_tests.exe": "424e950f2c3e6d3f5002537cf2862990031fb5f7046d1ef1e50dcd321c85e382",
+      "NSLink/nsc_prestage56_utilities_tests.exe": "5771fd37b5bc3b8eb8e9b970eefad92c27f14305c974612f2ed8a0934e1c087c",
       "NSLink/nsc_project_compilation_tests.exe": "8b43bacd89736feb16149cb54450c301c1dd6c1c4aa9fb7865a24a3d00b79d10",
       "NSLink/nsc_project_construction_model_tests.exe": "cff7cc2dae78b45c4cfcff9c18e40b8df2c77522ff3804b544183f14ac792cf7",
       "NSLink/nsc_project_graph_tests.exe": "1cf57bdb65d03085e57e418428306983d9ba022cd64741b487b1f76430f34618",
@@ -208,37 +209,37 @@
       "NSLink/nsc_stage37_static_initialization_tests.exe": "9ce79067e29dea319955f8b4e67ada21468ecfbaa68cd87042e84923795253fe",
       "NSLink/nsc_stage38_properties_indexers_operators_tests.exe": "309e5da7572749b77db395bb15962d193e8f4f5c5dc7e5b56dc12b9d6c8d6ad2",
       "NSLink/nsc_stage39_rtti_casts_tests.exe": "68c32c2fa378ff0a420fc9112c1fbb40d395be525ea6837bb01359ed6091365c",
-      "NSLink/nsc_stage40_2_aggregate_abi_execution_tests.exe": "82a3e97f1074efff8db2e5d7c2e306d1946a6b5307e6eb9864ef55165db7de86",
+      "NSLink/nsc_stage40_2_aggregate_abi_execution_tests.exe": "665da830c69083740c1e39ea8dd9531dcdacca1ce177a90546858fae403a940a",
       "NSLink/nsc_stage40_struct_value_abi_tests.exe": "529182d859f0dcc86e5a8cfc40b7566edda19e2389038823232830631ca291eb",
       "NSLink/nsc_stage41_arrays_strings_core_tests.exe": "58f20118078a34f037e8354a8c5742bcb555208eeb0c3bffc45e5dbfdd13d0fb",
       "NSLink/nsc_stage42_delegates_events_tests.exe": "2c58cf662634b81c0390b1f80173ba2b8112bb8e2ad0f35e8ac6ba1c41c5a5a6",
       "NSLink/nsc_stage43_lambdas_closures_tests.exe": "773fd6b648d51dd5adc60d33a92df86b2408ef4cdd778f46232582a806188d44",
       "NSLink/nsc_stage44_generics_monomorphization_tests.exe": "4e5683dcaece4802d84e8cfb2de6a67e57763c1eeffba3d9fb3c2eb1b02c6027",
-      "NSLink/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "833a76adcff0f19990c53838bb5dbc5e453f7991bc18e6cfcd3a02cde601c165",
-      "NSLink/nsc_stage45_11_eh_cleanup_execution_tests.exe": "2504969985bce5aac2995dac6adb9f3d5bb5c0f2c95b0ac61ae755163e0be5ab",
+      "NSLink/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "a4062e653bd2ed6b43ed87bbf46339d3732f275c23a1558ed36457adfd8936be",
+      "NSLink/nsc_stage45_11_eh_cleanup_execution_tests.exe": "9e22a7091cd34adf216e1397974d6de5ae1d68eb2e5cacd893b0cf958b093500",
       "NSLink/nsc_stage45_cleanup_scope_tests.exe": "6d4e0fa3fed0aa22efda2a213da37d32e90b7490c24b72e84072cb3ef168435d",
       "NSLink/nsc_stage45_exception_sema_tests.exe": "1000cdc080a79b296baf700c0f303dceda7aa31f347df5e518389b03c6bafa31",
       "NSLink/nsc_stage45_exceptions_syntax_tests.exe": "cdc0be2fcfc3e2000f869f11f1080f278d83f1b6575990087d9a072d2a00ab6b",
       "NSLink/nsc_stage45_finally_flow_tests.exe": "c20e7d727d9f88e7b8ab47c9ea57511380c252daaf0f9770c3833463413c8ef1",
       "NSLink/nsc_stage45_hir_exceptional_cfg_tests.exe": "b04af3bf9254161f4f65c49baf72f638df3c2aa018e4e2e5dbf655b937771431",
-      "NSLink/nsc_stage45_linker_pe_eh_tests.exe": "dbd76dec52b7d9d2a9903ab87324304823a03d77ec24a40ae9852189b565e5a0",
+      "NSLink/nsc_stage45_linker_pe_eh_tests.exe": "6b1eb0ac7c6b9f5329479ce17d716127a5222dc7e23dec58ef140200060ac00a",
       "NSLink/nsc_stage45_llvm_cleanup_funclet_tests.exe": "42021d27346604c86eeaadec6246ad350d33ac5fb53b7d9dc848e114a7d0eec3",
       "NSLink/nsc_stage45_llvm_win64_eh_basic_tests.exe": "9673dc0fc588f83b259fd0f1da7d424a42efc51c7c0ae14afc6b5c016053b64d",
       "NSLink/nsc_stage45_mir_exceptional_cfg_tests.exe": "6cf0a09a8a0329d31b25f1d5323c46df8698c8f01c4d5f1568379d1cdb72ea08",
       "NSLink/nsc_stage45_native_exception_runtime_tests.exe": "dc19ca21f99d56b9c18bdd556eb266cf124bfc2047f6a30904d65b4dc24c90db",
       "NSLink/nsc_stage45_typed_catch_rtti_tests.exe": "5fd96400c32e24877ab3855f8ffc88abd0935640f37d9c3a699fd01ce6565c2c",
       "NSLink/nsc_stage45_using_disposable_tests.exe": "f849689a9927be49a528ffa963df5980236959d4ec566524fd40d5a586d603f8",
-      "NSLink/nsc_stage46_native_libraries_tests.exe": "bef7f1c9a375ec6600c685c107b0a3626b686d41a1d912422c976a7978eaf198",
-      "NSLink/nsc_stage47_host_c_abi_tests.exe": "4f9d26f0b6d107d57fd16c2f3368123171a042ad01ac9875306fee96692e3f9a",
-      "NSLink/nsc_stage48_1_c_header_tests.exe": "21e45b23d3ce0831d858629586db3973b604c52fead8cacdc92003b52672f434",
-      "NSLink/nsc_stage48_2_library_metadata_tests.exe": "44cfb9d9079d685964ad0c0314a9373b64ce3c68e3d090f8d6111ff95f6a86d6",
-      "NSLink/nsc_stage48_3_c_host_tests.exe": "296c5e1b77b8d00902f42e1f6127a4452f9ed7825e6f2dc6bb3084cca1066a84",
-      "NSLink/nsc_stage48_4_cpp_host_tests.exe": "3a556edc360dafdc2f2b806338fa87afb4a713d0d4d52931764d00e7fe62a52d",
-      "NSLink/nsc_stage48_5_csharp_host_tests.exe": "acb9c17e794d0b66a21d8ca087432cb9deaa99c65e8379f339298e2407526a40",
-      "NSLink/nsc_stage48_6_cppcli_host_tests.exe": "ac5119edc5c72877854366a804a0a63254e3ace727d5ae9d2322044f82d24816",
-      "NSLink/nsc_stage49_raii_move_tests.exe": "061c0650784db8c7a44f871b332b2329336569b2b07a54ab4fdc4b3ce5709ff2",
-      "NSLink/nsc_stage50_10_ownership_examples_documentation_tests.exe": "bdc7c56d53ef3f4c09f9f4bb732f379acb8b971e47f5ea1209649f5f1f68ce2b",
-      "NSLink/nsc_stage50_11_ownership_execution_tests.exe": "9546aded25580d5714b595a7b2d01b41886ba0bf3f723ec20c0d25d408cd7a94",
+      "NSLink/nsc_stage46_native_libraries_tests.exe": "218abce172fdfc4829d668958a76276391ecd2a93c8c4d94c195b76286091262",
+      "NSLink/nsc_stage47_host_c_abi_tests.exe": "bd7044a8eeeb745f157fd23568cc9fbb38e71e5e63306cc2d890c5fe3fcdeebe",
+      "NSLink/nsc_stage48_1_c_header_tests.exe": "1174c934ce1f08f6a67dbed18ca38979b6079b26e203da1c7c7db46fb4c17aa3",
+      "NSLink/nsc_stage48_2_library_metadata_tests.exe": "5f5e2afefec1f88cd8d558826bd605c9c71d25ab66fdd297e3e7d1428478078d",
+      "NSLink/nsc_stage48_3_c_host_tests.exe": "a7e243f2e07ecb394ac6f35381ddf5ee6747d099a72442c6da2bc199cdeb089a",
+      "NSLink/nsc_stage48_4_cpp_host_tests.exe": "390eb4f3a023a983319573f3be165093509ff142fb4687471cba9c07eaca4429",
+      "NSLink/nsc_stage48_5_csharp_host_tests.exe": "966d9d48243bc8994badf5f1aeae687fbc4b170d24f39cdf007f203f11def6fd",
+      "NSLink/nsc_stage48_6_cppcli_host_tests.exe": "c371143e6a262a4526ac79ff2a00433942c30fdb33998f2c66393773dd79979a",
+      "NSLink/nsc_stage49_raii_move_tests.exe": "3e25eabaa06a3e55e41a05f79f6e45fdc2518508fd037fa6cfe63378413ba17b",
+      "NSLink/nsc_stage50_10_ownership_examples_documentation_tests.exe": "2716613b9a9554a6dd672a5c4920a5e0f17cebcef2d31ff051783f19d468e242",
+      "NSLink/nsc_stage50_11_ownership_execution_tests.exe": "4fb907948c7988592b7b5b786c7ad745dcc132828debcc073e4d978b7356f676",
       "NSLink/nsc_stage50_1_ownership_syntax_tests.exe": "11b3f2265797c8ec42475cf45ef43c243e229b482045ea7bb444aff5c71c8b74",
       "NSLink/nsc_stage50_2_ownership_type_system_tests.exe": "41dcf51debf95dadc9ad0dbbf4e2a20809c85d1705101574135e53ea96bf35fb",
       "NSLink/nsc_stage50_3_owned_parameters_returns_tests.exe": "f5317acc69d49cf5d0b4fcfb91ff743739373bab4b95bb896a85961736d2ffb8",
@@ -246,43 +247,44 @@
       "NSLink/nsc_stage50_5_local_borrows_lifetimes_tests.exe": "c23a3892e5b2be9527ba22aec10b3720391c5e9fa8e2d9ddd69f1bd6b013ed1d",
       "NSLink/nsc_stage50_6_ownership_control_flow_tests.exe": "d23b713c2d832345d601c7f3f17cbb1d1e2cc71cacd5b784085aafa82e185c98",
       "NSLink/nsc_stage50_7_borrow_escape_analysis_tests.exe": "002a28ab29eac021df38266f21bfe204bd7907dff1ac6386d523d09cf835147c",
-      "NSLink/nsc_stage50_8_ownership_ir_lowering_tests.exe": "9d6aeb88acb5e0cf7d2ce7aaa49db840e64e7239f432c0e8be308807b0a0560e",
-      "NSLink/nsc_stage50_9_metadata_host_compatibility_tests.exe": "16069bc17bb6a3391d05012556c5093b8378f19e3107650b6f03c6c3e18605cd",
-      "NSLink/nsc_stage51_complete_string_tests.exe": "7f1a2da17ca0b7d5c595f6c7a52b3499d3c136c473f4ef6c5ee3aa21b619cd52",
-      "NSLink/nsc_stage51_enum_oop_support_tests.exe": "51e78badf8cf42355c19da8341b800d554d1f3690cdc96f693a32b3ef60e41b8",
-      "NSLink/nsc_stage52_1_generic_collections_additions_tests.exe": "bff972e40628f020df70f40b2ae40b9935dbb297846eb462c7b06c3d9ccb3a49",
-      "NSLink/nsc_stage52_2_var_keyword_tests.exe": "b8eb376dc5fce3286fcd403af2796c8d6144782fded6f3a4b35166bd53768ac0",
-      "NSLink/nsc_stage52_3_foreach_tests.exe": "c19425be0c5d4e451d5bf16ac4212fd2646e517759f78ee1018c1302cd8c727e",
-      "NSLink/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "f7ba39e3cd566b6bb0ba662e29d78b885e8d30583b2a2b8f46b1998faf185e8e",
-      "NSLink/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "531230ac2a797b789d3658150fead2363c3f213f05b5112f06ff939cb52036ab",
-      "NSLink/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "fdc998d77ee7613cc12b46114b4c7a96848f92beaf789f5e566bbb2290aaa9ec",
-      "NSLink/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "140334c416556c1fe90fbaa3e2cf8357f0bf32fa1946746e79c115d4bea1d186",
-      "NSLink/nsc_stage53_1_time_tests.exe": "526ddf160454efef8d63621ab86137343075efbc0e6936db543fb93e4db8c82b",
-      "NSLink/nsc_stage53_2_environment_tests.exe": "9c6d29ea94d0ae46807fede9ac21eff8da9e38fb955c14612662e01bdd748a00",
-      "NSLink/nsc_stage53_2b_environment_variables_tests.exe": "67e148f78998d82d8253668f25ca055ff5721dc1c92d8489e5b159d530357b30",
-      "NSLink/nsc_stage53_3_filesystem_paths_tests.exe": "a29a0bd268e9ec5dd93254cb15949fd39e1c34437fde2ab5ab962abf2802f40f",
-      "NSLink/nsc_stage53_3b_filesystem_paths_content_tests.exe": "40cb5bfe6b1274b39e507dc85998b33b66cc10315142878039419d84049c8820",
-      "NSLink/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "22535fef6c27002d50401d83894d6559e000c101547fc41802af1de3e125494a",
-      "NSLink/nsc_stage53_5_command_line_args_tests.exe": "84275d79801dd22a1229f7209b962b486c5da0f3af0fefb4efc4ec992f7019ab",
-      "NSLink/nsc_stage53_6_directory_enumeration_tests.exe": "d82dac5f3aebaf3e15c237ab23316a7accc67681251bfe7a36e79d7eeb342b55",
-      "NSLink/nsc_stage54_1_threads_tests.exe": "7d2fe1072e26e5c6f4b023509066e97264e89882127c001a2b68187de219712b",
-      "NSLink/nsc_stage54_2_atomics_tests.exe": "8ba99f2b5f729602412e816831a2211ca76ab3cacd13d5aa6b2d43af3c588128",
-      "NSLink/nsc_stage54_3_mutex_tests.exe": "d1bbd01d744b07f4636d4f1fce0ade93b97421bf7989a41f18515dffed9082a1",
-      "NSLink/nsc_stage54_4_monitor_tests.exe": "660a10ad314db5d52bebd8677de68481ff40c278231fea1c0ece3c64bacdf2b1",
-      "NSLink/nsc_stage54_5_sync_primitives_tests.exe": "20f25e5e0f878e890414bff589d79a436685c9907a75ae387ebb1ef61a35f131",
-      "NSLink/nsc_stage55_1_process_tests.exe": "aad7d9b452ab3d98e992b4ae4b8645a8a3d2733249f789f8eb095c9a42f2b4ea",
-      "NSLink/nsc_stage55_2_hardware_tests.exe": "32f45e08a53b79cba6a9be23ec7732cdf18a92a7530d69fd6d058e611e9c245f",
-      "NSLink/nsc_stage55_3_diagnostics_tests.exe": "54e3e9d5953d9457feed95008006a25d06c359c2b5e1fcbcefc7863f746e3ca8",
-      "NSLink/nsc_stage55x_interop_foundation_tests.exe": "999bfd3c617d74a4d543b1d618a616c7f34ef38394ca4525186fa07b040e0016",
-      "NSLink/nsc_stage56_bugfix_tests.exe": "17f17b1002b9e79d7578d5431e1d59964505bb1b747dd7c648c5a74f7364dcf2",
-      "NSLink/nsc_stage56_c1_interop_completion_tests.exe": "7dd761dcead2cfe6c0a8ad7e2056f55bd2a56c23024aa068e7204e5e99245328",
-      "NSLink/nsc_stage56_c2c4_language_completion_tests.exe": "aaadc0546517655017a2d7d77e0a9f819cd21dbbc6817ce525b506c5bdc3871a",
-      "NSLink/nsc_stage56_c6_struct_members_tests.exe": "ae51a048a45a818787a6c8d67373fd2a97b68bf060bb3b705a7a6eab089bce06",
-      "NSLink/nsc_stage56_c7_definite_assignment_tests.exe": "126e66d108108fe1c5311b6f3a23a9f84a0e21c40b28ca6d8e5b44c728d9717f",
-      "NSLink/nsc_stage56_c8_type_root_tests.exe": "cab499430afa073862d76f3bacd51a3637d81531aaa67484653665607946e0d9",
-      "NSLink/nsc_stage57_language_tests.exe": "d921611cf28c0615bb736a4a89b7b270e3c0ee8d2085758aa7b7dfa85b81ccac",
+      "NSLink/nsc_stage50_8_ownership_ir_lowering_tests.exe": "f11689b29690363050186968f0a149831ad2739c7d949be497f0433662967f24",
+      "NSLink/nsc_stage50_9_metadata_host_compatibility_tests.exe": "8992ad3e16f72c6b0f3212435ec24e3121537a786bddd20a622cdb24b644082e",
+      "NSLink/nsc_stage51_complete_string_tests.exe": "60804929917f5c405d22544aa8b92107852c90924cb110edf3e1b54054a5d91f",
+      "NSLink/nsc_stage51_enum_oop_support_tests.exe": "4970265b2552a5b124ea2b71733a2367eb67b4229e36d794d3df162fa6d15d8d",
+      "NSLink/nsc_stage52_1_generic_collections_additions_tests.exe": "4a3c73ce6de5f3d719be9d96deb4a63ac62ccd86ae2ca09f1acaed102d877dfc",
+      "NSLink/nsc_stage52_2_var_keyword_tests.exe": "a289da1799b5d610710a17c73a0cebc8be58b31a3bf8df71c9ee0f4cdda98958",
+      "NSLink/nsc_stage52_3_foreach_tests.exe": "35439b5f760c5d91afcbbcdd4b61a9749684b2ef37727a0dc242a9810e87dd0c",
+      "NSLink/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "904eb1ea1028f7b944ecbf5d873de0891fcb8f4798c8a4d4971fd715537e7fc3",
+      "NSLink/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "22220ced997ae35df0457c986d2a3dceea767857e7d8855d899c15e9b4c0bb16",
+      "NSLink/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "ee51ea21c15277fde1783a7495d7164a1b08f53e40c10c77a114670534f4be85",
+      "NSLink/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "a90392e623ba3de561cf86848feda270ebfa37d200a23c254397bec3d996c115",
+      "NSLink/nsc_stage53_1_time_tests.exe": "94342cdb67538299576b6210a2e169c9d3149f47af6b4a26985cbb1bccf78a1e",
+      "NSLink/nsc_stage53_2_environment_tests.exe": "a0b694188dc69d01339ed2c0f9b52a2fb4c3f5f90c67399e9ff2f97d1cf5ee11",
+      "NSLink/nsc_stage53_2b_environment_variables_tests.exe": "90f68b662630fb82ce05dbc4251654d6fb5dcca3096b2089e192bb97df362fbf",
+      "NSLink/nsc_stage53_3_filesystem_paths_tests.exe": "6a20b7d3b4fb316a67f9da2659484e5f17a483195fedd7fb560168a0d49768ff",
+      "NSLink/nsc_stage53_3b_filesystem_paths_content_tests.exe": "316bbb5e9ffdd200a46d084128b3187d1f1956383203531a7b314e7835c5327d",
+      "NSLink/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "60854da74d68e3c9b68d49e83bdc1ffd00cfd1b3e9038bea4cda6f0245d19ec8",
+      "NSLink/nsc_stage53_5_command_line_args_tests.exe": "2b6e5231a34bd49cfa167cfe92de55b0bf1929db277c6e91070ec5a23a283368",
+      "NSLink/nsc_stage53_6_directory_enumeration_tests.exe": "595653dcad6d256d102025164ab2bf39c98ce7351cd946c37c27b3f5fd20505f",
+      "NSLink/nsc_stage54_1_threads_tests.exe": "220946bd70789a6d15771ca74b8292ad9a1e24597ae585c4805e521107eb12d1",
+      "NSLink/nsc_stage54_2_atomics_tests.exe": "dfcd15b12e064b48fece6597035a421b0496ea69662325a666a106bd8780696c",
+      "NSLink/nsc_stage54_3_mutex_tests.exe": "30450a88309c1e56f1687d55aa12ccb5a146ab9e1ad01f61ae8d681a1b085eed",
+      "NSLink/nsc_stage54_4_monitor_tests.exe": "624d3e1130bf12e92921f76bd3a3bc9d305dd4b7c7c9d1b2fe8486ea9ec28014",
+      "NSLink/nsc_stage54_5_sync_primitives_tests.exe": "172d65288050a63258f27af4f16a3615fe4a7112b41f1b757df3ff542f1d69e8",
+      "NSLink/nsc_stage55_1_process_tests.exe": "fb58224799c0a8aba5b5439ed9e928caa98762c2b5658be439e5bf6cb33d2388",
+      "NSLink/nsc_stage55_2_hardware_tests.exe": "7eddff88e43cf6353304125d3b04e9fb7a1dfb640abdd87ac4c46a960690fd29",
+      "NSLink/nsc_stage55_3_diagnostics_tests.exe": "5718acc09dd4e48d1d228cc492d4b5169818fcdf9d99bbbc06b62a3b3f1d4b0a",
+      "NSLink/nsc_stage55x_interop_foundation_tests.exe": "f515f7f91bfb7a183582519c177f27432c6551854c65bdde31bf7ab276ee50b5",
+      "NSLink/nsc_stage56_bugfix_tests.exe": "354d0823f4f1bf5de82649462ca6ef2d0e4a1292925098ebadf7d00850debcd9",
+      "NSLink/nsc_stage56_c1_interop_completion_tests.exe": "d8221883faa0b936315e8d8c3acee2648f9d2d3a0a5257e825a983ae2d6fc0f6",
+      "NSLink/nsc_stage56_c2c4_language_completion_tests.exe": "41e4c35d362b8c84d3376275bb260b300a2a339aed35de914075e01ae3ce64ea",
+      "NSLink/nsc_stage56_c6_struct_members_tests.exe": "b57151813b701392ca1f867c978b4094f698aca07d59290f9c35970c066573fe",
+      "NSLink/nsc_stage56_c7_definite_assignment_tests.exe": "1f809cfc29f7062526b82dd5c639058ba5de2c5bf08151e79fb44ea5834251d7",
+      "NSLink/nsc_stage56_c8_type_root_tests.exe": "f889f309931b08ac2defa1ee4a0c9f0fe3eb4d21d8042cf1d889db37a457e579",
+      "NSLink/nsc_stage57_language_tests.exe": "193147a07346c556635a0e129a965c064b83aa8b0782e5d38ae168768bb2cbc9",
       "NSLink/nsc_stage58_view_lifetimes_tests.exe": "de30738e6402cc6536e11d3d0b562d55ff0a515c6032eb8fbd9c96e434b56361",
       "NSLink/nsc_stage59_closed_generic_member_tests.exe": "637b5a40c8e7e2d97bff1828e1696da472744523b117362ceb37bf3f7534df9d",
+      "NSLink/nsc_stage60_language_contract_tests.exe": "f82526989ad2cca319945006754da01b6d47ac6de81a76be4000b0804c9efd5d",
       "NSLink/nsc_target_data_layout_tests.exe": "de04a16e0b96c7a5e6b278a332e103fc8e31f1a1e2e40a3f6ad856a39310496f",
       "NSLink/nsc_windows_linker_tests.exe": "d9c7ad8b8f8573c6bb0a9832daec790835ea6832762f466c50092a1bbedcef19",
       "NSLink/nsc_windows_runtime_tests.exe": "0c31f29e9f2b88357b763ae88fa98872ced61e956e16a44432f44156a2690f01"
@@ -291,14 +293,14 @@
   "after_run": {
     "moment": "after-run",
     "binaries": {
-      "built_nsc": "58c44dd8a966d526d4f83fa9e97bdcd223e3e992af0d61cce84e2018d3ba7d5c",
-      "installed_nsc": "58c44dd8a966d526d4f83fa9e97bdcd223e3e992af0d61cce84e2018d3ba7d5c"
+      "built_nsc": "0d19c7d0f1b1d7a8f9e14af4691d23cf21af704a085e0b895cfa76edd61750a3",
+      "installed_nsc": "0d19c7d0f1b1d7a8f9e14af4691d23cf21af704a085e0b895cfa76edd61750a3"
     },
     "tools": {
       "lld-link": "7efdab066cab3124fdf1173301701fd2e629602fdcb85f9ec3481a0c198f9a64",
       "nslink": "536e3a096d87574b5a1390277faf0ff2f037e5c47ca3436efdaa906409b36ce4",
-      "lld-link/nsc_cc1_build_identity_tests.exe": "a7e8cea4b227be06e78b6e0f2eb5153be4c0fb2964945de137ad17786f121738",
-      "lld-link/nsc_cc1_correctness_tests.exe": "e203cc41ac4a45ccbdefa2d408198693c5ee4ddab5cebfc008d3b26c0e4fe67f",
+      "lld-link/nsc_cc1_build_identity_tests.exe": "6fded141fc1df57bdc9b8309410ae1e84fddd48f582b586ad7a9838bfebef446",
+      "lld-link/nsc_cc1_correctness_tests.exe": "01f04936947b6538ecbf5d8a6d81c5cd18fb37cdb605ab1debea629117808a3b",
       "lld-link/nsc_cc1_integer_evaluator_tests.exe": "317f4bd5be641bb73f4ce9619fe2f78ef36ff0c27d7b93f142627a3d6501a427",
       "lld-link/nsc_cfg_tests.exe": "a23027d8f95de6f8afe1ad6e37280024ca6ff6c47e91cc84b1e3ab3a2fae63aa",
       "lld-link/nsc_cfg_verifier_tests.exe": "88e813b27760fcf1662cd8b6c791e8bbf0dbac228b1aeea0881d94c0f3593544",
@@ -310,7 +312,7 @@
       "lld-link/nsc_diagnostic_tests.exe": "e128575216b2f822b10623395ec50675dc4658aade57a1e00c5578124ae428fc",
       "lld-link/nsc_dominance_tests.exe": "bbc4a3310782ed39e247d42309af5dac64ec268945fbf04c102a6faae52bf9c4",
       "lld-link/nsc_dominance_verifier_tests.exe": "c3dfbbba3efb8b3d505aa7c35b30b62e5a96c9508b8bfb01878b068b5c76c4c6",
-      "lld-link/nsc_driver_tests.exe": "5d232fbd95af1fd9b8b5e6f6cabf604d94ac28e2ca7238f662152f407aec365f",
+      "lld-link/nsc_driver_tests.exe": "404d9a67a5f86997ced4968e46bf127552dfebf971c8c2066d0634e77e93c94d",
       "lld-link/nsc_frontend_robustness_tests.exe": "9082532e796ab0d624d08fa8ec449a25e4d6ccabee14a77fcdb691f7993d4652",
       "lld-link/nsc_hir_tests.exe": "166fcfe22134d63591625a5cae4ecb58e1649d525c7e45931aa9b9d28c5556db",
       "lld-link/nsc_hir_verifier_tests.exe": "2c243e21a460a931d8a958bcb0f33576507c6722b75c2737c618bb88721e2da1",
@@ -327,7 +329,7 @@
       "lld-link/nsc_parser_tests.exe": "8aed4310566bba2b4e19159ddc20005079aed7e9a495e046f1681555f810de6e",
       "lld-link/nsc_partial_class_aggregation_tests.exe": "d84f21bf576352b60dd29d49e751e915ee68a6c3cb6579f1e2723a5ea990011f",
       "lld-link/nsc_pass_manager_tests.exe": "8c94daee35dac6ca31b3d0777fff1d329e95536ef16ccfbeedb7fde251a0e308",
-      "lld-link/nsc_prestage56_utilities_tests.exe": "db691d9cc08daca2ebeb0f3a8f632598c7ea60c5ff6cd293f81e3c7ced79dc7d",
+      "lld-link/nsc_prestage56_utilities_tests.exe": "e45969633a778a859b8d6029c59807ccd430fab9d71588110b0828439b546ef9",
       "lld-link/nsc_project_compilation_tests.exe": "fc4d9065d0646a5f0b1330c01240a584fcfee81590b5de1f492a9d36c726fbd0",
       "lld-link/nsc_project_construction_model_tests.exe": "da6d44ae0d522ea381c6a10a71b4baf59815f1206e0965bee83b4efeb0415c53",
       "lld-link/nsc_project_graph_tests.exe": "afd64e27219429a7647553e61a40dfa016289b5c523f5d8426fea6a93ff6eaee",
@@ -347,37 +349,37 @@
       "lld-link/nsc_stage37_static_initialization_tests.exe": "ff47ba00db2da44ebb96c2ce83174561160cc3296eb6241d8852f30736858a3b",
       "lld-link/nsc_stage38_properties_indexers_operators_tests.exe": "d32db4e2179df394b218a27ad7037c6714f668dabbe8c805c837463c7fb2b290",
       "lld-link/nsc_stage39_rtti_casts_tests.exe": "44a185af9ac86a1330b122fe10ca02f4ce7148d187e6c98a5e516af73cd38b45",
-      "lld-link/nsc_stage40_2_aggregate_abi_execution_tests.exe": "ebe7db1fd10d1fa4a04aeefb45b93012d897f27b415ead09ec98773566b6d4c6",
+      "lld-link/nsc_stage40_2_aggregate_abi_execution_tests.exe": "ffa6397fcfdd7c93b19dd9d07770b818acf215d835f91995cb29501dd224c942",
       "lld-link/nsc_stage40_struct_value_abi_tests.exe": "e0f747850837fd5ed155a354773cf0a1d3235f17aaa57c7bb55369b5a0246d3f",
       "lld-link/nsc_stage41_arrays_strings_core_tests.exe": "46b449293ebc24e1a8c81fef60b79cb9e0a5afaa98bcb6eaaa1f77358bc643cd",
       "lld-link/nsc_stage42_delegates_events_tests.exe": "65dcf332d44697aa8b23d69e07da189837bb5fe1511edc045b622499317f966e",
       "lld-link/nsc_stage43_lambdas_closures_tests.exe": "5fedbc805f8f5116101ce1398b53255f356066f988f5d62b08467a94fbcadcf6",
       "lld-link/nsc_stage44_generics_monomorphization_tests.exe": "4775405bba449af98829fabba74e1647b33d8177bb037482faf4d236ef94cb7f",
-      "lld-link/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "f5549393854062dea97ca2acd79915db339e24d7d577cb1c3997e4bd09748297",
-      "lld-link/nsc_stage45_11_eh_cleanup_execution_tests.exe": "a09ddffb641842c201ea14776451a0f51dba3d092df065aa35855aa366a1fc4d",
+      "lld-link/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "b510f09f585ec4de1e1ff48e32ebd0221338a2d99152b917cfd282bd6aada553",
+      "lld-link/nsc_stage45_11_eh_cleanup_execution_tests.exe": "b1a55e155697cf1b7d8d68be7486026765635161419bc0aa4ac454e726b8dcfa",
       "lld-link/nsc_stage45_cleanup_scope_tests.exe": "21c523e9eff47bf038c1c32d1cbe90a5c4293b1f4b3c8c19ec24c29abc51dc88",
       "lld-link/nsc_stage45_exception_sema_tests.exe": "bbba2bd94c2e98e712278a5a4454008b7541a6a403cbefdc98fca53eb9f3585d",
       "lld-link/nsc_stage45_exceptions_syntax_tests.exe": "628d0c7da817a1e8a4ada944cafef97297a3fea88c27459468514af865a4787f",
       "lld-link/nsc_stage45_finally_flow_tests.exe": "7adbaabcc178ca0cf767dbd60a648275ef18b5628fdf57fb01f2d3df6d06d849",
       "lld-link/nsc_stage45_hir_exceptional_cfg_tests.exe": "a6d60a750ce29b32f93ceea8791f7a10177f193aeb922925f089ed8a42f041a6",
-      "lld-link/nsc_stage45_linker_pe_eh_tests.exe": "27733371c0a8fae8c730b44c5960730e0c3184698761bcf3ccbf768473f26b21",
+      "lld-link/nsc_stage45_linker_pe_eh_tests.exe": "f2d9d2c0858cdac793092346c6dbaac98b068b0e8a878a35eb7c62be449c6d5d",
       "lld-link/nsc_stage45_llvm_cleanup_funclet_tests.exe": "0a9d7385ed5cc08d0e34e42a1b4e063ddaf04c8f3364a51f73f903d191f74eba",
       "lld-link/nsc_stage45_llvm_win64_eh_basic_tests.exe": "d5cf3715d2a8e4faab303cce5d90f5e9ea29c724331ecd5bdbc40a2b35149a03",
       "lld-link/nsc_stage45_mir_exceptional_cfg_tests.exe": "ace8653b761c9c6625a8702a6c3453abd14596ebfb2ec23985cd6f48100e4b60",
       "lld-link/nsc_stage45_native_exception_runtime_tests.exe": "5ac4d9b43e321a6519eff25d2b0fb55aeb6294bf3dce932cab178b2f433ecba2",
       "lld-link/nsc_stage45_typed_catch_rtti_tests.exe": "c9c931c6229181ab52a75f41f57dc2740fc2fc400205a86963ef04a1da185360",
       "lld-link/nsc_stage45_using_disposable_tests.exe": "f57de5105e2d648c64f31b1f26391a55f1fa3c0ae58710a6ee2e7e47da920956",
-      "lld-link/nsc_stage46_native_libraries_tests.exe": "f1474c992788dff1adf5c99b32b0b68f414737155ec2b23625c406b198b3144b",
-      "lld-link/nsc_stage47_host_c_abi_tests.exe": "4a21ad34c74dc083643ee0c5fffeea51853cf5572e70b146c9ad516157748d73",
-      "lld-link/nsc_stage48_1_c_header_tests.exe": "dd7b6dd94bea327e48fe20f010cad6ff0b82c250e9812c90881cb6154f60f754",
-      "lld-link/nsc_stage48_2_library_metadata_tests.exe": "1a86ddb58cd81697cda3704da705b400d96c66a4b6da5289a1f69d6c7e571806",
-      "lld-link/nsc_stage48_3_c_host_tests.exe": "d474670b82905987c9cd043ed38c012e8597d95300acff9708b2bee2a77b4dce",
-      "lld-link/nsc_stage48_4_cpp_host_tests.exe": "9a7bca16c7f100f922feb272342fbd27ac189c819c92931568db0ab7f109edc4",
-      "lld-link/nsc_stage48_5_csharp_host_tests.exe": "3df785944a260d1cdd6a4e1593eee21c4ab315176557d5d6e75441dc040c4602",
-      "lld-link/nsc_stage48_6_cppcli_host_tests.exe": "b56c2c4ffd8eb18f1872ea89d3c6d8b2e39ed994196f78da6a0ff364b615b1f9",
-      "lld-link/nsc_stage49_raii_move_tests.exe": "4e5133bdac9fdd3fed8b7ddebb6e3bcd5b6646924e66377cd6d2c6adb6b3e2c2",
-      "lld-link/nsc_stage50_10_ownership_examples_documentation_tests.exe": "fbf718a9f50704c1af8a0e600e329e2ce8eed5ce0dccdf03d1a03984c7e33f38",
-      "lld-link/nsc_stage50_11_ownership_execution_tests.exe": "b0ccfdebbbedfa7bc60a34cd9f3efbb802936a9138d2ed97b9d74ebbb2e4edc1",
+      "lld-link/nsc_stage46_native_libraries_tests.exe": "44fbb2a240045df87c9bd1c6b472da72e6a7798dc9fa2d1d7f6135ca33a14ca9",
+      "lld-link/nsc_stage47_host_c_abi_tests.exe": "506cb73e44a7f8e3ec4fc58cd15ae2e600a1b78a5f48a21dfd0d7186d1530762",
+      "lld-link/nsc_stage48_1_c_header_tests.exe": "05e3ca70ec015187993988c92e9844936429f5f0b56967b96e309b31968a5255",
+      "lld-link/nsc_stage48_2_library_metadata_tests.exe": "f95c3a49ef7a548d6721c3e570a2a128ac520af270166fc7ab2e4e9dc139ea77",
+      "lld-link/nsc_stage48_3_c_host_tests.exe": "66a69798a5b658f5ef57126450da8a49b29e3da79fad1f2afc7874313a8a4bf6",
+      "lld-link/nsc_stage48_4_cpp_host_tests.exe": "d14737279f88eaebcda0414cea7fe18f63d525001e5ac8dcfca887e13b6e2771",
+      "lld-link/nsc_stage48_5_csharp_host_tests.exe": "ba4f41613bc91d33ea80c1996afe655b61ce0b198c10f8c487b6b4de221c5f9b",
+      "lld-link/nsc_stage48_6_cppcli_host_tests.exe": "42a9029d4d9383d7771a3243e0c8f35663072eca1721df4be64591f81d654ead",
+      "lld-link/nsc_stage49_raii_move_tests.exe": "628369f292e0f94751bfd90fea0001f94623081a47c5e78d4575a3f9ea818ecb",
+      "lld-link/nsc_stage50_10_ownership_examples_documentation_tests.exe": "80cb94056445b1cc24b0ea5f2a2e004421d7a07320313cf68ab5e81185d02141",
+      "lld-link/nsc_stage50_11_ownership_execution_tests.exe": "55558517d1fe9f7fea4c32a39c1b01763033036f29144a8e67cbdb01f057e37c",
       "lld-link/nsc_stage50_1_ownership_syntax_tests.exe": "a0bbb21d4f356ea02c818807855110ab0e676c68b5a2cbf219166868a1b97579",
       "lld-link/nsc_stage50_2_ownership_type_system_tests.exe": "1ed027841b1eb7ad6661062b941dc3e9ce961d5e6d0ece14e4cba80747833179",
       "lld-link/nsc_stage50_3_owned_parameters_returns_tests.exe": "8feb6242d1d5f2d5c6173cc82dd8ced4818b3c9a46876332717abb3c854867c4",
@@ -385,48 +387,49 @@
       "lld-link/nsc_stage50_5_local_borrows_lifetimes_tests.exe": "dc24db9b31d53abde8fafc0caf4ff5c46e4928fd6b2fd5682e1f3dcd33b0da40",
       "lld-link/nsc_stage50_6_ownership_control_flow_tests.exe": "36f2837f83a86ca427ba6ab07e12e35efd02dd2abec0c8b7dd885629a8f1e308",
       "lld-link/nsc_stage50_7_borrow_escape_analysis_tests.exe": "0def0f1e90bece49c3a35dd0ccea6257ddb13e1d286eb0a30628441c72594f9b",
-      "lld-link/nsc_stage50_8_ownership_ir_lowering_tests.exe": "64974a8dfab1df27df0ea37a9694b4050c2f577970bfc54cbba4ef63bf0d30f9",
-      "lld-link/nsc_stage50_9_metadata_host_compatibility_tests.exe": "00dd3450ec45c95ec33731b8457dc003b508f78d7c1ce9275480292175d06c45",
-      "lld-link/nsc_stage51_complete_string_tests.exe": "9f066d309b9c969e49cc142a96b062e9e20c2266df1381183ba668ba8f12476a",
-      "lld-link/nsc_stage51_enum_oop_support_tests.exe": "a77060fe971e539a4ce3ba266cb86b629f3bdb3461387daa4c357f6f40702e0c",
-      "lld-link/nsc_stage52_1_generic_collections_additions_tests.exe": "203e9f0afb50c0755ebf4781b6ca88bac4f7791b84be7994040f29aa3ad3df15",
-      "lld-link/nsc_stage52_2_var_keyword_tests.exe": "7aee84ce0bf255f2c8ec6b3287296aa8112f1b850db179d4dc06ac35ad93569b",
-      "lld-link/nsc_stage52_3_foreach_tests.exe": "f841d10becf67287ac890a4aa8f9c615424b6912c586925b612d1f6edcd20403",
-      "lld-link/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "bc09ddebbf46c55b56ba54e15153f44f24b64d1f10c79172d0c1e5162ea829ad",
-      "lld-link/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "9cfd34a20c8e64ffdcb6f4cac73b23cd9a5a66ae6b80e9131f71fa16bbe8aacb",
-      "lld-link/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "4e260d1e25322e3bccd8cd482978f576f04d55b16b57bce0791fd253d9c3457b",
-      "lld-link/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "bc91ca9a0d246b69774b7af04dd58f9344eb8a46f9bcbda45492fc682679ffb3",
-      "lld-link/nsc_stage53_1_time_tests.exe": "237cd61d106d2b3d2e04bb18e656e63c7c19dcaa266d4e9aea798855bae9c7ba",
-      "lld-link/nsc_stage53_2_environment_tests.exe": "b6e4ade31152712e8830f4d149acd468cf507e2a840c86412ddba8c4f364f0f0",
-      "lld-link/nsc_stage53_2b_environment_variables_tests.exe": "204a8b75e4e705d36304ee74eb6ca7594cf3baec07e194827389d6ffa6e9aebf",
-      "lld-link/nsc_stage53_3_filesystem_paths_tests.exe": "c4b194421cb0427ccfd0c345840e9d8b5753ce22a10dbebfc2169b6552637bda",
-      "lld-link/nsc_stage53_3b_filesystem_paths_content_tests.exe": "abe9d03ead8c182e99ec0e5b3c37f77a2055db363e1839a9854fb62e0b2a6b59",
-      "lld-link/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "4089089334899e55a273feda957a8e68553fb57426a301b44626cca6fe18d15c",
-      "lld-link/nsc_stage53_5_command_line_args_tests.exe": "ba57604ed320b130c60d224d7ac744cb5ce3fde7352fb545e65ddf764b07ec64",
-      "lld-link/nsc_stage53_6_directory_enumeration_tests.exe": "e968dc9c624e0244178da1f3799eb4ca5a47b2f9ad5a80ac538c0755c95a80ea",
-      "lld-link/nsc_stage54_1_threads_tests.exe": "441db94e6fb5726490c28fb2e7709708adfc6648dfd2c6b73b722b8ed4bd7898",
-      "lld-link/nsc_stage54_2_atomics_tests.exe": "737134cc99a48a16e077ed075b8d893eead082cda2dbea06a0fd6e2fef60873c",
-      "lld-link/nsc_stage54_3_mutex_tests.exe": "c15f5f92ff61927667c5d9b35ba71fbf5a4e0cabf2463488c4a4f32a52466c75",
-      "lld-link/nsc_stage54_4_monitor_tests.exe": "ee26f3b985b690887f3e43ce207b7d72f9e7719a7880e557a68cb71ed7e11045",
-      "lld-link/nsc_stage54_5_sync_primitives_tests.exe": "8d1c1a1a633a2bc26c932bd8c612340cc35fc6b8075a47c3df7a1fe003ebba3c",
-      "lld-link/nsc_stage55_1_process_tests.exe": "c8a265b13629f79e0b8c9f3a441a477df26bad9ae2458137627e4ff23ebf5e32",
-      "lld-link/nsc_stage55_2_hardware_tests.exe": "b872812ae9be017f5084f44d091cceabadf2376d9692f0d5cb545efa265cbb5d",
-      "lld-link/nsc_stage55_3_diagnostics_tests.exe": "233fb222942b272154220064ce4444351c073615b318ffdca64c9deb05d891d8",
-      "lld-link/nsc_stage55x_interop_foundation_tests.exe": "bc8b7cb3986bd15b8def743d471d84ca26cb86e0f8fd79a29c7d2a660fa60e22",
-      "lld-link/nsc_stage56_bugfix_tests.exe": "4b40296de7376f72e5e423e530b672aaea0791573dd847b3cd4a80c0304d02ee",
-      "lld-link/nsc_stage56_c1_interop_completion_tests.exe": "10e28b9257fe19dcf563bcbdc708ec31f74dcfadd700fc8dc51280361049f9cc",
-      "lld-link/nsc_stage56_c2c4_language_completion_tests.exe": "6c93a3eb2ee37f4e2e114bc669916ee0b82c609b7b26ef44640ee4ad56c9d50d",
-      "lld-link/nsc_stage56_c6_struct_members_tests.exe": "3f198e895b1d0d5f6e1c90c84d3787da603f498a0a078d0791b11d897455593b",
-      "lld-link/nsc_stage56_c7_definite_assignment_tests.exe": "f1fe99024a1cba67680005f733a9f137111a6d5fefec0b01b0e8f922d1808c00",
-      "lld-link/nsc_stage56_c8_type_root_tests.exe": "149add9ca684da7e436a7ff78a165534135934582bdcbbbcdada29c02d4cb6fe",
-      "lld-link/nsc_stage57_language_tests.exe": "094abeedec68f672851c9c92cbbd6e9c60d3cdcddcf996af197e82959fb7dbe9",
+      "lld-link/nsc_stage50_8_ownership_ir_lowering_tests.exe": "cd697c2a4e09cef4257ba7d7d7ee82cba517a9d4a028a9f21ee456c992721a3b",
+      "lld-link/nsc_stage50_9_metadata_host_compatibility_tests.exe": "51156683777d7bee390d1fde97c20419c2954f7d9252e3f3234b5ae3544fbf55",
+      "lld-link/nsc_stage51_complete_string_tests.exe": "4664dc14593037e9fb80048c1d5cdcaa4d5c73abfac4c64109ce138086a3897f",
+      "lld-link/nsc_stage51_enum_oop_support_tests.exe": "12aa76f7da87719d72e06d883c3e70f06d1b193a0f9c80377ef4e0fbf3bd176a",
+      "lld-link/nsc_stage52_1_generic_collections_additions_tests.exe": "cffada58e86e7c2b248d5e9075a43b5212b50d9e7273152bc799f2de056c6147",
+      "lld-link/nsc_stage52_2_var_keyword_tests.exe": "47ce7bca711def4206ac6e368d163e86fce46196220d6b682db4ae04fca5b9b8",
+      "lld-link/nsc_stage52_3_foreach_tests.exe": "b13935fb49f7cf633d32a048240fa44b602660c1e385992899490df916884169",
+      "lld-link/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "e9d95affc7b87f7ad7ff352305f59f39d1888e7cad19716b99c52574a3aff7b8",
+      "lld-link/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "31589067b40c37e3a954cf55a5e0c086d20124e400ee3307a3184a45f1fb7d6c",
+      "lld-link/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "9c2403b5442531cce3bfcc93b81fa3eccafdb00348e28d3b6c75ead1c7a6c480",
+      "lld-link/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "06750e21178b5cb1c74fed699c641d4dbb5ff61ad47522b0645be48a8fbfdeee",
+      "lld-link/nsc_stage53_1_time_tests.exe": "ebc37b78f9caeb4ff0076593daf8478a736242463fd39af8d1339119b5f352cd",
+      "lld-link/nsc_stage53_2_environment_tests.exe": "001423379f63f93c6bd25952f8bb02db1474c4d206de048cbe84897cd66f87e1",
+      "lld-link/nsc_stage53_2b_environment_variables_tests.exe": "6c7c0b066aafd0a373ba753b2a1df0ed361f7cce892eaaa1873cd994dc05e2c2",
+      "lld-link/nsc_stage53_3_filesystem_paths_tests.exe": "163bdd521568b2bd1c6e44f528319115da494b18e450ed7aafe87673b03e9f75",
+      "lld-link/nsc_stage53_3b_filesystem_paths_content_tests.exe": "41ce794289a7ef440341114a738a1f0d39b25fd886177a10f11a69c6ca77eb59",
+      "lld-link/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "fbab85d5308927337f4db14e5f819908dfe75ae6858c157831ffcb8d00b3d136",
+      "lld-link/nsc_stage53_5_command_line_args_tests.exe": "74c9f9b37bf24711fae0421882e27b601c24a264a90343acff4e75fe19923b3d",
+      "lld-link/nsc_stage53_6_directory_enumeration_tests.exe": "f883b919905577079df7f7f4f3ff2b60b830c36001e1186d7c6b5ca5c72e5136",
+      "lld-link/nsc_stage54_1_threads_tests.exe": "75da2459a7f06b3f7ae5d5a12f9f261bcd4892c6ae50a5194cbeee2e7c77198f",
+      "lld-link/nsc_stage54_2_atomics_tests.exe": "38c081b84a1e35dfa31b7a43a94c5a6c069e036a891289eea63b281f20a2589d",
+      "lld-link/nsc_stage54_3_mutex_tests.exe": "30bdfc359ad500b3820327b305b70bd30ce1b1cb217ee7df56d113364f6990a9",
+      "lld-link/nsc_stage54_4_monitor_tests.exe": "28fe7a1ca1ac95f4c2bd2d031228a134e26dc42e19ea55c464b08a78d66505b1",
+      "lld-link/nsc_stage54_5_sync_primitives_tests.exe": "c116257b0c2325124b7489d7edefbf5b44f1b5206f807c69ec1bbaa30e6cd409",
+      "lld-link/nsc_stage55_1_process_tests.exe": "630f6c84ca9752989133402820e486299034f9d00afada155a9187b2bf301d00",
+      "lld-link/nsc_stage55_2_hardware_tests.exe": "1af4af02b6e1513c718a108a9c4f466c1fa54d608dafb1062c54083e73c0d5e2",
+      "lld-link/nsc_stage55_3_diagnostics_tests.exe": "58dbb91eb2ca2e55681f8136705f2c64c4f4ac02778ead6d42605317f5220089",
+      "lld-link/nsc_stage55x_interop_foundation_tests.exe": "bdd77474b219923e62e0c1828e33922ade3a01ae06d7ccd4050660187d0cdc80",
+      "lld-link/nsc_stage56_bugfix_tests.exe": "834c852620f23dc1995ccfbbb017bfcb29aa2cb364469729bef2a35221d94cea",
+      "lld-link/nsc_stage56_c1_interop_completion_tests.exe": "c8475e82f4731e6ffbd3417160a7eb458504a9b1522f4dc344e70294e130aa4e",
+      "lld-link/nsc_stage56_c2c4_language_completion_tests.exe": "b5f54bff62360e607d1bd1895f93366ff7a90e654c4574c59a0b84d6bbb01132",
+      "lld-link/nsc_stage56_c6_struct_members_tests.exe": "475dddd3c0a583b398e7e7a9b840a2fab02492d7f0214c213dab9dd0905f1269",
+      "lld-link/nsc_stage56_c7_definite_assignment_tests.exe": "4dc487ff71c6ef80aee3bec2a009ab6477f88df56af0c88c1b7971f721994452",
+      "lld-link/nsc_stage56_c8_type_root_tests.exe": "76f02cd03d9246be817c50dbdd27aef299ae7a6105ddf75552b69704070dbc41",
+      "lld-link/nsc_stage57_language_tests.exe": "a07a1050c0a6c60889d9f861c0a6ab8798c19f5df9c3b914b9e494bb2742a1a4",
       "lld-link/nsc_stage58_view_lifetimes_tests.exe": "e80ba0d57f2bd22e10a160a19405abc6d5f473f1302bc0f9dcc32730a2f97b04",
       "lld-link/nsc_stage59_closed_generic_member_tests.exe": "fcd3114e54c3963b5c40ffb4a15bd6f716697aecb71835f86cd200758f4aa214",
+      "lld-link/nsc_stage60_language_contract_tests.exe": "f82526989ad2cca319945006754da01b6d47ac6de81a76be4000b0804c9efd5d",
       "lld-link/nsc_target_data_layout_tests.exe": "6bf628ea6a0bde61e2c91023d9d1f3ba34a380adf5bc043be35ab3e94c44e1f6",
       "lld-link/nsc_windows_linker_tests.exe": "66c648c9a34d6bb7f5ca4374a9908515531069383ee290bc8c011c2730680dd5",
       "lld-link/nsc_windows_runtime_tests.exe": "8babb091aa75b1fa7b3bdfacd1db47605abc0219ff84c26426a5264c760b5bcb",
-      "NSLink/nsc_cc1_build_identity_tests.exe": "5cf42529292c317efac49ed4326769e062facd0dee5b5cbb1b6761766e723ad4",
-      "NSLink/nsc_cc1_correctness_tests.exe": "41d78ff887a639760ae9cbb572c30bd6e515ef97ddfe6c8cb2b0451a203da676",
+      "NSLink/nsc_cc1_build_identity_tests.exe": "6774ddf701d0b20022fba8f4d30dce84fc69d2cc3ee6d5eb2b970a32dd602e2f",
+      "NSLink/nsc_cc1_correctness_tests.exe": "f26370e0ed6dea0c1cfc92ee74d8d214d4d15067a6c578e577c9ba9bc100ba09",
       "NSLink/nsc_cc1_integer_evaluator_tests.exe": "136acd61616455cf9686f01809d2eae3b0c731873352d464546522ddd2d690e4",
       "NSLink/nsc_cfg_tests.exe": "bf8a9062c32ebfe449c1751359f8aff2349df7abc47a720077f5ef7f8c303f30",
       "NSLink/nsc_cfg_verifier_tests.exe": "c775f9ccae8bbf9cf494fd37e9e47ba62245922d6ebf4178b0c1a6122e84d320",
@@ -438,7 +441,7 @@
       "NSLink/nsc_diagnostic_tests.exe": "44bfac1569fd34ea4a1024818b0d1b0da3584e971f324874621244d62bca0157",
       "NSLink/nsc_dominance_tests.exe": "3f62a59d948bdeb8acb19b66957a6bdfa69931e9b8ab18f9fbdd4e9eb7ba500b",
       "NSLink/nsc_dominance_verifier_tests.exe": "89160df53ddfb9d882fa4ea5bc0332c281ee175deddeb9537e1e574845d512fc",
-      "NSLink/nsc_driver_tests.exe": "c7d34d0348d8cd1279f124f5fdc57fcb7ac2e364ca8d5215a34455208649884b",
+      "NSLink/nsc_driver_tests.exe": "a873fe5b4cc4b0cd50190dcbcf2757d9bcb748b6b8e03cb03ba06b700e37aaa6",
       "NSLink/nsc_frontend_robustness_tests.exe": "b9a1915cd48706b1fbabee32e3cd2d715a07ef70b49ffb4ae162d342d93f6f6c",
       "NSLink/nsc_hir_tests.exe": "00d9511b1caed7c3787ec57e061b8036825a0c157a4b466ff50fe784d60d1ac7",
       "NSLink/nsc_hir_verifier_tests.exe": "fa7fe1d64c3dba704a8e189c784ea1f644b891a945727b9761cf769e32d93861",
@@ -455,7 +458,7 @@
       "NSLink/nsc_parser_tests.exe": "9bda5c362561d1462ee4938bc70fb3ef2a94143fcff1e843c14b7a7c30b4baaa",
       "NSLink/nsc_partial_class_aggregation_tests.exe": "50fc51424f86b5d9b2988ef99f8a66a43fd245dbee941ac1e420234f3644a45b",
       "NSLink/nsc_pass_manager_tests.exe": "625866ea619cabcc8f6c717d6fc571ec05a4b6a0c6043596ad493571e908889b",
-      "NSLink/nsc_prestage56_utilities_tests.exe": "424e950f2c3e6d3f5002537cf2862990031fb5f7046d1ef1e50dcd321c85e382",
+      "NSLink/nsc_prestage56_utilities_tests.exe": "5771fd37b5bc3b8eb8e9b970eefad92c27f14305c974612f2ed8a0934e1c087c",
       "NSLink/nsc_project_compilation_tests.exe": "8b43bacd89736feb16149cb54450c301c1dd6c1c4aa9fb7865a24a3d00b79d10",
       "NSLink/nsc_project_construction_model_tests.exe": "cff7cc2dae78b45c4cfcff9c18e40b8df2c77522ff3804b544183f14ac792cf7",
       "NSLink/nsc_project_graph_tests.exe": "1cf57bdb65d03085e57e418428306983d9ba022cd64741b487b1f76430f34618",
@@ -475,37 +478,37 @@
       "NSLink/nsc_stage37_static_initialization_tests.exe": "9ce79067e29dea319955f8b4e67ada21468ecfbaa68cd87042e84923795253fe",
       "NSLink/nsc_stage38_properties_indexers_operators_tests.exe": "309e5da7572749b77db395bb15962d193e8f4f5c5dc7e5b56dc12b9d6c8d6ad2",
       "NSLink/nsc_stage39_rtti_casts_tests.exe": "68c32c2fa378ff0a420fc9112c1fbb40d395be525ea6837bb01359ed6091365c",
-      "NSLink/nsc_stage40_2_aggregate_abi_execution_tests.exe": "82a3e97f1074efff8db2e5d7c2e306d1946a6b5307e6eb9864ef55165db7de86",
+      "NSLink/nsc_stage40_2_aggregate_abi_execution_tests.exe": "665da830c69083740c1e39ea8dd9531dcdacca1ce177a90546858fae403a940a",
       "NSLink/nsc_stage40_struct_value_abi_tests.exe": "529182d859f0dcc86e5a8cfc40b7566edda19e2389038823232830631ca291eb",
       "NSLink/nsc_stage41_arrays_strings_core_tests.exe": "58f20118078a34f037e8354a8c5742bcb555208eeb0c3bffc45e5dbfdd13d0fb",
       "NSLink/nsc_stage42_delegates_events_tests.exe": "2c58cf662634b81c0390b1f80173ba2b8112bb8e2ad0f35e8ac6ba1c41c5a5a6",
       "NSLink/nsc_stage43_lambdas_closures_tests.exe": "773fd6b648d51dd5adc60d33a92df86b2408ef4cdd778f46232582a806188d44",
       "NSLink/nsc_stage44_generics_monomorphization_tests.exe": "4e5683dcaece4802d84e8cfb2de6a67e57763c1eeffba3d9fb3c2eb1b02c6027",
-      "NSLink/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "833a76adcff0f19990c53838bb5dbc5e453f7991bc18e6cfcd3a02cde601c165",
-      "NSLink/nsc_stage45_11_eh_cleanup_execution_tests.exe": "2504969985bce5aac2995dac6adb9f3d5bb5c0f2c95b0ac61ae755163e0be5ab",
+      "NSLink/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe": "a4062e653bd2ed6b43ed87bbf46339d3732f275c23a1558ed36457adfd8936be",
+      "NSLink/nsc_stage45_11_eh_cleanup_execution_tests.exe": "9e22a7091cd34adf216e1397974d6de5ae1d68eb2e5cacd893b0cf958b093500",
       "NSLink/nsc_stage45_cleanup_scope_tests.exe": "6d4e0fa3fed0aa22efda2a213da37d32e90b7490c24b72e84072cb3ef168435d",
       "NSLink/nsc_stage45_exception_sema_tests.exe": "1000cdc080a79b296baf700c0f303dceda7aa31f347df5e518389b03c6bafa31",
       "NSLink/nsc_stage45_exceptions_syntax_tests.exe": "cdc0be2fcfc3e2000f869f11f1080f278d83f1b6575990087d9a072d2a00ab6b",
       "NSLink/nsc_stage45_finally_flow_tests.exe": "c20e7d727d9f88e7b8ab47c9ea57511380c252daaf0f9770c3833463413c8ef1",
       "NSLink/nsc_stage45_hir_exceptional_cfg_tests.exe": "b04af3bf9254161f4f65c49baf72f638df3c2aa018e4e2e5dbf655b937771431",
-      "NSLink/nsc_stage45_linker_pe_eh_tests.exe": "dbd76dec52b7d9d2a9903ab87324304823a03d77ec24a40ae9852189b565e5a0",
+      "NSLink/nsc_stage45_linker_pe_eh_tests.exe": "6b1eb0ac7c6b9f5329479ce17d716127a5222dc7e23dec58ef140200060ac00a",
       "NSLink/nsc_stage45_llvm_cleanup_funclet_tests.exe": "42021d27346604c86eeaadec6246ad350d33ac5fb53b7d9dc848e114a7d0eec3",
       "NSLink/nsc_stage45_llvm_win64_eh_basic_tests.exe": "9673dc0fc588f83b259fd0f1da7d424a42efc51c7c0ae14afc6b5c016053b64d",
       "NSLink/nsc_stage45_mir_exceptional_cfg_tests.exe": "6cf0a09a8a0329d31b25f1d5323c46df8698c8f01c4d5f1568379d1cdb72ea08",
       "NSLink/nsc_stage45_native_exception_runtime_tests.exe": "dc19ca21f99d56b9c18bdd556eb266cf124bfc2047f6a30904d65b4dc24c90db",
       "NSLink/nsc_stage45_typed_catch_rtti_tests.exe": "5fd96400c32e24877ab3855f8ffc88abd0935640f37d9c3a699fd01ce6565c2c",
       "NSLink/nsc_stage45_using_disposable_tests.exe": "f849689a9927be49a528ffa963df5980236959d4ec566524fd40d5a586d603f8",
-      "NSLink/nsc_stage46_native_libraries_tests.exe": "bef7f1c9a375ec6600c685c107b0a3626b686d41a1d912422c976a7978eaf198",
-      "NSLink/nsc_stage47_host_c_abi_tests.exe": "4f9d26f0b6d107d57fd16c2f3368123171a042ad01ac9875306fee96692e3f9a",
-      "NSLink/nsc_stage48_1_c_header_tests.exe": "21e45b23d3ce0831d858629586db3973b604c52fead8cacdc92003b52672f434",
-      "NSLink/nsc_stage48_2_library_metadata_tests.exe": "44cfb9d9079d685964ad0c0314a9373b64ce3c68e3d090f8d6111ff95f6a86d6",
-      "NSLink/nsc_stage48_3_c_host_tests.exe": "296c5e1b77b8d00902f42e1f6127a4452f9ed7825e6f2dc6bb3084cca1066a84",
-      "NSLink/nsc_stage48_4_cpp_host_tests.exe": "3a556edc360dafdc2f2b806338fa87afb4a713d0d4d52931764d00e7fe62a52d",
-      "NSLink/nsc_stage48_5_csharp_host_tests.exe": "acb9c17e794d0b66a21d8ca087432cb9deaa99c65e8379f339298e2407526a40",
-      "NSLink/nsc_stage48_6_cppcli_host_tests.exe": "ac5119edc5c72877854366a804a0a63254e3ace727d5ae9d2322044f82d24816",
-      "NSLink/nsc_stage49_raii_move_tests.exe": "061c0650784db8c7a44f871b332b2329336569b2b07a54ab4fdc4b3ce5709ff2",
-      "NSLink/nsc_stage50_10_ownership_examples_documentation_tests.exe": "bdc7c56d53ef3f4c09f9f4bb732f379acb8b971e47f5ea1209649f5f1f68ce2b",
-      "NSLink/nsc_stage50_11_ownership_execution_tests.exe": "9546aded25580d5714b595a7b2d01b41886ba0bf3f723ec20c0d25d408cd7a94",
+      "NSLink/nsc_stage46_native_libraries_tests.exe": "218abce172fdfc4829d668958a76276391ecd2a93c8c4d94c195b76286091262",
+      "NSLink/nsc_stage47_host_c_abi_tests.exe": "bd7044a8eeeb745f157fd23568cc9fbb38e71e5e63306cc2d890c5fe3fcdeebe",
+      "NSLink/nsc_stage48_1_c_header_tests.exe": "1174c934ce1f08f6a67dbed18ca38979b6079b26e203da1c7c7db46fb4c17aa3",
+      "NSLink/nsc_stage48_2_library_metadata_tests.exe": "5f5e2afefec1f88cd8d558826bd605c9c71d25ab66fdd297e3e7d1428478078d",
+      "NSLink/nsc_stage48_3_c_host_tests.exe": "a7e243f2e07ecb394ac6f35381ddf5ee6747d099a72442c6da2bc199cdeb089a",
+      "NSLink/nsc_stage48_4_cpp_host_tests.exe": "390eb4f3a023a983319573f3be165093509ff142fb4687471cba9c07eaca4429",
+      "NSLink/nsc_stage48_5_csharp_host_tests.exe": "966d9d48243bc8994badf5f1aeae687fbc4b170d24f39cdf007f203f11def6fd",
+      "NSLink/nsc_stage48_6_cppcli_host_tests.exe": "c371143e6a262a4526ac79ff2a00433942c30fdb33998f2c66393773dd79979a",
+      "NSLink/nsc_stage49_raii_move_tests.exe": "3e25eabaa06a3e55e41a05f79f6e45fdc2518508fd037fa6cfe63378413ba17b",
+      "NSLink/nsc_stage50_10_ownership_examples_documentation_tests.exe": "2716613b9a9554a6dd672a5c4920a5e0f17cebcef2d31ff051783f19d468e242",
+      "NSLink/nsc_stage50_11_ownership_execution_tests.exe": "4fb907948c7988592b7b5b786c7ad745dcc132828debcc073e4d978b7356f676",
       "NSLink/nsc_stage50_1_ownership_syntax_tests.exe": "11b3f2265797c8ec42475cf45ef43c243e229b482045ea7bb444aff5c71c8b74",
       "NSLink/nsc_stage50_2_ownership_type_system_tests.exe": "41dcf51debf95dadc9ad0dbbf4e2a20809c85d1705101574135e53ea96bf35fb",
       "NSLink/nsc_stage50_3_owned_parameters_returns_tests.exe": "f5317acc69d49cf5d0b4fcfb91ff743739373bab4b95bb896a85961736d2ffb8",
@@ -513,49 +516,50 @@
       "NSLink/nsc_stage50_5_local_borrows_lifetimes_tests.exe": "c23a3892e5b2be9527ba22aec10b3720391c5e9fa8e2d9ddd69f1bd6b013ed1d",
       "NSLink/nsc_stage50_6_ownership_control_flow_tests.exe": "d23b713c2d832345d601c7f3f17cbb1d1e2cc71cacd5b784085aafa82e185c98",
       "NSLink/nsc_stage50_7_borrow_escape_analysis_tests.exe": "002a28ab29eac021df38266f21bfe204bd7907dff1ac6386d523d09cf835147c",
-      "NSLink/nsc_stage50_8_ownership_ir_lowering_tests.exe": "9d6aeb88acb5e0cf7d2ce7aaa49db840e64e7239f432c0e8be308807b0a0560e",
-      "NSLink/nsc_stage50_9_metadata_host_compatibility_tests.exe": "16069bc17bb6a3391d05012556c5093b8378f19e3107650b6f03c6c3e18605cd",
-      "NSLink/nsc_stage51_complete_string_tests.exe": "7f1a2da17ca0b7d5c595f6c7a52b3499d3c136c473f4ef6c5ee3aa21b619cd52",
-      "NSLink/nsc_stage51_enum_oop_support_tests.exe": "51e78badf8cf42355c19da8341b800d554d1f3690cdc96f693a32b3ef60e41b8",
-      "NSLink/nsc_stage52_1_generic_collections_additions_tests.exe": "bff972e40628f020df70f40b2ae40b9935dbb297846eb462c7b06c3d9ccb3a49",
-      "NSLink/nsc_stage52_2_var_keyword_tests.exe": "b8eb376dc5fce3286fcd403af2796c8d6144782fded6f3a4b35166bd53768ac0",
-      "NSLink/nsc_stage52_3_foreach_tests.exe": "c19425be0c5d4e451d5bf16ac4212fd2646e517759f78ee1018c1302cd8c727e",
-      "NSLink/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "f7ba39e3cd566b6bb0ba662e29d78b885e8d30583b2a2b8f46b1998faf185e8e",
-      "NSLink/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "531230ac2a797b789d3658150fead2363c3f213f05b5112f06ff939cb52036ab",
-      "NSLink/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "fdc998d77ee7613cc12b46114b4c7a96848f92beaf789f5e566bbb2290aaa9ec",
-      "NSLink/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "140334c416556c1fe90fbaa3e2cf8357f0bf32fa1946746e79c115d4bea1d186",
-      "NSLink/nsc_stage53_1_time_tests.exe": "526ddf160454efef8d63621ab86137343075efbc0e6936db543fb93e4db8c82b",
-      "NSLink/nsc_stage53_2_environment_tests.exe": "9c6d29ea94d0ae46807fede9ac21eff8da9e38fb955c14612662e01bdd748a00",
-      "NSLink/nsc_stage53_2b_environment_variables_tests.exe": "67e148f78998d82d8253668f25ca055ff5721dc1c92d8489e5b159d530357b30",
-      "NSLink/nsc_stage53_3_filesystem_paths_tests.exe": "a29a0bd268e9ec5dd93254cb15949fd39e1c34437fde2ab5ab962abf2802f40f",
-      "NSLink/nsc_stage53_3b_filesystem_paths_content_tests.exe": "40cb5bfe6b1274b39e507dc85998b33b66cc10315142878039419d84049c8820",
-      "NSLink/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "22535fef6c27002d50401d83894d6559e000c101547fc41802af1de3e125494a",
-      "NSLink/nsc_stage53_5_command_line_args_tests.exe": "84275d79801dd22a1229f7209b962b486c5da0f3af0fefb4efc4ec992f7019ab",
-      "NSLink/nsc_stage53_6_directory_enumeration_tests.exe": "d82dac5f3aebaf3e15c237ab23316a7accc67681251bfe7a36e79d7eeb342b55",
-      "NSLink/nsc_stage54_1_threads_tests.exe": "7d2fe1072e26e5c6f4b023509066e97264e89882127c001a2b68187de219712b",
-      "NSLink/nsc_stage54_2_atomics_tests.exe": "8ba99f2b5f729602412e816831a2211ca76ab3cacd13d5aa6b2d43af3c588128",
-      "NSLink/nsc_stage54_3_mutex_tests.exe": "d1bbd01d744b07f4636d4f1fce0ade93b97421bf7989a41f18515dffed9082a1",
-      "NSLink/nsc_stage54_4_monitor_tests.exe": "660a10ad314db5d52bebd8677de68481ff40c278231fea1c0ece3c64bacdf2b1",
-      "NSLink/nsc_stage54_5_sync_primitives_tests.exe": "20f25e5e0f878e890414bff589d79a436685c9907a75ae387ebb1ef61a35f131",
-      "NSLink/nsc_stage55_1_process_tests.exe": "aad7d9b452ab3d98e992b4ae4b8645a8a3d2733249f789f8eb095c9a42f2b4ea",
-      "NSLink/nsc_stage55_2_hardware_tests.exe": "32f45e08a53b79cba6a9be23ec7732cdf18a92a7530d69fd6d058e611e9c245f",
-      "NSLink/nsc_stage55_3_diagnostics_tests.exe": "54e3e9d5953d9457feed95008006a25d06c359c2b5e1fcbcefc7863f746e3ca8",
-      "NSLink/nsc_stage55x_interop_foundation_tests.exe": "999bfd3c617d74a4d543b1d618a616c7f34ef38394ca4525186fa07b040e0016",
-      "NSLink/nsc_stage56_bugfix_tests.exe": "17f17b1002b9e79d7578d5431e1d59964505bb1b747dd7c648c5a74f7364dcf2",
-      "NSLink/nsc_stage56_c1_interop_completion_tests.exe": "7dd761dcead2cfe6c0a8ad7e2056f55bd2a56c23024aa068e7204e5e99245328",
-      "NSLink/nsc_stage56_c2c4_language_completion_tests.exe": "aaadc0546517655017a2d7d77e0a9f819cd21dbbc6817ce525b506c5bdc3871a",
-      "NSLink/nsc_stage56_c6_struct_members_tests.exe": "ae51a048a45a818787a6c8d67373fd2a97b68bf060bb3b705a7a6eab089bce06",
-      "NSLink/nsc_stage56_c7_definite_assignment_tests.exe": "126e66d108108fe1c5311b6f3a23a9f84a0e21c40b28ca6d8e5b44c728d9717f",
-      "NSLink/nsc_stage56_c8_type_root_tests.exe": "cab499430afa073862d76f3bacd51a3637d81531aaa67484653665607946e0d9",
-      "NSLink/nsc_stage57_language_tests.exe": "d921611cf28c0615bb736a4a89b7b270e3c0ee8d2085758aa7b7dfa85b81ccac",
+      "NSLink/nsc_stage50_8_ownership_ir_lowering_tests.exe": "f11689b29690363050186968f0a149831ad2739c7d949be497f0433662967f24",
+      "NSLink/nsc_stage50_9_metadata_host_compatibility_tests.exe": "8992ad3e16f72c6b0f3212435ec24e3121537a786bddd20a622cdb24b644082e",
+      "NSLink/nsc_stage51_complete_string_tests.exe": "60804929917f5c405d22544aa8b92107852c90924cb110edf3e1b54054a5d91f",
+      "NSLink/nsc_stage51_enum_oop_support_tests.exe": "4970265b2552a5b124ea2b71733a2367eb67b4229e36d794d3df162fa6d15d8d",
+      "NSLink/nsc_stage52_1_generic_collections_additions_tests.exe": "4a3c73ce6de5f3d719be9d96deb4a63ac62ccd86ae2ca09f1acaed102d877dfc",
+      "NSLink/nsc_stage52_2_var_keyword_tests.exe": "a289da1799b5d610710a17c73a0cebc8be58b31a3bf8df71c9ee0f4cdda98958",
+      "NSLink/nsc_stage52_3_foreach_tests.exe": "35439b5f760c5d91afcbbcdd4b61a9749684b2ef37727a0dc242a9810e87dd0c",
+      "NSLink/nsc_stage52_4_owned_cleanup_runtime_tests.exe": "904eb1ea1028f7b944ecbf5d873de0891fcb8f4798c8a4d4971fd715537e7fc3",
+      "NSLink/nsc_stage52_5_foreach_semantic_gaps_tests.exe": "22220ced997ae35df0457c986d2a3dceea767857e7d8855d899c15e9b4c0bb16",
+      "NSLink/nsc_stage52_6_foreach_collections_enumerators_tests.exe": "ee51ea21c15277fde1783a7495d7164a1b08f53e40c10c77a114670534f4be85",
+      "NSLink/nsc_stage52_generic_collections_compiler_fixes_tests.exe": "a90392e623ba3de561cf86848feda270ebfa37d200a23c254397bec3d996c115",
+      "NSLink/nsc_stage53_1_time_tests.exe": "94342cdb67538299576b6210a2e169c9d3149f47af6b4a26985cbb1bccf78a1e",
+      "NSLink/nsc_stage53_2_environment_tests.exe": "a0b694188dc69d01339ed2c0f9b52a2fb4c3f5f90c67399e9ff2f97d1cf5ee11",
+      "NSLink/nsc_stage53_2b_environment_variables_tests.exe": "90f68b662630fb82ce05dbc4251654d6fb5dcca3096b2089e192bb97df362fbf",
+      "NSLink/nsc_stage53_3_filesystem_paths_tests.exe": "6a20b7d3b4fb316a67f9da2659484e5f17a483195fedd7fb560168a0d49768ff",
+      "NSLink/nsc_stage53_3b_filesystem_paths_content_tests.exe": "316bbb5e9ffdd200a46d084128b3187d1f1956383203531a7b314e7835c5327d",
+      "NSLink/nsc_stage53_4_filesystem_paths_cierre_tests.exe": "60854da74d68e3c9b68d49e83bdc1ffd00cfd1b3e9038bea4cda6f0245d19ec8",
+      "NSLink/nsc_stage53_5_command_line_args_tests.exe": "2b6e5231a34bd49cfa167cfe92de55b0bf1929db277c6e91070ec5a23a283368",
+      "NSLink/nsc_stage53_6_directory_enumeration_tests.exe": "595653dcad6d256d102025164ab2bf39c98ce7351cd946c37c27b3f5fd20505f",
+      "NSLink/nsc_stage54_1_threads_tests.exe": "220946bd70789a6d15771ca74b8292ad9a1e24597ae585c4805e521107eb12d1",
+      "NSLink/nsc_stage54_2_atomics_tests.exe": "dfcd15b12e064b48fece6597035a421b0496ea69662325a666a106bd8780696c",
+      "NSLink/nsc_stage54_3_mutex_tests.exe": "30450a88309c1e56f1687d55aa12ccb5a146ab9e1ad01f61ae8d681a1b085eed",
+      "NSLink/nsc_stage54_4_monitor_tests.exe": "624d3e1130bf12e92921f76bd3a3bc9d305dd4b7c7c9d1b2fe8486ea9ec28014",
+      "NSLink/nsc_stage54_5_sync_primitives_tests.exe": "172d65288050a63258f27af4f16a3615fe4a7112b41f1b757df3ff542f1d69e8",
+      "NSLink/nsc_stage55_1_process_tests.exe": "fb58224799c0a8aba5b5439ed9e928caa98762c2b5658be439e5bf6cb33d2388",
+      "NSLink/nsc_stage55_2_hardware_tests.exe": "7eddff88e43cf6353304125d3b04e9fb7a1dfb640abdd87ac4c46a960690fd29",
+      "NSLink/nsc_stage55_3_diagnostics_tests.exe": "5718acc09dd4e48d1d228cc492d4b5169818fcdf9d99bbbc06b62a3b3f1d4b0a",
+      "NSLink/nsc_stage55x_interop_foundation_tests.exe": "f515f7f91bfb7a183582519c177f27432c6551854c65bdde31bf7ab276ee50b5",
+      "NSLink/nsc_stage56_bugfix_tests.exe": "354d0823f4f1bf5de82649462ca6ef2d0e4a1292925098ebadf7d00850debcd9",
+      "NSLink/nsc_stage56_c1_interop_completion_tests.exe": "d8221883faa0b936315e8d8c3acee2648f9d2d3a0a5257e825a983ae2d6fc0f6",
+      "NSLink/nsc_stage56_c2c4_language_completion_tests.exe": "41e4c35d362b8c84d3376275bb260b300a2a339aed35de914075e01ae3ce64ea",
+      "NSLink/nsc_stage56_c6_struct_members_tests.exe": "b57151813b701392ca1f867c978b4094f698aca07d59290f9c35970c066573fe",
+      "NSLink/nsc_stage56_c7_definite_assignment_tests.exe": "1f809cfc29f7062526b82dd5c639058ba5de2c5bf08151e79fb44ea5834251d7",
+      "NSLink/nsc_stage56_c8_type_root_tests.exe": "f889f309931b08ac2defa1ee4a0c9f0fe3eb4d21d8042cf1d889db37a457e579",
+      "NSLink/nsc_stage57_language_tests.exe": "193147a07346c556635a0e129a965c064b83aa8b0782e5d38ae168768bb2cbc9",
       "NSLink/nsc_stage58_view_lifetimes_tests.exe": "de30738e6402cc6536e11d3d0b562d55ff0a515c6032eb8fbd9c96e434b56361",
       "NSLink/nsc_stage59_closed_generic_member_tests.exe": "637b5a40c8e7e2d97bff1828e1696da472744523b117362ceb37bf3f7534df9d",
+      "NSLink/nsc_stage60_language_contract_tests.exe": "f82526989ad2cca319945006754da01b6d47ac6de81a76be4000b0804c9efd5d",
       "NSLink/nsc_target_data_layout_tests.exe": "de04a16e0b96c7a5e6b278a332e103fc8e31f1a1e2e40a3f6ad856a39310496f",
       "NSLink/nsc_windows_linker_tests.exe": "d9c7ad8b8f8573c6bb0a9832daec790835ea6832762f466c50092a1bbedcef19",
       "NSLink/nsc_windows_runtime_tests.exe": "0c31f29e9f2b88357b763ae88fa98872ced61e956e16a44432f44156a2690f01"
     },
-    "source_digest": "7917ff88ca8774c624f1c7c7880de95b07e6062ec8a9b56b1f971e133dfd8b9b",
-    "source_file_count": 1013
+    "source_digest": "34bc19f5743a12f9882cbba1ce10534331ba791cce78f7f6dc1233c1a4178629",
+    "source_file_count": 1014
   },
   "results": {
     "failed": 0,
@@ -626,6 +630,14 @@
         "actual": 42
       },
       {
+        "label": "c1_05_raw_pointer_cast",
+        "linker": "lld-link",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "c4_ref_out_in",
         "linker": "lld-link",
         "optimization": "-O0",
@@ -650,7 +662,7 @@
         "actual": 42
       },
       {
-        "label": "c1_05_raw_pointer_cast",
+        "label": "c1_04_function_pointer_return",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -667,14 +679,6 @@
       },
       {
         "label": "c7_definite_assignment",
-        "linker": "lld-link",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c1_04_function_pointer_return",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -706,7 +710,7 @@
         "actual": 42
       },
       {
-        "label": "c7_definite_assignment",
+        "label": "c2_11_fixed_field_array",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -714,7 +718,23 @@
         "actual": 42
       },
       {
-        "label": "c2_11_fixed_field_array",
+        "label": "c4_ref_out_in",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c1_05_raw_pointer_cast",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c7_definite_assignment",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -730,22 +750,6 @@
         "actual": 42
       },
       {
-        "label": "c1_05_raw_pointer_cast",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c4_ref_out_in",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "c1_04_function_pointer_return",
         "linker": "lld-link",
         "optimization": "-O2",
@@ -778,14 +782,6 @@
         "actual": 42
       },
       {
-        "label": "c1_14_callback_exception_boundary",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 141,
-        "actual": 141
-      },
-      {
         "label": "c1_13_two_libraries_same_symbol",
         "linker": "lld-link",
         "optimization": "-O2",
@@ -794,15 +790,15 @@
         "actual": null
       },
       {
-        "label": "l2_dowhile",
+        "label": "c1_14_callback_exception_boundary",
         "linker": "lld-link",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
-        "expected": 42,
-        "actual": 42
+        "expected": 141,
+        "actual": 141
       },
       {
-        "label": "cc1_c1_constants",
+        "label": "l2_dowhile",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -818,7 +814,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c3_dowhile_flow",
+        "label": "cc1_c2_ternary_ownership",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -826,7 +822,15 @@
         "actual": 42
       },
       {
-        "label": "cc1_c2_ternary_ownership",
+        "label": "cc1_c1_constants",
+        "linker": "lld-link",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "cc1_c3_dowhile_flow",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -906,6 +910,14 @@
         "actual": 42
       },
       {
+        "label": "l2_dowhile",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "l1_conditional",
         "linker": "lld-link",
         "optimization": "-O2",
@@ -914,7 +926,7 @@
         "actual": 42
       },
       {
-        "label": "l2_dowhile",
+        "label": "cc1_c2_ternary_ownership",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -930,7 +942,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c1_constants",
+        "label": "l3_switch",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -938,7 +950,7 @@
         "actual": 42
       },
       {
-        "label": "l3_switch",
+        "label": "cc1_c1_constants",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -962,7 +974,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c2_ternary_ownership",
+        "label": "cc1_c4_catch_continue",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -970,7 +982,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c4_catch_continue",
+        "label": "cc1_c5_catch_break",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -981,14 +993,6 @@
         "label": "cc1_c14_compound_assign",
         "linker": "lld-link",
         "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c5_catch_break",
-        "linker": "lld-link",
-        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1026,6 +1030,14 @@
         "actual": 42
       },
       {
+        "label": "cc1_c9_sizeof",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "cc1_c17_constant_promotion",
         "linker": "lld-link",
         "optimization": "-O0",
@@ -1045,14 +1057,6 @@
         "label": "cc1_c18_stackalloc_hardening",
         "linker": "lld-link",
         "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c9_sizeof",
-        "linker": "lld-link",
-        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1090,17 +1094,17 @@
         "actual": 42
       },
       {
-        "label": "cc1_c22_console_and_formatting",
+        "label": "cc1_c11_raw_new",
         "linker": "lld-link",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
       },
       {
-        "label": "cc1_c11_raw_new",
+        "label": "cc1_c22_console_and_formatting",
         "linker": "lld-link",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1202,6 +1206,14 @@
         "actual": 42
       },
       {
+        "label": "cc1_c30_contratos",
+        "linker": "lld-link",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "cc1_c29_arena",
         "linker": "lld-link",
         "optimization": "-O0",
@@ -1213,14 +1225,6 @@
         "label": "cc1_c18_stackalloc_hardening",
         "linker": "lld-link",
         "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c30_contratos",
-        "linker": "lld-link",
-        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1242,6 +1246,14 @@
         "actual": 42
       },
       {
+        "label": "cc1_c21_number_parsing",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "cc1_c32_division_por_cero",
         "linker": "lld-link",
         "optimization": "-O0",
@@ -1258,17 +1270,17 @@
         "actual": 42
       },
       {
-        "label": "cc1_c21_number_parsing",
+        "label": "cc1_c34_enum_nombre",
         "linker": "lld-link",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
       },
       {
-        "label": "cc1_c34_enum_nombre",
+        "label": "cc1_c20_property_compound",
         "linker": "lld-link",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1283,14 +1295,6 @@
       },
       {
         "label": "cc1_c22_console_and_formatting",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c20_property_compound",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1362,6 +1366,14 @@
         "actual": 0
       },
       {
+        "label": "project_stage56_c2c4",
+        "linker": "lld-link",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 0,
+        "actual": 0
+      },
+      {
         "label": "project_stage56_c1",
         "linker": "lld-link",
         "optimization": "-O2",
@@ -1370,14 +1382,6 @@
         "actual": 0
       },
       {
-        "label": "project_stage56_c2c4",
-        "linker": "lld-link",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 0,
-        "actual": 0
-      },
-      {
         "label": "project_stage56_c6",
         "linker": "lld-link",
         "optimization": "-O0",
@@ -1397,22 +1401,6 @@
         "label": "project_stage56_c7",
         "linker": "lld-link",
         "optimization": "-O0",
-        "status": "passed",
-        "expected": 0,
-        "actual": 0
-      },
-      {
-        "label": "project_stage56_c6",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 0,
-        "actual": 0
-      },
-      {
-        "label": "project_stage56_c7",
-        "linker": "lld-link",
-        "optimization": "-O2",
         "status": "passed",
         "expected": 0,
         "actual": 0
@@ -1424,6 +1412,22 @@
         "status": "passed",
         "expected": 42,
         "actual": 42
+      },
+      {
+        "label": "project_stage56_c6",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 0,
+        "actual": 0
+      },
+      {
+        "label": "project_stage56_c7",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 0,
+        "actual": 0
       },
       {
         "label": "project_stage56_c8",
@@ -1458,17 +1462,17 @@
         "actual": 42
       },
       {
-        "label": "cc1-c48-constraints-cross-project",
+        "label": "cc1_c28_texto",
         "linker": "lld-link",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
       },
       {
-        "label": "cc1_c28_texto",
+        "label": "cc1-c48-constraints-cross-project",
         "linker": "lld-link",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1490,14 +1494,6 @@
         "actual": 42
       },
       {
-        "label": "cc1_c32_division_por_cero",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 129,
-        "actual": 129
-      },
-      {
         "label": "cc1-c50-inferred-array-initializer",
         "linker": "lld-link",
         "optimization": "-O0",
@@ -1506,7 +1502,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c31_cadena_c",
+        "label": "cc1_c29_arena",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1514,7 +1510,23 @@
         "actual": 42
       },
       {
-        "label": "cc1_c29_arena",
+        "label": "cc1_c32_division_por_cero",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 129,
+        "actual": 129
+      },
+      {
+        "label": "cc1_c34_enum_nombre",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "cc1_c31_cadena_c",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1533,14 +1545,6 @@
         "label": "cc1-c51-default-parameters",
         "linker": "lld-link",
         "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c34_enum_nombre",
-        "linker": "lld-link",
-        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1634,17 +1638,17 @@
         "actual": 42
       },
       {
-        "label": "cc1_c33_hilos_join",
+        "label": "cc1-c45-tipos-anidados",
         "linker": "lld-link",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
       },
       {
-        "label": "cc1-c45-tipos-anidados",
+        "label": "cc1_c33_hilos_join",
         "linker": "lld-link",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -1714,7 +1718,7 @@
         "actual": 42
       },
       {
-        "label": "cc1-c41-propiedad-receptor-struct",
+        "label": "cc1-c52-lazy-generic-members",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1722,7 +1726,7 @@
         "actual": 42
       },
       {
-        "label": "cc1-c52-lazy-generic-members",
+        "label": "cc1-c41-propiedad-receptor-struct",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1746,7 +1750,7 @@
         "actual": 42
       },
       {
-        "label": "cc1-c45-tipos-anidados",
+        "label": "cc1-c44-constraints-genericos",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1754,7 +1758,7 @@
         "actual": 42
       },
       {
-        "label": "cc1-c44-constraints-genericos",
+        "label": "cc1-c45-tipos-anidados",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1778,14 +1782,6 @@
         "actual": 42
       },
       {
-        "label": "b1_this_copy",
-        "linker": "lld-link",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "b5_ctor_owned_field_array",
         "linker": "lld-link",
         "optimization": "-O0",
@@ -1794,7 +1790,15 @@
         "actual": 42
       },
       {
-        "label": "b7_duplicate_extern_c",
+        "label": "b4_this_by_value",
+        "linker": "lld-link",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "b1_this_copy",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -1803,14 +1807,6 @@
       },
       {
         "label": "b2_operator_null",
-        "linker": "lld-link",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "b4_this_by_value",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -1827,6 +1823,14 @@
       },
       {
         "label": "b6_delegate_projectref",
+        "linker": "lld-link",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "b7_duplicate_extern_c",
         "linker": "lld-link",
         "optimization": "-O0",
         "status": "passed",
@@ -1842,6 +1846,14 @@
         "actual": 42
       },
       {
+        "label": "b1_this_copy",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "b8_shift_folding",
         "linker": "lld-link",
         "optimization": "-O2",
@@ -1850,15 +1862,7 @@
         "actual": 42
       },
       {
-        "label": "b2_operator_null",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "b6_delegate_projectref",
+        "label": "b7_duplicate_extern_c",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1874,7 +1878,15 @@
         "actual": 42
       },
       {
-        "label": "b7_duplicate_extern_c",
+        "label": "b6_delegate_projectref",
+        "linker": "lld-link",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "b2_operator_null",
         "linker": "lld-link",
         "optimization": "-O2",
         "status": "passed",
@@ -1890,14 +1902,6 @@
         "actual": 42
       },
       {
-        "label": "b1_this_copy",
-        "linker": "lld-link",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "b5_ctor_owned_field_array",
         "linker": "lld-link",
         "optimization": "-O2",
@@ -1914,39 +1918,7 @@
         "actual": 42
       },
       {
-        "label": "c1_05_raw_pointer_cast",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c1_04_function_pointer_return",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "c1_03_function_pointer_parameter",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c4_ref_out_in",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c2_11_fixed_field_array",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -1962,7 +1934,23 @@
         "actual": 42
       },
       {
-        "label": "c7_definite_assignment",
+        "label": "c1_04_function_pointer_return",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c4_ref_out_in",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c1_05_raw_pointer_cast",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -1971,6 +1959,22 @@
       },
       {
         "label": "c6_struct_math",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c2_11_fixed_field_array",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c7_definite_assignment",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -1994,31 +1998,7 @@
         "actual": 141
       },
       {
-        "label": "c1_04_function_pointer_return",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c1_03_function_pointer_parameter",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c1_05_raw_pointer_cast",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c2_11_fixed_field_array",
+        "label": "c7_definite_assignment",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2034,6 +2014,30 @@
         "actual": 42
       },
       {
+        "label": "c1_05_raw_pointer_cast",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c1_03_function_pointer_parameter",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c2_11_fixed_field_array",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "c4_ref_out_in",
         "linker": "NSLink",
         "optimization": "-O2",
@@ -2042,17 +2046,9 @@
         "actual": 42
       },
       {
-        "label": "c7_definite_assignment",
+        "label": "c1_04_function_pointer_return",
         "linker": "NSLink",
         "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "c8_type_root",
-        "linker": "NSLink",
-        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2067,6 +2063,14 @@
       },
       {
         "label": "l1_conditional",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "c8_type_root",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -2114,7 +2118,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c3_dowhile_flow",
+        "label": "cc1_c2_ternary_ownership",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -2122,7 +2126,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c2_ternary_ownership",
+        "label": "cc1_c3_dowhile_flow",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -2210,7 +2214,7 @@
         "actual": 42
       },
       {
-        "label": "l1_conditional",
+        "label": "cc1_c1_constants",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2218,7 +2222,7 @@
         "actual": 42
       },
       {
-        "label": "c8_type_root",
+        "label": "l1_conditional",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2234,23 +2238,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c2_ternary_ownership",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c1_constants",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c4_catch_continue",
+        "label": "c8_type_root",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2274,6 +2262,22 @@
         "actual": 42
       },
       {
+        "label": "cc1_c5_catch_break",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "cc1_c2_ternary_ownership",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "cc1_c14_compound_assign",
         "linker": "NSLink",
         "optimization": "-O0",
@@ -2282,7 +2286,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c5_catch_break",
+        "label": "cc1_c4_catch_continue",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2314,15 +2318,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c9_sizeof",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c8_loop_catch_switch",
+        "label": "cc1_c10_stackalloc",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2346,17 +2342,17 @@
         "actual": 42
       },
       {
-        "label": "cc1_c18_stackalloc_hardening",
+        "label": "cc1_c9_sizeof",
         "linker": "NSLink",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
       },
       {
-        "label": "cc1_c10_stackalloc",
+        "label": "cc1_c18_stackalloc_hardening",
         "linker": "NSLink",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2370,17 +2366,17 @@
         "actual": 42
       },
       {
-        "label": "cc1_c20_property_compound",
+        "label": "cc1_c8_loop_catch_switch",
         "linker": "NSLink",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
       },
       {
-        "label": "cc1_c11_raw_new",
+        "label": "cc1_c20_property_compound",
         "linker": "NSLink",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2397,6 +2393,14 @@
         "label": "cc1_c22_console_and_formatting",
         "linker": "NSLink",
         "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "cc1_c11_raw_new",
+        "linker": "NSLink",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2458,23 +2462,15 @@
         "actual": 42
       },
       {
-        "label": "cc1_c13_increment",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c15_arrow_member",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "cc1_c14_compound_assign",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "cc1_c13_increment",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2498,6 +2494,14 @@
         "actual": 42
       },
       {
+        "label": "cc1_c18_stackalloc_hardening",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "cc1_c29_arena",
         "linker": "NSLink",
         "optimization": "-O0",
@@ -2506,7 +2510,7 @@
         "actual": 42
       },
       {
-        "label": "cc1_c18_stackalloc_hardening",
+        "label": "cc1_c15_arrow_member",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2626,6 +2630,14 @@
         "actual": 42
       },
       {
+        "label": "cc1_c25_binary_roundtrip",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "cc1_c39_enum_nombre_o2",
         "linker": "NSLink",
         "optimization": "-O0",
@@ -2642,14 +2654,6 @@
         "actual": 42
       },
       {
-        "label": "cc1_c25_binary_roundtrip",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "project_stage56_c1",
         "linker": "NSLink",
         "optimization": "-O0",
@@ -2693,6 +2697,22 @@
         "label": "project_stage56_c7",
         "linker": "NSLink",
         "optimization": "-O0",
+        "status": "passed",
+        "expected": 0,
+        "actual": 0
+      },
+      {
+        "label": "project_stage56_c6",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 0,
+        "actual": 0
+      },
+      {
+        "label": "project_stage56_c7",
+        "linker": "NSLink",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 0,
         "actual": 0
@@ -2704,22 +2724,6 @@
         "status": "passed",
         "expected": 42,
         "actual": 42
-      },
-      {
-        "label": "project_stage56_c6",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 0,
-        "actual": 0
-      },
-      {
-        "label": "project_stage56_c7",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 0,
-        "actual": 0
       },
       {
         "label": "project_stage56_c8",
@@ -2738,14 +2742,6 @@
         "actual": null
       },
       {
-        "label": "cc1-c47-diferencial-o0-o2",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "cc1_c26_driver_minimo",
         "linker": "NSLink",
         "optimization": "-O2",
@@ -2754,9 +2750,9 @@
         "actual": 42
       },
       {
-        "label": "cc1_c28_texto",
+        "label": "cc1-c47-diferencial-o0-o2",
         "linker": "NSLink",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2765,6 +2761,14 @@
         "label": "cc1-c48-constraints-cross-project",
         "linker": "NSLink",
         "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "cc1_c28_texto",
+        "linker": "NSLink",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2802,14 +2806,6 @@
         "actual": 129
       },
       {
-        "label": "cc1_c29_arena",
-        "linker": "NSLink",
-        "optimization": "-O2",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "cc1_c31_cadena_c",
         "linker": "NSLink",
         "optimization": "-O2",
@@ -2818,7 +2814,7 @@
         "actual": 42
       },
       {
-        "label": "cc1-c50-inferred-array-initializer",
+        "label": "cc1_c29_arena",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -2834,9 +2830,9 @@
         "actual": 42
       },
       {
-        "label": "cc1-c40-receptor-estatico-calificado",
+        "label": "cc1-c50-inferred-array-initializer",
         "linker": "NSLink",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2845,6 +2841,14 @@
         "label": "cc1_c34_enum_nombre",
         "linker": "NSLink",
         "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "cc1-c40-receptor-estatico-calificado",
+        "linker": "NSLink",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2882,17 +2886,17 @@
         "actual": 42
       },
       {
-        "label": "cc1_c36_utf8",
+        "label": "cc1-c42-move-constructor-owned",
         "linker": "NSLink",
-        "optimization": "-O2",
+        "optimization": "-O0",
         "status": "passed",
         "expected": 42,
         "actual": 42
       },
       {
-        "label": "cc1-c42-move-constructor-owned",
+        "label": "cc1_c36_utf8",
         "linker": "NSLink",
-        "optimization": "-O0",
+        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -2922,6 +2926,14 @@
         "actual": 42
       },
       {
+        "label": "cc1_c33_hilos_join",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
         "label": "cc1_c38_enum_ancho",
         "linker": "NSLink",
         "optimization": "-O2",
@@ -2941,14 +2953,6 @@
         "label": "cc1-c46-sobrecargas-genericas",
         "linker": "NSLink",
         "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "cc1_c33_hilos_join",
-        "linker": "NSLink",
-        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -3042,7 +3046,7 @@
         "actual": 42
       },
       {
-        "label": "cc1-c45-tipos-anidados",
+        "label": "cc1-c44-constraints-genericos",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -3050,7 +3054,7 @@
         "actual": 42
       },
       {
-        "label": "cc1-c44-constraints-genericos",
+        "label": "cc1-c45-tipos-anidados",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -3066,7 +3070,31 @@
         "actual": 42
       },
       {
-        "label": "b8_shift_folding",
+        "label": "b7_duplicate_extern_c",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "b1_this_copy",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "b2_operator_null",
+        "linker": "NSLink",
+        "optimization": "-O0",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "b4_this_by_value",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -3082,7 +3110,7 @@
         "actual": 42
       },
       {
-        "label": "b7_duplicate_extern_c",
+        "label": "b6_delegate_projectref",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -3090,7 +3118,7 @@
         "actual": 42
       },
       {
-        "label": "b1_this_copy",
+        "label": "b8_shift_folding",
         "linker": "NSLink",
         "optimization": "-O0",
         "status": "passed",
@@ -3106,41 +3134,9 @@
         "actual": 42
       },
       {
-        "label": "b4_this_by_value",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "b2_operator_null",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "b6_delegate_projectref",
-        "linker": "NSLink",
-        "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
         "label": "b9_enum_estrecho_o2",
         "linker": "NSLink",
         "optimization": "-O0",
-        "status": "passed",
-        "expected": 42,
-        "actual": 42
-      },
-      {
-        "label": "b1_this_copy",
-        "linker": "NSLink",
-        "optimization": "-O2",
         "status": "passed",
         "expected": 42,
         "actual": 42
@@ -3154,7 +3150,7 @@
         "actual": 42
       },
       {
-        "label": "b4_this_by_value",
+        "label": "b1_this_copy",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -3162,7 +3158,7 @@
         "actual": 42
       },
       {
-        "label": "b2_operator_null",
+        "label": "b6_delegate_projectref",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -3186,7 +3182,15 @@
         "actual": 42
       },
       {
-        "label": "b6_delegate_projectref",
+        "label": "b2_operator_null",
+        "linker": "NSLink",
+        "optimization": "-O2",
+        "status": "passed",
+        "expected": 42,
+        "actual": 42
+      },
+      {
+        "label": "b4_this_by_value",
         "linker": "NSLink",
         "optimization": "-O2",
         "status": "passed",
@@ -3214,5 +3218,5 @@
   "problems": [],
   "certified": true,
   "state": "LANDED",
-  "recorded_at": "2026-09-07T13:25:55-06:00"
+  "recorded_at": "2026-09-07T15:33:39-06:00"
 }

@@ -1,0 +1,223 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Mirrors System.Collections.Generic.Queue<T> -- a FIFO, backed by a circular buffer over a
+    // single owned T[] array (exactly List<T>'s growth strategy, just indexed modulo the buffer
+    // length instead of always from slot 0). See List.ns's class comment for the general
+    // ownership design this whole package follows; the one addition here is `head`, the index of
+    // the oldest (next-to-Dequeue) element, which wraps around the end of the backing array.
+    public class Queue<T>
+    {
+        private owned T[] items;
+        private int head;
+        private int count;
+
+        public Queue()
+        {
+            items = new T[4];
+            head = 0;
+            count = 0;
+        }
+
+        public Queue(int capacity)
+        {
+            int actual = capacity;
+            if (actual < 1) { actual = 1; }
+            items = new T[actual];
+            head = 0;
+            count = 0;
+        }
+
+        public int Count()
+        {
+            return count;
+        }
+
+        public int Capacity()
+        {
+            return items.Length;
+        }
+
+        // Maps a logical position (0 = the oldest element) to its physical slot in the backing
+        // array, wrapping around the end.
+        private int PhysicalIndex(int logicalIndex)
+        {
+            int physical = head + logicalIndex;
+            if (physical >= items.Length) { physical = physical - items.Length; }
+            return physical;
+        }
+
+        // Get-only indexer over LOGICAL position (0 = the oldest element, same order as ToArray())
+        // -- added so QueueEnumerator<T> can borrow a live reference to this Queue<T> and read
+        // elements back through a public accessor, exactly the same design GetEnumerator()/
+        // ListEnumerator<T> already established for List<T> (see ListEnumerator.ns's class
+        // comment): the enumerator duplicates none of this class's storage or bookkeeping, it
+        // only tracks "which logical index is next".
+        public T this[int index]
+        {
+            get { return items[PhysicalIndex(index)]; }
+        }
+
+        // Public so callers can pre-size before a known-size batch of Enqueue()s. Returns the
+        // resulting capacity, mirroring List<T>.EnsureCapacity.
+        public int EnsureCapacity(int capacity)
+        {
+            if (items.Length >= capacity) { return items.Length; }
+            int newCapacity = items.Length * 2;
+            if (newCapacity < capacity) { newCapacity = capacity; }
+            const T[] grown = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                int source = PhysicalIndex(i);
+                grown[i] = move(items[source]);
+                i = i + 1;
+            }
+            delete[] items;
+            items = grown;
+            head = 0;
+            return items.Length;
+        }
+
+        // Mirrors Queue<T>.TrimExcess: shrinks the backing array to Count elements (linearizing
+        // the circular buffer back to head == 0) when Count is meaningfully smaller than
+        // Capacity -- same 90% threshold as List<T>.TrimExcess.
+        public void TrimExcess()
+        {
+            int threshold = (items.Length * 9) / 10;
+            if (count >= threshold) { return; }
+            int newCapacity = count;
+            if (newCapacity < 1) { newCapacity = 1; }
+            if (newCapacity == items.Length) { return; }
+            const T[] shrunk = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                int source = PhysicalIndex(i);
+                shrunk[i] = move(items[source]);
+                i = i + 1;
+            }
+            delete[] items;
+            items = shrunk;
+            head = 0;
+        }
+
+        public void Enqueue(owned T value)
+        {
+            EnsureCapacity(count + 1);
+            int tail = PhysicalIndex(count);
+            // move(value): see List.ns's Add() for the full explanation -- a plain `items[tail] =
+            // value;` leaves the owned parameter's own storage non-null, so its automatic
+            // end-of-scope cleanup destroys the very object just stored in the queue (a
+            // double-free that surfaces later as a dangling-pointer crash on Dequeue/growth).
+            items[tail] = move(value);
+            count = count + 1;
+        }
+
+        // Real C#'s Queue<T>.Dequeue() throws InvalidOperationException on an empty queue rather
+        // than returning a default value -- mirrored here now that NativeSharp.Core.Exception is
+        // a shipped, real base type (see lib/NativeSharp.Core/Exception.ns).
+        public owned T Dequeue()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            int index = head;
+            head = PhysicalIndex(1);
+            count = count - 1;
+            return move(items[index]);
+        }
+
+        public T Peek()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            return items[head];
+        }
+
+        // Mirrors `bool TryDequeue(out T result)` -- see Dictionary.ns's TryGetValue comment for
+        // why NativeSharp expresses `out` as a caller-supplied single-element array. Ownership of
+        // the dequeued element transfers into `result[0]` exactly like Dequeue()'s own return.
+        public bool TryDequeue(T[] result)
+        {
+            if (count == 0) { return false; }
+            result[0] = Dequeue();
+            return true;
+        }
+
+        // Mirrors `bool TryPeek(out T result)` -- see TryDequeue above. No ownership transfer:
+        // `result[0]` aliases the still-queued element, same as Peek()'s own return.
+        public bool TryPeek(T[] result)
+        {
+            if (count == 0) { return false; }
+            result[0] = items[head];
+            return true;
+        }
+
+        public bool Contains(T value)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (items[PhysicalIndex(i)] == value) { return true; }
+                i = i + 1;
+            }
+            return false;
+        }
+
+        public void Clear()
+        {
+            int i = 0;
+            while (i < count)
+            {
+                delete items[PhysicalIndex(i)];
+                i = i + 1;
+            }
+            head = 0;
+            count = 0;
+        }
+
+        public T[] ToArray()
+        {
+            const T[] result = new T[count];
+            int i = 0;
+            while (i < count)
+            {
+                result[i] = items[PhysicalIndex(i)];
+                i = i + 1;
+            }
+            return result;
+        }
+
+        // Mirrors Queue<T>.CopyTo: writes every element (oldest first) into `destination`
+        // starting at `destinationIndex`, same snapshot-aliasing story as ToArray().
+        public void CopyTo(T[] destination, int destinationIndex)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                destination[destinationIndex + i] = items[PhysicalIndex(i)];
+                i = i + 1;
+            }
+        }
+
+        // P1.2 of STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md: `owned` is load-bearing here
+        // (see List.ns's own GetEnumerator() comment for the full explanation -- foreach's
+        // enumerator-mode desugaring binds this call's result to a `raii var` local, which
+        // requires an owned-returning initializer).
+        public owned QueueEnumerator<T> GetEnumerator()
+        {
+            return new QueueEnumerator<T>(this);
+        }
+
+        ~Queue()
+        {
+            Clear();
+            delete[] items;
+        }
+    }
+}

@@ -46,6 +46,14 @@ archivo COFF y, cuando existe, la tabla de exports de la DLL. El cierre técnico
 completo con **324 casos**, ambos enlazadores y 0 fallos. La implementación está en 137 y 138; el
 acta instalada, con identidades, hashes y lectura de la evidencia, está en 139.
 
+**Avance local E7 (2026-09-07):** la semántica que estaba repartida entre el libro, documentos
+históricos, pruebas y comentarios ya tiene una autoridad normativa única. La especificación 1.0 y
+su gramática EBNF cubren 42 cláusulas independientes; un mapa conecta cada una con archivos de
+implementación y evidencia ejecutable. Stage 60 valida esa trazabilidad con **954 checks** en cada
+árbol. Las 37 suites focales citadas pasaron 37/37, primero con lld-link y después con NSLink. La
+especificación se instala con el producto bajo `share/nativesharp/spec`. El detalle está en 140.
+Este cierre sigue siendo local: el G00 certificado vigente continúa siendo el de E1–E6.
+
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
 crecimiento de campos `owned T[]`, tanto en O0/O2 como con lld-link/NSLink. La corrección mantiene
@@ -985,6 +993,9 @@ todo cambio incompatible exige migración documentada y aumento de versión.
 
 ### 9.1 Lenguaje
 
+**Estado E7 al 2026-09-07:** cerrado localmente, pendiente de instalación y G00. La autoridad
+normativa, gramática y mapa de conformidad están en `spec/`; la historia técnica está en 140.
+
 - especificación 1.0 suficientemente precisa para decidir si un programa es válido;
 - contrato de enteros, floats, overflow, casts y división;
 - modelo de memoria y atomics;
@@ -1106,6 +1117,7 @@ Además:
 0.9.0        Cierre local: DLL/import `.lib`, estática, consumo precompilado y NSMETA 1.5
 0.9.0+G00    Baseline instalado y certificado — completado el 2026-09-07
 1.0-E5/E6    Diagnósticos ABI y verificación física de bibliotecas — instaladas y certificadas
+1.0-E7       Especificación, gramática y trazabilidad normativa — cierre local
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

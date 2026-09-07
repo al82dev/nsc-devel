@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(
     NativeSharp
     VERSION 0.9.0
-    DESCRIPTION "NativeSharp stage 57 -- ownership, enum and cross-project correctness"
+    DESCRIPTION "NativeSharp stage 60 -- normative language contract and traceability"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -392,6 +392,7 @@ if(NOT WIN32)
 endif()
 install(TARGETS nsc RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
 
 # =====================================================================================
 # NSC_TEST_COMPILER -- EL COMPILADOR QUE MIDE CTEST.
@@ -820,6 +821,18 @@ if(NSC_BUILD_TESTS)
     target_compile_definitions(nsc_stage57_language_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_stage57_language_tests)
     add_test(NAME nsc.stage57.language COMMAND nsc_stage57_language_tests)
+
+    # Stage 60 / 1.0-E7 -- normative language contract. This does not pretend that prose proves
+    # semantics. It verifies the traceability property E7 adds: every normative clause has one
+    # implementation location and one executable evidence location, every referenced file exists,
+    # the identifiers are unique in both directions, and the installed specification is wired into
+    # the package. The existing focused suites remain the semantic evidence named by the map.
+    add_executable(nsc_stage60_language_contract_tests tests/unit/Stage60LanguageContractTests.cpp)
+    target_compile_features(nsc_stage60_language_contract_tests PRIVATE cxx_std_20)
+    target_include_directories(nsc_stage60_language_contract_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_definitions(nsc_stage60_language_contract_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage60_language_contract_tests)
+    add_test(NAME nsc.stage60.language-contract COMMAND nsc_stage60_language_contract_tests)
 
     # ---------------------------------------------------------------------------------------
     # Milestone CC1 -- Compiler Correctness & Semantic Consolidation.
@@ -1417,18 +1430,28 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
 
-    # CC1-000: el regex incluye ahora la linea `build <id>`. La stage subio a 57, y este test es
-    # justo el que se le habia quedado atras al numero anterior -- por eso se le agrega tambien la
-    # comprobacion del build id: si la generacion de BuildId.h se rompiera, esto se pone rojo aqui
-    # ademas de en nsc.version.identity.
+    # CC1-000: este regex comprueba la identidad visible del compilador instalado. El stage exacto
+    # se extrae de Version.h para conservar una sola fuente de verdad sin aceptar una instalacion
+    # atrasada. nsc.version.identity comprueba por separado las constantes enlazadas en este build.
     #
     # `[0-9a-f]` y no `.*` a proposito: un @NSC_BUILD_ID@ sin sustituir dejaria la linea vacia, y un
     # `.*` la aceptaria igual.
+    file(
+        STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Basic/Version.h"
+        NSC_COMPILER_STAGE_DECLARATION
+        REGEX "kCompilerStage = \"[0-9]+\"")
+    string(
+        REGEX REPLACE ".*\"([0-9]+)\".*" "\\1"
+        NSC_EXPECTED_COMPILER_STAGE "${NSC_COMPILER_STAGE_DECLARATION}")
+    if(NOT NSC_EXPECTED_COMPILER_STAGE MATCHES "^[0-9]+$")
+        message(FATAL_ERROR "No se pudo leer kCompilerStage desde Version.h")
+    endif()
+
     add_test(NAME nsc.version COMMAND "${NSC_TEST_COMPILER}" --version)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 0.9.0[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
+            "nsc 0.9.0[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage ${NSC_EXPECTED_COMPILER_STAGE}.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

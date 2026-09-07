@@ -14,6 +14,7 @@ LECTURA HISTÓRICA RECOMENDADA
     137_1_0_e5_diagnosticos_y_coherencia_abi.md
     138_1_0_e6_verificacion_fisica_lib_dll.md
     139_baseline_certificado_1_0_e5_e6.md
+    140_1_0_e7_especificacion_normativa_y_trazabilidad.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -41,6 +42,11 @@ COFF y DLL. Registran también las pruebas negativas y la validación focal prev
 El documento 139 registra la promoción de E5/E6 a producto instalado: el segundo baseline G00,
 las identidades exactas del árbol y del ejecutable, las 11 etapas, los 324 casos y la razón por la
 que una identidad focal anterior y la identidad instalada no deben confundirse.
+
+El documento 140 explica E7: cómo el comportamiento disperso se convirtió en una especificación
+normativa instalable, una gramática EBNF y un mapa cláusula→implementación→evidencia que Stage 60
+verifica mecánicamente. Registra también la corrida paralela inválida, su causa y las dos
+repeticiones secuenciales verdes.
 
 Entrega instalada vigente: NativeSharp 0.1, Stage 57; `nsc 0.9.0` con E1–E6 completas.
 Estado vigente: G00 `20260907-131523-7eda857d`, 11 etapas, 324 casos, cero fallos,

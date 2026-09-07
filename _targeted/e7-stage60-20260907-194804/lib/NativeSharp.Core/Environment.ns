@@ -1,0 +1,165 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Environment -- Stage 53.2 "Environment", ronda 1.
+    //
+    // Sigue exactamente la misma disciplina de "operacion nucleo" que
+    // NativeSharp.Core.Diagnostics.NativeClock establecio en Stage 53.1 (ver el comentario de
+    // cabecera de ese archivo para la explicacion completa del mecanismo: el compilador
+    // reconoce estos metodos por clase+nombre+firma exactos y sustituye la llamada entera por
+    // lowering nativo a LLVM; el cuerpo de C# de abajo nunca se ejecuta, existe solo para que
+    // el archivo compile como NativeSharp valido).
+    //
+    // Tres primitivas, cada una envolviendo UNA sola llamada a Win32 (ver
+    // src/Runtime/WindowsRuntimeBuilder.cpp, funciones buildEnvironmentTickCount64/
+    // buildEnvironmentProcessorCount/buildEnvironmentExit):
+    //
+    //   TickCount64()      -> GetTickCount64          (milisegundos desde que arranco el SO)
+    //   ProcessorCount()   -> GetActiveProcessorCount  (cantidad de procesadores logicos)
+    //   Exit(int)          -> ExitProcess              (termina el proceso ya mismo)
+    //
+    // A diferencia de NativeClock, esta clase no tiene una capa de API "amigable" separada
+    // (algo como TimeSpan/DateTime construidas encima de NativeClock): las tres operaciones ya
+    // SON la forma final que un caller quiere usar, sin conversion de unidades ni aritmetica
+    // adicional -- por eso viven directamente en Environment, sin indireccion.
+    //
+    // Stage 53.2b agrego GetEnvironmentVariable/SetEnvironmentVariable (ver mas abajo) -- la
+    // pieza que esta ronda original dejo deliberadamente afuera, porque necesita que el runtime
+    // ALOQUE una NativeSharp.Core.String nueva de longitud determinada recien en tiempo de
+    // ejecucion (el tamanio de una variable de entorno no se sabe en tiempo de compilacion). Ver
+    // el comentario de cabecera de cada metodo de abajo para el detalle de esa pieza, y
+    // `53_2_nativesharp_environment_b_variables.md` para la explicacion completa del mecanismo.
+    //
+    // Stage 53.5 "Command-line arguments" agrego GetCommandLineArgCount/GetCommandLineArgs (ver
+    // mas abajo) -- la pieza que esta ronda original dejo deliberadamente afuera por necesitar
+    // el parseo de reglas de quoting de linea de comandos de Windows, exactamente el mismo tipo
+    // de problema que ya genero un bug real en este proyecto (ver
+    // claude/15_fix_cmdexe_quoting_tests_host_abi_windows.md). La decision de diseno de esa ronda
+    // fue NO reimplementar ese parseo a mano: se delega enteramente a CommandLineToArgvW, el
+    // parser oficial de Windows (el mismo que usa el propio CRT de Microsoft para construir
+    // argv/argc de cualquier programa C), en vez de reproducir sus reglas de escape a mano. Ver
+    // el comentario de cabecera de cada metodo de abajo, y
+    // `55_stage53_5_command_line_args.md` para la explicacion completa del mecanismo.
+    public class Environment
+    {
+        // Core operation: GetTickCount64. Milisegundos transcurridos desde que arranco el
+        // sistema operativo, como un contador monotonico de 64 bits (no se desborda en la
+        // practica: tardaria mas de 500 millones de anios). Uso tipico: un identificador de
+        // tiempo barato para logging o para medir duraciones aproximadas sin la precision de
+        // Stopwatch (que usa QueryPerformanceCounter, mas caro pero mas preciso -- ver Stage
+        // 53.1). NO es el mismo reloj que DateTime.UtcNow(): este es tiempo desde el arranque
+        // del sistema, no la hora de pared.
+        public static long TickCount64()
+        {
+            return 0;
+        }
+
+        // Core operation: GetActiveProcessorCount(ALL_PROCESSOR_GROUPS). Cantidad de
+        // procesadores logicos (incluyendo hyperthreading) disponibles para este proceso en
+        // toda la maquina. Uso tipico: dimensionar un pool de threads o de trabajo paralelo --
+        // el motivo real por el que esto entra en Stage 53 antes que Stage 54 (threading):
+        // cualquier diseño de pool de threads necesita saber cuantos threads tiene sentido
+        // crear, y esa pregunta se puede responder y verificar HOY, sin que exista threading
+        // todavia.
+        public static int ProcessorCount()
+        {
+            return 0;
+        }
+
+        // Bloque 4, fase A. Operacion nucleo: GetCurrentDirectoryA, dos llamadas -- la primera
+        // pregunta el tamano, la segunda llena. Cierra `current_path`, la ultima de las siete
+        // operaciones de filesystem que el arbol de nsc usa de verdad (doc 81).
+        //
+        // Devuelve la cadena vacia si Win32 falla, misma simplificacion que
+        // GetEnvironmentVariable y Path.GetFullPath: los codigos de error de Win32 no estan
+        // cableados a excepciones de NativeSharp, y eso es su propio trabajo de diseno.
+        public static string CurrentDirectory()
+        {
+            return "";
+        }
+
+        // Core operation: ExitProcess. Termina el proceso INMEDIATAMENTE con el codigo de
+        // salida dado -- no vuelve, no ejecuta mas codigo NativeSharp despues de esta llamada
+        // (ni siquiera cleanup de raii pendiente: es una terminacion abrupta del proceso
+        // completo, exactamente como Environment.Exit en C# real, y muy distinto de un
+        // "return" normal desde Main()). Reusa el mismo ExitProcess que el runtime ya declara
+        // internamente para sus propios caminos de aborto/trap -- no es un import nuevo.
+        public static void Exit(int exitCode)
+        {
+        }
+
+        // Core operation: GetEnvironmentVariableA. Devuelve el valor de la variable de entorno
+        // "name", o "" (string vacio) si no existe. Simplificacion deliberada de esta ronda: NO
+        // se distingue "la variable no existe" de "existe y esta vacia" -- ambos casos devuelven
+        // "". Esto evita necesitar un tipo string nullable o un patron Try-con-out-parameter
+        // (ver HANDOVER_STAGE52_TO_STAGE53.md) que este compilador todavia no tiene motivo para
+        // introducir; si algun caller real necesita distinguir esos dos casos, una futura
+        // TryGetEnvironmentVariable puede agregarse sin romper esta firma.
+        //
+        // Implementacion real (WindowsRuntimeBuilder.cpp, buildEnvironmentGetVariable): llama a
+        // GetEnvironmentVariableA dos veces, siguiendo el propio patron documentado por Win32 --
+        // la primera con buffer nulo para que Windows diga cuantos bytes hacen falta, la segunda
+        // con un buffer de exactamente ese tamanio, recien alocado con el mismo heap allocator
+        // crudo que usa el resto del runtime. El resultado es una NativeSharp.Core.String real,
+        // igual de valida que una creada con String.Concat.
+        public static string GetEnvironmentVariable(string name)
+        {
+            return "";
+        }
+
+        // Core operation: SetEnvironmentVariableA. Establece la variable de entorno "name" al
+        // valor "value" para el resto de la vida de este proceso (y de cualquier proceso hijo
+        // que arranque despues). Simplificacion deliberada: esta ronda no expone la forma de
+        // BORRAR una variable (en Win32 real eso es un SetEnvironmentVariableA con el segundo
+        // argumento NULL, no con un string vacio -- son dos cosas distintas en la API real, y
+        // mezclarlas hubiera sido una simplificacion incorrecta, no solo incompleta).
+        public static void SetEnvironmentVariable(string name, string value)
+        {
+        }
+
+        // Core operation: GetCommandLineW + CommandLineToArgvW + LocalFree. Devuelve cuantos
+        // argumentos de linea de comandos tiene este proceso (incluyendo el argumento 0, el
+        // nombre/path con el que se invoco el ejecutable -- igual que argc en C real, e igual
+        // que Environment.GetCommandLineArgs().Length en .NET real). Existe SOLO para que un
+        // caller sepa de antemano cuantos elementos reservar en el arreglo que le va a pasar a
+        // GetCommandLineArgs (ver abajo) -- el mismo patron de "pedir el tamanio antes de pedir
+        // el contenido" que Environment.GetEnvironmentVariable (53.2b) y Path.GetFullPath (53.4)
+        // ya usan para un string, aplicado aqui a un arreglo.
+        //
+        // Por que esto (y no simplemente devolver "owned string[]" desde GetCommandLineArgs):
+        // este compilador NO tiene forma de construir un "owned string[]" cuyos elementos se
+        // llenan en varios pasos (ver la nota de diseno al inicio del bloque Split/Partition/
+        // Count en NativeSharp.Core.String.ns -- "el hueco de owned string[]", confirmada contra
+        // el compilador, no supuesta). En vez de bloquearse en ese hueco, esta superficie sigue
+        // EXACTAMENTE el mismo patron de "buffer provisto por el caller" que String.Split ya
+        // establecio: el caller reserva el arreglo, el metodo lo llena.
+        public static int GetCommandLineArgCount()
+        {
+            return 0;
+        }
+
+        // Core operation: GetCommandLineW + CommandLineToArgvW + WideCharToMultiByte (uno por
+        // argumento) + LocalFree. Llena "destination" con los argumentos de linea de comandos de
+        // este proceso -- destination[0] es el nombre/path del ejecutable, destination[1] en
+        // adelante son los argumentos reales pasados por quien invoco el proceso. Devuelve
+        // cuantos elementos escribio de verdad (acotado por destination.Length, igual que
+        // String.Split: si el arreglo es mas chico que la cantidad real de argumentos, los
+        // sobrantes simplemente no se copian -- sin excepcion, sin truncar el ultimo elemento
+        // escrito a diferencia de Split).
+        //
+        // La pieza de diseno real de esta ronda: Windows NO tiene una version ANSI de su parser
+        // de linea de comandos oficial (no existe "CommandLineToArgvA") -- CommandLineToArgvW es
+        // *W (UTF-16) unicamente. En vez de reimplementar a mano, en ANSI, las mismas reglas de
+        // escape que ese parser ya implementa (backslashes antes de comillas, comillas dentro de
+        // un argumento, etc. -- exactamente la clase de bug que ya nos costo caro una vez, ver
+        // claude/15_fix_cmdexe_quoting_tests_host_abi_windows.md), esta operacion llama a
+        // GetCommandLineW + CommandLineToArgvW (las UNICAS dos llamadas *W de todo este runtime,
+        // deliberada y explicitamente, no una regresion de la disciplina "siempre ANSI") y
+        // convierte cada argumento UTF-16 resultante a ANSI con WideCharToMultiByte -- la MISMA
+        // logica de quoting que usa el propio CRT de Microsoft para construir argv/argc de
+        // cualquier programa C real en Windows, reutilizada tal cual en vez de reimplementada.
+        public static int GetCommandLineArgs(string[] destination)
+        {
+            return 0;
+        }
+    }
+}

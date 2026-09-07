@@ -1,0 +1,34 @@
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Enumerator returned by SortedSet<T>.GetEnumerator() (P1.2 of
+    // STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md). See HashSetEnumerator.ns's class
+    // comment -- identical shape, just over SortedSet<T>.ToArray() (already sorted order)
+    // instead of HashSet<T>.ToArray().
+    public class SortedSetEnumerator<T>
+    {
+        private T[] snapshot;
+        private int index;
+
+        public SortedSetEnumerator(SortedSet<T> sourceSet)
+        {
+            snapshot = sourceSet.ToArray();
+            index = -1;
+        }
+
+        public bool MoveNext()
+        {
+            index = index + 1;
+            return index < snapshot.Length;
+        }
+
+        public T Current
+        {
+            get { return snapshot[index]; }
+        }
+
+        ~SortedSetEnumerator()
+        {
+            delete[] snapshot;
+        }
+    }
+}
