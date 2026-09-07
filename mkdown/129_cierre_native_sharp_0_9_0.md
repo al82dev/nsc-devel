@@ -124,6 +124,7 @@ consumidores separados, ejecución real y negativos previos al enlace.
 
 - Stage 46 con lld-link: **111/111**.
 - Stage 46 con NSLink: **111/111**.
+- Host C ABI Stage 47: **80/80** después de sincronizar el diagnóstico de superficie publicable.
 - Metadata Stage 48.2: **72/72**.
 - Compatibilidad de metadata Stage 50.9: **47/47**.
 - Matriz directa de cierre: **5/5** con cada linker.
@@ -139,11 +140,11 @@ comportamiento del sistema de archivos ni se contó un fallo de compilador como 
 
 ## Identidad del producto
 
-- versión: `nsc 0.9.0+build.20260907T035128Z.7cc7faa5ecc8a96b`;
+- versión: `nsc 0.9.0+build.20260907T042535Z.03ca780e6debcd15`;
 - lenguaje: `NativeSharp 0.1`, Stage 57;
-- SHA-256: `C3C2F2067860647EF8513330B542F97C53F3D4B3A4CE017D3BA88902BE2CD5FD`;
+- SHA-256: `ADB3BAF106CDC666D7E005436280FE2DECC7362530FB2E13D0057EF794622FC1`;
 - tamaño: `3,713,024` bytes;
-- generado: `2026-09-07T03:51:28Z` UTC;
+- generado: `2026-09-07T04:25:35Z` UTC;
 - producto: `build-tests/bin/nsc.exe`.
 
 ## Qué no promete 0.9.0

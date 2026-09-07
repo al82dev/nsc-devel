@@ -368,7 +368,7 @@ class Api { public static int Internal(int x) { return x; } }
             output,
             error) == ExitCode::CompilationError,
         "Stage 47 SharedLibrary requires an explicit stable C ABI export surface");
-    tests.expect(error.find("requires at least one public static method") != std::string::npos,
+    tests.expect(error.find("requires at least one publishable public method") != std::string::npos,
         "DLL-without-public-surface diagnostic names the NativeSharp library contract");
 
     const std::filesystem::path nativeOnly = root / "NativeOnly";

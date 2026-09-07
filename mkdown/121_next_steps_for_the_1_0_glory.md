@@ -19,8 +19,8 @@ NativeSharp sin redeclaración, structs y enums con ABI exacto, receptores de in
 clases opacas con ownership y métodos concretos, y callbacks `extern C delegate`. NSMETA 1.5
 conserva ahora la firma de callbacks y sigue leyendo 1.0–1.4. Stage 46 suma **111 checks** por
 linker. El catálogo final da **297/297 efectivos con lld-link y 297/297 con NSLink**. El producto es
-`nsc 0.9.0+build.20260907T035128Z.7cc7faa5ecc8a96b`, SHA-256
-`C3C2F2067860647EF8513330B542F97C53F3D4B3A4CE017D3BA88902BE2CD5FD`. Falta instalar este hash y
+`nsc 0.9.0+build.20260907T042535Z.03ca780e6debcd15`, SHA-256
+`ADB3BAF106CDC666D7E005436280FE2DECC7362530FB2E13D0057EF794622FC1`. Falta instalar este hash y
 ejecutar G00 para convertir el cierre técnico en baseline instalado certificado. El acta completa
 está en `129_cierre_native_sharp_0_9_0.md`.
 

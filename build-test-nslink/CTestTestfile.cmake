@@ -365,7 +365,7 @@ set_tests_properties("nsc.windows-linker" PROPERTIES  _BACKTRACE_TRIPLES "A:/nsc
 add_test("nsc.driver" "A:/nsc-devel/build-test-nslink/tests/nsc_driver_tests.exe")
 set_tests_properties("nsc.driver" PROPERTIES  _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1418;add_test;A:/nsc-devel/CMakeLists.txt;0;")
 add_test("nsc.version" "C:/native-sharp/bin/nsc.exe" "--version")
-set_tests_properties("nsc.version" PROPERTIES  PASS_REGULAR_EXPRESSION "nsc 0.9.0-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+" _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1427;add_test;A:/nsc-devel/CMakeLists.txt;0;")
+set_tests_properties("nsc.version" PROPERTIES  PASS_REGULAR_EXPRESSION "nsc 0.9.0[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+" _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1427;add_test;A:/nsc-devel/CMakeLists.txt;0;")
 add_test("nsc.stage25.project-names" "C:/native-sharp/bin/nsc.exe" "--check-project-names" "A:/nsc-devel/examples/project_stage25/App/App.nsproj")
 set_tests_properties("nsc.stage25.project-names" PROPERTIES  PASS_REGULAR_EXPRESSION "project name lookup check: ok" _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1433;add_test;A:/nsc-devel/CMakeLists.txt;0;")
 add_test("nsc.stage26.project-members" "C:/native-sharp/bin/nsc.exe" "--check-project-members" "A:/nsc-devel/examples/project_stage26/App/App.nsproj")

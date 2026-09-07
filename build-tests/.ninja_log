@@ -469,3 +469,13 @@
 652	769	8104562889876766	bin/nsc.exe	ade321ef350d68eb
 110	1711	8104562884374058	CMakeFiles/nsc_cc1_build_identity_tests.dir/tests/unit/Cc1BuildIdentityTests.cpp.obj	e15bfba962e24c2a
 1711	1789	8104562900369286	tests/nsc_cc1_build_identity_tests.exe	64d14ae3368fc7da
+86	201	8104583353674097	A:/nsc-devel/build-tests/CMakeFiles/cmake.verify_globs	ce50a1f48c9f457e
+231	564	8104583355127431	CMakeFiles/nsc_build_identity	45d8c69324e930b8
+231	564	8104583355127431	generated/nativesharp/Basic/BuildId.h	45d8c69324e930b8
+231	564	8104583355127431	A:/nsc-devel/build-tests/CMakeFiles/nsc_build_identity	45d8c69324e930b8
+231	564	8104583355127431	A:/nsc-devel/build-tests/generated/nativesharp/Basic/BuildId.h	45d8c69324e930b8
+564	1878	8104583358451017	CMakeFiles/nsc_driver.dir/src/Basic/Version.cpp.obj	d965a0be020c5587
+1879	2319	8104583371598331	lib/nsc_driver.lib	fb6229419a46a595
+2319	2981	8104583376006104	bin/nsc.exe	ade321ef350d68eb
+567	5414	8104583358481082	CMakeFiles/nsc_stage47_host_c_abi_tests.dir/tests/unit/Stage47HostCAbiTests.cpp.obj	ddfe7469045c5203
+5414	5989	8104583406954238	tests/nsc_stage47_host_c_abi_tests.exe	7faeb299ea1c5d66

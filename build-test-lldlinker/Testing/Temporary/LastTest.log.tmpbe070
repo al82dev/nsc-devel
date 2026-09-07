@@ -1,0 +1,17 @@
+Start testing: Sep 06 23:10 Central Standard Time (Mexico)
+----------------------------------------------------------
+55/297 Testing: nsc.stage56.bugfix
+55/297 Test: nsc.stage56.bugfix
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage56_bugfix_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage56.bugfix" start time: Sep 06 23:10 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   4.35 sec
+----------------------------------------------------------
+Test Failed.
+"nsc.stage56.bugfix" end time: Sep 06 23:10 Central Standard Time (Mexico)
+"nsc.stage56.bugfix" time elapsed: 00:00:04
+----------------------------------------------------------
+

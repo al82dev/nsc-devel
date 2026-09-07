@@ -435,6 +435,14 @@ corrida principal, ocho emisiones de objeto bloqueadas temporalmente por Windows
 repetirse aisladas y el host C# pasó 1/1 con acceso al SDK. No se convirtió ninguna falla de
 entorno en un verde ficticio; la composición comprobada es 288 + 8 + 1 = **297/297 efectivos**.
 
+## Pasada 16 — contrato textual de DLL vacía en Stage 47
+
+Una construcción limpia recompiló Stage 47 y reveló que la fixture todavía exigía el diagnóstico
+histórico “public static method”. Esa frase dejó de representar el contrato cuando las clases
+opacas habilitaron métodos concretos de instancia publicables. La expectativa se sincronizó con
+“publishable public method”; no se relajó el error ni la validación de exports. Stage 47 pasó
+**80/80** y se generó un nuevo `nsc.exe` acumulado.
+
 ## Frontera que pasa a 1.0
 
 0.9 cierra valores nominales, clases opacas, ownership y callbacks crudos. Pasan a la línea 1.0 la
@@ -487,9 +495,9 @@ dejando la anterior sin su compilador generado.
 
 La entrega acumulada actual quedó materializada como:
 
-- versión: `nsc 0.9.0+build.20260907T035128Z.7cc7faa5ecc8a96b`;
+- versión: `nsc 0.9.0+build.20260907T042535Z.03ca780e6debcd15`;
 - lenguaje: `NativeSharp 0.1`, Stage 57;
-- SHA-256: `C3C2F2067860647EF8513330B542F97C53F3D4B3A4CE017D3BA88902BE2CD5FD`;
+- SHA-256: `ADB3BAF106CDC666D7E005436280FE2DECC7362530FB2E13D0057EF794622FC1`;
 - tamaño: `3,713,024` bytes;
-- generado (UTC): `2026-09-07T03:51:28Z`;
+- generado (UTC): `2026-09-07T04:25:35Z`;
 - producto: `build-tests/bin/nsc.exe`.

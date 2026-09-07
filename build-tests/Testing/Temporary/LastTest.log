@@ -1,19 +1,19 @@
-Start testing: Sep 06 22:07 Central Standard Time (Mexico)
+Start testing: Sep 06 22:25 Central Standard Time (Mexico)
 ----------------------------------------------------------
-118/297 Testing: nsc.stage48_5.csharp-pinvoke-host
-118/297 Test: nsc.stage48_5.csharp-pinvoke-host
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage48_5_csharp_host_tests.exe"
+113/297 Testing: nsc.stage47.host-c-abi
+113/297 Test: nsc.stage47.host-c-abi
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage47_host_c_abi_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage48_5.csharp-pinvoke-host" start time: Sep 06 22:07 Central Standard Time (Mexico)
+"nsc.stage47.host-c-abi" start time: Sep 06 22:25 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 57 checks
+PASS: 80 checks
 <end of output>
-Test time =   3.71 sec
+Test time =   9.91 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage48_5.csharp-pinvoke-host" end time: Sep 06 22:07 Central Standard Time (Mexico)
-"nsc.stage48_5.csharp-pinvoke-host" time elapsed: 00:00:03
+"nsc.stage47.host-c-abi" end time: Sep 06 22:25 Central Standard Time (Mexico)
+"nsc.stage47.host-c-abi" time elapsed: 00:00:09
 ----------------------------------------------------------
 
-End testing: Sep 06 22:07 Central Standard Time (Mexico)
+End testing: Sep 06 22:25 Central Standard Time (Mexico)

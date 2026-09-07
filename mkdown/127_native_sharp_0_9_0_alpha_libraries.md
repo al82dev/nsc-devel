@@ -293,7 +293,12 @@ Stage 50.9 terminó 47/47. El catálogo acumulado da **297/297 efectivos** con l
 La corrida final del producto estable obtuvo 288 verdes directos; ocho emisiones de objeto que
 Windows rechazó temporalmente por una sección mapeada pasaron 8/8 al repetirse aisladas, y el host
 C# P/Invoke pasó 1/1 con acceso al SDK. El binario exacto es
-`nsc 0.9.0+build.20260907T035128Z.7cc7faa5ecc8a96b`, SHA-256
-`C3C2F2067860647EF8513330B542F97C53F3D4B3A4CE017D3BA88902BE2CD5FD`. Sólo falta instalar ese
+`nsc 0.9.0+build.20260907T042535Z.03ca780e6debcd15`, SHA-256
+`ADB3BAF106CDC666D7E005436280FE2DECC7362530FB2E13D0057EF794622FC1`. Sólo falta instalar ese
 artefacto y ejecutar G00 sobre el mismo hash para convertir el cierre local en baseline
 certificado.
+
+La reconstrucción limpia detectó una expectativa histórica de Stage 47 que todavía buscaba el
+diagnóstico “public static method”. Desde que 0.9 publica también métodos concretos de instancia,
+el contrato correcto es “publishable public method”. Se actualizó únicamente la fixture, sin
+relajar el rechazo de una DLL sin superficie pública; Stage 47 terminó **80/80**.

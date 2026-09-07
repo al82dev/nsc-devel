@@ -104,7 +104,7 @@ nsc.cc1.correctness.cc1-c45-tipos-anidados 14 0.507015
 nsc.cc1.correctness.cc1-c46-sobrecargas-genericas 14 0.504845
 nsc.cc1.correctness 13 0.312934
 nsc.stage46.native-libraries 40 0.263287
-nsc.stage47.host-c-abi 19 0.138578
+nsc.stage47.host-c-abi 20 0.495416
 nsc.stage48_1.c-header 18 0.107695
 nsc.stage48_2.library-metadata 34 0.0215244
 nsc.stage48_3.c-host 18 0.127731
