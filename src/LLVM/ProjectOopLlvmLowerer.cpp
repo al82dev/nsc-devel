@@ -1266,7 +1266,7 @@ private:
             // `GetCurrentProcessId.1` and the link would end with "undefined symbol:
             // GetCurrentProcessId.1" (measured, by this round's own suite). Every member keeps its
             // own MIR record and simply resolves to the shared declaration.
-            if (function.isImportedC)
+            if (function.isImportedC || function.isImportedNative)
             {
                 const auto existing = functions_.find(function.mangledName);
                 if (existing != functions_.end()) continue;
@@ -1549,6 +1549,14 @@ private:
         {
             return fail(error, "Stage 39 failed to declare RTTI helper functions");
         }
+        // NativeSharp 0.9 / composable libraries. These helpers inspect an object's public
+        // descriptor shape but are implementation details of the module that emits the test.
+        // External linkage made every independently compiled .lib define the same two strong
+        // COFF symbols; the first real producer/consumer link therefore failed before main.
+        // Keeping them internal is also stronger than COMDAT folding: no cross-module identity is
+        // promised and each module may inline or optimize its own copy independently.
+        LLVMSetLinkage(rttiClassTestFunction_, LLVMInternalLinkage);
+        LLVMSetLinkage(rttiInterfaceTestFunction_, LLVMInternalLinkage);
 
         currentFunction_ = rttiClassTestFunction_;
         blockCounter_ = 0;
@@ -1785,7 +1793,7 @@ private:
             // C1.2 "import identity" is the one exception: an import whose C symbol name is
             // claimed by two libraries has no import-library slot to be declared against, so it
             // gets a real body that binds the external symbol at first call.
-            if (function.isImportedC)
+            if (function.isImportedC || function.isImportedNative)
             {
                 // Same deduplication as declareFunctions: one identity, one body. The set is what
                 // keeps a second declaration of the same import from redefining it.

@@ -30,5 +30,15 @@ void ProjectDumper::dump(const Project& project, std::ostream& output) const
     {
         output << "    " << reference.generic_string() << '\n';
     }
+    output << "  library-references: " << project.libraryReferences().size() << '\n';
+    for (const LibraryReference& reference : project.libraryReferences())
+    {
+        output << "    library: " << reference.libraryPath.generic_string() << '\n';
+        output << "      metadata: " << reference.metadataPath.generic_string() << '\n';
+        if (!reference.runtimePath.empty())
+        {
+            output << "      runtime: " << reference.runtimePath.generic_string() << '\n';
+        }
+    }
 }
 }

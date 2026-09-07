@@ -1,0 +1,227 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class IntHashTable
+    {
+        private int[] keys;
+        private int[] values;
+        private int[] states;
+        private int count;
+        private int used;
+
+        public IntHashTable(int initialCapacity)
+        {
+            if (initialCapacity < 5)
+            {
+                initialCapacity = 5;
+            }
+            keys = new int[initialCapacity];
+            values = new int[initialCapacity];
+            states = new int[initialCapacity];
+        }
+
+        public int Count
+        {
+            get
+            {
+                return count;
+            }
+        }
+
+        public int Capacity
+        {
+            get
+            {
+                return keys.Length;
+            }
+        }
+
+        private int Hash(int key, int capacity)
+        {
+            int result = key % capacity;
+            if (result < 0)
+            {
+                result = result + capacity;
+            }
+            return result;
+        }
+
+        private int FindSlot(int key)
+        {
+            int start = Hash(key, keys.Length);
+            int step = 0;
+            while (step < keys.Length)
+            {
+                int slot = (start + step) % keys.Length;
+                if (states[slot] == 0)
+                {
+                    return -1;
+                }
+                if (states[slot] == 1 && keys[slot] == key)
+                {
+                    return slot;
+                }
+                step = step + 1;
+            }
+            return -1;
+        }
+
+        private int FindInsertionSlot(int key)
+        {
+            int start = Hash(key, keys.Length);
+            int firstDeleted = -1;
+            int step = 0;
+            while (step < keys.Length)
+            {
+                int slot = (start + step) % keys.Length;
+                if (states[slot] == 1 && keys[slot] == key)
+                {
+                    return slot;
+                }
+                if (states[slot] == 2 && firstDeleted == -1)
+                {
+                    firstDeleted = slot;
+                }
+                if (states[slot] == 0)
+                {
+                    if (firstDeleted != -1)
+                    {
+                        return firstDeleted;
+                    }
+                    return slot;
+                }
+                step = step + 1;
+            }
+            return firstDeleted;
+        }
+
+        private void InsertWithoutGrowth(int key, int value)
+        {
+            int slot = FindInsertionSlot(key);
+            if (states[slot] == 1)
+            {
+                values[slot] = value;
+                return;
+            }
+            if (states[slot] == 0)
+            {
+                used = used + 1;
+            }
+            keys[slot] = key;
+            values[slot] = value;
+            states[slot] = 1;
+            count = count + 1;
+        }
+
+        private void Rehash(int newCapacity)
+        {
+            int[] oldKeys = keys;
+            int[] oldValues = values;
+            int[] oldStates = states;
+            int oldCapacity = oldKeys.Length;
+            keys = new int[newCapacity];
+            values = new int[newCapacity];
+            states = new int[newCapacity];
+            count = 0;
+            used = 0;
+            int slot = 0;
+            while (slot < oldCapacity)
+            {
+                if (oldStates[slot] == 1)
+                {
+                    InsertWithoutGrowth(oldKeys[slot], oldValues[slot]);
+                }
+                slot = slot + 1;
+            }
+            delete[] oldKeys;
+            delete[] oldValues;
+            delete[] oldStates;
+        }
+
+        public void Put(int key, int value)
+        {
+            if ((used + 1) * 10 >= keys.Length * 7)
+            {
+                Rehash(keys.Length * 2 + 1);
+            }
+            InsertWithoutGrowth(key, value);
+        }
+
+        public bool ContainsKey(int key)
+        {
+            return FindSlot(key) != -1;
+        }
+
+        public int Get(int key)
+        {
+            int slot = FindSlot(key);
+            if (slot == -1)
+            {
+                throw new InvalidOperationException();
+            }
+            return values[slot];
+        }
+
+        public bool Remove(int key)
+        {
+            int slot = FindSlot(key);
+            if (slot == -1)
+            {
+                return false;
+            }
+            states[slot] = 2;
+            count = count - 1;
+            return true;
+        }
+
+        public int Checksum()
+        {
+            int checksum = 0;
+            int slot = 0;
+            while (slot < keys.Length)
+            {
+                if (states[slot] == 1)
+                {
+                    checksum = checksum + keys[slot] * 3 + values[slot] * 7;
+                }
+                slot = slot + 1;
+            }
+            return checksum;
+        }
+
+        ~IntHashTable()
+        {
+            delete[] keys;
+            delete[] values;
+            delete[] states;
+        }
+    }
+
+    public class HashTableExample
+    {
+        public static int Run()
+        {
+            raii IntHashTable table = new IntHashTable(5);
+            table.Put(5, 50);
+            table.Put(16, 160);
+            table.Put(27, 270);
+            table.Put(38, 380);
+            table.Put(-6, 60);
+            table.Put(49, 490);
+            table.Put(16, 161);
+            table.Remove(27);
+            table.Put(60, 600);
+            int checksum = table.Checksum();
+            checksum = checksum + table.Get(16) * 10;
+            checksum = checksum + table.Count * 100;
+            checksum = checksum + table.Capacity;
+            if (!table.ContainsKey(27) && table.ContainsKey(60))
+            {
+                checksum = checksum + 1000;
+            }
+            Console.WriteLine("hash: linear probing, tombstones, update and rehash");
+            return checksum;
+        }
+    }
+}

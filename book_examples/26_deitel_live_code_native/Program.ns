@@ -1,0 +1,24 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DeitelNative
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 26 - Deitel-style live code");
+            Console.WriteLine("-----------------------------------------------------");
+            int checksum = 0;
+            checksum = checksum + BankAccountDemo.Run();
+            checksum = checksum + GradeBookDemo.Run();
+            checksum = checksum + ChanceGamesDemo.Run();
+            checksum = checksum + TimeOfDayDemo.Run();
+            checksum = checksum + CreditFileDemo.Run();
+            checksum = checksum + NativeParallelDemo.Run();
+            raii string value = String.ToString(checksum);
+            raii string line = String.Concat("verified checksum: ", value);
+            Console.WriteLine(line);
+            return checksum == 29840 ? 0 : 26;
+        }
+    }
+}

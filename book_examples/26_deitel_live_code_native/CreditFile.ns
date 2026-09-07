@@ -1,0 +1,68 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+namespace NativeSharp.BookExamples.DeitelNative
+{
+    public class CreditFileDemo
+    {
+        private static void PutInt(byte[] data, int offset, int value)
+        {
+            data[offset] = (byte)(value & 255);
+            data[offset + 1] = (byte)((value >> 8) & 255);
+            data[offset + 2] = (byte)((value >> 16) & 255);
+            data[offset + 3] = (byte)((value >> 24) & 255);
+        }
+
+        private static int GetInt(byte[] data, int offset)
+        {
+            return (int)data[offset] | ((int)data[offset + 1] << 8) | ((int)data[offset + 2] << 16) |
+                   ((int)data[offset + 3] << 24);
+        }
+
+        public static int Run()
+        {
+            int[] accounts = new int[] { 1001, 1002, 1003, 1004, 1005, 1006 };
+            int[] balances = new int[] { -2500, 0, 17900, -310, 8200, 0 };
+            byte[] fileData = new byte[accounts.Length * 8];
+            int index = 0;
+            while (index < accounts.Length)
+            {
+                PutInt(fileData, index * 8, accounts[index]);
+                PutInt(fileData, index * 8 + 4, balances[index]);
+                index = index + 1;
+            }
+            bool written = File.WriteAllBytes("deitel_credit_records.bin", fileData, fileData.Length);
+            byte[] loaded = File.ReadAllBytes("deitel_credit_records.bin");
+
+            int credit = 0;
+            int debit = 0;
+            int zero = 0;
+            index = 0;
+            while (index < accounts.Length && loaded.Length == fileData.Length)
+            {
+                int balance = GetInt(loaded, index * 8 + 4);
+                if (balance > 0)
+                {
+                    credit = credit + 1;
+                }
+                else if (balance < 0)
+                {
+                    debit = debit + 1;
+                }
+                else
+                {
+                    zero = zero + 1;
+                }
+                index = index + 1;
+            }
+            File.Delete("deitel_credit_records.bin");
+            Console.WriteLine("credit file: explicit little-endian records and three-way inquiry");
+            int result = written ? credit * 100 + debit * 10 + zero : -1;
+            delete[] accounts;
+            delete[] balances;
+            delete[] fileData;
+            delete[] loaded;
+            return result;
+        }
+    }
+}

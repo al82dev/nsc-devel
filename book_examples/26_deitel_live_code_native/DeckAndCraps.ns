@@ -1,0 +1,155 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DeitelNative
+{
+    public enum CrapsStatus
+    {
+        Continue = 0,
+        Won = 1,
+        Lost = 2
+    }
+
+    public class Card
+    {
+        public int Rank;
+        public int Suit;
+
+        public Card(int rank, int suit)
+        {
+            Rank = rank;
+            Suit = suit;
+        }
+    }
+
+    public class Deck
+    {
+        private Card[] cards;
+        private int next;
+
+        public Deck()
+        {
+            cards = new Card[52];
+            int suit = 0;
+            int index = 0;
+            while (suit < 4)
+            {
+                int rank = 1;
+                while (rank <= 13)
+                {
+                    cards[index] = new Card(rank, suit);
+                    index = index + 1;
+                    rank = rank + 1;
+                }
+                suit = suit + 1;
+            }
+            next = 0;
+        }
+
+        public void Shuffle(Random random)
+        {
+            int index = cards.Length - 1;
+            while (index > 0)
+            {
+                int selected = random.Next(index + 1);
+                Card temporary = cards[index];
+                cards[index] = cards[selected];
+                cards[selected] = temporary;
+                index = index - 1;
+            }
+            next = 0;
+        }
+
+        public Card Deal()
+        {
+            if (next == cards.Length)
+            {
+                throw new InvalidOperationException();
+            }
+            Card card = cards[next];
+            next = next + 1;
+            return card;
+        }
+
+        ~Deck()
+        {
+            int index = 0;
+            while (index < cards.Length)
+            {
+                delete cards[index];
+                index = index + 1;
+            }
+            delete[] cards;
+        }
+    }
+
+    public class ChanceGamesDemo
+    {
+        private static int RollDice(Random random)
+        {
+            return random.Next(1, 7) + random.Next(1, 7);
+        }
+
+        private static bool PlayCraps(Random random)
+        {
+            int first = RollDice(random);
+            CrapsStatus status = CrapsStatus.Continue;
+            int point = 0;
+            switch (first)
+            {
+            case 7:
+            case 11:
+                status = CrapsStatus.Won;
+                break;
+            case 2:
+            case 3:
+            case 12:
+                status = CrapsStatus.Lost;
+                break;
+            default:
+                point = first;
+                break;
+            }
+            while (status == CrapsStatus.Continue)
+            {
+                int roll = RollDice(random);
+                if (roll == point)
+                {
+                    status = CrapsStatus.Won;
+                }
+                else if (roll == 7)
+                {
+                    status = CrapsStatus.Lost;
+                }
+            }
+            return status == CrapsStatus.Won;
+        }
+
+        public static int Run()
+        {
+            raii Random random = new Random(20260906L);
+            raii Deck deck = new Deck();
+            deck.Shuffle(random);
+            int cardChecksum = 0;
+            int index = 0;
+            while (index < 10)
+            {
+                Card card = deck.Deal();
+                cardChecksum = cardChecksum + card.Rank * (card.Suit + 1);
+                index = index + 1;
+            }
+
+            int wins = 0;
+            index = 0;
+            while (index < 1000)
+            {
+                if (PlayCraps(random))
+                {
+                    wins = wins + 1;
+                }
+                index = index + 1;
+            }
+            Console.WriteLine("chance games: Fisher-Yates deck and 1000 deterministic craps games");
+            return cardChecksum + wins;
+        }
+    }
+}

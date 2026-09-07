@@ -111,6 +111,8 @@ int main()
     {
         tests.expect(std::filesystem::is_regular_file(linker->executablePath()),
             "discovered lld-link path names a real executable file");
+        tests.expect(std::filesystem::is_regular_file(linker->librarianExecutablePath()),
+            "static-library generation resolves an independent librarian executable");
 
         const std::filesystem::path importLibrary =
             std::filesystem::temp_directory_path() / "nativesharp_stage19_test_kernel32.lib";

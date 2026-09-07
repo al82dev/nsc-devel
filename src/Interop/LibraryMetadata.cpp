@@ -326,6 +326,73 @@ LibraryMetadataOwnershipKind metadataOwnership(sema::OwnershipKind ownership) no
     return LibraryMetadataOwnershipKind::None;
 }
 
+LibraryMetadataParameterPassKind metadataPassKind(frontend::ParameterPassKind passKind) noexcept
+{
+    switch (passKind)
+    {
+        case frontend::ParameterPassKind::Value: return LibraryMetadataParameterPassKind::Value;
+        case frontend::ParameterPassKind::Ref: return LibraryMetadataParameterPassKind::Ref;
+        case frontend::ParameterPassKind::Out: return LibraryMetadataParameterPassKind::Out;
+        case frontend::ParameterPassKind::In: return LibraryMetadataParameterPassKind::In;
+    }
+    return LibraryMetadataParameterPassKind::Value;
+}
+
+bool metadataDefaultValue(
+    const ast::AstNode* syntax,
+    LibraryMetadataParameter& parameter,
+    std::string& error)
+{
+    if (syntax == nullptr) return true;
+
+    const ast::AstNode* value = syntax;
+    bool negative = false;
+    if (syntax->kind() == ast::AstNodeKind::UnaryExpression)
+    {
+        value = syntax->first();
+        negative = syntax->tokenKind() == lexer::TokenKind::Minus;
+    }
+    if (value == nullptr)
+    {
+        error = "default parameter metadata has an incomplete literal expression";
+        return false;
+    }
+
+    switch (value->kind())
+    {
+        case ast::AstNodeKind::NullLiteralExpression:
+            parameter.defaultValueKind = LibraryMetadataDefaultValueKind::Null;
+            return true;
+        case ast::AstNodeKind::BooleanLiteralExpression:
+            parameter.defaultValueKind = LibraryMetadataDefaultValueKind::Boolean;
+            parameter.defaultValueBits = value->tokenKind() == lexer::TokenKind::KwTrue ? 1U : 0U;
+            return true;
+        case ast::AstNodeKind::IntegerLiteralExpression:
+            parameter.defaultValueKind = LibraryMetadataDefaultValueKind::Integer;
+            parameter.defaultValueFlags = negative ? 1U : 0U;
+            parameter.defaultValueBits = value->integerValue();
+            return true;
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        {
+            parameter.defaultValueKind = LibraryMetadataDefaultValueKind::Floating;
+            const double parsed = negative ? -value->floatingValue() : value->floatingValue();
+            parameter.defaultValueBits = std::bit_cast<std::uint64_t>(parsed);
+            return true;
+        }
+        case ast::AstNodeKind::CharacterLiteralExpression:
+            parameter.defaultValueKind = LibraryMetadataDefaultValueKind::Character;
+            parameter.defaultValueBits = value->integerValue();
+            return true;
+        case ast::AstNodeKind::StringLiteralExpression:
+            parameter.defaultValueKind = LibraryMetadataDefaultValueKind::String;
+            parameter.defaultValueText = value->text();
+            return true;
+        default:
+            error = "default parameter metadata requires a literal expression";
+            return false;
+    }
+}
+
 bool readOwnership(
     ByteReader& reader,
     std::uint16_t formatMinor,
@@ -592,6 +659,13 @@ bool buildMetadataModel(
             parameterRecord.name = parameter.name;
             parameterRecord.typeKey = parameter.typeKey;
             parameterRecord.ownership = metadataOwnership(parameter.ownership);
+            parameterRecord.passKind = metadataPassKind(parameter.passKind);
+            if (!metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
+            {
+                error = "could not encode default value for parameter '" + parameter.name +
+                    "' of member '" + member.name + "': " + error;
+                return false;
+            }
             record.parameters.push_back(std::move(parameterRecord));
         }
         const auto staticField = staticFields.find(ordinal);
@@ -805,6 +879,17 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             {
                 writer.u8(static_cast<std::uint8_t>(parameter.ownership));
             }
+            if (metadata.formatMinor >= 4)
+            {
+                writer.u8(static_cast<std::uint8_t>(parameter.passKind));
+            }
+            if (metadata.formatMinor >= 3)
+            {
+                writer.u8(static_cast<std::uint8_t>(parameter.defaultValueKind));
+                writer.u8(parameter.defaultValueFlags);
+                writer.u64(parameter.defaultValueBits);
+                writer.text(parameter.defaultValueText);
+            }
         }
         writer.u8(member.constantKind);
         writer.u64(member.constantBits);
@@ -959,6 +1044,30 @@ bool decodePayload(
             {
                 error = "truncated or invalid metadata parameter record";
                 return false;
+            }
+            if (metadata.formatMinor >= 4)
+            {
+                std::uint8_t passKind = 0;
+                if (!reader.u8(passKind) ||
+                    passKind > static_cast<std::uint8_t>(LibraryMetadataParameterPassKind::In))
+                {
+                    error = "truncated or invalid metadata parameter pass kind";
+                    return false;
+                }
+                parameter.passKind = static_cast<LibraryMetadataParameterPassKind>(passKind);
+            }
+            if (metadata.formatMinor >= 3)
+            {
+                std::uint8_t defaultKind = 0;
+                if (!reader.u8(defaultKind) ||
+                    defaultKind > static_cast<std::uint8_t>(LibraryMetadataDefaultValueKind::String) ||
+                    !reader.u8(parameter.defaultValueFlags) || parameter.defaultValueFlags > 1U ||
+                    !reader.u64(parameter.defaultValueBits) || !reader.text(parameter.defaultValueText))
+                {
+                    error = "truncated or invalid metadata parameter default value";
+                    return false;
+                }
+                parameter.defaultValueKind = static_cast<LibraryMetadataDefaultValueKind>(defaultKind);
             }
             member.parameters.push_back(std::move(parameter));
         }

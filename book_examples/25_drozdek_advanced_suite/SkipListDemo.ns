@@ -1,0 +1,122 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class SkipNode
+    {
+        public int Key;
+        public SkipNode[] Next;
+
+        public SkipNode(int key, int levels)
+        {
+            Key = key;
+            Next = new SkipNode[levels];
+        }
+
+        ~SkipNode()
+        {
+            delete[] Next;
+        }
+    }
+
+    public class DeterministicSkipList
+    {
+        private SkipNode head;
+        private int levels;
+
+        public DeterministicSkipList(int maximumLevels)
+        {
+            levels = maximumLevels;
+            head = new SkipNode(-2147483647, maximumLevels);
+        }
+
+        private int LevelFor(int key)
+        {
+            int level = 1;
+            int value = key;
+            while (level < levels && value % 2 == 0)
+            {
+                level = level + 1;
+                value = value / 2;
+            }
+            return level;
+        }
+
+        public void Insert(int key)
+        {
+            SkipNode[] update = new SkipNode[levels];
+            SkipNode current = head;
+            int level = levels - 1;
+            while (level >= 0)
+            {
+                while (current.Next[level] != null && current.Next[level].Key < key)
+                {
+                    current = current.Next[level];
+                }
+                update[level] = current;
+                level = level - 1;
+            }
+
+            current = current.Next[0];
+            if (current == null || current.Key != key)
+            {
+                int nodeLevels = LevelFor(key);
+                SkipNode node = new SkipNode(key, nodeLevels);
+                level = 0;
+                while (level < nodeLevels)
+                {
+                    node.Next[level] = update[level].Next[level];
+                    update[level].Next[level] = node;
+                    level = level + 1;
+                }
+            }
+            delete[] update;
+        }
+
+        public bool Contains(int key)
+        {
+            SkipNode current = head;
+            int level = levels - 1;
+            while (level >= 0)
+            {
+                while (current.Next[level] != null && current.Next[level].Key < key)
+                {
+                    current = current.Next[level];
+                }
+                level = level - 1;
+            }
+            current = current.Next[0];
+            return current != null && current.Key == key;
+        }
+
+        ~DeterministicSkipList()
+        {
+            SkipNode current = head;
+            while (current != null)
+            {
+                SkipNode next = current.Next[0];
+                delete current;
+                current = next;
+            }
+        }
+    }
+
+    public class SkipListDemo
+    {
+        public static int Run()
+        {
+            raii DeterministicSkipList list = new DeterministicSkipList(6);
+            int[] values = new int[] { 24, 7, 18, 32, 4, 13, 28, 1, 40, 21 };
+            int index = 0;
+            while (index < values.Length)
+            {
+                list.Insert(values[index]);
+                index = index + 1;
+            }
+            bool valid = list.Contains(1) && list.Contains(24) && list.Contains(40) && !list.Contains(17);
+            delete[] values;
+            Console.WriteLine("skip list: logarithmic search paths verified");
+            return valid ? 97 : -1;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

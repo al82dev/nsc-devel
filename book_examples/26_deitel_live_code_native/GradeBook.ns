@@ -1,0 +1,114 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DeitelNative
+{
+    public class GradeBook
+    {
+        private int[] grades;
+
+        public GradeBook(int[] source)
+        {
+            grades = new int[source.Length];
+            int index = 0;
+            while (index < source.Length)
+            {
+                int grade = source[index];
+                if (grade < 0 || grade > 100)
+                {
+                    throw new InvalidOperationException();
+                }
+                grades[index] = grade;
+                index = index + 1;
+            }
+        }
+
+        public int Count
+        {
+            get
+            {
+                return grades.Length;
+            }
+        }
+
+        public int Minimum()
+        {
+            int result = grades[0];
+            int index = 1;
+            while (index < grades.Length)
+            {
+                if (grades[index] < result)
+                {
+                    result = grades[index];
+                }
+                index = index + 1;
+            }
+            return result;
+        }
+
+        public int Maximum()
+        {
+            int result = grades[0];
+            int index = 1;
+            while (index < grades.Length)
+            {
+                if (grades[index] > result)
+                {
+                    result = grades[index];
+                }
+                index = index + 1;
+            }
+            return result;
+        }
+
+        public int AverageTimes100()
+        {
+            int total = 0;
+            int index = 0;
+            while (index < grades.Length)
+            {
+                total = total + grades[index];
+                index = index + 1;
+            }
+            return total * 100 / grades.Length;
+        }
+
+        public int[] Histogram()
+        {
+            int[] buckets = new int[11];
+            int index = 0;
+            while (index < grades.Length)
+            {
+                buckets[grades[index] / 10] = buckets[grades[index] / 10] + 1;
+                index = index + 1;
+            }
+            return buckets;
+        }
+
+        ~GradeBook()
+        {
+            delete[] grades;
+        }
+    }
+
+    public class GradeBookDemo
+    {
+        public static int Run()
+        {
+            int[] data = new int[] { 87, 68, 94, 100, 83, 78, 85, 91, 76, 87, 72, 88, 95, 63, 79 };
+            raii GradeBook gradeBook = new GradeBook(data);
+            int[] histogram = gradeBook.Histogram();
+            int weightedBuckets = 0;
+            int bucket = 0;
+            while (bucket < histogram.Length)
+            {
+                weightedBuckets = weightedBuckets + histogram[bucket] * bucket;
+                bucket = bucket + 1;
+            }
+            int result = gradeBook.Minimum() + gradeBook.Maximum() + gradeBook.AverageTimes100() + weightedBuckets;
+            Console.WriteLine("grade book: validated range, statistics and histogram");
+            delete[] data;
+            delete[] histogram;
+            return result;
+        }
+    }
+}

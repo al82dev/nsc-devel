@@ -1,5 +1,7 @@
 #include "nativesharp/Linker/LldLinker.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -176,6 +178,52 @@ std::filesystem::path findLldLink()
     return {};
 }
 
+bool isLldLinkExecutable(const std::filesystem::path& executable)
+{
+    std::string name = executable.filename().string();
+    std::ranges::transform(name, name.begin(), [](const unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return name == "lld-link" || name == "lld-link.exe";
+}
+
+std::filesystem::path findLibrarian(const std::filesystem::path& linker)
+{
+    const std::string overridePath = getEnvironmentVariable("NSC_LLVM_LIB");
+    if (!overridePath.empty())
+    {
+        return std::filesystem::path(overridePath);
+    }
+
+    const std::filesystem::path sibling = linker.parent_path() /
+#ifdef _WIN32
+        "llvm-lib.exe";
+#else
+        "llvm-lib";
+#endif
+    std::error_code filesystemError;
+    if (std::filesystem::is_regular_file(sibling, filesystemError) && !filesystemError)
+    {
+        return sibling;
+    }
+
+    for (const std::string_view name : {std::string_view("llvm-lib"), std::string_view("llvm-lib.exe")})
+    {
+        for (const std::filesystem::path& candidate : pathCandidates(name))
+        {
+            filesystemError.clear();
+            if (std::filesystem::is_regular_file(candidate, filesystemError) && !filesystemError)
+            {
+                return candidate;
+            }
+        }
+    }
+
+    // lld-link implements Microsoft's /lib mode. Alternative PE linkers are not assumed to be
+    // librarians: treating an archive as an object was the NSLink gate failure fixed in 0.9.
+    return isLldLinkExecutable(linker) ? linker : std::filesystem::path{};
+}
+
 bool writeResponseFile(
     const std::filesystem::path& path,
     const std::vector<std::string>& arguments,
@@ -264,6 +312,11 @@ std::unique_ptr<LldLinker> LldLinker::discover(std::string& error)
 const std::filesystem::path& LldLinker::executablePath() const noexcept
 {
     return executablePath_;
+}
+
+std::filesystem::path LldLinker::librarianExecutablePath() const
+{
+    return findLibrarian(executablePath_);
 }
 
 bool LldLinker::runResponseFile(
@@ -513,6 +566,20 @@ bool LldLinker::createStaticLibrary(
         return false;
     }
 
+    const std::filesystem::path librarianPath = findLibrarian(executablePath_);
+    if (librarianPath.empty())
+    {
+        error = "static-library generation requires llvm-lib when NSC_LLD_LINK selects a "
+            "linker without /lib mode; set NSC_LLVM_LIB to the librarian executable";
+        return false;
+    }
+    if (!std::filesystem::is_regular_file(librarianPath) || containsQuote(librarianPath))
+    {
+        error = "NSC_LLVM_LIB does not name a usable librarian executable: " +
+            librarianPath.string();
+        return false;
+    }
+
     const std::filesystem::path responsePath = outputPath.string() + ".lib.rsp";
     const std::filesystem::path logPath = outputPath.string() + ".lib.log";
     std::vector<std::string> arguments = {
@@ -529,7 +596,12 @@ bool LldLinker::createStaticLibrary(
 
     std::error_code cleanupError;
     std::filesystem::remove(outputPath, cleanupError);
-    const bool success = runResponseFile(responsePath, logPath, error, true);
+    LldLinker librarian(librarianPath);
+    const bool success = librarian.runResponseFile(
+        responsePath,
+        logPath,
+        error,
+        isLldLinkExecutable(librarianPath));
     if (!keepLinkTemporaries())
     {
         std::filesystem::remove(responsePath, cleanupError);

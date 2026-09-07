@@ -218,8 +218,25 @@ bool WindowsLibraryBuilder::buildStatic(
     {
         return false;
     }
-    const std::array<std::filesystem::path, 2> objects = {programObject, runtimeObject};
-    if (!linker->createStaticLibrary(objects, outputPath, error))
+    // A static archive owns object code, not the final process import table. Embedding the
+    // generated KERNEL32/KERNELBASE/SHELL32/UCRT import archives worked accidentally with
+    // lld-link's lazy archive selection, but produced duplicate definitions in NSLink and also
+    // made composition A -> B vendor the same system imports repeatedly. The executable/DLL
+    // link is the one place that materializes process imports.
+    std::vector<std::filesystem::path> archiveInputs = {programObject, runtimeObject};
+    archiveInputs.reserve(archiveInputs.size() + extraLinkLibraries_.size());
+    for (const std::filesystem::path& dependency : extraLinkLibraries_)
+    {
+        CoffArchiveVerifier dependencyVerifier;
+        if (!dependencyVerifier.verify(dependency))
+        {
+            error = "static-library dependency '" + dependency.string() +
+                "' is not a valid COFF archive: " + dependencyVerifier.error();
+            return false;
+        }
+        archiveInputs.push_back(dependency);
+    }
+    if (!linker->createStaticLibrary(archiveInputs, outputPath, error))
     {
         return false;
     }

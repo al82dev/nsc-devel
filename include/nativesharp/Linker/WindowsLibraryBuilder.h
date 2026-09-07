@@ -37,8 +37,9 @@ public:
     const PeExecutableInfo& dynamicLibraryInfo() const noexcept;
 
     // Interop Foundation -- see WindowsExecutableBuilder: the project's `extern C from` imports
-    // and caller-supplied extra .lib inputs for the dynamic-library link. The STATIC archive path
-    // ignores both by nature (an archive is not linked); its consumer's final link resolves them.
+    // and caller-supplied extra .lib inputs for the dynamic-library link. For a static product,
+    // referenced archives are flattened into the resulting archive so its consumer does not have
+    // to rediscover private static dependencies.
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
 

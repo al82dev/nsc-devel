@@ -1,0 +1,337 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class AvlNode
+    {
+        public int Key;
+        public int Height;
+        public AvlNode Left;
+        public AvlNode Right;
+
+        public AvlNode(int key)
+        {
+            Key = key;
+            Height = 1;
+        }
+    }
+
+    public class IntAvlTree
+    {
+        private AvlNode root;
+        private int count;
+
+        public int Count
+        {
+            get
+            {
+                return count;
+            }
+        }
+
+        private int HeightOf(AvlNode node)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            return node.Height;
+        }
+
+        private int Maximum(int a, int b)
+        {
+            if (a > b)
+            {
+                return a;
+            }
+            return b;
+        }
+
+        private void UpdateHeight(AvlNode node)
+        {
+            node.Height = 1 + Maximum(HeightOf(node.Left), HeightOf(node.Right));
+        }
+
+        private int BalanceFactor(AvlNode node)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            return HeightOf(node.Left) - HeightOf(node.Right);
+        }
+
+        private AvlNode RotateRight(AvlNode top)
+        {
+            AvlNode pivot = top.Left;
+            AvlNode transferred = pivot.Right;
+            pivot.Right = top;
+            top.Left = transferred;
+            UpdateHeight(top);
+            UpdateHeight(pivot);
+            return pivot;
+        }
+
+        private AvlNode RotateLeft(AvlNode top)
+        {
+            AvlNode pivot = top.Right;
+            AvlNode transferred = pivot.Left;
+            pivot.Left = top;
+            top.Right = transferred;
+            UpdateHeight(top);
+            UpdateHeight(pivot);
+            return pivot;
+        }
+
+        private AvlNode Rebalance(AvlNode node)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+            UpdateHeight(node);
+            int factor = BalanceFactor(node);
+            if (factor > 1)
+            {
+                if (BalanceFactor(node.Left) < 0)
+                {
+                    node.Left = RotateLeft(node.Left);
+                }
+                return RotateRight(node);
+            }
+            if (factor < -1)
+            {
+                if (BalanceFactor(node.Right) > 0)
+                {
+                    node.Right = RotateRight(node.Right);
+                }
+                return RotateLeft(node);
+            }
+            return node;
+        }
+
+        private AvlNode InsertNode(AvlNode node, int key, bool[] inserted)
+        {
+            if (node == null)
+            {
+                inserted[0] = true;
+                return new AvlNode(key);
+            }
+            if (key < node.Key)
+            {
+                node.Left = InsertNode(node.Left, key, inserted);
+            }
+            else if (key > node.Key)
+            {
+                node.Right = InsertNode(node.Right, key, inserted);
+            }
+            else
+            {
+                return node;
+            }
+            return Rebalance(node);
+        }
+
+        public bool Insert(int key)
+        {
+            bool[] inserted = new bool[1];
+            root = InsertNode(root, key, inserted);
+            bool result = inserted[0];
+            delete[] inserted;
+            if (result)
+            {
+                count = count + 1;
+            }
+            return result;
+        }
+
+        private AvlNode MinimumNode(AvlNode node)
+        {
+            AvlNode current = node;
+            while (current.Left != null)
+            {
+                current = current.Left;
+            }
+            return current;
+        }
+
+        private AvlNode RemoveNode(AvlNode node, int key, bool[] removed)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+            if (key < node.Key)
+            {
+                node.Left = RemoveNode(node.Left, key, removed);
+            }
+            else if (key > node.Key)
+            {
+                node.Right = RemoveNode(node.Right, key, removed);
+            }
+            else
+            {
+                removed[0] = true;
+                if (node.Left == null || node.Right == null)
+                {
+                    AvlNode child = node.Left;
+                    if (child == null)
+                    {
+                        child = node.Right;
+                    }
+                    node.Left = null;
+                    node.Right = null;
+                    delete node;
+                    return child;
+                }
+                AvlNode successor = MinimumNode(node.Right);
+                node.Key = successor.Key;
+                bool[] ignored = new bool[1];
+                node.Right = RemoveNode(node.Right, successor.Key, ignored);
+                delete[] ignored;
+            }
+            return Rebalance(node);
+        }
+
+        public bool Remove(int key)
+        {
+            bool[] removed = new bool[1];
+            root = RemoveNode(root, key, removed);
+            bool result = removed[0];
+            delete[] removed;
+            if (result)
+            {
+                count = count - 1;
+            }
+            return result;
+        }
+
+        public bool Contains(int key)
+        {
+            AvlNode current = root;
+            while (current != null)
+            {
+                if (key == current.Key)
+                {
+                    return true;
+                }
+                if (key < current.Key)
+                {
+                    current = current.Left;
+                }
+                else
+                {
+                    current = current.Right;
+                }
+            }
+            return false;
+        }
+
+        private int ValidateNode(AvlNode node, int minimum, int maximum, bool[] valid)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            if (node.Key <= minimum || node.Key >= maximum)
+            {
+                valid[0] = false;
+            }
+            int leftHeight = ValidateNode(node.Left, minimum, node.Key, valid);
+            int rightHeight = ValidateNode(node.Right, node.Key, maximum, valid);
+            int difference = leftHeight - rightHeight;
+            if (difference < -1 || difference > 1)
+            {
+                valid[0] = false;
+            }
+            int expectedHeight = 1 + Maximum(leftHeight, rightHeight);
+            if (node.Height != expectedHeight)
+            {
+                valid[0] = false;
+            }
+            return expectedHeight;
+        }
+
+        public bool IsValid()
+        {
+            bool[] valid = new bool[1];
+            valid[0] = true;
+            ValidateNode(root, -2147483647, 2147483647, valid);
+            bool result = valid[0];
+            delete[] valid;
+            return result;
+        }
+
+        private int InorderNode(AvlNode node, int[] position)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int checksum = InorderNode(node.Left, position);
+            position[0] = position[0] + 1;
+            checksum = checksum + node.Key * position[0];
+            checksum = checksum + InorderNode(node.Right, position);
+            return checksum;
+        }
+
+        public int InorderChecksum()
+        {
+            int[] position = new int[1];
+            int checksum = InorderNode(root, position);
+            delete[] position;
+            return checksum;
+        }
+
+        private void ClearNode(AvlNode node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+            ClearNode(node.Left);
+            ClearNode(node.Right);
+            node.Left = null;
+            node.Right = null;
+            delete node;
+        }
+
+        public void Clear()
+        {
+            ClearNode(root);
+            root = null;
+            count = 0;
+        }
+
+        ~IntAvlTree()
+        {
+            Clear();
+        }
+    }
+
+    public class AvlExample
+    {
+        public static int Run()
+        {
+            raii IntAvlTree tree = new IntAvlTree();
+            int[] keys = new int[] { 30, 20, 10, 40, 50, 25, 27, 5, 4, 45, 60, 55, 54, 53, 52 };
+            int i = 0;
+            while (i < keys.Length)
+            {
+                tree.Insert(keys[i]);
+                i = i + 1;
+            }
+            tree.Remove(4);
+            tree.Remove(60);
+            tree.Remove(30);
+            int checksum = tree.InorderChecksum() + tree.Count * 100;
+            if (tree.Contains(52) && tree.IsValid())
+            {
+                checksum = checksum + 10000;
+            }
+            delete[] keys;
+            Console.WriteLine("AVL: LL, RR, LR and RL rotations; insertion, deletion and validation");
+            return checksum;
+        }
+    }
+}

@@ -24,6 +24,7 @@ void ProjectGraphDumper::dump(const ProjectGraph& graph, std::ostream& output) c
         output << "      file: " << project.projectFile().generic_string() << '\n';
         output << "      sources: " << project.sourceSet().sources().size() << '\n';
         output << "      references: " << project.projectReferences().size() << '\n';
+        output << "      library-references: " << project.libraryReferences().size() << '\n';
     }
 }
 }

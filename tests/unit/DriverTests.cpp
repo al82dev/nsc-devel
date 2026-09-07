@@ -813,8 +813,11 @@ int main()
         const std::vector<std::string_view> arguments = {"--print-linker"};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--print-linker discovers the Stage 19 linker");
-        tests.expect(output.str().find("lld-link") != std::string::npos,
-            "--print-linker reports the resolved lld-link executable");
+        tests.expect(output.str().find("linker:") != std::string::npos &&
+                output.str().find("flavor: Windows COFF/PE") != std::string::npos,
+            "--print-linker reports the resolved PE linker without assuming its implementation");
+        tests.expect(output.str().find("librarian:") != std::string::npos,
+            "--print-linker reports the independently resolved static librarian");
         tests.expect(error.str().empty(), "successful linker discovery keeps stderr empty");
     }
 

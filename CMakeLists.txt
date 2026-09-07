@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     NativeSharp
-    VERSION 0.8.0
+    VERSION 0.9.0
     DESCRIPTION "NativeSharp stage 57 -- ownership, enum and cross-project correctness"
     LANGUAGES CXX)
 
@@ -359,11 +359,12 @@ nsc_enable_warnings(nsc)
 # "--deploy": instala el compilador ya construido en la ruta de instalacion elegida (p. ej.
 # C:\native-sharp), junto con el arbol lib/ ENTERO -- las bibliotecas .ns
 # (NativeSharp.Core/NativeSharp.Core.Threading/NativeSharp.Core.Collections.Generic/
-# NativeSharp.Core.IO/NativeSharp.Core.Diagnostics) que todo proyecto NativeSharp consume via
-# ProjectReference. NativeSharp no compila esas bibliotecas a un artefacto binario separado
-# (siguen siendo codigo fuente .ns, recompilado por nsc en cada proyecto -- ver
+# NativeSharp.Core.IO/NativeSharp.Core.Diagnostics) que la distribucion oficial todavia consume
+# via ProjectReference. Desde 0.9, nsc tambien produce y consume bibliotecas precompiladas mediante
+# LibraryReference (.lib + .nsmeta y, para SharedLibrary, .dll); este install conserva Core como
+# fuente hasta que su empaquetado oficial migre a esos productos -- ver
 # claude/05_metodo_de_trabajo_y_archivo_historico.md, "Convencion: el zip incremental siempre
-# incluye lib/ completo" para el porque), asi que necesitan viajar junto al ejecutable, no solo
+# incluye lib/ completo" para el porque. Por eso esas fuentes necesitan viajar junto al ejecutable, no solo
 # el .exe solo, para que un proyecto pueda referenciarlas sin tener el repo entero al lado.
 #
 # Uso, DESPUES de un build normal (cmake -B build -S . ... && cmake --build build --config
@@ -1427,7 +1428,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 0.8.0-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
+            "nsc 0.9.0-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names
@@ -1959,7 +1960,11 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.runtime-dump PROPERTIES PASS_REGULAR_EXPRESSION "define void @__nativesharp_start")
 
     add_test(NAME nsc.linker-info COMMAND "${NSC_TEST_COMPILER}" --print-linker)
-    set_tests_properties(nsc.linker-info PROPERTIES PASS_REGULAR_EXPRESSION "lld-link")
+    # --print-linker describes the selected PE/COFF toolchain. The executable may be lld-link or
+    # NSLink, so the integration contract must validate the backend flavor instead of one provider.
+    set_tests_properties(
+        nsc.linker-info
+        PROPERTIES PASS_REGULAR_EXPRESSION "flavor: Windows COFF/PE")
 
     set(NSC_INTEGRATION_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration)
 

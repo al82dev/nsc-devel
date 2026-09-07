@@ -80,6 +80,7 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
         output << "function #" << function.memberOrdinal << ' ' << function.mangledName
                << " abi=" << (function.isStatic ? "static" : "this:first")
                << (function.isExportedC ? " export-c=" + function.cAbiName : "")
+               << (function.isImportedNative ? " import-native" : "")
                << " return=" << function.returnTypeKey
                << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
                << " params=" << function.parameterTypeKeys.size()

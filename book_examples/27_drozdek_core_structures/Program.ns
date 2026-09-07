@@ -1,0 +1,26 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("Drozdek core structures in NativeSharp");
+            Console.WriteLine("---------------------------------------");
+            int checksum = 0;
+            checksum = checksum + LinkedListExample.Run();
+            checksum = checksum + StackExample.Run();
+            checksum = checksum + QueueExample.Run();
+            checksum = checksum + BinaryTreeExample.Run();
+            checksum = checksum + BinarySearchTreeExample.Run();
+            checksum = checksum + AvlExample.Run();
+            checksum = checksum + GraphExample.Run();
+            checksum = checksum + HashTableExample.Run();
+            raii string value = String.ToString(checksum);
+            raii string line = String.Concat("verified checksum: ", value);
+            Console.WriteLine(line);
+            return checksum == 47846 ? 0 : 27;
+        }
+    }
+}

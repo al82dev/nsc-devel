@@ -1,0 +1,188 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class HashAlgorithms
+    {
+        public static int DivisionHash(int key, int size)
+        {
+            int value = key % size;
+            return value < 0 ? value + size : value;
+        }
+
+        public static int FoldingHash(int key, int size)
+        {
+            int value = key < 0 ? -key : key;
+            int total = 0;
+            while (value > 0)
+            {
+                total = total + value % 100;
+                value = value / 100;
+            }
+            return total % size;
+        }
+
+        public static int MidSquareHash(int key, int size)
+        {
+            long square = (long)key * (long)key;
+            return (int)((square / 100L) % (long)size);
+        }
+
+        private static bool InsertLinear(int[] table, int key)
+        {
+            int start = DivisionHash(key, table.Length);
+            int probe = 0;
+            while (probe < table.Length)
+            {
+                int index = (start + probe) % table.Length;
+                if (table[index] == -1 || table[index] == -2)
+                {
+                    table[index] = key;
+                    return true;
+                }
+                probe = probe + 1;
+            }
+            return false;
+        }
+
+        private static bool InsertQuadratic(int[] table, int key)
+        {
+            int start = DivisionHash(key, table.Length);
+            int probe = 0;
+            while (probe < table.Length)
+            {
+                int index = (start + probe * probe) % table.Length;
+                if (table[index] == -1 || table[index] == -2)
+                {
+                    table[index] = key;
+                    return true;
+                }
+                probe = probe + 1;
+            }
+            return false;
+        }
+
+        private static bool InsertDoubleHash(int[] table, int key)
+        {
+            int start = DivisionHash(key, table.Length);
+            int step = 1 + DivisionHash(key, table.Length - 2);
+            int probe = 0;
+            while (probe < table.Length)
+            {
+                int index = (start + probe * step) % table.Length;
+                if (table[index] == -1 || table[index] == -2)
+                {
+                    table[index] = key;
+                    return true;
+                }
+                probe = probe + 1;
+            }
+            return false;
+        }
+
+        private static bool Contains(int[] table, int key)
+        {
+            int index = 0;
+            while (index < table.Length)
+            {
+                if (table[index] == key)
+                {
+                    return true;
+                }
+                index = index + 1;
+            }
+            return false;
+        }
+
+        private static bool CuckooInsert(int[] first, int[] second, int key)
+        {
+            int current = key;
+            bool useFirst = true;
+            int displacement = 0;
+            while (displacement < first.Length * 2)
+            {
+                int index = useFirst ? DivisionHash(current, first.Length)
+                                     : DivisionHash(current / first.Length, second.Length);
+                int displaced = useFirst ? first[index] : second[index];
+                if (useFirst)
+                {
+                    first[index] = current;
+                }
+                else
+                {
+                    second[index] = current;
+                }
+                if (displaced == -1)
+                {
+                    return true;
+                }
+                current = displaced;
+                useFirst = !useFirst;
+                displacement = displacement + 1;
+            }
+            return false;
+        }
+
+        private static int ExtendibleBucket(int key, int globalDepth)
+        {
+            int mask = (1 << globalDepth) - 1;
+            return key & mask;
+        }
+
+        private static void Initialize(int[] table)
+        {
+            int index = 0;
+            while (index < table.Length)
+            {
+                table[index] = -1;
+                index = index + 1;
+            }
+        }
+
+        public static int Run()
+        {
+            int[] linear = new int[17];
+            int[] quadratic = new int[17];
+            int[] doubled = new int[17];
+            Initialize(linear);
+            Initialize(quadratic);
+            Initialize(doubled);
+
+            int[] keys = new int[] { 19, 36, 5, 22, 39, 56, 8, 25, 42, 59 };
+            int index = 0;
+            while (index < keys.Length)
+            {
+                InsertLinear(linear, keys[index]);
+                InsertQuadratic(quadratic, keys[index]);
+                InsertDoubleHash(doubled, keys[index]);
+                index = index + 1;
+            }
+
+            int[] cuckooA = new int[11];
+            int[] cuckooB = new int[11];
+            Initialize(cuckooA);
+            Initialize(cuckooB);
+            index = 0;
+            bool cuckooValid = true;
+            while (index < 7)
+            {
+                cuckooValid = CuckooInsert(cuckooA, cuckooB, keys[index]) && cuckooValid;
+                index = index + 1;
+            }
+
+            int bucket = ExtendibleBucket(59, 4);
+            bool present = Contains(linear, 42) && Contains(quadratic, 42) && Contains(doubled, 42);
+            int result = present && cuckooValid
+                             ? DivisionHash(123456, 101) + FoldingHash(123456, 101) + MidSquareHash(321, 101) + bucket
+                             : -1;
+            Console.WriteLine("hashing: functions, open addressing, cuckoo and extendible directory");
+            delete[] linear;
+            delete[] quadratic;
+            delete[] doubled;
+            delete[] keys;
+            delete[] cuckooA;
+            delete[] cuckooB;
+            return result;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

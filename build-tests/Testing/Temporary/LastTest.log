@@ -1,19 +1,69 @@
-Start testing: Sep 06 13:44 Central Standard Time (Mexico)
+Start testing: Sep 06 19:54 Central Standard Time (Mexico)
 ----------------------------------------------------------
-118/297 Testing: nsc.stage48_5.csharp-pinvoke-host
-118/297 Test: nsc.stage48_5.csharp-pinvoke-host
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage48_5_csharp_host_tests.exe"
+57/297 Testing: nsc.version.identity
+57/297 Test: nsc.version.identity
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_build_identity_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage48_5.csharp-pinvoke-host" start time: Sep 06 13:44 Central Standard Time (Mexico)
+"nsc.version.identity" start time: Sep 06 19:54 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 56 checks
+PASS: 9 checks
 <end of output>
-Test time =   3.75 sec
+Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage48_5.csharp-pinvoke-host" end time: Sep 06 13:44 Central Standard Time (Mexico)
-"nsc.stage48_5.csharp-pinvoke-host" time elapsed: 00:00:03
+"nsc.version.identity" end time: Sep 06 19:54 Central Standard Time (Mexico)
+"nsc.version.identity" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Sep 06 13:44 Central Standard Time (Mexico)
+179/297 Testing: nsc.windows-linker
+179/297 Test: nsc.windows-linker
+Command: "A:/nsc-devel/build-tests/tests/nsc_windows_linker_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.windows-linker" start time: Sep 06 19:54 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 41 checks
+<end of output>
+Test time =   0.84 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.windows-linker" end time: Sep 06 19:54 Central Standard Time (Mexico)
+"nsc.windows-linker" time elapsed: 00:00:00
+----------------------------------------------------------
+
+180/297 Testing: nsc.driver
+180/297 Test: nsc.driver
+Command: "A:/nsc-devel/build-tests/tests/nsc_driver_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.driver" start time: Sep 06 19:54 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 167 checks
+<end of output>
+Test time =   1.27 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.driver" end time: Sep 06 19:55 Central Standard Time (Mexico)
+"nsc.driver" time elapsed: 00:00:01
+----------------------------------------------------------
+
+181/297 Testing: nsc.version
+181/297 Test: nsc.version
+Command: "A:/nsc-devel/build-tests/bin/nsc.exe" "--version"
+Directory: A:/nsc-devel/build-tests
+"nsc.version" start time: Sep 06 19:55 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+nsc 0.9.0-alpha+build.20260907T015406Z.409a925b7d7148bd (NativeSharp 0.1, stage 57)
+build 409a925b7d7148bd
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Pass Reason:
+Required regular expression found. Regex=[nsc 0.9.0-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+]
+"nsc.version" end time: Sep 06 19:55 Central Standard Time (Mexico)
+"nsc.version" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 06 19:55 Central Standard Time (Mexico)

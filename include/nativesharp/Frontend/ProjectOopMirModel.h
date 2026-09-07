@@ -440,6 +440,7 @@ struct ProjectOopMirFunction final
     bool isStatic = false;
     bool isExportedC = false;
     bool isImportedC = false;
+    bool isImportedNative = false;
     std::string importDllName;
     // C1.2 "import identity" -- see ProjectOopHirFunction for the full note.
     bool importRequiresRuntimeBinding = false;

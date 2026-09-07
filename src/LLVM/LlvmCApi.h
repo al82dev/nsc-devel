@@ -142,6 +142,15 @@ enum LLVMVerifierFailureAction
     LLVMReturnStatusAction = 2
 };
 
+// Exact values from llvm-c/Core.h. NativeSharp only needs external (the default) and internal
+// today; spelling the numeric value explicitly avoids recreating unrelated linkage modes merely
+// to keep the upstream ordinal of LLVMInternalLinkage.
+enum LLVMLinkage
+{
+    LLVMExternalLinkage = 0,
+    LLVMInternalLinkage = 8
+};
+
 LLVMContextRef LLVMContextCreate();
 void LLVMContextDispose(LLVMContextRef context);
 LLVMModuleRef LLVMModuleCreateWithNameInContext(const char* moduleId, LLVMContextRef context);
@@ -279,6 +288,7 @@ LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* n
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
 void LLVMSetGlobalConstant(LLVMValueRef global, LLVMBool isConstant);
 LLVMValueRef LLVMAddFunction(LLVMModuleRef module, const char* name, LLVMTypeRef functionType);
+void LLVMSetLinkage(LLVMValueRef global, LLVMLinkage linkage);
 LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);
 void LLVMSetValueName2(LLVMValueRef value, const char* name, std::size_t nameLength);
 void LLVMSetPersonalityFn(LLVMValueRef function, LLVMValueRef personality);

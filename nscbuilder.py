@@ -938,6 +938,7 @@ class PipelineWorker(QObject):
         env = dict(os.environ)
         env.pop("NSC_KEEP_LINK_TEMPS", None)
         env.pop("NSC_LLD_LINK", None)
+        env.pop("NSC_LLVM_LIB", None)
         prefix = Path(self.plan.prefix)
         env["NS_ROOT"] = str(prefix)
         env["NSC_EXE"] = str(prefix / "bin" / "nsc.exe")
@@ -947,6 +948,9 @@ class PipelineWorker(QObject):
             env["NSC_LLD_LINK"] = str(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
         elif linker == "NSLink":
             env["NSC_LLD_LINK"] = self.plan.nslink_exe
+        # Enlazador y librarian son herramientas distintas. NSLink construye PE, pero no debe
+        # recibir /lib ni archivos archive como si fueran objetos COFF.
+        env["NSC_LLVM_LIB"] = str(Path(self.plan.llvm_root) / "bin" / "llvm-lib.exe")
         if self.run_dir is not None:
             linker_name = safe_name(linker or "build")
             env["NSC_LOG_DIR"] = str(self.run_dir / linker_name)

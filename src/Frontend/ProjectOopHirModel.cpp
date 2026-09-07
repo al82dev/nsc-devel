@@ -790,6 +790,32 @@ bool ProjectOopHirModel::build(
         {
             continue;
         }
+        if (member.kind == ClassMemberKind::Method &&
+            member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+            nameLookup.namedTypes()[member.declaringTypeOrdinal].isPrecompiled)
+        {
+            // The declaration came from .nsmeta and participates in the ordinary NativeSharp
+            // overload set, but its implementation is already in the referenced .lib/DLL. The
+            // canonical producer module stored on the synthetic type makes mangleCallable yield
+            // the exact external symbol emitted by the producer.
+            ProjectOopHirFunction imported;
+            imported.memberOrdinal = memberOrdinal;
+            imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
+            imported.isStatic = member.isStatic;
+            imported.isImportedNative = true;
+            imported.mangledName = mangleCallable(
+                nameLookup.namedTypes()[member.declaringTypeOrdinal], member);
+            imported.returnTypeKey = member.declaredTypeKey;
+            imported.returnOwnership = member.declaredOwnership;
+            for (const MethodParameterSymbol& parameter : member.parameters)
+            {
+                imported.parameterTypeKeys.push_back(parameter.typeKey);
+                imported.parameterOwnerships.push_back(parameter.ownership);
+            }
+            functionByMember_[memberOrdinal] = functions_.size();
+            functions_.push_back(std::move(imported));
+            continue;
+        }
         if (member.isImportedC)
         {
             // Interop Foundation: an imported C function is a DECLARATION by definition -- the

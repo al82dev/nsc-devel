@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>Book27DrozdekCoreStructures</Name>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

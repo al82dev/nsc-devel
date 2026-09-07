@@ -348,6 +348,20 @@ std::vector<std::string> collectParserKnownTypeNames(
 }
 }
 
+bool ProjectCompilation::setPrecompiledModules(
+    std::vector<PrecompiledSyntaxModule> modules,
+    std::string& error)
+{
+    error.clear();
+    if (projectGraph_.has_value() || !units_.empty())
+    {
+        error = "precompiled modules must be configured before project compilation starts";
+        return false;
+    }
+    precompiledModules_ = std::move(modules);
+    return true;
+}
+
 bool ProjectCompilation::compileProjectSyntax(
     const std::filesystem::path& projectFile,
     std::string& loadError)
@@ -610,6 +624,17 @@ bool ProjectCompilation::compileSyntaxCore(
     }
 
     projectGraph_ = std::move(*graph);
+    std::vector<compilation::PrecompiledProjectDescriptor> precompiledDescriptors;
+    precompiledDescriptors.reserve(precompiledModules_.size());
+    for (const PrecompiledSyntaxModule& module : precompiledModules_)
+    {
+        precompiledDescriptors.push_back({
+            module.ownerProjectFile, module.metadataPath, module.moduleName});
+    }
+    if (!projectGraph_->addPrecompiledProjects(precompiledDescriptors, loadError))
+    {
+        return false;
+    }
     bool lexicalOk = true;
     for (std::size_t projectOrdinal = 0;
          projectOrdinal < projectGraph_->projects().size();
@@ -642,6 +667,53 @@ bool ProjectCompilation::compileSyntaxCore(
             }
             units_.push_back(std::move(unit));
         }
+    }
+
+    std::set<std::string> materializedMetadata;
+    for (const PrecompiledSyntaxModule& module : precompiledModules_)
+    {
+        std::error_code metadataKeyError;
+        std::string metadataKey = std::filesystem::weakly_canonical(
+            module.metadataPath, metadataKeyError).generic_string();
+        if (metadataKeyError)
+            metadataKey = std::filesystem::absolute(module.metadataPath).lexically_normal().generic_string();
+        if (!materializedMetadata.insert(metadataKey).second) continue;
+
+        std::optional<std::size_t> projectOrdinal;
+        for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+        {
+            std::error_code leftError;
+            std::error_code rightError;
+            const std::filesystem::path left = std::filesystem::weakly_canonical(
+                projectGraph_->projects()[ordinal].projectFile(), leftError);
+            const std::filesystem::path right =
+                std::filesystem::weakly_canonical(module.metadataPath, rightError);
+            if (!leftError && !rightError && left == right)
+            {
+                projectOrdinal = ordinal;
+                break;
+            }
+        }
+        if (!projectOrdinal.has_value())
+        {
+            loadError = "internal error: precompiled module '" + module.moduleName +
+                "' has no project-graph node";
+            return false;
+        }
+
+        std::filesystem::path displayPath = module.metadataPath;
+        displayPath += ".public-api.ns";
+        const FileId fileId = sourceManager_.addBuffer(displayPath, module.sourceText);
+        const source::SourceFile* sourceFile = sourceManager_.getFile(fileId);
+        if (sourceFile == nullptr)
+        {
+            loadError = "internal error: generated precompiled API has no SourceFile slot";
+            return false;
+        }
+        auto unit = std::make_unique<ProjectSyntaxUnit>(
+            *projectOrdinal, 0, module.moduleName, fileId, true);
+        if (!unit->lex(*sourceFile, diagnostics_)) lexicalOk = false;
+        units_.push_back(std::move(unit));
     }
 
     const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);

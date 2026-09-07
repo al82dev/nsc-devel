@@ -297,9 +297,9 @@ class H
     std::string verifyError;
     tests.expect(module->verify(verifyError), "Stage 39 LLVM verifies before optimization");
     const std::string llvm = module->text();
-    tests.expect(llvm.find("define i1 @__nativesharp_rtti_is_class") != std::string::npos,
+    tests.expect(llvm.find("define internal i1 @__nativesharp_rtti_is_class") != std::string::npos,
         "LLVM defines minimal class ancestry RTTI helper");
-    tests.expect(llvm.find("define i1 @__nativesharp_rtti_is_interface") != std::string::npos,
+    tests.expect(llvm.find("define internal i1 @__nativesharp_rtti_is_interface") != std::string::npos,
         "LLVM defines interface-map RTTI helper");
     tests.expect(llvm.find("call i1 @__nativesharp_rtti_is_class") != std::string::npos,
         "class-target operations call class RTTI helper");

@@ -833,6 +833,7 @@ bool ProjectOopMirModel::build(
         function.isStatic = source.isStatic;
         function.isExportedC = source.isExportedC;
         function.isImportedC = source.isImportedC;
+        function.isImportedNative = source.isImportedNative;
         function.importDllName = source.importDllName;
         function.importRequiresRuntimeBinding = source.importRequiresRuntimeBinding;
         function.cAbiName = source.cAbiName;
@@ -847,7 +848,7 @@ bool ProjectOopMirModel::build(
         function.parameterTypeKeys = source.parameterTypeKeys;
         function.parameterOwnerships = source.parameterOwnerships;
         function.localOrdinals = source.localOrdinals;
-        if (source.isImportedC)
+        if (source.isImportedC || source.isImportedNative)
         {
             // Interop Foundation: imported C functions have no body to lower -- the definition
             // lives in the external DLL. The record still flows through so call sites resolve

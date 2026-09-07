@@ -131,13 +131,13 @@ CMAKE_PROJECT_NAME:STATIC=NativeSharp
 CMAKE_PROJECT_SPDX_LICENSE:STATIC=
 
 //Value Computed by CMake
-CMAKE_PROJECT_VERSION:STATIC=0.8.0
+CMAKE_PROJECT_VERSION:STATIC=0.9.0
 
 //Value Computed by CMake
 CMAKE_PROJECT_VERSION_MAJOR:STATIC=0
 
 //Value Computed by CMake
-CMAKE_PROJECT_VERSION_MINOR:STATIC=8
+CMAKE_PROJECT_VERSION_MINOR:STATIC=9
 
 //Value Computed by CMake
 CMAKE_PROJECT_VERSION_PATCH:STATIC=0
@@ -226,7 +226,7 @@ NSC_LLVM_MONOLITHIC_LIBRARY:FILEPATH=C:/clang-llvm/lib/LLVM-C.lib
 
 //Ejecutable nsc que mide ctest (vacio = C:/native-sharp/bin/nsc.exe
 // en Windows)
-NSC_TEST_COMPILER:FILEPATH=C:/native-sharp/bin/nsc.exe
+NSC_TEST_COMPILER:FILEPATH=A:/nsc-devel/build-tests/bin/nsc.exe
 
 //Treat compiler warnings as errors
 NSC_WARNINGS_AS_ERRORS:BOOL=ON

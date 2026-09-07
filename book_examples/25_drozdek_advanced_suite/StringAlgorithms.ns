@@ -1,0 +1,243 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class StringAlgorithms
+    {
+        public static int NaiveSearch(string text, string pattern)
+        {
+            if (pattern.Length == 0)
+            {
+                return 0;
+            }
+            int start = 0;
+            while (start + pattern.Length <= text.Length)
+            {
+                int offset = 0;
+                while (offset < pattern.Length && text[start + offset] == pattern[offset])
+                {
+                    offset = offset + 1;
+                }
+                if (offset == pattern.Length)
+                {
+                    return start;
+                }
+                start = start + 1;
+            }
+            return -1;
+        }
+
+        private static int[] PrefixTable(string pattern)
+        {
+            int[] prefix = new int[pattern.Length];
+            int length = 0;
+            int index = 1;
+            while (index < pattern.Length)
+            {
+                if (pattern[index] == pattern[length])
+                {
+                    length = length + 1;
+                    prefix[index] = length;
+                    index = index + 1;
+                }
+                else if (length > 0)
+                {
+                    length = prefix[length - 1];
+                }
+                else
+                {
+                    prefix[index] = 0;
+                    index = index + 1;
+                }
+            }
+            return prefix;
+        }
+
+        public static int KnuthMorrisPratt(string text, string pattern)
+        {
+            if (pattern.Length == 0)
+            {
+                return 0;
+            }
+            int[] prefix = PrefixTable(pattern);
+            int textIndex = 0;
+            int patternIndex = 0;
+            while (textIndex < text.Length)
+            {
+                if (text[textIndex] == pattern[patternIndex])
+                {
+                    textIndex = textIndex + 1;
+                    patternIndex = patternIndex + 1;
+                    if (patternIndex == pattern.Length)
+                    {
+                        int found = textIndex - patternIndex;
+                        delete[] prefix;
+                        return found;
+                    }
+                }
+                else if (patternIndex > 0)
+                {
+                    patternIndex = prefix[patternIndex - 1];
+                }
+                else
+                {
+                    textIndex = textIndex + 1;
+                }
+            }
+            delete[] prefix;
+            return -1;
+        }
+
+        public static int BoyerMooreHorspool(string text, string pattern)
+        {
+            if (pattern.Length == 0)
+            {
+                return 0;
+            }
+            int[] shift = new int[256];
+            int index = 0;
+            while (index < 256)
+            {
+                shift[index] = pattern.Length;
+                index = index + 1;
+            }
+            index = 0;
+            while (index < pattern.Length - 1)
+            {
+                shift[(int)pattern[index]] = pattern.Length - index - 1;
+                index = index + 1;
+            }
+
+            int position = 0;
+            while (position + pattern.Length <= text.Length)
+            {
+                int offset = pattern.Length - 1;
+                while (offset >= 0 && pattern[offset] == text[position + offset])
+                {
+                    offset = offset - 1;
+                }
+                if (offset < 0)
+                {
+                    delete[] shift;
+                    return position;
+                }
+                position = position + shift[(int)text[position + pattern.Length - 1]];
+            }
+            delete[] shift;
+            return -1;
+        }
+
+        public static int BitapSearch(string text, string pattern)
+        {
+            if (pattern.Length == 0)
+            {
+                return 0;
+            }
+            if (pattern.Length > 30)
+            {
+                return -1;
+            }
+            int[] masks = new int[256];
+            int index = 0;
+            while (index < pattern.Length)
+            {
+                masks[(int)pattern[index]] = masks[(int)pattern[index]] | (1 << index);
+                index = index + 1;
+            }
+            int state = 0;
+            index = 0;
+            int matchBit = 1 << (pattern.Length - 1);
+            while (index < text.Length)
+            {
+                state = ((state << 1) | 1) & masks[(int)text[index]];
+                if ((state & matchBit) != 0)
+                {
+                    delete[] masks;
+                    return index - pattern.Length + 1;
+                }
+                index = index + 1;
+            }
+            delete[] masks;
+            return -1;
+        }
+
+        public static int ApproximateDistance(string left, string right)
+        {
+            int width = right.Length + 1;
+            int[] table = new int[(left.Length + 1) * width];
+            int row = 0;
+            while (row <= left.Length)
+            {
+                table[row * width] = row;
+                row = row + 1;
+            }
+            int column = 0;
+            while (column <= right.Length)
+            {
+                table[column] = column;
+                column = column + 1;
+            }
+            row = 1;
+            while (row <= left.Length)
+            {
+                column = 1;
+                while (column <= right.Length)
+                {
+                    int cost = left[row - 1] == right[column - 1] ? 0 : 1;
+                    int deletion = table[(row - 1) * width + column] + 1;
+                    int insertion = table[row * width + column - 1] + 1;
+                    int substitution = table[(row - 1) * width + column - 1] + cost;
+                    int best = deletion < insertion ? deletion : insertion;
+                    table[row * width + column] = best < substitution ? best : substitution;
+                    column = column + 1;
+                }
+                row = row + 1;
+            }
+            int result = table[left.Length * width + right.Length];
+            delete[] table;
+            return result;
+        }
+
+        public static int LongestCommonSubstring(string left, string right)
+        {
+            int width = right.Length + 1;
+            int[] table = new int[(left.Length + 1) * width];
+            int best = 0;
+            int row = 1;
+            while (row <= left.Length)
+            {
+                int column = 1;
+                while (column <= right.Length)
+                {
+                    if (left[row - 1] == right[column - 1])
+                    {
+                        int length = table[(row - 1) * width + column - 1] + 1;
+                        table[row * width + column] = length;
+                        if (length > best)
+                        {
+                            best = length;
+                        }
+                    }
+                    column = column + 1;
+                }
+                row = row + 1;
+            }
+            delete[] table;
+            return best;
+        }
+
+        public static int Run()
+        {
+            string text = "ABABDABACDABABCABAB";
+            string pattern = "ABABCABAB";
+            int naive = NaiveSearch(text, pattern);
+            int kmp = KnuthMorrisPratt(text, pattern);
+            int boyer = BoyerMooreHorspool(text, pattern);
+            int bitap = BitapSearch(text, pattern);
+            int edit = ApproximateDistance("algorithm", "altruistic");
+            int common = LongestCommonSubstring("ABABC", "BABCA");
+            Console.WriteLine("strings: naive, KMP, Boyer-Moore, bitap, approximate and LCS substring");
+            return naive + kmp + boyer + bitap + edit + common;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

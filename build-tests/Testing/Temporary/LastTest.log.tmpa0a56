@@ -1,0 +1,1227 @@
+Start testing: Sep 06 15:17 Central Standard Time (Mexico)
+----------------------------------------------------------
+1/297 Testing: nsc.target-data-layout
+1/297 Test: nsc.target-data-layout
+Command: "A:/nsc-devel/build-tests/tests/nsc_target_data_layout_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.target-data-layout" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+all TargetDataLayout tests passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.target-data-layout" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.target-data-layout" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/297 Testing: nsc.compilation-model
+2/297 Test: nsc.compilation-model
+Command: "A:/nsc-devel/build-tests/tests/nsc_compilation_model_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.compilation-model" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 73 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.compilation-model" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.compilation-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/297 Testing: nsc.project-loader
+3/297 Test: nsc.project-loader
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_loader_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-loader" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 67 checks
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-loader" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-loader" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/297 Testing: nsc.project-graph
+4/297 Test: nsc.project-graph
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_graph_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-graph" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 16 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-graph" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-graph" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/297 Testing: nsc.project-compilation
+5/297 Test: nsc.project-compilation
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_compilation_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-compilation" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 40 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-compilation" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-compilation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/297 Testing: nsc.project-name-lookup
+6/297 Test: nsc.project-name-lookup
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_name_lookup_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-name-lookup" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 76 checks
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-name-lookup" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-name-lookup" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/297 Testing: nsc.source-manager
+7/297 Test: nsc.source-manager
+Command: "A:/nsc-devel/build-tests/tests/nsc_source_manager_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.source-manager" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 29 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.source-manager" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.source-manager" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/297 Testing: nsc.diagnostics
+8/297 Test: nsc.diagnostics
+Command: "A:/nsc-devel/build-tests/tests/nsc_diagnostic_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.diagnostics" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 13 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.diagnostics" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.diagnostics" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/297 Testing: nsc.lexer
+9/297 Test: nsc.lexer
+Command: "A:/nsc-devel/build-tests/tests/nsc_lexer_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.lexer" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 39 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.lexer" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.lexer" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/297 Testing: nsc.parser
+10/297 Test: nsc.parser
+Command: "A:/nsc-devel/build-tests/tests/nsc_parser_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.parser" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 20 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.parser" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.parser" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/297 Testing: nsc.namespace-syntax
+11/297 Test: nsc.namespace-syntax
+Command: "A:/nsc-devel/build-tests/tests/nsc_namespace_syntax_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.namespace-syntax" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 15 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.namespace-syntax" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.namespace-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/297 Testing: nsc.class-declarations
+12/297 Test: nsc.class-declarations
+Command: "A:/nsc-devel/build-tests/tests/nsc_class_declaration_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.class-declarations" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 21 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.class-declarations" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.class-declarations" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/297 Testing: nsc.class-member-syntax
+13/297 Test: nsc.class-member-syntax
+Command: "A:/nsc-devel/build-tests/tests/nsc_class_member_syntax_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.class-member-syntax" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 73 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.class-member-syntax" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.class-member-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/297 Testing: nsc.constructor-syntax
+14/297 Test: nsc.constructor-syntax
+Command: "A:/nsc-devel/build-tests/tests/nsc_constructor_syntax_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.constructor-syntax" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 13 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.constructor-syntax" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.constructor-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/297 Testing: nsc.partial-class-aggregation
+15/297 Test: nsc.partial-class-aggregation
+Command: "A:/nsc-devel/build-tests/tests/nsc_partial_class_aggregation_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.partial-class-aggregation" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 57 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.partial-class-aggregation" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.partial-class-aggregation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/297 Testing: nsc.project-member-model
+16/297 Test: nsc.project-member-model
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_member_model_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-member-model" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 64 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-member-model" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-member-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/297 Testing: nsc.project-type-conversion
+17/297 Test: nsc.project-type-conversion
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_type_conversion_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-type-conversion" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 22 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-type-conversion" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-type-conversion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/297 Testing: nsc.project-method-body-model
+18/297 Test: nsc.project-method-body-model
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_method_body_model_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-method-body-model" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 58 checks
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-method-body-model" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-method-body-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/297 Testing: nsc.project-construction-model
+19/297 Test: nsc.project-construction-model
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_construction_model_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-construction-model" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 64 checks
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-construction-model" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-construction-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/297 Testing: nsc.project-object-layout-model
+20/297 Test: nsc.project-object-layout-model
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_object_layout_model_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-object-layout-model" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 47 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-object-layout-model" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-object-layout-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/297 Testing: nsc.project-oop-lowering
+21/297 Test: nsc.project-oop-lowering
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_oop_lowering_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.project-oop-lowering" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 71 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-oop-lowering" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.project-oop-lowering" time elapsed: 00:00:00
+----------------------------------------------------------
+
+22/297 Testing: nsc.macro-a-oop
+22/297 Test: nsc.macro-a-oop
+Command: "A:/nsc-devel/build-tests/tests/nsc_macro_a_oop_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.macro-a-oop" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 63 checks
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.macro-a-oop" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.macro-a-oop" time elapsed: 00:00:00
+----------------------------------------------------------
+
+23/297 Testing: nsc.stage37.static-initialization
+23/297 Test: nsc.stage37.static-initialization
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage37_static_initialization_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage37.static-initialization" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 57 checks
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage37.static-initialization" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage37.static-initialization" time elapsed: 00:00:00
+----------------------------------------------------------
+
+24/297 Testing: nsc.stage35.recovery
+24/297 Test: nsc.stage35.recovery
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage35_recovery_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage35.recovery" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 89 checks
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage35.recovery" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage35.recovery" time elapsed: 00:00:00
+----------------------------------------------------------
+
+25/297 Testing: nsc.stage36.recovery
+25/297 Test: nsc.stage36.recovery
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage36_recovery_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage36.recovery" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 95 checks
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage36.recovery" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage36.recovery" time elapsed: 00:00:00
+----------------------------------------------------------
+
+26/297 Testing: nsc.stage38.properties-indexers-operators
+26/297 Test: nsc.stage38.properties-indexers-operators
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage38_properties_indexers_operators_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage38.properties-indexers-operators" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 92 checks
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage38.properties-indexers-operators" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage38.properties-indexers-operators" time elapsed: 00:00:00
+----------------------------------------------------------
+
+27/297 Testing: nsc.stage39.rtti-casts
+27/297 Test: nsc.stage39.rtti-casts
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage39_rtti_casts_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage39.rtti-casts" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 93 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage39.rtti-casts" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage39.rtti-casts" time elapsed: 00:00:00
+----------------------------------------------------------
+
+28/297 Testing: nsc.stage40.struct-value-abi
+28/297 Test: nsc.stage40.struct-value-abi
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage40_struct_value_abi_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage40.struct-value-abi" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 63 checks
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage40.struct-value-abi" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage40.struct-value-abi" time elapsed: 00:00:00
+----------------------------------------------------------
+
+29/297 Testing: nsc.stage41.arrays-strings-core
+29/297 Test: nsc.stage41.arrays-strings-core
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage41_arrays_strings_core_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage41.arrays-strings-core" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 76 checks
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage41.arrays-strings-core" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage41.arrays-strings-core" time elapsed: 00:00:00
+----------------------------------------------------------
+
+30/297 Testing: nsc.stage42.delegates-events
+30/297 Test: nsc.stage42.delegates-events
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage42_delegates_events_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage42.delegates-events" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 61 checks
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage42.delegates-events" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage42.delegates-events" time elapsed: 00:00:00
+----------------------------------------------------------
+
+31/297 Testing: nsc.stage43.lambdas-closures
+31/297 Test: nsc.stage43.lambdas-closures
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage43_lambdas_closures_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage43.lambdas-closures" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 66 checks
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage43.lambdas-closures" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage43.lambdas-closures" time elapsed: 00:00:00
+----------------------------------------------------------
+
+32/297 Testing: nsc.stage44.generics-monomorphization
+32/297 Test: nsc.stage44.generics-monomorphization
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage44_generics_monomorphization_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage44.generics-monomorphization" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 73 checks
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage44.generics-monomorphization" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage44.generics-monomorphization" time elapsed: 00:00:00
+----------------------------------------------------------
+
+33/297 Testing: nsc.stage45.exceptions-syntax
+33/297 Test: nsc.stage45.exceptions-syntax
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_exceptions_syntax_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.exceptions-syntax" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 32 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.exceptions-syntax" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.exceptions-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+34/297 Testing: nsc.stage45.exception-sema
+34/297 Test: nsc.stage45.exception-sema
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_exception_sema_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.exception-sema" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 26 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.exception-sema" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.exception-sema" time elapsed: 00:00:00
+----------------------------------------------------------
+
+35/297 Testing: nsc.stage45.cleanup-scopes
+35/297 Test: nsc.stage45.cleanup-scopes
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_cleanup_scope_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.cleanup-scopes" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 25 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.cleanup-scopes" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.cleanup-scopes" time elapsed: 00:00:00
+----------------------------------------------------------
+
+36/297 Testing: nsc.stage45.finally-flow
+36/297 Test: nsc.stage45.finally-flow
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_finally_flow_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.finally-flow" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 27 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.finally-flow" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.finally-flow" time elapsed: 00:00:00
+----------------------------------------------------------
+
+37/297 Testing: nsc.stage45.using-disposable
+37/297 Test: nsc.stage45.using-disposable
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_using_disposable_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.using-disposable" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 36 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.using-disposable" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.using-disposable" time elapsed: 00:00:00
+----------------------------------------------------------
+
+38/297 Testing: nsc.stage45.hir-exceptional-cfg
+38/297 Test: nsc.stage45.hir-exceptional-cfg
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_hir_exceptional_cfg_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.hir-exceptional-cfg" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 27 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.hir-exceptional-cfg" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.hir-exceptional-cfg" time elapsed: 00:00:00
+----------------------------------------------------------
+
+39/297 Testing: nsc.stage45.mir-exceptional-cfg
+39/297 Test: nsc.stage45.mir-exceptional-cfg
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_mir_exceptional_cfg_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.mir-exceptional-cfg" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 30 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.mir-exceptional-cfg" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.mir-exceptional-cfg" time elapsed: 00:00:00
+----------------------------------------------------------
+
+40/297 Testing: nsc.stage45.native-exception-runtime
+40/297 Test: nsc.stage45.native-exception-runtime
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_native_exception_runtime_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.native-exception-runtime" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 31 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.native-exception-runtime" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.native-exception-runtime" time elapsed: 00:00:00
+----------------------------------------------------------
+
+41/297 Testing: nsc.stage45.llvm-win64-eh-basic
+41/297 Test: nsc.stage45.llvm-win64-eh-basic
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_llvm_win64_eh_basic_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.llvm-win64-eh-basic" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 35 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.llvm-win64-eh-basic" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.llvm-win64-eh-basic" time elapsed: 00:00:00
+----------------------------------------------------------
+
+42/297 Testing: nsc.stage45.llvm-cleanup-funclets
+42/297 Test: nsc.stage45.llvm-cleanup-funclets
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_llvm_cleanup_funclet_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.llvm-cleanup-funclets" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 32 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.llvm-cleanup-funclets" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.llvm-cleanup-funclets" time elapsed: 00:00:00
+----------------------------------------------------------
+
+43/297 Testing: nsc.stage45.typed-catch-rtti
+43/297 Test: nsc.stage45.typed-catch-rtti
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_typed_catch_rtti_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.typed-catch-rtti" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 40 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.typed-catch-rtti" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.typed-catch-rtti" time elapsed: 00:00:00
+----------------------------------------------------------
+
+44/297 Testing: nsc.stage45.linker-pe-eh
+44/297 Test: nsc.stage45.linker-pe-eh
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_linker_pe_eh_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45.linker-pe-eh" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 32 checks
+<end of output>
+Test time =   0.75 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.linker-pe-eh" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45.linker-pe-eh" time elapsed: 00:00:00
+----------------------------------------------------------
+
+45/297 Testing: nsc.stage45-10.eh-raii-reuse-after-catch
+45/297 Test: nsc.stage45-10.eh-raii-reuse-after-catch
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45-10.eh-raii-reuse-after-catch" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 78 checks
+<end of output>
+Test time =  12.99 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45-10.eh-raii-reuse-after-catch" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45-10.eh-raii-reuse-after-catch" time elapsed: 00:00:12
+----------------------------------------------------------
+
+46/297 Testing: nsc.stage45-11.eh-cleanup-execution
+46/297 Test: nsc.stage45-11.eh-cleanup-execution
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_11_eh_cleanup_execution_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45-11.eh-cleanup-execution" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 72 checks
+<end of output>
+Test time =  12.11 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45-11.eh-cleanup-execution" end time: Sep 06 15:17 Central Standard Time (Mexico)
+"nsc.stage45-11.eh-cleanup-execution" time elapsed: 00:00:12
+----------------------------------------------------------
+
+47/297 Testing: nsc.stage50-11.ownership-execution
+47/297 Test: nsc.stage50-11.ownership-execution
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage50_11_ownership_execution_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage50-11.ownership-execution" start time: Sep 06 15:17 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 196 checks
+<end of output>
+Test time =  47.95 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage50-11.ownership-execution" end time: Sep 06 15:18 Central Standard Time (Mexico)
+"nsc.stage50-11.ownership-execution" time elapsed: 00:00:47
+----------------------------------------------------------
+
+48/297 Testing: nsc.stage40-2.aggregate-abi-execution
+48/297 Test: nsc.stage40-2.aggregate-abi-execution
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage40_2_aggregate_abi_execution_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage40-2.aggregate-abi-execution" start time: Sep 06 15:18 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 64 checks
+<end of output>
+Test time =  15.58 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage40-2.aggregate-abi-execution" end time: Sep 06 15:18 Central Standard Time (Mexico)
+"nsc.stage40-2.aggregate-abi-execution" time elapsed: 00:00:15
+----------------------------------------------------------
+
+49/297 Testing: nsc.stage55x.interop-foundation
+49/297 Test: nsc.stage55x.interop-foundation
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage55x_interop_foundation_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage55x.interop-foundation" start time: Sep 06 15:18 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 20 checks
+<end of output>
+Test time =   2.31 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage55x.interop-foundation" end time: Sep 06 15:18 Central Standard Time (Mexico)
+"nsc.stage55x.interop-foundation" time elapsed: 00:00:02
+----------------------------------------------------------
+
+50/297 Testing: nsc.stage56.c1-interop-completion
+50/297 Test: nsc.stage56.c1-interop-completion
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage56_c1_interop_completion_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage56.c1-interop-completion" start time: Sep 06 15:18 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 92 checks
+<end of output>
+Test time =   7.77 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c1-interop-completion" end time: Sep 06 15:18 Central Standard Time (Mexico)
+"nsc.stage56.c1-interop-completion" time elapsed: 00:00:07
+----------------------------------------------------------
+
+51/297 Testing: nsc.stage56.c2c4-language-completion
+51/297 Test: nsc.stage56.c2c4-language-completion
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage56_c2c4_language_completion_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage56.c2c4-language-completion" start time: Sep 06 15:18 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 82 checks
+<end of output>
+Test time =   6.76 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c2c4-language-completion" end time: Sep 06 15:18 Central Standard Time (Mexico)
+"nsc.stage56.c2c4-language-completion" time elapsed: 00:00:06
+----------------------------------------------------------
+
+52/297 Testing: nsc.stage56.c6-struct-members
+52/297 Test: nsc.stage56.c6-struct-members
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage56_c6_struct_members_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage56.c6-struct-members" start time: Sep 06 15:18 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 50 checks
+<end of output>
+Test time =   6.36 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c6-struct-members" end time: Sep 06 15:19 Central Standard Time (Mexico)
+"nsc.stage56.c6-struct-members" time elapsed: 00:00:06
+----------------------------------------------------------
+
+53/297 Testing: nsc.stage56.c7-definite-assignment
+53/297 Test: nsc.stage56.c7-definite-assignment
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage56_c7_definite_assignment_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage56.c7-definite-assignment" start time: Sep 06 15:19 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 77 checks
+<end of output>
+Test time =   7.79 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c7-definite-assignment" end time: Sep 06 15:19 Central Standard Time (Mexico)
+"nsc.stage56.c7-definite-assignment" time elapsed: 00:00:07
+----------------------------------------------------------
+
+54/297 Testing: nsc.stage56.c8-type-root
+54/297 Test: nsc.stage56.c8-type-root
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage56_c8_type_root_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage56.c8-type-root" start time: Sep 06 15:19 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 55 checks
+<end of output>
+Test time =  55.30 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c8-type-root" end time: Sep 06 15:20 Central Standard Time (Mexico)
+"nsc.stage56.c8-type-root" time elapsed: 00:00:55
+----------------------------------------------------------
+
+55/297 Testing: nsc.stage56.bugfix
+55/297 Test: nsc.stage56.bugfix
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage56_bugfix_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage56.bugfix" start time: Sep 06 15:20 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 58 checks
+<end of output>
+Test time =  61.26 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.bugfix" end time: Sep 06 15:21 Central Standard Time (Mexico)
+"nsc.stage56.bugfix" time elapsed: 00:01:01
+----------------------------------------------------------
+
+56/297 Testing: nsc.stage57.language
+56/297 Test: nsc.stage57.language
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage57_language_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage57.language" start time: Sep 06 15:21 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 27 checks
+<end of output>
+Test time =  22.21 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage57.language" end time: Sep 06 15:21 Central Standard Time (Mexico)
+"nsc.stage57.language" time elapsed: 00:00:22
+----------------------------------------------------------
+
+57/297 Testing: nsc.version.identity
+57/297 Test: nsc.version.identity
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_build_identity_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.version.identity" start time: Sep 06 15:21 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 9 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.version.identity" end time: Sep 06 15:21 Central Standard Time (Mexico)
+"nsc.version.identity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+58/297 Testing: nsc.cc1.integer-evaluator
+58/297 Test: nsc.cc1.integer-evaluator
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_integer_evaluator_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.cc1.integer-evaluator" start time: Sep 06 15:21 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 39 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.integer-evaluator" end time: Sep 06 15:21 Central Standard Time (Mexico)
+"nsc.cc1.integer-evaluator" time elapsed: 00:00:00
+----------------------------------------------------------
+
+59/297 Testing: nsc.cc1.correctness.cc1-c1-constants
+59/297 Test: nsc.cc1.correctness.cc1-c1-constants
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_correctness_tests.exe" "cc1-c1-constants"
+Directory: A:/nsc-devel/build-tests
+"nsc.cc1.correctness.cc1-c1-constants" start time: Sep 06 15:21 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 6 checks
+<end of output>
+Test time =   7.07 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.correctness.cc1-c1-constants" end time: Sep 06 15:21 Central Standard Time (Mexico)
+"nsc.cc1.correctness.cc1-c1-constants" time elapsed: 00:00:07
+----------------------------------------------------------
+
+60/297 Testing: nsc.cc1.correctness.cc1-c2-ternary-ownership
+60/297 Test: nsc.cc1.correctness.cc1-c2-ternary-ownership
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_correctness_tests.exe" "cc1-c2-ternary-ownership"
+Directory: A:/nsc-devel/build-tests
+"nsc.cc1.correctness.cc1-c2-ternary-ownership" start time: Sep 06 15:21 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 6 checks
+<end of output>
+Test time =   7.10 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.correctness.cc1-c2-ternary-ownership" end time: Sep 06 15:21 Central Standard Time (Mexico)
+"nsc.cc1.correctness.cc1-c2-ternary-ownership" time elapsed: 00:00:07
+----------------------------------------------------------
+
+61/297 Testing: nsc.cc1.correctness.cc1-c3-dowhile-flow
+61/297 Test: nsc.cc1.correctness.cc1-c3-dowhile-flow
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_correctness_tests.exe" "cc1-c3-dowhile-flow"
+Directory: A:/nsc-devel/build-tests
+"nsc.cc1.correctness.cc1-c3-dowhile-flow" start time: Sep 06 15:21 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 6 checks
+<end of output>
+Test time =   7.13 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.correctness.cc1-c3-dowhile-flow" end time: Sep 06 15:21 Central Standard Time (Mexico)
+"nsc.cc1.correctness.cc1-c3-dowhile-flow" time elapsed: 00:00:07
+----------------------------------------------------------
+
+62/297 Testing: nsc.cc1.correctness.cc1-c4-catch-continue
+62/297 Test: nsc.cc1.correctness.cc1-c4-catch-continue
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_correctness_tests.exe" "cc1-c4-catch-continue"
+Directory: A:/nsc-devel/build-tests
+"nsc.cc1.correctness.cc1-c4-catch-continue" start time: Sep 06 15:21 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 6 checks
+<end of output>
+Test time =   7.18 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.correctness.cc1-c4-catch-continue" end time: Sep 06 15:22 Central Standard Time (Mexico)
+"nsc.cc1.correctness.cc1-c4-catch-continue" time elapsed: 00:00:07
+----------------------------------------------------------
+
+63/297 Testing: nsc.cc1.correctness.cc1-c5-catch-break
+63/297 Test: nsc.cc1.correctness.cc1-c5-catch-break
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_correctness_tests.exe" "cc1-c5-catch-break"
+Directory: A:/nsc-devel/build-tests
+"nsc.cc1.correctness.cc1-c5-catch-break" start time: Sep 06 15:22 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 6 checks
+<end of output>
+Test time =   8.28 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.correctness.cc1-c5-catch-break" end time: Sep 06 15:22 Central Standard Time (Mexico)
+"nsc.cc1.correctness.cc1-c5-catch-break" time elapsed: 00:00:08
+----------------------------------------------------------
+
+64/297 Testing: nsc.cc1.correctness.cc1-c6-catch-return
+64/297 Test: nsc.cc1.correctness.cc1-c6-catch-return
+Command: "A:/nsc-devel/build-tests/tests/nsc_cc1_correctness_tests.exe" "cc1-c6-catch-return"
+Directory: A:/nsc-devel/build-tests
+"nsc.cc1.correctness.cc1-c6-catch-return" start time: Sep 06 15:22 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 6 checks
+<end of output>
+Test time =   7.90 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.correctness.cc1-c6-catch-return" end time: Sep 06 15:22 Central Standard Time (Mexico)
+"nsc.cc1.correctness.cc1-c6-catch-return" time elapsed: 00:00:07
+----------------------------------------------------------
+

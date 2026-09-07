@@ -432,6 +432,9 @@ struct ProjectOopHirFunction final
     // declaration (with the same Win64 ABI mapping every definition gets), and (importDllName,
     // mangledName) flows to the linker so the import library materializes.
     bool isImportedC = false;
+    // A public NativeSharp method materialized from .nsmeta. Its source declaration participates
+    // in ordinary overload resolution, but its body and symbol live in the referenced library.
+    bool isImportedNative = false;
     std::string importDllName;
     // C1.2 "import identity": this import's C symbol name is claimed by more than one library, so
     // it cannot be resolved statically by name -- mangledName is a unique internal name and the

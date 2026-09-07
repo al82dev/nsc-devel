@@ -17,6 +17,7 @@ public:
     static std::unique_ptr<LldLinker> discover(std::string& error);
 
     const std::filesystem::path& executablePath() const noexcept;
+    std::filesystem::path librarianExecutablePath() const;
 
     bool createImportLibrary(
         std::string_view dllName,

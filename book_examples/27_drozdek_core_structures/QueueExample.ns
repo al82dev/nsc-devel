@@ -1,0 +1,114 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class IntCircularQueue
+    {
+        private int[] data;
+        private int first;
+        private int count;
+
+        public IntCircularQueue(int initialCapacity)
+        {
+            if (initialCapacity < 1)
+            {
+                initialCapacity = 1;
+            }
+            data = new int[initialCapacity];
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                return count == 0;
+            }
+        }
+
+        public int Count
+        {
+            get
+            {
+                return count;
+            }
+        }
+
+        private int PhysicalIndex(int logicalIndex)
+        {
+            return (first + logicalIndex) % data.Length;
+        }
+
+        private void Grow()
+        {
+            int[] replacement = new int[data.Length * 2];
+            int index = 0;
+            while (index < count)
+            {
+                replacement[index] = data[PhysicalIndex(index)];
+                index = index + 1;
+            }
+            delete[] data;
+            data = replacement;
+            first = 0;
+        }
+
+        public void Enqueue(int value)
+        {
+            if (count == data.Length)
+            {
+                Grow();
+            }
+            data[PhysicalIndex(count)] = value;
+            count = count + 1;
+        }
+
+        public int Front()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            return data[first];
+        }
+
+        public int Dequeue()
+        {
+            int value = Front();
+            first = (first + 1) % data.Length;
+            count = count - 1;
+            if (count == 0)
+            {
+                first = 0;
+            }
+            return value;
+        }
+
+        ~IntCircularQueue()
+        {
+            delete[] data;
+        }
+    }
+
+    public class QueueExample
+    {
+        public static int Run()
+        {
+            raii IntCircularQueue queue = new IntCircularQueue(3);
+            queue.Enqueue(11);
+            queue.Enqueue(22);
+            queue.Enqueue(33);
+            int first = queue.Dequeue();
+            queue.Enqueue(44);
+            queue.Enqueue(55);
+            int checksum = first;
+            int position = 1;
+            while (!queue.IsEmpty)
+            {
+                checksum = checksum + queue.Dequeue() * position;
+                position = position + 1;
+            }
+            Console.WriteLine("queue: circular buffer, FIFO, wrap-around and growth without shifting");
+            return checksum;
+        }
+    }
+}

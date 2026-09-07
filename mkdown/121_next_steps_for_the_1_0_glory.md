@@ -1,8 +1,9 @@
 # 121 — Next Steps for the 1.0 Glory
 
 **Fecha:** 2026-09-06
-**Punto de partida:** candidato `nsc 0.8.0-alpha`; NativeSharp 0.1 / Stage 57. La identidad
-`+build.<UTC>.<hash>` se genera de nuevo para cada binario y se registra al certificar.
+**Punto de partida:** línea activa `nsc 0.9.0-alpha`; el último baseline instalado certificado es
+`0.8.0-alpha`. NativeSharp 0.1 / Stage 57. La identidad `+build.<UTC>.<hash>` se genera de nuevo
+para cada binario y se registra al certificar.
 **Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
 herramientas gráficas y software de plataforma con rendimiento predecible.
 
@@ -12,6 +13,16 @@ está instalado y certificado. G00 `20260906-021445-7c15dc93` terminó `LANDED`,
 `6d93b1645af25b85a0e5a92133ba1a5801ff2a621e0f368c063e7f5cab13e934`. Las 12 etapas pasaron y
 los 308 casos terminaron sin fallos ni omitidos, con CTest, fixtures y bug triage en lld-link y
 NSLink, O0/O2.
+
+**Estado local de 0.9.0-alpha:** el frente de bibliotecas `.lib`/DLL ya separa el linker PE del
+archivador estático, compone dependencias A → B sin incrustar import libraries del sistema y
+consume métodos estáticos NativeSharp desde metadata. La revisión más reciente corrigió el último
+fixture amarrado al nombre `lld-link`: ahora `nsc.linker-info` valida el contrato PE/COFF y pasa con
+NSLink y lld-link. La revalidación local da **297/297** (296 casos nativos con NSLink y el host C#
+repetido con acceso al SDK). El binario acumulado es
+`nsc 0.9.0-alpha+build.20260907T021023Z.a6c15b3fca87c7ac`, SHA-256
+`E6385401C7E82FCB3896749195DD4896DA1309DF589BDCFB1E6BE8E143F55433`. Esto no sustituye un nuevo
+G00: la modificación del fixture obliga a recalcular y certificar S0/S1.
 
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
@@ -897,79 +908,54 @@ del sistema normal de bindings.
 
 ---
 
-## 8. Gate 0.9 — El juego piloto
+## 8. Gate 0.9 — Frontera de bibliotecas precompiladas
 
-Las fixtures prueban contratos aislados. No prueban convivencia prolongada. Antes de congelar 1.0
-debe existir un juego pequeño pero completo escrito en Native Sharp.
+`0.9` demuestra que una unidad NativeSharp es un producto binario reutilizable, no sólo un grupo de
+fuentes que el ejecutable recompila. Todo el gate pertenece al compilador, metadata y enlazador.
 
-Los reportes procedentes de juegos, engines o ports externos pueden originar nuevas fixtures, pero
-esos repositorios no se incorporan automáticamente al corpus ni a las obligaciones de Native
-Sharp. El juego piloto de este gate será un artefacto deliberadamente elegido y mantenido por el
-propio proyecto.
+### 8.1 Producto publicable
 
-### 8.1 Vertical slice obligatorio
+Un productor y un consumidor separados deben funcionar sin compartir fuentes. El producto tiene
+una forma inequívoca:
 
-El programa debe incluir:
+- biblioteca estática COFF: `.lib`, header C y `.nsmeta`;
+- biblioteca dinámica: `.dll`, import `.lib`, header C y `.nsmeta`;
+- identidad de módulo, target, versión de formato y huella ABI verificables;
+- exports e imports explícitos;
+- error temprano cuando binario, metadata o declaración consumidora discrepan.
 
-- ventana, mensajes e input;
-- render real;
-- audio real;
-- carga de assets binarios;
-- entidades o escena suficiente para ejercer ownership;
-- structs matemáticos y SIMD;
-- hilos de trabajo y sincronización;
-- hot loop sin asignaciones accidentales;
-- guardado de configuración en un formato propio sencillo;
-- build Debug y Release;
-- ejecución con `lld-link` y NSLink.
+La ABI C permanece como frontera mínima y estable. El consumo NativeSharp completo debe poder
+materializar desde `.nsmeta` tipos, miembros, defaults, ownership y dispatch sin redeclaraciones
+manuales.
 
-No necesita editor, engine, red, scripting dinámico ni servicios externos. Debe ser un consumidor,
-no una nueva plataforma.
+### 8.2 Composición
 
-### 8.2 Presupuestos medidos
+- varias bibliotecas pueden participar en un mismo enlace sin colisiones de identidad;
+- una estática consolida sus dependencias estáticas, pero deja los imports del proceso al enlace final;
+- una DLL conserva y declara correctamente sus dependencias dinámicas;
+- las dependencias transitivas se validan por identidad y huella;
+- un cambio incompatible señala módulo y símbolo responsables antes de producir el binario final;
+- los auxiliares internos del runtime y RTTI no escapan como símbolos fuertes duplicados.
 
-Antes de empezar se fijan presupuestos para:
+### 8.3 Matriz contractual
 
-- tiempo de frame promedio y percentiles altos;
-- allocations por frame;
-- memoria residente;
-- tiempo de arranque;
-- tiempo de compilación completa e incremental observado;
-- tamaño de OBJ y EXE;
-- tiempo de enlace;
-- estabilidad después de horas de ejecución;
-- costo de exceptions, virtual dispatch, bounds checks y ownership cleanup donde sean relevantes.
+La certificación cubre productores y consumidores separados para estática y DLL, en O0/O2 y con
+los dos caminos de enlace soportados. Debe ejercer:
 
-No se promete superar C++ por decreto. Se compara el mismo workload y se explica cada diferencia.
-
-### 8.3 Soak, estrés y fallos
-
-- ejecución prolongada;
-- creación/destrucción repetida de recursos;
-- pérdida y recreación de dispositivo gráfico;
-- errores de asset;
-- fallo de inicialización parcial;
-- excepciones cruzando cleanup complejo;
-- cierre durante trabajo concurrente;
-- callbacks nativos durante shutdown;
-- validación de ausencia de fugas y dobles liberaciones.
+- funciones, overloads y defaults;
+- structs, enums, clases opacas y delegates;
+- ownership en parámetros, retornos y cleanup;
+- genéricos y constraints definidos en otra biblioteca;
+- virtual dispatch e interfaces;
+- múltiples bibliotecas y dependencias transitivas;
+- metadata anterior compatible y metadata futura/incompatible rechazada;
+- ejecución real del consumidor, no sólo existencia de archivos.
 
 ### 8.4 Congelación 0.9
 
-Al entrar en beta se congelan:
-
-- gramática;
-- reglas de tipos;
-- ownership y movimiento;
-- mangling público;
-- ABI del runtime;
-- formato `.nsproj`;
-- formato `.nsmeta`;
-- CLI estable;
-- comportamiento Debug/Release;
-- lista de targets soportados.
-
-Desde aquí, cualquier cambio incompatible exige migración documentada y aumento de versión.
+Al cerrar el gate quedan congelados el mangling público, ABI del runtime, formato `.nsproj`, formato
+`.nsmeta`, reglas de compatibilidad y CLI de producción/consumo de bibliotecas. Desde ese punto,
+todo cambio incompatible exige migración documentada y aumento de versión.
 
 ---
 
@@ -1095,19 +1081,8 @@ Además:
 0.7.5  Runner G00 corregido; baseline LANDED/certificado; NSC-LIMIT-011 cerrado
 0.7.6  Entrega grande: NSC-LIMIT-012/013/015/019 + NSC-LUNAR-007 cerrados
 0.8.0-alpha  Entrega concentrada certificada; NSC-LIMIT-005/016/017/018/020/021 cerrados
-0.8.0        Recertificar NSC-LIMIT-022 + compatibilidad C# útil y promover sin features nuevas
-0.8.1        Defaults en metadata `.lib` para omisiones entre bibliotecas
-0.8.2        CodeView/PDB
-0.8.3        builds reproducibles + identidad + instalación limpia
-0.8.4        paridad NSLink/lld-link en el dominio soportado
-0.8.5        calendario UTC/local mínimo en Core, sin framework de globalización
-
-0.8.6        COM estático
-0.8.7        SIMD e intrínsecos guiados por consumidor
-0.8.8        aplicación completa de ventana/input/render/audio/assets
-
-0.9.0  juego piloto y congelación de lenguaje/ABI
-0.9.x  bugs, rendimiento, soak, documentación y compatibilidad
+0.9.0-alpha  Línea activa: DLL, import `.lib`, `.lib` estática y NSMETA 1.4
+0.9.x        Consumo precompilado, ABI/mangling estable, composición, diagnóstico y certificación
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

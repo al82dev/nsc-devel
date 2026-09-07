@@ -144,8 +144,8 @@ void testNativeProduct(TestContext& tests, const std::filesystem::path& root)
         "Stage 48.6 emits the same generated C/C++ ABI header");
     tests.expect(std::filesystem::is_regular_file(outputDirectory / "Stage48_6HostApi.nsmeta"),
         "Stage 48.6 emits compiler metadata beside the native product");
-    tests.expect(output.find("exports: 21") != std::string::npos,
-        "Stage 48.6 native product reports exactly 21 stable C ABI exports");
+    tests.expect(output.find("exports: 42") != std::string::npos,
+        "Stage 48.6 native product reports 21 stable C wrappers plus 21 NativeSharp entries");
 
     const std::string header = readFile(outputDirectory / "Stage48_6HostApi.h");
     tests.expect(header.find("#ifdef __cplusplus") != std::string::npos &&
@@ -173,10 +173,14 @@ void testNativeProduct(TestContext& tests, const std::filesystem::path& root)
         tests.expect(info.machine == 0x8664, "Stage 48.6 NativeSharp DLL targets AMD64");
         tests.expect(info.optionalHeaderMagic == 0x20b, "Stage 48.6 NativeSharp DLL uses PE32+");
         tests.expect(info.clrDirectoryRva == 0, "NativeSharp side of the C++/CLI bridge has no CLR header");
-        tests.expect(info.exportedSymbols.size() == 21, "Stage 48.6 native DLL exports exactly the bridge ABI surface");
+        tests.expect(info.exportedSymbols.size() == 42,
+            "Stage 48.6 native DLL exports the 21-entry bridge ABI and the matching NativeSharp surface");
         tests.expect(contains(info.exportedSymbols, "NS486_Add") && contains(info.exportedSymbols, "NS486_Invoke") &&
                 contains(info.exportedSymbols, "NS486_Counter_Destroy"),
             "representative scalar, callback and lifetime exports remain undecorated");
+        tests.expect(std::count_if(info.exportedSymbols.begin(), info.exportedSymbols.end(),
+                         [](const std::string& symbol) { return symbol.find("HostApi") != std::string::npos; }) == 21,
+            "every public HostApi method also has one mangled NativeSharp export");
     }
 
     LibraryMetadata metadata;

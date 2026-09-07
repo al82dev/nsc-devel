@@ -13,12 +13,14 @@ ProjectSyntaxUnit::ProjectSyntaxUnit(
     std::size_t projectOrdinal,
     std::size_t sourceOrdinal,
     std::string moduleName,
-    FileId fileId)
+    FileId fileId,
+    bool precompiled)
     : projectOrdinal_(projectOrdinal),
       sourceOrdinal_(sourceOrdinal),
       moduleName_(std::move(moduleName)),
       fileId_(fileId),
-      arena_(std::make_unique<ast::AstArena>())
+      arena_(std::make_unique<ast::AstArena>()),
+      precompiled_(precompiled)
 {
 }
 
@@ -108,5 +110,10 @@ bool ProjectSyntaxUnit::isLexicallyValid() const noexcept
 bool ProjectSyntaxUnit::isSyntaxValid() const noexcept
 {
     return syntaxValid_;
+}
+
+bool ProjectSyntaxUnit::isPrecompiled() const noexcept
+{
+    return precompiled_;
 }
 }

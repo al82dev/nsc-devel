@@ -1,0 +1,370 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class ExpressionParser
+    {
+        private string text;
+        private int position;
+
+        public ExpressionParser(string source)
+        {
+            text = source;
+            position = 0;
+        }
+
+        private void SkipSpaces()
+        {
+            while (position < text.Length && text[position] == ' ')
+            {
+                position = position + 1;
+            }
+        }
+
+        private int ParseNumber()
+        {
+            SkipSpaces();
+            int value = 0;
+            bool found = false;
+            while (position < text.Length && text[position] >= '0' && text[position] <= '9')
+            {
+                value = value * 10 + ((int)text[position] - (int)'0');
+                position = position + 1;
+                found = true;
+            }
+            if (!found)
+            {
+                throw new InvalidOperationException();
+            }
+            return value;
+        }
+
+        private int ParsePrimary()
+        {
+            SkipSpaces();
+            if (position < text.Length && text[position] == '(')
+            {
+                position = position + 1;
+                int value = ParseExpression();
+                SkipSpaces();
+                if (position >= text.Length || text[position] != ')')
+                {
+                    throw new InvalidOperationException();
+                }
+                position = position + 1;
+                return value;
+            }
+            return ParseNumber();
+        }
+
+        private int ParseUnary()
+        {
+            SkipSpaces();
+            if (position < text.Length && text[position] == '-')
+            {
+                position = position + 1;
+                return -ParseUnary();
+            }
+            return ParsePrimary();
+        }
+
+        private int ParseTerm()
+        {
+            int value = ParseUnary();
+            SkipSpaces();
+            while (position < text.Length && (text[position] == '*' || text[position] == '/'))
+            {
+                char operation = text[position];
+                position = position + 1;
+                int right = ParseUnary();
+                if (operation == '*')
+                {
+                    value = value * right;
+                }
+                else
+                {
+                    if (right == 0)
+                    {
+                        throw new InvalidOperationException();
+                    }
+                    value = value / right;
+                }
+                SkipSpaces();
+            }
+            return value;
+        }
+
+        private int ParseExpression()
+        {
+            int value = ParseTerm();
+            SkipSpaces();
+            while (position < text.Length && (text[position] == '+' || text[position] == '-'))
+            {
+                char operation = text[position];
+                position = position + 1;
+                int right = ParseTerm();
+                value = operation == '+' ? value + right : value - right;
+                SkipSpaces();
+            }
+            return value;
+        }
+
+        public int Evaluate()
+        {
+            int value = ParseExpression();
+            SkipSpaces();
+            if (position != text.Length)
+            {
+                throw new InvalidOperationException();
+            }
+            return value;
+        }
+    }
+
+    public class CaseStudyAlgorithms
+    {
+        private static void PutInt(byte[] data, int offset, int value)
+        {
+            data[offset] = (byte)(value & 255);
+            data[offset + 1] = (byte)((value >> 8) & 255);
+            data[offset + 2] = (byte)((value >> 16) & 255);
+            data[offset + 3] = (byte)((value >> 24) & 255);
+        }
+
+        private static int GetInt(byte[] data, int offset)
+        {
+            int first = (int)data[offset];
+            int second = (int)data[offset + 1] << 8;
+            int third = (int)data[offset + 2] << 16;
+            int fourth = (int)data[offset + 3] << 24;
+            return first | second | third | fourth;
+        }
+
+        private static int FixedRecordRoundTrip()
+        {
+            byte[] records = new byte[48];
+            int index = 0;
+            while (index < 4)
+            {
+                int offset = index * 12;
+                PutInt(records, offset, 1000 + index);
+                PutInt(records, offset + 4, 20 + index * 7);
+                PutInt(records, offset + 8, index == 2 ? 0 : 1);
+                index = index + 1;
+            }
+            PutInt(records, 12 + 4, 99);
+            bool written = File.WriteAllBytes("drozdek_fixed_records.bin", records, records.Length);
+            byte[] loaded = File.ReadAllBytes("drozdek_fixed_records.bin");
+            int checksum = written && loaded.Length == 48 ? GetInt(loaded, 12) + GetInt(loaded, 16) : -1;
+            File.Delete("drozdek_fixed_records.bin");
+            delete[] records;
+            delete[] loaded;
+            return checksum;
+        }
+
+        private static int LibraryLoans()
+        {
+            int[] bookIds = new int[] { 101, 205, 309, 412, 518 };
+            int[] borrower = new int[bookIds.Length];
+            int index = 0;
+            while (index < borrower.Length)
+            {
+                borrower[index] = -1;
+                index = index + 1;
+            }
+            borrower[1] = 7001;
+            borrower[4] = 7002;
+            bool rejectedDoubleLoan = borrower[1] != -1;
+            borrower[1] = -1;
+            int result = rejectedDoubleLoan ? bookIds[4] + borrower[1] + 1 : -1;
+            delete[] bookIds;
+            delete[] borrower;
+            return result;
+        }
+
+        private static int MazeShortestPath()
+        {
+            int width = 7;
+            int height = 6;
+            int[] grid = new int[] { 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1,
+                                     1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1 };
+            int total = width * height;
+            int[] distance = new int[total];
+            int[] queue = new int[total];
+            int index = 0;
+            while (index < total)
+            {
+                distance[index] = -1;
+                index = index + 1;
+            }
+            int head = 0;
+            int tail = 0;
+            queue[tail] = 0;
+            tail = tail + 1;
+            distance[0] = 0;
+            int[] dx = new int[] { 1, -1, 0, 0 };
+            int[] dy = new int[] { 0, 0, 1, -1 };
+            while (head < tail)
+            {
+                int cell = queue[head];
+                head = head + 1;
+                int x = cell % width;
+                int y = cell / width;
+                int direction = 0;
+                while (direction < 4)
+                {
+                    int nx = x + dx[direction];
+                    int ny = y + dy[direction];
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height)
+                    {
+                        int next = ny * width + nx;
+                        if (grid[next] != 0 && distance[next] < 0)
+                        {
+                            distance[next] = distance[cell] + 1;
+                            queue[tail] = next;
+                            tail = tail + 1;
+                        }
+                    }
+                    direction = direction + 1;
+                }
+            }
+            int result = distance[total - 1];
+            delete[] grid;
+            delete[] distance;
+            delete[] queue;
+            delete[] dx;
+            delete[] dy;
+            return result;
+        }
+
+        private static int PlaceQueens(int row, int size, bool[] columns, bool[] down, bool[] up)
+        {
+            if (row == size)
+            {
+                return 1;
+            }
+            int solutions = 0;
+            int column = 0;
+            while (column < size)
+            {
+                int downIndex = row - column + size - 1;
+                int upIndex = row + column;
+                if (!columns[column] && !down[downIndex] && !up[upIndex])
+                {
+                    columns[column] = true;
+                    down[downIndex] = true;
+                    up[upIndex] = true;
+                    solutions = solutions + PlaceQueens(row + 1, size, columns, down, up);
+                    columns[column] = false;
+                    down[downIndex] = false;
+                    up[upIndex] = false;
+                }
+                column = column + 1;
+            }
+            return solutions;
+        }
+
+        private static int EightQueens()
+        {
+            bool[] columns = new bool[8];
+            bool[] down = new bool[15];
+            bool[] up = new bool[15];
+            int solutions = PlaceQueens(0, 8, columns, down, up);
+            delete[] columns;
+            delete[] down;
+            delete[] up;
+            return solutions;
+        }
+
+        private static int KochSegments(int depth)
+        {
+            if (depth == 0)
+            {
+                return 1;
+            }
+            return 4 * KochSegments(depth - 1);
+        }
+
+        private static int WordFrequencyChecksum()
+        {
+            string[] words = new string[] { "tree", "graph", "tree", "heap", "hash", "tree", "graph", "trie", "heap" };
+            string[] unique = new string[words.Length];
+            int[] counts = new int[words.Length];
+            int uniqueCount = 0;
+            int index = 0;
+            while (index < words.Length)
+            {
+                int found = -1;
+                int candidate = 0;
+                while (candidate < uniqueCount)
+                {
+                    if (unique[candidate] == words[index])
+                    {
+                        found = candidate;
+                    }
+                    candidate = candidate + 1;
+                }
+                if (found < 0)
+                {
+                    unique[uniqueCount] = words[index];
+                    counts[uniqueCount] = 1;
+                    uniqueCount = uniqueCount + 1;
+                }
+                else
+                {
+                    counts[found] = counts[found] + 1;
+                }
+                index = index + 1;
+            }
+            int checksum = 0;
+            index = 0;
+            while (index < uniqueCount)
+            {
+                checksum = checksum + counts[index] * (index + 1);
+                index = index + 1;
+            }
+            delete[] words;
+            delete[] unique;
+            delete[] counts;
+            return checksum;
+        }
+
+        private static int SpellCheck()
+        {
+            string[] dictionary = new string[] { "native", "sharp", "structure", "algorithm", "compiler" };
+            string misspelled = "algoritm";
+            int bestDistance = 2147483647;
+            int bestIndex = -1;
+            int index = 0;
+            while (index < dictionary.Length)
+            {
+                int distance = StringAlgorithms.ApproximateDistance(misspelled, dictionary[index]);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestIndex = index;
+                }
+                index = index + 1;
+            }
+            bool valid = bestIndex == 3 && bestDistance == 1;
+            delete[] dictionary;
+            return valid ? 31 : -1;
+        }
+
+        public static int Run()
+        {
+            int records = FixedRecordRoundTrip();
+            int library = LibraryLoans();
+            int maze = MazeShortestPath();
+            int queens = EightQueens();
+            raii ExpressionParser parser = new ExpressionParser("2 + 3 * (7 - 1) - 4 / 2");
+            int expression = parser.Evaluate();
+            int koch = KochSegments(4);
+            int frequencies = WordFrequencyChecksum();
+            int spelling = SpellCheck();
+            Console.WriteLine("case studies: records, library, maze, queens, parser, Koch, words and spelling");
+            return records + library + maze + queens + expression + koch + frequencies + spelling;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

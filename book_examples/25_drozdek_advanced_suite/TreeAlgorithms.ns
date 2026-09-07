@@ -1,0 +1,673 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class IntTreeNode
+    {
+        public int Key;
+        public int Priority;
+        public IntTreeNode Left;
+        public IntTreeNode Right;
+
+        public IntTreeNode(int key, int priority)
+        {
+            Key = key;
+            Priority = priority;
+        }
+    }
+
+    public class KdNode
+    {
+        public int X;
+        public int Y;
+        public KdNode Left;
+        public KdNode Right;
+
+        public KdNode(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+
+    public class ThreadedTreeNode
+    {
+        public int Key;
+        public ThreadedTreeNode Left;
+        public ThreadedTreeNode Right;
+        public bool RightIsThread;
+
+        public ThreadedTreeNode(int key)
+        {
+            Key = key;
+            RightIsThread = false;
+        }
+    }
+
+    public class SmallBTreeNode
+    {
+        public int[] Keys;
+        public SmallBTreeNode[] Children;
+        public int Count;
+        public bool Leaf;
+
+        public SmallBTreeNode(bool leaf)
+        {
+            Keys = new int[3];
+            Children = new SmallBTreeNode[4];
+            Count = 0;
+            Leaf = leaf;
+        }
+
+        ~SmallBTreeNode()
+        {
+            delete[] Keys;
+            delete[] Children;
+        }
+    }
+
+    public class SmallBTree
+    {
+        private SmallBTreeNode root;
+
+        public SmallBTree()
+        {
+            root = new SmallBTreeNode(true);
+        }
+
+        private void SplitChild(SmallBTreeNode parent, int childIndex)
+        {
+            SmallBTreeNode full = parent.Children[childIndex];
+            SmallBTreeNode right = new SmallBTreeNode(full.Leaf);
+            right.Count = 1;
+            right.Keys[0] = full.Keys[2];
+            if (!full.Leaf)
+            {
+                right.Children[0] = full.Children[2];
+                right.Children[1] = full.Children[3];
+                full.Children[2] = null;
+                full.Children[3] = null;
+            }
+            full.Count = 1;
+
+            int index = parent.Count;
+            while (index > childIndex)
+            {
+                parent.Children[index + 1] = parent.Children[index];
+                index = index - 1;
+            }
+            parent.Children[childIndex + 1] = right;
+
+            index = parent.Count - 1;
+            while (index >= childIndex)
+            {
+                parent.Keys[index + 1] = parent.Keys[index];
+                index = index - 1;
+            }
+            parent.Keys[childIndex] = full.Keys[1];
+            parent.Count = parent.Count + 1;
+        }
+
+        private void InsertNonFull(SmallBTreeNode node, int key)
+        {
+            int index = node.Count - 1;
+            if (node.Leaf)
+            {
+                while (index >= 0 && key < node.Keys[index])
+                {
+                    node.Keys[index + 1] = node.Keys[index];
+                    index = index - 1;
+                }
+                node.Keys[index + 1] = key;
+                node.Count = node.Count + 1;
+                return;
+            }
+
+            while (index >= 0 && key < node.Keys[index])
+            {
+                index = index - 1;
+            }
+            index = index + 1;
+            if (node.Children[index].Count == 3)
+            {
+                SplitChild(node, index);
+                if (key > node.Keys[index])
+                {
+                    index = index + 1;
+                }
+            }
+            InsertNonFull(node.Children[index], key);
+        }
+
+        public void Insert(int key)
+        {
+            if (root.Count == 3)
+            {
+                SmallBTreeNode replacement = new SmallBTreeNode(false);
+                replacement.Children[0] = root;
+                SplitChild(replacement, 0);
+                root = replacement;
+            }
+            InsertNonFull(root, key);
+        }
+
+        private bool ContainsNode(SmallBTreeNode node, int key)
+        {
+            int index = 0;
+            while (index < node.Count && key > node.Keys[index])
+            {
+                index = index + 1;
+            }
+            if (index < node.Count && key == node.Keys[index])
+            {
+                return true;
+            }
+            if (node.Leaf)
+            {
+                return false;
+            }
+            return ContainsNode(node.Children[index], key);
+        }
+
+        public bool Contains(int key)
+        {
+            return ContainsNode(root, key);
+        }
+
+        private void DeleteNode(SmallBTreeNode node)
+        {
+            if (!node.Leaf)
+            {
+                int index = 0;
+                while (index <= node.Count)
+                {
+                    DeleteNode(node.Children[index]);
+                    index = index + 1;
+                }
+            }
+            delete node;
+        }
+
+        ~SmallBTree()
+        {
+            DeleteNode(root);
+        }
+    }
+
+    public class TreeAlgorithms
+    {
+        private static ThreadedTreeNode InsertThreaded(ThreadedTreeNode root, int key)
+        {
+            if (root == null)
+            {
+                return new ThreadedTreeNode(key);
+            }
+            ThreadedTreeNode current = root;
+            while (true)
+            {
+                if (key < current.Key)
+                {
+                    if (current.Left == null)
+                    {
+                        ThreadedTreeNode node = new ThreadedTreeNode(key);
+                        node.Right = current;
+                        node.RightIsThread = true;
+                        current.Left = node;
+                        return root;
+                    }
+                    current = current.Left;
+                }
+                else if (key > current.Key)
+                {
+                    if (current.Right == null || current.RightIsThread)
+                    {
+                        ThreadedTreeNode node = new ThreadedTreeNode(key);
+                        node.Right = current.Right;
+                        node.RightIsThread = true;
+                        current.Right = node;
+                        current.RightIsThread = false;
+                        return root;
+                    }
+                    current = current.Right;
+                }
+                else
+                {
+                    return root;
+                }
+            }
+        }
+
+        private static int ThreadedInorderChecksum(ThreadedTreeNode root)
+        {
+            int checksum = 0;
+            ThreadedTreeNode current = root;
+            while (current != null && current.Left != null)
+            {
+                current = current.Left;
+            }
+            while (current != null)
+            {
+                checksum = checksum + current.Key;
+                if (current.RightIsThread)
+                {
+                    current = current.Right;
+                }
+                else
+                {
+                    current = current.Right;
+                    while (current != null && current.Left != null)
+                    {
+                        current = current.Left;
+                    }
+                }
+            }
+            return checksum;
+        }
+
+        private static void DeleteThreadedTree(ThreadedTreeNode root, int count)
+        {
+            ThreadedTreeNode[] nodes = new ThreadedTreeNode[count];
+            int found = 0;
+            ThreadedTreeNode current = root;
+            while (current != null && current.Left != null)
+            {
+                current = current.Left;
+            }
+            while (current != null)
+            {
+                nodes[found] = current;
+                found = found + 1;
+                if (current.RightIsThread)
+                {
+                    current = current.Right;
+                }
+                else
+                {
+                    current = current.Right;
+                    while (current != null && current.Left != null)
+                    {
+                        current = current.Left;
+                    }
+                }
+            }
+            int index = 0;
+            while (index < found)
+            {
+                delete nodes[index];
+                index = index + 1;
+            }
+            delete[] nodes;
+        }
+
+        private static IntTreeNode DeleteByMerging(IntTreeNode root, int key)
+        {
+            IntTreeNode parent = null;
+            IntTreeNode current = root;
+            while (current != null && current.Key != key)
+            {
+                parent = current;
+                current = key < current.Key ? current.Left : current.Right;
+            }
+            if (current == null)
+            {
+                return root;
+            }
+
+            IntTreeNode replacement = null;
+            if (current.Left == null)
+            {
+                replacement = current.Right;
+            }
+            else if (current.Right == null)
+            {
+                replacement = current.Left;
+            }
+            else
+            {
+                replacement = current.Left;
+                IntTreeNode maximum = replacement;
+                while (maximum.Right != null)
+                {
+                    maximum = maximum.Right;
+                }
+                maximum.Right = current.Right;
+            }
+
+            if (parent == null)
+            {
+                root = replacement;
+            }
+            else if (parent.Left == current)
+            {
+                parent.Left = replacement;
+            }
+            else
+            {
+                parent.Right = replacement;
+            }
+            current.Left = null;
+            current.Right = null;
+            delete current;
+            return root;
+        }
+
+        private static int IterativePreorderChecksum(IntTreeNode root)
+        {
+            IntTreeNode[] stack = new IntTreeNode[64];
+            int top = 0;
+            int checksum = 0;
+            stack[0] = root;
+            while (top >= 0)
+            {
+                IntTreeNode node = stack[top];
+                top = top - 1;
+                checksum = checksum + node.Key;
+                if (node.Right != null)
+                {
+                    top = top + 1;
+                    stack[top] = node.Right;
+                }
+                if (node.Left != null)
+                {
+                    top = top + 1;
+                    stack[top] = node.Left;
+                }
+            }
+            delete[] stack;
+            return checksum;
+        }
+
+        private static int IterativePostorderChecksum(IntTreeNode root)
+        {
+            IntTreeNode[] first = new IntTreeNode[64];
+            IntTreeNode[] second = new IntTreeNode[64];
+            int firstTop = 0;
+            int secondTop = -1;
+            first[0] = root;
+            while (firstTop >= 0)
+            {
+                IntTreeNode node = first[firstTop];
+                firstTop = firstTop - 1;
+                secondTop = secondTop + 1;
+                second[secondTop] = node;
+                if (node.Left != null)
+                {
+                    firstTop = firstTop + 1;
+                    first[firstTop] = node.Left;
+                }
+                if (node.Right != null)
+                {
+                    firstTop = firstTop + 1;
+                    first[firstTop] = node.Right;
+                }
+            }
+            int checksum = 0;
+            while (secondTop >= 0)
+            {
+                checksum = checksum + second[secondTop].Key;
+                secondTop = secondTop - 1;
+            }
+            delete[] first;
+            delete[] second;
+            return checksum;
+        }
+
+        private static IntTreeNode RotateLeft(IntTreeNode node)
+        {
+            IntTreeNode top = node.Right;
+            node.Right = top.Left;
+            top.Left = node;
+            return top;
+        }
+
+        private static IntTreeNode RotateRight(IntTreeNode node)
+        {
+            IntTreeNode top = node.Left;
+            node.Left = top.Right;
+            top.Right = node;
+            return top;
+        }
+
+        private static IntTreeNode InsertTreap(IntTreeNode node, int key, int priority)
+        {
+            if (node == null)
+            {
+                return new IntTreeNode(key, priority);
+            }
+            if (key < node.Key)
+            {
+                node.Left = InsertTreap(node.Left, key, priority);
+                if (node.Left.Priority < node.Priority)
+                {
+                    node = RotateRight(node);
+                }
+            }
+            else if (key > node.Key)
+            {
+                node.Right = InsertTreap(node.Right, key, priority);
+                if (node.Right.Priority < node.Priority)
+                {
+                    node = RotateLeft(node);
+                }
+            }
+            return node;
+        }
+
+        private static IntTreeNode Splay(IntTreeNode root, int key)
+        {
+            if (root == null || root.Key == key)
+            {
+                return root;
+            }
+            if (key < root.Key)
+            {
+                if (root.Left == null)
+                {
+                    return root;
+                }
+                if (key < root.Left.Key)
+                {
+                    root.Left.Left = Splay(root.Left.Left, key);
+                    root = RotateRight(root);
+                }
+                else if (key > root.Left.Key)
+                {
+                    root.Left.Right = Splay(root.Left.Right, key);
+                    if (root.Left.Right != null)
+                    {
+                        root.Left = RotateLeft(root.Left);
+                    }
+                }
+                return root.Left == null ? root : RotateRight(root);
+            }
+
+            if (root.Right == null)
+            {
+                return root;
+            }
+            if (key > root.Right.Key)
+            {
+                root.Right.Right = Splay(root.Right.Right, key);
+                root = RotateLeft(root);
+            }
+            else if (key < root.Right.Key)
+            {
+                root.Right.Left = Splay(root.Right.Left, key);
+                if (root.Right.Left != null)
+                {
+                    root.Right = RotateRight(root.Right);
+                }
+            }
+            return root.Right == null ? root : RotateLeft(root);
+        }
+
+        private static int MorrisChecksum(IntTreeNode root)
+        {
+            int checksum = 0;
+            IntTreeNode current = root;
+            while (current != null)
+            {
+                if (current.Left == null)
+                {
+                    checksum = checksum + current.Key;
+                    current = current.Right;
+                }
+                else
+                {
+                    IntTreeNode predecessor = current.Left;
+                    while (predecessor.Right != null && predecessor.Right != current)
+                    {
+                        predecessor = predecessor.Right;
+                    }
+                    if (predecessor.Right == null)
+                    {
+                        predecessor.Right = current;
+                        current = current.Left;
+                    }
+                    else
+                    {
+                        predecessor.Right = null;
+                        checksum = checksum + current.Key;
+                        current = current.Right;
+                    }
+                }
+            }
+            return checksum;
+        }
+
+        private static KdNode InsertKd(KdNode node, int x, int y, int depth)
+        {
+            if (node == null)
+            {
+                return new KdNode(x, y);
+            }
+            bool goLeft = depth % 2 == 0 ? x < node.X : y < node.Y;
+            if (goLeft)
+            {
+                node.Left = InsertKd(node.Left, x, y, depth + 1);
+            }
+            else
+            {
+                node.Right = InsertKd(node.Right, x, y, depth + 1);
+            }
+            return node;
+        }
+
+        private static int CountKdRange(KdNode node, int minX, int maxX, int minY, int maxY, int depth)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int count = 0;
+            if (node.X >= minX && node.X <= maxX && node.Y >= minY && node.Y <= maxY)
+            {
+                count = 1;
+            }
+            if (depth % 2 == 0)
+            {
+                if (minX <= node.X)
+                {
+                    count = count + CountKdRange(node.Left, minX, maxX, minY, maxY, depth + 1);
+                }
+                if (maxX >= node.X)
+                {
+                    count = count + CountKdRange(node.Right, minX, maxX, minY, maxY, depth + 1);
+                }
+            }
+            else
+            {
+                if (minY <= node.Y)
+                {
+                    count = count + CountKdRange(node.Left, minX, maxX, minY, maxY, depth + 1);
+                }
+                if (maxY >= node.Y)
+                {
+                    count = count + CountKdRange(node.Right, minX, maxX, minY, maxY, depth + 1);
+                }
+            }
+            return count;
+        }
+
+        private static void DeleteIntTree(IntTreeNode node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+            DeleteIntTree(node.Left);
+            DeleteIntTree(node.Right);
+            delete node;
+        }
+
+        private static void DeleteKdTree(KdNode node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+            DeleteKdTree(node.Left);
+            DeleteKdTree(node.Right);
+            delete node;
+        }
+
+        public static int Run()
+        {
+            IntTreeNode treap = null;
+            int[] keys = new int[] { 40, 20, 60, 10, 30, 50, 70, 25, 65 };
+            int[] priorities = new int[] { 50, 30, 40, 10, 35, 20, 60, 15, 25 };
+            int index = 0;
+            while (index < keys.Length)
+            {
+                treap = InsertTreap(treap, keys[index], priorities[index]);
+                index = index + 1;
+            }
+            int inorder = MorrisChecksum(treap);
+            int preorder = IterativePreorderChecksum(treap);
+            int postorder = IterativePostorderChecksum(treap);
+            treap = Splay(treap, 65);
+            int splayed = treap.Key;
+            treap = DeleteByMerging(treap, 40);
+
+            ThreadedTreeNode threaded = null;
+            index = 0;
+            while (index < keys.Length)
+            {
+                threaded = InsertThreaded(threaded, keys[index]);
+                index = index + 1;
+            }
+            int threadedChecksum = ThreadedInorderChecksum(threaded);
+
+            KdNode kd = null;
+            int[] points = new int[] { 30, 40, 5, 25, 10, 12, 70, 70, 50, 30, 35, 45, 65, 20 };
+            index = 0;
+            while (index < points.Length)
+            {
+                kd = InsertKd(kd, points[index], points[index + 1], 0);
+                index = index + 2;
+            }
+            int inside = CountKdRange(kd, 0, 40, 0, 50, 0);
+
+            raii SmallBTree btree = new SmallBTree();
+            int[] btreeKeys = new int[] { 10, 20, 5, 6, 12, 30, 7, 17, 3, 4, 2, 16 };
+            index = 0;
+            while (index < btreeKeys.Length)
+            {
+                btree.Insert(btreeKeys[index]);
+                index = index + 1;
+            }
+            bool btreeValid = btree.Contains(2) && btree.Contains(17) && btree.Contains(30) && !btree.Contains(99);
+
+            int result = btreeValid ? inorder + preorder + postorder + splayed + threadedChecksum + inside : -1;
+            Console.WriteLine("trees: iterative traversals, threads, Morris, merging, splay, treap, k-d and B-tree");
+            DeleteThreadedTree(threaded, keys.Length);
+            DeleteIntTree(treap);
+            DeleteKdTree(kd);
+            delete[] keys;
+            delete[] priorities;
+            delete[] points;
+            delete[] btreeKeys;
+            return result;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

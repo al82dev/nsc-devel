@@ -1,0 +1,1148 @@
+{
+  "record": {
+    "gate": "G00",
+    "part": "G0.1",
+    "kind": "historical-archive",
+    "certified_baseline": false,
+    "reason": "Los logs verdes del historial no registran el hash del nsc.exe que los produjo, de modo que la asociacion es evidencia historica y no un baseline certificado. El baseline lo produce G0.2.",
+    "created_at": "2026-09-06T18:32:58-06:00",
+    "prefix": "C:\\native-sharp",
+    "destination": "A:\\nsc-devel\\_abi\\archives\\historical\\20260906-183255",
+    "installed_nsc_sha256": "3a19187b4e1181239cb1b233dbc175e3d3b7e92179ba37ba2bf99044dc9e492e",
+    "file_count": 226,
+    "manifest_digest": "db0095e39e5a3c67b4e3399a806307ac9cf7145d85be9c5b017461383bfb4344",
+    "green_run": "A:\\nsc-devel\\_nscbuilder\\history\\20260906-183211-ac92f409"
+  },
+  "files": [
+    {
+      "path": ".git/COMMIT_EDITMSG",
+      "size": 15,
+      "sha256": "11996441588417a27af10cd7c5e6abdb570f18b1c00048fb39a2e0775279736c"
+    },
+    {
+      "path": ".git/FETCH_HEAD",
+      "size": 242,
+      "sha256": "d52c3dfe259b7e73ad3c1ac99f2c08d07831fae38793c059d1ee027815c5e5ea"
+    },
+    {
+      "path": ".git/HEAD",
+      "size": 28,
+      "sha256": "d2a070ef25bc18207f6ad3afb5a0c9a00f1b56b66daa8efbe9d2c736ddea72b9"
+    },
+    {
+      "path": ".git/config",
+      "size": 421,
+      "sha256": "8e937899538480336afb26c6da09522d5064169dc487aecdcb4b477752870856"
+    },
+    {
+      "path": ".git/description",
+      "size": 73,
+      "sha256": "85ab6c163d43a17ea9cf7788308bca1466f1b0a8d1cc92e26e9bf63da4062aee"
+    },
+    {
+      "path": ".git/hooks/applypatch-msg.sample",
+      "size": 478,
+      "sha256": "0223497a0b8b033aa58a3a521b8629869386cf7ab0e2f101963d328aa62193f7"
+    },
+    {
+      "path": ".git/hooks/commit-msg.sample",
+      "size": 896,
+      "sha256": "1f74d5e9292979b573ebd59741d46cb93ff391acdd083d340b94370753d92437"
+    },
+    {
+      "path": ".git/hooks/fsmonitor-watchman.sample",
+      "size": 4726,
+      "sha256": "e0549964e93897b519bd8e333c037e51fff0f88ba13e086a331592bf801fa1d0"
+    },
+    {
+      "path": ".git/hooks/post-update.sample",
+      "size": 189,
+      "sha256": "81765af2daef323061dcbc5e61fc16481cb74b3bac9ad8a174b186523586f6c5"
+    },
+    {
+      "path": ".git/hooks/pre-applypatch.sample",
+      "size": 424,
+      "sha256": "e15c5b469ea3e0a695bea6f2c82bcf8e62821074939ddd85b77e0007ff165475"
+    },
+    {
+      "path": ".git/hooks/pre-commit.sample",
+      "size": 1649,
+      "sha256": "57185b7b9f05239d7ab52db045f5b89eb31348d7b2177eab214f5eb872e1971b"
+    },
+    {
+      "path": ".git/hooks/pre-merge-commit.sample",
+      "size": 416,
+      "sha256": "d3825a70337940ebbd0a5c072984e13245920cdf8898bd225c8d27a6dfc9cb53"
+    },
+    {
+      "path": ".git/hooks/pre-push.sample",
+      "size": 1374,
+      "sha256": "ecce9c7e04d3f5dd9d8ada81753dd1d549a9634b26770042b58dda00217d086a"
+    },
+    {
+      "path": ".git/hooks/pre-rebase.sample",
+      "size": 4898,
+      "sha256": "4febce867790052338076f4e66cc47efb14879d18097d1d61c8261859eaaa7b3"
+    },
+    {
+      "path": ".git/hooks/pre-receive.sample",
+      "size": 544,
+      "sha256": "a4c3d2b9c7bb3fd8d1441c31bd4ee71a595d66b44fcf49ddb310252320169989"
+    },
+    {
+      "path": ".git/hooks/prepare-commit-msg.sample",
+      "size": 1492,
+      "sha256": "e9ddcaa4189fddd25ed97fc8c789eca7b6ca16390b2392ae3276f0c8e1aa4619"
+    },
+    {
+      "path": ".git/hooks/push-to-checkout.sample",
+      "size": 2783,
+      "sha256": "a53d0741798b287c6dd7afa64aee473f305e65d3f49463bb9d7408ec3b12bf5f"
+    },
+    {
+      "path": ".git/hooks/sendemail-validate.sample",
+      "size": 2308,
+      "sha256": "44ebfc923dc5466bc009602f0ecf067b9c65459abfe8868ddc49b78e6ced7a92"
+    },
+    {
+      "path": ".git/hooks/update.sample",
+      "size": 3650,
+      "sha256": "8d5f2fa83e103cf08b57eaa67521df9194f45cbdbcb37da52ad586097a14d106"
+    },
+    {
+      "path": ".git/index",
+      "size": 217,
+      "sha256": "948c0c3a68a6e1da6f4b0d709e60b56834b253a3f22526b16614fe5fbb897f61"
+    },
+    {
+      "path": ".git/info/exclude",
+      "size": 240,
+      "sha256": "6671fe83b7a07c8932ee89164d1f2793b2318058eb8b98dc5c06ee0a5a3b0ec1"
+    },
+    {
+      "path": ".git/logs/HEAD",
+      "size": 377,
+      "sha256": "cd4c78ff2f83c9922a985b2888fdcde49e349787e3798e3aaf29e470941932ee"
+    },
+    {
+      "path": ".git/logs/refs/heads/development",
+      "size": 177,
+      "sha256": "4659fd48d1d01b2d5a5b12451402679df35313ffeadae0fb83f94305b25d24a2"
+    },
+    {
+      "path": ".git/logs/refs/heads/main",
+      "size": 184,
+      "sha256": "910119fa80e5c4ddb3620d101396823b70b098640a188c84f2303c5fa96cf15d"
+    },
+    {
+      "path": ".git/logs/refs/remotes/origin/HEAD",
+      "size": 469,
+      "sha256": "ab80fb7baaf23fe8f77f5c615a401639efdd9844506b2f41d8623ec025719df0"
+    },
+    {
+      "path": ".git/logs/refs/remotes/origin/development",
+      "size": 166,
+      "sha256": "6cad030fc7d2033cd5bb63822222dfc88626e58d4d369ab48330b9050dd5a580"
+    },
+    {
+      "path": ".git/logs/refs/remotes/origin/main",
+      "size": 166,
+      "sha256": "fd87c64e7a3f7cf3156a0182da22d1b1266a6dc99027b7548510ea5e4e59ca5e"
+    },
+    {
+      "path": ".git/objects/2c/89c7c3383be8675451e44000a1ed76073eae64",
+      "size": 32,
+      "sha256": "09917cee9fefe3e515e1e7509c6fef584868a802fedfe476b5eafb6881f28b7f"
+    },
+    {
+      "path": ".git/objects/37/beaf64cdd4ea248d8c75936268fe61e5c67eaf",
+      "size": 141,
+      "sha256": "68817648d885d5f5fa73275fb1e74178e11950642fea8f18def8a782deb5fcfc"
+    },
+    {
+      "path": ".git/objects/d2/f3401bd26d9221a89c812a54eabe6183e0985e",
+      "size": 92,
+      "sha256": "2bc09f4e6ac4aab22f7c704938c88498742081ae93583b32a036f86968fe6508"
+    },
+    {
+      "path": ".git/objects/df/e0770424b2a19faf507a501ebfc23be8f54e7b",
+      "size": 76,
+      "sha256": "bc2765c7012275e921f22fb94d53158122c693d0cf6426406d6aaf19848a43d7"
+    },
+    {
+      "path": ".git/refs/heads/development",
+      "size": 41,
+      "sha256": "770af6c4cdb0dd770fd8fc71dcc18b98a24b874489e765881416e4651a184452"
+    },
+    {
+      "path": ".git/refs/heads/main",
+      "size": 41,
+      "sha256": "770af6c4cdb0dd770fd8fc71dcc18b98a24b874489e765881416e4651a184452"
+    },
+    {
+      "path": ".git/refs/remotes/origin/HEAD",
+      "size": 30,
+      "sha256": "2bb6a24aa0fc6c484100f5d51a29bbad841cd2c755f5d93faa204e5dbb4eb2b4"
+    },
+    {
+      "path": ".git/refs/remotes/origin/development",
+      "size": 41,
+      "sha256": "770af6c4cdb0dd770fd8fc71dcc18b98a24b874489e765881416e4651a184452"
+    },
+    {
+      "path": ".git/refs/remotes/origin/main",
+      "size": 41,
+      "sha256": "770af6c4cdb0dd770fd8fc71dcc18b98a24b874489e765881416e4651a184452"
+    },
+    {
+      "path": "bin/nsasm.exe",
+      "size": 512512,
+      "sha256": "d2bdea33d90e3df8eff80cfb0c972b2688afe573fc88b68556e7a3a3e7d959c1"
+    },
+    {
+      "path": "bin/nsc.exe",
+      "size": 3695616,
+      "sha256": "3a19187b4e1181239cb1b233dbc175e3d3b7e92179ba37ba2bf99044dc9e492e"
+    },
+    {
+      "path": "bin/nsdis.exe",
+      "size": 206848,
+      "sha256": "b507d6907034e3102d89502870601b6e34115c44360abc4a1b55329a2cf21320"
+    },
+    {
+      "path": "bin/nsdump.exe",
+      "size": 207360,
+      "sha256": "6a32b2cafd97aadd3bcd5cda2b89a2e6e3bf4fdd8487cd11a5835544669f927b"
+    },
+    {
+      "path": "bin/nslink-env.bat",
+      "size": 418,
+      "sha256": "0bb4557a71eb0db7ff79d39c546500af48fd519714745375680d441b2fbab409"
+    },
+    {
+      "path": "bin/nslink.exe",
+      "size": 557568,
+      "sha256": "536e3a096d87574b5a1390277faf0ff2f037e5c47ca3436efdaa906409b36ce4"
+    },
+    {
+      "path": "include/nsasm.inc",
+      "size": 2257,
+      "sha256": "c01dee85b8f7953b4bbc5e33200e0c98839f4cd85d5d8711cd13bf687f337b01"
+    },
+    {
+      "path": "include/nsasm/coff/CoffFormat.h",
+      "size": 4056,
+      "sha256": "4f76f9cbc9cbf521444bbe5cb82b24ca410d807a98a80dc035a4a0fda6387a39"
+    },
+    {
+      "path": "include/nsasm/coff/CoffReader.h",
+      "size": 3557,
+      "sha256": "b3f255cbba5cf74243516d8e2f91ee21e0fc5a4f135269e5cff7ec5ac1a3c367"
+    },
+    {
+      "path": "include/nsasm/coff/CoffWriter.h",
+      "size": 2832,
+      "sha256": "0fb8a37e07e56941b8c7b94e3d010b322f4ea528f312e68eebeef3d9cbd871c8"
+    },
+    {
+      "path": "include/nsasm/core/Diagnostic.h",
+      "size": 1060,
+      "sha256": "e7cc5a7ed09a05ab9c265edf7751cac40fe2b63cff293f13f58816e80c09e5cd"
+    },
+    {
+      "path": "include/nsasm/core/DiagnosticCatalog.h",
+      "size": 1164,
+      "sha256": "a74eb8230a58875766eb1a4e2da30cdba7edd3e8ef95f70fa382dc41c08bddc5"
+    },
+    {
+      "path": "include/nsasm/core/DiagnosticEngine.h",
+      "size": 2609,
+      "sha256": "7a7e07903a4158e4301313af0b56b32e33cbbf33be3d038307a306fc4bbc0248"
+    },
+    {
+      "path": "include/nsasm/core/DiagnosticRenderer.h",
+      "size": 1198,
+      "sha256": "7bf65533714e47eff0a4c0741e019f35648cc0676c787a1c86aed9b87e4ce30f"
+    },
+    {
+      "path": "include/nsasm/core/ExpansionContext.h",
+      "size": 1189,
+      "sha256": "1712280324f45102dfa2005c03c947428cb8424c2ef92c8e03ee969249ffe13b"
+    },
+    {
+      "path": "include/nsasm/core/Lexer.h",
+      "size": 3255,
+      "sha256": "ca6777df7ea8c5504619a676747416431d0ec393029c0513382a2f66ea386d07"
+    },
+    {
+      "path": "include/nsasm/core/NumberParser.h",
+      "size": 2019,
+      "sha256": "80acea896c629552048b7e43b39fbf0e3e485e226e518fb4f059d770705eb138"
+    },
+    {
+      "path": "include/nsasm/core/RegisterTable.h",
+      "size": 2970,
+      "sha256": "949e2b4f1078f2896aaf5ec39b090132e04107f9090f7dcd99d006bcb81ee54b"
+    },
+    {
+      "path": "include/nsasm/core/ReservedWords.h",
+      "size": 1548,
+      "sha256": "f0a421b078a22f9fa6d2bff33b66becee2e2ede16e90e48d45f40689fc0c4ddc"
+    },
+    {
+      "path": "include/nsasm/core/SourceFile.h",
+      "size": 1080,
+      "sha256": "10f7ce7513ef83d21a194255d2a5f257b856bf6172bea3bf42b1b97d85ca4bc0"
+    },
+    {
+      "path": "include/nsasm/core/SourceLocation.h",
+      "size": 1321,
+      "sha256": "c89fa9403e827eb6bdd2f735e3c2e49076c7a9502cab63b4e6ed22fc6d93fe93"
+    },
+    {
+      "path": "include/nsasm/core/SourceManager.h",
+      "size": 5259,
+      "sha256": "885ff9088fae5c4e89ec15692fe0ce700fe42be7f984f61cd923f484cb92b860"
+    },
+    {
+      "path": "include/nsasm/core/Token.h",
+      "size": 906,
+      "sha256": "3461c6cf914d62543ad5366728383961c5933ed8fbb131e1ac4d280728cb24b8"
+    },
+    {
+      "path": "include/nsasm/core/TokenKind.h",
+      "size": 1187,
+      "sha256": "f75d1aaebbe58d280b4fbfdd5035fb4991c1609251a11ea94ab2824e6500a34c"
+    },
+    {
+      "path": "include/nsasm/core/Version.h",
+      "size": 964,
+      "sha256": "61f0c97682f64a8f7fa59c9df0725f9dd9e3b9fae7fd6ce201efebafd15c2016"
+    },
+    {
+      "path": "include/nsasm/debug/CodeViewBuilder.h",
+      "size": 6604,
+      "sha256": "c7303b26cdcff595b10a4d6695131e4bf75e04d001fe0b7f0ac93bdd46e9af6f"
+    },
+    {
+      "path": "include/nsasm/driver/CommandLine.h",
+      "size": 2441,
+      "sha256": "65e2e7e16889e13092e554030eac86af3aad45817e0a4da6552dd225400736ca"
+    },
+    {
+      "path": "include/nsasm/driver/Driver.h",
+      "size": 2486,
+      "sha256": "845bba683972b40bdae7516724701c8d74a533df662d18fde6a3158fa4dd59ef"
+    },
+    {
+      "path": "include/nsasm/expr/ExpressionEvaluator.h",
+      "size": 3520,
+      "sha256": "0f426b1580b33b610027b56429ac7b74a4b982c0acb651ed15d85a9569d4c920"
+    },
+    {
+      "path": "include/nsasm/expr/ExpressionValue.h",
+      "size": 4457,
+      "sha256": "bd95639602fafddb9c1db51bdd261b75559dd5876f9b15a383ba1faf171f1581"
+    },
+    {
+      "path": "include/nsasm/expr/OperatorTable.h",
+      "size": 2372,
+      "sha256": "86fbf67cf821c3319191cec28dfdc5e8ae029d3e2d85570e8b856585bdc11ac3"
+    },
+    {
+      "path": "include/nsasm/isa/InstructionForm.h",
+      "size": 7135,
+      "sha256": "a799dccdd13aad4e6492f514563338cf666bd757a3d0b605356538f1c983061e"
+    },
+    {
+      "path": "include/nsasm/isa/InstructionTable.h",
+      "size": 4617,
+      "sha256": "f13131ac3abb854bba2ade598af53a9b2b19ace298b16fe3e515169bfba77bbd"
+    },
+    {
+      "path": "include/nsasm/listing/ListingWriter.h",
+      "size": 3585,
+      "sha256": "e1a5e320884491b2e0a240793020c9782a9130e843c8f92037af4838a447c765"
+    },
+    {
+      "path": "include/nsasm/macro/MacroDefinition.h",
+      "size": 2242,
+      "sha256": "42d3bd9a27225dde2d788fa46a69283658bef216af6ff0bce3037cc17b676c8f"
+    },
+    {
+      "path": "include/nsasm/macro/MacroExpander.h",
+      "size": 4569,
+      "sha256": "66818b27fb58118710dd82a536ed83e65de004eb76cf9223dd736a34c1de9f58"
+    },
+    {
+      "path": "include/nsasm/macro/MacroTable.h",
+      "size": 1364,
+      "sha256": "49708bc1771b33d1c08c4e66d55e660e954f29889a7025f74f7bfd612cb40d28"
+    },
+    {
+      "path": "include/nsasm/macro/RepeatBlock.h",
+      "size": 2027,
+      "sha256": "dbd33aeb7ddd4690294333084bfb566fbee6422a4a1fc4e31a0c6d45f221557b"
+    },
+    {
+      "path": "include/nsasm/macro/TextFunctions.h",
+      "size": 1912,
+      "sha256": "a3aaefd1e7dfda62819c23a660079c7aaf5c54758a7739e5833d3ef18c819903"
+    },
+    {
+      "path": "include/nsasm/model/Assembler.h",
+      "size": 8533,
+      "sha256": "1b376e480d335715518766cf4bd50a5e8cd097222a9a4555018b03a7c19231cc"
+    },
+    {
+      "path": "include/nsasm/model/AssemblyContext.h",
+      "size": 3656,
+      "sha256": "821e7c29d85e7e7e09338c97b12028b085c1e468b7687052cdb06cd44a36f00a"
+    },
+    {
+      "path": "include/nsasm/model/ConditionalStack.h",
+      "size": 3137,
+      "sha256": "2ed380059a1d7a9024df1c25f74fbd4678a4f68504c3e467826e8020a8bd26c8"
+    },
+    {
+      "path": "include/nsasm/model/DataEmitter.h",
+      "size": 5077,
+      "sha256": "c216776d9adeaca9c902971cd046bc4dc60eb46d8fe9a673bcef8e84b233c08a"
+    },
+    {
+      "path": "include/nsasm/model/InstructionAssembler.h",
+      "size": 3189,
+      "sha256": "159dfede40327f0e5aecf4f3eb4e1d3f4b37b0e2d6e763b6fa1af6c022fd38e8"
+    },
+    {
+      "path": "include/nsasm/model/OperandParser.h",
+      "size": 2847,
+      "sha256": "d6cb32e43ece7590bcb038286058b4024cfbf36fc9004dbb473d9e1c6bbcd571"
+    },
+    {
+      "path": "include/nsasm/model/PassManager.h",
+      "size": 4081,
+      "sha256": "7c2958688532aa7a9b9a7e5008dd3ce821bb8d5d4eb4f6484391aa1cfe4274e0"
+    },
+    {
+      "path": "include/nsasm/model/Section.h",
+      "size": 3020,
+      "sha256": "36a193b4938af9b49510e7fb6824f18177b9fd991200e244a4716e3c2a8970b0"
+    },
+    {
+      "path": "include/nsasm/model/Statement.h",
+      "size": 3085,
+      "sha256": "e6ede34c463d9697d98caef3a0584e74f7964371fabe3083faaa44886dd24de5"
+    },
+    {
+      "path": "include/nsasm/model/StatementParser.h",
+      "size": 1779,
+      "sha256": "783b75954ebd30e9a10857e3540eb401f9dcbbf7e641fb76fc73359e005cf619"
+    },
+    {
+      "path": "include/nsasm/model/StatementSource.h",
+      "size": 3468,
+      "sha256": "fb95b23af1949aafba30715de994ff84287e16e050034ca4b62dba576444d8e6"
+    },
+    {
+      "path": "include/nsasm/model/TypeTable.h",
+      "size": 4445,
+      "sha256": "13390075555f349516a159dea7e7a00c651165fcfb9d6f49fef35a99678cdb8b"
+    },
+    {
+      "path": "include/nsasm/symbol/Symbol.h",
+      "size": 1612,
+      "sha256": "df3c724f5868c1e4922c9fd06ec234854a19a50f8ba58b7db978e51053abc30b"
+    },
+    {
+      "path": "include/nsasm/symbol/SymbolTable.h",
+      "size": 2929,
+      "sha256": "a7b5331334be8606e147e7dda8dd026f7c19b617c0c70e764013688c3d1be192"
+    },
+    {
+      "path": "include/nsasm/win64/UnwindInfo.h",
+      "size": 5499,
+      "sha256": "32495db789c6e8d90e44b95a6bf341dc786edc5dcfbf62782e807039585aad15"
+    },
+    {
+      "path": "include/nsasm/x64/Disassembler.h",
+      "size": 3592,
+      "sha256": "3d141ae29691cff6ec4ab5a457b8030645a42ddfe535c8371da82a23400fcafb"
+    },
+    {
+      "path": "include/nsasm/x64/InstructionEncoder.h",
+      "size": 5304,
+      "sha256": "251720429fa50a5101eb36fa971df8497deebb02778d70bc5df9db704b242f18"
+    },
+    {
+      "path": "include/nsasm/x64/MemoryOperand.h",
+      "size": 3402,
+      "sha256": "02e70e32fa09a0f52670e3b4a7421ee5217b9e3a2b7d2ec8856093598a757128"
+    },
+    {
+      "path": "include/nslink/archive/CoffArchive.h",
+      "size": 2958,
+      "sha256": "810276ad3156bffbbd7d862d2125b8a5f4339124986f9f958c1e2f0813bd9baa"
+    },
+    {
+      "path": "include/nslink/archive/CoffArchiveReader.h",
+      "size": 795,
+      "sha256": "7cb1b6404b777550cccf260ebb7b944baca0d987427f8304bf74687f5cc1d8fc"
+    },
+    {
+      "path": "include/nslink/archive/CoffArchiveWriter.h",
+      "size": 1613,
+      "sha256": "257456ed1387121768cf4fccdf58e4d6848b79997a7f3ccef31e204de389924a"
+    },
+    {
+      "path": "include/nslink/archive/ImportLibraryWriter.h",
+      "size": 2012,
+      "sha256": "f1049739e76c5acb44a9f3c2f160c2a1d983bb62787cf46fe0ef389f2591889b"
+    },
+    {
+      "path": "include/nslink/archive/ShortImportObject.h",
+      "size": 3558,
+      "sha256": "83acdf57b394436b1356ad08d8deba23400d663c8aaa38fc62b98deb886f82c9"
+    },
+    {
+      "path": "include/nslink/binary/Alignment.h",
+      "size": 1813,
+      "sha256": "ddfe140435834925e8f93227e73ef4ae3868c291b67b3b82ec29a1838e753241"
+    },
+    {
+      "path": "include/nslink/binary/BinaryReader.h",
+      "size": 4071,
+      "sha256": "df04380ec4132798a6cfed02d2bf47a5ca4177238e6e22ba795c0108f99c090a"
+    },
+    {
+      "path": "include/nslink/binary/BinaryWriter.h",
+      "size": 2963,
+      "sha256": "47959740e925787d5896f4b9862273813663a614cd4f69980bfcf3f2fea64a33"
+    },
+    {
+      "path": "include/nslink/binary/ByteBuffer.h",
+      "size": 2032,
+      "sha256": "3504bbb7f7caa02968231d79be18318047a5f9bada0810a049e32bd136a0c97e"
+    },
+    {
+      "path": "include/nslink/binary/ByteSpan.h",
+      "size": 887,
+      "sha256": "40a693eb807152ad8ae14abfcdb1a55033a6760bd975410f074fca26c075b4c9"
+    },
+    {
+      "path": "include/nslink/coff/CoffAuxSymbol.h",
+      "size": 4715,
+      "sha256": "27b762ad2b201f60ff9ff013b2530a0c8d590ac899ea21d8bc9d51b8ff458321"
+    },
+    {
+      "path": "include/nslink/coff/CoffConstants.h",
+      "size": 6894,
+      "sha256": "f9db343a035e88c6bf388106e90dc78ba5cd16081e822afb6dda3a28845873d0"
+    },
+    {
+      "path": "include/nslink/coff/CoffFileHeader.h",
+      "size": 2779,
+      "sha256": "adcc49cfbd180715b7650102eab614e073c18d236e30d0023724b82e3fad9ca6"
+    },
+    {
+      "path": "include/nslink/coff/CoffObjectDumper.h",
+      "size": 1692,
+      "sha256": "9cce4d6bed8b0de23436806473d22601f96c00c6617218a59003e3b8966496a4"
+    },
+    {
+      "path": "include/nslink/coff/CoffObjectFile.h",
+      "size": 4103,
+      "sha256": "2f58a30110f5dabe56a14c87d3aa26d80aebf2841f1a4caad9c3aaf8c337d4c0"
+    },
+    {
+      "path": "include/nslink/coff/CoffObjectReader.h",
+      "size": 2124,
+      "sha256": "7fad89ac11faf8cbc59224f9de3a2871edefcd95f05d5af7aa60792511c1629c"
+    },
+    {
+      "path": "include/nslink/coff/CoffRelocation.h",
+      "size": 2216,
+      "sha256": "9ee2c8a2013fcf456f5494d55c2b5e8459653ddb9702cfeeaed4bfaffce41aca"
+    },
+    {
+      "path": "include/nslink/coff/CoffSectionHeader.h",
+      "size": 3909,
+      "sha256": "d754293344b3933a87604a555481510579b2f0ea2e4179a07f67b967720e2e68"
+    },
+    {
+      "path": "include/nslink/coff/CoffStringTable.h",
+      "size": 1900,
+      "sha256": "24f03038b5163aa7cb85dba748881d7082032fa4a0aac3a98086e495856c6989"
+    },
+    {
+      "path": "include/nslink/coff/CoffSymbol.h",
+      "size": 5247,
+      "sha256": "f142c0cd54d30dde3c423ec9330e3097896be15a2e638eaf1cb16e287753b9f3"
+    },
+    {
+      "path": "include/nslink/coff/CoffSymbolTable.h",
+      "size": 3045,
+      "sha256": "41a213cd5571f066453739e161b5ed31231fdbb434a028a2cc6972d803006c82"
+    },
+    {
+      "path": "include/nslink/diagnostics/Diagnostic.h",
+      "size": 2838,
+      "sha256": "b8416844389065839f391070d8f4c87500d6fb937e01bcf138805d5160b3717a"
+    },
+    {
+      "path": "include/nslink/diagnostics/DiagnosticCode.h",
+      "size": 1437,
+      "sha256": "dc2e2456a760ca3144df220a84f3c4f9ea42b4ec063d2bdd9a03199a80d3bb6d"
+    },
+    {
+      "path": "include/nslink/diagnostics/DiagnosticSeverity.h",
+      "size": 688,
+      "sha256": "88e431493c6c27cfda8aad932f9068bfde3964daab97c89a1159bd09b588878e"
+    },
+    {
+      "path": "include/nslink/driver/CompatibleDriver.h",
+      "size": 2835,
+      "sha256": "e16df74c92d8030cd5f456ae86753f362ba8d009ebfcccd77ad430d8e5ccd8d0"
+    },
+    {
+      "path": "include/nslink/driver/SdkImports.h",
+      "size": 2102,
+      "sha256": "b6e3f454f0929f58e27b9ef1110c4e2a6f482730cca172ff162c51b5f04c4f1f"
+    },
+    {
+      "path": "include/nslink/link/ArchiveResolver.h",
+      "size": 3375,
+      "sha256": "41aa54e610688a609da72dfafa2d3c8db0d31af5e5e33889f5de73902d25caeb"
+    },
+    {
+      "path": "include/nslink/link/ComdatResolver.h",
+      "size": 1912,
+      "sha256": "ee058215b2523511f6fa6c417eb222b4460598073bf3b912da38625a4a159803"
+    },
+    {
+      "path": "include/nslink/link/DebugSectionPolicy.h",
+      "size": 2172,
+      "sha256": "44f24c8fe956c5d5966b36ffd8095e3a6b06b431d037892809321dc1f3f26d78"
+    },
+    {
+      "path": "include/nslink/link/DirectiveParser.h",
+      "size": 2455,
+      "sha256": "05b5ce55531a0a5b5b260d342759be6a03bdf643ddfcaab256c999c443a513a0"
+    },
+    {
+      "path": "include/nslink/link/GlobalSymbolTable.h",
+      "size": 4255,
+      "sha256": "fd5d74c3f3bea0ae81796faa17bf1e521bea145a8af1b36415757861cfc8ce94"
+    },
+    {
+      "path": "include/nslink/link/IdenticalCodeFolder.h",
+      "size": 1898,
+      "sha256": "8b8884bd409f8a212e75b56f2c2b1423f8ea00aa959414dae76a4078bb360c1c"
+    },
+    {
+      "path": "include/nslink/link/LinkGraph.h",
+      "size": 3272,
+      "sha256": "9bd9a6424577bf7df9f745bf64d94e68d7e7c92b7f5b0312870d277194ad3a52"
+    },
+    {
+      "path": "include/nslink/link/LinkPipeline.h",
+      "size": 7750,
+      "sha256": "1ce63693f51caadfcbb01a83ef64ebe849a9b3a7de18105a8c48c1d47dd4c031"
+    },
+    {
+      "path": "include/nslink/link/LinkSection.h",
+      "size": 4289,
+      "sha256": "4d07b5069dd0ca00f1c08c79b10057ae3566ad5b3aa69f787c9b051b2c135fb9"
+    },
+    {
+      "path": "include/nslink/link/LinkSymbol.h",
+      "size": 2900,
+      "sha256": "ace452956bc5d93424326f58b9e1c2dbc916f6d67c3bdc48d94f43b9024c5fc4"
+    },
+    {
+      "path": "include/nslink/link/RelocationEngine.h",
+      "size": 2811,
+      "sha256": "f1407973206f0d0a6a89e3856a103fb565a27bde3733e85e98254ff2a091bf4e"
+    },
+    {
+      "path": "include/nslink/link/SectionGarbageCollector.h",
+      "size": 2929,
+      "sha256": "bf6a519fb4a72d1be6cd3b291bb804ea646b04003a7f2cdcccb75652b05ece01"
+    },
+    {
+      "path": "include/nslink/link/SectionLayout.h",
+      "size": 4575,
+      "sha256": "4193c8f9cb22672e0a8ec2748723c67458e4829ee54ab425b3009561c2d4067e"
+    },
+    {
+      "path": "include/nslink/pe/BaseRelocationBuilder.h",
+      "size": 3209,
+      "sha256": "ae2fa8df8767912abc029059edde56864c1c7a16fcf379bd3c800b534fcc43be"
+    },
+    {
+      "path": "include/nslink/pe/PeConstants.h",
+      "size": 3777,
+      "sha256": "cb9331621a87167999753c128733cfc3fb2f900e157dbbd3f9998a2814c29f8d"
+    },
+    {
+      "path": "include/nslink/pe/PeExceptionTable.h",
+      "size": 1672,
+      "sha256": "91d99a11936eef4ea1ff2d6c3b933a283737d09c9c0ffe4a7a816f7ee7ddcb10"
+    },
+    {
+      "path": "include/nslink/pe/PeExportBuilder.h",
+      "size": 2918,
+      "sha256": "e627d60128fd4800d88ab468b309ded7259e4103011c3a3af7950c53ac33efa4"
+    },
+    {
+      "path": "include/nslink/pe/PeImageWriter.h",
+      "size": 2617,
+      "sha256": "7e516fed51dbe8be844d63e8ee0411be8500811679f993e8433125c0ed7d8f8e"
+    },
+    {
+      "path": "include/nslink/pe/PeImportBuilder.h",
+      "size": 4626,
+      "sha256": "0b3b416849548836185810169c3a9b5637a46a6090021b9221b17a8ee56ae941"
+    },
+    {
+      "path": "include/nslink/pe/PeResourceSection.h",
+      "size": 2145,
+      "sha256": "5221b90015107e74724cd284c51d3f3e1013559e22781e24ae2ad671ab4a8a12"
+    },
+    {
+      "path": "lib/.source.txt",
+      "size": 33,
+      "sha256": "9b022360eb591b925862467c33dba2640abfc30027a8cc2a495cf7c13001f414"
+    },
+    {
+      "path": "lib/NativeAsmCore.lib",
+      "size": 2111290,
+      "sha256": "7fdb3b306b9a7f19e59927d9e66a1396afba35862aa60bc713070edfb0a6f4f5"
+    },
+    {
+      "path": "lib/NativeLinkCore.lib",
+      "size": 2206424,
+      "sha256": "835d6556e3b9874dfcf1643af55afbaf68237b2053dd1ccfac756fb2f1acb4e5"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Algorithm.ns",
+      "size": 12123,
+      "sha256": "9b184454c9523983619209c9102d7f14fc93ec5f507e7032009ebaa8f41508a8"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Comparer.ns",
+      "size": 4426,
+      "sha256": "a20ec10b3df7733f51c410437adfeadabb59dc90314157b3091db1e8d8ac4d4b"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Delegates.ns",
+      "size": 2967,
+      "sha256": "8ced823d78d1eae87638de3df240f6022f17ce7bf7e4a19cb2bbc16d4e045d5d"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Dictionary.ns",
+      "size": 25859,
+      "sha256": "a1d33446c63ecfc80bb47513c85977a043d7156240a5586ee92432d0707d200e"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/HashSet.ns",
+      "size": 10977,
+      "sha256": "9bcf370000211cb6619716ffd04fd69b9538a82381c3e2c04d6c7f94177490b8"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/HashSetEnumerator.ns",
+      "size": 1458,
+      "sha256": "7c96a060f002c89316ced8ea894905043af1cfe46d9346b921a803c3e6cf0647"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Hashing.ns",
+      "size": 2972,
+      "sha256": "7eac6296904eeb1453c511033efef6c86ed9173c154b9351dd9e296874c20fcf"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/KeyValuePair.ns",
+      "size": 1015,
+      "sha256": "445b3245267a31e8bf81ce2a0d5ce208033e81ba327a341809aa446b0b410d22"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/LinkedList.ns",
+      "size": 12915,
+      "sha256": "2ca13596d088baf4df7e2d619779d58dc5b70657304ae002b5291b3611ab9265"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/LinkedListEnumerator.ns",
+      "size": 1696,
+      "sha256": "2c95fbb22b5b47559a28bcbdc5e2c7801aae62b7416c72d3c4268354850499c2"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/LinkedListNode.ns",
+      "size": 4356,
+      "sha256": "2897be3f792f3212e70109bd33034edc2402b76ae6783caf6937440822e04d7c"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/List.ns",
+      "size": 23082,
+      "sha256": "a65ca0ec49c67318dea7942f53c629d56bbce8e792e189942d3aead320ff1452"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/ListEnumerator.ns",
+      "size": 2567,
+      "sha256": "c6328aa6898d19e44646c2519ba7dc3dbdba34d046f046d8b55f4cccf53bdb8f"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj",
+      "size": 250,
+      "sha256": "85ac696309f699f110b43c64d11da854ab4770cc325f845fdf374d18bdeebb05"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/PriorityQueue.ns",
+      "size": 11006,
+      "sha256": "69ba7a3e65388fa1d74493da8b5e0811fb88ad1210bcf927a3fb644a25b13deb"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/PriorityQueueEnumerator.ns",
+      "size": 1158,
+      "sha256": "d502145362d0de84f1a04a233812bcffe2aeec528df50e54536cb88c354ace60"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Queue.ns",
+      "size": 8029,
+      "sha256": "8f9908ccfcd2609d43afb77667bf2a58ccab04683f85a63eebacf29329272400"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/QueueEnumerator.ns",
+      "size": 1316,
+      "sha256": "6307b0754459d3386966dcbccf8a8c181b563be5ebec23d084a0e8a628ffcf4b"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedDictionary.ns",
+      "size": 5365,
+      "sha256": "431c70ead05707cc32b0db8355e15c67a935d19471a7f22f7ab06a7f0a019c1d"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedList.ns",
+      "size": 15298,
+      "sha256": "3e1211ec07bd12fa056cc7d7068e9e718859c5f3646c862d94271631c2f5a52b"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedSet.ns",
+      "size": 10438,
+      "sha256": "22d0b8852a47dba8e31c6e4014bb266ab25655c4ab6186691ada7068490ebe7d"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/SortedSetEnumerator.ns",
+      "size": 932,
+      "sha256": "277fb40688753b116319895e3224a6257e6dc92748e66147e41c9443797b511d"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/Stack.ns",
+      "size": 6367,
+      "sha256": "c1cd6f581a57b1a187c0d4fde294593a3080106430a83700cabdbb84a41bf0aa"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Collections.Generic/StackEnumerator.ns",
+      "size": 1020,
+      "sha256": "3a605e05d15ad35c53554d69ad9828428f831085c6e759707882baea16a183e8"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Diagnostics/Debug.ns",
+      "size": 3775,
+      "sha256": "932014d243a9990298134ab6129c0aa07123e2014ad059484db55281b690f46a"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj",
+      "size": 243,
+      "sha256": "dd532e83d7f4b2bcc84b5a7b2a18001cc333091f4566e7504530c122755b66d5"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Diagnostics/Process.ns",
+      "size": 7894,
+      "sha256": "9487ee3acc9e1b8735e8fc4590a6c24c363bf7092811be43ac3612a44ae80678"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Diagnostics/Stopwatch.ns",
+      "size": 5990,
+      "sha256": "017bb2bcace82c5e034138147b1ae0bea8c21f9ce750180661897acea58189dc"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Diagnostics/SystemInfo.ns",
+      "size": 5094,
+      "sha256": "d608e37004889678befb8e98ea5a8d3d537ff32b6510bfa59e4f724371e7092d"
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/Directory.ns",
+      "size": 9461,
+      "sha256": "1b3504c96a178746f8d0b6e8e581362adee4d66100713e20896e9ce317b299aa"
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/File.ns",
+      "size": 11886,
+      "sha256": "56e840338a23449cbf85713d2760dc55aa2a6eab5377c04e83df342589035964"
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj",
+      "size": 234,
+      "sha256": "537d0381b29bfd6918b89decf42b6c1cecc284c64c43a3433155f3e9645f5681"
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/Path.ns",
+      "size": 10094,
+      "sha256": "4a657907299ee890bee8205e962d88b6eb7a540659e4a189ac811ffc6faa9a02"
+    },
+    {
+      "path": "lib/NativeSharp.Core.IO/TextWriter.ns",
+      "size": 8488,
+      "sha256": "7f426dba7225290bbcea75b46af5fc5b886aa536b1c0d60634df518d3687ec99"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/Atomics.ns",
+      "size": 9361,
+      "sha256": "d3e19d8977b9c674ec1bf517d9539fbbdc626f69418342738ecb2db7b11762c3"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/Event.ns",
+      "size": 6259,
+      "sha256": "8be7f5762bfe120203beda43f43cf13ad3203565c170248560677e0436d70e1f"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/Monitor.ns",
+      "size": 9901,
+      "sha256": "752ab0191fc0552cdc8027625c3a0ae43fa6960aff15a0cbca3922c35e1d108b"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/Mutex.ns",
+      "size": 8333,
+      "sha256": "2c7a393958a590a2fb67b7639409bb630bb7940910ca2c58d5ee7db19de19b1e"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/NativeSharp.Core.Threading.nsproj",
+      "size": 241,
+      "sha256": "48da290e1a396199cc87efac6486bd978751a77109ab9d1c910c8b7bf95fc51e"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/ScopedLock.ns",
+      "size": 5151,
+      "sha256": "14933b567685456adfa934e46a3e45e02cabb3bf501f894831f096b07ee40911"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/Semaphore.ns",
+      "size": 6327,
+      "sha256": "e90c0afc9c73575d2401cf0749bd872c38c1a523b2fab10aaa25e52d838a9341"
+    },
+    {
+      "path": "lib/NativeSharp.Core.Threading/Thread.ns",
+      "size": 16101,
+      "sha256": "bbe5172caad4ceadf41ba60a8531070c216d22b547b585f44b2eeed2709f73c1"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Allocator.ns",
+      "size": 3178,
+      "sha256": "a39d394f7fb3299b22f426e7645ce8ea926ec32e48faa3cee8a3c92b3f4ad536"
+    },
+    {
+      "path": "lib/NativeSharp.Core/ArenaAllocator.ns",
+      "size": 9503,
+      "sha256": "44292b3231e03465256f08ac94d5e95d44798bf16566db22afc8499e2c0e6ca1"
+    },
+    {
+      "path": "lib/NativeSharp.Core/BinaryReader.ns",
+      "size": 8220,
+      "sha256": "59447f2219303a7d0d45c2c0f1db9377692d1fdfecd52035f78d83947232da4c"
+    },
+    {
+      "path": "lib/NativeSharp.Core/BinaryWriter.ns",
+      "size": 5792,
+      "sha256": "5092fdfcc230c0d37f6ed371388da98ee95eeb0c7286da333b3e0b9e386c6d94"
+    },
+    {
+      "path": "lib/NativeSharp.Core/ByteBuffer.ns",
+      "size": 6770,
+      "sha256": "9f757aefd0e7a4d4feb189c6c8d63e9d40dba193a3dc654daecd47aff23f31f2"
+    },
+    {
+      "path": "lib/NativeSharp.Core/CString.ns",
+      "size": 4121,
+      "sha256": "6e16130f2797e29523c40f0298dcddb9e1a15ea11f9be7d965835b59e721f1cf"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Console.ns",
+      "size": 2086,
+      "sha256": "3877580dc86ef1c6ff9243adf6115110477beac80b6199e41d32b68c963145d9"
+    },
+    {
+      "path": "lib/NativeSharp.Core/DateTime.ns",
+      "size": 4683,
+      "sha256": "df385a8978b0904656d818ac89268b3571eb59fd2e2cd08f66331459045c3d79"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Environment.ns",
+      "size": 11083,
+      "sha256": "87bc25347fd7fc8f3986e769ad332c0f659cf95ad9cc3499aeb7d8e6c9c8d60c"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Exception.ns",
+      "size": 2900,
+      "sha256": "e30ff921e565d9ff0c1c6d9a361f855e876b12f700e079b19e7ca23aab13e676"
+    },
+    {
+      "path": "lib/NativeSharp.Core/MathUtil.ns",
+      "size": 5921,
+      "sha256": "a46f89fb810e57527c9e6ccffd3517903e8bb108c822e8029a1c58e61b1c8b6e"
+    },
+    {
+      "path": "lib/NativeSharp.Core/NativeClock.ns",
+      "size": 4423,
+      "sha256": "08571e253302140d8ebcf7dca8f47602ce736a844b557ce852b0080abcf92a60"
+    },
+    {
+      "path": "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
+      "size": 142,
+      "sha256": "921fc8d4ebd389a3e222a13bf723f0788bcd005831dc1b089a039ae935f4ad00"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Number.ns",
+      "size": 24546,
+      "sha256": "77d306e2d5fad614dd359e3acd4f6d8cddc9b9238b5bdb273e005805d72a9c62"
+    },
+    {
+      "path": "lib/NativeSharp.Core/NumericLimits.ns",
+      "size": 5230,
+      "sha256": "1d51c17e42527400f99ddb3ab4b233cf3eaf53edab31b7f853e366c7002f1e43"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Object.ns",
+      "size": 3703,
+      "sha256": "7fab20293169bc1699932899068eb7139cdbf3c2b2e609cc43596f1354726c03"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Optional.ns",
+      "size": 5325,
+      "sha256": "550ec82b2a1eed2fbc404567269763d447d075b5e74b5301123367b543447573"
+    },
+    {
+      "path": "lib/NativeSharp.Core/README.md",
+      "size": 516,
+      "sha256": "42fd8133a872887227b2bb17fd8e4eb17d71e6c36c30ad32f4837fbddedca215"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Random.ns",
+      "size": 17984,
+      "sha256": "cbd62ddbe23d2e37f444b2cbcb266203d821c576e913e7a2dcfbbe5dc5dfc454"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Span.ns",
+      "size": 14375,
+      "sha256": "f765cc564d682dd472bb57562cea1e6c28fa038d1c7f09feea9f9eea1f34304d"
+    },
+    {
+      "path": "lib/NativeSharp.Core/String.ns",
+      "size": 87624,
+      "sha256": "abad348533762821e7d73159823dc11fc4a44b83c4a091a741d63c2706d4f8ee"
+    },
+    {
+      "path": "lib/NativeSharp.Core/StringBuilder.ns",
+      "size": 8249,
+      "sha256": "11b0662d2642ec7a8e60c1d3c8e01efcdede97f1691e54a2187b107f47c92627"
+    },
+    {
+      "path": "lib/NativeSharp.Core/StringView.ns",
+      "size": 13803,
+      "sha256": "5cb767a5a1f8a126dd1e52aac66674062aa2238e9d892ecdfdd621b71ed61771"
+    },
+    {
+      "path": "lib/NativeSharp.Core/TimeSpan.ns",
+      "size": 4069,
+      "sha256": "dc2a4422879d9337b4d6af84fa1504583cb6ee8857dcabd246e38e29b1df3851"
+    },
+    {
+      "path": "lib/NativeSharp.Core/Utf8.ns",
+      "size": 11221,
+      "sha256": "a0da66ba09cfcbaa2ee8229188509916741c23a032235d5d18743614a2d737f4"
+    },
+    {
+      "path": "lib/nsc_compilation.lib",
+      "size": 1179336,
+      "sha256": "5e3be025f62eaf9909c32aff0968d4c2131bcf62ac38b24776eeaecf47563ce6"
+    },
+    {
+      "path": "lib/nsc_driver.lib",
+      "size": 1521188,
+      "sha256": "f47f06e6160bd0ab31291b8d2c7d1173649a11129ca895eea27008d53027e3a3"
+    },
+    {
+      "path": "lib/nsc_frontend.lib",
+      "size": 8859418,
+      "sha256": "878535090a9904c4d3f848a3ff630c4d634e34273ebe08731c0f6977a0079825"
+    },
+    {
+      "path": "lib/nsc_linker.lib",
+      "size": 897236,
+      "sha256": "df6433ef1a820e5e9c91edd89dae4fdec3e1dc9a1a1e961a69b1dcaa58697dea"
+    },
+    {
+      "path": "lib/nsc_llvm.lib",
+      "size": 1420976,
+      "sha256": "6ed4dabb5a31a58abd2cc87bcd535e15ce2401edd08dd45ff13814433d588d96"
+    },
+    {
+      "path": "lib/nsc_runtime.lib",
+      "size": 172648,
+      "sha256": "a41afcc48147825f74e627cac7404b937eae90822959c119418c705d6d03503b"
+    },
+    {
+      "path": "lib/nsc_target.lib",
+      "size": 29190,
+      "sha256": "0fddc0f6fdc20db6b299014bbb25bde9d69068c808c3a9794fc33b84cce53cfa"
+    },
+    {
+      "path": "old/nsc.exe",
+      "size": 2725888,
+      "sha256": "e668ed71a757b10680a3bb84565fe93cc0f86146a9a1df41164f3722026fa863"
+    },
+    {
+      "path": "old/nsc_compilation.lib",
+      "size": 1179336,
+      "sha256": "8cf8ce7bdea29c8e07d5b6b075fd0a088746fd405ffc642ec76e325d06e8912f"
+    },
+    {
+      "path": "old/nsc_driver.lib",
+      "size": 1521188,
+      "sha256": "e628645fcd6daffa04ab1138493cdd7a5057132dd5230ae2e89d56e287200859"
+    },
+    {
+      "path": "old/nsc_frontend.lib",
+      "size": 8822452,
+      "sha256": "c0b91ad83201e7372d58a104ab7541459dd0c6cb50407437d68e921efc3341b4"
+    },
+    {
+      "path": "old/nsc_linker.lib",
+      "size": 879376,
+      "sha256": "1e32613dc6d7a2f09ad5f0e27c0a890ab17d001cabe59009585bc0e37d3a42ac"
+    },
+    {
+      "path": "old/nsc_llvm.lib",
+      "size": 1373354,
+      "sha256": "50cbe857def9c7774eff5c8a202af42d7cb7860b001a91d2b6842a58befd794a"
+    },
+    {
+      "path": "old/nsc_runtime.lib",
+      "size": 70766,
+      "sha256": "66cad109a5a3fe5f1c364c5037a7b6b4f866be3138fac6f066c3dfe637496bec"
+    },
+    {
+      "path": "old/nsc_target.lib",
+      "size": 29190,
+      "sha256": "51a8ea7c2c9d0c0e87e47de9fad16b12b1d272247e7c3112711c247c44b74eac"
+    },
+    {
+      "path": "sdk/win64/kernel32.nsimports",
+      "size": 1034,
+      "sha256": "4a13875e894ad73c03e982ef938194addf86aabdef50547ff733c839e95e55b6"
+    },
+    {
+      "path": "sdk/win64/shell32.nsimports",
+      "size": 148,
+      "sha256": "961e322902c879b7bdbbe8e9e800cbb71b4374a7afa7470f31f237734ec24f68"
+    }
+  ]
+}

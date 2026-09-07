@@ -548,6 +548,7 @@ void ProjectNameLookup::predeclareNode(
                 node->hasModifier(lexer::TokenKind::KwSealed),
             node->kind() == ast::AstNodeKind::ClassDeclaration &&
                 node->hasModifier(lexer::TokenKind::KwStatic),
+            unit.isPrecompiled(),
             unit.projectOrdinal(),
             unit.sourceOrdinal(),
             unit.fileId(),
@@ -724,6 +725,7 @@ void ProjectNameLookup::finalizePredeclarations(
             finalAbstract,
             finalSealed,
             finalStatic,
+            primary.part.isPrecompiled,
             primary.part.projectOrdinal,
             primary.part.sourceOrdinal,
             primary.part.fileId,

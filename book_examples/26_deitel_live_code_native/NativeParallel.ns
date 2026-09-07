@@ -1,0 +1,63 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Threading;
+
+namespace NativeSharp.BookExamples.DeitelNative
+{
+    public class CounterWorker
+    {
+        private AtomicInt32 counter;
+        private int iterations;
+
+        public CounterWorker(int iterationCount)
+        {
+            counter = new AtomicInt32(0);
+            iterations = iterationCount;
+        }
+
+        public void Work()
+        {
+            try
+            {
+                int index = 0;
+                while (index < iterations)
+                {
+                    counter.Increment();
+                    index = index + 1;
+                }
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine("worker contained an exception");
+            }
+        }
+
+        public int Result
+        {
+            get
+            {
+                return counter.CompareExchange(0, 0);
+            }
+        }
+
+        ~CounterWorker()
+        {
+            delete counter;
+        }
+    }
+
+    public class NativeParallelDemo
+    {
+        public static int Run()
+        {
+            raii CounterWorker worker = new CounterWorker(10000);
+            ThreadStart start = worker.Work;
+            raii Thread first = new Thread(start);
+            raii Thread second = new Thread(start);
+            first.Join();
+            second.Join();
+            int result = worker.Result;
+            Console.WriteLine("parallel work: two native threads, atomic state and explicit joins");
+            return result;
+        }
+    }
+}

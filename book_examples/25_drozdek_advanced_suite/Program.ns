@@ -1,0 +1,29 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            Console.WriteLine("NativeSharp Book Example 25 - Drozdek advanced suite");
+            Console.WriteLine("---------------------------------------------------");
+
+            int checksum = 0;
+            checksum = checksum + SequenceAlgorithms.Run();
+            checksum = checksum + SkipListDemo.Run();
+            checksum = checksum + TreeAlgorithms.Run();
+            checksum = checksum + GraphAlgorithms.Run();
+            checksum = checksum + HashAlgorithms.Run();
+            checksum = checksum + CompressionAlgorithms.Run();
+            checksum = checksum + MemoryAlgorithms.Run();
+            checksum = checksum + StringAlgorithms.Run();
+            checksum = checksum + CaseStudyAlgorithms.Run();
+
+            raii string value = String.ToString(checksum);
+            raii string line = String.Concat("verified checksum: ", value);
+            Console.WriteLine(line);
+            return checksum == 5157 ? 0 : 25;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

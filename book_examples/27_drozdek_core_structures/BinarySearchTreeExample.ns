@@ -1,0 +1,267 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class BstNode
+    {
+        public int Key;
+        public BstNode Left;
+        public BstNode Right;
+
+        public BstNode(int key)
+        {
+            Key = key;
+        }
+    }
+
+    public class IntBinarySearchTree
+    {
+        private BstNode root;
+        private int count;
+
+        public int Count
+        {
+            get
+            {
+                return count;
+            }
+        }
+
+        public bool Insert(int key)
+        {
+            if (root == null)
+            {
+                root = new BstNode(key);
+                count = 1;
+                return true;
+            }
+            BstNode parent = null;
+            BstNode current = root;
+            while (current != null)
+            {
+                parent = current;
+                if (key < current.Key)
+                {
+                    current = current.Left;
+                }
+                else if (key > current.Key)
+                {
+                    current = current.Right;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            if (key < parent.Key)
+            {
+                parent.Left = new BstNode(key);
+            }
+            else
+            {
+                parent.Right = new BstNode(key);
+            }
+            count = count + 1;
+            return true;
+        }
+
+        public bool Contains(int key)
+        {
+            BstNode current = root;
+            while (current != null)
+            {
+                if (key == current.Key)
+                {
+                    return true;
+                }
+                if (key < current.Key)
+                {
+                    current = current.Left;
+                }
+                else
+                {
+                    current = current.Right;
+                }
+            }
+            return false;
+        }
+
+        public int Minimum()
+        {
+            if (root == null)
+            {
+                throw new InvalidOperationException();
+            }
+            BstNode current = root;
+            while (current.Left != null)
+            {
+                current = current.Left;
+            }
+            return current.Key;
+        }
+
+        public int Maximum()
+        {
+            if (root == null)
+            {
+                throw new InvalidOperationException();
+            }
+            BstNode current = root;
+            while (current.Right != null)
+            {
+                current = current.Right;
+            }
+            return current.Key;
+        }
+
+        public bool Remove(int key)
+        {
+            BstNode parent = null;
+            BstNode current = root;
+            while (current != null && current.Key != key)
+            {
+                parent = current;
+                if (key < current.Key)
+                {
+                    current = current.Left;
+                }
+                else
+                {
+                    current = current.Right;
+                }
+            }
+            if (current == null)
+            {
+                return false;
+            }
+            if (current.Left != null && current.Right != null)
+            {
+                BstNode successorParent = current;
+                BstNode successor = current.Right;
+                while (successor.Left != null)
+                {
+                    successorParent = successor;
+                    successor = successor.Left;
+                }
+                current.Key = successor.Key;
+                parent = successorParent;
+                current = successor;
+            }
+            BstNode child = current.Left;
+            if (child == null)
+            {
+                child = current.Right;
+            }
+            if (parent == null)
+            {
+                root = child;
+            }
+            else if (parent.Left == current)
+            {
+                parent.Left = child;
+            }
+            else
+            {
+                parent.Right = child;
+            }
+            current.Left = null;
+            current.Right = null;
+            delete current;
+            count = count - 1;
+            return true;
+        }
+
+        private int InorderNode(BstNode node, int[] position)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int checksum = InorderNode(node.Left, position);
+            position[0] = position[0] + 1;
+            checksum = checksum + node.Key * position[0];
+            checksum = checksum + InorderNode(node.Right, position);
+            return checksum;
+        }
+
+        public int InorderChecksum()
+        {
+            int[] position = new int[1];
+            int checksum = InorderNode(root, position);
+            delete[] position;
+            return checksum;
+        }
+
+        private bool ValidateNode(BstNode node, int minimum, int maximum)
+        {
+            if (node == null)
+            {
+                return true;
+            }
+            if (node.Key <= minimum || node.Key >= maximum)
+            {
+                return false;
+            }
+            return ValidateNode(node.Left, minimum, node.Key) && ValidateNode(node.Right, node.Key, maximum);
+        }
+
+        public bool IsOrdered()
+        {
+            return ValidateNode(root, -2147483647, 2147483647);
+        }
+
+        private void ClearNode(BstNode node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+            ClearNode(node.Left);
+            ClearNode(node.Right);
+            node.Left = null;
+            node.Right = null;
+            delete node;
+        }
+
+        public void Clear()
+        {
+            ClearNode(root);
+            root = null;
+            count = 0;
+        }
+
+        ~IntBinarySearchTree()
+        {
+            Clear();
+        }
+    }
+
+    public class BinarySearchTreeExample
+    {
+        public static int Run()
+        {
+            raii IntBinarySearchTree tree = new IntBinarySearchTree();
+            int[] keys = new int[] { 50, 25, 75, 10, 30, 60, 90, 27, 33, 55, 65 };
+            int i = 0;
+            while (i < keys.Length)
+            {
+                tree.Insert(keys[i]);
+                i = i + 1;
+            }
+            tree.Remove(10);
+            tree.Remove(30);
+            tree.Remove(75);
+            int checksum = tree.InorderChecksum();
+            checksum = checksum + tree.Minimum() * 10;
+            checksum = checksum + tree.Maximum() * 20;
+            checksum = checksum + tree.Count * 100;
+            if (tree.Contains(65) && tree.IsOrdered())
+            {
+                checksum = checksum + 1000;
+            }
+            delete[] keys;
+            Console.WriteLine("BST: search, min/max and deletion in all structural cases");
+            return checksum;
+        }
+    }
+}

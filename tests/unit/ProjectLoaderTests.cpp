@@ -125,6 +125,10 @@ void testItemsAndReferences(TestContext& tests, const std::filesystem::path& roo
     writeFile(core / "Core.nsproj", "<Project><PropertyGroup><Name>Core</Name></PropertyGroup></Project>\n");
 
     const std::filesystem::path app = root / "Filtered";
+    const std::filesystem::path precompiled = root / "Precompiled";
+    writeFile(precompiled / "NativeMath.lib", "archive");
+    writeFile(precompiled / "NativeMath.nsmeta", "metadata");
+    writeFile(precompiled / "NativeMath.dll", "runtime");
     writeFile(app / "Main.ns", "int main() { return 0; }\n");
     writeFile(app / "Models" / "Player.ns", "// player\n");
     writeFile(app / "Models" / "Ignored.ns", "// ignored\n");
@@ -138,6 +142,8 @@ void testItemsAndReferences(TestContext& tests, const std::filesystem::path& roo
         "    <Compile Include=\"Main.ns\" />\n"
         "    <Compile Remove=\"Main.ns\" />\n"
         "    <ProjectReference Include=\"../Core/Core.nsproj\" />\n"
+        "    <LibraryReference Include=\"../Precompiled/NativeMath.lib\" "
+            "Metadata=\"../Precompiled/NativeMath.nsmeta\" Runtime=\"../Precompiled/NativeMath.dll\" />\n"
         "  </ItemGroup>\n"
         "</Project>\n");
 
@@ -158,6 +164,12 @@ void testItemsAndReferences(TestContext& tests, const std::filesystem::path& roo
     tests.expect(
         project->projectReferences()[0].filename() == "Core.nsproj",
         "project reference is canonicalized");
+    tests.expect(project->libraryReferences().size() == 1,
+        "precompiled library reference is preserved separately from source project references");
+    tests.expect(project->libraryReferences()[0].libraryPath.filename() == "NativeMath.lib" &&
+            project->libraryReferences()[0].metadataPath.filename() == "NativeMath.nsmeta" &&
+            project->libraryReferences()[0].runtimePath.filename() == "NativeMath.dll",
+        "library, metadata, and optional runtime paths are canonicalized as one contract");
 }
 
 void expectLoadFailure(
@@ -248,6 +260,40 @@ void testInvalidProjects(TestContext& tests, const std::filesystem::path& root)
         invalid / "DuplicateReference.nsproj",
         "duplicate ProjectReference",
         "duplicate reference is rejected");
+
+    writeFile(
+        invalid / "MissingLibrary.nsproj",
+        "<Project><ItemGroup><LibraryReference Include=\"Missing.lib\"/></ItemGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "MissingLibrary.nsproj",
+        "referenced library does not exist",
+        "missing precompiled library is rejected");
+
+    const std::filesystem::path libraryReference = root / "LibraryReferenceTarget";
+    writeFile(libraryReference / "Target.lib", "archive");
+    writeFile(
+        invalid / "MissingMetadata.nsproj",
+        "<Project><ItemGroup><LibraryReference Include=\"../LibraryReferenceTarget/Target.lib\"/>"
+        "</ItemGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "MissingMetadata.nsproj",
+        "metadata does not exist",
+        "a bare .lib without NativeSharp metadata is rejected");
+
+    writeFile(libraryReference / "Target.nsmeta", "metadata");
+    writeFile(
+        invalid / "DuplicateLibrary.nsproj",
+        "<Project><ItemGroup>"
+        "<LibraryReference Include=\"../LibraryReferenceTarget/Target.lib\"/>"
+        "<LibraryReference Include=\"../LibraryReferenceTarget/Target.lib\"/>"
+        "</ItemGroup></Project>\n");
+    expectLoadFailure(
+        tests,
+        invalid / "DuplicateLibrary.nsproj",
+        "duplicate LibraryReference",
+        "duplicate precompiled library reference is rejected");
 }
 }
 

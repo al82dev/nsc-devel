@@ -1,0 +1,115 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class CompressionAlgorithms
+    {
+        public static int RunLengthTokenCount(string text)
+        {
+            if (text.Length == 0)
+            {
+                return 0;
+            }
+            int runs = 1;
+            int index = 1;
+            while (index < text.Length)
+            {
+                if (text[index] != text[index - 1])
+                {
+                    runs = runs + 1;
+                }
+                index = index + 1;
+            }
+            return runs * 2;
+        }
+
+        public static int Lz77TokenCount(string text, int windowSize, int lookaheadSize)
+        {
+            int position = 0;
+            int tokens = 0;
+            while (position < text.Length)
+            {
+                int bestLength = 0;
+                int start = position - windowSize;
+                if (start < 0)
+                {
+                    start = 0;
+                }
+                int candidate = start;
+                while (candidate < position)
+                {
+                    int length = 0;
+                    while (length < lookaheadSize && position + length < text.Length && candidate + length < position &&
+                           text[candidate + length] == text[position + length])
+                    {
+                        length = length + 1;
+                    }
+                    if (length > bestLength)
+                    {
+                        bestLength = length;
+                    }
+                    candidate = candidate + 1;
+                }
+                position = position + (bestLength >= 3 ? bestLength : 1);
+                tokens = tokens + 1;
+            }
+            return tokens;
+        }
+
+        private static int FindPair(int[] prefix, char[] suffix, int count, int prefixCode, char value)
+        {
+            int index = 0;
+            while (index < count)
+            {
+                if (prefix[index] == prefixCode && suffix[index] == value)
+                {
+                    return index + 256;
+                }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        public static int LzwDictionarySize(string text)
+        {
+            if (text.Length == 0)
+            {
+                return 256;
+            }
+            int[] prefix = new int[1024];
+            char[] suffix = new char[1024];
+            int count = 0;
+            int current = (int)text[0];
+            int index = 1;
+            while (index < text.Length)
+            {
+                char next = text[index];
+                int combined = FindPair(prefix, suffix, count, current, next);
+                if (combined >= 0)
+                {
+                    current = combined;
+                }
+                else
+                {
+                    prefix[count] = current;
+                    suffix[count] = next;
+                    count = count + 1;
+                    current = (int)next;
+                }
+                index = index + 1;
+            }
+            delete[] prefix;
+            delete[] suffix;
+            return 256 + count;
+        }
+
+        public static int Run()
+        {
+            int rle = RunLengthTokenCount("AAAABBBCCDAA");
+            int lz77 = Lz77TokenCount("aababacbaacbaadaaa", 12, 8);
+            int lzw = LzwDictionarySize("TOBEORNOTTOBEORTOBEORNOT");
+            Console.WriteLine("compression: run-length, LZ77 and LZW dictionary growth");
+            return rle + lz77 + lzw;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

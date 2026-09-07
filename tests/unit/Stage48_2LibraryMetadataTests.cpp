@@ -22,6 +22,8 @@ using nativesharp::ExitCode;
 using nativesharp::driver::Driver;
 using nativesharp::interop::LibraryMetadata;
 using nativesharp::interop::LibraryMetadataCodec;
+using nativesharp::interop::LibraryMetadataDefaultValueKind;
+using nativesharp::interop::LibraryMetadataParameterPassKind;
 using nativesharp::interop::LibraryMetadataType;
 using nativesharp::interop::LibraryMetadataTypeKind;
 using nativesharp::tests::TestContext;
@@ -178,6 +180,20 @@ namespace Meta
         public static export extern C Pair Echo(Pair value) { return value; }
         public static export extern C int Invoke(Transform callback, int value) { return callback(value); }
         public static int Internal(int value) { return value + Answer; }
+        public static void Mutate(ref int value) { value += 1; }
+        public static void Assign(out int value) { value = 42; }
+        public static int Read(in int value) { return value; }
+        public static int Defaults(
+            int required,
+            int offset = -7,
+            double scale = -0.5,
+            char marker = 'x',
+            bool enabled = true,
+            string label = "meta",
+            int* pointer = null)
+        {
+            return required + offset;
+        }
     }
 }
 )NS";
@@ -194,7 +210,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "Stage 48.2 emits .nsmeta explicitly without linking the binary product");
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
         "explicit metadata generation creates parent directories and keeps stderr empty");
-    tests.expect(output.find("format: NSMETA 1.2") != std::string::npos &&
+    tests.expect(output.find("format: NSMETA 1.4") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
 
@@ -262,6 +278,50 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "Add" && !member.mangledName.empty() && member.cAbiName == "Add";
     }), "metadata records both NativeSharp binary symbol identity and stable C ABI name");
+    const auto mutate = std::ranges::find_if(metadata.members, [](const auto& member) {
+        return member.name == "Mutate";
+    });
+    const auto assign = std::ranges::find_if(metadata.members, [](const auto& member) {
+        return member.name == "Assign";
+    });
+    const auto read = std::ranges::find_if(metadata.members, [](const auto& member) {
+        return member.name == "Read";
+    });
+    tests.expect(mutate != metadata.members.end() && mutate->parameters.size() == 1 &&
+            mutate->parameters[0].passKind == LibraryMetadataParameterPassKind::Ref &&
+            assign != metadata.members.end() && assign->parameters.size() == 1 &&
+            assign->parameters[0].passKind == LibraryMetadataParameterPassKind::Out &&
+            read != metadata.members.end() && read->parameters.size() == 1 &&
+            read->parameters[0].passKind == LibraryMetadataParameterPassKind::In,
+        "NSMETA 1.4 preserves ref, out, and in independently from their pointer carrier");
+    const auto defaults = std::ranges::find_if(metadata.members, [](const auto& member) {
+        return member.name == "Defaults";
+    });
+    tests.expect(defaults != metadata.members.end() && defaults->parameters.size() == 7,
+        "precompiled metadata preserves the complete optional-parameter contract");
+    if (defaults != metadata.members.end() && defaults->parameters.size() == 7)
+    {
+        const auto& parameters = defaults->parameters;
+        tests.expect(parameters[0].defaultValueKind == LibraryMetadataDefaultValueKind::None,
+            "required parameters remain distinguishable from optional parameters");
+        tests.expect(parameters[1].defaultValueKind == LibraryMetadataDefaultValueKind::Integer &&
+                parameters[1].defaultValueFlags == 1U && parameters[1].defaultValueBits == 7U,
+            "negative integer defaults preserve sign and magnitude");
+        tests.expect(parameters[2].defaultValueKind == LibraryMetadataDefaultValueKind::Floating &&
+                std::bit_cast<double>(parameters[2].defaultValueBits) == -0.5,
+            "floating defaults preserve their exact parsed IEEE-754 value");
+        tests.expect(parameters[3].defaultValueKind == LibraryMetadataDefaultValueKind::Character &&
+                parameters[3].defaultValueBits == static_cast<std::uint64_t>('x'),
+            "character defaults survive the library boundary");
+        tests.expect(parameters[4].defaultValueKind == LibraryMetadataDefaultValueKind::Boolean &&
+                parameters[4].defaultValueBits == 1U,
+            "boolean defaults survive the library boundary");
+        tests.expect(parameters[5].defaultValueKind == LibraryMetadataDefaultValueKind::String &&
+                parameters[5].defaultValueText == "meta",
+            "string defaults survive the library boundary without retaining source spelling");
+        tests.expect(parameters[6].defaultValueKind == LibraryMetadataDefaultValueKind::Null,
+            "null defaults survive the library boundary without an invented payload");
+    }
     tests.expect(std::ranges::any_of(metadata.dispatchTables, [](const auto& dispatch) {
         return dispatch.typeKey.find("Meta.Derived") != std::string::npos && !dispatch.slotSignatures.empty();
     }), "virtual dispatch slot metadata is persisted for NativeSharp compiler consumption");
@@ -302,6 +362,46 @@ public class Api
     LibraryMetadata c;
     tests.expect(codec.read(changedMetadata, c, error) && c.abiFingerprint != a.abiFingerprint,
         "changing an exported ABI signature changes the metadata ABI fingerprint");
+}
+
+void testDefaultValueContractSensitivity(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto firstDirectory = root / "DefaultOne";
+    const auto secondDirectory = root / "DefaultTwo";
+    writeProject(firstDirectory, "DefaultContract", "StaticLibrary", R"NS(
+public class Api
+{
+    public static int Pick(int value = 1) { return value; }
+}
+)NS");
+    writeProject(secondDirectory, "DefaultContract", "StaticLibrary", R"NS(
+public class Api
+{
+    public static int Pick(int value = 2) { return value; }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    const auto firstPath = firstDirectory / "DefaultContract.nsmeta";
+    const auto secondPath = secondDirectory / "DefaultContract.nsmeta";
+    tests.expect(emitMetadata(
+            firstDirectory / "DefaultContract.nsproj", firstPath, output, error) == ExitCode::Success,
+        "the first optional-parameter contract emits metadata");
+    output.clear();
+    error.clear();
+    tests.expect(emitMetadata(
+            secondDirectory / "DefaultContract.nsproj", secondPath, output, error) == ExitCode::Success,
+        "the changed optional-parameter contract emits metadata");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata first;
+    LibraryMetadata second;
+    error.clear();
+    tests.expect(codec.read(firstPath, first, error) && codec.read(secondPath, second, error),
+        "both default-value contracts round-trip through NSMETA 1.4");
+    tests.expect(first.abiFingerprint != second.abiFingerprint,
+        "changing only a parameter default changes the published library contract fingerprint");
 }
 
 void testAutomaticProducts(TestContext& tests, const std::filesystem::path& root)
@@ -480,6 +580,7 @@ int main()
 
     testExplicitRoundTrip(tests, root);
     testDeterminismAndAbiSensitivity(tests, root);
+    testDefaultValueContractSensitivity(tests, root);
     testAutomaticProducts(tests, root);
     testGenericCompilerMetadata(tests, root);
     testIntegrityAndCompatibility(tests, root);

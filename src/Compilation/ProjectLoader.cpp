@@ -23,6 +23,13 @@ struct SourceIncludeRule final
     std::vector<GlobPattern> excludes;
 };
 
+struct LibraryReferenceDescriptor final
+{
+    std::string include;
+    std::optional<std::string> metadata;
+    std::optional<std::string> runtime;
+};
+
 struct ProjectDescriptor final
 {
     std::optional<std::string> name;
@@ -30,6 +37,7 @@ struct ProjectDescriptor final
     std::vector<SourceIncludeRule> includes;
     std::vector<GlobPattern> removes;
     std::vector<std::string> projectReferences;
+    std::vector<LibraryReferenceDescriptor> libraryReferences;
 };
 
 std::string trim(std::string_view value)
@@ -321,6 +329,50 @@ bool parseItemGroup(
             }
             descriptor.projectReferences.push_back(trim(*include));
         }
+        else if (item.name == "LibraryReference")
+        {
+            if (!validateEmptyBody(item, error) ||
+                !hasOnlyAttributes(item, {"Include", "Metadata", "Runtime"}, error))
+            {
+                return false;
+            }
+            const std::string* include = attribute(item, "Include");
+            const std::string* metadata = attribute(item, "Metadata");
+            const std::string* runtime = attribute(item, "Runtime");
+            if (include == nullptr || trim(*include).empty())
+            {
+                error = "LibraryReference requires a non-empty Include attribute";
+                return false;
+            }
+            if (include->find(';') != std::string::npos)
+            {
+                error = "LibraryReference Include accepts one library path per item";
+                return false;
+            }
+            LibraryReferenceDescriptor reference;
+            reference.include = trim(*include);
+            if (metadata != nullptr)
+            {
+                const std::string value = trim(*metadata);
+                if (value.empty())
+                {
+                    error = "LibraryReference Metadata cannot be empty";
+                    return false;
+                }
+                reference.metadata = value;
+            }
+            if (runtime != nullptr)
+            {
+                const std::string value = trim(*runtime);
+                if (value.empty())
+                {
+                    error = "LibraryReference Runtime cannot be empty";
+                    return false;
+                }
+                reference.runtime = value;
+            }
+            descriptor.libraryReferences.push_back(std::move(reference));
+        }
         else
         {
             error = "unsupported project item '" + item.name + "'";
@@ -543,11 +595,91 @@ std::optional<Project> ProjectLoader::load(
             return pathKey(left) < pathKey(right);
         });
 
+    std::vector<LibraryReference> libraryReferences;
+    std::vector<std::string> libraryReferenceKeys;
+    for (const LibraryReferenceDescriptor& descriptorReference : descriptor.libraryReferences)
+    {
+        const std::filesystem::path unresolvedLibrary = projectDirectory / descriptorReference.include;
+        filesystemError.clear();
+        const std::filesystem::path library =
+            std::filesystem::weakly_canonical(unresolvedLibrary, filesystemError);
+        if (filesystemError || !std::filesystem::is_regular_file(library))
+        {
+            error = "referenced library does not exist: '" + unresolvedLibrary.string() + "'";
+            return std::nullopt;
+        }
+        if (!equalsFolded(library.extension().string(), ".lib"))
+        {
+            error = "LibraryReference Include must refer to a .lib file: '" + library.string() + "'";
+            return std::nullopt;
+        }
+
+        std::filesystem::path unresolvedMetadata;
+        if (descriptorReference.metadata.has_value())
+        {
+            unresolvedMetadata = projectDirectory / *descriptorReference.metadata;
+        }
+        else
+        {
+            unresolvedMetadata = unresolvedLibrary;
+            unresolvedMetadata.replace_extension(".nsmeta");
+        }
+        filesystemError.clear();
+        const std::filesystem::path metadata =
+            std::filesystem::weakly_canonical(unresolvedMetadata, filesystemError);
+        if (filesystemError || !std::filesystem::is_regular_file(metadata))
+        {
+            error = "LibraryReference metadata does not exist: '" + unresolvedMetadata.string() + "'";
+            return std::nullopt;
+        }
+        if (!equalsFolded(metadata.extension().string(), ".nsmeta"))
+        {
+            error = "LibraryReference Metadata must refer to a .nsmeta file: '" + metadata.string() + "'";
+            return std::nullopt;
+        }
+
+        std::filesystem::path runtime;
+        if (descriptorReference.runtime.has_value())
+        {
+            const std::filesystem::path unresolvedRuntime = projectDirectory / *descriptorReference.runtime;
+            filesystemError.clear();
+            runtime = std::filesystem::weakly_canonical(unresolvedRuntime, filesystemError);
+            if (filesystemError || !std::filesystem::is_regular_file(runtime))
+            {
+                error = "LibraryReference runtime DLL does not exist: '" + unresolvedRuntime.string() + "'";
+                return std::nullopt;
+            }
+            if (!equalsFolded(runtime.extension().string(), ".dll"))
+            {
+                error = "LibraryReference Runtime must refer to a .dll file: '" + runtime.string() + "'";
+                return std::nullopt;
+            }
+        }
+
+        const std::string key = pathKey(library);
+        if (std::find(libraryReferenceKeys.begin(), libraryReferenceKeys.end(), key) !=
+            libraryReferenceKeys.end())
+        {
+            error = "duplicate LibraryReference: '" + library.string() + "'";
+            return std::nullopt;
+        }
+        libraryReferenceKeys.push_back(key);
+        libraryReferences.push_back(LibraryReference{library, metadata, runtime});
+    }
+    std::sort(
+        libraryReferences.begin(),
+        libraryReferences.end(),
+        [](const LibraryReference& left, const LibraryReference& right)
+        {
+            return pathKey(left.libraryPath) < pathKey(right.libraryPath);
+        });
+
     return Project(
         canonicalProject,
         moduleName,
         descriptor.outputKind.value_or(ProjectOutputKind::Executable),
         std::move(sourceSet),
-        std::move(projectReferences));
+        std::move(projectReferences),
+        std::move(libraryReferences));
 }
 }

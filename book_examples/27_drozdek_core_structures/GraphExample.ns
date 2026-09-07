@@ -1,0 +1,263 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class WeightedGraph
+    {
+        private int vertexCount;
+        private int[] weights;
+
+        public WeightedGraph(int vertices)
+        {
+            if (vertices <= 0)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+            vertexCount = vertices;
+            weights = new int[vertices * vertices];
+            int i = 0;
+            while (i < weights.Length)
+            {
+                weights[i] = -1;
+                i = i + 1;
+            }
+            i = 0;
+            while (i < vertexCount)
+            {
+                weights[Cell(i, i)] = 0;
+                i = i + 1;
+            }
+        }
+
+        private int Cell(int from, int to)
+        {
+            return from * vertexCount + to;
+        }
+
+        private void ValidateVertex(int vertex)
+        {
+            if (vertex < 0 || vertex >= vertexCount)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        public void AddUndirectedEdge(int from, int to, int weight)
+        {
+            ValidateVertex(from);
+            ValidateVertex(to);
+            if (weight <= 0)
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+            weights[Cell(from, to)] = weight;
+            weights[Cell(to, from)] = weight;
+        }
+
+        public int EdgeWeight(int from, int to)
+        {
+            ValidateVertex(from);
+            ValidateVertex(to);
+            return weights[Cell(from, to)];
+        }
+
+        public int BreadthFirstChecksum(int start)
+        {
+            ValidateVertex(start);
+            bool[] visited = new bool[vertexCount];
+            int[] queue = new int[vertexCount];
+            int first = 0;
+            int last = 0;
+            int position = 1;
+            int checksum = 0;
+            visited[start] = true;
+            queue[last] = start;
+            last = last + 1;
+            while (first < last)
+            {
+                int vertex = queue[first];
+                first = first + 1;
+                checksum = checksum + (vertex + 1) * position;
+                position = position + 1;
+                int neighbor = 0;
+                while (neighbor < vertexCount)
+                {
+                    if (weights[Cell(vertex, neighbor)] > 0 && !visited[neighbor])
+                    {
+                        visited[neighbor] = true;
+                        queue[last] = neighbor;
+                        last = last + 1;
+                    }
+                    neighbor = neighbor + 1;
+                }
+            }
+            delete[] visited;
+            delete[] queue;
+            return checksum;
+        }
+
+        private int DepthFirstNode(int vertex, bool[] visited, int[] position)
+        {
+            visited[vertex] = true;
+            position[0] = position[0] + 1;
+            int checksum = (vertex + 1) * position[0];
+            int neighbor = 0;
+            while (neighbor < vertexCount)
+            {
+                if (weights[Cell(vertex, neighbor)] > 0 && !visited[neighbor])
+                {
+                    checksum = checksum + DepthFirstNode(neighbor, visited, position);
+                }
+                neighbor = neighbor + 1;
+            }
+            return checksum;
+        }
+
+        public int DepthFirstChecksum(int start)
+        {
+            ValidateVertex(start);
+            bool[] visited = new bool[vertexCount];
+            int[] position = new int[1];
+            int checksum = DepthFirstNode(start, visited, position);
+            delete[] visited;
+            delete[] position;
+            return checksum;
+        }
+
+        private int SelectNearest(int[] distance, bool[] settled)
+        {
+            int selected = -1;
+            int best = 2147483647;
+            int vertex = 0;
+            while (vertex < vertexCount)
+            {
+                if (!settled[vertex] && distance[vertex] < best)
+                {
+                    best = distance[vertex];
+                    selected = vertex;
+                }
+                vertex = vertex + 1;
+            }
+            return selected;
+        }
+
+        public int[] Dijkstra(int start)
+        {
+            ValidateVertex(start);
+            int[] distance = new int[vertexCount];
+            bool[] settled = new bool[vertexCount];
+            int vertex = 0;
+            while (vertex < vertexCount)
+            {
+                distance[vertex] = 2147483647;
+                vertex = vertex + 1;
+            }
+            distance[start] = 0;
+            int step = 0;
+            while (step < vertexCount)
+            {
+                int current = SelectNearest(distance, settled);
+                if (current == -1)
+                {
+                    break;
+                }
+                settled[current] = true;
+                int neighbor = 0;
+                while (neighbor < vertexCount)
+                {
+                    int edge = weights[Cell(current, neighbor)];
+                    if (edge > 0 && !settled[neighbor])
+                    {
+                        int candidate = distance[current] + edge;
+                        if (candidate < distance[neighbor])
+                        {
+                            distance[neighbor] = candidate;
+                        }
+                    }
+                    neighbor = neighbor + 1;
+                }
+                step = step + 1;
+            }
+            delete[] settled;
+            return distance;
+        }
+
+        public int PrimMinimumSpanningTreeWeight()
+        {
+            int[] cheapest = new int[vertexCount];
+            bool[] included = new bool[vertexCount];
+            int i = 0;
+            while (i < vertexCount)
+            {
+                cheapest[i] = 2147483647;
+                i = i + 1;
+            }
+            cheapest[0] = 0;
+            int total = 0;
+            int accepted = 0;
+            while (accepted < vertexCount)
+            {
+                int vertex = SelectNearest(cheapest, included);
+                if (vertex == -1)
+                {
+                    delete[] cheapest;
+                    delete[] included;
+                    throw new InvalidOperationException();
+                }
+                included[vertex] = true;
+                total = total + cheapest[vertex];
+                accepted = accepted + 1;
+                int neighbor = 0;
+                while (neighbor < vertexCount)
+                {
+                    int edge = weights[Cell(vertex, neighbor)];
+                    if (edge > 0 && !included[neighbor] && edge < cheapest[neighbor])
+                    {
+                        cheapest[neighbor] = edge;
+                    }
+                    neighbor = neighbor + 1;
+                }
+            }
+            delete[] cheapest;
+            delete[] included;
+            return total;
+        }
+
+        ~WeightedGraph()
+        {
+            delete[] weights;
+        }
+    }
+
+    public class GraphExample
+    {
+        public static int Run()
+        {
+            raii WeightedGraph graph = new WeightedGraph(7);
+            graph.AddUndirectedEdge(0, 1, 7);
+            graph.AddUndirectedEdge(0, 3, 5);
+            graph.AddUndirectedEdge(1, 2, 8);
+            graph.AddUndirectedEdge(1, 3, 9);
+            graph.AddUndirectedEdge(1, 4, 7);
+            graph.AddUndirectedEdge(2, 4, 5);
+            graph.AddUndirectedEdge(3, 4, 15);
+            graph.AddUndirectedEdge(3, 5, 6);
+            graph.AddUndirectedEdge(4, 5, 8);
+            graph.AddUndirectedEdge(4, 6, 9);
+            graph.AddUndirectedEdge(5, 6, 11);
+            int checksum = graph.BreadthFirstChecksum(0);
+            checksum = checksum + graph.DepthFirstChecksum(0);
+            int[] distances = graph.Dijkstra(0);
+            int i = 0;
+            while (i < distances.Length)
+            {
+                checksum = checksum + distances[i] * (i + 1);
+                i = i + 1;
+            }
+            checksum = checksum + graph.PrimMinimumSpanningTreeWeight() * 100;
+            delete[] distances;
+            Console.WriteLine("graph: BFS, DFS, Dijkstra and Prim over a weighted matrix");
+            return checksum;
+        }
+    }
+}

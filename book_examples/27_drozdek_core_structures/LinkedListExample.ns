@@ -1,0 +1,198 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class IntListNode
+    {
+        public int Info;
+        public IntListNode Next;
+
+        public IntListNode(int value)
+        {
+            Info = value;
+        }
+    }
+
+    public class IntSinglyLinkedList
+    {
+        private IntListNode head;
+        private IntListNode tail;
+        private int count;
+
+        public int Count
+        {
+            get
+            {
+                return count;
+            }
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                return head == null;
+            }
+        }
+
+        public void AddToHead(int value)
+        {
+            IntListNode node = new IntListNode(value);
+            node.Next = head;
+            head = node;
+            if (tail == null)
+            {
+                tail = node;
+            }
+            count = count + 1;
+        }
+
+        public void AddToTail(int value)
+        {
+            IntListNode node = new IntListNode(value);
+            if (tail == null)
+            {
+                head = node;
+                tail = node;
+            }
+            else
+            {
+                tail.Next = node;
+                tail = node;
+            }
+            count = count + 1;
+        }
+
+        public int DeleteFromHead()
+        {
+            if (head == null)
+            {
+                throw new InvalidOperationException();
+            }
+            IntListNode removed = head;
+            int value = removed.Info;
+            head = removed.Next;
+            removed.Next = null;
+            delete removed;
+            count = count - 1;
+            if (head == null)
+            {
+                tail = null;
+            }
+            return value;
+        }
+
+        public int DeleteFromTail()
+        {
+            if (tail == null)
+            {
+                throw new InvalidOperationException();
+            }
+            if (head == tail)
+            {
+                return DeleteFromHead();
+            }
+            IntListNode previous = head;
+            while (previous.Next != tail)
+            {
+                previous = previous.Next;
+            }
+            int value = tail.Info;
+            delete tail;
+            tail = previous;
+            tail.Next = null;
+            count = count - 1;
+            return value;
+        }
+
+        public bool DeleteValue(int value)
+        {
+            IntListNode previous = null;
+            IntListNode current = head;
+            while (current != null && current.Info != value)
+            {
+                previous = current;
+                current = current.Next;
+            }
+            if (current == null)
+            {
+                return false;
+            }
+            if (previous == null)
+            {
+                DeleteFromHead();
+                return true;
+            }
+            previous.Next = current.Next;
+            if (current == tail)
+            {
+                tail = previous;
+            }
+            current.Next = null;
+            delete current;
+            count = count - 1;
+            return true;
+        }
+
+        public bool IsInList(int value)
+        {
+            IntListNode current = head;
+            while (current != null)
+            {
+                if (current.Info == value)
+                {
+                    return true;
+                }
+                current = current.Next;
+            }
+            return false;
+        }
+
+        public int Checksum()
+        {
+            int checksum = 0;
+            int position = 1;
+            IntListNode current = head;
+            while (current != null)
+            {
+                checksum = checksum + current.Info * position;
+                position = position + 1;
+                current = current.Next;
+            }
+            return checksum;
+        }
+
+        public void Clear()
+        {
+            while (head != null)
+            {
+                DeleteFromHead();
+            }
+        }
+
+        ~IntSinglyLinkedList()
+        {
+            Clear();
+        }
+    }
+
+    public class LinkedListExample
+    {
+        public static int Run()
+        {
+            raii IntSinglyLinkedList list = new IntSinglyLinkedList();
+            list.AddToHead(20);
+            list.AddToHead(10);
+            list.AddToTail(30);
+            list.AddToTail(40);
+            bool removed = list.DeleteValue(30);
+            int first = list.DeleteFromHead();
+            list.AddToHead(5);
+            int last = list.DeleteFromTail();
+            bool valid = removed && first == 10 && last == 40 && list.Count == 2;
+            valid = valid && list.IsInList(5) && list.IsInList(20) && !list.IsInList(30);
+            Console.WriteLine("linked list: head, tail, search, deletion and deterministic cleanup");
+            return valid ? list.Checksum() : -1;
+        }
+    }
+}

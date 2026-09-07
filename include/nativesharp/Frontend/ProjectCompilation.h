@@ -27,9 +27,21 @@
 
 namespace nativesharp::frontend
 {
+struct PrecompiledSyntaxModule final
+{
+    std::filesystem::path ownerProjectFile;
+    std::filesystem::path metadataPath;
+    std::string moduleName;
+    std::string sourceText;
+};
+
 class ProjectCompilation final
 {
 public:
+    bool setPrecompiledModules(
+        std::vector<PrecompiledSyntaxModule> modules,
+        std::string& error);
+
     bool compileProjectSyntax(const std::filesystem::path& projectFile, std::string& loadError);
     bool compileProjectNames(const std::filesystem::path& projectFile, std::string& loadError);
     bool compileProjectGenerics(const std::filesystem::path& projectFile, std::string& loadError);
@@ -80,6 +92,7 @@ private:
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
 
     std::optional<compilation::ProjectGraph> projectGraph_;
+    std::vector<PrecompiledSyntaxModule> precompiledModules_;
     source::SourceManager sourceManager_;
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;

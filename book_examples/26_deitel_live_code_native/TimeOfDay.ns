@@ -1,0 +1,90 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DeitelNative
+{
+    public class TimeOfDay
+    {
+        private int secondsSinceMidnight;
+
+        public TimeOfDay()
+        {
+            secondsSinceMidnight = 0;
+        }
+
+        public TimeOfDay(int hour)
+        {
+            Set(hour, 0, 0);
+        }
+
+        public TimeOfDay(int hour, int minute)
+        {
+            Set(hour, minute, 0);
+        }
+
+        public TimeOfDay(int hour, int minute, int second)
+        {
+            Set(hour, minute, second);
+        }
+
+        private void Set(int hour, int minute, int second)
+        {
+            if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59)
+            {
+                throw new InvalidOperationException();
+            }
+            secondsSinceMidnight = hour * 3600 + minute * 60 + second;
+        }
+
+        public int Hour
+        {
+            get
+            {
+                return secondsSinceMidnight / 3600;
+            }
+        }
+
+        public int Minute
+        {
+            get
+            {
+                return (secondsSinceMidnight / 60) % 60;
+            }
+        }
+
+        public int Second
+        {
+            get
+            {
+                return secondsSinceMidnight % 60;
+            }
+        }
+
+        public void Tick()
+        {
+            secondsSinceMidnight = (secondsSinceMidnight + 1) % 86400;
+        }
+
+        public int CompareTo(TimeOfDay other)
+        {
+            if (secondsSinceMidnight < other.secondsSinceMidnight)
+            {
+                return -1;
+            }
+            return secondsSinceMidnight > other.secondsSinceMidnight ? 1 : 0;
+        }
+    }
+
+    public class TimeOfDayDemo
+    {
+        public static int Run()
+        {
+            raii TimeOfDay almostMidnight = new TimeOfDay(23, 59, 59);
+            almostMidnight.Tick();
+            raii TimeOfDay noon = new TimeOfDay(12);
+            bool wrapped = almostMidnight.Hour == 0 && almostMidnight.Minute == 0 && almostMidnight.Second == 0;
+            bool ordered = almostMidnight.CompareTo(noon) < 0;
+            Console.WriteLine("time: constructor chaining contract, validation and midnight wrap");
+            return wrapped && ordered ? 211 : -1;
+        }
+    }
+}

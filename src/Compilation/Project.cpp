@@ -9,12 +9,14 @@ Project::Project(
     std::string moduleName,
     ProjectOutputKind outputKind,
     ProjectSourceSet sourceSet,
-    std::vector<std::filesystem::path> projectReferences)
+    std::vector<std::filesystem::path> projectReferences,
+    std::vector<LibraryReference> libraryReferences)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
       sourceSet_(std::move(sourceSet)),
-      projectReferences_(std::move(projectReferences))
+      projectReferences_(std::move(projectReferences)),
+      libraryReferences_(std::move(libraryReferences))
 {
 }
 
@@ -41,5 +43,10 @@ const ProjectSourceSet& Project::sourceSet() const noexcept
 std::span<const std::filesystem::path> Project::projectReferences() const noexcept
 {
     return projectReferences_;
+}
+
+std::span<const LibraryReference> Project::libraryReferences() const noexcept
+{
+    return libraryReferences_;
 }
 }

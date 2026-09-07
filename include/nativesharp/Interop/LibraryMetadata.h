@@ -20,10 +20,12 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 4 (2026-09-06): cada parametro conserva Value/ref/out/in.
+// MINOR 3 (2026-09-06): cada parametro conserva su valor predeterminado literal.
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 2;
+inline constexpr std::uint16_t kMetadataFormatMinor = 4;
 enum class LibraryMetadataTypeKind : std::uint8_t
 {
     Class = 0,
@@ -38,6 +40,25 @@ enum class LibraryMetadataOwnershipKind : std::uint8_t
     None = 0,
     Owned = 1,
     Borrowed = 2
+};
+
+enum class LibraryMetadataDefaultValueKind : std::uint8_t
+{
+    None = 0,
+    Null = 1,
+    Boolean = 2,
+    Integer = 3,
+    Floating = 4,
+    Character = 5,
+    String = 6
+};
+
+enum class LibraryMetadataParameterPassKind : std::uint8_t
+{
+    Value = 0,
+    Ref = 1,
+    Out = 2,
+    In = 3
 };
 
 struct LibraryMetadataField final
@@ -85,6 +106,14 @@ struct LibraryMetadataParameter final
     std::string name;
     std::string typeKey;
     LibraryMetadataOwnershipKind ownership = LibraryMetadataOwnershipKind::None;
+    LibraryMetadataParameterPassKind passKind = LibraryMetadataParameterPassKind::Value;
+    // NSMETA 1.3. `defaultValueBits` stores the integer/character magnitude, a boolean bit, or
+    // the IEEE-754 bits of the parsed double literal. Strings use `defaultValueText`; null has no
+    // payload. Bit 0 of `defaultValueFlags` preserves a unary minus for integer literals.
+    LibraryMetadataDefaultValueKind defaultValueKind = LibraryMetadataDefaultValueKind::None;
+    std::uint8_t defaultValueFlags = 0;
+    std::uint64_t defaultValueBits = 0;
+    std::string defaultValueText;
 };
 
 struct LibraryMetadataMember final

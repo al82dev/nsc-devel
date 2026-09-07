@@ -452,7 +452,11 @@ bool ProjectMethodBodyModel::build(
         for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
         {
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            const bool precompiledCallable =
+                member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+                nameLookup.namedTypes()[member.declaringTypeOrdinal].isPrecompiled;
             if (analyzedCallableMembers_.contains(memberOrdinal) ||
+                precompiledCallable ||
                 ((member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
                   member.kind != ClassMemberKind::Destructor) ||
                  member.syntax == nullptr || member.syntax->first() == nullptr) ||

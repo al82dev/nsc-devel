@@ -1,0 +1,6 @@
+/dll
+/noentry
+/machine:x64
+/def:"1\nativesharp-stage20-408014279795900-0\SHELL32.import.lib.def"
+/implib:"1\nativesharp-stage20-408014279795900-0\SHELL32.import.lib"
+/out:"1\nativesharp-stage20-408014279795900-0\SHELL32.import.lib.dummy.dll"

@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace nativesharp::linker
 {
@@ -38,6 +40,55 @@ bool parseDecimalField(std::string_view text, std::uint64_t& value)
     }
     return sawDigit;
 }
+
+std::uint32_t readBigEndian32(const char* bytes)
+{
+    return (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[0])) << 24U) |
+        (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[1])) << 16U) |
+        (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[2])) << 8U) |
+        static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[3]));
+}
+
+bool readFirstLinkerMember(
+    std::span<const char> bytes,
+    std::vector<std::string>& symbolNames,
+    std::string& error)
+{
+    if (bytes.size() < 4)
+    {
+        error = "COFF archive first linker member is truncated";
+        return false;
+    }
+    const std::uint32_t symbolCount = readBigEndian32(bytes.data());
+    const std::uint64_t namesOffset64 =
+        4ULL + (static_cast<std::uint64_t>(symbolCount) * 4ULL);
+    if (namesOffset64 > bytes.size())
+    {
+        error = "COFF archive first linker member has a truncated symbol-offset table";
+        return false;
+    }
+
+    std::size_t cursor = static_cast<std::size_t>(namesOffset64);
+    symbolNames.reserve(symbolCount);
+    for (std::uint32_t index = 0; index < symbolCount; ++index)
+    {
+        const std::size_t start = cursor;
+        while (cursor < bytes.size() && bytes[cursor] != '\0') ++cursor;
+        if (cursor == bytes.size())
+        {
+            error = "COFF archive first linker member has a truncated symbol name table";
+            return false;
+        }
+        if (cursor == start)
+        {
+            error = "COFF archive first linker member contains an empty symbol name";
+            return false;
+        }
+        symbolNames.emplace_back(bytes.data() + start, cursor - start);
+        ++cursor;
+    }
+    return true;
+}
 }
 
 bool CoffArchiveVerifier::verify(const std::filesystem::path& path)
@@ -52,6 +103,15 @@ bool CoffArchiveVerifier::verify(const std::filesystem::path& path)
         return false;
     }
 
+    stream.seekg(0, std::ios::end);
+    const std::streamoff fileSize = stream.tellg();
+    stream.seekg(0, std::ios::beg);
+    if (fileSize < static_cast<std::streamoff>(kArchiveMagic.size()))
+    {
+        error_ = "file is too small to be a COFF archive";
+        return false;
+    }
+
     std::array<char, 8> magic{};
     stream.read(magic.data(), static_cast<std::streamsize>(magic.size()));
     if (stream.gcount() != static_cast<std::streamsize>(magic.size()) ||
@@ -61,6 +121,7 @@ bool CoffArchiveVerifier::verify(const std::filesystem::path& path)
         return false;
     }
 
+    bool readLinkerSymbols = false;
     while (true)
     {
         std::array<char, kMemberHeaderSize> header{};
@@ -91,11 +152,41 @@ bool CoffArchiveVerifier::verify(const std::filesystem::path& path)
             error_ = "COFF archive member is too large to seek";
             return false;
         }
-        stream.seekg(static_cast<std::streamoff>(memberSize), std::ios::cur);
-        if (!stream)
+        const std::streamoff memberStart = stream.tellg();
+        if (memberStart < 0 || memberStart > fileSize ||
+            static_cast<std::uint64_t>(fileSize - memberStart) < memberSize)
         {
             error_ = "COFF archive member extends past end of file";
             return false;
+        }
+        std::string_view memberName(header.data(), 16);
+        const std::size_t nameEnd = memberName.find(' ');
+        if (nameEnd != std::string_view::npos) memberName = memberName.substr(0, nameEnd);
+        if (!readLinkerSymbols && memberName == "/")
+        {
+            if (memberSize > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
+            {
+                error_ = "COFF archive linker member is too large to inspect";
+                return false;
+            }
+            std::vector<char> bytes(static_cast<std::size_t>(memberSize));
+            stream.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+            if (stream.gcount() != static_cast<std::streamsize>(bytes.size()) ||
+                !readFirstLinkerMember(bytes, info_.symbolNames, error_))
+            {
+                if (error_.empty()) error_ = "COFF archive first linker member is truncated";
+                return false;
+            }
+            readLinkerSymbols = true;
+        }
+        else
+        {
+            stream.seekg(static_cast<std::streamoff>(memberSize), std::ios::cur);
+            if (!stream)
+            {
+                error_ = "COFF archive member extends past end of file";
+                return false;
+            }
         }
         if ((memberSize & 1U) != 0U)
         {

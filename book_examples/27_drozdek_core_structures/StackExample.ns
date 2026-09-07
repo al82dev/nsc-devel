@@ -1,0 +1,102 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class IntArrayStack
+    {
+        private int[] data;
+        private int count;
+
+        public IntArrayStack(int initialCapacity)
+        {
+            if (initialCapacity < 1)
+            {
+                initialCapacity = 1;
+            }
+            data = new int[initialCapacity];
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                return count == 0;
+            }
+        }
+
+        public int Count
+        {
+            get
+            {
+                return count;
+            }
+        }
+
+        private void Grow()
+        {
+            int[] replacement = new int[data.Length * 2];
+            int index = 0;
+            while (index < count)
+            {
+                replacement[index] = data[index];
+                index = index + 1;
+            }
+            delete[] data;
+            data = replacement;
+        }
+
+        public void Push(int value)
+        {
+            if (count == data.Length)
+            {
+                Grow();
+            }
+            data[count] = value;
+            count = count + 1;
+        }
+
+        public int Top()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            return data[count - 1];
+        }
+
+        public int Pop()
+        {
+            int value = Top();
+            count = count - 1;
+            return value;
+        }
+
+        ~IntArrayStack()
+        {
+            delete[] data;
+        }
+    }
+
+    public class StackExample
+    {
+        public static int Run()
+        {
+            raii IntArrayStack stack = new IntArrayStack(2);
+            int value = 1;
+            while (value <= 8)
+            {
+                stack.Push(value * 10);
+                value = value + 1;
+            }
+            int checksum = 0;
+            int position = 1;
+            while (!stack.IsEmpty)
+            {
+                checksum = checksum + stack.Pop() * position;
+                position = position + 1;
+            }
+            Console.WriteLine("stack: dynamic array, LIFO, growth, Top and Pop under RAII");
+            return checksum;
+        }
+    }
+}

@@ -1,0 +1,242 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekAdvanced
+{
+    public class GcNode
+    {
+        public int Id;
+        public GcNode Head;
+        public GcNode Tail;
+        public bool Mark;
+        public bool Tag;
+
+        public GcNode(int id)
+        {
+            Id = id;
+        }
+    }
+
+    public class MemoryAlgorithms
+    {
+        private static int SelectFirstFit(int[] starts, int[] sizes, int count, int request)
+        {
+            int index = 0;
+            while (index < count)
+            {
+                if (sizes[index] >= request)
+                {
+                    return index;
+                }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        private static int SelectBestFit(int[] starts, int[] sizes, int count, int request)
+        {
+            int best = -1;
+            int index = 0;
+            while (index < count)
+            {
+                if (sizes[index] >= request && (best == -1 || sizes[index] < sizes[best]))
+                {
+                    best = index;
+                }
+                index = index + 1;
+            }
+            return best;
+        }
+
+        private static int SelectWorstFit(int[] starts, int[] sizes, int count, int request)
+        {
+            int worst = -1;
+            int index = 0;
+            while (index < count)
+            {
+                if (sizes[index] >= request && (worst == -1 || sizes[index] > sizes[worst]))
+                {
+                    worst = index;
+                }
+                index = index + 1;
+            }
+            return worst;
+        }
+
+        private static int BuddyOrder(int request)
+        {
+            int size = 1;
+            int order = 0;
+            while (size < request)
+            {
+                size = size * 2;
+                order = order + 1;
+            }
+            return order;
+        }
+
+        private static int MarkReachable(int[] head, int[] tail, bool[] atomic, bool[] marked, int root)
+        {
+            if (root < 0 || marked[root])
+            {
+                return 0;
+            }
+            marked[root] = true;
+            int count = 1;
+            if (!atomic[root])
+            {
+                count = count + MarkReachable(head, tail, atomic, marked, head[root]);
+                count = count + MarkReachable(head, tail, atomic, marked, tail[root]);
+            }
+            return count;
+        }
+
+        private static int CopyReachable(int[] head, int[] tail, int[] forwarding, int root, int[] next)
+        {
+            if (root < 0)
+            {
+                return -1;
+            }
+            if (forwarding[root] >= 0)
+            {
+                return forwarding[root];
+            }
+            int destination = next[0];
+            next[0] = next[0] + 1;
+            forwarding[root] = destination;
+            if (head[root] >= 0)
+            {
+                CopyReachable(head, tail, forwarding, head[root], next);
+            }
+            if (tail[root] >= 0)
+            {
+                CopyReachable(head, tail, forwarding, tail[root], next);
+            }
+            return destination;
+        }
+
+        private static void SchorrWaiteMark(GcNode root)
+        {
+            GcNode previous = null;
+            GcNode current = root;
+            while (true)
+            {
+                current.Mark = true;
+                if (current.Head == null || current.Head.Mark)
+                {
+                    while (current.Tail == null || current.Tail.Mark)
+                    {
+                        while (previous != null && previous.Tag)
+                        {
+                            previous.Tag = false;
+                            GcNode next = previous.Tail;
+                            previous.Tail = current;
+                            current = previous;
+                            previous = next;
+                        }
+                        if (previous == null)
+                        {
+                            return;
+                        }
+                        GcNode next = previous.Head;
+                        previous.Head = current;
+                        current = previous;
+                        previous = next;
+                    }
+                    current.Tag = true;
+                    GcNode next = current.Tail;
+                    current.Tail = previous;
+                    previous = current;
+                    current = next;
+                }
+                else
+                {
+                    GcNode next = current.Head;
+                    current.Head = previous;
+                    previous = current;
+                    current = next;
+                }
+            }
+        }
+
+        private static int InPlaceCollectorDemo()
+        {
+            GcNode[] heap = new GcNode[8];
+            int index = 0;
+            while (index < heap.Length)
+            {
+                heap[index] = new GcNode(index);
+                index = index + 1;
+            }
+            heap[0].Head = heap[1];
+            heap[0].Tail = heap[2];
+            heap[1].Head = heap[3];
+            heap[1].Tail = heap[4];
+            heap[2].Head = heap[4];
+            heap[2].Tail = heap[5];
+            heap[4].Head = heap[0];
+            heap[6].Head = heap[7];
+
+            SchorrWaiteMark(heap[0]);
+            int marked = 0;
+            index = 0;
+            while (index < heap.Length)
+            {
+                if (heap[index].Mark)
+                {
+                    marked = marked + 1;
+                }
+                index = index + 1;
+            }
+            bool restored = heap[0].Head == heap[1] && heap[0].Tail == heap[2] && heap[4].Head == heap[0];
+            int result = restored ? marked : -1;
+            index = 0;
+            while (index < heap.Length)
+            {
+                delete heap[index];
+                index = index + 1;
+            }
+            delete[] heap;
+            return result;
+        }
+
+        public static int Run()
+        {
+            int[] starts = new int[] { 0, 32, 80, 128, 224 };
+            int[] sizes = new int[] { 16, 40, 24, 72, 32 };
+            int first = SelectFirstFit(starts, sizes, 5, 22);
+            int best = SelectBestFit(starts, sizes, 5, 22);
+            int worst = SelectWorstFit(starts, sizes, 5, 22);
+            int buddy = BuddyOrder(37);
+
+            int[] head = new int[] { 1, 3, 5, -1, -1, -1, -1 };
+            int[] tail = new int[] { 2, 4, 6, -1, -1, -1, -1 };
+            bool[] atomic = new bool[] { false, false, false, true, true, true, true };
+            bool[] marked = new bool[7];
+            int reachable = MarkReachable(head, tail, atomic, marked, 0);
+
+            int[] forwarding = new int[7];
+            int index = 0;
+            while (index < forwarding.Length)
+            {
+                forwarding[index] = -1;
+                index = index + 1;
+            }
+            int[] next = new int[1];
+            CopyReachable(head, tail, forwarding, 0, next);
+            int copied = next[0];
+            int inPlace = InPlaceCollectorDemo();
+
+            Console.WriteLine("memory: fits, buddy, mark-sweep, copying and Schorr-Waite in-place marking");
+            int result = first + best + worst + buddy + reachable + copied + inPlace;
+            delete[] starts;
+            delete[] sizes;
+            delete[] head;
+            delete[] tail;
+            delete[] atomic;
+            delete[] marked;
+            delete[] forwarding;
+            delete[] next;
+            return result;
+        }
+    }
+} // namespace NativeSharp.BookExamples. DrozdekAdvanced

@@ -7,6 +7,7 @@
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <filesystem>
@@ -207,11 +208,13 @@ void testStableExports(TestContext& tests, const std::filesystem::path& root)
         tests.expect(contains(info.exportedSymbols, symbol),
             std::string("stable C ABI export table contains exact symbol '") + std::string(symbol) + "'");
     }
-    tests.expect(info.exportedSymbols.size() == expected.size(),
-        "Stage 47 export selection contains only explicit export extern C methods");
-    tests.expect(!contains(info.exportedSymbols, "InternalOnly") &&
-            !contains(info.exportedSymbols, "Hidden"),
-        "public/private NativeSharp methods are not exported without export extern C");
+    tests.expect(info.exportedSymbols.size() == 21,
+        "DLL contains ten stable C wrappers plus eleven public NativeSharp mangled entries");
+    tests.expect(std::any_of(info.exportedSymbols.begin(), info.exportedSymbols.end(),
+            [](const std::string& symbol) { return symbol.find("InternalOnly") != std::string::npos; }) &&
+            std::none_of(info.exportedSymbols.begin(), info.exportedSymbols.end(),
+                [](const std::string& symbol) { return symbol.find("Hidden") != std::string::npos; }),
+        "public NativeSharp methods are exported by mangled identity while private methods remain private");
     tests.expect(info.machine == 0x8664 && info.optionalHeaderMagic == 0x020b,
         "Stage 47 host ABI DLL remains AMD64 PE32+");
     tests.expect(info.clrDirectoryRva == 0,
@@ -236,8 +239,8 @@ void testStableExports(TestContext& tests, const std::filesystem::path& root)
         "Stage 47 stable C ABI DLL also closes at O0");
     tests.expect(verifier.verifyDynamicLibrary(dllO0) &&
             contains(verifier.info().exportedSymbols, "Invoke") &&
-            verifier.info().exportedSymbols.size() == expected.size(),
-        "O0 and O2 preserve the same stable C export surface");
+            verifier.info().exportedSymbols.size() == 21,
+        "O0 and O2 preserve the combined C and NativeSharp export surface");
 }
 
 void testLlvmThunks(TestContext& tests, const std::filesystem::path& root)
@@ -365,8 +368,32 @@ class Api { public static int Internal(int x) { return x; } }
             output,
             error) == ExitCode::CompilationError,
         "Stage 47 SharedLibrary requires an explicit stable C ABI export surface");
-    tests.expect(error.find("requires at least one 'public static export extern C' method") != std::string::npos,
-        "DLL-without-exports diagnostic names the required Stage 47 contract");
+    tests.expect(error.find("requires at least one public static method") != std::string::npos,
+        "DLL-without-public-surface diagnostic names the NativeSharp library contract");
+
+    const std::filesystem::path nativeOnly = root / "NativeOnly";
+    writeProject(nativeOnly, "NativeOnly", "SharedLibrary", R"NS(
+public class Api
+{
+    public static int Double(int value) { return value * 2; }
+}
+)NS");
+    output.clear();
+    error.clear();
+    const std::filesystem::path nativeOnlyDll = nativeOnly / "NativeOnly.dll";
+    tests.expect(emitProduct(
+            "--emit-project-oop-dll",
+            nativeOnly / "NativeOnly.nsproj",
+            nativeOnlyDll,
+            false,
+            output,
+            error) == ExitCode::Success,
+        "a NativeSharp DLL can publish a native API without inventing a C export");
+    PeExecutableVerifier nativeOnlyVerifier;
+    tests.expect(nativeOnlyVerifier.verifyDynamicLibrary(nativeOnlyDll) &&
+            nativeOnlyVerifier.info().exportedSymbols.size() == 1 &&
+            nativeOnlyVerifier.info().exportedSymbols.front().find("Double") != std::string::npos,
+        "native-only DLL exports exactly the public method's mangled NativeSharp symbol");
 }
 
 void testParserMemberRestrictions(TestContext& tests, const std::filesystem::path& root)

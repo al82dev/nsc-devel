@@ -1,0 +1,81 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DeitelNative
+{
+    public class BankAccount
+    {
+        private string owner;
+        private long balanceCents;
+
+        public BankAccount(string ownerName, long openingBalanceCents)
+        {
+            if (ownerName.Length == 0 || openingBalanceCents < 0L)
+            {
+                throw new InvalidOperationException();
+            }
+            owner = String.Copy(ownerName);
+            balanceCents = openingBalanceCents;
+        }
+
+        public string Owner
+        {
+            get
+            {
+                return owner;
+            }
+        }
+
+        public long BalanceCents
+        {
+            get
+            {
+                return balanceCents;
+            }
+        }
+
+        public void Deposit(long amountCents)
+        {
+            if (amountCents <= 0L)
+            {
+                throw new InvalidOperationException();
+            }
+            balanceCents = balanceCents + amountCents;
+        }
+
+        public bool TryWithdraw(long amountCents)
+        {
+            if (amountCents <= 0L || amountCents > balanceCents)
+            {
+                return false;
+            }
+            balanceCents = balanceCents - amountCents;
+            return true;
+        }
+
+        public owned string StatementLine()
+        {
+            raii string cents = String.ToString(balanceCents);
+            raii string first = String.Concat(owner, ": ");
+            return String.Concat(first, cents);
+        }
+
+        ~BankAccount()
+        {
+            delete owner;
+        }
+    }
+
+    public class BankAccountDemo
+    {
+        public static int Run()
+        {
+            raii BankAccount account = new BankAccount("Ada Lovelace", 125000L);
+            account.Deposit(27550L);
+            bool firstWithdrawal = account.TryWithdraw(32000L);
+            bool rejectedOverdraft = !account.TryWithdraw(500000L);
+            raii string statement = account.StatementLine();
+            Console.WriteLine(statement);
+            return firstWithdrawal && rejectedOverdraft && account.BalanceCents == 120550L ? 101 : -1;
+        }
+    }
+}

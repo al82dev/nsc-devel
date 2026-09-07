@@ -31,7 +31,8 @@ public:
         std::size_t projectOrdinal,
         std::size_t sourceOrdinal,
         std::string moduleName,
-        FileId fileId);
+        FileId fileId,
+        bool precompiled = false);
 
     bool lex(const source::SourceFile& sourceFile, diagnostics::DiagnosticEngine& diagnostics);
     bool parse(
@@ -48,6 +49,7 @@ public:
     ast::AstArena& arena() noexcept;
     bool isLexicallyValid() const noexcept;
     bool isSyntaxValid() const noexcept;
+    bool isPrecompiled() const noexcept;
 
 private:
     std::size_t projectOrdinal_ = 0;
@@ -59,5 +61,6 @@ private:
     ast::AstNode* syntaxTree_ = nullptr;
     bool lexicallyValid_ = false;
     bool syntaxValid_ = false;
+    bool precompiled_ = false;
 };
 }

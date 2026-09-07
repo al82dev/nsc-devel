@@ -38,6 +38,8 @@
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/Linker/CoffArchiveVerifier.h"
+#include "nativesharp/Linker/PeExecutableVerifier.h"
 #include "nativesharp/Linker/WindowsExecutableBuilder.h"
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
 #include "nativesharp/Interop/CHeaderGenerator.h"
@@ -57,10 +59,18 @@
 #include "nativesharp/Target/TargetInfo.h"
 
 #include <array>
+#include <bit>
+#include <cctype>
 #include <filesystem>
+#include <iomanip>
+#include <limits>
+#include <map>
 #include <optional>
 #include <ostream>
+#include <sstream>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::driver
@@ -92,6 +102,662 @@ constexpr std::array<LayoutRow, 15> kLayoutRows = {{
     {"enum", BuiltinLayoutKind::Enum},
     {"pointer", BuiltinLayoutKind::Pointer}
 }};
+
+std::string foldedPathKey(const std::filesystem::path& path)
+{
+    std::string key = path.lexically_normal().generic_string();
+    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+    return key;
+}
+
+struct PrecompiledExportContract final
+{
+    std::string moduleName;
+    std::string runtimeName;
+    std::string returnTypeKey;
+    std::vector<std::string> parameterTypeKeys;
+};
+
+std::string foldedName(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
+std::string escapedStringLiteral(std::string_view value)
+{
+    std::string result;
+    result.push_back('"');
+    for (const char character : value)
+    {
+        switch (character)
+        {
+            case '\\': result += "\\\\"; break;
+            case '"': result += "\\\""; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            case '\0': result += "\\0"; break;
+            default: result.push_back(character); break;
+        }
+    }
+    result.push_back('"');
+    return result;
+}
+
+bool sourceTypeForMetadataKey(
+    std::string typeKey,
+    std::string& sourceType,
+    std::string& error)
+{
+    std::vector<std::string> modifiers;
+    while (!typeKey.empty())
+    {
+        if (typeKey.ends_with("[]"))
+        {
+            modifiers.emplace_back("[]");
+            typeKey.resize(typeKey.size() - 2);
+            continue;
+        }
+        if (typeKey.ends_with("*"))
+        {
+            modifiers.emplace_back("*");
+            typeKey.pop_back();
+            continue;
+        }
+        if (typeKey.ends_with("]"))
+        {
+            const std::size_t open = typeKey.find_last_of('[');
+            if (open == std::string::npos) break;
+            modifiers.push_back(typeKey.substr(open));
+            typeKey.resize(open);
+            continue;
+        }
+        break;
+    }
+
+    if (typeKey.starts_with("builtin:"))
+    {
+        sourceType = typeKey.substr(8);
+    }
+    else if (typeKey.starts_with("type:"))
+    {
+        const std::string identity = typeKey.substr(5);
+        const std::size_t moduleSeparator = identity.find("::");
+        if (moduleSeparator == std::string::npos)
+        {
+            error = "metadata contains malformed named type key '" + typeKey + "'";
+            return false;
+        }
+        sourceType = identity.substr(moduleSeparator + 2);
+        std::replace(sourceType.begin(), sourceType.end(), '+', '.');
+        if (sourceType.find('`') != std::string::npos)
+        {
+            error = "metadata-backed source import does not yet support open generic type key '" +
+                typeKey + "'";
+            return false;
+        }
+    }
+    else
+    {
+        error = "metadata-backed source import cannot materialize type key '" + typeKey + "'";
+        return false;
+    }
+    for (auto iterator = modifiers.rbegin(); iterator != modifiers.rend(); ++iterator)
+    {
+        sourceType += *iterator;
+    }
+    return true;
+}
+
+std::string ownershipPrefix(interop::LibraryMetadataOwnershipKind ownership)
+{
+    switch (ownership)
+    {
+        case interop::LibraryMetadataOwnershipKind::Owned: return "owned ";
+        case interop::LibraryMetadataOwnershipKind::Borrowed: return "borrowed ";
+        case interop::LibraryMetadataOwnershipKind::None: return {};
+    }
+    return {};
+}
+
+bool isPublicStaticNativeMethod(const interop::LibraryMetadataMember& member) noexcept
+{
+    constexpr std::uint32_t kStatic = 1U << 0U;
+    constexpr std::uint32_t kAbstract = 1U << 5U;
+    constexpr std::uint32_t kExternC = 1U << 8U;
+    constexpr std::uint32_t kExportedC = 1U << 9U;
+    constexpr std::uint32_t kCompilerGenerated = 1U << 10U;
+    constexpr std::uint32_t kPropertyAccessor = 1U << 12U;
+    constexpr std::uint32_t kIndexerAccessor = 1U << 13U;
+    constexpr std::uint32_t kUserOperator = 1U << 16U;
+    constexpr std::uint32_t kUserConversion = 1U << 17U;
+    constexpr std::uint32_t kExcluded = kAbstract | kCompilerGenerated | kPropertyAccessor |
+        kIndexerAccessor | kUserOperator | kUserConversion;
+    constexpr std::uint8_t kMethodKind = 2U;
+    constexpr std::uint8_t kPublicAccessibility = 3U;
+    return member.kind == kMethodKind && member.accessibility == kPublicAccessibility &&
+        (member.flags & kStatic) != 0U && (member.flags & kExcluded) == 0U &&
+        ((member.flags & kExternC) == 0U || (member.flags & kExportedC) != 0U) &&
+        !member.mangledName.empty();
+}
+
+bool canMaterializeNativeMethod(
+    const interop::LibraryMetadataMember& member,
+    std::uint16_t formatMinor) noexcept
+{
+    if (!isPublicStaticNativeMethod(member)) return false;
+    const auto hasBuiltinBase = [](std::string typeKey) {
+        while (!typeKey.empty())
+        {
+            if (typeKey.ends_with("[]")) { typeKey.resize(typeKey.size() - 2); continue; }
+            if (typeKey.ends_with('*')) { typeKey.pop_back(); continue; }
+            if (typeKey.ends_with(']'))
+            {
+                const std::size_t open = typeKey.find_last_of('[');
+                if (open != std::string::npos) { typeKey.resize(open); continue; }
+            }
+            break;
+        }
+        return typeKey.starts_with("builtin:");
+    };
+    // Named value/reference types need their complete metadata-backed declaration and layout.
+    // Until that slice is installed, omit only those methods instead of making the whole library
+    // reference unusable or inventing an ABI from an empty placeholder type.
+    if (!hasBuiltinBase(member.declaredTypeKey)) return false;
+    if (std::ranges::any_of(member.parameters, [&](const auto& parameter) {
+            return !hasBuiltinBase(parameter.typeKey);
+        }))
+    {
+        return false;
+    }
+    if (formatMinor >= 4) return true;
+    // NSMETA <=1.3 encoded the pointer carrier but not whether the source said ref/out/in.
+    return member.signatureKey.find("ref ") == std::string::npos &&
+        member.signatureKey.find("out ") == std::string::npos &&
+        member.signatureKey.find("in ") == std::string::npos;
+}
+
+std::string_view parameterPassPrefix(interop::LibraryMetadataParameterPassKind passKind) noexcept
+{
+    switch (passKind)
+    {
+        case interop::LibraryMetadataParameterPassKind::Value: return {};
+        case interop::LibraryMetadataParameterPassKind::Ref: return "ref ";
+        case interop::LibraryMetadataParameterPassKind::Out: return "out ";
+        case interop::LibraryMetadataParameterPassKind::In: return "in ";
+    }
+    return {};
+}
+
+std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata& metadata)
+{
+    std::vector<std::string> symbols;
+    for (const interop::LibraryMetadataMember& member : metadata.members)
+    {
+        if (isPublicStaticNativeMethod(member)) symbols.push_back(member.mangledName);
+    }
+    std::sort(symbols.begin(), symbols.end());
+    symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
+    return symbols;
+}
+
+bool sourceDefaultValue(
+    const interop::LibraryMetadataParameter& parameter,
+    std::string& source,
+    std::string& error)
+{
+    using Kind = interop::LibraryMetadataDefaultValueKind;
+    switch (parameter.defaultValueKind)
+    {
+        case Kind::None: source.clear(); return true;
+        case Kind::Null: source = "null"; return true;
+        case Kind::Boolean: source = parameter.defaultValueBits == 0 ? "false" : "true"; return true;
+        case Kind::Integer:
+            source = (parameter.defaultValueFlags & 1U) != 0U ? "-" : "";
+            source += std::to_string(parameter.defaultValueBits);
+            return true;
+        case Kind::Floating:
+        {
+            std::ostringstream stream;
+            stream << std::setprecision(std::numeric_limits<double>::max_digits10)
+                   << std::bit_cast<double>(parameter.defaultValueBits);
+            source = stream.str();
+            if (source.find_first_of(".eE") == std::string::npos) source += ".0";
+            return true;
+        }
+        case Kind::Character:
+        {
+            const std::uint64_t value = parameter.defaultValueBits;
+            if (value == '\\') source = "'\\\\'";
+            else if (value == '\'') source = "'\\\''";
+            else if (value == '\n') source = "'\\n'";
+            else if (value == '\r') source = "'\\r'";
+            else if (value == '\t') source = "'\\t'";
+            else if (value >= 32 && value <= 126)
+                source = std::string("'") + static_cast<char>(value) + "'";
+            else
+            {
+                error = "metadata-backed source import cannot spell non-ASCII character default";
+                return false;
+            }
+            return true;
+        }
+        case Kind::String: source = escapedStringLiteral(parameter.defaultValueText); return true;
+    }
+    error = "metadata contains an unknown default-value kind";
+    return false;
+}
+
+bool buildPrecompiledPublicSource(
+    const interop::LibraryMetadata& metadata,
+    std::string& source,
+    std::string& error)
+{
+    struct PublishedType final
+    {
+        const interop::LibraryMetadataType* type = nullptr;
+        std::vector<const interop::LibraryMetadataMember*> methods;
+    };
+    std::map<std::string, PublishedType> published;
+    constexpr std::uint8_t kPublicAccessibility = 3U;
+    for (const interop::LibraryMetadataMember& member : metadata.members)
+    {
+        if (!canMaterializeNativeMethod(member, metadata.formatMinor))
+        {
+            continue;
+        }
+        const auto type = std::find_if(
+            metadata.types.begin(), metadata.types.end(), [&](const auto& candidate) {
+                return "type:" + candidate.identityKey == member.declaringTypeKey;
+            });
+        if (type == metadata.types.end())
+        {
+            error = "metadata member '" + member.name +
+                "' refers to a declaring type that is not present";
+            return false;
+        }
+        if (type->accessibility != kPublicAccessibility)
+        {
+            continue;
+        }
+        PublishedType& group = published[type->identityKey];
+        group.type = &*type;
+        group.methods.push_back(&member);
+    }
+
+    std::ostringstream generated;
+    for (const auto& [identity, group] : published)
+    {
+        static_cast<void>(identity);
+        const interop::LibraryMetadataType& type = *group.type;
+        if (type.fullyQualifiedName.find('+') != std::string::npos ||
+            type.fullyQualifiedName.find('`') != std::string::npos)
+        {
+            error = "metadata-backed source import does not yet support nested or generic "
+                "declaring type '" + type.fullyQualifiedName + "'";
+            return false;
+        }
+        const std::size_t separator = type.fullyQualifiedName.find_last_of('.');
+        const std::string namespaceName = separator == std::string::npos
+            ? std::string()
+            : type.fullyQualifiedName.substr(0, separator);
+        const std::string typeName = separator == std::string::npos
+            ? type.fullyQualifiedName
+            : type.fullyQualifiedName.substr(separator + 1);
+        if (!namespaceName.empty()) generated << "namespace " << namespaceName << "\n{\n";
+        generated << "public "
+                  << (type.kind == interop::LibraryMetadataTypeKind::Struct ? "struct " : "class ")
+                  << typeName << "\n{\n";
+
+        for (const interop::LibraryMetadataMember* member : group.methods)
+        {
+            std::string returnType;
+            if (!sourceTypeForMetadataKey(member->declaredTypeKey, returnType, error)) return false;
+            generated << "    public static " << ownershipPrefix(member->declaredOwnership)
+                      << returnType << ' ' << member->name << '(';
+            for (std::size_t index = 0; index < member->parameters.size(); ++index)
+            {
+                if (index != 0) generated << ", ";
+                std::string parameterType;
+                const interop::LibraryMetadataParameter& parameter = member->parameters[index];
+                std::string sourceTypeKey = parameter.typeKey;
+                if (parameter.passKind != interop::LibraryMetadataParameterPassKind::Value)
+                {
+                    if (sourceTypeKey.empty() || !sourceTypeKey.ends_with('*'))
+                    {
+                        error = "metadata by-reference parameter has no pointer carrier in member '" +
+                            member->name + "'";
+                        return false;
+                    }
+                    sourceTypeKey.pop_back();
+                }
+                if (!sourceTypeForMetadataKey(sourceTypeKey, parameterType, error)) return false;
+                generated << parameterPassPrefix(parameter.passKind)
+                          << ownershipPrefix(parameter.ownership) << parameterType << ' '
+                          << (parameter.name.empty() ? "arg" + std::to_string(index) : parameter.name);
+                std::string defaultValue;
+                if (!sourceDefaultValue(parameter, defaultValue, error)) return false;
+                if (!defaultValue.empty()) generated << " = " << defaultValue;
+            }
+            // The empty body is an implementation detail of the generated syntax. Precompiled
+            // units are skipped by body analysis and lowered as external NativeSharp declarations.
+            generated << ") { }\n";
+        }
+        generated << "}\n";
+        if (!namespaceName.empty()) generated << "}\n";
+    }
+    source = generated.str();
+    return true;
+}
+
+bool configurePrecompiledModules(
+    const std::filesystem::path& projectFile,
+    frontend::ProjectCompilation& compilation,
+    std::string& error)
+{
+    compilation::ProjectGraphLoader loader;
+    std::optional<compilation::ProjectGraph> graph = loader.load(projectFile, error);
+    if (!graph.has_value()) return false;
+
+    interop::LibraryMetadataCodec codec;
+    std::vector<frontend::PrecompiledSyntaxModule> modules;
+    for (const compilation::Project& project : graph->projects())
+    {
+        for (const compilation::LibraryReference& reference : project.libraryReferences())
+        {
+            interop::LibraryMetadata metadata;
+            if (!codec.read(reference.metadataPath, metadata, error) ||
+                !codec.verifyCurrentCompiler(metadata, error))
+            {
+                error = "cannot import precompiled metadata '" +
+                    reference.metadataPath.generic_string() + "': " + error;
+                return false;
+            }
+            std::string publicSource;
+            if (!buildPrecompiledPublicSource(metadata, publicSource, error))
+            {
+                error = "cannot materialize public API for module '" + metadata.moduleName +
+                    "': " + error;
+                return false;
+            }
+            modules.push_back({
+                project.projectFile(),
+                reference.metadataPath,
+                metadata.moduleName,
+                std::move(publicSource)});
+        }
+    }
+    return compilation.setPrecompiledModules(std::move(modules), error);
+}
+
+bool appendValidatedLibraryReferences(
+    const frontend::ProjectCompilation& compilation,
+    std::vector<std::filesystem::path>& libraries,
+    std::vector<std::filesystem::path>& runtimeLibraries,
+    std::string& error)
+{
+    error.clear();
+    if (compilation.projectGraph() == nullptr)
+    {
+        error = "precompiled library validation requires a project graph";
+        return false;
+    }
+
+    std::unordered_set<std::string> linkedLibraries;
+    for (const std::filesystem::path& library : libraries)
+    {
+        linkedLibraries.insert(foldedPathKey(library));
+    }
+    std::unordered_set<std::string> validatedReferences;
+    std::unordered_map<std::string, std::filesystem::path> runtimeNames;
+    std::unordered_map<std::string, std::filesystem::path> moduleOwners;
+    std::unordered_map<std::string, std::vector<PrecompiledExportContract>> publishedExports;
+    std::unordered_map<std::string, std::string> publishedNativeMethods;
+    for (const compilation::Project& project : compilation.projectGraph()->projects())
+    {
+        moduleOwners.emplace(project.moduleName(), project.projectFile());
+    }
+
+    interop::LibraryMetadataCodec metadataCodec;
+    for (const compilation::Project& project : compilation.projectGraph()->projects())
+    {
+        for (const compilation::LibraryReference& reference : project.libraryReferences())
+        {
+            const std::string libraryKey = foldedPathKey(reference.libraryPath);
+            if (validatedReferences.contains(libraryKey)) continue;
+
+            linker::CoffArchiveVerifier archiveVerifier;
+            if (!archiveVerifier.verify(reference.libraryPath))
+            {
+                error = "precompiled library '" + reference.libraryPath.string() +
+                    "' is not a valid COFF archive: " + archiveVerifier.error();
+                return false;
+            }
+
+            interop::LibraryMetadata metadata;
+            std::string metadataError;
+            if (!metadataCodec.read(reference.metadataPath, metadata, metadataError))
+            {
+                error = "cannot read metadata for precompiled library '" +
+                    reference.libraryPath.string() + "': " + metadataError;
+                return false;
+            }
+            if (!metadataCodec.verifyCurrentCompiler(metadata, metadataError))
+            {
+                error = "incompatible metadata for precompiled library '" +
+                    reference.libraryPath.string() + "': " + metadataError;
+                return false;
+            }
+            if (metadata.moduleName.empty())
+            {
+                error = "precompiled library metadata has an empty module identity: '" +
+                    reference.metadataPath.string() + "'";
+                return false;
+            }
+
+            const std::unordered_set<std::string> archiveSymbols(
+                archiveVerifier.info().symbolNames.begin(),
+                archiveVerifier.info().symbolNames.end());
+            for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+            {
+                if (archiveSymbols.contains(exportRecord.cAbiName)) continue;
+                error = "precompiled library '" + reference.libraryPath.string() +
+                    "' does not contain C ABI symbol '" + exportRecord.cAbiName +
+                    "' published by metadata module '" + metadata.moduleName + "'";
+                return false;
+            }
+            const std::vector<std::string> nativeSymbols = publishedNativeSymbols(metadata);
+            for (const std::string& symbol : nativeSymbols)
+            {
+                if (!archiveSymbols.contains(symbol))
+                {
+                    error = "precompiled library '" + reference.libraryPath.string() +
+                        "' does not contain NativeSharp symbol '" + symbol +
+                        "' published by metadata module '" + metadata.moduleName + "'";
+                    return false;
+                }
+                const auto [ownerIterator, inserted] =
+                    publishedNativeMethods.emplace(symbol, metadata.moduleName);
+                if (!inserted && ownerIterator->second != metadata.moduleName)
+                {
+                    error = "NativeSharp symbol '" + symbol +
+                        "' is published by both module '" + ownerIterator->second + "' and '" +
+                        metadata.moduleName + "'";
+                    return false;
+                }
+            }
+
+            const auto owner = moduleOwners.find(metadata.moduleName);
+            if (owner != moduleOwners.end() &&
+                foldedPathKey(owner->second) != foldedPathKey(reference.metadataPath))
+            {
+                error = "duplicate module name '" + metadata.moduleName + "' in precompiled library '" +
+                    reference.libraryPath.string() + "' and '" + owner->second.string() + "'";
+                return false;
+            }
+            if (owner == moduleOwners.end())
+                moduleOwners.emplace(metadata.moduleName, reference.libraryPath);
+
+            const std::string runtimeName = reference.runtimePath.empty()
+                ? std::string()
+                : foldedName(reference.runtimePath.filename().string());
+            for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+            {
+                publishedExports[exportRecord.cAbiName].push_back({
+                    metadata.moduleName,
+                    runtimeName,
+                    exportRecord.returnTypeKey,
+                    exportRecord.parameterTypeKeys});
+            }
+
+            if (!reference.runtimePath.empty())
+            {
+                linker::PeExecutableVerifier peVerifier;
+                if (!peVerifier.verifyDynamicLibrary(reference.runtimePath))
+                {
+                    error = "runtime '" + reference.runtimePath.string() +
+                        "' is not a valid DLL: " + peVerifier.error();
+                    return false;
+                }
+                std::vector<std::string> expectedExports;
+                expectedExports.reserve(metadata.exports.size() + nativeSymbols.size());
+                for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+                {
+                    expectedExports.push_back(exportRecord.cAbiName);
+                }
+                expectedExports.insert(
+                    expectedExports.end(), nativeSymbols.begin(), nativeSymbols.end());
+                std::sort(expectedExports.begin(), expectedExports.end());
+                expectedExports.erase(
+                    std::unique(expectedExports.begin(), expectedExports.end()), expectedExports.end());
+                std::vector<std::string> actualExports = peVerifier.info().exportedSymbols;
+                std::sort(actualExports.begin(), actualExports.end());
+                actualExports.erase(
+                    std::unique(actualExports.begin(), actualExports.end()), actualExports.end());
+                if (actualExports != expectedExports)
+                {
+                    error = "runtime DLL export table does not match metadata contract for module '" +
+                        metadata.moduleName + "'";
+                    return false;
+                }
+                const auto runtimeOwner = runtimeNames.find(runtimeName);
+                if (runtimeOwner != runtimeNames.end() &&
+                    foldedPathKey(runtimeOwner->second) != foldedPathKey(reference.runtimePath))
+                {
+                    error = "two precompiled library references require different DLLs named '" +
+                        reference.runtimePath.filename().string() + "'";
+                    return false;
+                }
+                if (runtimeOwner == runtimeNames.end())
+                {
+                    runtimeNames.emplace(runtimeName, reference.runtimePath);
+                    runtimeLibraries.push_back(reference.runtimePath);
+                }
+            }
+
+            validatedReferences.insert(libraryKey);
+            if (!linkedLibraries.contains(libraryKey))
+            {
+                linkedLibraries.insert(libraryKey);
+                libraries.push_back(reference.libraryPath);
+            }
+        }
+    }
+
+    if (compilation.oopMirModel() == nullptr) return true;
+    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+    {
+        if (function.isImportedNative)
+        {
+            if (!publishedNativeMethods.contains(function.mangledName))
+            {
+                error = "metadata-backed NativeSharp call resolved to unpublished symbol '" +
+                    function.mangledName + "'";
+                return false;
+            }
+            continue;
+        }
+        if (!function.isImportedC) continue;
+        const auto found = publishedExports.find(function.cAbiName);
+        if (found == publishedExports.end()) continue;
+
+        const PrecompiledExportContract* contract = nullptr;
+        if (!function.importDllName.empty())
+        {
+            const std::string requestedRuntime =
+                foldedName(std::filesystem::path(function.importDllName).filename().string());
+            for (const PrecompiledExportContract& candidate : found->second)
+            {
+                if (candidate.runtimeName != requestedRuntime) continue;
+                if (contract != nullptr)
+                {
+                    error = "extern C import '" + function.cAbiName +
+                        "' is published more than once by runtime DLL '" +
+                        function.importDllName + "'";
+                    return false;
+                }
+                contract = &candidate;
+            }
+            // This symbol may belong to a foreign DLL that happens to share its name with an
+            // unrelated LibraryReference export. Only metadata for the requested DLL is binding.
+            if (contract == nullptr) continue;
+        }
+        else
+        {
+            if (found->second.size() != 1)
+            {
+                error = "extern C import '" + function.cAbiName +
+                    "' is ambiguous across precompiled library metadata; qualify the DLL import";
+                return false;
+            }
+            contract = &found->second.front();
+        }
+
+        if (function.returnTypeKey != contract->returnTypeKey ||
+            function.parameterTypeKeys != contract->parameterTypeKeys)
+        {
+            error = "extern C import '" + function.cAbiName +
+                "' does not match the metadata signature published by module '" +
+                contract->moduleName + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool verifyLinkedRuntimeLibraries(
+    std::span<const std::filesystem::path> runtimeLibraries,
+    const linker::PeExecutableInfo& image,
+    std::string& error)
+{
+    for (const std::filesystem::path& runtime : runtimeLibraries)
+    {
+        std::string expected = runtime.filename().string();
+        std::transform(expected.begin(), expected.end(), expected.begin(), [](unsigned char value) {
+            return static_cast<char>(std::tolower(value));
+        });
+        const bool found = std::any_of(
+            image.importedLibraries.begin(), image.importedLibraries.end(),
+            [&](std::string actual) {
+                std::transform(actual.begin(), actual.end(), actual.begin(), [](unsigned char value) {
+                    return static_cast<char>(std::tolower(value));
+                });
+                return actual == expected;
+            });
+        if (!found)
+        {
+            error = "linked PE does not import declared runtime DLL '" +
+                runtime.filename().string() + "'; the import .lib does not match Runtime";
+            return false;
+        }
+    }
+    return true;
+}
 }
 
 ExitCode Driver::run(
@@ -390,6 +1056,7 @@ void Driver::printHelp(std::ostream& output)
         << "  nsc --print-data-layout\n"
         << "  nsc --version\n\n"
         << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a compilation command.\n"
+        << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently selects the static librarian.\n"
         << "Stage 37 semantics remain preserved: static members, deterministic initialization, const and readonly.\n"
         << "Recovered Stage 35 adds abstract/sealed classes and methods plus descriptor-driven native destruction.\n"
         << "Stage 36 interfaces, Stage 38 properties/indexers/operators, and Stage 39 native RTTI remain preserved. "
@@ -581,7 +1248,11 @@ ExitCode Driver::printLinker(std::ostream& output, std::ostream& error)
 
     output
         << "linker: " << linker->executablePath().string() << '\n'
-        << "flavor: lld-link / COFF\n"
+        << "librarian: " <<
+            (linker->librarianExecutablePath().empty()
+                ? std::string("unavailable (set NSC_LLVM_LIB)")
+                : linker->librarianExecutablePath().string()) << '\n'
+        << "flavor: Windows COFF/PE\n"
         << "target: x86_64-pc-windows-msvc\n"
         << "subsystem: console\n";
     return ExitCode::Success;
@@ -774,6 +1445,12 @@ ExitCode Driver::runProject(
 
     frontend::ProjectCompilation projectCompilation;
     std::string loadError;
+    if (!configurePrecompiledModules(
+            std::filesystem::path(path), projectCompilation, loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     const bool oopLlvmAction =
         action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm";
     const bool oopMirAction = oopLlvmAction ||
@@ -1148,6 +1825,12 @@ ExitCode Driver::runProjectOopCodeGeneration(
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
+    if (!configurePrecompiledModules(
+            std::filesystem::path(inputPath), compilation, loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -1278,6 +1961,12 @@ ExitCode Driver::runProjectOopExecutableGeneration(
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
+    if (!configurePrecompiledModules(
+            std::filesystem::path(inputPath), compilation, loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -1342,9 +2031,20 @@ ExitCode Driver::runProjectOopExecutableGeneration(
         return ExitCode::CompilationError;
     }
 
+    std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
+    std::vector<std::filesystem::path> runtimeLibraries;
+    std::string referenceError;
+    if (!appendValidatedLibraryReferences(
+            compilation, linkLibraries, runtimeLibraries, referenceError))
+    {
+        error << "nsc: error: precompiled library reference validation failed: "
+              << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
+
     linker::WindowsExecutableBuilder builder;
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
-    builder.setExtraLinkLibraries(extraLinkLibraries);
+    builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     const std::filesystem::path destination(outputPath);
     if (!builder.build(
@@ -1357,6 +2057,14 @@ ExitCode Driver::runProjectOopExecutableGeneration(
         error << "nsc: error: OOP Windows executable generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
     }
+    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.info(), referenceError))
+    {
+        std::error_code removeError;
+        std::filesystem::remove(destination, removeError);
+        error << "nsc: error: precompiled DLL/import-library mismatch: "
+              << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
 
     output
         << "project OOP PE executable emission: ok\n"
@@ -1365,6 +2073,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(
         << "format: PE32+\n"
         << "subsystem: Windows CUI\n"
         << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+        << "linked-libraries: " << linkLibraries.size() << '\n'
         << "sections: " << builder.info().sectionCount << '\n'
         << "entry-rva: " << builder.info().entryPointRva << '\n'
         << "exception-directory-rva: " << builder.info().exceptionDirectoryRva << '\n'
@@ -1388,6 +2097,12 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
+    if (!configurePrecompiledModules(
+            std::filesystem::path(inputPath), compilation, loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -1413,6 +2128,16 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
         error << "nsc: error: --emit-project-oop-lib requires root OutputType Library or StaticLibrary\n";
         return ExitCode::CompilationError;
     }
+    std::vector<std::filesystem::path> referencedLibraries;
+    std::vector<std::filesystem::path> runtimeLibraries;
+    std::string referenceError;
+    if (!appendValidatedLibraryReferences(
+            compilation, referencedLibraries, runtimeLibraries, referenceError))
+    {
+        error << "nsc: error: precompiled library reference validation failed: "
+              << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module = lowerer.lower(
@@ -1430,6 +2155,8 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
     }
 
     linker::WindowsLibraryBuilder builder;
+    builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
+    builder.setExtraLinkLibraries(referencedLibraries);
     std::string buildError;
     const std::filesystem::path destination(outputPath);
     if (!builder.buildStatic(*module, destination, optimizationLevel, buildError))
@@ -1470,6 +2197,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
         << "format: COFF archive (.lib)\n"
         << "machine-members: AMD64 COFF\n"
         << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+        << "library-references: " << referencedLibraries.size() << '\n'
         << "archive-members: " << builder.archiveInfo().memberCount << '\n'
         << "host-header: " << headerDestination.generic_string() << '\n'
         << "library-metadata: " << metadataDestination.generic_string() << '\n';
@@ -1486,6 +2214,12 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
+    if (!configurePrecompiledModules(
+            std::filesystem::path(inputPath), compilation, loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -1526,15 +2260,24 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
         const frontend::ClassMemberSymbol& member = members[function.memberOrdinal];
         const frontend::NamedTypeDeclaration& type = types[function.declaringTypeOrdinal];
         if (type.projectOrdinal != rootProjectOrdinal ||
-            member.kind != frontend::ClassMemberKind::Method || !member.isExportedC)
+            type.accessibility != frontend::NamedTypeAccessibility::Public ||
+            member.kind != frontend::ClassMemberKind::Method ||
+            member.accessibility != frontend::ClassMemberAccessibility::Public ||
+            !member.isStatic || member.isAbstract || member.isCompilerGenerated ||
+            member.isPropertyAccessor || member.isIndexerAccessor ||
+            member.isUserOperator || member.isUserConversion ||
+            (member.isExternC && !member.isExportedC))
         {
             continue;
         }
-        exportSymbols.push_back(member.cAbiName);
+        exportSymbols.push_back(function.mangledName);
+        if (member.isExportedC) exportSymbols.push_back(member.cAbiName);
     }
+    std::sort(exportSymbols.begin(), exportSymbols.end());
+    exportSymbols.erase(std::unique(exportSymbols.begin(), exportSymbols.end()), exportSymbols.end());
     if (exportSymbols.empty())
     {
-        error << "nsc: error: Stage 47 DLL requires at least one 'public static export extern C' method in the root project\n";
+        error << "nsc: error: NativeSharp DLL requires at least one public static method in the root project\n";
         return ExitCode::CompilationError;
     }
 
@@ -1561,9 +2304,20 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
         importLibrary += ".import.lib";
     }
 
+    std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
+    std::vector<std::filesystem::path> runtimeLibraries;
+    std::string referenceError;
+    if (!appendValidatedLibraryReferences(
+            compilation, linkLibraries, runtimeLibraries, referenceError))
+    {
+        error << "nsc: error: precompiled library reference validation failed: "
+              << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
+
     linker::WindowsLibraryBuilder builder;
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
-    builder.setExtraLinkLibraries(extraLinkLibraries);
+    builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     if (!builder.buildDynamic(
             *module,
@@ -1574,6 +2328,16 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
             buildError))
     {
         error << "nsc: error: NativeSharp DLL generation failed: " << buildError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!verifyLinkedRuntimeLibraries(
+            runtimeLibraries, builder.dynamicLibraryInfo(), referenceError))
+    {
+        std::error_code removeError;
+        std::filesystem::remove(destination, removeError);
+        std::filesystem::remove(importLibrary, removeError);
+        error << "nsc: error: precompiled DLL/import-library mismatch: "
+              << referenceError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -1609,6 +2373,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
         << "format: PE32+ DLL\n"
         << "machine: AMD64 (0x8664)\n"
         << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+        << "linked-libraries: " << linkLibraries.size() << '\n'
         << "import-library: " << importLibrary.generic_string() << '\n'
         << "host-header: " << headerDestination.generic_string() << '\n'
         << "library-metadata: " << metadataDestination.generic_string() << '\n'
@@ -1632,6 +2397,12 @@ ExitCode Driver::runProjectHostHeaderGeneration(
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
+    if (!configurePrecompiledModules(
+            std::filesystem::path(inputPath), compilation, loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!compilation.compileProjectObjectLayouts(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty()) error << "nsc: error: " << loadError << '\n';
@@ -1678,6 +2449,12 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
+    if (!configurePrecompiledModules(
+            std::filesystem::path(inputPath), compilation, loadError))
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty()) error << "nsc: error: " << loadError << '\n';

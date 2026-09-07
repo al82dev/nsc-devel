@@ -1,0 +1,239 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.BookExamples.DrozdekCore
+{
+    public class BinaryNode
+    {
+        public int Info;
+        public BinaryNode Left;
+        public BinaryNode Right;
+
+        public BinaryNode(int value)
+        {
+            Info = value;
+        }
+    }
+
+    public class IntBinaryTree
+    {
+        private BinaryNode root;
+
+        public void BuildCompleteSample()
+        {
+            Clear();
+            root = new BinaryNode(1);
+            root.Left = new BinaryNode(2);
+            root.Right = new BinaryNode(3);
+            root.Left.Left = new BinaryNode(4);
+            root.Left.Right = new BinaryNode(5);
+            root.Right.Left = new BinaryNode(6);
+            root.Right.Right = new BinaryNode(7);
+        }
+
+        private int CountNode(BinaryNode node)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            return 1 + CountNode(node.Left) + CountNode(node.Right);
+        }
+
+        public int Count()
+        {
+            return CountNode(root);
+        }
+
+        private int HeightNode(BinaryNode node)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int leftHeight = HeightNode(node.Left);
+            int rightHeight = HeightNode(node.Right);
+            if (leftHeight > rightHeight)
+            {
+                return leftHeight + 1;
+            }
+            return rightHeight + 1;
+        }
+
+        public int Height()
+        {
+            return HeightNode(root);
+        }
+
+        private int LeafCountNode(BinaryNode node)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            if (node.Left == null && node.Right == null)
+            {
+                return 1;
+            }
+            return LeafCountNode(node.Left) + LeafCountNode(node.Right);
+        }
+
+        public int LeafCount()
+        {
+            return LeafCountNode(root);
+        }
+
+        private int PreorderNode(BinaryNode node, int factor)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int own = node.Info * factor;
+            int left = PreorderNode(node.Left, factor + 1);
+            int right = PreorderNode(node.Right, factor + 1);
+            return own + left + right;
+        }
+
+        public int PreorderChecksum()
+        {
+            return PreorderNode(root, 1);
+        }
+
+        private int InorderNode(BinaryNode node, int[] position)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int checksum = InorderNode(node.Left, position);
+            position[0] = position[0] + 1;
+            checksum = checksum + node.Info * position[0];
+            checksum = checksum + InorderNode(node.Right, position);
+            return checksum;
+        }
+
+        public int InorderChecksum()
+        {
+            int[] position = new int[1];
+            int checksum = InorderNode(root, position);
+            delete[] position;
+            return checksum;
+        }
+
+        private int PostorderNode(BinaryNode node, int[] position)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+            int checksum = PostorderNode(node.Left, position);
+            checksum = checksum + PostorderNode(node.Right, position);
+            position[0] = position[0] + 1;
+            return checksum + node.Info * position[0];
+        }
+
+        public int PostorderChecksum()
+        {
+            int[] position = new int[1];
+            int checksum = PostorderNode(root, position);
+            delete[] position;
+            return checksum;
+        }
+
+        public int BreadthFirstChecksum()
+        {
+            if (root == null)
+            {
+                return 0;
+            }
+            BinaryNode[] queue = new BinaryNode[Count()];
+            int first = 0;
+            int last = 0;
+            int position = 1;
+            int checksum = 0;
+            queue[last] = root;
+            last = last + 1;
+            while (first < last)
+            {
+                BinaryNode node = queue[first];
+                first = first + 1;
+                checksum = checksum + node.Info * position;
+                position = position + 1;
+                if (node.Left != null)
+                {
+                    queue[last] = node.Left;
+                    last = last + 1;
+                }
+                if (node.Right != null)
+                {
+                    queue[last] = node.Right;
+                    last = last + 1;
+                }
+            }
+            delete[] queue;
+            return checksum;
+        }
+
+        private void MirrorNode(BinaryNode node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+            BinaryNode temporary = node.Left;
+            node.Left = node.Right;
+            node.Right = temporary;
+            MirrorNode(node.Left);
+            MirrorNode(node.Right);
+        }
+
+        public void Mirror()
+        {
+            MirrorNode(root);
+        }
+
+        private void ClearNode(BinaryNode node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+            ClearNode(node.Left);
+            ClearNode(node.Right);
+            node.Left = null;
+            node.Right = null;
+            delete node;
+        }
+
+        public void Clear()
+        {
+            ClearNode(root);
+            root = null;
+        }
+
+        ~IntBinaryTree()
+        {
+            Clear();
+        }
+    }
+
+    public class BinaryTreeExample
+    {
+        public static int Run()
+        {
+            raii IntBinaryTree tree = new IntBinaryTree();
+            tree.BuildCompleteSample();
+            int checksum = tree.PreorderChecksum();
+            checksum = checksum + tree.InorderChecksum();
+            checksum = checksum + tree.PostorderChecksum();
+            checksum = checksum + tree.BreadthFirstChecksum();
+            checksum = checksum + tree.Count() * 10;
+            checksum = checksum + tree.Height() * 100;
+            checksum = checksum + tree.LeafCount() * 1000;
+            tree.Mirror();
+            checksum = checksum + tree.BreadthFirstChecksum();
+            Console.WriteLine("binary tree: traversals, height, leaves and mirror");
+            return checksum;
+        }
+    }
+}

@@ -23,6 +23,7 @@ using nativesharp::interop::LibraryMetadata;
 using nativesharp::interop::LibraryMetadataCodec;
 using nativesharp::interop::LibraryMetadataMember;
 using nativesharp::interop::LibraryMetadataOwnershipKind;
+using nativesharp::interop::LibraryMetadataParameterPassKind;
 using nativesharp::tests::TestContext;
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
@@ -151,15 +152,15 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
     tests.expect(
         emitMetadata(directory / "OwnershipMetadata.nsproj", outputPath, output, error) == ExitCode::Success,
         "Stage 50.9 emits ownership-aware library metadata");
-    tests.expect(error.empty() && output.find("format: NSMETA 1.2") != std::string::npos,
-        "Stage 50.9 advertises the NSMETA 1.2 schema");
+    tests.expect(error.empty() && output.find("format: NSMETA 1.4") != std::string::npos,
+        "the metadata command advertises the current NSMETA 1.4 schema");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(outputPath, metadata, error),
-        "NSMETA 1.2 ownership contracts round-trip through the reader");
-    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 2,
-        "metadata reader preserves the 1.2 format identity");
+        "NSMETA ownership contracts round-trip through the reader");
+    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 4,
+        "metadata reader preserves the current 1.4 format identity");
 
     const LibraryMetadataMember* plain = findMember(metadata, "Plain");
     const LibraryMetadataMember* take = findMember(metadata, "Take");
@@ -365,6 +366,72 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
         "the record AFTER the enum is not shifted -- the 1.2 field was correctly not read");
     tests.expect(codec.verifyCurrentCompiler(decoded, error),
         "a decoded 1.1 file is accepted by the current compiler");
+
+    // NSMETA 1.3 added the default-value tuple to every parameter record. Exercise the immediate
+    // predecessor with a parameter AND a following member: if the reader consumes 1.3 bytes from
+    // a 1.2 record, the sentinel member shifts and the payload cannot decode correctly.
+    nativesharp::interop::LibraryMetadata previous;
+    previous.formatMinor = 2;
+    previous.producerVersion = std::string(nativesharp::kCompilerVersion);
+    previous.moduleName = "PreviousFormat";
+    previous.targetTriple = "x86_64-pc-windows-msvc";
+    nativesharp::interop::LibraryMetadataMember callable;
+    callable.name = "Optional";
+    nativesharp::interop::LibraryMetadataParameter oldParameter;
+    oldParameter.name = "value";
+    oldParameter.typeKey = "builtin:int";
+    oldParameter.defaultValueKind =
+        nativesharp::interop::LibraryMetadataDefaultValueKind::Integer;
+    oldParameter.defaultValueFlags = 1U;
+    oldParameter.defaultValueBits = 7U;
+    callable.parameters.push_back(oldParameter);
+    previous.members.push_back(callable);
+    nativesharp::interop::LibraryMetadataMember sentinel;
+    sentinel.name = "AfterParameter";
+    sentinel.constantKind = 1U;
+    sentinel.constantBits = 99U;
+    previous.members.push_back(sentinel);
+
+    const auto previousPath = root / "PreviousFormat.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(previous, previousPath, error),
+        "an NSMETA 1.2 file with a parameter record can still be produced");
+    nativesharp::interop::LibraryMetadata previousDecoded;
+    error.clear();
+    tests.expect(codec.read(previousPath, previousDecoded, error),
+        "the current reader decodes the immediate NSMETA 1.2 predecessor");
+    tests.expect(previousDecoded.members.size() == 2 &&
+            previousDecoded.members[0].parameters.size() == 1 &&
+            previousDecoded.members[0].parameters[0].defaultValueKind ==
+                nativesharp::interop::LibraryMetadataDefaultValueKind::None,
+        "a 1.2 parameter has no invented default value");
+    tests.expect(previousDecoded.members.size() == 2 &&
+            previousDecoded.members[1].name == "AfterParameter" &&
+            previousDecoded.members[1].constantBits == 99U,
+        "the member after a 1.2 parameter record remains byte-aligned");
+
+    // NSMETA 1.4 adds pass-kind after ownership and before the existing default tuple. A 1.3
+    // record must therefore decode its default in the old position and default the absent source
+    // pass kind to Value instead of consuming the first default byte as ref/out/in.
+    nativesharp::interop::LibraryMetadata passPrevious = previous;
+    passPrevious.formatMinor = 3;
+    passPrevious.members[0].parameters[0].passKind = LibraryMetadataParameterPassKind::Ref;
+    const auto passPreviousPath = root / "PreviousPassKindFormat.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(passPrevious, passPreviousPath, error),
+        "an NSMETA 1.3 parameter record can still be produced without a pass-kind byte");
+    nativesharp::interop::LibraryMetadata passPreviousDecoded;
+    error.clear();
+    tests.expect(codec.read(passPreviousPath, passPreviousDecoded, error) &&
+            passPreviousDecoded.members.size() == 2 &&
+            passPreviousDecoded.members[0].parameters.size() == 1,
+        "the current reader decodes the immediate NSMETA 1.3 predecessor");
+    tests.expect(passPreviousDecoded.members[0].parameters[0].passKind ==
+            LibraryMetadataParameterPassKind::Value &&
+            passPreviousDecoded.members[0].parameters[0].defaultValueKind ==
+                nativesharp::interop::LibraryMetadataDefaultValueKind::Integer &&
+            passPreviousDecoded.members[1].name == "AfterParameter",
+        "a 1.3 parameter invents no ref/out/in identity and leaves following records aligned");
 
     // LA HUELLA ABI TIENE QUE DISTINGUIR EL SIGNO. `enum : byte` y `enum : sbyte` miden lo mismo,
     // asi que si la huella solo cubriera el tamano dos modulos incompatibles tendrian la MISMA, y
