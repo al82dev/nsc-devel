@@ -6,6 +6,10 @@ LECTURA HISTÓRICA RECOMENDADA
 
     130_evolucion_didactica_nativesharp_hasta_0_9_0.md
     131_bitacora_por_cambio_independiente_de_git.md
+    132_1_0_e1_objetos_precompilados_completos.md
+    133_1_0_e2_genericos_entre_bibliotecas.md
+    134_1_0_e3_lifetime_delegates_excepciones_entre_modulos.md
+    135_1_0_e4_congelacion_abi_y_nsmeta_1_8.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -16,6 +20,11 @@ pipeline y qué evidencia permite distinguir intención histórica de implementa
 El documento 131 establece la regla permanente para continuar esa historia: cada cambio debe
 documentarse mientras se implementa, incluso si no existe commit, e incluir archivos, funciones,
 razonamiento, pruebas, resultado observable y trabajo que permanece abierto.
+
+Los documentos 132 a 135 registran la implementación y el cierre técnico de las cuatro primeras
+megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifetime de delegates y
+excepciones entre módulos, y congelación ABI/NSMETA. Incluyen el recorrido del problema,
+decisiones, funciones, archivos, fallos descubiertos y matriz de pruebas.
 
 Entrega: Stage 56, fases C1 a C8 completas.
 Estado: ctest 237/237, build limpio desde cero con -DNSC_WARNINGS_AS_ERRORS=ON, cero warnings.

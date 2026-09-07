@@ -20,13 +20,32 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 8 (2026-09-07): el fichero publica el contrato ABI versionado y la representacion de
+// delegates ordinarios. A partir de aqui NSMETA distingue su propia version de la version del ABI
+// que describe; subir el formato no cambia por si solo los binarios de usuario.
+// MINOR 7 (2026-09-07): cada plantilla generica publica conserva su implementacion fuente
+// canonica para que otro modulo pueda monomorfizarla con el frontend del consumidor.
+// MINOR 6 (2026-09-07): cada clase publicable conserva el accessor funcional de su descriptor.
 // MINOR 5 (2026-09-07): un delegate conserva su firma y si es extern C.
 // MINOR 4 (2026-09-06): cada parametro conserva Value/ref/out/in.
 // MINOR 3 (2026-09-06): cada parametro conserva su valor predeterminado literal.
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 5;
+inline constexpr std::uint16_t kMetadataFormatMinor = 8;
+
+// Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
+// fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una
+// decisión física. NSMETA puede evolucionar de forma aditiva manteniendo estos valores.
+inline constexpr std::uint16_t kNativeAbiMajor = 1;
+inline constexpr std::uint16_t kNativeAbiMinor = 0;
+inline constexpr std::uint16_t kRuntimeAbiMajor = 1;
+inline constexpr std::uint16_t kRuntimeAbiMinor = 0;
+inline constexpr std::uint16_t kManglingAbiVersion = 1;
+inline constexpr std::uint16_t kObjectAbiVersion = 1;
+inline constexpr std::uint16_t kDelegateAbiVersion = 1;
+inline constexpr std::uint16_t kExceptionAbiVersion = 1;
+inline constexpr std::uint32_t kManagedDelegateCellSize = 32;
 enum class LibraryMetadataTypeKind : std::uint8_t
 {
     Class = 0,
@@ -143,12 +162,17 @@ struct LibraryMetadataMember final
 struct LibraryMetadataGenericTemplate final
 {
     std::uint8_t kind = 0;
+    std::uint8_t accessibility = 0;
     std::string canonicalKey;
     std::string moduleName;
     std::string namespaceName;
     std::string ownerName;
     std::string name;
     std::vector<std::string> parameters;
+    // NSMETA 1.7: declaration slice as authored by the producer. This is deliberately a public
+    // template implementation, not a snapshot of producer internals: the consumer parses it in
+    // its own compilation and the existing monomorphizer remains the only specialization engine.
+    std::string sourceText;
 };
 
 struct LibraryMetadataGenericSpecialization final
@@ -175,6 +199,10 @@ struct LibraryMetadataDispatch final
     std::string typeKey;
     std::uint64_t stableTypeId = 0;
     std::string descriptorName;
+    // NSMETA 1.6. PE imports functions and data through different indirections. Consumers call
+    // this no-argument function to obtain the producer's actual descriptor address instead of
+    // treating an import-address-table cell as the descriptor itself.
+    std::string descriptorAccessorName;
     std::string vtableName;
     std::string destructionEntryName;
     std::vector<std::string> slotSignatures;
@@ -201,6 +229,16 @@ struct LibraryMetadata final
     std::string producerVersion;
     std::string moduleName;
     std::string targetTriple;
+    // NSMETA 1.8. Version del CONTRATO descrito, independiente de formatMajor/formatMinor.
+    std::uint16_t nativeAbiMajor = kNativeAbiMajor;
+    std::uint16_t nativeAbiMinor = kNativeAbiMinor;
+    std::uint16_t runtimeAbiMajor = kRuntimeAbiMajor;
+    std::uint16_t runtimeAbiMinor = kRuntimeAbiMinor;
+    std::uint16_t manglingAbiVersion = kManglingAbiVersion;
+    std::uint16_t objectAbiVersion = kObjectAbiVersion;
+    std::uint16_t delegateAbiVersion = kDelegateAbiVersion;
+    std::uint16_t exceptionAbiVersion = kExceptionAbiVersion;
+    std::uint32_t managedDelegateCellSize = kManagedDelegateCellSize;
     std::array<std::uint8_t, 32> abiFingerprint{};
     std::vector<LibraryMetadataType> types;
     std::vector<LibraryMetadataMember> members;

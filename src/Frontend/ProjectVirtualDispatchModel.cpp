@@ -34,11 +34,6 @@ bool ProjectVirtualDispatchModel::build(
     bool ok = true;
     for (const ClassInheritanceInfo& info : inheritanceModel.classes())
     {
-        if (info.typeOrdinal < nameLookup.namedTypes().size() &&
-            nameLookup.namedTypes()[info.typeOrdinal].isPrecompiled)
-        {
-            continue;
-        }
         if (!buildClass(info.typeOrdinal, diagnostics))
         {
             ok = false;

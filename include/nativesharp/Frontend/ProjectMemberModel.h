@@ -97,6 +97,10 @@ struct ClassMemberSymbol final
     SourceRange range;
     const ast::AstNode* syntax = nullptr;
     std::string sourcePath;
+    // The origin belongs to the declaration PART, not necessarily to the complete partial type.
+    // A metadata API part may be precompiled while a transported generic-template part is local
+    // and must therefore be analyzed/lowered in the consumer.
+    bool isPrecompiled = false;
     std::string name;
     const ast::TypeSyntax* declaredTypeSyntax = nullptr;
     std::string declaredTypeKey;

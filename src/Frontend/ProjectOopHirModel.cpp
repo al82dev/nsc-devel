@@ -790,9 +790,16 @@ bool ProjectOopHirModel::build(
         {
             continue;
         }
-        if (member.kind == ClassMemberKind::Method &&
-            member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
-            nameLookup.namedTypes()[member.declaringTypeOrdinal].isPrecompiled)
+        if (member.kind == ClassMemberKind::Destructor && member.isPrecompiled)
+        {
+            // The consumer needs the declaration to build the destruction plan, but never imports
+            // or regenerates the destructor body. Destruction crosses the producer-owned entry
+            // stored in the runtime class descriptor.
+            continue;
+        }
+        if ((member.kind == ClassMemberKind::Method ||
+             member.kind == ClassMemberKind::Constructor) &&
+            member.isPrecompiled)
         {
             // The declaration came from .nsmeta and participates in the ordinary NativeSharp
             // overload set, but its implementation is already in the referenced .lib/DLL. The
@@ -801,12 +808,16 @@ bool ProjectOopHirModel::build(
             ProjectOopHirFunction imported;
             imported.memberOrdinal = memberOrdinal;
             imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
+            imported.constructor = member.kind == ClassMemberKind::Constructor;
+            imported.destructor = false;
             imported.isStatic = member.isStatic;
             imported.isImportedNative = true;
             imported.mangledName = mangleCallable(
                 nameLookup.namedTypes()[member.declaringTypeOrdinal], member);
-            imported.returnTypeKey = member.declaredTypeKey;
-            imported.returnOwnership = member.declaredOwnership;
+            imported.returnTypeKey = imported.constructor ? "builtin:void" : member.declaredTypeKey;
+            imported.returnOwnership = imported.constructor
+                ? sema::OwnershipKind::None
+                : member.declaredOwnership;
             for (const MethodParameterSymbol& parameter : member.parameters)
             {
                 imported.parameterTypeKeys.push_back(parameter.typeKey);

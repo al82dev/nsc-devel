@@ -33,6 +33,8 @@ struct PrecompiledSyntaxModule final
     std::filesystem::path metadataPath;
     std::string moduleName;
     std::string sourceText;
+    std::string templateSourceText;
+    std::vector<PrecompiledGenericSpecialization> genericSpecializations;
 };
 
 class ProjectCompilation final

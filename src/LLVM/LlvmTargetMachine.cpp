@@ -5,8 +5,10 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/Target/TargetInfo.h"
 
+#include <chrono>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace nativesharp::llvm_backend
@@ -209,25 +211,41 @@ bool LlvmTargetMachine::emit(
     }
 
     std::string mutablePath = outputPath.string();
-    char* message = nullptr;
     const llvm_api::LLVMCodeGenFileType llvmFileType =
         fileType == LlvmCodeGenFileType::Object
             ? llvm_api::LLVMObjectFile
             : llvm_api::LLVMAssemblyFile;
-    const int failed = llvm_api::LLVMTargetMachineEmitToFile(
-        static_cast<llvm_api::LLVMTargetMachineRef>(targetMachine_),
-        static_cast<llvm_api::LLVMModuleRef>(module.module_),
-        mutablePath.data(),
-        llvmFileType,
-        &message);
-    if (failed != 0)
+
+    // Windows can leave a just-verified COFF file mapped for a few milliseconds. Re-emitting
+    // the same deterministic fixture then fails in LLVM before code generation with
+    // ERROR_USER_MAPPED_FILE. This is a transient output-handle condition, not an IR error;
+    // retry only that exact family of sharing diagnostics and preserve every other failure.
+    constexpr int kMaximumOutputLockAttempts = 100;
+    for (int attempt = 0; attempt != kMaximumOutputLockAttempts; ++attempt)
     {
-        error = message != nullptr ? message : "LLVM target emission failed";
+        char* message = nullptr;
+        const int failed = llvm_api::LLVMTargetMachineEmitToFile(
+            static_cast<llvm_api::LLVMTargetMachineRef>(targetMachine_),
+            static_cast<llvm_api::LLVMModuleRef>(module.module_),
+            mutablePath.data(),
+            llvmFileType,
+            &message);
+        const std::string attemptError =
+            message != nullptr ? message : "LLVM target emission failed";
+        if (message != nullptr) llvm_api::LLVMDisposeMessage(message);
+        if (failed == 0) return true;
+
+        const bool transientOutputLock =
+            attemptError.find("user-mapped section open") != std::string::npos ||
+            attemptError.find("sharing violation") != std::string::npos;
+        if (!transientOutputLock || attempt + 1 == kMaximumOutputLockAttempts)
+        {
+            error = attemptError;
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    if (message != nullptr)
-    {
-        llvm_api::LLVMDisposeMessage(message);
-    }
-    return failed == 0;
+    error = "LLVM target emission exhausted its transient output-lock retry budget";
+    return false;
 }
 }

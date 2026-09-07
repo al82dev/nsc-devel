@@ -646,11 +646,13 @@ bool ProjectOopMirModel::build(
             return false;
         }
         ProjectOopMirDispatchTable table;
+        table.isImported = nameLookup.namedTypes()[sourceTable.typeOrdinal].isPrecompiled;
         table.typeOrdinal = sourceTable.typeOrdinal;
         table.baseTypeOrdinal = sourceTable.baseTypeOrdinal;
         table.typeKey = "type:" + nameLookup.namedTypes()[sourceTable.typeOrdinal].identity.key();
         const std::string suffix = sanitizeDispatchName(nameLookup.namedTypes()[sourceTable.typeOrdinal].identity.key());
         table.descriptorName = "__nsc_classdesc_" + suffix;
+        table.descriptorAccessorName = "__nsc_get_classdesc_" + suffix;
         table.vtableName = "__nsc_vtable_" + suffix;
         table.interfaceMapName = "__nsc_ifmap_" + suffix;
         table.stableTypeId = stableTypeId(table.typeKey);
@@ -690,15 +692,18 @@ bool ProjectOopMirModel::build(
         }
         table.destructionEntryName = destruction->destructionEntryName;
         table.destructorMemberOrdinals = destruction->destructorMemberOrdinals;
-        for (const std::size_t destructorMember : destruction->destructorMemberOrdinals)
+        if (!table.isImported)
         {
-            const ProjectOopHirFunction* destructorBody = hirModel.functionForMember(destructorMember);
-            if (destructorBody == nullptr || !destructorBody->destructor)
+            for (const std::size_t destructorMember : destruction->destructorMemberOrdinals)
             {
-                error = "Stage 35 destruction plan refers to a destructor without OOP HIR body";
-                return false;
+                const ProjectOopHirFunction* destructorBody = hirModel.functionForMember(destructorMember);
+                if (destructorBody == nullptr || !destructorBody->destructor)
+                {
+                    error = "Stage 35 destruction plan refers to a destructor without OOP HIR body";
+                    return false;
+                }
+                table.destructorCalleeNames.push_back(destructorBody->mangledName);
             }
-            table.destructorCalleeNames.push_back(destructorBody->mangledName);
         }
 
         for (const std::size_t interfaceOrdinal : interfaceModel.interfacesOfClass(table.typeOrdinal))
@@ -761,6 +766,9 @@ bool ProjectOopMirModel::build(
         };
         for (ProjectOopMirDispatchTable& built : dispatchTables_)
         {
+            // The producer already emitted this complete plan behind destructionEntryName.
+            // Rebuilding it would require importing private destructor bodies and field layout.
+            if (built.isImported) continue;
             // The chain is walked MOST-DERIVED FIRST, and within each class the owned fields are
             // taken in REVERSE declaration order -- destruction is the exact reverse of
             // construction. This is the frozen order contract; the full statement and its

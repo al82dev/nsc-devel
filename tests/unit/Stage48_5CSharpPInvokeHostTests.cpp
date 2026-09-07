@@ -37,6 +37,13 @@ std::string readFile(const std::filesystem::path& path)
     return text.str();
 }
 
+void writeFile(const std::filesystem::path& path, std::string_view text)
+{
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    stream << text;
+}
+
 std::string quote(const std::filesystem::path& path)
 {
     return "\"" + path.string() + "\"";
@@ -192,8 +199,8 @@ void testNativeProductAndHeader(TestContext& tests, const std::filesystem::path&
             std::filesystem::is_regular_file(outputDirectory / "Stage48_5HostApi.h") &&
             std::filesystem::is_regular_file(outputDirectory / "Stage48_5HostApi.nsmeta"),
         "C# host product still carries the common import library, C header and .nsmeta sidecars");
-    tests.expect(output.find("exports: 42") != std::string::npos,
-        "Stage 48.5 NativeSharp library reports 21 stable C wrappers plus 21 NativeSharp entries");
+    tests.expect(output.find("exports: 45") != std::string::npos,
+        "Stage 48.5 library reports 21 stable C wrappers plus its complete NativeSharp callable/type surface");
 
     const std::string header = readFile(outputDirectory / "Stage48_5HostApi.h");
     tests.expect(header.find("ABI: Windows x64 C. bool/byte/char use one-byte uint8_t carriers") != std::string::npos,
@@ -228,15 +235,15 @@ void testNativeProductAndHeader(TestContext& tests, const std::filesystem::path&
             "P/Invoke target DLL is PE32+ AMD64");
         tests.expect(info.clrDirectoryRva == 0,
             "NativeSharp P/Invoke target contains no CLR header and remains fully native");
-        tests.expect(info.exportedSymbols.size() == 42,
-            "P/Invoke target DLL exports the 21-entry managed contract and the matching NativeSharp surface");
+        tests.expect(info.exportedSymbols.size() == 45,
+            "P/Invoke target DLL exports the 21-entry host contract and the complete NativeSharp surface");
         tests.expect(contains(info.exportedSymbols, "NS485_Add") &&
                 contains(info.exportedSymbols, "NS485_Counter_Destroy") &&
                 contains(info.exportedSymbols, "NS485_InvokeBuffer"),
             "representative scalar, ownership and callback entry points are exported undecorated");
         tests.expect(std::count_if(info.exportedSymbols.begin(), info.exportedSymbols.end(),
-                         [](const std::string& symbol) { return symbol.find("HostApi") != std::string::npos; }) == 21,
-            "every public HostApi method also has one mangled NativeSharp export");
+                         [](const std::string& symbol) { return symbol.find("HostApi") != std::string::npos; }) == 24,
+            "every public HostApi method and its ABI support symbols have mangled NativeSharp exports");
     }
 }
 
@@ -430,9 +437,23 @@ void testManagedCompilationWhenSdkExists(TestContext& tests, const std::filesyst
         return;
     }
 
+    // Keep the integration gate independent from the developer profile. The sample has no
+    // package dependencies, so an empty source set is the complete and deterministic input.
+    const std::filesystem::path isolatedProfile = root / "DotNetProfile";
+    const std::filesystem::path isolatedAppData = isolatedProfile / "AppData" / "Roaming";
+    writeFile(isolatedAppData / "NuGet" / "NuGet.Config", R"XML(<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+  </packageSources>
+</configuration>
+)XML");
+
 #ifdef _WIN32
     const std::string command =
-        "set \"DOTNET_CLI_TELEMETRY_OPTOUT=1\" && set \"DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1\" && dotnet build " +
+        "set \"APPDATA=" + isolatedAppData.string() + "\" && set \"DOTNET_CLI_HOME=" +
+        isolatedProfile.string() +
+        "\" && set \"DOTNET_CLI_TELEMETRY_OPTOUT=1\" && set \"DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1\" && dotnet build " +
         quote(managed / "Stage48_5CSharpHost.csproj") + " -c Release --nologo";
 #else
     const std::string command =

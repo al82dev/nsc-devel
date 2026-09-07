@@ -200,6 +200,7 @@ const char* genericTemplateKindName(GenericTemplateKind kind) noexcept
 bool ProjectGenericModel::build(
     const compilation::ProjectGraph& graph,
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    std::span<const PrecompiledGenericSpecialization> precompiledSpecializations,
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (built_) return !diagnostics.hasErrors();
@@ -284,6 +285,36 @@ bool ProjectGenericModel::build(
 
     templateRecords_.reserve(templateStates_.size());
     for (const TemplateState& state : templateStates_) templateRecords_.push_back(state.record);
+
+    // Seed only identities whose public template was actually hydrated. An old metadata file may
+    // list historical specializations without carrying a reusable template body; such a record
+    // must never make an unavailable generic appear usable.
+    for (const PrecompiledGenericSpecialization& imported : precompiledSpecializations)
+    {
+        const auto templateState = std::ranges::find_if(templateStates_, [&](const auto& state) {
+            return state.record.canonicalKey == imported.templateKey;
+        });
+        if (templateState == templateStates_.end() ||
+            specializationByKey_.contains(imported.specializationKey))
+        {
+            continue;
+        }
+        const std::size_t ordinal = specializations_.size();
+        specializationByKey_.emplace(imported.specializationKey, ordinal);
+        specializations_.push_back(GenericSpecializationRecord{
+            imported.kind,
+            templateState->syntax,
+            nullptr,
+            imported.templateKey,
+            imported.specializationKey,
+            imported.specializedName,
+            imported.typeArguments,
+            ordinal,
+            templateState->ordinal,
+            nullptr,
+            SourceRange{},
+            0});
+    }
 
     for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
@@ -552,7 +583,8 @@ bool ProjectGenericModel::processTypeSyntax(
                 diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
                 syntax->range(),
-                "type '" + syntax->baseName() + "' is not a visible generic class/struct template in Stage 44");
+                "type '" + syntax->baseName() +
+                    "' does not name a unique visible generic class/struct template");
             return false;
         }
         if (const std::optional<std::string> identity =
@@ -599,7 +631,19 @@ bool ProjectGenericModel::processTypeSyntax(
         resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
         break;
     }
-    syntax->setBaseName(specialized);
+    // Preserve an explicitly written qualifier. Replacing `Lib.Box<int>` with only the generated
+    // terminal name made name lookup retry it in the caller module, even though the specialization
+    // itself was correctly materialized in Lib. The monomorphized name replaces `Box`, not `Lib`.
+    const std::string originalBaseName = syntax->baseName();
+    if (const std::size_t separator = originalBaseName.find_last_of('.');
+        separator != std::string::npos)
+    {
+        syntax->setBaseName(originalBaseName.substr(0, separator + 1) + specialized);
+    }
+    else
+    {
+        syntax->setBaseName(specialized);
+    }
     syntax->clearTypeArguments();
     return true;
 }
@@ -744,7 +788,11 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
             qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
         if (writtenName.find('.') != std::string_view::npos)
         {
-            if (candidate == writtenName) return &state;
+            if (candidate == writtenName)
+            {
+                if (fallback != nullptr) return nullptr;
+                fallback = &state;
+            }
             continue;
         }
         if (candidate == qualified) return &state;
@@ -831,12 +879,17 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::collectMet
     // cuerpo habla de SU `T`. Si el empate cruza duenos la llamada es realmente ambigua y no se
     // materializa nada: `resolveMethodTemplate` da entonces su diagnostico, que es su sitio.
     std::string owner;
+    std::string ownerModule;
     for (const TemplateState* state : result)
     {
         const std::string candidate =
             templateSourceSpelling(state->record.namespaceName, state->record.ownerName);
-        if (owner.empty()) owner = candidate;
-        else if (owner != candidate) return {};
+        if (owner.empty())
+        {
+            owner = candidate;
+            ownerModule = state->record.moduleName;
+        }
+        else if (owner != candidate || ownerModule != state->record.moduleName) return {};
     }
     return result;
 }

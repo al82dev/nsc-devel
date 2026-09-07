@@ -5032,9 +5032,16 @@ bool buildThrow(
 
 bool buildEhFilter(
     LLVMContextRef context,
-    LLVMModuleRef module)
+    LLVMModuleRef module,
+    LLVMValueRef tlsIndex,
+    LLVMValueRef ehInit,
+    LLVMTypeRef ehInitType,
+    LLVMValueRef tlsSetValue,
+    LLVMTypeRef tlsSetValueType)
 {
     LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
     LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
     LLVMTypeRef type = functionType(i32Type, {pointerType, pointerType});
     LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_eh_filter", type);
@@ -5046,6 +5053,8 @@ bool buildEhFilter(
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
     LLVMBasicBlockRef loadRecord = LLVMAppendBasicBlockInContext(context, function, "load_record");
     LLVMBasicBlockRef checkCode = LLVMAppendBasicBlockInContext(context, function, "check_code");
+    LLVMBasicBlockRef checkPayload = LLVMAppendBasicBlockInContext(context, function, "check_payload");
+    LLVMBasicBlockRef publish = LLVMAppendBasicBlockInContext(context, function, "publish_exception");
     LLVMBasicBlockRef reject = LLVMAppendBasicBlockInContext(context, function, "reject");
     LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
     LLVMPositionBuilderAtEnd(builder, entry);
@@ -5081,7 +5090,44 @@ bool buildEhFilter(
         code,
         LLVMConstInt(i32Type, kNativeSharpExceptionCode, 0),
         "is_nativesharp_exception");
-    LLVMValueRef result = LLVMBuildZExt(builder, nativeSharp, i32Type, "filter_result");
+    LLVMBuildCondBr(builder, nativeSharp, checkPayload, reject);
+
+    // EXCEPTION_RECORD on Win64 stores NumberParameters at byte 24 and the first ULONG_PTR at
+    // byte 32. __nativesharp_throw already places the object address there. Importing it here is
+    // the crucial module-boundary step: a DLL and its consumer have distinct runtime globals/TLS
+    // indices, so consulting only the thrower's slot made a valid exception invisible to the
+    // consumer's catch even though Windows transported the pointer in the SEH record.
+    LLVMPositionBuilderAtEnd(builder, checkPayload);
+    LLVMValueRef parameterCountIndex = LLVMConstInt(i64Type, 24, 0);
+    LLVMValueRef parameterCountAddress = LLVMBuildGEP2(
+        builder, i8Type, exceptionRecord, &parameterCountIndex, 1, "exception_parameter_count_addr");
+    LLVMValueRef parameterCount = LLVMBuildLoad2(
+        builder, i32Type, parameterCountAddress, "exception_parameter_count");
+    LLVMValueRef hasPayload = LLVMBuildICmp(
+        builder, LLVMIntUGE, parameterCount, LLVMConstInt(i32Type, 1, 0),
+        "exception_has_object_payload");
+    LLVMBuildCondBr(builder, hasPayload, publish, reject);
+
+    LLVMPositionBuilderAtEnd(builder, publish);
+    LLVMValueRef initialized = LLVMBuildCall2(builder, ehInitType, ehInit, nullptr, 0, "filter_eh_init");
+    LLVMValueRef initOk = LLVMBuildICmp(
+        builder, LLVMIntNE, initialized, LLVMConstInt(i32Type, 0, 0), "filter_eh_init_ok");
+    LLVMBasicBlockRef storePayload = LLVMAppendBasicBlockInContext(context, function, "store_payload");
+    LLVMBuildCondBr(builder, initOk, storePayload, reject);
+
+    LLVMPositionBuilderAtEnd(builder, storePayload);
+    LLVMValueRef payloadIndex = LLVMConstInt(i64Type, 32, 0);
+    LLVMValueRef payloadAddress = LLVMBuildGEP2(
+        builder, i8Type, exceptionRecord, &payloadIndex, 1, "exception_payload_addr");
+    LLVMValueRef payloadBits = LLVMBuildLoad2(builder, i64Type, payloadAddress, "exception_payload_bits");
+    LLVMValueRef payloadObject = LLVMBuildIntToPtr(builder, payloadBits, pointerType, "exception_payload_object");
+    LLVMValueRef index = LLVMBuildLoad2(builder, i32Type, tlsIndex, "filter_tls_index");
+    LLVMValueRef tlsArguments[2] = {index, payloadObject};
+    LLVMValueRef stored = LLVMBuildCall2(
+        builder, tlsSetValueType, tlsSetValue, tlsArguments, 2, "filter_exception_published");
+    LLVMValueRef storeOk = LLVMBuildICmp(
+        builder, LLVMIntNE, stored, LLVMConstInt(i32Type, 0, 0), "filter_publish_ok");
+    LLVMValueRef result = LLVMBuildZExt(builder, storeOk, i32Type, "filter_result");
     LLVMBuildRet(builder, result);
 
     LLVMPositionBuilderAtEnd(builder, reject);
@@ -5569,7 +5615,8 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
             raiseExceptionType,
             exitProcess,
             exitProcessType) &&
-        buildEhFilter(context, module) &&
+        buildEhFilter(
+            context, module, exceptionTlsIndex, ehInit, ehInitType, tlsSetValue, tlsSetValueType) &&
         buildAllocate(context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType) &&
         buildFree(context, module, getProcessHeap, getProcessHeapType, heapFree, heapFreeType) &&
         buildTrap(context, module, exitProcess, exitProcessType) &&

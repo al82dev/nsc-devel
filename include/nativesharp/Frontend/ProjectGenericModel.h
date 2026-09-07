@@ -84,12 +84,25 @@ struct GenericSpecializationRecord final
     std::size_t overloadGroup = 0;
 };
 
+// Closed code that is already present in a referenced binary. Seeding the generic cache with
+// these identities makes an equal consumer request bind to the producer implementation instead
+// of cloning a second specialization into the consumer.
+struct PrecompiledGenericSpecialization final
+{
+    GenericTemplateKind kind = GenericTemplateKind::Class;
+    std::string templateKey;
+    std::string specializationKey;
+    std::string specializedName;
+    std::vector<std::string> typeArguments;
+};
+
 class ProjectGenericModel final
 {
 public:
     bool build(
         const compilation::ProjectGraph& graph,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        std::span<const PrecompiledGenericSpecialization> precompiledSpecializations,
         diagnostics::DiagnosticEngine& diagnostics);
 
     std::span<const GenericTemplateRecord> templates() const noexcept;

@@ -152,15 +152,15 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
     tests.expect(
         emitMetadata(directory / "OwnershipMetadata.nsproj", outputPath, output, error) == ExitCode::Success,
         "Stage 50.9 emits ownership-aware library metadata");
-    tests.expect(error.empty() && output.find("format: NSMETA 1.5") != std::string::npos,
-        "the metadata command advertises the current NSMETA 1.5 schema");
+    tests.expect(error.empty() && output.find("format: NSMETA 1.8") != std::string::npos,
+        "the metadata command advertises the current NSMETA 1.8 schema");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(outputPath, metadata, error),
         "NSMETA ownership contracts round-trip through the reader");
-    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 5,
-        "metadata reader preserves the current 1.5 format identity");
+    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 8,
+        "metadata reader preserves the current 1.8 format identity");
 
     const LibraryMetadataMember* plain = findMember(metadata, "Plain");
     const LibraryMetadataMember* take = findMember(metadata, "Take");
@@ -457,6 +457,94 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
             delegatePreviousDecoded.members.size() == 2,
         "the current reader decodes NSMETA 1.4 without inventing a delegate signature or losing alignment");
 
+    // NSMETA 1.6 added the descriptor accessor after descriptorName. A 1.5 producer writes the
+    // following vtable name in the old position; the current reader must leave the accessor empty
+    // and still recover that vtable byte for byte.
+    nativesharp::interop::LibraryMetadata descriptorPrevious = previous;
+    descriptorPrevious.formatMinor = 5;
+    nativesharp::interop::LibraryMetadataDispatch oldDispatch;
+    oldDispatch.typeKey = "Previous::Widget";
+    oldDispatch.stableTypeId = 42U;
+    oldDispatch.descriptorName = "__nsc_classdesc_previous_widget";
+    oldDispatch.descriptorAccessorName = "__nsc_get_classdesc_previous_widget";
+    oldDispatch.vtableName = "__nsc_vtable_previous_widget";
+    oldDispatch.destructionEntryName = "__nsc_destroy_previous_widget";
+    oldDispatch.slotSignatures.push_back("Previous.Widget.Value():int");
+    oldDispatch.slotCalleeNames.push_back("__nsc_previous_widget_value");
+    descriptorPrevious.dispatchTables.push_back(oldDispatch);
+    const auto descriptorPreviousPath = root / "PreviousDescriptorAccessorFormat.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(descriptorPrevious, descriptorPreviousPath, error),
+        "an NSMETA 1.5 dispatch record can still be produced without an accessor field");
+    nativesharp::interop::LibraryMetadata descriptorPreviousDecoded;
+    error.clear();
+    tests.expect(codec.read(descriptorPreviousPath, descriptorPreviousDecoded, error) &&
+            descriptorPreviousDecoded.dispatchTables.size() == 1 &&
+            descriptorPreviousDecoded.dispatchTables[0].descriptorAccessorName.empty() &&
+            descriptorPreviousDecoded.dispatchTables[0].vtableName == oldDispatch.vtableName &&
+            descriptorPreviousDecoded.dispatchTables[0].slotCalleeNames == oldDispatch.slotCalleeNames,
+        "the current reader decodes NSMETA 1.5 dispatch data without shifting its vtable or slots");
+
+    // NSMETA 1.7 added accessibility and the public declaration slice to every generic-template
+    // record. Keep a following specialization as the alignment sentinel for an actual 1.6 file.
+    nativesharp::interop::LibraryMetadata templatePrevious = descriptorPrevious;
+    templatePrevious.formatMinor = 6;
+    nativesharp::interop::LibraryMetadataGenericTemplate oldTemplate;
+    oldTemplate.kind = 1U;
+    oldTemplate.accessibility = 3U;
+    oldTemplate.canonicalKey = "Previous::Box`1";
+    oldTemplate.moduleName = "Previous";
+    oldTemplate.namespaceName = "Previous";
+    oldTemplate.name = "Box";
+    oldTemplate.parameters.push_back("T");
+    oldTemplate.sourceText = "public struct Box<T> { public T Value; }";
+    templatePrevious.genericTemplates.push_back(oldTemplate);
+    nativesharp::interop::LibraryMetadataGenericSpecialization oldSpecialization;
+    oldSpecialization.kind = 1U;
+    oldSpecialization.templateKey = oldTemplate.canonicalKey;
+    oldSpecialization.specializationKey = "Previous::Box`1<int>";
+    oldSpecialization.specializedName = "Box__1_int";
+    oldSpecialization.typeArguments.push_back("int");
+    templatePrevious.genericSpecializations.push_back(oldSpecialization);
+    const auto templatePreviousPath = root / "PreviousGenericTemplateFormat.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(templatePrevious, templatePreviousPath, error),
+        "an NSMETA 1.6 generic template can still be produced without 1.7 materialization fields");
+    nativesharp::interop::LibraryMetadata templatePreviousDecoded;
+    error.clear();
+    tests.expect(codec.read(templatePreviousPath, templatePreviousDecoded, error) &&
+            templatePreviousDecoded.genericTemplates.size() == 1 &&
+            templatePreviousDecoded.genericTemplates[0].accessibility == 0U &&
+            templatePreviousDecoded.genericTemplates[0].sourceText.empty() &&
+            templatePreviousDecoded.genericSpecializations.size() == 1 &&
+            templatePreviousDecoded.genericSpecializations[0].specializedName ==
+                oldSpecialization.specializedName,
+        "the current reader decodes NSMETA 1.6 templates without shifting following specializations");
+
+    // NSMETA 1.8 is the first file that states the binary contract independently from the file
+    // schema. A real 1.7 predecessor must remain readable, must not invent those bytes and must
+    // leave the already-present generic records aligned.
+    nativesharp::interop::LibraryMetadata contractPrevious = templatePrevious;
+    contractPrevious.formatMinor = 7;
+    const auto contractPreviousPath = root / "PreviousAbiContractFormat.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(contractPrevious, contractPreviousPath, error),
+        "an NSMETA 1.7 file can still be produced without the 1.8 ABI-contract header");
+    nativesharp::interop::LibraryMetadata contractPreviousDecoded;
+    error.clear();
+    tests.expect(codec.read(contractPreviousPath, contractPreviousDecoded, error) &&
+            contractPreviousDecoded.nativeAbiMajor == 0 &&
+            contractPreviousDecoded.runtimeAbiMajor == 0 &&
+            contractPreviousDecoded.delegateAbiVersion == 0 &&
+            contractPreviousDecoded.managedDelegateCellSize == 0 &&
+            contractPreviousDecoded.genericTemplates.size() == 1 &&
+            contractPreviousDecoded.genericTemplates[0].sourceText == oldTemplate.sourceText &&
+            contractPreviousDecoded.genericSpecializations.size() == 1,
+        "the current reader decodes 1.7 without inventing an ABI contract or shifting later records");
+    error.clear();
+    tests.expect(codec.verifyCurrentCompiler(contractPreviousDecoded, error),
+        "legacy NSMETA 1.7 remains consumable under the compatibility policy");
+
     // LA HUELLA ABI TIENE QUE DISTINGUIR EL SIGNO. `enum : byte` y `enum : sbyte` miden lo mismo,
     // asi que si la huella solo cubriera el tamano dos modulos incompatibles tendrian la MISMA, y
     // el mecanismo que existe para detectar un cambio de ABI dejaria pasar justo este.
@@ -528,6 +616,25 @@ void testMinorCompatibilityGate(TestContext& tests)
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(metadata, error),
         "current compiler accepts NSMETA 1.1 as a backward-compatible minor predecessor");
+
+    metadata.formatMinor = nativesharp::interop::kMetadataFormatMinor;
+    nativesharp::interop::LibraryMetadataGenericTemplate incompleteTemplate;
+    incompleteTemplate.kind = 1U;
+    incompleteTemplate.accessibility = 3U;
+    incompleteTemplate.canonicalKey = "Current::Box`1";
+    incompleteTemplate.moduleName = "Current";
+    incompleteTemplate.name = "Box";
+    incompleteTemplate.parameters.push_back("T");
+    metadata.genericTemplates.push_back(incompleteTemplate);
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(metadata, error) &&
+            error.find("materializable declaration") != std::string::npos,
+        "current NSMETA rejects a public generic template with no materializable declaration");
+    metadata.genericTemplates[0].sourceText = "public struct Box<T> { public T Value; }";
+    error.clear();
+    tests.expect(codec.verifyCurrentCompiler(metadata, error),
+        "current NSMETA accepts the same public template once its declaration slice is complete");
+    metadata.genericTemplates.clear();
 
     // EL NUMERO DE ESTA LINEA SUBE CON CADA MINOR, y por eso lleva `kFormatMinor + 1` en vez de un
     // literal: escrito a mano, el dia que el formato pasa a 1.2 esta prueba deja de comprobar "un

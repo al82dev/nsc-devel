@@ -273,9 +273,12 @@ namespace Stage46.Shared
                                   [](const std::string& symbol) { return symbol.find("Hidden") != std::string::npos; }),
                  "Stage 46 does not export private static methods under plain or mangled "
                  "names");
-    tests.expect(info.exportedSymbols.size() == 4,
-                 "DLL exports each public method through its NativeSharp mangled "
-                 "symbol plus its explicit C wrapper");
+    tests.expect(info.exportedSymbols.size() == 5 &&
+                     std::ranges::any_of(info.exportedSymbols, [](const std::string& symbol)
+                                         { return symbol.starts_with("__nsc_get_classdesc_"); }),
+                 "DLL exports each public method plus the public class "
+                 "descriptor required "
+                 "by precompiled object construction");
     tests.expect(info.exceptionDirectoryRva != 0,
                  "NativeSharp DLL retains Win64 unwind metadata from its native "
                  "runtime support");
@@ -311,6 +314,12 @@ namespace Stage46.Shared
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
 {
     const std::string producerSource = R"NS(
+namespace NativeSharp.Core
+{
+    public class Exception { }
+}
+using NativeSharp.Core;
+
 namespace Precompiled
 {
     public struct Pair
@@ -341,6 +350,38 @@ namespace Precompiled
     }
 
     public extern C delegate int Transform(int value);
+    public delegate int ManagedTransform(int value);
+
+    public class ManagedCallbacks
+    {
+        private int Bias;
+
+        public ManagedCallbacks(int bias) { Bias = bias; }
+        public int Add(int value) { return value + Bias; }
+        private static int PlusTwo(int value) { return value + 2; }
+
+        public static owned ManagedTransform MakeStatic() { return ManagedCallbacks.PlusTwo; }
+        public static owned ManagedTransform MakeClosure(int bias) { return value => value + bias; }
+        public static owned ManagedTransform MakeInstance(borrowed ManagedCallbacks target)
+        {
+            return target.Add;
+        }
+        public static int Invoke(borrowed ManagedTransform callback, int value)
+        {
+            return callback(value);
+        }
+    }
+
+    public class Problem : Exception
+    {
+        public int Code;
+        public Problem(int code) { Code = code; }
+    }
+
+    public class CrossModuleExceptions
+    {
+        public static void Raise(borrowed Problem problem) { throw problem; }
+    }
 
     public class Counter
     {
@@ -351,11 +392,44 @@ namespace Precompiled
         public int Read() { return Value; }
     }
 
+    public interface IScore
+    {
+        public int Score();
+    }
+
+    public abstract class CounterBase
+    {
+        protected int Value;
+
+        public CounterBase(int value) { Value = value; }
+        public virtual int Score() { return Value; }
+    }
+
+    public sealed class BonusCounter : CounterBase, IScore
+    {
+        public BonusCounter(int value) : base(value) { }
+        public override int Score() { return Value + 2; }
+    }
+
     public class Objects
     {
         public static owned Counter Create(int value) { return new Counter(value); }
         public static int Read(borrowed Counter value) { return value.Read(); }
         public static void Destroy(owned Counter value) { }
+    }
+
+    public class Lifetime
+    {
+        private static int DestroyedCount;
+        public static void Reset() { DestroyedCount = 0; }
+        public static void Record() { DestroyedCount += 1; }
+        public static int Destroyed() { return DestroyedCount; }
+    }
+
+    public class Tracked
+    {
+        public Tracked() { }
+        ~Tracked() { Lifetime.Record(); }
     }
 
     public class Callbacks
@@ -375,6 +449,28 @@ namespace Precompiled
         public static void Assign(out int value) { value = 0; }
         public static int Read(in int value) { return value; }
         private static int Hidden(int value) { return value + 1; }
+    }
+
+    public struct Box<T>
+    {
+        public T Value;
+        public T Read() { return Value; }
+    }
+
+    public class GenericAlgorithms
+    {
+        public static T Identity<T>(T value) { return value; }
+        private static T Secret<T>(T value) { return value; }
+        public static int ScoreOf<T>(borrowed T value) where T : IScore
+        {
+            return value.Score();
+        }
+        public static int Warm()
+        {
+            Box<int> box;
+            box.Value = Identity<int>(1);
+            return box.Read();
+        }
     }
 }
 )NS";
@@ -539,6 +635,101 @@ namespace Consumer
 #endif
     }
 
+    const auto invalidGenericConsumer = staticRoot / "InvalidGenericConsumer";
+    writeFile(invalidGenericConsumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        raii Precompiled.Counter value = new Precompiled.Counter(42);
+        return Precompiled.GenericAlgorithms.ScoreOf<Precompiled.Counter>(value);
+    }
+}
+)NS");
+    writeFile(invalidGenericConsumer / "InvalidGenericConsumer.nsproj",
+              "<Project><PropertyGroup><Name>InvalidGenericConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    tests.expect(runProjectAction("--check-project-generic-constraints",
+                                  invalidGenericConsumer / "InvalidGenericConsumer.nsproj", output,
+                                  error) == ExitCode::CompilationError,
+                 "consumer rejects an imported generic specialization whose interface "
+                 "constraint is false");
+    tests.expect(error.find("requires an implementation of 'IScore'") != std::string::npos,
+                 "cross-library constraint diagnostic names the producer's "
+                 "canonical interface contract");
+
+    const auto privateGenericConsumer = staticRoot / "PrivateGenericConsumer";
+    writeFile(privateGenericConsumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        return Precompiled.GenericAlgorithms.Secret<int>(42);
+    }
+}
+)NS");
+    writeFile(privateGenericConsumer / "PrivateGenericConsumer.nsproj",
+              "<Project><PropertyGroup><Name>PrivateGenericConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    tests.expect(runProjectAction("--check-project-generics", privateGenericConsumer / "PrivateGenericConsumer.nsproj",
+                                  output, error) == ExitCode::CompilationError,
+                 "consumer cannot instantiate a private generic method omitted from "
+                 "NSMETA");
+    tests.expect(error.find("does not name a unique visible") != std::string::npos,
+                 "unpublished generic method fails during generic selection, "
+                 "before name lookup or link");
+
+    const auto genericStaticConsumer = staticRoot / "GenericConsumer";
+    writeFile(genericStaticConsumer / "Main.ns", R"NS(
+namespace Consumer
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            Precompiled.Box<int> box;
+            box.Value = Precompiled.GenericAlgorithms.Identity<int>(42);
+            Precompiled.Box<long> fresh;
+            fresh.Value = Precompiled.GenericAlgorithms.Identity<long>((long)0);
+            return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
+        }
+    }
+}
+)NS");
+    writeFile(genericStaticConsumer / "GenericConsumer.nsproj",
+              "<Project><PropertyGroup><Name>GenericStaticConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
+              "</ItemGroup></Project>");
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const auto executable = genericStaticConsumer / (optimize ? "GenericStaticO2.exe" : "GenericStaticO0.exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe", genericStaticConsumer / "GenericConsumer.nsproj",
+                                            executable, output, error, optimize);
+        tests.expect(result == ExitCode::Success, std::string("static LibraryReference materializes a new "
+                                                              "generic type and method at ") +
+                                                      (optimize ? "O2 (" : "O0 (") + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42, std::string("cross-library static generic specializations "
+                                                                      "execute to 42 at ") +
+                                                              (optimize ? "O2" : "O0"));
+#endif
+    }
+
     const auto callbackStaticConsumer = staticRoot / "CallbackConsumer";
     writeFile(callbackStaticConsumer / "Main.ns", R"NS(
 namespace Consumer
@@ -555,6 +746,104 @@ namespace Consumer
     }
 }
 )NS");
+
+    // E3: el delegate ordinario ya no se degrada a extern C al reconstruirse. Los tres casos
+    // ejercitan codigo estático, entorno de closure y receptor de instancia creados en el
+    // productor; el owner y su cleanup viven en el consumidor.
+    const auto managedStaticConsumer = staticRoot / "ManagedDelegateConsumer";
+    writeFile(managedStaticConsumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        raii Precompiled.ManagedTransform direct = Precompiled.ManagedCallbacks.MakeStatic();
+        raii Precompiled.ManagedTransform closure = Precompiled.ManagedCallbacks.MakeClosure(2);
+        raii Precompiled.ManagedCallbacks target = new Precompiled.ManagedCallbacks(2);
+        raii Precompiled.ManagedTransform instance =
+            Precompiled.ManagedCallbacks.MakeInstance(target);
+        return Precompiled.ManagedCallbacks.Invoke(direct, 10) +
+            Precompiled.ManagedCallbacks.Invoke(closure, 10) +
+            Precompiled.ManagedCallbacks.Invoke(instance, 8) + 8;
+    }
+}
+)NS");
+    writeFile(managedStaticConsumer / "ManagedDelegateConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ManagedDelegateStaticConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
+              "</ItemGroup></Project>");
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const auto executable = managedStaticConsumer /
+            (optimize ? "ManagedDelegateStaticO2.exe" : "ManagedDelegateStaticO0.exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            managedStaticConsumer / "ManagedDelegateConsumer.nsproj",
+                                            executable, output, error, optimize);
+        tests.expect(result == ExitCode::Success,
+                     std::string("ordinary delegates and closures cross a static-library boundary at ") +
+                         (optimize ? "O2 (" : "O0 (") + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         std::string("static-library delegate code/context ABI executes to 42 at ") +
+                             (optimize ? "O2" : "O0"));
+#endif
+    }
+
+    const auto exceptionStaticConsumer = staticRoot / "ExceptionConsumer";
+    writeFile(exceptionStaticConsumer / "Main.ns", R"NS(
+using Precompiled;
+
+public class Program
+{
+    public static int Main()
+    {
+        int finallyCount = 0;
+        raii Precompiled.Problem problem = new Precompiled.Problem(40);
+        try
+        {
+            Precompiled.CrossModuleExceptions.Raise(problem);
+        }
+        catch (Problem caught)
+        {
+            return caught.Code + finallyCount + 2;
+        }
+        finally
+        {
+            finallyCount += 1;
+        }
+        return 1;
+    }
+}
+)NS");
+    writeFile(exceptionStaticConsumer / "ExceptionConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ExceptionStaticConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
+              "</ItemGroup></Project>");
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const auto executable = exceptionStaticConsumer /
+            (optimize ? "ExceptionStaticO2.exe" : "ExceptionStaticO0.exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            exceptionStaticConsumer / "ExceptionConsumer.nsproj",
+                                            executable, output, error, optimize);
+        tests.expect(result == ExitCode::Success,
+                     std::string("typed exceptions and finally cross a static-library boundary at ") +
+                         (optimize ? "O2 (" : "O0 (") + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         std::string("static-library exception RTTI/finally executes to 42 at ") +
+                             (optimize ? "O2" : "O0"));
+#endif
+    }
     writeFile(callbackStaticConsumer / "CallbackConsumer.nsproj",
               "<Project><PropertyGroup><Name>CallbackStaticConsumer</Name>"
               "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
@@ -574,7 +863,8 @@ namespace Consumer
                                             error,
                                             optimize);
         tests.expect(result == ExitCode::Success,
-                     std::string("metadata-backed static consumer reconstructs an extern C delegate callback at ") +
+                     std::string("metadata-backed static consumer reconstructs an "
+                                                              "extern C delegate callback at ") +
                          (optimize ? "O2 (" : "O0 (") + error + ")");
 #ifdef _WIN32
         if (result == ExitCode::Success)
@@ -592,10 +882,23 @@ namespace Consumer
     {
         public static int Main()
         {
-            raii Precompiled.Counter value = Precompiled.Objects.Create(40);
+            raii Precompiled.Counter value = new Precompiled.Counter(40);
             int answer = value.Add(2);
             if (Precompiled.Objects.Read(value) != 42) { return 1; }
-            Precompiled.Objects.Destroy(move(value));
+            raii Precompiled.BonusCounter polymorphic = new Precompiled.BonusCounter(40);
+            borrowed Precompiled.CounterBase baseView = polymorphic;
+            borrowed Precompiled.IScore interfaceView = polymorphic;
+            if (baseView.Score() != 42) { return 2; }
+            if (interfaceView.Score() != 42) { return 3; }
+            if (Precompiled.GenericAlgorithms.ScoreOf<Precompiled.BonusCounter>(polymorphic) != 42)
+            {
+                return 4;
+            }
+            Precompiled.Lifetime.Reset();
+            {
+                raii Precompiled.Tracked tracked = new Precompiled.Tracked();
+            }
+            if (Precompiled.Lifetime.Destroyed() != 1) { return 5; }
             return answer;
         }
     }
@@ -620,14 +923,16 @@ namespace Consumer
                                             error,
                                             optimize);
         tests.expect(result == ExitCode::Success,
-                     std::string("metadata-backed static consumer imports opaque class references, ownership and "
-                                 "a concrete instance receiver at ") +
+                     std::string("metadata-backed static consumer constructs a "
+                                                              "precompiled class and calls a "
+                                                              "concrete instance receiver at ") +
                          (optimize ? "O2 (" : "O0 (") + error + ")");
 #ifdef _WIN32
         if (result == ExitCode::Success)
         {
             tests.expect(runExecutable(executable) == 42,
-                         std::string("static opaque-class ownership executes to 42 at ") +
+                         std::string("static precompiled construction and ownership "
+                                                                      "execute to 42 at ") +
                              (optimize ? "O2" : "O0"));
         }
 #endif
@@ -694,7 +999,8 @@ public class Program
                      metadataCodec.writeModel(badReferenceMetadata,
                                               badReferenceRoot / "NativeMath.nsmeta",
                                               error),
-                 "negative fixture recomputes a valid fingerprint for a false class reference carrier");
+                 "negative fixture recomputes a valid fingerprint for a false "
+                 "class reference carrier");
     writeFile(badReferenceRoot / "Main.ns", R"NS(
 public class Program
 {
@@ -706,10 +1012,11 @@ public class Program
     }
 }
 )NS");
-    writeFile(badReferenceRoot / "BadReferenceAbi.nsproj",
-              "<Project><PropertyGroup><Name>BadReferenceAbi</Name><OutputType>Exe</OutputType>"
+    writeFile(badReferenceRoot / "BadReferenceAbi.nsproj", "<Project><PropertyGroup><Name>BadReferenceAbi</"
+                                                           "Name><OutputType>Exe</OutputType>"
               "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
-              "<LibraryReference Include=\"../Producer/NativeMath.lib\" Metadata=\"NativeMath.nsmeta\"/>"
+                                                           "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+                                                           "Metadata=\"NativeMath.nsmeta\"/>"
               "</ItemGroup></Project>");
     output.clear();
     error.clear();
@@ -721,7 +1028,8 @@ public class Program
                              true) == ExitCode::CompilationError &&
                      error.find("reference ABI") != std::string::npos &&
                      error.find("4/8") != std::string::npos && error.find("8/8") != std::string::npos,
-                 "consumer rejects a self-consistent class reference ABI mismatch before link");
+                 "consumer rejects a self-consistent class reference ABI "
+                 "mismatch before link");
 
     output.clear();
     error.clear();
@@ -820,6 +1128,51 @@ namespace Consumer
     tests.expect(error.find("ambiguous") != std::string::npos,
                  "cross-library type ambiguity is diagnosed before lowering and link");
 
+    const auto ambiguousGenericProducer = staticRoot / "AmbiguousGenericProducer";
+    writeProject(ambiguousGenericProducer, "OtherGeneric", "StaticLibrary", R"NS(
+namespace Precompiled
+{
+    public struct Box<T> { public T Value; }
+}
+)NS");
+    output.clear();
+    error.clear();
+    const auto ambiguousGenericLibrary = ambiguousGenericProducer / "OtherGeneric.lib";
+    tests.expect(emitLibrary("--emit-project-oop-lib", ambiguousGenericProducer / "OtherGeneric.nsproj",
+                             ambiguousGenericLibrary, output, error, true) == ExitCode::Success,
+                 "generic ambiguity fixture emits a second public Box<T> contract");
+
+    const auto ambiguousGenericConsumer = staticRoot / "AmbiguousGenericConsumer";
+    writeFile(ambiguousGenericConsumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        Precompiled.Box<int> value;
+        value.Value = 42;
+        return value.Value;
+    }
+}
+)NS");
+    writeFile(ambiguousGenericConsumer / "AmbiguousGenericConsumer.nsproj",
+              "<Project><PropertyGroup><Name>AmbiguousGenericConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
+              "<LibraryReference "
+              "Include=\"../AmbiguousGenericProducer/OtherGeneric.lib\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    tests.expect(runProjectAction("--check-project-generics",
+                                  ambiguousGenericConsumer / "AmbiguousGenericConsumer.nsproj", output,
+                                  error) == ExitCode::CompilationError,
+                 "two visible library templates with the same qualified spelling "
+                 "are rejected");
+    tests.expect(error.find("does not name a unique visible generic class/struct template") != std::string::npos,
+                 "generic ambiguity is diagnosed during template selection before "
+                 "materialization");
+
     const auto compositeProducer = staticRoot / "CompositeProducer";
     writeFile(compositeProducer / "Main.ns", R"NS(
 namespace Precompiled
@@ -828,12 +1181,9 @@ namespace Precompiled
     {
         public static export extern C int Answer()
         {
-            Pair value;
-            value.X = 20;
-            value.Y = 21;
-            Pair copy = Math.Echo(value);
-            copy.Offset(1);
-            return copy.Sum();
+            Box<long> value;
+            value.Value = GenericAlgorithms.Identity<long>((long)41);
+            return (int)value.Read() + Math.Add(0, 1);
         }
     }
 }
@@ -1006,6 +1356,47 @@ namespace Consumer
     }
 #endif
 
+    const auto genericDllConsumer = dllRoot / "GenericConsumer";
+    writeFile(genericDllConsumer / "Main.ns", R"NS(
+namespace Consumer
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            Precompiled.Box<int> box;
+            box.Value = Precompiled.GenericAlgorithms.Identity<int>(42);
+            Precompiled.Box<long> fresh;
+            fresh.Value = Precompiled.GenericAlgorithms.Identity<long>((long)0);
+            return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
+        }
+    }
+}
+)NS");
+    writeFile(genericDllConsumer / "GenericConsumer.nsproj", "<Project><PropertyGroup><Name>GenericDllConsumer</Name>"
+                                                             "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                                                             "<Compile Include=\"**/*.ns\"/>"
+                                                             "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+                                                             "Runtime=\"../Producer/NativeMath.dll\"/>"
+                                                             "</ItemGroup></Project>");
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const auto executable = dllProducer / (optimize ? "GenericDllO2.exe" : "GenericDllO0.exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe", genericDllConsumer / "GenericConsumer.nsproj",
+                                            executable, output, error, optimize);
+        tests.expect(result == ExitCode::Success, std::string("DLL LibraryReference materializes a new generic "
+                                                              "type and method at ") +
+                                                      (optimize ? "O2 (" : "O0 (") + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         std::string("cross-library DLL generic specializations execute to 42 at ") +
+                             (optimize ? "O2" : "O0"));
+#endif
+    }
+
     const auto nominalDllConsumer = dllRoot / "NominalConsumer";
     writeFile(nominalDllConsumer / "Main.ns", R"NS(
 namespace Consumer
@@ -1097,12 +1488,110 @@ namespace Consumer
                                             error,
                                             optimize);
         tests.expect(result == ExitCode::Success,
-                     std::string("metadata-backed DLL consumer reconstructs an extern C delegate callback at ") +
+                     std::string("metadata-backed DLL consumer reconstructs an "
+                                                              "extern C delegate callback at ") +
                          (optimize ? "O2 (" : "O0 (") + error + ")");
 #ifdef _WIN32
         if (result == ExitCode::Success)
             tests.expect(runExecutable(executable) == 42,
                          std::string("DLL precompiled callback executes to 42 at ") +
+                             (optimize ? "O2" : "O0"));
+#endif
+    }
+
+    const auto managedDllConsumer = dllRoot / "ManagedDelegateConsumer";
+    writeFile(managedDllConsumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        raii Precompiled.ManagedTransform direct = Precompiled.ManagedCallbacks.MakeStatic();
+        raii Precompiled.ManagedTransform closure = Precompiled.ManagedCallbacks.MakeClosure(2);
+        raii Precompiled.ManagedCallbacks target = new Precompiled.ManagedCallbacks(2);
+        raii Precompiled.ManagedTransform instance =
+            Precompiled.ManagedCallbacks.MakeInstance(target);
+        return Precompiled.ManagedCallbacks.Invoke(direct, 10) +
+            Precompiled.ManagedCallbacks.Invoke(closure, 10) +
+            Precompiled.ManagedCallbacks.Invoke(instance, 8) + 8;
+    }
+}
+)NS");
+    writeFile(managedDllConsumer / "ManagedDelegateConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ManagedDelegateDllConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+              "Runtime=\"../Producer/NativeMath.dll\"/>"
+              "</ItemGroup></Project>");
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const auto executable = dllProducer /
+            (optimize ? "ManagedDelegateDllO2.exe" : "ManagedDelegateDllO0.exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            managedDllConsumer / "ManagedDelegateConsumer.nsproj",
+                                            executable, output, error, optimize);
+        tests.expect(result == ExitCode::Success,
+                     std::string("ordinary delegates and closures cross a DLL boundary at ") +
+                         (optimize ? "O2 (" : "O0 (") + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         std::string("DLL delegate code/context/destructor ABI executes to 42 at ") +
+                             (optimize ? "O2" : "O0"));
+#endif
+    }
+
+    const auto exceptionDllConsumer = dllRoot / "ExceptionConsumer";
+    writeFile(exceptionDllConsumer / "Main.ns", R"NS(
+using Precompiled;
+
+public class Program
+{
+    public static int Main()
+    {
+        int finallyCount = 0;
+        raii Problem problem = new Problem(40);
+        try
+        {
+            CrossModuleExceptions.Raise(problem);
+        }
+        catch (Problem caught)
+        {
+            return caught.Code + finallyCount + 2;
+        }
+        finally
+        {
+            finallyCount += 1;
+        }
+        return 1;
+    }
+}
+)NS");
+    writeFile(exceptionDllConsumer / "ExceptionConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ExceptionDllConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+              "Runtime=\"../Producer/NativeMath.dll\"/>"
+              "</ItemGroup></Project>");
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const auto executable = dllProducer /
+            (optimize ? "ExceptionDllO2.exe" : "ExceptionDllO0.exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            exceptionDllConsumer / "ExceptionConsumer.nsproj",
+                                            executable, output, error, optimize);
+        tests.expect(result == ExitCode::Success,
+                     std::string("typed exceptions, RTTI and finally cross a DLL boundary at ") +
+                         (optimize ? "O2 (" : "O0 (") + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         std::string("DLL exception identity and cleanup execute to 42 at ") +
                              (optimize ? "O2" : "O0"));
 #endif
     }
@@ -1115,10 +1604,23 @@ namespace Consumer
     {
         public static int Main()
         {
-            raii Precompiled.Counter value = Precompiled.Objects.Create(40);
+            raii Precompiled.Counter value = new Precompiled.Counter(40);
             int answer = value.Add(2);
             if (Precompiled.Objects.Read(value) != 42) { return 1; }
-            Precompiled.Objects.Destroy(move(value));
+            raii Precompiled.BonusCounter polymorphic = new Precompiled.BonusCounter(40);
+            borrowed Precompiled.CounterBase baseView = polymorphic;
+            borrowed Precompiled.IScore interfaceView = polymorphic;
+            if (baseView.Score() != 42) { return 2; }
+            if (interfaceView.Score() != 42) { return 3; }
+            if (Precompiled.GenericAlgorithms.ScoreOf<Precompiled.BonusCounter>(polymorphic) != 42)
+            {
+                return 4;
+            }
+            Precompiled.Lifetime.Reset();
+            {
+                raii Precompiled.Tracked tracked = new Precompiled.Tracked();
+            }
+            if (Precompiled.Lifetime.Destroyed() != 1) { return 5; }
             return answer;
         }
     }
@@ -1143,14 +1645,15 @@ namespace Consumer
                                             error,
                                             optimize);
         tests.expect(result == ExitCode::Success,
-                     std::string("metadata-backed DLL consumer imports opaque class references, ownership and a "
+                     std::string("metadata-backed DLL consumer constructs a "
+                                                              "precompiled class and calls a "
                                  "concrete instance receiver at ") +
                          (optimize ? "O2 (" : "O0 (") + error + ")");
 #ifdef _WIN32
         if (result == ExitCode::Success)
         {
             tests.expect(runExecutable(executable) == 42,
-                         std::string("DLL opaque-class ownership executes to 42 at ") +
+                         std::string("DLL precompiled construction and ownership execute to 42 at ") +
                              (optimize ? "O2" : "O0"));
         }
 #endif
@@ -1203,12 +1706,9 @@ namespace Precompiled
     {
         public static int Answer()
         {
-            Pair value;
-            value.X = 18;
-            value.Y = 23;
-            Pair copy = Math.Echo(value);
-            copy.Offset(1);
-            return copy.Sum();
+            Box<long> value;
+            value.Value = GenericAlgorithms.Identity<long>((long)41);
+            return (int)value.Read() + Math.Add(0, 1);
         }
     }
 }

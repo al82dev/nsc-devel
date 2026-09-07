@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1304,6 +1305,7 @@ private:
 
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
+            if (table.isImported) continue;
             if (table.destructionEntryName.empty())
             {
                 return fail(error, "Stage 35 class descriptor has no destruction-entry name");
@@ -1350,9 +1352,31 @@ private:
             return fail(error, "Macro A failed to create NativeSharp class-descriptor type");
         }
         LLVMStructSetBody(descriptorType_, descriptorFields, 7, 0);
+        descriptorAccessorFunctionType_ = LLVMFunctionType(ptr, nullptr, 0, 0);
+        if (descriptorAccessorFunctionType_ == nullptr)
+        {
+            return fail(error, "1.0-E1 failed to create class-descriptor accessor type");
+        }
 
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
+            if (table.isImported)
+            {
+                if (table.descriptorAccessorName.empty())
+                {
+                    return fail(error, "1.0-E1 imported class has no descriptor accessor");
+                }
+                LLVMValueRef accessor = LLVMAddFunction(
+                    module_, table.descriptorAccessorName.c_str(), descriptorAccessorFunctionType_);
+                if (accessor == nullptr)
+                {
+                    return fail(error, "1.0-E1 failed to declare imported class-descriptor accessor " +
+                        table.descriptorAccessorName);
+                }
+                descriptorAccessorFunctions_[table.typeOrdinal] =
+                    FunctionInfo{accessor, descriptorAccessorFunctionType_};
+                continue;
+            }
             LLVMValueRef vtableGlobal = nullptr;
             if (!table.slotCalleeNames.empty())
             {
@@ -1468,6 +1492,7 @@ private:
 
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
+            if (table.isImported) continue;
             const auto descriptorFound = descriptorGlobals_.find(table.typeOrdinal);
             if (descriptorFound == descriptorGlobals_.end())
             {
@@ -1524,6 +1549,25 @@ private:
             LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType_, values, 7);
             LLVMSetInitializer(descriptorFound->second, initializer);
             LLVMSetGlobalConstant(descriptorFound->second, 1);
+
+            if (table.descriptorAccessorName.empty())
+            {
+                return fail(error, "1.0-E1 local class has no descriptor-accessor name");
+            }
+            LLVMValueRef accessor = LLVMAddFunction(
+                module_, table.descriptorAccessorName.c_str(), descriptorAccessorFunctionType_);
+            if (accessor == nullptr)
+            {
+                return fail(error, "1.0-E1 failed to define class-descriptor accessor " +
+                    table.descriptorAccessorName);
+            }
+            LLVMBasicBlockRef accessorEntry = LLVMAppendBasicBlockInContext(context_, accessor, "entry");
+            LLVMBuilderRef accessorBuilder = LLVMCreateBuilderInContext(context_);
+            LLVMPositionBuilderAtEnd(accessorBuilder, accessorEntry);
+            LLVMBuildRet(accessorBuilder, descriptorFound->second);
+            LLVMDisposeBuilder(accessorBuilder);
+            descriptorAccessorFunctions_[table.typeOrdinal] =
+                FunctionInfo{accessor, descriptorAccessorFunctionType_};
         }
         return true;
     }
@@ -2332,6 +2376,9 @@ private:
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
+            // The imported descriptor already points at the producer's destruction entry. This
+            // module neither declares nor defines that private implementation directly.
+            if (table.isImported) continue;
             const auto entryFound = destructionFunctions_.find(table.typeOrdinal);
             if (entryFound == destructionFunctions_.end())
             {
@@ -3170,6 +3217,13 @@ private:
         // scope exit. The volatile flag below is what turns "the cleanup may be entered twice" into
         // "the destructor runs exactly once".
         emitCleanupGuardBranch(found->second, value, destroyBlock, doneBlock, "raii.owner");
+        if (isDelegateReference(node->typeKey))
+        {
+            if (!emitDelegateDestroy(value, "raii.delegate", error)) return false;
+            if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            return true;
+        }
         if (node->typeKey == "builtin:string" || node->typeKey.ends_with("[]"))
         {
             LLVMValueRef arguments[] = {value};
@@ -3246,6 +3300,13 @@ private:
         // `raii` local's is). Fixing only the `raii` side would leave `owned` parameters silently
         // double-destroyed in exactly the same shape.
         emitCleanupGuardBranch(found->second, value, destroyBlock, doneBlock, "owned.param");
+        if (isDelegateReference(node->typeKey))
+        {
+            if (!emitDelegateDestroy(value, "owned.param.delegate", error)) return false;
+            if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            return true;
+        }
         if (node->typeKey == "builtin:string")
         {
             LLVMValueRef arguments[] = {value};
@@ -6004,10 +6065,20 @@ private:
     LLVMValueRef allocateDelegateCell(
         LLVMValueRef code,
         LLVMValueRef receiver,
+        LLVMValueRef contextDestroy,
         std::string_view stem,
         std::string& error)
     {
-        LLVMValueRef bytes = LLVMConstInt(LLVMInt64TypeInContext(context_), 16, 0);
+        // Native ABI 1.0, delegate ABI 1:
+        //   +0  code pointer
+        //   +8  receiver/closure environment
+        //   +16 optional context destroy function
+        //   +24 cell free function
+        // Both callbacks are addresses from the PRODUCER module. A consumer may therefore own and
+        // destroy a delegate returned by a DLL without guessing which allocator created either
+        // allocation. The old 16-byte cell had no route back to its producer and leaked closures.
+        LLVMValueRef bytes = LLVMConstInt(
+            LLVMInt64TypeInContext(context_), interop::kManagedDelegateCellSize, 0);
         LLVMValueRef allocArgs[] = {bytes};
         LLVMValueRef cell = buildNoUnwindCall(
             allocationFunctionType_, allocationFunction_, allocArgs, 1,
@@ -6017,7 +6088,61 @@ private:
         LLVMBuildStore(builder_, code, cell);
         LLVMValueRef receiverAddress = byteOffset(cell, 8, (std::string(stem) + ".receiver.addr").c_str());
         LLVMBuildStore(builder_, receiver, receiverAddress);
+        LLVMValueRef contextDestroyAddress = byteOffset(
+            cell, 16, (std::string(stem) + ".context.destroy.addr").c_str());
+        LLVMBuildStore(builder_, contextDestroy, contextDestroyAddress);
+        LLVMValueRef cellFreeAddress = byteOffset(
+            cell, 24, (std::string(stem) + ".cell.free.addr").c_str());
+        LLVMBuildStore(builder_, deallocationFunction_, cellFreeAddress);
         return cell;
+    }
+
+    bool emitDelegateDestroy(LLVMValueRef cell, std::string_view stem, std::string& error)
+    {
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMBasicBlockRef destroyBlock = appendBlock(std::string(stem) + ".destroy");
+        LLVMBasicBlockRef doneBlock = appendBlock(std::string(stem) + ".done");
+        LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, cell, LLVMConstNull(ptr),
+                                            (std::string(stem) + ".isnull").c_str());
+        LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
+        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+
+        LLVMValueRef context = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(cell, 8, "delegate.destroy.context.addr"),
+            "delegate.destroy.context");
+        LLVMValueRef destroyContext = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(cell, 16, "delegate.destroy.callback.addr"),
+            "delegate.destroy.callback");
+        LLVMValueRef hasContext = LLVMBuildICmp(
+            builder_, LLVMIntNE, context, LLVMConstNull(ptr), "delegate.destroy.has.context");
+        LLVMValueRef hasDestroy = LLVMBuildICmp(
+            builder_, LLVMIntNE, destroyContext, LLVMConstNull(ptr), "delegate.destroy.has.callback");
+        LLVMValueRef destroyEnvironment = LLVMBuildAnd(
+            builder_, hasContext, hasDestroy, "delegate.destroy.environment");
+        LLVMBasicBlockRef environmentBlock = appendBlock(std::string(stem) + ".environment");
+        LLVMBasicBlockRef freeCellBlock = appendBlock(std::string(stem) + ".cell");
+        LLVMBuildCondBr(builder_, destroyEnvironment, environmentBlock, freeCellBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, environmentBlock);
+        LLVMValueRef contextArguments[] = {context};
+        buildNoUnwindCall(
+            deallocationFunctionType_, destroyContext, contextArguments, 1, "");
+        LLVMBuildBr(builder_, freeCellBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, freeCellBlock);
+        LLVMValueRef freeCell = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(cell, 24, "delegate.destroy.cell.callback.addr"),
+            "delegate.destroy.cell.callback");
+        LLVMValueRef callbackPresent = LLVMBuildICmp(
+            builder_, LLVMIntNE, freeCell, LLVMConstNull(ptr), "delegate.destroy.cell.callback.present");
+        LLVMBasicBlockRef callbackBlock = appendBlock(std::string(stem) + ".cell.callback");
+        LLVMBuildCondBr(builder_, callbackPresent, callbackBlock, doneBlock);
+        LLVMPositionBuilderAtEnd(builder_, callbackBlock);
+        LLVMValueRef cellArguments[] = {cell};
+        buildNoUnwindCall(deallocationFunctionType_, freeCell, cellArguments, 1, "");
+        LLVMBuildBr(builder_, doneBlock);
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        return error.empty();
     }
 
     LLVMValueRef lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -6064,7 +6189,11 @@ private:
                 LLVMBuildStore(builder_, value, address);
             }
         }
-        return allocateDelegateCell(found->second.function, receiver, "lambda.delegate", error);
+        LLVMValueRef contextDestroy = node->children.empty()
+            ? LLVMConstNull(LLVMPointerTypeInContext(context_, 0))
+            : deallocationFunction_;
+        return allocateDelegateCell(
+            found->second.function, receiver, contextDestroy, "lambda.delegate", error);
     }
 
     LLVMValueRef lowerDelegateCreate(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -6110,7 +6239,9 @@ private:
             if (receiver == nullptr) return nullptr;
         }
 
-        return allocateDelegateCell(found->second.function, receiver, "delegate", error);
+        return allocateDelegateCell(
+            found->second.function, receiver,
+            LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "delegate", error);
     }
 
     LLVMValueRef emitDelegateCall(
@@ -8374,12 +8505,28 @@ private:
         {
             return failValue(error, "Macro A allocation is missing its target class ordinal");
         }
-        const auto descriptor = descriptorGlobals_.find(*node->targetTypeOrdinal);
-        if (descriptor == descriptorGlobals_.end())
+        LLVMValueRef descriptorValue = nullptr;
+        const auto importedDescriptor = descriptorAccessorFunctions_.find(*node->targetTypeOrdinal);
+        if (importedDescriptor != descriptorAccessorFunctions_.end() &&
+            descriptorGlobals_.find(*node->targetTypeOrdinal) == descriptorGlobals_.end())
+        {
+            descriptorValue = buildNoUnwindCall(
+                importedDescriptor->second.functionType,
+                importedDescriptor->second.function,
+                nullptr,
+                0,
+                "classdesc");
+        }
+        else
+        {
+            const auto descriptor = descriptorGlobals_.find(*node->targetTypeOrdinal);
+            if (descriptor != descriptorGlobals_.end()) descriptorValue = descriptor->second;
+        }
+        if (descriptorValue == nullptr)
         {
             return failValue(error, "Macro A allocation cannot resolve its class descriptor");
         }
-        LLVMBuildStore(builder_, descriptor->second, object);
+        LLVMBuildStore(builder_, descriptorValue, object);
 
         if (!node->calleeName.empty())
         {
@@ -8437,6 +8584,12 @@ private:
         // allocator, which would misbehave or fail LLVM verification.
         if (node->valueTypeNoOpDeletion)
         {
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        }
+
+        if (node->children.front() != nullptr && isDelegateReference(node->children.front()->typeKey))
+        {
+            if (!emitDelegateDestroy(pointer, "delete.delegate", error)) return nullptr;
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
         }
 
@@ -8793,7 +8946,7 @@ private:
     // the three call sites that already live in this file.
     bool requiresOwnedDestruction(std::string_view typeKey) const noexcept
     {
-        return typeKey == "builtin:string" || isClassReference(typeKey);
+        return typeKey == "builtin:string" || isClassReference(typeKey) || isDelegateReference(typeKey);
     }
 
     // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). True for a struct
@@ -9200,10 +9353,12 @@ private:
     LLVMValueRef memcpyFunction_ = nullptr;
     LLVMTypeRef memcpyFunctionType_ = nullptr;
     LLVMTypeRef descriptorType_ = nullptr;
+    LLVMTypeRef descriptorAccessorFunctionType_ = nullptr;
     LLVMTypeRef interfaceMapEntryType_ = nullptr;
     LLVMTypeRef interfaceMapType_ = nullptr;
     LLVMTypeRef destructionEntryFunctionType_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> descriptorGlobals_;
+    std::unordered_map<std::size_t, FunctionInfo> descriptorAccessorFunctions_;
     std::unordered_map<std::size_t, LLVMValueRef> interfaceMapGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> destructionFunctions_;
     std::unordered_map<std::size_t, LLVMValueRef> vtableGlobals_;

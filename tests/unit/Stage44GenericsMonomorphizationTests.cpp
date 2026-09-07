@@ -326,7 +326,7 @@ class H { public static void F() { Box value; } }
 
     expectGenericReject("UnknownGenericType", R"NS(
 class H { public Missing<int> Value; }
-)NS", "is not a visible generic class/struct template");
+)NS", "does not name a unique visible generic class/struct template");
 
     expectGenericReject("WrongMethodArity", R"NS(
 class H

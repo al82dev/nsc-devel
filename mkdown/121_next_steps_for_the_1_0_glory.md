@@ -24,6 +24,18 @@ linker. El catálogo final da **297/297 efectivos con lld-link y 297/297 con NSL
 ejecutar G00 para convertir el cierre técnico en baseline instalado certificado. El acta completa
 está en `129_cierre_native_sharp_0_9_0.md`.
 
+**Avance local hacia 1.0 (2026-09-07):** E1–E4 ya están implementadas. E1 publica objetos,
+constructores, métodos de instancia, jerarquía y destruction entries; E2 transporta templates
+públicos y especializaciones genéricas; E3 lleva delegates ordinarios, closures y excepciones
+tipadas a través de `.lib` y DLL con cleanup del productor; E4 congela Native ABI 1.0 y Runtime
+ABI 1.0 en NSMETA 1.8, con golden fingerprint y rechazo temprano de contratos incompatibles. La
+historia técnica y la matriz exacta están en los documentos 132–135. Este estado todavía necesita
+el baseline externo antes de convertirse en una versión certificada. La corrida local que apunta al
+`nsc.exe` recién construido terminó **297/297**; la construcción alternativa recompiló y aprobó las
+fixtures E3/E4, pero su catálogo CLI sigue configurado para medir el compilador instalado anterior.
+La instalación y G00 son, por diseño, el siguiente acto de certificación y no se fingieron en esta
+entrega.
+
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
 crecimiento de campos `owned T[]`, tanto en O0/O2 como con lld-link/NSLink. La corrección mantiene

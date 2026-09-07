@@ -452,9 +452,7 @@ bool ProjectMethodBodyModel::build(
         for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
         {
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
-            const bool precompiledCallable =
-                member.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
-                nameLookup.namedTypes()[member.declaringTypeOrdinal].isPrecompiled;
+            const bool precompiledCallable = member.isPrecompiled;
             if (analyzedCallableMembers_.contains(memberOrdinal) ||
                 precompiledCallable ||
                 ((member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
@@ -2604,8 +2602,9 @@ void ProjectMethodBodyModel::analyzeVariable(
     // would either reject the idiom outright or promise a destruction traversal the compiler does
     // not yet perform -- both worse than leaving it exactly as it was.
     const bool isOwnedQualified = declaredOwnership == sema::OwnershipKind::Owned;
+    const bool managedDelegate = isAnyDelegateTypeKey(typeKey) && !isExternCDelegateTypeKey(typeKey);
     const bool ownedQualifierOwnsStorage =
-        isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string");
+        isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
     const bool isRaii = variable->hasModifier(TokenKind::KwRaii) || ownedQualifierOwnsStorage;
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at
@@ -2614,7 +2613,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     std::optional<MethodLocalBorrowBinding> pendingLocalBorrow;
     const bool raiiOwnsNativeArrayBuffer =
         variable->hasModifier(TokenKind::KwRaii) && ProjectTypeConversion::isNativeArray(typeKey);
-    if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string" &&
+    if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string" && !managedDelegate &&
         !raiiOwnsNativeArrayBuffer)
     {
         diagnostics.report(
@@ -2622,7 +2621,7 @@ void ProjectMethodBodyModel::analyzeVariable(
             diagnostics::DiagnosticSeverity::Error,
             variable->range(),
             std::string(ownerSpelling) +
-                " requires a NativeSharp class/interface reference type or native string, or a native array buffer");
+                " requires a NativeSharp class/interface reference, managed delegate, native string, or native array buffer");
     }
     if (isRaii && variable->first() == nullptr)
     {
@@ -2701,7 +2700,7 @@ void ProjectMethodBodyModel::analyzeVariable(
         // case would make it impossible to write `int x = list.Pop();` for a generic
         // collection. Only enforce the raii-destination / borrowed-local requirement when the
         // local's own declared type actually needs ownership tracking.
-        const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
+        const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate ||
             raiiOwnsNativeArrayBuffer;
         if (!isRaii && initializer.valid && initializer.ownership == sema::OwnershipKind::Owned &&
             initializer.ownershipTransfer && !isBorrowed && localTypeOwnable)
@@ -2718,7 +2717,7 @@ void ProjectMethodBodyModel::analyzeVariable(
             variable->first()->kind() != ast::AstNodeKind::NewExpression &&
             variable->first()->kind() != ast::AstNodeKind::MoveExpression &&
             variable->first()->kind() != ast::AstNodeKind::NullLiteralExpression &&
-            !ownedReturningInitializer)
+            !ownedReturningInitializer && !initializer.ownershipFreshOwner)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -3497,8 +3496,7 @@ void ProjectMethodBodyModel::analyzeReturn(
     // method's ACTUAL closed return type needs ownership tracking. The bookkeeping past each
     // check (registering a forwarding borrow/transfer binding) still runs unconditionally; it
     // is inert for a value-typed return since there is no RAII cleanup to suppress.
-    const bool returnTypeOwnable =
-        isReferenceTypeKey(method->declaredTypeKey) || method->declaredTypeKey == "builtin:string";
+    const bool returnTypeOwnable = typeKeyIsOwnable(method->declaredTypeKey);
 
     // SHR-013 "vistas y tiempo de vida" -- EL CRITERIO DEL BLOQUE 3, y esta es su linea.
     //
@@ -3664,7 +3662,7 @@ void ProjectMethodBodyModel::analyzeReturn(
             statement->first()->kind() == ast::AstNodeKind::NullLiteralExpression;
         const bool validOwnedTransfer =
             (value.ownership == sema::OwnershipKind::Owned && value.ownershipTransfer) ||
-            freshOwnedObject || nullOwnedValue;
+            value.ownershipFreshOwner || freshOwnedObject || nullOwnedValue;
         if (!validOwnedTransfer && returnTypeOwnable)
         {
             if (!directOwnerReturnWithoutMove)
@@ -11688,6 +11686,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     result.typeKey = std::string(delegateTypeKey);
     result.valid = true;
     result.assignable = false;
+    result.ownershipFreshOwner = true;
     recordExpressionType(syntax, methodMemberOrdinal, scopeOrdinal, result);
     return result;
 }
@@ -11824,6 +11823,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     result.typeKey = std::string(delegateTypeKey);
     result.valid = true;
     result.assignable = false;
+    if (!isExternCDelegateTypeKey(delegateTypeKey))
+    {
+        result.ownershipFreshOwner = true;
+    }
     return result;
 }
 
@@ -11953,7 +11956,8 @@ bool ProjectMethodBodyModel::typeKeyIsOwnable(std::string_view typeKey) const no
     // La cadena nativa entra aqui aunque no sea una referencia de clase: posee su propio
     // almacenamiento y `owned string` es legal. Es la misma expresion que la resolucion de
     // llamadas usaba en linea antes de NSC-LIMIT-010.
-    return isReferenceTypeKey(typeKey) || typeKey == "builtin:string";
+    return isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
+        (isAnyDelegateTypeKey(typeKey) && !isExternCDelegateTypeKey(typeKey));
 }
 
 // C1.1 "function-pointer round trip" -- the type-key predicates for the three sides of the trip.

@@ -392,7 +392,16 @@ bool ProjectCompilation::compileProjectGenerics(
     }
 
     genericModel_ = std::make_unique<ProjectGenericModel>();
-    return genericModel_->build(*projectGraph_, units_, diagnostics_);
+    std::vector<PrecompiledGenericSpecialization> precompiledSpecializations;
+    for (const PrecompiledSyntaxModule& module : precompiledModules_)
+    {
+        precompiledSpecializations.insert(
+            precompiledSpecializations.end(),
+            module.genericSpecializations.begin(),
+            module.genericSpecializations.end());
+    }
+    return genericModel_->build(
+        *projectGraph_, units_, precompiledSpecializations, diagnostics_);
 }
 
 bool ProjectCompilation::compileProjectMembers(
@@ -714,6 +723,26 @@ bool ProjectCompilation::compileSyntaxCore(
             *projectOrdinal, 0, module.moduleName, fileId, true);
         if (!unit->lex(*sourceFile, diagnostics_)) lexicalOk = false;
         units_.push_back(std::move(unit));
+
+        if (!module.templateSourceText.empty())
+        {
+            std::filesystem::path templateDisplayPath = module.metadataPath;
+            templateDisplayPath += ".public-templates.ns";
+            const FileId templateFileId =
+                sourceManager_.addBuffer(templateDisplayPath, module.templateSourceText);
+            const source::SourceFile* templateSourceFile = sourceManager_.getFile(templateFileId);
+            if (templateSourceFile == nullptr)
+            {
+                loadError = "internal error: generated precompiled templates have no SourceFile slot";
+                return false;
+            }
+            // Deliberately NOT precompiled: these public bodies are input to the consumer's
+            // ordinary generic pass, which specializes only what that consumer requests.
+            auto templateUnit = std::make_unique<ProjectSyntaxUnit>(
+                *projectOrdinal, 1, module.moduleName, templateFileId, false);
+            if (!templateUnit->lex(*templateSourceFile, diagnostics_)) lexicalOk = false;
+            units_.push_back(std::move(templateUnit));
+        }
     }
 
     const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);

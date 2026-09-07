@@ -247,7 +247,11 @@ namespace Demo
     tests.expect(llvm.find("closure.env = call ptr @__nativesharp_alloc(i64 8)") != std::string::npos,
         "single-capture closure allocates one 8-byte environment slot");
     tests.expect(llvm.find("@__nativesharp_alloc(i64 16)") != std::string::npos,
-        "multi-capture environment and delegate cells use explicit 16-byte allocations");
+        "multi-capture environments use explicit 16-byte allocations");
+    tests.expect(llvm.find("@__nativesharp_alloc(i64 32)") != std::string::npos &&
+            llvm.find("lambda.delegate.context.destroy.addr") != std::string::npos &&
+            llvm.find("lambda.delegate.cell.free.addr") != std::string::npos,
+        "managed delegates use the frozen 32-byte code/context/destroy/free ABI cell");
     tests.expect(llvm.find("closure.capture.store.addr") != std::string::npos,
         "captured values are snapshotted into closure storage at lambda creation");
     tests.expect(llvm.find("closure.capture.load") != std::string::npos,
@@ -281,6 +285,43 @@ namespace Demo
     nativesharp::llvm_backend::CoffObjectVerifier verifier;
     tests.expect(verifier.verify(object), "Stage 43 COFF passes structural verification");
     tests.expect(verifier.info().machine == 0x8664, "Stage 43 COFF machine is AMD64 / 0x8664");
+}
+
+void testOwnedDelegateLifetime(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "OwnedDelegateLifetime";
+    writeProject(directory, "OwnedDelegateLifetime");
+    writeFile(directory / "Main.ns", R"NS(
+delegate int Transform(int value);
+class Program
+{
+    public static int Run()
+    {
+        int bias = 2;
+        raii Transform callback = value => value + bias;
+        return callback(40);
+    }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(directory / "OwnedDelegateLifetime.nsproj", error);
+    tests.expect(ok && error.empty(),
+        "a fresh closure may initialize an explicit raii delegate owner");
+    if (!ok || compilation.nameLookup() == nullptr || compilation.oopMirModel() == nullptr) return;
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+    tests.expect(module != nullptr && lowerer.error().empty(),
+        "owned delegate lifetime lowers without an implicit copy");
+    if (module == nullptr) return;
+    std::string verifyError;
+    tests.expect(module->verify(verifyError), "owned delegate cleanup LLVM verifies");
+    const std::string llvm = module->text();
+    tests.expect(llvm.find("raii.delegate.destroy") != std::string::npos &&
+            llvm.find("delegate.destroy.environment") != std::string::npos &&
+            llvm.find("delegate.destroy.cell.callback") != std::string::npos,
+        "scope exit destroys the closure environment and cell through producer callbacks");
 }
 
 void testNegativeContracts(TestContext& tests, const std::filesystem::path& root)
@@ -370,6 +411,7 @@ int main()
 
     testLexicalContract(tests);
     testPositivePipeline(tests, root);
+    testOwnedDelegateLifetime(tests, root);
     testNegativeContracts(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);

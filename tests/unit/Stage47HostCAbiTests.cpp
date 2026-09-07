@@ -208,8 +208,8 @@ void testStableExports(TestContext& tests, const std::filesystem::path& root)
         tests.expect(contains(info.exportedSymbols, symbol),
             std::string("stable C ABI export table contains exact symbol '") + std::string(symbol) + "'");
     }
-    tests.expect(info.exportedSymbols.size() == 21,
-        "DLL contains ten stable C wrappers plus eleven public NativeSharp mangled entries");
+    tests.expect(info.exportedSymbols.size() == 24,
+        "DLL contains ten stable C wrappers plus methods, constructor and public type descriptors");
     tests.expect(std::any_of(info.exportedSymbols.begin(), info.exportedSymbols.end(),
             [](const std::string& symbol) { return symbol.find("InternalOnly") != std::string::npos; }) &&
             std::none_of(info.exportedSymbols.begin(), info.exportedSymbols.end(),
@@ -239,7 +239,7 @@ void testStableExports(TestContext& tests, const std::filesystem::path& root)
         "Stage 47 stable C ABI DLL also closes at O0");
     tests.expect(verifier.verifyDynamicLibrary(dllO0) &&
             contains(verifier.info().exportedSymbols, "Invoke") &&
-            verifier.info().exportedSymbols.size() == 21,
+            verifier.info().exportedSymbols.size() == 24,
         "O0 and O2 preserve the combined C and NativeSharp export surface");
 }
 
@@ -325,8 +325,8 @@ void testSemanticGuards(TestContext& tests, const std::filesystem::path& root)
         // C1.1 "function-pointer round trip" flipped this case: an EXTERN C delegate return is a
         // raw C function pointer and is now legal (it is what makes a `wglGetProcAddress`-shaped
         // declaration expressible with its real signature -- see Stage56C1InteropCompletionTests).
-        // What stays rejected is the ORDINARY delegate, which is a 16-byte code+receiver heap
-        // cell with no C shape at all, and that is the case pinned here now.
+        // What stays rejected is the ORDINARY delegate, whose managed cell includes code,
+        // context and lifetime callbacks and therefore has no C function-pointer shape.
         {"ManagedDelegateReturn", R"NS(delegate int Callback(int x); class Api { public static export extern C Callback Bad() { return null; } })NS",
             "does not return delegate values"},
         {"Duplicate", R"NS(class A { public static export extern C int Ping(int x) { return x; } } class B { public static export extern C int Ping(int x) { return x + 1; } })NS",
@@ -391,9 +391,14 @@ public class Api
         "a NativeSharp DLL can publish a native API without inventing a C export");
     PeExecutableVerifier nativeOnlyVerifier;
     tests.expect(nativeOnlyVerifier.verifyDynamicLibrary(nativeOnlyDll) &&
-            nativeOnlyVerifier.info().exportedSymbols.size() == 1 &&
-            nativeOnlyVerifier.info().exportedSymbols.front().find("Double") != std::string::npos,
-        "native-only DLL exports exactly the public method's mangled NativeSharp symbol");
+            nativeOnlyVerifier.info().exportedSymbols.size() == 2 &&
+            std::any_of(nativeOnlyVerifier.info().exportedSymbols.begin(),
+                nativeOnlyVerifier.info().exportedSymbols.end(),
+                [](const std::string& symbol) { return symbol.find("Double") != std::string::npos; }) &&
+            std::any_of(nativeOnlyVerifier.info().exportedSymbols.begin(),
+                nativeOnlyVerifier.info().exportedSymbols.end(),
+                [](const std::string& symbol) { return symbol.find("__nsc_get_classdesc_") != std::string::npos; }),
+        "native-only DLL exports its public method and the type descriptor needed by cross-module RTTI");
 }
 
 void testParserMemberRestrictions(TestContext& tests, const std::filesystem::path& root)

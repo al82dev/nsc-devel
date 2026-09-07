@@ -172,6 +172,7 @@ namespace Meta
     }
 
     extern C delegate int Transform(int value);
+    public delegate int ManagedTransform(int value);
 
     public class Api
     {
@@ -210,7 +211,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "Stage 48.2 emits .nsmeta explicitly without linking the binary product");
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
         "explicit metadata generation creates parent directories and keeps stderr empty");
-    tests.expect(output.find("format: NSMETA 1.5") != std::string::npos &&
+    tests.expect(output.find("format: NSMETA 1.8") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
 
@@ -223,10 +224,16 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "metadata persists exact producer and module identity");
     tests.expect(metadata.targetTriple == "x86_64-pc-windows-msvc" && metadata.pointerSize == 8 && metadata.pointerAlignment == 8,
         "metadata freezes the NativeSharp 0.1 Windows x64 target contract");
-    tests.expect(metadata.types.size() == 9, "all root-module named types are persisted as compiler metadata");
+    tests.expect(metadata.types.size() == 10, "all root-module named types are persisted as compiler metadata");
     tests.expect(metadata.exports.size() == 3, "three explicit Stage47 C ABI exports are persisted");
     tests.expect(LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint).size() == 64,
         "ABI fingerprint is a full 256-bit SHA-256 value");
+    tests.expect(metadata.nativeAbiMajor == 1 && metadata.nativeAbiMinor == 0 &&
+            metadata.runtimeAbiMajor == 1 && metadata.runtimeAbiMinor == 0 &&
+            metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 1 &&
+            metadata.delegateAbiVersion == 1 && metadata.exceptionAbiVersion == 1 &&
+            metadata.managedDelegateCellSize == 32,
+        "NSMETA 1.8 separates its file version from the frozen NativeSharp/runtime ABI contract");
 
     const LibraryMetadataType* pair = findType(metadata, "::Meta.Pair");
     tests.expect(pair != nullptr && pair->kind == LibraryMetadataTypeKind::Struct,
@@ -266,7 +273,13 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(transform != nullptr && transform->kind == LibraryMetadataTypeKind::Delegate &&
             transform->delegateFlags == 1U && transform->delegateReturnTypeKey == "builtin:int" &&
             transform->delegateParameterTypeKeys == std::vector<std::string>{"builtin:int"},
-        "NSMETA 1.5 preserves the complete extern C delegate signature");
+        "NSMETA 1.8 preserves the complete extern C delegate signature introduced in 1.5");
+    const LibraryMetadataType* managedTransform = findType(metadata, "::Meta.ManagedTransform");
+    tests.expect(managedTransform != nullptr && managedTransform->kind == LibraryMetadataTypeKind::Delegate &&
+            managedTransform->delegateFlags == 0U && managedTransform->referenceSize == 8 &&
+            managedTransform->referenceAlignment == 8 &&
+            managedTransform->delegateReturnTypeKey == "builtin:int",
+        "NSMETA 1.8 distinguishes a managed delegate cell from a raw callback and freezes its pointer carrier");
 
     const LibraryMetadataType* derived = findType(metadata, "::Meta.Derived");
     tests.expect(derived != nullptr && derived->kind == LibraryMetadataTypeKind::Class &&
@@ -329,8 +342,9 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             "null defaults survive the library boundary without an invented payload");
     }
     tests.expect(std::ranges::any_of(metadata.dispatchTables, [](const auto& dispatch) {
-        return dispatch.typeKey.find("Meta.Derived") != std::string::npos && !dispatch.slotSignatures.empty();
-    }), "virtual dispatch slot metadata is persisted for NativeSharp compiler consumption");
+        return dispatch.typeKey.find("Meta.Derived") != std::string::npos &&
+            !dispatch.descriptorAccessorName.empty() && !dispatch.slotSignatures.empty();
+    }), "virtual dispatch metadata includes the producer-owned descriptor accessor and its slots");
 }
 
 void testDeterminismAndAbiSensitivity(TestContext& tests, const std::filesystem::path& root)
@@ -368,6 +382,25 @@ public class Api
     LibraryMetadata c;
     tests.expect(codec.read(changedMetadata, c, error) && c.abiFingerprint != a.abiFingerprint,
         "changing an exported ABI signature changes the metadata ABI fingerprint");
+
+    // Golden mínimo del ABI 1.0: fija el orden y ancho de todos los campos raíz aunque no haya
+    // declaraciones. Si alguien reordena mangling/object/delegate/exception o cambia un ancho sin
+    // versionarlo, esta huella cambia y la revisión ve un diff concreto, no una sospecha.
+    LibraryMetadata golden;
+    golden.producerVersion = std::string(nativesharp::kCompilerVersion);
+    golden.moduleName = "GoldenAbi10";
+    golden.targetTriple = "x86_64-pc-windows-msvc";
+    const auto goldenPath = directory / "golden-abi-1.0.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(golden, goldenPath, error),
+        "the ABI 1.0 golden metadata model serializes");
+    LibraryMetadata goldenDecoded;
+    error.clear();
+    tests.expect(codec.read(goldenPath, goldenDecoded, error),
+        "the ABI 1.0 golden metadata model round-trips");
+    const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
+    tests.expect(goldenHex == "30b4f83c4ba0db0a507b512828508df6802c973f3cbbd60dde59080b45f8c8b3",
+        "ABI 1.0 root contract retains its reviewed golden fingerprint");
 }
 
 void testDefaultValueContractSensitivity(TestContext& tests, const std::filesystem::path& root)
@@ -469,6 +502,9 @@ namespace GenericMeta
     tests.expect(codec.read(metadataPath, metadata, error), "generic metadata reads successfully");
     tests.expect(metadata.genericTemplates.size() == 2,
         "generic class/struct and generic method template identities are persisted");
+    tests.expect(std::ranges::all_of(metadata.genericTemplates, [](const auto& item) {
+        return item.accessibility == 3U && !item.sourceText.empty();
+    }), "public generic templates carry a materializable declaration slice in NSMETA 1.7");
     tests.expect(metadata.genericSpecializations.size() == 2,
         "concrete Box<int> and Identity<int> specialization identities are persisted");
     tests.expect(std::ranges::any_of(metadata.genericSpecializations, [](const auto& item) {
@@ -541,6 +577,16 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("target ABI") != std::string::npos,
         "target ABI compatibility gate rejects non-Windows-x64 pointer contracts");
+    incompatible = metadata;
+    incompatible.delegateAbiVersion += 1;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("ABI contract") != std::string::npos,
+        "a different managed-delegate representation is rejected before compilation or link");
+    incompatible = metadata;
+    incompatible.exceptionAbiVersion += 1;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("ABI contract") != std::string::npos,
+        "a different exception transport/RTTI contract is rejected before compilation or link");
 
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&

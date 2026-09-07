@@ -173,10 +173,13 @@ namespace Demo
     std::string verifyError;
     tests.expect(module->verify(verifyError), "Stage 42 LLVM verifies before optimization");
     const std::string llvm = module->text();
-    tests.expect(llvm.find("delegate.cell = call ptr @__nativesharp_alloc(i64 16)") != std::string::npos,
-        "delegate cell is exactly two native pointers (16 bytes on x64)");
+    tests.expect(llvm.find("delegate.cell = call ptr @__nativesharp_alloc(i64 32)") != std::string::npos,
+        "managed delegate cell carries code, context, context destructor and producer deallocator (32 bytes on x64)");
     tests.expect(llvm.find("delegate.receiver.addr = getelementptr i8") != std::string::npos,
         "delegate receiver lives at native pointer offset 8");
+    tests.expect(llvm.find("delegate.context.destroy.addr = getelementptr i8") != std::string::npos &&
+            llvm.find("delegate.cell.free.addr = getelementptr i8") != std::string::npos,
+        "delegate cell freezes both cross-module lifetime callbacks in its public ABI");
     tests.expect(llvm.find("delegate.has.receiver = icmp ne ptr") != std::string::npos,
         "delegate invocation distinguishes static and instance ABI by receiver nullness");
     tests.expect(llvm.find("delegate.static.result = call i32") != std::string::npos,

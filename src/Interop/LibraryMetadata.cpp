@@ -616,6 +616,11 @@ bool buildMetadataModel(
         else if (type.kind == frontend::NamedTypeDeclarationKind::Delegate && type.syntax != nullptr)
         {
             if (type.syntax->hasModifier(lexer::TokenKind::KwExtern)) record.delegateFlags |= 1U;
+            // Los dos delegates viajan en un registro LLVM `ptr`. El extern C apunta al codigo;
+            // el ordinario apunta a la celda ABI versionada. La diferencia queda en flags y en el
+            // contrato raiz, pero tamaño/alineacion de la REFERENCIA son iguales.
+            record.referenceSize = kPointerSize;
+            record.referenceAlignment = kPointerAlignment;
             record.delegateReturnTypeKey =
                 compilation.memberModel()->canonicalTypeKey(type.syntax->typeSyntax(), *compilation.nameLookup());
             for (const ast::AstNode* parameter : type.syntax->children())
@@ -715,14 +720,22 @@ bool buildMetadataModel(
     for (const frontend::GenericTemplateRecord& generic : compilation.genericModel()->templates())
     {
         if (generic.projectOrdinal != *rootOrdinal) continue;
+        constexpr std::uint8_t kPublicAccessibility = 3U;
+        const bool isPublic = generic.syntax != nullptr &&
+            (generic.kind == frontend::GenericTemplateKind::Method
+                ? generic.syntax->hasModifier(lexer::TokenKind::KwPublic)
+                : generic.syntax->tokenKind() == lexer::TokenKind::KwPublic);
+        if (!isPublic) continue;
         LibraryMetadataGenericTemplate record;
         record.kind = static_cast<std::uint8_t>(generic.kind);
+        record.accessibility = kPublicAccessibility;
         record.canonicalKey = generic.canonicalKey;
         record.moduleName = generic.moduleName;
         record.namespaceName = generic.namespaceName;
         record.ownerName = generic.ownerName;
         record.name = generic.name;
         record.parameters = generic.parameters;
+        record.sourceText = std::string(compilation.sourceManager().getText(generic.syntax->range()));
         rootTemplateKeys.insert(record.canonicalKey);
         metadata.genericTemplates.push_back(std::move(record));
     }
@@ -751,6 +764,7 @@ bool buildMetadataModel(
         record.typeKey = table.typeKey;
         record.stableTypeId = table.stableTypeId;
         record.descriptorName = table.descriptorName;
+        record.descriptorAccessorName = table.descriptorAccessorName;
         record.vtableName = table.vtableName;
         record.destructionEntryName = table.destructionEntryName;
         for (std::size_t index = 0; index < table.slotMemberOrdinals.size(); ++index)
@@ -833,6 +847,18 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
     writer.text(metadata.producerVersion);
     writer.text(metadata.moduleName);
     writer.text(metadata.targetTriple);
+    if (metadata.formatMinor >= 8)
+    {
+        writer.u16(metadata.nativeAbiMajor);
+        writer.u16(metadata.nativeAbiMinor);
+        writer.u16(metadata.runtimeAbiMajor);
+        writer.u16(metadata.runtimeAbiMinor);
+        writer.u16(metadata.manglingAbiVersion);
+        writer.u16(metadata.objectAbiVersion);
+        writer.u16(metadata.delegateAbiVersion);
+        writer.u16(metadata.exceptionAbiVersion);
+        writer.u32(metadata.managedDelegateCellSize);
+    }
 
     writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
     for (const LibraryMetadataType& type : metadata.types)
@@ -920,12 +946,14 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
     for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
     {
         writer.u8(generic.kind);
+        if (metadata.formatMinor >= 7) writer.u8(generic.accessibility);
         writer.text(generic.canonicalKey);
         writer.text(generic.moduleName);
         writer.text(generic.namespaceName);
         writer.text(generic.ownerName);
         writer.text(generic.name);
         writeStringVector(writer, generic.parameters);
+        if (metadata.formatMinor >= 7) writer.text(generic.sourceText);
     }
 
     writer.u32(static_cast<std::uint32_t>(metadata.genericSpecializations.size()));
@@ -944,6 +972,7 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writer.text(dispatch.typeKey);
         writer.u64(dispatch.stableTypeId);
         writer.text(dispatch.descriptorName);
+        if (metadata.formatMinor >= 6) writer.text(dispatch.descriptorAccessorName);
         writer.text(dispatch.vtableName);
         writer.text(dispatch.destructionEntryName);
         writeStringVector(writer, dispatch.slotSignatures);
@@ -993,6 +1022,16 @@ bool decodePayload(
     if (!reader.text(metadata.producerVersion) || !reader.text(metadata.moduleName) || !reader.text(metadata.targetTriple))
     {
         error = "truncated metadata identity payload";
+        return false;
+    }
+    if (metadata.formatMinor >= 8 &&
+        (!reader.u16(metadata.nativeAbiMajor) || !reader.u16(metadata.nativeAbiMinor) ||
+         !reader.u16(metadata.runtimeAbiMajor) || !reader.u16(metadata.runtimeAbiMinor) ||
+         !reader.u16(metadata.manglingAbiVersion) || !reader.u16(metadata.objectAbiVersion) ||
+         !reader.u16(metadata.delegateAbiVersion) || !reader.u16(metadata.exceptionAbiVersion) ||
+         !reader.u32(metadata.managedDelegateCellSize)))
+    {
+        error = "truncated metadata ABI contract";
         return false;
     }
 
@@ -1114,9 +1153,12 @@ bool decodePayload(
     for (std::uint32_t index = 0; index < count; ++index)
     {
         LibraryMetadataGenericTemplate generic;
-        if (!reader.u8(generic.kind) || !reader.text(generic.canonicalKey) || !reader.text(generic.moduleName) ||
+        if (!reader.u8(generic.kind) ||
+            (metadata.formatMinor >= 7 && !reader.u8(generic.accessibility)) ||
+            !reader.text(generic.canonicalKey) || !reader.text(generic.moduleName) ||
             !reader.text(generic.namespaceName) || !reader.text(generic.ownerName) || !reader.text(generic.name) ||
-            !readStringVector(reader, generic.parameters))
+            !readStringVector(reader, generic.parameters) ||
+            (metadata.formatMinor >= 7 && !reader.text(generic.sourceText)))
         {
             error = "truncated generic-template metadata";
             return false;
@@ -1147,7 +1189,9 @@ bool decodePayload(
     {
         LibraryMetadataDispatch dispatch;
         if (!reader.text(dispatch.typeKey) || !reader.u64(dispatch.stableTypeId) ||
-            !reader.text(dispatch.descriptorName) || !reader.text(dispatch.vtableName) ||
+            !reader.text(dispatch.descriptorName) ||
+            (metadata.formatMinor >= 6 && !reader.text(dispatch.descriptorAccessorName)) ||
+            !reader.text(dispatch.vtableName) ||
             !reader.text(dispatch.destructionEntryName) || !readStringVector(reader, dispatch.slotSignatures) ||
             !readStringVector(reader, dispatch.slotCalleeNames))
         {
@@ -1303,6 +1347,18 @@ bool LibraryMetadataCodec::writeModel(
             "; NativeSharp 0.1 targets Windows x64 only";
         return false;
     }
+    if (metadata.formatMinor >= 8 &&
+        (metadata.nativeAbiMajor != kNativeAbiMajor || metadata.nativeAbiMinor > kNativeAbiMinor ||
+         metadata.runtimeAbiMajor != kRuntimeAbiMajor || metadata.runtimeAbiMinor > kRuntimeAbiMinor ||
+         metadata.manglingAbiVersion != kManglingAbiVersion ||
+         metadata.objectAbiVersion != kObjectAbiVersion ||
+         metadata.delegateAbiVersion != kDelegateAbiVersion ||
+         metadata.exceptionAbiVersion != kExceptionAbiVersion ||
+         metadata.managedDelegateCellSize != kManagedDelegateCellSize))
+    {
+        error = "metadata NativeSharp ABI contract is not compatible with this compiler/runtime";
+        return false;
+    }
 
     metadata.abiFingerprint = sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -1419,6 +1475,18 @@ bool LibraryMetadataCodec::read(
     decoded.pointerSize = pointerSize;
     decoded.pointerAlignment = pointerAlignment;
     decoded.abiFingerprint = abiFingerprint;
+    if (minor < 8)
+    {
+        decoded.nativeAbiMajor = 0;
+        decoded.nativeAbiMinor = 0;
+        decoded.runtimeAbiMajor = 0;
+        decoded.runtimeAbiMinor = 0;
+        decoded.manglingAbiVersion = 0;
+        decoded.objectAbiVersion = 0;
+        decoded.delegateAbiVersion = 0;
+        decoded.exceptionAbiVersion = 0;
+        decoded.managedDelegateCellSize = 0;
+    }
     if (!decodePayload(payload, decoded, error)) return false;
     const std::array<std::uint8_t, 32> recomputedAbi = sha256(encodeAbiProjection(decoded));
     if (!sameFingerprint(recomputedAbi, decoded.abiFingerprint))
@@ -1446,9 +1514,22 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         error = "metadata target ABI does not match NativeSharp 0.1 Windows x64";
         return false;
     }
+    if (metadata.formatMinor >= 8 &&
+        (metadata.nativeAbiMajor != kNativeAbiMajor || metadata.nativeAbiMinor > kNativeAbiMinor ||
+         metadata.runtimeAbiMajor != kRuntimeAbiMajor || metadata.runtimeAbiMinor > kRuntimeAbiMinor ||
+         metadata.manglingAbiVersion != kManglingAbiVersion ||
+         metadata.objectAbiVersion != kObjectAbiVersion ||
+         metadata.delegateAbiVersion != kDelegateAbiVersion ||
+         metadata.exceptionAbiVersion != kExceptionAbiVersion ||
+         metadata.managedDelegateCellSize != kManagedDelegateCellSize))
+    {
+        error = "metadata NativeSharp ABI contract is not compatible with this compiler/runtime";
+        return false;
+    }
     for (const LibraryMetadataType& type : metadata.types)
     {
-        if ((type.kind == LibraryMetadataTypeKind::Class || type.kind == LibraryMetadataTypeKind::Interface) &&
+        if ((type.kind == LibraryMetadataTypeKind::Class || type.kind == LibraryMetadataTypeKind::Interface ||
+             (metadata.formatMinor >= 8 && type.kind == LibraryMetadataTypeKind::Delegate)) &&
             (type.referenceSize != metadata.pointerSize ||
              type.referenceAlignment != metadata.pointerAlignment))
         {
@@ -1464,6 +1545,31 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             error = "metadata delegate '" + type.fullyQualifiedName +
                 "' does not provide its callable signature";
             return false;
+        }
+    }
+    if (metadata.formatMinor >= 6)
+    {
+        for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+        {
+            if (dispatch.descriptorAccessorName.empty())
+            {
+                error = "metadata dispatch contract for '" + dispatch.typeKey +
+                    "' does not provide its class-descriptor accessor";
+                return false;
+            }
+        }
+    }
+    if (metadata.formatMinor >= 7)
+    {
+        constexpr std::uint8_t kPublicAccessibility = 3U;
+        for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+        {
+            if (generic.accessibility != kPublicAccessibility || generic.sourceText.empty())
+            {
+                error = "metadata generic template '" + generic.canonicalKey +
+                    "' does not provide a public materializable declaration";
+                return false;
+            }
         }
     }
     // El productor conserva la identidad exacta del ejecutable para poder rastrear el artefacto,

@@ -876,6 +876,7 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.range = memberNode->range();
             symbol.syntax = memberNode;
             symbol.sourcePath = part.sourcePath;
+            symbol.isPrecompiled = part.isPrecompiled;
             symbol.name = memberNode->text();
             symbol.declaredTypeSyntax = memberNode->typeSyntax();
             symbol.declaredTypeKey = symbol.kind == ClassMemberKind::Constructor
@@ -1765,6 +1766,7 @@ bool ProjectMemberModel::collectEnumMembers(
         symbol.range = memberNode->range();
         symbol.syntax = memberNode;
         symbol.sourcePath = type.parts.empty() ? std::string{} : type.parts.front().sourcePath;
+        symbol.isPrecompiled = type.isPrecompiled;
         symbol.name = memberNode->text();
         // The member's declared/visible type is the enum itself (so `Mode.Second` type-checks as
         // `Mode`, matching a `Mode`-typed parameter/local and comparing correctly against other

@@ -343,10 +343,14 @@ struct ProjectOopMirStaticField final
 
 struct ProjectOopMirDispatchTable final
 {
+    // Imported tables describe producer-owned runtime data. They participate in semantic slot
+    // selection, but the consumer must neither define nor initialize their globals locally.
+    bool isImported = false;
     std::size_t typeOrdinal = 0;
     std::optional<std::size_t> baseTypeOrdinal;
     std::string typeKey;
     std::string descriptorName;
+    std::string descriptorAccessorName;
     std::string vtableName;
     std::uint64_t stableTypeId = 0;
     // C8 "type root": the type's own name, as source wrote it -- the string

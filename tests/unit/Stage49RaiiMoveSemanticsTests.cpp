@@ -409,7 +409,7 @@ class Resource
     // cause confirmed against src/Frontend/ProjectMethodBodyModel.cpp before touching this.
     expectInvalid(tests, root, "RaiiNeedsReference",
         "class H { public static void F() { raii int value = 1; } }",
-        "raii local requires a NativeSharp class/interface reference type or native string");
+        "raii local requires a NativeSharp class/interface reference, managed delegate, native string, or native array buffer");
 
     expectInvalid(tests, root, "RaiiNeedsInitializer", prefix +
         "class H { public static void F() { raii Resource value; } }",

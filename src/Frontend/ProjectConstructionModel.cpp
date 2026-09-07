@@ -119,7 +119,10 @@ bool ProjectConstructionModel::build(
     // that no `new Derived(...)` expression happens to occur in this project.
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
     {
-        if (memberModel.members()[memberOrdinal].kind == ClassMemberKind::Constructor)
+        const ClassMemberSymbol& constructor = memberModel.members()[memberOrdinal];
+        if (constructor.kind == ClassMemberKind::Constructor &&
+            constructor.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
+            !nameLookup.namedTypes()[constructor.declaringTypeOrdinal].isPrecompiled)
         {
             bindConstructorInitializer(memberOrdinal, diagnostics);
         }
@@ -293,6 +296,14 @@ void ProjectConstructionModel::bindImplicitDefaultConstructors(
     for (const auto& [depth, typeOrdinal] : orderedTypes)
     {
         (void)depth;
+        if (typeOrdinal < nameLookup_->namedTypes().size() && nameLookup_->namedTypes()[typeOrdinal].isPrecompiled)
+        {
+            // Its constructor chain and field initializers were already compiled into
+            // the producer's constructor entry. Re-validating an empty synthetic body
+            // would invent an implicit base() call that was never present in the
+            // published implementation.
+            continue;
+        }
         bool hasExplicitConstructor = false;
         for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
         {
