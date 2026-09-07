@@ -15,7 +15,7 @@ namespace detail
 // not move between builds. `kCompilerVersion` appends this id as SemVer build metadata so the
 // version string of two nsc.exe binaries is never the same.
 //
-inline constexpr std::string_view kGeneratedCompilerBuildId = "a6c15b3fca87c7ac";
-inline constexpr std::string_view kGeneratedCompilerVersion = "0.9.0-alpha+build.20260907T021023Z.a6c15b3fca87c7ac";
+inline constexpr std::string_view kGeneratedCompilerBuildId = "7cc7faa5ecc8a96b";
+inline constexpr std::string_view kGeneratedCompilerVersion = "0.9.0+build.20260907T035128Z.7cc7faa5ecc8a96b";
 }
 }

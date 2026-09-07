@@ -210,7 +210,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "Stage 48.2 emits .nsmeta explicitly without linking the binary product");
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
         "explicit metadata generation creates parent directories and keeps stderr empty");
-    tests.expect(output.find("format: NSMETA 1.4") != std::string::npos &&
+    tests.expect(output.find("format: NSMETA 1.5") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
 
@@ -262,6 +262,12 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(pair != nullptr && pair->enumUnderlyingTypeKey.empty(),
         "a struct records no enum underlying type");
 
+    const LibraryMetadataType* transform = findType(metadata, "::Meta.Transform");
+    tests.expect(transform != nullptr && transform->kind == LibraryMetadataTypeKind::Delegate &&
+            transform->delegateFlags == 1U && transform->delegateReturnTypeKey == "builtin:int" &&
+            transform->delegateParameterTypeKeys == std::vector<std::string>{"builtin:int"},
+        "NSMETA 1.5 preserves the complete extern C delegate signature");
+
     const LibraryMetadataType* derived = findType(metadata, "::Meta.Derived");
     tests.expect(derived != nullptr && derived->kind == LibraryMetadataTypeKind::Class &&
             derived->baseTypeKey.find("Meta.Base") != std::string::npos,
@@ -293,7 +299,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             assign->parameters[0].passKind == LibraryMetadataParameterPassKind::Out &&
             read != metadata.members.end() && read->parameters.size() == 1 &&
             read->parameters[0].passKind == LibraryMetadataParameterPassKind::In,
-        "NSMETA 1.4 preserves ref, out, and in independently from their pointer carrier");
+        "NSMETA preserves ref, out, and in independently from their pointer carrier");
     const auto defaults = std::ranges::find_if(metadata.members, [](const auto& member) {
         return member.name == "Defaults";
     });
@@ -399,7 +405,7 @@ public class Api
     LibraryMetadata second;
     error.clear();
     tests.expect(codec.read(firstPath, first, error) && codec.read(secondPath, second, error),
-        "both default-value contracts round-trip through NSMETA 1.4");
+        "both default-value contracts round-trip through current NSMETA");
     tests.expect(first.abiFingerprint != second.abiFingerprint,
         "changing only a parameter default changes the published library contract fingerprint");
 }

@@ -270,7 +270,7 @@ bool WindowsLibraryBuilder::buildDynamic(
     }
     if (exportSymbols.empty())
     {
-        error = "NativeSharp DLL requires at least one Stage 46 exported public static method";
+        error = "NativeSharp DLL requires at least one publishable public method";
         return false;
     }
 

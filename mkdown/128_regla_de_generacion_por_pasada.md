@@ -1,6 +1,7 @@
 # 128 — Bitácora didáctica y regla de generación por pasada
 
-**Vigencia:** permanente desde `nsc 0.9.0-alpha`.
+**Vigencia:** permanente desde el inicio de `nsc 0.9.0-alpha`; ratificada por el cierre estable
+`nsc 0.9.0`.
 
 Este documento cumple dos funciones inseparables:
 
@@ -71,7 +72,7 @@ un símbolo llamado `Add` tampoco demuestra que su firma coincida con la declara
 consumidor. El trabajo de `0.9` consiste precisamente en unir esas identidades y rechazar las
 combinaciones falsas antes de ejecutarlas.
 
-## Pasadas resueltas en `0.9.0-alpha`
+## Pasadas resueltas durante la construcción de `0.9.0`
 
 ### Pasada 1 — identidad de versión de la nueva línea
 
@@ -84,6 +85,12 @@ ejecutable construido sin convertir cada build en una ABI diferente.
 
 **Garantía:** el artefacto dice qué línea de compatibilidad implementa y qué construcción exacta
 lo produjo.
+
+La identidad permaneció en `0.9.0-alpha` mientras la frontera binaria estaba abierta. Después de
+cerrar `.lib`, DLL, tipos nominales, ownership, callbacks, compatibilidad de metadata y las dos
+rutas de enlace, la pasada 15 promovió conjuntamente CMake, la identidad pública y sus pruebas a
+`0.9.0` estable. La promoción no oculta una capacidad pendiente dentro de 0.9: lo que no pertenece
+a este contrato quedó enumerado como frontera de 1.0.
 
 ### Pasada 2 — `NSMETA 1.3` conserva argumentos predeterminados
 
@@ -374,14 +381,66 @@ pasó **1/1**. La composición de evidencia es, por tanto, **297/297**, sin un f
 linker escondido. El gate oficial todavía debe recalcular su baseline porque esta corrección mueve
 el árbol.
 
-## Frontera que todavía permanece
+## Pasada 13 — contratos nominales precompilados
 
-Los métodos estáticos con tipos base ya se consumen por nombre fuente y mangling nativo. La
-frontera pendiente es ensanchar esa capacidad al contrato NativeSharp completo: tipos nominales,
-layouts de valor, miembros de instancia, delegates, genéricos/constraints y dispatch entre módulos.
-También falta certificar esas familias en
-combinaciones transitivas y de múltiples bibliotecas sin rebajar los diagnósticos físicos ya
-cerrados.
+La pasada 13 amplía el consumo desde `.nsmeta` de métodos limitados a tipos base a contratos que
+usan structs y enums del productor. El cambio no agrega una ruta paralela de ABI: genera una unidad
+precompilada sintética y deja que nombre, miembros, layout, HIR, MIR y LLVM ordinarios vuelvan a
+validarla.
+
+Un struct se materializa con tamaño, alineación, empaquetado efectivo y offsets explícitos. Por
+eso también funcionan structs empacados y anidados. Un enum conserva su tipo subyacente y sus
+constantes. Los métodos de instancia de structs se publican y consumen con receptor implícito; la
+DLL incluye sus símbolos mangled en el export set, mientras la estática los conserva en su índice
+COFF.
+
+La prueba de biblioteca pasó de 74 a 93 checks. Se ejecutó completa con ambos linkers y cubre O0,
+O2, `.lib`, DLL, métodos estáticos/de instancia, composición transitiva nominal y un caso negativo
+con metadata autofirmada que declara un tamaño físicamente imposible. Las dos corridas terminaron
+**93/93**.
+
+La validación física no se redujo al ampliar lo que el consumidor puede materializar. Todos los
+métodos públicos estáticos que ya formaban parte de la superficie publicada siguen verificándose
+contra los símbolos reales del `.lib` o DLL, incluso si su firma todavía no puede reconstruirse
+como fuente. A esa superficie se agregan los métodos de instancia de structs cuyo contrato sí es
+materializable. Así, ganar consumo nominal no permite esconder una exportación estática ausente.
+
+La matriz directamente afectada terminó 4/4 con lld-link y 4/4 con NSLink. La suite Stage 46
+aportó 93 checks dentro de cada corrida. Como evidencia acumulada, el catálogo completo previo
+cerró 296/296 nativos con lld-link; NSLink obtuvo 294/296 en paralelo por dos archivos bloqueados
+temporalmente por Windows y ambos pasaron al repetirse en serie. El host C# pasó 1/1 fuera del
+aislamiento con cada linker: resultado funcional efectivo, 297/297 para ambos.
+
+## Pasada 14 — clases opacas y ownership entre binarios
+
+Una clase definida por el productor puede cruzar ahora como referencia opaca siempre que su
+carrier coincida exactamente con el ABI de puntero del target. El consumidor llama métodos
+concretos no virtuales y conserva `owned`, `borrowed` y `move`; la asignación y destrucción física
+continúan dentro del productor mediante factory y sink de ownership. `.lib` y DLL ejecutan 42 en
+O0/O2. Una metadata autofirmada que cambia el carrier 8/8 a 4/8 se rechaza antes del enlace.
+
+## Pasada 15 — NSMETA 1.5 y callbacks precompilados
+
+NSMETA 1.5 añade firma de delegate al registro de tipo. El consumidor reconstruye un `extern C
+delegate`, convierte un método compatible y lo entrega a una función que vive en la biblioteca.
+Las cuatro combinaciones `.lib`/DLL × O0/O2 ejecutan 42 con ambos linkers. El lector actual mantiene
+compatibilidad comprobada con 1.4 y no inventa los campos que ese formato no contenía.
+
+La suite Stage 46 creció de 93 a **111 checks**. Stage 48.2 cerró **72/72** y Stage 50.9 **47/47**.
+La matriz directa terminó 5/5 con cada linker; el catálogo total efectivo terminó 297/297 con
+lld-link y 297/297 con NSLink.
+
+La revalidación final del `nsc 0.9.0` estable recorrió los 297 casos en serie: 288 pasaron en la
+corrida principal, ocho emisiones de objeto bloqueadas temporalmente por Windows pasaron 8/8 al
+repetirse aisladas y el host C# pasó 1/1 con acceso al SDK. No se convirtió ninguna falla de
+entorno en un verde ficticio; la composición comprobada es 288 + 8 + 1 = **297/297 efectivos**.
+
+## Frontera que pasa a 1.0
+
+0.9 cierra valores nominales, clases opacas, ownership y callbacks crudos. Pasan a la línea 1.0 la
+construcción directa de una clase precompilada, dispatch virtual/interfaz hidratado desde metadata,
+especializaciones genéricas nuevas creadas por el consumidor y delegates con closure/target. No
+se implementan a medias: 0.9 los conserva en metadata y evita degradarlos a una ABI falsa.
 
 ## Regla
 
@@ -428,9 +487,9 @@ dejando la anterior sin su compilador generado.
 
 La entrega acumulada actual quedó materializada como:
 
-- versión: `nsc 0.9.0-alpha+build.20260907T021023Z.a6c15b3fca87c7ac`;
+- versión: `nsc 0.9.0+build.20260907T035128Z.7cc7faa5ecc8a96b`;
 - lenguaje: `NativeSharp 0.1`, Stage 57;
-- SHA-256: `E6385401C7E82FCB3896749195DD4896DA1309DF589BDCFB1E6BE8E143F55433`;
-- tamaño: `3,695,616` bytes;
-- generado (UTC): `2026-09-07T02:10:24Z`;
+- SHA-256: `C3C2F2067860647EF8513330B542F97C53F3D4B3A4CE017D3BA88902BE2CD5FD`;
+- tamaño: `3,713,024` bytes;
+- generado (UTC): `2026-09-07T03:51:28Z`;
 - producto: `build-tests/bin/nsc.exe`.

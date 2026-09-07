@@ -1,7 +1,7 @@
 # 121 — Next Steps for the 1.0 Glory
 
 **Fecha:** 2026-09-06
-**Punto de partida:** línea activa `nsc 0.9.0-alpha`; el último baseline instalado certificado es
+**Punto de partida:** `nsc 0.9.0` cerrado localmente; el último baseline instalado certificado es
 `0.8.0-alpha`. NativeSharp 0.1 / Stage 57. La identidad `+build.<UTC>.<hash>` se genera de nuevo
 para cada binario y se registra al certificar.
 **Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
@@ -14,15 +14,15 @@ está instalado y certificado. G00 `20260906-021445-7c15dc93` terminó `LANDED`,
 los 308 casos terminaron sin fallos ni omitidos, con CTest, fixtures y bug triage en lld-link y
 NSLink, O0/O2.
 
-**Estado local de 0.9.0-alpha:** el frente de bibliotecas `.lib`/DLL ya separa el linker PE del
-archivador estático, compone dependencias A → B sin incrustar import libraries del sistema y
-consume métodos estáticos NativeSharp desde metadata. La revisión más reciente corrigió el último
-fixture amarrado al nombre `lld-link`: ahora `nsc.linker-info` valida el contrato PE/COFF y pasa con
-NSLink y lld-link. La revalidación local da **297/297** (296 casos nativos con NSLink y el host C#
-repetido con acceso al SDK). El binario acumulado es
-`nsc 0.9.0-alpha+build.20260907T021023Z.a6c15b3fca87c7ac`, SHA-256
-`E6385401C7E82FCB3896749195DD4896DA1309DF589BDCFB1E6BE8E143F55433`. Esto no sustituye un nuevo
-G00: la modificación del fixture obliga a recalcular y certificar S0/S1.
+**Cierre local de 0.9.0:** la frontera `.lib`/DLL cubre composición transitiva, llamadas
+NativeSharp sin redeclaración, structs y enums con ABI exacto, receptores de instancia de structs,
+clases opacas con ownership y métodos concretos, y callbacks `extern C delegate`. NSMETA 1.5
+conserva ahora la firma de callbacks y sigue leyendo 1.0–1.4. Stage 46 suma **111 checks** por
+linker. El catálogo final da **297/297 efectivos con lld-link y 297/297 con NSLink**. El producto es
+`nsc 0.9.0+build.20260907T035128Z.7cc7faa5ecc8a96b`, SHA-256
+`C3C2F2067860647EF8513330B542F97C53F3D4B3A4CE017D3BA88902BE2CD5FD`. Falta instalar este hash y
+ejecutar G00 para convertir el cierre técnico en baseline instalado certificado. El acta completa
+está en `129_cierre_native_sharp_0_9_0.md`.
 
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
@@ -924,9 +924,9 @@ una forma inequívoca:
 - exports e imports explícitos;
 - error temprano cuando binario, metadata o declaración consumidora discrepan.
 
-La ABI C permanece como frontera mínima y estable. El consumo NativeSharp completo debe poder
-materializar desde `.nsmeta` tipos, miembros, defaults, ownership y dispatch sin redeclaraciones
-manuales.
+La ABI C permanece como frontera mínima y estable. El consumo NativeSharp de 0.9 materializa desde
+`.nsmeta` tipos de valor, clases opacas, miembros concretos, defaults, ownership y callbacks crudos
+sin redeclaraciones manuales.
 
 ### 8.2 Composición
 
@@ -945,8 +945,8 @@ los dos caminos de enlace soportados. Debe ejercer:
 - funciones, overloads y defaults;
 - structs, enums, clases opacas y delegates;
 - ownership en parámetros, retornos y cleanup;
-- genéricos y constraints definidos en otra biblioteca;
-- virtual dispatch e interfaces;
+- especializaciones genéricas ya cerradas en el productor conservadas en metadata;
+- métodos virtuales e interfaces preservados en metadata, sin degradarlos a llamadas directas;
 - múltiples bibliotecas y dependencias transitivas;
 - metadata anterior compatible y metadata futura/incompatible rechazada;
 - ejecución real del consumidor, no sólo existencia de archivos.
@@ -1081,8 +1081,8 @@ Además:
 0.7.5  Runner G00 corregido; baseline LANDED/certificado; NSC-LIMIT-011 cerrado
 0.7.6  Entrega grande: NSC-LIMIT-012/013/015/019 + NSC-LUNAR-007 cerrados
 0.8.0-alpha  Entrega concentrada certificada; NSC-LIMIT-005/016/017/018/020/021 cerrados
-0.9.0-alpha  Línea activa: DLL, import `.lib`, `.lib` estática y NSMETA 1.4
-0.9.x        Consumo precompilado, ABI/mangling estable, composición, diagnóstico y certificación
+0.9.0        Cierre local: DLL/import `.lib`, estática, consumo precompilado y NSMETA 1.5
+0.9.0+G00    Instalación del hash de cierre y baseline certificado
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

@@ -67,6 +67,7 @@
 #include <map>
 #include <optional>
 #include <ostream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -197,8 +198,9 @@ bool sourceTypeForMetadataKey(
         std::replace(sourceType.begin(), sourceType.end(), '+', '.');
         if (sourceType.find('`') != std::string::npos)
         {
-            error = "metadata-backed source import does not yet support open generic type key '" +
-                typeKey + "'";
+            error = "metadata-backed source import does not yet support open generic "
+                    "type key '" +
+                    typeKey + "'";
             return false;
         }
     }
@@ -225,9 +227,8 @@ std::string ownershipPrefix(interop::LibraryMetadataOwnershipKind ownership)
     return {};
 }
 
-bool isPublicStaticNativeMethod(const interop::LibraryMetadataMember& member) noexcept
+bool isPublicNativeMethod(const interop::LibraryMetadataMember& member) noexcept
 {
-    constexpr std::uint32_t kStatic = 1U << 0U;
     constexpr std::uint32_t kAbstract = 1U << 5U;
     constexpr std::uint32_t kExternC = 1U << 8U;
     constexpr std::uint32_t kExportedC = 1U << 9U;
@@ -241,45 +242,202 @@ bool isPublicStaticNativeMethod(const interop::LibraryMetadataMember& member) no
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kPublicAccessibility = 3U;
     return member.kind == kMethodKind && member.accessibility == kPublicAccessibility &&
-        (member.flags & kStatic) != 0U && (member.flags & kExcluded) == 0U &&
-        ((member.flags & kExternC) == 0U || (member.flags & kExportedC) != 0U) &&
-        !member.mangledName.empty();
+           (member.flags & kExcluded) == 0U && ((member.flags & kExternC) == 0U || (member.flags & kExportedC) != 0U) &&
+           !member.mangledName.empty();
 }
 
-bool canMaterializeNativeMethod(
-    const interop::LibraryMetadataMember& member,
-    std::uint16_t formatMinor) noexcept
+std::string metadataBaseTypeKey(std::string typeKey)
 {
-    if (!isPublicStaticNativeMethod(member)) return false;
-    const auto hasBuiltinBase = [](std::string typeKey) {
-        while (!typeKey.empty())
+    while (!typeKey.empty())
+    {
+        if (typeKey.ends_with("[]"))
         {
-            if (typeKey.ends_with("[]")) { typeKey.resize(typeKey.size() - 2); continue; }
-            if (typeKey.ends_with('*')) { typeKey.pop_back(); continue; }
-            if (typeKey.ends_with(']'))
-            {
-                const std::size_t open = typeKey.find_last_of('[');
-                if (open != std::string::npos) { typeKey.resize(open); continue; }
-            }
-            break;
+            typeKey.resize(typeKey.size() - 2);
+            continue;
         }
-        return typeKey.starts_with("builtin:");
-    };
-    // Named value/reference types need their complete metadata-backed declaration and layout.
-    // Until that slice is installed, omit only those methods instead of making the whole library
-    // reference unusable or inventing an ABI from an empty placeholder type.
-    if (!hasBuiltinBase(member.declaredTypeKey)) return false;
+        if (typeKey.ends_with('*'))
+        {
+            typeKey.pop_back();
+            continue;
+        }
+        if (typeKey.ends_with(']'))
+        {
+            const std::size_t open = typeKey.find_last_of('[');
+            if (open != std::string::npos)
+            {
+                typeKey.resize(open);
+                continue;
+            }
+        }
+        break;
+    }
+    return typeKey;
+}
+
+const interop::LibraryMetadataType* metadataTypeForKey(const interop::LibraryMetadata& metadata,
+                                                       const std::string& typeKey)
+{
+    const std::string base = metadataBaseTypeKey(typeKey);
+    if (!base.starts_with("type:")) return nullptr;
+    const std::string_view identity(base.data() + 5, base.size() - 5);
+    const auto found =
+        std::ranges::find_if(metadata.types, [&](const auto& candidate) { return candidate.identityKey == identity; });
+    return found == metadata.types.end() ? nullptr : &*found;
+}
+
+bool canMaterializeContractType(const interop::LibraryMetadata& metadata,
+                                const std::string& typeKey,
+                                std::unordered_set<std::string>& visiting)
+{
+    const std::string base = metadataBaseTypeKey(typeKey);
+    if (base.starts_with("builtin:")) return true;
+    const interop::LibraryMetadataType* type = metadataTypeForKey(metadata, base);
+    if (type == nullptr || type->fullyQualifiedName.find('+') != std::string::npos ||
+        type->fullyQualifiedName.find('`') != std::string::npos ||
+        (type->kind != interop::LibraryMetadataTypeKind::Class &&
+         type->kind != interop::LibraryMetadataTypeKind::Struct &&
+         type->kind != interop::LibraryMetadataTypeKind::Enum &&
+         type->kind != interop::LibraryMetadataTypeKind::Delegate))
+    {
+        return false;
+    }
+    if (type->kind == interop::LibraryMetadataTypeKind::Enum) return true;
+    if (type->kind == interop::LibraryMetadataTypeKind::Delegate)
+    {
+        if (metadata.formatMinor < 5 || (type->delegateFlags & 1U) == 0U ||
+            type->delegateReturnTypeKey.empty() || !visiting.insert(type->identityKey).second)
+        {
+            return false;
+        }
+        bool valid = canMaterializeContractType(metadata, type->delegateReturnTypeKey, visiting);
+        for (const std::string& parameterTypeKey : type->delegateParameterTypeKeys)
+            valid = canMaterializeContractType(metadata, parameterTypeKey, visiting) && valid;
+        visiting.erase(type->identityKey);
+        return valid;
+    }
+    if (type->kind == interop::LibraryMetadataTypeKind::Class)
+    {
+        // A precompiled class is deliberately opaque. Its value in a signature is the native
+        // reference carrier, not an object copied by value, so the consumer only needs to prove
+        // that producer and target agree on that carrier. Arrays remain outside this contract;
+        // one trailing pointer is accepted because ref/out/in parameters use it internally.
+        if (typeKey.find('[') != std::string::npos || type->referenceSize != metadata.pointerSize ||
+            type->referenceAlignment != metadata.pointerAlignment)
+        {
+            return false;
+        }
+        return true;
+    }
+    if (!visiting.insert(type->identityKey).second) return true;
+    for (const interop::LibraryMetadataField& field : type->fields)
+    {
+        if (!canMaterializeContractType(metadata, field.typeKey, visiting))
+        {
+            visiting.erase(type->identityKey);
+            return false;
+        }
+    }
+    visiting.erase(type->identityKey);
+    return true;
+}
+
+bool canMaterializeContractType(const interop::LibraryMetadata& metadata, const std::string& typeKey)
+{
+    std::unordered_set<std::string> visiting;
+    return canMaterializeContractType(metadata, typeKey, visiting);
+}
+
+bool canMaterializeNativeMethod(const interop::LibraryMetadata& metadata, const interop::LibraryMetadataMember& member)
+{
+    if (!isPublicNativeMethod(member)) return false;
+    constexpr std::uint32_t kStatic = 1U << 0U;
+    const interop::LibraryMetadataType* declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
+    if (declaringType == nullptr) return false;
+    constexpr std::uint32_t kVirtual = 1U << 3U;
+    constexpr std::uint32_t kOverride = 1U << 4U;
+    if ((member.flags & kStatic) == 0U &&
+        declaringType->kind != interop::LibraryMetadataTypeKind::Struct &&
+        declaringType->kind != interop::LibraryMetadataTypeKind::Class)
+    {
+        return false;
+    }
+    // Calling a concrete class receiver is a direct external call. Virtual/override methods
+    // require the producer's dispatch table to participate in consumer lowering and therefore
+    // remain excluded until that table is materialized rather than guessed.
+    if (declaringType->kind == interop::LibraryMetadataTypeKind::Class &&
+        (member.flags & (kVirtual | kOverride)) != 0U)
+    {
+        return false;
+    }
+    // NSMETA already carries the complete layout for structs, the underlying type for enums and
+    // the pointer-sized reference carrier for opaque classes. Admit a method only when every
+    // nominal type in its signature can be reconstructed under those exact rules.
+    if (!canMaterializeContractType(metadata, member.declaredTypeKey)) return false;
     if (std::ranges::any_of(member.parameters, [&](const auto& parameter) {
-            return !hasBuiltinBase(parameter.typeKey);
+            return !canMaterializeContractType(metadata, parameter.typeKey);
         }))
     {
         return false;
     }
-    if (formatMinor >= 4) return true;
-    // NSMETA <=1.3 encoded the pointer carrier but not whether the source said ref/out/in.
+    if (metadata.formatMinor >= 4) return true;
+    // NSMETA <=1.3 encoded the pointer carrier but not whether the source said
+    // ref/out/in.
     return member.signatureKey.find("ref ") == std::string::npos &&
         member.signatureKey.find("out ") == std::string::npos &&
         member.signatureKey.find("in ") == std::string::npos;
+}
+
+void collectMaterializedContractTypes(const interop::LibraryMetadata& metadata,
+                                      const std::string& typeKey,
+                                      std::set<std::string>& identities)
+{
+    const interop::LibraryMetadataType* type = metadataTypeForKey(metadata, typeKey);
+    if (type == nullptr || !identities.insert(type->identityKey).second) return;
+    if (type->kind == interop::LibraryMetadataTypeKind::Struct)
+    {
+        for (const interop::LibraryMetadataField& field : type->fields)
+            collectMaterializedContractTypes(metadata, field.typeKey, identities);
+    }
+    else if (type->kind == interop::LibraryMetadataTypeKind::Delegate)
+    {
+        collectMaterializedContractTypes(metadata, type->delegateReturnTypeKey, identities);
+        for (const std::string& parameterTypeKey : type->delegateParameterTypeKeys)
+            collectMaterializedContractTypes(metadata, parameterTypeKey, identities);
+    }
+}
+
+std::string_view sourceAccessibility(std::uint8_t accessibility) noexcept
+{
+    switch (accessibility)
+    {
+        case 0U: return "private";
+        case 1U: return "protected";
+        case 2U: return "internal";
+        case 3U: return "public";
+        default: return "private";
+    }
+}
+
+const interop::LibraryMetadataMember* metadataFieldMember(const interop::LibraryMetadata& metadata,
+                                                          const interop::LibraryMetadataType& type,
+                                                          std::string_view name)
+{
+    constexpr std::uint8_t kFieldKind = 0U;
+    const std::string typeKey = "type:" + type.identityKey;
+    const auto found = std::ranges::find_if(metadata.members, [&](const auto& member) {
+        return member.kind == kFieldKind && member.declaringTypeKey == typeKey && member.name == name;
+    });
+    return found == metadata.members.end() ? nullptr : &*found;
+}
+
+std::string enumConstantSource(const interop::LibraryMetadataType& type, std::uint64_t bits)
+{
+    const bool signedUnderlying =
+        type.enumUnderlyingTypeKey == "builtin:sbyte" || type.enumUnderlyingTypeKey == "builtin:short" ||
+        type.enumUnderlyingTypeKey == "builtin:int" || type.enumUnderlyingTypeKey == "builtin:long" ||
+        type.enumUnderlyingTypeKey == "builtin:nint";
+    if (signedUnderlying) return std::to_string(std::bit_cast<std::int64_t>(bits));
+    return std::to_string(bits);
 }
 
 std::string_view parameterPassPrefix(interop::LibraryMetadataParameterPassKind passKind) noexcept
@@ -296,10 +454,18 @@ std::string_view parameterPassPrefix(interop::LibraryMetadataParameterPassKind p
 
 std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata& metadata)
 {
+    constexpr std::uint32_t kStatic = 1U << 0U;
     std::vector<std::string> symbols;
     for (const interop::LibraryMetadataMember& member : metadata.members)
     {
-        if (isPublicStaticNativeMethod(member)) symbols.push_back(member.mangledName);
+        // Physical validation must remain stricter than source materialization. Every public
+        // static method was already part of the published native surface; struct instance
+        // methods join it only when their receiver contract can be reconstructed safely.
+        if (isPublicNativeMethod(member) &&
+            ((member.flags & kStatic) != 0U || canMaterializeNativeMethod(metadata, member)))
+        {
+            symbols.push_back(member.mangledName);
+        }
     }
     std::sort(symbols.begin(), symbols.end());
     symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
@@ -342,7 +508,8 @@ bool sourceDefaultValue(
                 source = std::string("'") + static_cast<char>(value) + "'";
             else
             {
-                error = "metadata-backed source import cannot spell non-ASCII character default";
+                error = "metadata-backed source import cannot spell non-ASCII character "
+                        "default";
                 return false;
             }
             return true;
@@ -364,10 +531,11 @@ bool buildPrecompiledPublicSource(
         std::vector<const interop::LibraryMetadataMember*> methods;
     };
     std::map<std::string, PublishedType> published;
+    std::set<std::string> contractTypeIdentities;
     constexpr std::uint8_t kPublicAccessibility = 3U;
     for (const interop::LibraryMetadataMember& member : metadata.members)
     {
-        if (!canMaterializeNativeMethod(member, metadata.formatMinor))
+        if (!canMaterializeNativeMethod(metadata, member))
         {
             continue;
         }
@@ -388,6 +556,20 @@ bool buildPrecompiledPublicSource(
         PublishedType& group = published[type->identityKey];
         group.type = &*type;
         group.methods.push_back(&member);
+        collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
+        for (const interop::LibraryMetadataParameter& parameter : member.parameters)
+            collectMaterializedContractTypes(metadata, parameter.typeKey, contractTypeIdentities);
+    }
+    for (const std::string& identity : contractTypeIdentities)
+    {
+        const auto type = std::ranges::find_if(
+            metadata.types, [&](const auto& candidate) { return candidate.identityKey == identity; });
+        if (type == metadata.types.end())
+        {
+            error = "metadata contract refers to missing type '" + identity + "'";
+            return false;
+        }
+        published[identity].type = &*type;
     }
 
     std::ostringstream generated;
@@ -398,8 +580,10 @@ bool buildPrecompiledPublicSource(
         if (type.fullyQualifiedName.find('+') != std::string::npos ||
             type.fullyQualifiedName.find('`') != std::string::npos)
         {
-            error = "metadata-backed source import does not yet support nested or generic "
-                "declaring type '" + type.fullyQualifiedName + "'";
+            error = "metadata-backed source import does not yet support nested or "
+                    "generic "
+                    "declaring type '" +
+                    type.fullyQualifiedName + "'";
             return false;
         }
         const std::size_t separator = type.fullyQualifiedName.find_last_of('.');
@@ -410,16 +594,107 @@ bool buildPrecompiledPublicSource(
             ? type.fullyQualifiedName
             : type.fullyQualifiedName.substr(separator + 1);
         if (!namespaceName.empty()) generated << "namespace " << namespaceName << "\n{\n";
-        generated << "public "
-                  << (type.kind == interop::LibraryMetadataTypeKind::Struct ? "struct " : "class ")
-                  << typeName << "\n{\n";
+        const std::string_view typeAccessibility =
+            type.accessibility == kPublicAccessibility ? std::string_view("public") : std::string_view("internal");
+        if (type.kind == interop::LibraryMetadataTypeKind::Delegate)
+        {
+            std::string returnType;
+            if (!sourceTypeForMetadataKey(type.delegateReturnTypeKey, returnType, error)) return false;
+            generated << typeAccessibility << " extern C delegate " << returnType << ' ' << typeName << '(';
+            for (std::size_t parameterIndex = 0; parameterIndex < type.delegateParameterTypeKeys.size();
+                 ++parameterIndex)
+            {
+                if (parameterIndex != 0) generated << ", ";
+                std::string parameterType;
+                if (!sourceTypeForMetadataKey(type.delegateParameterTypeKeys[parameterIndex], parameterType, error))
+                    return false;
+                generated << parameterType << " arg" << parameterIndex;
+            }
+            generated << ");\n";
+            if (!namespaceName.empty()) generated << "}\n";
+            continue;
+        }
+        if (type.kind == interop::LibraryMetadataTypeKind::Enum)
+        {
+            std::string underlyingType;
+            if (!sourceTypeForMetadataKey(type.enumUnderlyingTypeKey.empty() ? "builtin:int"
+                                                                             : type.enumUnderlyingTypeKey,
+                                          underlyingType,
+                                          error))
+            {
+                return false;
+            }
+            generated << typeAccessibility << " enum " << typeName << " : " << underlyingType << "\n{\n";
+            bool firstEnumerator = true;
+            constexpr std::uint8_t kFieldKind = 0U;
+            const std::string declaringTypeKey = "type:" + type.identityKey;
+            for (const interop::LibraryMetadataMember& member : metadata.members)
+            {
+                if (member.kind != kFieldKind || member.declaringTypeKey != declaringTypeKey ||
+                    member.constantKind == 0U)
+                {
+                    continue;
+                }
+                if (!firstEnumerator) generated << ",\n";
+                generated << "    " << member.name << " = " << enumConstantSource(type, member.constantBits);
+                firstEnumerator = false;
+            }
+            if (!firstEnumerator) generated << '\n';
+            generated << "}\n";
+            if (!namespaceName.empty()) generated << "}\n";
+            continue;
+        }
+        if (type.kind != interop::LibraryMetadataTypeKind::Struct &&
+            type.kind != interop::LibraryMetadataTypeKind::Class)
+        {
+            error = "metadata-backed source import cannot materialize declaration "
+                    "kind for '" +
+                    type.fullyQualifiedName + "'";
+            return false;
+        }
+        generated << typeAccessibility << ' ';
+        if (type.kind == interop::LibraryMetadataTypeKind::Struct)
+        {
+            // Recreate the producer's physical contract, including
+            // packed/union/explicit layouts, from the final layout already frozen in
+            // NSMETA. `pack(alignment)` preserves a lowered aggregate alignment,
+            // `align` preserves a raised one, every `at` freezes its field offset,
+            // and `size` makes the consumer reject a declaration it cannot reproduce.
+            generated << "pack(" << type.alignment << ") align(" << type.alignment << ") size(" << type.size
+                      << ") struct ";
+        } else
+        {
+            generated << "class ";
+        }
+        generated << typeName << "\n{\n";
+
+        if (type.kind == interop::LibraryMetadataTypeKind::Struct)
+        {
+            for (std::size_t fieldIndex = 0; fieldIndex < type.fields.size(); ++fieldIndex)
+            {
+                const interop::LibraryMetadataField& field = type.fields[fieldIndex];
+                std::string fieldType;
+                if (!sourceTypeForMetadataKey(field.typeKey, fieldType, error)) return false;
+                const interop::LibraryMetadataMember* member = metadataFieldMember(metadata, type, field.name);
+                const std::string fieldName =
+                    field.name.empty() ? "__nsc_layout_field_" + std::to_string(fieldIndex) : field.name;
+                generated << "    at(" << field.offset << ") "
+                          << (member == nullptr ? std::string_view("private")
+                                                : sourceAccessibility(member->accessibility))
+                          << ' ';
+                if (member != nullptr && (member->flags & (1U << 1U)) != 0U) generated << "readonly ";
+                generated << ownershipPrefix(field.ownership) << fieldType << ' ' << fieldName << ";\n";
+            }
+        }
 
         for (const interop::LibraryMetadataMember* member : group.methods)
         {
             std::string returnType;
             if (!sourceTypeForMetadataKey(member->declaredTypeKey, returnType, error)) return false;
-            generated << "    public static " << ownershipPrefix(member->declaredOwnership)
-                      << returnType << ' ' << member->name << '(';
+            constexpr std::uint32_t kStatic = 1U << 0U;
+            generated << "    public ";
+            if ((member->flags & kStatic) != 0U) generated << "static ";
+            generated << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
             for (std::size_t index = 0; index < member->parameters.size(); ++index)
             {
                 if (index != 0) generated << ", ";
@@ -430,8 +705,9 @@ bool buildPrecompiledPublicSource(
                 {
                     if (sourceTypeKey.empty() || !sourceTypeKey.ends_with('*'))
                     {
-                        error = "metadata by-reference parameter has no pointer carrier in member '" +
-                            member->name + "'";
+                        error = "metadata by-reference parameter has no pointer carrier in "
+                                "member '" +
+                                member->name + "'";
                         return false;
                     }
                     sourceTypeKey.pop_back();
@@ -444,8 +720,9 @@ bool buildPrecompiledPublicSource(
                 if (!sourceDefaultValue(parameter, defaultValue, error)) return false;
                 if (!defaultValue.empty()) generated << " = " << defaultValue;
             }
-            // The empty body is an implementation detail of the generated syntax. Precompiled
-            // units are skipped by body analysis and lowered as external NativeSharp declarations.
+            // The empty body is an implementation detail of the generated syntax.
+            // Precompiled units are skipped by body analysis and lowered as external
+            // NativeSharp declarations.
             generated << ") { }\n";
         }
         generated << "}\n";
@@ -641,16 +918,18 @@ bool appendValidatedLibraryReferences(
                     std::unique(actualExports.begin(), actualExports.end()), actualExports.end());
                 if (actualExports != expectedExports)
                 {
-                    error = "runtime DLL export table does not match metadata contract for module '" +
-                        metadata.moduleName + "'";
+                    error = "runtime DLL export table does not match metadata contract "
+                            "for module '" +
+                            metadata.moduleName + "'";
                     return false;
                 }
                 const auto runtimeOwner = runtimeNames.find(runtimeName);
                 if (runtimeOwner != runtimeNames.end() &&
                     foldedPathKey(runtimeOwner->second) != foldedPathKey(reference.runtimePath))
                 {
-                    error = "two precompiled library references require different DLLs named '" +
-                        reference.runtimePath.filename().string() + "'";
+                    error = "two precompiled library references require different DLLs "
+                            "named '" +
+                            reference.runtimePath.filename().string() + "'";
                     return false;
                 }
                 if (runtimeOwner == runtimeNames.end())
@@ -676,8 +955,9 @@ bool appendValidatedLibraryReferences(
         {
             if (!publishedNativeMethods.contains(function.mangledName))
             {
-                error = "metadata-backed NativeSharp call resolved to unpublished symbol '" +
-                    function.mangledName + "'";
+                error = "metadata-backed NativeSharp call resolved to unpublished "
+                        "symbol '" +
+                        function.mangledName + "'";
                 return false;
             }
             continue;
@@ -703,8 +983,9 @@ bool appendValidatedLibraryReferences(
                 }
                 contract = &candidate;
             }
-            // This symbol may belong to a foreign DLL that happens to share its name with an
-            // unrelated LibraryReference export. Only metadata for the requested DLL is binding.
+            // This symbol may belong to a foreign DLL that happens to share its name
+            // with an unrelated LibraryReference export. Only metadata for the
+            // requested DLL is binding.
             if (contract == nullptr) continue;
         }
         else
@@ -712,7 +993,8 @@ bool appendValidatedLibraryReferences(
             if (found->second.size() != 1)
             {
                 error = "extern C import '" + function.cAbiName +
-                    "' is ambiguous across precompiled library metadata; qualify the DLL import";
+                        "' is ambiguous across precompiled library metadata; qualify "
+                        "the DLL import";
                 return false;
             }
             contract = &found->second.front();
@@ -776,8 +1058,9 @@ ExitCode Driver::run(
     bool optimizationLevelSeen = false;
     std::vector<std::string_view> normalizedArguments;
     normalizedArguments.reserve(arguments.size());
-    // Interop Foundation: external .lib inputs for the link. Extracted here (like -O) so every
-    // positional action keeps its exact shape; consumed by the exe/dll emission paths.
+    // Interop Foundation: external .lib inputs for the link. Extracted here (like
+    // -O) so every positional action keeps its exact shape; consumed by the
+    // exe/dll emission paths.
     std::vector<std::filesystem::path> extraLinkLibraries;
 
     for (std::size_t argumentIndex = 0; argumentIndex < arguments.size(); ++argumentIndex)
@@ -831,7 +1114,8 @@ ExitCode Driver::run(
 
     if (normalizedArguments.empty())
     {
-        error << "nsc: error: optimization level requires a compilation action or input file\n";
+        error << "nsc: error: optimization level requires a compilation action or "
+                 "input file\n";
         return ExitCode::CommandLineError;
     }
 
@@ -970,115 +1254,138 @@ ExitCode Driver::run(
         }
     }
 
-    error << "nsc: error: invalid command line; use --help for supported options (stage "
+    error << "nsc: error: invalid command line; use --help for supported options "
+             "(stage "
           << kCompilerStage << ")\n";
     return ExitCode::CommandLineError;
 }
 
 void Driver::printHelp(std::ostream& output)
 {
-    output
-        << "NativeSharp compiler (NativeSharp " << kLanguageVersion << ", stage " << kCompilerStage << ")\n\n"
-        << "Usage:\n"
-        << "  nsc --check-project <file.nsproj>\n"
-        << "  nsc --dump-project <file.nsproj>\n"
-        << "  nsc --check-project-graph <file.nsproj>\n"
-        << "  nsc --dump-project-graph <file.nsproj>\n"
-        << "  nsc --check-project-syntax <file.nsproj>\n"
-        << "  nsc --dump-project-compilation <file.nsproj>\n"
-        << "  nsc --check-project-generics <file.nsproj>\n"
-        << "  nsc --dump-project-generics <file.nsproj>\n"
-        << "  nsc --check-project-names <file.nsproj>\n"
-        << "  nsc --dump-project-names <file.nsproj>\n"
-        << "  nsc --check-project-members <file.nsproj>\n"
-        << "  nsc --dump-project-members <file.nsproj>\n"
-        << "  nsc --check-project-inheritance <file.nsproj>\n"
-        << "  nsc --dump-project-inheritance <file.nsproj>\n"
-        << "  nsc --check-project-interfaces <file.nsproj>\n"
-        << "  nsc --check-project-generic-constraints <file.nsproj>\n"
-        << "  nsc --dump-project-interfaces <file.nsproj>\n"
-        << "  nsc --check-project-method-bodies <file.nsproj>\n"
-        << "  nsc --dump-project-method-bodies <file.nsproj>\n"
-        << "  nsc --check-project-virtual-dispatch <file.nsproj>\n"
-        << "  nsc --dump-project-virtual-dispatch <file.nsproj>\n"
-        << "  nsc --check-project-destruction <file.nsproj>\n"
-        << "  nsc --dump-project-destruction <file.nsproj>\n"
-        << "  nsc --check-project-constructions <file.nsproj>\n"
-        << "  nsc --dump-project-constructions <file.nsproj>\n"
-        << "  nsc --check-project-layouts <file.nsproj>\n"
-        << "  nsc --dump-project-layouts <file.nsproj>\n"
-        << "  nsc --check-project-oop-hir <file.nsproj>\n"
-        << "  nsc --dump-project-oop-hir <file.nsproj>\n"
-        << "  nsc --check-project-oop-mir <file.nsproj>\n"
-        << "  nsc --dump-project-oop-mir <file.nsproj>\n"
-        << "  nsc --verify-project-oop-llvm <file.nsproj>\n"
-        << "  nsc --dump-project-oop-llvm <file.nsproj>\n"
-        << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o <file.obj>\n"
-        << "  nsc --emit-project-oop-exe <file.nsproj> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
-        << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o <file.lib>\n"
-        << "  nsc --emit-project-oop-dll <file.nsproj> [-O0|-O1|-O2|-O3] -o <file.dll>\n"
-        << "  nsc --emit-project-host-header <file.nsproj> -o <file.h>\n"
-        << "  nsc --emit-project-library-metadata <file.nsproj> -o <file.nsmeta>\n"
-        << "  nsc --verify-library-metadata <file.nsmeta>\n"
-        << "  nsc <file.ns>\n"
-        << "  nsc --check <file.ns>\n"
-        << "  nsc --dump-source <file.ns>\n"
-        << "  nsc --dump-tokens <file.ns>\n"
-        << "  nsc --dump-ast <file.ns>\n"
-        << "  nsc --dump-symbols <file.ns>\n"
-        << "  nsc --dump-sema <file.ns>\n"
-        << "  nsc --dump-hir <file.ns>\n"
-        << "  nsc --verify-hir <file.ns>\n"
-        << "  nsc --dump-mir <file.ns>\n"
-        << "  nsc --verify-mir <file.ns>\n"
-        << "  nsc --dump-cfg <file.ns>\n"
-        << "  nsc --verify-cfg <file.ns>\n"
-        << "  nsc --dump-dominance <file.ns>\n"
-        << "  nsc --verify-dominance <file.ns>\n"
-        << "  nsc --dump-ssa <file.ns>\n"
-        << "  nsc --verify-ssa <file.ns>\n"
-        << "  nsc --dump-opt <file.ns>\n"
-        << "  nsc --verify-opt <file.ns>\n"
-        << "  nsc --dump-pass-pipeline <file.ns>\n"
-        << "  nsc --dump-llvm <file.ns>\n"
-        << "  nsc --verify-llvm <file.ns>\n"
-        << "  nsc --dump-llvm-opt <file.ns> [-O0|-O1|-O2|-O3]\n"
-        << "  nsc --verify-llvm-opt <file.ns> [-O0|-O1|-O2|-O3]\n"
-        << "  nsc --emit-obj <file.ns> [-O0|-O1|-O2|-O3] -o <file.obj>\n"
-        << "  nsc --emit-asm <file.ns> [-O0|-O1|-O2|-O3] -o <file.asm>\n"
-        << "  nsc --emit-exe <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
-        << "  nsc <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
-        << "  nsc --print-codegen [-O0|-O1|-O2|-O3]\n"
-        << "  nsc --print-llvm-pipeline [-O0|-O1|-O2|-O3]\n"
-        << "  nsc --print-linker\n"
-        << "  nsc --dump-runtime-llvm\n"
-        << "  nsc --print-target\n"
-        << "  nsc --print-data-layout\n"
-        << "  nsc --version\n\n"
-        << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a compilation command.\n"
-        << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently selects the static librarian.\n"
-        << "Stage 37 semantics remain preserved: static members, deterministic initialization, const and readonly.\n"
-        << "Recovered Stage 35 adds abstract/sealed classes and methods plus descriptor-driven native destruction.\n"
-        << "Stage 36 interfaces, Stage 38 properties/indexers/operators, and Stage 39 native RTTI remain preserved. "
-        << "Stage 40 adds native struct value ABI; Stage 41 arrays/strings/Core; Stage 42 delegates/events; "
-        << "Stage 43 lambdas/closures; and Stage 44 AOT generics by monomorphization. "
-        << "Stage 45 adds native Win64 exceptions, cleanup/finally/using, RTTI catches, and PE EH closure. "
-        << "Stage 46 adds static COFF .lib and PE32+ DLL + import-library products; "
-        << "Stage 47 adds stable Windows x64 export extern C host ABI thunks; "
-        << "Stage 48.1 adds deterministic generated C/C++ host headers from the semantic ABI model; "
-        << "Stage 48.2 adds library metadata (.nsmeta) with self-verification. "
-        << "Stage 49 adds `raii` locals with scope-bound native destruction; "
-        << "Stage 50 adds the ownership type system (owned/borrow parameters, returns and lifetimes). "
-        << "Stage 51 completes the native string type; Stage 52 adds generic collections, `var` and "
-        << "`foreach`. "
-        << "Stage 53 adds the platform library: time, environment and environment variables, "
-        << "filesystem paths and contents, command-line arguments, and directory enumeration. "
-        << "Stage 54 adds threading: threads, atomics, mutexes, monitors, semaphores and events. "
-        << "Stage 55 adds process, hardware and diagnostics support. "
-        << "Stage 56 completes interop and the type system: C aggregates, FFI aliases, "
-        << "ref/out/in, struct members, definite assignment and the Object type root. "
-        << "Stage 57 completes the language surface: the conditional operator, do-while and "
-        << "switch/case.\n";
+    output << "NativeSharp compiler (NativeSharp " << kLanguageVersion << ", stage " << kCompilerStage << ")\n\n"
+           << "Usage:\n"
+           << "  nsc --check-project <file.nsproj>\n"
+           << "  nsc --dump-project <file.nsproj>\n"
+           << "  nsc --check-project-graph <file.nsproj>\n"
+           << "  nsc --dump-project-graph <file.nsproj>\n"
+           << "  nsc --check-project-syntax <file.nsproj>\n"
+           << "  nsc --dump-project-compilation <file.nsproj>\n"
+           << "  nsc --check-project-generics <file.nsproj>\n"
+           << "  nsc --dump-project-generics <file.nsproj>\n"
+           << "  nsc --check-project-names <file.nsproj>\n"
+           << "  nsc --dump-project-names <file.nsproj>\n"
+           << "  nsc --check-project-members <file.nsproj>\n"
+           << "  nsc --dump-project-members <file.nsproj>\n"
+           << "  nsc --check-project-inheritance <file.nsproj>\n"
+           << "  nsc --dump-project-inheritance <file.nsproj>\n"
+           << "  nsc --check-project-interfaces <file.nsproj>\n"
+           << "  nsc --check-project-generic-constraints <file.nsproj>\n"
+           << "  nsc --dump-project-interfaces <file.nsproj>\n"
+           << "  nsc --check-project-method-bodies <file.nsproj>\n"
+           << "  nsc --dump-project-method-bodies <file.nsproj>\n"
+           << "  nsc --check-project-virtual-dispatch <file.nsproj>\n"
+           << "  nsc --dump-project-virtual-dispatch <file.nsproj>\n"
+           << "  nsc --check-project-destruction <file.nsproj>\n"
+           << "  nsc --dump-project-destruction <file.nsproj>\n"
+           << "  nsc --check-project-constructions <file.nsproj>\n"
+           << "  nsc --dump-project-constructions <file.nsproj>\n"
+           << "  nsc --check-project-layouts <file.nsproj>\n"
+           << "  nsc --dump-project-layouts <file.nsproj>\n"
+           << "  nsc --check-project-oop-hir <file.nsproj>\n"
+           << "  nsc --dump-project-oop-hir <file.nsproj>\n"
+           << "  nsc --check-project-oop-mir <file.nsproj>\n"
+           << "  nsc --dump-project-oop-mir <file.nsproj>\n"
+           << "  nsc --verify-project-oop-llvm <file.nsproj>\n"
+           << "  nsc --dump-project-oop-llvm <file.nsproj>\n"
+           << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o "
+              "<file.obj>\n"
+           << "  nsc --emit-project-oop-exe <file.nsproj> [-O0|-O1|-O2|-O3] -o "
+              "<file.exe>\n"
+           << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o "
+              "<file.lib>\n"
+           << "  nsc --emit-project-oop-dll <file.nsproj> [-O0|-O1|-O2|-O3] -o "
+              "<file.dll>\n"
+           << "  nsc --emit-project-host-header <file.nsproj> -o <file.h>\n"
+           << "  nsc --emit-project-library-metadata <file.nsproj> -o "
+              "<file.nsmeta>\n"
+           << "  nsc --verify-library-metadata <file.nsmeta>\n"
+           << "  nsc <file.ns>\n"
+           << "  nsc --check <file.ns>\n"
+           << "  nsc --dump-source <file.ns>\n"
+           << "  nsc --dump-tokens <file.ns>\n"
+           << "  nsc --dump-ast <file.ns>\n"
+           << "  nsc --dump-symbols <file.ns>\n"
+           << "  nsc --dump-sema <file.ns>\n"
+           << "  nsc --dump-hir <file.ns>\n"
+           << "  nsc --verify-hir <file.ns>\n"
+           << "  nsc --dump-mir <file.ns>\n"
+           << "  nsc --verify-mir <file.ns>\n"
+           << "  nsc --dump-cfg <file.ns>\n"
+           << "  nsc --verify-cfg <file.ns>\n"
+           << "  nsc --dump-dominance <file.ns>\n"
+           << "  nsc --verify-dominance <file.ns>\n"
+           << "  nsc --dump-ssa <file.ns>\n"
+           << "  nsc --verify-ssa <file.ns>\n"
+           << "  nsc --dump-opt <file.ns>\n"
+           << "  nsc --verify-opt <file.ns>\n"
+           << "  nsc --dump-pass-pipeline <file.ns>\n"
+           << "  nsc --dump-llvm <file.ns>\n"
+           << "  nsc --verify-llvm <file.ns>\n"
+           << "  nsc --dump-llvm-opt <file.ns> [-O0|-O1|-O2|-O3]\n"
+           << "  nsc --verify-llvm-opt <file.ns> [-O0|-O1|-O2|-O3]\n"
+           << "  nsc --emit-obj <file.ns> [-O0|-O1|-O2|-O3] -o <file.obj>\n"
+           << "  nsc --emit-asm <file.ns> [-O0|-O1|-O2|-O3] -o <file.asm>\n"
+           << "  nsc --emit-exe <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
+           << "  nsc <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
+           << "  nsc --print-codegen [-O0|-O1|-O2|-O3]\n"
+           << "  nsc --print-llvm-pipeline [-O0|-O1|-O2|-O3]\n"
+           << "  nsc --print-linker\n"
+           << "  nsc --dump-runtime-llvm\n"
+           << "  nsc --print-target\n"
+           << "  nsc --print-data-layout\n"
+           << "  nsc --version\n\n"
+           << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
+              "compilation command.\n"
+           << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
+              "selects the static librarian.\n"
+           << "Stage 37 semantics remain preserved: static members, deterministic "
+              "initialization, const and readonly.\n"
+           << "Recovered Stage 35 adds abstract/sealed classes and methods plus "
+              "descriptor-driven native destruction.\n"
+           << "Stage 36 interfaces, Stage 38 properties/indexers/operators, and "
+              "Stage 39 native RTTI remain preserved. "
+           << "Stage 40 adds native struct value ABI; Stage 41 arrays/strings/Core; "
+              "Stage 42 delegates/events; "
+           << "Stage 43 lambdas/closures; and Stage 44 AOT generics by "
+              "monomorphization. "
+           << "Stage 45 adds native Win64 exceptions, cleanup/finally/using, RTTI "
+              "catches, and PE EH closure. "
+           << "Stage 46 adds static COFF .lib and PE32+ DLL + import-library "
+              "products; "
+           << "Stage 47 adds stable Windows x64 export extern C host ABI thunks; "
+           << "Stage 48.1 adds deterministic generated C/C++ host headers from the "
+              "semantic ABI model; "
+           << "Stage 48.2 adds library metadata (.nsmeta) with self-verification. "
+           << "Stage 49 adds `raii` locals with scope-bound native destruction; "
+           << "Stage 50 adds the ownership type system (owned/borrow parameters, "
+              "returns and lifetimes). "
+           << "Stage 51 completes the native string type; Stage 52 adds generic "
+              "collections, `var` and "
+           << "`foreach`. "
+           << "Stage 53 adds the platform library: time, environment and "
+              "environment variables, "
+           << "filesystem paths and contents, command-line arguments, and directory "
+              "enumeration. "
+           << "Stage 54 adds threading: threads, atomics, mutexes, monitors, "
+              "semaphores and events. "
+           << "Stage 55 adds process, hardware and diagnostics support. "
+           << "Stage 56 completes interop and the type system: C aggregates, FFI "
+              "aliases, "
+           << "ref/out/in, struct members, definite assignment and the Object type "
+              "root. "
+           << "Stage 57 completes the language surface: the conditional operator, "
+              "do-while and "
+           << "switch/case.\n";
 }
 
 ExitCode Driver::printCodeGeneration(
@@ -1144,7 +1451,8 @@ ExitCode Driver::runCodeGeneration(
             diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
             renderer.renderAll(compilation.diagnostics(), error);
         }
-        error << "nsc: error: code generation requires a successful optimized compilation\n";
+        error << "nsc: error: code generation requires a successful optimized "
+                 "compilation\n";
         return ExitCode::CompilationError;
     }
 
@@ -1172,15 +1480,17 @@ ExitCode Driver::runCodeGeneration(
         return ExitCode::CompilationError;
     }
 
-    // NSC-LIMIT-005. La observacion va SIEMPRE, no bajo bandera. Un fallo del optimizador que no
-    // dice contra que LLVM, con que pipeline ni por donde iba obliga a REPRODUCIRLO para poder
-    // diagnosticarlo, y eso es exactamente lo que no se pudo hacer con `c38_enum_ancho`: cuando el
-    // sintoma es un codigo de salida distinto a -O2, la corrida que fallo ya termino. Ver
+    // NSC-LIMIT-005. La observacion va SIEMPRE, no bajo bandera. Un fallo del
+    // optimizador que no dice contra que LLVM, con que pipeline ni por donde iba
+    // obliga a REPRODUCIRLO para poder diagnosticarlo, y eso es exactamente lo
+    // que no se pudo hacer con `c38_enum_ancho`: cuando el sintoma es un codigo
+    // de salida distinto a -O2, la corrida que fallo ya termino. Ver
     // LlvmOptimizer.h y LlvmOptimizationObservation.h.
     //
-    // COSTE MEDIDO: ~3% del tiempo de compilacion completo a -O2 y 0% a -O0, y el IR resultante es
-    // byte a byte el mismo con y sin observar --hay una prueba que lo compara en los tres
-    // niveles--. Se paga en cada construccion a cambio de que el PRIMER fallo sea legible.
+    // COSTE MEDIDO: ~3% del tiempo de compilacion completo a -O2 y 0% a -O0, y el
+    // IR resultante es byte a byte el mismo con y sin observar --hay una prueba
+    // que lo compara en los tres niveles--. Se paga en cada construccion a cambio
+    // de que el PRIMER fallo sea legible.
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation observation;
     std::string optimizationError;
@@ -1225,7 +1535,8 @@ ExitCode Driver::runCodeGeneration(
         const std::uintmax_t size = std::filesystem::file_size(destination, sizeError);
         if (sizeError || size == 0)
         {
-            error << "nsc: internal error: emitted assembly file is empty or unreadable\n";
+            error << "nsc: internal error: emitted assembly file is empty or "
+                     "unreadable\n";
             return ExitCode::CompilationError;
         }
         output
@@ -1301,7 +1612,8 @@ ExitCode Driver::runExecutableGeneration(
             diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
             renderer.renderAll(compilation.diagnostics(), error);
         }
-        error << "nsc: error: executable generation requires a valid int Main() program\n";
+        error << "nsc: error: executable generation requires a valid int Main() "
+                 "program\n";
         return ExitCode::CompilationError;
     }
 
@@ -1349,13 +1661,11 @@ ExitCode Driver::runExecutableGeneration(
 void Driver::printVersion(std::ostream& output)
 {
     // CC1-000: the unique build id appears both in the SemVer build metadata of
-    // `kCompilerVersion` and on its own machine-friendly line. A consumer can compare either one
-    // without hashing nsc.exe.
-    output
-        << "nsc " << kCompilerVersion
-        << " (NativeSharp " << kLanguageVersion
-        << ", stage " << kCompilerStage << ")\n"
-        << "build " << kCompilerBuildId << '\n';
+    // `kCompilerVersion` and on its own machine-friendly line. A consumer can
+    // compare either one without hashing nsc.exe.
+    output << "nsc " << kCompilerVersion << " (NativeSharp " << kLanguageVersion << ", stage " << kCompilerStage
+           << ")\n"
+           << "build " << kCompilerBuildId << '\n';
 }
 
 void Driver::printTarget(std::ostream& output)
@@ -1451,49 +1761,42 @@ ExitCode Driver::runProject(
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
-    const bool oopLlvmAction =
-        action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm";
-    const bool oopMirAction = oopLlvmAction ||
-        action == "--check-project-oop-mir" || action == "--dump-project-oop-mir";
-    const bool oopHirAction = oopMirAction ||
-        action == "--check-project-oop-hir" || action == "--dump-project-oop-hir";
-    const bool layoutAction = oopHirAction ||
-        action == "--check-project-layouts" || action == "--dump-project-layouts";
-    const bool constructionAction = layoutAction ||
-        action == "--check-project-constructions" || action == "--dump-project-constructions";
-    const bool destructionAction = constructionAction ||
-        action == "--check-project-destruction" || action == "--dump-project-destruction";
-    const bool virtualDispatchAction = destructionAction ||
-        action == "--check-project-virtual-dispatch" || action == "--dump-project-virtual-dispatch";
-    const bool methodBodyAction = virtualDispatchAction ||
-        action == "--check-project-method-bodies" || action == "--dump-project-method-bodies";
-    // NSC-LIMIT-007. FASE PROPIA, entre las interfaces y los cuerpos. Va DEBAJO de methodBodyAction
-    // --toda fase posterior la arrastra-- y ENCIMA de interfaceAction, que es lo ultimo que
-    // necesita. Antes se sumaba a `methodBodyAction`, y entonces pedir la comprobacion de
-    // constraints analizaba tambien todos los cuerpos: un rojo podia venir de un error que no
-    // tenia nada que ver con un `where`.
-    const bool genericConstraintAction = methodBodyAction ||
-        action == "--check-project-generic-constraints";
-    const bool interfaceAction = genericConstraintAction ||
-        action == "--check-project-interfaces" || action == "--dump-project-interfaces";
-    const bool inheritanceAction = interfaceAction ||
-        action == "--check-project-inheritance" || action == "--dump-project-inheritance";
-    const bool memberBindingAction = inheritanceAction ||
-        action == "--check-project-members" || action == "--dump-project-members";
-    const bool nameBindingAction = memberBindingAction ||
-        action == "--check-project-names" || action == "--dump-project-names";
-    const bool genericAction = nameBindingAction ||
-        action == "--check-project-generics" || action == "--dump-project-generics";
-    const bool success = oopMirAction
-        ? projectCompilation.compileProjectOopMir(std::filesystem::path(path), loadError)
-        : oopHirAction
-            ? projectCompilation.compileProjectOopHir(std::filesystem::path(path), loadError)
-        : layoutAction
-            ? projectCompilation.compileProjectObjectLayouts(std::filesystem::path(path), loadError)
-        : constructionAction
-            ? projectCompilation.compileProjectConstructions(std::filesystem::path(path), loadError)
-        : destructionAction
-            ? projectCompilation.compileProjectDestruction(std::filesystem::path(path), loadError)
+    const bool oopLlvmAction = action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm";
+    const bool oopMirAction =
+        oopLlvmAction || action == "--check-project-oop-mir" || action == "--dump-project-oop-mir";
+    const bool oopHirAction = oopMirAction || action == "--check-project-oop-hir" || action == "--dump-project-oop-hir";
+    const bool layoutAction = oopHirAction || action == "--check-project-layouts" || action == "--dump-project-layouts";
+    const bool constructionAction =
+        layoutAction || action == "--check-project-constructions" || action == "--dump-project-constructions";
+    const bool destructionAction =
+        constructionAction || action == "--check-project-destruction" || action == "--dump-project-destruction";
+    const bool virtualDispatchAction = destructionAction || action == "--check-project-virtual-dispatch" ||
+                                       action == "--dump-project-virtual-dispatch";
+    const bool methodBodyAction =
+        virtualDispatchAction || action == "--check-project-method-bodies" || action == "--dump-project-method-bodies";
+    // NSC-LIMIT-007. FASE PROPIA, entre las interfaces y los cuerpos. Va DEBAJO
+    // de methodBodyAction
+    // --toda fase posterior la arrastra-- y ENCIMA de interfaceAction, que es lo
+    // ultimo que necesita. Antes se sumaba a `methodBodyAction`, y entonces pedir
+    // la comprobacion de constraints analizaba tambien todos los cuerpos: un rojo
+    // podia venir de un error que no tenia nada que ver con un `where`.
+    const bool genericConstraintAction = methodBodyAction || action == "--check-project-generic-constraints";
+    const bool interfaceAction =
+        genericConstraintAction || action == "--check-project-interfaces" || action == "--dump-project-interfaces";
+    const bool inheritanceAction =
+        interfaceAction || action == "--check-project-inheritance" || action == "--dump-project-inheritance";
+    const bool memberBindingAction =
+        inheritanceAction || action == "--check-project-members" || action == "--dump-project-members";
+    const bool nameBindingAction =
+        memberBindingAction || action == "--check-project-names" || action == "--dump-project-names";
+    const bool genericAction =
+        nameBindingAction || action == "--check-project-generics" || action == "--dump-project-generics";
+    const bool success =
+        oopMirAction         ? projectCompilation.compileProjectOopMir(std::filesystem::path(path), loadError)
+        : oopHirAction       ? projectCompilation.compileProjectOopHir(std::filesystem::path(path), loadError)
+        : layoutAction       ? projectCompilation.compileProjectObjectLayouts(std::filesystem::path(path), loadError)
+        : constructionAction ? projectCompilation.compileProjectConstructions(std::filesystem::path(path), loadError)
+        : destructionAction  ? projectCompilation.compileProjectDestruction(std::filesystem::path(path), loadError)
         : virtualDispatchAction
             ? projectCompilation.compileProjectVirtualDispatch(std::filesystem::path(path), loadError)
         : methodBodyAction
@@ -1847,7 +2150,8 @@ ExitCode Driver::runProjectOopCodeGeneration(
     if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
         compilation.objectLayoutModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
-        error << "nsc: error: Stage 44 OOP project compilation did not produce required lowering models\n";
+        error << "nsc: error: Stage 44 OOP project compilation did not produce "
+                 "required lowering models\n";
         return ExitCode::CompilationError;
     }
 
@@ -1869,7 +2173,8 @@ ExitCode Driver::runProjectOopCodeGeneration(
         return ExitCode::CompilationError;
     }
 
-    // NSC-LIMIT-005: observada, como las demas llamadas al optimizador. Ver LlvmOptimizer.h.
+    // NSC-LIMIT-005: observada, como las demas llamadas al optimizador. Ver
+    // LlvmOptimizer.h.
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation observation;
     if (!optimizer.optimize(
@@ -1898,11 +2203,11 @@ ExitCode Driver::runProjectOopCodeGeneration(
 
 namespace
 {
-// Interop Foundation: gather the project's `extern C from "<dll>"` declarations as (dll -> its
-// symbols), in first-appearance order, for the linker's import-library step. The compiler learned
-// no API by name at any point -- this is purely the shape the frontend recorded.
-std::vector<linker::ExternalImportModule> collectExternalImports(
-    const frontend::ProjectOopMirModel& mirModel)
+// Interop Foundation: gather the project's `extern C from "<dll>"` declarations
+// as (dll -> its symbols), in first-appearance order, for the linker's
+// import-library step. The compiler learned no API by name at any point -- this
+// is purely the shape the frontend recorded.
+std::vector<linker::ExternalImportModule> collectExternalImports(const frontend::ProjectOopMirModel& mirModel)
 {
     std::vector<linker::ExternalImportModule> modules;
     bool anyRuntimeBoundImport = false;
@@ -1926,24 +2231,27 @@ std::vector<linker::ExternalImportModule> collectExternalImports(
     for (const frontend::ProjectOopMirFunction& function : mirModel.functions())
     {
         if (!function.isImportedC || function.importDllName.empty()) continue;
-        // C1.2 "import identity": an import whose C symbol name is shared by two libraries has NO
-        // import-library entry at all -- there is exactly one slot per symbol name in a PE import
-        // table and the two would fight over it. The backend binds those at first call instead.
+        // C1.2 "import identity": an import whose C symbol name is shared by two
+        // libraries has NO import-library entry at all -- there is exactly one slot
+        // per symbol name in a PE import table and the two would fight over it. The
+        // backend binds those at first call instead.
         if (function.importRequiresRuntimeBinding)
         {
             anyRuntimeBoundImport = true;
             continue;
         }
-        // The symbol that goes into the import library is the EXTERNAL one (`cAbiName`), never the
-        // internal mangled name -- they coincide for a statically resolved import, and this is the
-        // line that keeps them from being confused if they ever stop coinciding.
+        // The symbol that goes into the import library is the EXTERNAL one
+        // (`cAbiName`), never the internal mangled name -- they coincide for a
+        // statically resolved import, and this is the line that keeps them from
+        // being confused if they ever stop coinciding.
         addSymbol(function.importDllName, function.cAbiName);
     }
     if (anyRuntimeBoundImport)
     {
-        // The two entry points every runtime-bound import needs, requested through the SAME door
-        // the project's own imports use, so the runtime's single import table merges and
-        // deduplicates them (a project that never needs runtime binding never imports them).
+        // The two entry points every runtime-bound import needs, requested through
+        // the SAME door the project's own imports use, so the runtime's single
+        // import table merges and deduplicates them (a project that never needs
+        // runtime binding never imports them).
         addSymbol("KERNEL32.dll", "LoadLibraryA");
         addSymbol("KERNEL32.dll", "GetProcAddress");
     }
@@ -1983,7 +2291,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(
     if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
         compilation.oopMirModel() == nullptr)
     {
-        error << "nsc: error: Stage 45.12 OOP executable compilation did not produce required lowering models\n";
+        error << "nsc: error: Stage 45.12 OOP executable compilation did not "
+                 "produce required lowering models\n";
         return ExitCode::CompilationError;
     }
 
@@ -2004,14 +2313,16 @@ ExitCode Driver::runProjectOopExecutableGeneration(
         }
         if (entryFunction != nullptr)
         {
-            error << "nsc: error: OOP executable has multiple static int Main() entry points\n";
+            error << "nsc: error: OOP executable has multiple static int Main() "
+                     "entry points\n";
             return ExitCode::CompilationError;
         }
         entryFunction = &function;
     }
     if (entryFunction == nullptr)
     {
-        error << "nsc: error: OOP executable requires exactly one static int Main() method with no parameters\n";
+        error << "nsc: error: OOP executable requires exactly one static int "
+                 "Main() method with no parameters\n";
         return ExitCode::CompilationError;
     }
 
@@ -2119,13 +2430,15 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
-        error << "nsc: error: Stage 46 static-library compilation did not produce required models\n";
+        error << "nsc: error: Stage 46 static-library compilation did not produce "
+                 "required models\n";
         return ExitCode::CompilationError;
     }
     const compilation::Project* rootProject = compilation.projectGraph()->rootProject();
     if (rootProject == nullptr || rootProject->outputKind() != compilation::ProjectOutputKind::Library)
     {
-        error << "nsc: error: --emit-project-oop-lib requires root OutputType Library or StaticLibrary\n";
+        error << "nsc: error: --emit-project-oop-lib requires root OutputType "
+                 "Library or StaticLibrary\n";
         return ExitCode::CompilationError;
     }
     std::vector<std::filesystem::path> referencedLibraries;
@@ -2236,13 +2549,15 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
-        error << "nsc: error: Stage 47 DLL compilation did not produce required models\n";
+        error << "nsc: error: Stage 47 DLL compilation did not produce required "
+                 "models\n";
         return ExitCode::CompilationError;
     }
     const compilation::Project* rootProject = compilation.projectGraph()->rootProject();
     if (rootProject == nullptr || rootProject->outputKind() != compilation::ProjectOutputKind::SharedLibrary)
     {
-        error << "nsc: error: --emit-project-oop-dll requires root OutputType SharedLibrary\n";
+        error << "nsc: error: --emit-project-oop-dll requires root OutputType "
+                 "SharedLibrary\n";
         return ExitCode::CompilationError;
     }
 
@@ -2263,10 +2578,11 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
             type.accessibility != frontend::NamedTypeAccessibility::Public ||
             member.kind != frontend::ClassMemberKind::Method ||
             member.accessibility != frontend::ClassMemberAccessibility::Public ||
-            !member.isStatic || member.isAbstract || member.isCompilerGenerated ||
-            member.isPropertyAccessor || member.isIndexerAccessor ||
-            member.isUserOperator || member.isUserConversion ||
-            (member.isExternC && !member.isExportedC))
+            (!member.isStatic && type.kind != frontend::NamedTypeDeclarationKind::Struct &&
+             type.kind != frontend::NamedTypeDeclarationKind::Class) ||
+            member.isVirtual || member.isOverride || member.isAbstract ||
+            member.isCompilerGenerated || member.isPropertyAccessor || member.isIndexerAccessor ||
+            member.isUserOperator || member.isUserConversion || (member.isExternC && !member.isExportedC))
         {
             continue;
         }
@@ -2277,7 +2593,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
     exportSymbols.erase(std::unique(exportSymbols.begin(), exportSymbols.end()), exportSymbols.end());
     if (exportSymbols.empty())
     {
-        error << "nsc: error: NativeSharp DLL requires at least one public static method in the root project\n";
+        error << "nsc: error: NativeSharp DLL requires at least one publishable "
+                 "public method in the root project\n";
         return ExitCode::CompilationError;
     }
 
@@ -2416,14 +2733,16 @@ ExitCode Driver::runProjectHostHeaderGeneration(
 
     if (compilation.projectGraph() == nullptr || compilation.projectGraph()->rootProject() == nullptr)
     {
-        error << "nsc: error: Stage 48.1 C header generation requires a valid root project\n";
+        error << "nsc: error: Stage 48.1 C header generation requires a valid root "
+                 "project\n";
         return ExitCode::CompilationError;
     }
     const compilation::ProjectOutputKind outputKind = compilation.projectGraph()->rootProject()->outputKind();
     if (outputKind != compilation::ProjectOutputKind::Library &&
         outputKind != compilation::ProjectOutputKind::SharedLibrary)
     {
-        error << "nsc: error: Stage 48.1 C headers require OutputType Library, StaticLibrary, or SharedLibrary\n";
+        error << "nsc: error: Stage 48.1 C headers require OutputType Library, "
+                 "StaticLibrary, or SharedLibrary\n";
         return ExitCode::CompilationError;
     }
 
@@ -2467,14 +2786,16 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
     }
     if (compilation.projectGraph() == nullptr || compilation.projectGraph()->rootProject() == nullptr)
     {
-        error << "nsc: error: Stage 48.2 metadata generation requires a valid root project\n";
+        error << "nsc: error: Stage 48.2 metadata generation requires a valid root "
+                 "project\n";
         return ExitCode::CompilationError;
     }
     const compilation::ProjectOutputKind outputKind = compilation.projectGraph()->rootProject()->outputKind();
     if (outputKind != compilation::ProjectOutputKind::Library &&
         outputKind != compilation::ProjectOutputKind::SharedLibrary)
     {
-        error << "nsc: error: Stage 48.2 metadata requires OutputType Library, StaticLibrary, or SharedLibrary\n";
+        error << "nsc: error: Stage 48.2 metadata requires OutputType Library, "
+                 "StaticLibrary, or SharedLibrary\n";
         return ExitCode::CompilationError;
     }
 
@@ -2492,7 +2813,9 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
-        error << "nsc: error: Stage 48.2 generated metadata failed self-verification: " << metadataError << '\n';
+        error << "nsc: error: Stage 48.2 generated metadata failed "
+                 "self-verification: "
+              << metadataError << '\n';
         return ExitCode::CompilationError;
     }
 

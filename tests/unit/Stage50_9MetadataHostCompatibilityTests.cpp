@@ -152,15 +152,15 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
     tests.expect(
         emitMetadata(directory / "OwnershipMetadata.nsproj", outputPath, output, error) == ExitCode::Success,
         "Stage 50.9 emits ownership-aware library metadata");
-    tests.expect(error.empty() && output.find("format: NSMETA 1.4") != std::string::npos,
-        "the metadata command advertises the current NSMETA 1.4 schema");
+    tests.expect(error.empty() && output.find("format: NSMETA 1.5") != std::string::npos,
+        "the metadata command advertises the current NSMETA 1.5 schema");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(outputPath, metadata, error),
         "NSMETA ownership contracts round-trip through the reader");
-    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 4,
-        "metadata reader preserves the current 1.4 format identity");
+    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 5,
+        "metadata reader preserves the current 1.5 format identity");
 
     const LibraryMetadataMember* plain = findMember(metadata, "Plain");
     const LibraryMetadataMember* take = findMember(metadata, "Take");
@@ -432,6 +432,30 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
                 nativesharp::interop::LibraryMetadataDefaultValueKind::Integer &&
             passPreviousDecoded.members[1].name == "AfterParameter",
         "a 1.3 parameter invents no ref/out/in identity and leaves following records aligned");
+
+    // NSMETA 1.5 adds a delegate signature to the TYPE record. A 1.4 writer must omit it and the
+    // current reader must not consume the following field count as signature data.
+    nativesharp::interop::LibraryMetadata delegatePrevious = previous;
+    delegatePrevious.formatMinor = 4;
+    nativesharp::interop::LibraryMetadataType oldDelegate;
+    oldDelegate.kind = nativesharp::interop::LibraryMetadataTypeKind::Delegate;
+    oldDelegate.identityKey = "Previous::Transform";
+    oldDelegate.fullyQualifiedName = "Previous.Transform";
+    oldDelegate.delegateFlags = 1U;
+    oldDelegate.delegateReturnTypeKey = "builtin:int";
+    oldDelegate.delegateParameterTypeKeys.push_back("builtin:int");
+    delegatePrevious.types.push_back(oldDelegate);
+    const auto delegatePreviousPath = root / "PreviousDelegateFormat.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(delegatePrevious, delegatePreviousPath, error),
+        "an NSMETA 1.4 type record can still be produced without delegate signature fields");
+    nativesharp::interop::LibraryMetadata delegatePreviousDecoded;
+    error.clear();
+    tests.expect(codec.read(delegatePreviousPath, delegatePreviousDecoded, error) &&
+            delegatePreviousDecoded.types.size() == 1 &&
+            delegatePreviousDecoded.types[0].delegateReturnTypeKey.empty() &&
+            delegatePreviousDecoded.members.size() == 2,
+        "the current reader decodes NSMETA 1.4 without inventing a delegate signature or losing alignment");
 
     // LA HUELLA ABI TIENE QUE DISTINGUIR EL SIGNO. `enum : byte` y `enum : sbyte` miden lo mismo,
     // asi que si la huella solo cubriera el tamano dos modulos incompatibles tendrian la MISMA, y

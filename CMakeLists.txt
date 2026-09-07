@@ -14,7 +14,7 @@ option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 # `nsc_build_identity` es un target siempre desactualizado y nsc_driver depende de el. Solo
 # Version.cpp incluye el header generado: asi no existe una carrera con los muchos tests que
 # incluyen Version.h y tampoco se obliga a recompilar todo el frontend por cambiar un string.
-set(NSC_COMPILER_RELEASE_VERSION "${PROJECT_VERSION}-alpha")
+set(NSC_COMPILER_RELEASE_VERSION "${PROJECT_VERSION}")
 set(NSC_GENERATED_BASIC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/Basic")
 set(NSC_GENERATED_BUILD_ID_HEADER "${NSC_GENERATED_BASIC_DIR}/BuildId.h")
 set(NSC_BUILD_ID_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBuildIdentity.cmake")
@@ -1428,7 +1428,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 0.9.0-alpha[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
+            "nsc 0.9.0[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage 57.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

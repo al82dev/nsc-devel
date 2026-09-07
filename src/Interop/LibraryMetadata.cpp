@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
 #include <array>
@@ -612,6 +613,20 @@ bool buildMetadataModel(
             record.referenceSize = referenceLayout.size;
             record.referenceAlignment = referenceLayout.alignment;
         }
+        else if (type.kind == frontend::NamedTypeDeclarationKind::Delegate && type.syntax != nullptr)
+        {
+            if (type.syntax->hasModifier(lexer::TokenKind::KwExtern)) record.delegateFlags |= 1U;
+            record.delegateReturnTypeKey =
+                compilation.memberModel()->canonicalTypeKey(type.syntax->typeSyntax(), *compilation.nameLookup());
+            for (const ast::AstNode* parameter : type.syntax->children())
+            {
+                if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration)
+                {
+                    record.delegateParameterTypeKeys.push_back(
+                        compilation.memberModel()->canonicalTypeKey(parameter->typeSyntax(), *compilation.nameLookup()));
+                }
+            }
+        }
         metadata.types.push_back(std::move(record));
     }
 
@@ -838,6 +853,12 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         // Minor 2. Un lector de minor 1 no lo espera, asi que se escribe solo cuando el formato
         // que se esta produciendo lo incluye -- la misma condicion que ya usa `ownership`.
         if (metadata.formatMinor >= 2) writer.text(type.enumUnderlyingTypeKey);
+        if (metadata.formatMinor >= 5)
+        {
+            writer.u8(type.delegateFlags);
+            writer.text(type.delegateReturnTypeKey);
+            writeStringVector(writer, type.delegateParameterTypeKeys);
+        }
         writer.u32(static_cast<std::uint32_t>(type.fields.size()));
         for (const LibraryMetadataField& field : type.fields)
         {
@@ -997,6 +1018,14 @@ bool decodePayload(
         if (metadata.formatMinor >= 2 && !reader.text(type.enumUnderlyingTypeKey))
         {
             error = "truncated or invalid metadata enum underlying type";
+            return false;
+        }
+        if (metadata.formatMinor >= 5 &&
+            (!reader.u8(type.delegateFlags) || type.delegateFlags > 1U ||
+             !reader.text(type.delegateReturnTypeKey) ||
+             !readStringVector(reader, type.delegateParameterTypeKeys)))
+        {
+            error = "truncated or invalid metadata delegate signature";
             return false;
         }
         std::uint32_t fieldCount = 0;
@@ -1416,6 +1445,26 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     {
         error = "metadata target ABI does not match NativeSharp 0.1 Windows x64";
         return false;
+    }
+    for (const LibraryMetadataType& type : metadata.types)
+    {
+        if ((type.kind == LibraryMetadataTypeKind::Class || type.kind == LibraryMetadataTypeKind::Interface) &&
+            (type.referenceSize != metadata.pointerSize ||
+             type.referenceAlignment != metadata.pointerAlignment))
+        {
+            error = "metadata reference ABI for type '" + type.fullyQualifiedName + "' is " +
+                std::to_string(type.referenceSize) + "/" + std::to_string(type.referenceAlignment) +
+                ", but the target pointer ABI is " + std::to_string(metadata.pointerSize) + "/" +
+                std::to_string(metadata.pointerAlignment);
+            return false;
+        }
+        if (metadata.formatMinor >= 5 && type.kind == LibraryMetadataTypeKind::Delegate &&
+            type.delegateReturnTypeKey.empty())
+        {
+            error = "metadata delegate '" + type.fullyQualifiedName +
+                "' does not provide its callable signature";
+            return false;
+        }
     }
     // El productor conserva la identidad exacta del ejecutable para poder rastrear el artefacto,
     // pero `+build...` es metadata SemVer y NO una frontera de compatibilidad. Sin separar ambas

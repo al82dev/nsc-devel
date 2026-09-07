@@ -20,12 +20,13 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 5 (2026-09-07): un delegate conserva su firma y si es extern C.
 // MINOR 4 (2026-09-06): cada parametro conserva Value/ref/out/in.
 // MINOR 3 (2026-09-06): cada parametro conserva su valor predeterminado literal.
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 4;
+inline constexpr std::uint16_t kMetadataFormatMinor = 5;
 enum class LibraryMetadataTypeKind : std::uint8_t
 {
     Class = 0,
@@ -98,6 +99,12 @@ struct LibraryMetadataType final
     // Se guarda la CLAVE y no un par (ancho, signo) porque la clave es lo que ya circula por todo
     // el compilador, y porque lleva las dos respuestas sin que nadie tenga que recomponerlas.
     std::string enumUnderlyingTypeKey;
+    // NSMETA 1.5. Delegate declarations are types, not ordinary member records. Without their
+    // return and parameter keys a precompiled consumer can know that `Transform` exists but not
+    // reconstruct `int Transform(int)`. Bit 0 marks the raw-function-pointer `extern C` form.
+    std::uint8_t delegateFlags = 0;
+    std::string delegateReturnTypeKey;
+    std::vector<std::string> delegateParameterTypeKeys;
     std::vector<LibraryMetadataField> fields;
 };
 
