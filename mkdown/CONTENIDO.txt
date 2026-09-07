@@ -1,6 +1,22 @@
 NativeSharp — compilador nativo tipo C# para x86_64-pc-windows-msvc
 ===================================================================
 
+LECTURA HISTÓRICA RECOMENDADA
+-----------------------------
+
+    130_evolucion_didactica_nativesharp_hasta_0_9_0.md
+    131_bitacora_por_cambio_independiente_de_git.md
+
+Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
+cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
+los documentos de cada etapa y el código que existe hoy. Explica qué problema resolvió cada
+familia de cambios, qué modelos y métodos aparecieron, cómo fluye una construcción por el
+pipeline y qué evidencia permite distinguir intención histórica de implementación vigente.
+
+El documento 131 establece la regla permanente para continuar esa historia: cada cambio debe
+documentarse mientras se implementa, incluso si no existe commit, e incluir archivos, funciones,
+razonamiento, pruebas, resultado observable y trabajo que permanece abierto.
+
 Entrega: Stage 56, fases C1 a C8 completas.
 Estado: ctest 237/237, build limpio desde cero con -DNSC_WARNINGS_AS_ERRORS=ON, cero warnings.
 

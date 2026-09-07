@@ -1,5 +1,8 @@
 # 128 — Bitácora didáctica y regla de generación por pasada
 
+> La genealogía didáctica completa de las etapas, modelos, métodos y archivos que condujeron hasta
+> 0.9.0 está en `130_evolucion_didactica_nativesharp_hasta_0_9_0.md`.
+
 **Vigencia:** permanente desde el inicio de `nsc 0.9.0-alpha`; ratificada por el cierre estable
 `nsc 0.9.0`.
 
@@ -11,6 +14,38 @@ Este documento cumple dos funciones inseparables:
 
 Una lista de archivos modificados no explica la evolución del compilador. La unidad de relato es:
 **síntoma → causa → corrección → garantía → evidencia**.
+
+## Regla independiente de Git: un Markdown por cada cambio
+
+Git no es la bitácora didáctica de NativeSharp. Puede haber trabajo sin commit, varios cambios
+dentro de un mismo commit o un commit que sólo materialice una parte de una conversación. Por
+eso, **cada cambio que se implemente debe crear o ampliar un Markdown de entrega en el mismo
+momento en que se modifica el proyecto**, aunque todavía no exista commit.
+
+Ese Markdown no puede limitarse a enumerar rutas. Debe contar el trabajo de manera que otra
+persona pueda entender qué se encontró, cómo se razonó y cómo quedó integrado. Como mínimo debe
+registrar:
+
+1. contexto y comportamiento anterior;
+2. problema concreto o capacidad perseguida;
+3. causa técnica encontrada;
+4. decisión tomada y alternativas descartadas;
+5. recorrido del cambio por las capas afectadas;
+6. archivos nuevos, modificados, renombrados o retirados, con la función de cada uno;
+7. clases, estructuras, funciones y métodos añadidos o modificados, explicando su responsabilidad;
+8. cambio observable mediante un ejemplo antes/después cuando corresponda;
+9. diagnósticos y casos límite;
+10. pruebas agregadas o afectadas y qué demuestra cada una;
+11. artefacto `nsc.exe`, versión y SHA-256 cuando el cambio toca el compilador;
+12. límites conocidos, deuda deliberada y siguiente paso.
+
+Si durante el trabajo una primera solución resulta incompleta, el documento debe conservar la
+secuencia del descubrimiento: hipótesis inicial, evidencia que la contradijo y corrección final.
+La bitácora explica la evolución; no reescribe el resultado como si hubiera sido obvio desde el
+principio.
+
+La ausencia de un commit nunca justifica omitir esta documentación. El Markdown es evidencia
+primaria de la entrega; Git sólo aporta una referencia adicional cuando exista.
 
 ## Granularidad de una entrega
 
