@@ -10,8 +10,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <sstream>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -184,7 +184,8 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
         view->declaredOwnership == LibraryMetadataOwnershipKind::Borrowed &&
             view->parameters.size() == 1 &&
             view->parameters[0].ownership == LibraryMetadataOwnershipKind::Borrowed,
-        "borrowed T persists Borrowed independently for return and parameter slots");
+                 "borrowed T persists Borrowed independently for return and "
+                 "parameter slots");
 
     tests.expect(
         plain->declaredTypeKey == take->declaredTypeKey &&
@@ -242,7 +243,8 @@ public class Api
     tests.expect(codec.read(plainPath, plain, error) && codec.read(borrowedPath, borrowed, error),
         "both semantic-fingerprint fixtures read successfully");
     tests.expect(plain.abiFingerprint != borrowed.abiFingerprint,
-        "ownership-only contract changes invalidate the NativeSharp compile-time ABI/semantic fingerprint");
+                 "ownership-only contract changes invalidate the NativeSharp "
+                 "compile-time ABI/semantic fingerprint");
 }
 
 void testStableCAbiProjection(TestContext& tests, const std::filesystem::path& root)
@@ -304,20 +306,23 @@ public class Api
     const LibraryMetadataMember* echo = findMember(ownedMetadata, "Echo");
     tests.expect(echo != nullptr && echo->declaredOwnership == LibraryMetadataOwnershipKind::Owned &&
             echo->parameters.size() == 1 && echo->parameters[0].ownership == LibraryMetadataOwnershipKind::Owned,
-        "NSMETA retains ownership even when the C projection intentionally erases it");
+                 "NSMETA retains ownership even when the C projection intentionally "
+                 "erases it");
     tests.expect(ownedMetadata.exports.size() == 1 && echo != nullptr &&
             ownedMetadata.exports[0].returnTypeKey == echo->declaredTypeKey &&
             ownedMetadata.exports[0].parameterTypeKeys.size() == 1 &&
             ownedMetadata.exports[0].parameterTypeKeys[0] == echo->parameters[0].typeKey,
-        "C export metadata remains a physical type projection with the Stage 48 ABI shape");
+                 "C export metadata remains a physical type projection with the "
+                 "Stage 48 ABI shape");
 }
 
 // UNA LECTURA RETROCOMPATIBLE DE VERDAD, no solo el guardia de versiones.
 //
-// `verifyCurrentCompiler` solo mira el numero: dice que un 1.1 es aceptable, pero no DECODIFICA
-// nada. El riesgo real del minor 2 esta en el cuerpo -- un lector que leyera el campo nuevo sin
-// mirar el minor se comeria los bytes del campo siguiente y a partir de ahi todo el registro
-// saldria corrido. Eso solo se ve escribiendo un fichero de 1.1 y leyendolo con el lector de 1.2.
+// `verifyCurrentCompiler` solo mira el numero: dice que un 1.1 es aceptable,
+// pero no DECODIFICA nada. El riesgo real del minor 2 esta en el cuerpo -- un
+// lector que leyera el campo nuevo sin mirar el minor se comeria los bytes del
+// campo siguiente y a partir de ahi todo el registro saldria corrido. Eso solo
+// se ve escribiendo un fichero de 1.1 y leyendolo con el lector de 1.2.
 void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path& root)
 {
     nativesharp::interop::LibraryMetadataCodec codec;
@@ -337,8 +342,9 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     enumType.alignment = 4;
     older.types.push_back(enumType);
 
-    // Un segundo tipo DETRAS del enum: si el lector se comiera bytes de mas al decodificar el
-    // primero, este saldria corrido o el fichero se rompería. Un solo tipo no probaria nada.
+    // Un segundo tipo DETRAS del enum: si el lector se comiera bytes de mas al
+    // decodificar el primero, este saldria corrido o el fichero se rompería. Un
+    // solo tipo no probaria nada.
     nativesharp::interop::LibraryMetadataType structType;
     structType.kind = nativesharp::interop::LibraryMetadataTypeKind::Struct;
     structType.identityKey = "OldFormat.Pair";
@@ -349,8 +355,8 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
 
     const auto path = root / "OldFormat.nsmeta";
     std::filesystem::create_directories(root);
-    tests.expect(codec.writeModel(older, path, error),
-        "a 1.1 metadata file can be produced, so backward compatibility can be measured");
+    tests.expect(codec.writeModel(older, path, error), "a 1.1 metadata file can be produced, so backward compatibility "
+                                                       "can be measured");
 
     nativesharp::interop::LibraryMetadata decoded;
     error.clear();
@@ -360,16 +366,19 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     tests.expect(decoded.types.size() == 2, "both type records survive the older payload");
     tests.expect(decoded.types.size() == 2 && decoded.types[0].identityKey == "OldFormat.Mode" &&
             decoded.types[0].size == 4 && decoded.types[0].enumUnderlyingTypeKey.empty(),
-        "an enum from 1.1 carries no underlying type key, and the reader does not invent one");
+                 "an enum from 1.1 carries no underlying type key, and the "
+                 "reader does not invent one");
     tests.expect(decoded.types.size() == 2 && decoded.types[1].identityKey == "OldFormat.Pair" &&
             decoded.types[1].size == 8,
-        "the record AFTER the enum is not shifted -- the 1.2 field was correctly not read");
+                 "the record AFTER the enum is not shifted -- the 1.2 field was "
+                 "correctly not read");
     tests.expect(codec.verifyCurrentCompiler(decoded, error),
         "a decoded 1.1 file is accepted by the current compiler");
 
-    // NSMETA 1.3 added the default-value tuple to every parameter record. Exercise the immediate
-    // predecessor with a parameter AND a following member: if the reader consumes 1.3 bytes from
-    // a 1.2 record, the sentinel member shifts and the payload cannot decode correctly.
+    // NSMETA 1.3 added the default-value tuple to every parameter record.
+    // Exercise the immediate predecessor with a parameter AND a following member:
+    // if the reader consumes 1.3 bytes from a 1.2 record, the sentinel member
+    // shifts and the payload cannot decode correctly.
     nativesharp::interop::LibraryMetadata previous;
     previous.formatMinor = 2;
     previous.producerVersion = std::string(nativesharp::kCompilerVersion);
@@ -410,16 +419,18 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
             previousDecoded.members[1].constantBits == 99U,
         "the member after a 1.2 parameter record remains byte-aligned");
 
-    // NSMETA 1.4 adds pass-kind after ownership and before the existing default tuple. A 1.3
-    // record must therefore decode its default in the old position and default the absent source
-    // pass kind to Value instead of consuming the first default byte as ref/out/in.
+    // NSMETA 1.4 adds pass-kind after ownership and before the existing default
+    // tuple. A 1.3 record must therefore decode its default in the old position
+    // and default the absent source pass kind to Value instead of consuming the
+    // first default byte as ref/out/in.
     nativesharp::interop::LibraryMetadata passPrevious = previous;
     passPrevious.formatMinor = 3;
     passPrevious.members[0].parameters[0].passKind = LibraryMetadataParameterPassKind::Ref;
     const auto passPreviousPath = root / "PreviousPassKindFormat.nsmeta";
     error.clear();
     tests.expect(codec.writeModel(passPrevious, passPreviousPath, error),
-        "an NSMETA 1.3 parameter record can still be produced without a pass-kind byte");
+                 "an NSMETA 1.3 parameter record can still be produced without a "
+                 "pass-kind byte");
     nativesharp::interop::LibraryMetadata passPreviousDecoded;
     error.clear();
     tests.expect(codec.read(passPreviousPath, passPreviousDecoded, error) &&
@@ -431,10 +442,12 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
             passPreviousDecoded.members[0].parameters[0].defaultValueKind ==
                 nativesharp::interop::LibraryMetadataDefaultValueKind::Integer &&
             passPreviousDecoded.members[1].name == "AfterParameter",
-        "a 1.3 parameter invents no ref/out/in identity and leaves following records aligned");
+                 "a 1.3 parameter invents no ref/out/in identity and leaves following "
+                 "records aligned");
 
-    // NSMETA 1.5 adds a delegate signature to the TYPE record. A 1.4 writer must omit it and the
-    // current reader must not consume the following field count as signature data.
+    // NSMETA 1.5 adds a delegate signature to the TYPE record. A 1.4 writer must
+    // omit it and the current reader must not consume the following field count
+    // as signature data.
     nativesharp::interop::LibraryMetadata delegatePrevious = previous;
     delegatePrevious.formatMinor = 4;
     nativesharp::interop::LibraryMetadataType oldDelegate;
@@ -448,18 +461,21 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     const auto delegatePreviousPath = root / "PreviousDelegateFormat.nsmeta";
     error.clear();
     tests.expect(codec.writeModel(delegatePrevious, delegatePreviousPath, error),
-        "an NSMETA 1.4 type record can still be produced without delegate signature fields");
+                 "an NSMETA 1.4 type record can still be produced without "
+                 "delegate signature fields");
     nativesharp::interop::LibraryMetadata delegatePreviousDecoded;
     error.clear();
     tests.expect(codec.read(delegatePreviousPath, delegatePreviousDecoded, error) &&
             delegatePreviousDecoded.types.size() == 1 &&
             delegatePreviousDecoded.types[0].delegateReturnTypeKey.empty() &&
             delegatePreviousDecoded.members.size() == 2,
-        "the current reader decodes NSMETA 1.4 without inventing a delegate signature or losing alignment");
+                 "the current reader decodes NSMETA 1.4 without inventing a delegate "
+                 "signature or losing alignment");
 
-    // NSMETA 1.6 added the descriptor accessor after descriptorName. A 1.5 producer writes the
-    // following vtable name in the old position; the current reader must leave the accessor empty
-    // and still recover that vtable byte for byte.
+    // NSMETA 1.6 added the descriptor accessor after descriptorName. A 1.5
+    // producer writes the following vtable name in the old position; the current
+    // reader must leave the accessor empty and still recover that vtable byte for
+    // byte.
     nativesharp::interop::LibraryMetadata descriptorPrevious = previous;
     descriptorPrevious.formatMinor = 5;
     nativesharp::interop::LibraryMetadataDispatch oldDispatch;
@@ -475,7 +491,8 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     const auto descriptorPreviousPath = root / "PreviousDescriptorAccessorFormat.nsmeta";
     error.clear();
     tests.expect(codec.writeModel(descriptorPrevious, descriptorPreviousPath, error),
-        "an NSMETA 1.5 dispatch record can still be produced without an accessor field");
+                 "an NSMETA 1.5 dispatch record can still be produced without an accessor "
+                 "field");
     nativesharp::interop::LibraryMetadata descriptorPreviousDecoded;
     error.clear();
     tests.expect(codec.read(descriptorPreviousPath, descriptorPreviousDecoded, error) &&
@@ -483,10 +500,12 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
             descriptorPreviousDecoded.dispatchTables[0].descriptorAccessorName.empty() &&
             descriptorPreviousDecoded.dispatchTables[0].vtableName == oldDispatch.vtableName &&
             descriptorPreviousDecoded.dispatchTables[0].slotCalleeNames == oldDispatch.slotCalleeNames,
-        "the current reader decodes NSMETA 1.5 dispatch data without shifting its vtable or slots");
+                 "the current reader decodes NSMETA 1.5 dispatch data without shifting "
+                 "its vtable or slots");
 
-    // NSMETA 1.7 added accessibility and the public declaration slice to every generic-template
-    // record. Keep a following specialization as the alignment sentinel for an actual 1.6 file.
+    // NSMETA 1.7 added accessibility and the public declaration slice to every
+    // generic-template record. Keep a following specialization as the alignment
+    // sentinel for an actual 1.6 file.
     nativesharp::interop::LibraryMetadata templatePrevious = descriptorPrevious;
     templatePrevious.formatMinor = 6;
     nativesharp::interop::LibraryMetadataGenericTemplate oldTemplate;
@@ -509,7 +528,8 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     const auto templatePreviousPath = root / "PreviousGenericTemplateFormat.nsmeta";
     error.clear();
     tests.expect(codec.writeModel(templatePrevious, templatePreviousPath, error),
-        "an NSMETA 1.6 generic template can still be produced without 1.7 materialization fields");
+                 "an NSMETA 1.6 generic template can still be produced without "
+                 "1.7 materialization fields");
     nativesharp::interop::LibraryMetadata templatePreviousDecoded;
     error.clear();
     tests.expect(codec.read(templatePreviousPath, templatePreviousDecoded, error) &&
@@ -519,17 +539,20 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
             templatePreviousDecoded.genericSpecializations.size() == 1 &&
             templatePreviousDecoded.genericSpecializations[0].specializedName ==
                 oldSpecialization.specializedName,
-        "the current reader decodes NSMETA 1.6 templates without shifting following specializations");
+                 "the current reader decodes NSMETA 1.6 templates without shifting "
+                 "following specializations");
 
-    // NSMETA 1.8 is the first file that states the binary contract independently from the file
-    // schema. A real 1.7 predecessor must remain readable, must not invent those bytes and must
-    // leave the already-present generic records aligned.
+    // NSMETA 1.8 is the first file that states the binary contract independently
+    // from the file schema. A real 1.7 predecessor must remain readable, must not
+    // invent those bytes and must leave the already-present generic records
+    // aligned.
     nativesharp::interop::LibraryMetadata contractPrevious = templatePrevious;
     contractPrevious.formatMinor = 7;
     const auto contractPreviousPath = root / "PreviousAbiContractFormat.nsmeta";
     error.clear();
     tests.expect(codec.writeModel(contractPrevious, contractPreviousPath, error),
-        "an NSMETA 1.7 file can still be produced without the 1.8 ABI-contract header");
+                 "an NSMETA 1.7 file can still be produced without the 1.8 "
+                 "ABI-contract header");
     nativesharp::interop::LibraryMetadata contractPreviousDecoded;
     error.clear();
     tests.expect(codec.read(contractPreviousPath, contractPreviousDecoded, error) &&
@@ -540,14 +563,16 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
             contractPreviousDecoded.genericTemplates.size() == 1 &&
             contractPreviousDecoded.genericTemplates[0].sourceText == oldTemplate.sourceText &&
             contractPreviousDecoded.genericSpecializations.size() == 1,
-        "the current reader decodes 1.7 without inventing an ABI contract or shifting later records");
+                 "the current reader decodes 1.7 without inventing an ABI contract or "
+                 "shifting later records");
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(contractPreviousDecoded, error),
         "legacy NSMETA 1.7 remains consumable under the compatibility policy");
 
-    // LA HUELLA ABI TIENE QUE DISTINGUIR EL SIGNO. `enum : byte` y `enum : sbyte` miden lo mismo,
-    // asi que si la huella solo cubriera el tamano dos modulos incompatibles tendrian la MISMA, y
-    // el mecanismo que existe para detectar un cambio de ABI dejaria pasar justo este.
+    // LA HUELLA ABI TIENE QUE DISTINGUIR EL SIGNO. `enum : byte` y `enum : sbyte`
+    // miden lo mismo, asi que si la huella solo cubriera el tamano dos modulos
+    // incompatibles tendrian la MISMA, y el mecanismo que existe para detectar un
+    // cambio de ABI dejaria pasar justo este.
     const auto fingerprintFor = [&](std::string_view underlying) {
         nativesharp::interop::LibraryMetadata one;
         one.producerVersion = std::string(nativesharp::kCompilerVersion);
@@ -571,12 +596,14 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     const std::string unsignedFingerprint = fingerprintFor("builtin:byte");
     const std::string signedFingerprint = fingerprintFor("builtin:sbyte");
     tests.expect(!unsignedFingerprint.empty() && unsignedFingerprint != signedFingerprint,
-        "`enum : byte` and `enum : sbyte` get different ABI fingerprints despite the same size");
+                 "`enum : byte` and `enum : sbyte` get different ABI "
+                 "fingerprints despite the same size");
 
-    // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. `writeModel` existe para medir round-trips, asi que
-    // un campo que se sobrescribiera en silencio con la constante haria que esta misma prueba
-    // dijera "el objetivo sobrevivio" cuando lo que sobrevivio es la constante -- una prueba que
-    // se miente a si misma.
+    // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. `writeModel` existe para medir
+    // round-trips, asi que un campo que se sobrescribiera en silencio con la
+    // constante haria que esta misma prueba dijera "el objetivo sobrevivio"
+    // cuando lo que sobrevivio es la constante -- una prueba que se miente a si
+    // misma.
     tests.expect(decoded.targetId == 1 && decoded.pointerSize == 8 && decoded.pointerAlignment == 8,
         "the written model's target survives the round-trip");
 
@@ -586,7 +613,8 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     tests.expect(
         !codec.writeModel(foreign, root / "foreign.nsmeta", error) &&
             error.find("Windows x64") != std::string::npos,
-        "a model naming another target is refused, not silently rewritten to Windows x64");
+                 "a model naming another target is refused, not silently "
+                 "rewritten to Windows x64");
 
     nativesharp::interop::LibraryMetadata narrowPointer = older;
     narrowPointer.pointerSize = 4;
@@ -610,14 +638,21 @@ void testMinorCompatibilityGate(TestContext& tests)
     metadata.targetTriple = "x86_64-pc-windows-msvc";
     std::string error;
     tests.expect(codec.verifyCurrentCompiler(metadata, error),
-        "current compiler accepts NSMETA 1.0 as the backward-compatible minor predecessor");
+                 "current compiler accepts NSMETA 1.0 as the backward-compatible "
+                 "minor predecessor");
 
     metadata.formatMinor = 1;
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(metadata, error),
-        "current compiler accepts NSMETA 1.1 as a backward-compatible minor predecessor");
+                 "current compiler accepts NSMETA 1.1 as a backward-compatible "
+                 "minor predecessor");
 
     metadata.formatMinor = nativesharp::interop::kMetadataFormatMinor;
+    // NSMETA 1.8 valida tambien la identidad estructural del modulo. Los
+    // canarios 1.0/1.1 de arriba siguen siendo modelos minimos; el modelo actual
+    // ya debe parecerse a un productor real para que el fallo siguiente mida
+    // exclusivamente la declaracion generica.
+    metadata.moduleName = "CompatibilityGate";
     nativesharp::interop::LibraryMetadataGenericTemplate incompleteTemplate;
     incompleteTemplate.kind = 1U;
     incompleteTemplate.accessibility = 3U;
@@ -629,21 +664,25 @@ void testMinorCompatibilityGate(TestContext& tests)
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(metadata, error) &&
             error.find("materializable declaration") != std::string::npos,
-        "current NSMETA rejects a public generic template with no materializable declaration");
+                 "current NSMETA rejects a public generic template with no "
+                 "materializable declaration");
     metadata.genericTemplates[0].sourceText = "public struct Box<T> { public T Value; }";
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(metadata, error),
-        "current NSMETA accepts the same public template once its declaration slice is complete");
+                 "current NSMETA accepts the same public template once its "
+                 "declaration slice is complete");
     metadata.genericTemplates.clear();
 
-    // EL NUMERO DE ESTA LINEA SUBE CON CADA MINOR, y por eso lleva `kFormatMinor + 1` en vez de un
-    // literal: escrito a mano, el dia que el formato pasa a 1.2 esta prueba deja de comprobar "un
-    // minor del futuro" y pasa a comprobar el minor ACTUAL -- que es exactamente lo que ocurrio al
-    // subir de 1.1 a 1.2, y por lo que esta comprobacion salio roja.
+    // EL NUMERO DE ESTA LINEA SUBE CON CADA MINOR, y por eso lleva `kFormatMinor
+    // + 1` en vez de un literal: escrito a mano, el dia que el formato pasa a 1.2
+    // esta prueba deja de comprobar "un minor del futuro" y pasa a comprobar el
+    // minor ACTUAL -- que es exactamente lo que ocurrio al subir de 1.1 a 1.2, y
+    // por lo que esta comprobacion salio roja.
     metadata.formatMinor = static_cast<std::uint16_t>(nativesharp::interop::kMetadataFormatMinor + 1);
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(metadata, error) && error.find("format") != std::string::npos,
-        "future NSMETA minor versions remain rejected until their fields are understood");
+                 "future NSMETA minor versions remain rejected until their "
+                 "fields are understood");
 }
 }
 

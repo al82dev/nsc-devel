@@ -305,9 +305,10 @@ bool canMaterializeContractType(const interop::LibraryMetadata& metadata,
     if (type->kind == interop::LibraryMetadataTypeKind::Delegate)
     {
         const bool externC = (type->delegateFlags & 1U) != 0U;
-        // NSMETA 1.5 hizo reconstruible el puntero de funcion C. Un delegate ordinario necesita
-        // una garantía adicional: que productor y consumidor hablan la misma celda code/context/
-        // destroy/reserved. Esa garantía aparece por primera vez en el contrato 1.8.
+        // NSMETA 1.5 hizo reconstruible el puntero de funcion C. Un delegate
+        // ordinario necesita una garantía adicional: que productor y consumidor
+        // hablan la misma celda code/context/ destroy/reserved. Esa garantía
+        // aparece por primera vez en el contrato 1.8.
         const bool managedAbiKnown = metadata.formatMinor >= 8 &&
             metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
             metadata.managedDelegateCellSize == interop::kManagedDelegateCellSize;
@@ -324,10 +325,11 @@ bool canMaterializeContractType(const interop::LibraryMetadata& metadata,
     }
     if (type->kind == interop::LibraryMetadataTypeKind::Class)
     {
-        // A precompiled class is deliberately opaque. Its value in a signature is the native
-        // reference carrier, not an object copied by value, so the consumer only needs to prove
-        // that producer and target agree on that carrier. Arrays remain outside this contract;
-        // one trailing pointer is accepted because ref/out/in parameters use it internally.
+        // A precompiled class is deliberately opaque. Its value in a signature is
+        // the native reference carrier, not an object copied by value, so the
+        // consumer only needs to prove that producer and target agree on that
+        // carrier. Arrays remain outside this contract; one trailing pointer is
+        // accepted because ref/out/in parameters use it internally.
         if (typeKey.find('[') != std::string::npos || type->referenceSize != metadata.pointerSize ||
             type->referenceAlignment != metadata.pointerAlignment)
         {
@@ -366,9 +368,10 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata& metadata, const 
     {
         return false;
     }
-    // NSMETA already carries the complete layout for structs, the underlying type for enums and
-    // the pointer-sized reference carrier for opaque classes. Admit a method only when every
-    // nominal type in its signature can be reconstructed under those exact rules.
+    // NSMETA already carries the complete layout for structs, the underlying type
+    // for enums and the pointer-sized reference carrier for opaque classes. Admit
+    // a method only when every nominal type in its signature can be reconstructed
+    // under those exact rules.
     if (!canMaterializeContractType(metadata, member.declaredTypeKey)) return false;
     if (std::ranges::any_of(member.parameters, [&](const auto& parameter) {
             return !canMaterializeContractType(metadata, parameter.typeKey);
@@ -468,9 +471,10 @@ void collectMaterializedContractTypes(const interop::LibraryMetadata& metadata,
     else if (type->kind == interop::LibraryMetadataTypeKind::Class ||
              type->kind == interop::LibraryMetadataTypeKind::Interface)
     {
-        // Una clase no es materializable sólo por su carrier ptr: su identidad RTTI depende de la
-        // cadena de bases e interfaces. Esto es especialmente visible al importar una excepción:
-        // el catch necesita reconstruir también el ancestro que demuestra que es lanzable.
+        // Una clase no es materializable sólo por su carrier ptr: su identidad RTTI
+        // depende de la cadena de bases e interfaces. Esto es especialmente visible
+        // al importar una excepción: el catch necesita reconstruir también el
+        // ancestro que demuestra que es lanzable.
         if (!type->baseTypeKey.empty())
             collectMaterializedContractTypes(metadata, type->baseTypeKey, identities);
         for (const std::string& interfaceTypeKey : type->interfaceTypeKeys)
@@ -536,9 +540,10 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata& 
     std::vector<std::string> symbols;
     for (const interop::LibraryMetadataMember& member : metadata.members)
     {
-        // Physical validation must remain stricter than source materialization. Every public
-        // static method was already part of the published native surface; struct instance
-        // methods join it only when their receiver contract can be reconstructed safely.
+        // Physical validation must remain stricter than source materialization.
+        // Every public static method was already part of the published native
+        // surface; struct instance methods join it only when their receiver
+        // contract can be reconstructed safely.
         if (isPublicNativeMethod(member) &&
             ((member.flags & kStatic) != 0U || canMaterializeNativeMethod(metadata, member)))
         {
@@ -561,6 +566,64 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata& 
     std::sort(symbols.begin(), symbols.end());
     symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
     return symbols;
+}
+
+std::vector<std::string> metadataRequiredSymbols(const interop::LibraryMetadata& metadata)
+{
+    std::vector<std::string> symbols = publishedNativeSymbols(metadata);
+    symbols.reserve(symbols.size() + metadata.exports.size());
+    for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+    {
+        symbols.push_back(exportRecord.cAbiName);
+    }
+    std::sort(symbols.begin(), symbols.end());
+    symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
+    return symbols;
+}
+
+std::vector<std::string> missingSymbols(
+    std::span<const std::string> expected,
+    std::span<const std::string> actual)
+{
+    const std::unordered_set<std::string> actualSet(actual.begin(), actual.end());
+    std::vector<std::string> missing;
+    for (const std::string& symbol : expected)
+    {
+        if (!actualSet.contains(symbol)) missing.push_back(symbol);
+    }
+    return missing;
+}
+
+std::string describeSymbols(std::span<const std::string> symbols)
+{
+    std::ostringstream description;
+    constexpr std::size_t kDisplayedLimit = 12;
+    const std::size_t displayed = std::min(symbols.size(), kDisplayedLimit);
+    for (std::size_t index = 0; index < displayed; ++index)
+    {
+        if (index != 0) description << ", ";
+        description << '\'' << symbols[index] << '\'';
+    }
+    if (symbols.size() > displayed)
+        description << ", ... (" << (symbols.size() - displayed) << " more)";
+    return description.str();
+}
+
+void printMetadataAbiContract(const interop::LibraryMetadata& metadata, std::ostream& output)
+{
+    if (metadata.formatMinor < 8)
+    {
+        output << "abi-contract: legacy implicit contract (NSMETA " << metadata.formatMajor << '.'
+               << metadata.formatMinor << ")\n";
+        return;
+    }
+    output << "native-abi: " << metadata.nativeAbiMajor << '.' << metadata.nativeAbiMinor << '\n'
+           << "runtime-abi: " << metadata.runtimeAbiMajor << '.' << metadata.runtimeAbiMinor << '\n'
+           << "mangling-abi: " << metadata.manglingAbiVersion << '\n'
+           << "object-abi: " << metadata.objectAbiVersion << '\n'
+           << "delegate-abi: " << metadata.delegateAbiVersion << '\n'
+           << "delegate-cell-size: " << metadata.managedDelegateCellSize << '\n'
+           << "exception-abi: " << metadata.exceptionAbiVersion << '\n';
 }
 
 bool sourceDefaultValue(
@@ -698,9 +761,10 @@ bool buildPrecompiledPublicSource(
     }
 
     std::ostringstream generated;
-    // El parser de listas de bases acepta nombres simples. Publicamos los namespaces de todas las
-    // piezas del contrato antes de emitir las declaraciones, de modo que una base ubicada en otro
-    // namespace conserve su identidad sin reescribirla ni depender del archivo fuente original.
+    // El parser de listas de bases acepta nombres simples. Publicamos los
+    // namespaces de todas las piezas del contrato antes de emitir las
+    // declaraciones, de modo que una base ubicada en otro namespace conserve su
+    // identidad sin reescribirla ni depender del archivo fuente original.
     std::set<std::string> importedNamespaces;
     for (const auto& [identity, group] : published)
     {
@@ -1244,9 +1308,16 @@ bool appendValidatedLibraryReferences(
                     std::unique(actualExports.begin(), actualExports.end()), actualExports.end());
                 if (actualExports != expectedExports)
                 {
+                    const std::vector<std::string> missing = missingSymbols(expectedExports, actualExports);
+                    const std::vector<std::string> unexpected = missingSymbols(actualExports, expectedExports);
                     error = "runtime DLL export table does not match metadata contract "
                             "for module '" +
                             metadata.moduleName + "'";
+                    if (!missing.empty())
+                        error += "; missing " + std::to_string(missing.size()) + ": " + describeSymbols(missing);
+                    if (!unexpected.empty())
+                        error +=
+                            "; unexpected " + std::to_string(unexpected.size()) + ": " + describeSymbols(unexpected);
                     return false;
                 }
                 const auto runtimeOwner = runtimeNames.find(runtimeName);
@@ -1537,6 +1608,16 @@ ExitCode Driver::run(
         }
     }
 
+    if (args.size() == 3 && args[0] == "--verify-library-artifacts")
+    {
+        return verifyLibraryArtifacts(args[1], args[2], {}, output, error);
+    }
+
+    if (args.size() == 4 && args[0] == "--verify-library-artifacts")
+    {
+        return verifyLibraryArtifacts(args[1], args[2], args[3], output, error);
+    }
+
     if (args.size() == 3 && args[1] == "-o" &&
         !args[0].empty() && args[0].front() != '-')
     {
@@ -1635,6 +1716,8 @@ void Driver::printHelp(std::ostream& output)
            << "  nsc --emit-project-library-metadata <file.nsproj> -o "
               "<file.nsmeta>\n"
            << "  nsc --verify-library-metadata <file.nsmeta>\n"
+           << "  nsc --verify-library-artifacts <file.nsmeta> <file.lib> "
+              "[file.dll]\n"
            << "  nsc <file.ns>\n"
            << "  nsc --check <file.ns>\n"
            << "  nsc --dump-source <file.ns>\n"
@@ -1711,7 +1794,9 @@ void Driver::printHelp(std::ostream& output)
               "root. "
            << "Stage 57 completes the language surface: the conditional operator, "
               "do-while and "
-           << "switch/case.\n";
+           << "switch/case. "
+           << "The 1.0 E5/E6 library gates add component-level ABI diagnostics and "
+              "standalone metadata/archive/DLL artifact verification.\n";
 }
 
 ExitCode Driver::printCodeGeneration(
@@ -3194,6 +3279,7 @@ ExitCode Driver::verifyLibraryMetadata(
     }
     output << "NativeSharp library metadata: valid\n"
            << "producer: " << metadata.producerVersion << '\n'
+           << "format: NSMETA " << metadata.formatMajor << '.' << metadata.formatMinor << '\n'
            << "module: " << metadata.moduleName << '\n'
            << "target: " << metadata.targetTriple << '\n'
            << "types: " << metadata.types.size() << '\n'
@@ -3203,6 +3289,98 @@ ExitCode Driver::verifyLibraryMetadata(
            << "dispatch-tables: " << metadata.dispatchTables.size() << '\n'
            << "exports: " << metadata.exports.size() << '\n'
            << "abi-fingerprint: " << interop::LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint) << '\n';
+    printMetadataAbiContract(metadata, output);
+    return ExitCode::Success;
+}
+
+ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath, std::string_view libraryPath,
+                                        std::string_view runtimePath, std::ostream& output, std::ostream& error)
+{
+    const std::filesystem::path metadataFile(metadataPath);
+    const std::filesystem::path libraryFile(libraryPath);
+    const std::filesystem::path runtimeFile(runtimePath);
+
+    interop::LibraryMetadataCodec codec;
+    interop::LibraryMetadata metadata;
+    std::string detail;
+    if (!codec.read(metadataFile, metadata, detail))
+    {
+        error << "nsc: error: invalid metadata in library artifact set: " << detail << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!codec.verifyCurrentCompiler(metadata, detail))
+    {
+        error << "nsc: error: incompatible metadata in library artifact set: " << detail << '\n';
+        return ExitCode::CompilationError;
+    }
+
+    linker::CoffArchiveVerifier archiveVerifier;
+    if (!archiveVerifier.verify(libraryFile))
+    {
+        error << "nsc: error: library artifact '" << libraryFile.generic_string()
+              << "' is not a valid COFF archive: " << archiveVerifier.error() << '\n';
+        return ExitCode::CompilationError;
+    }
+
+    const std::vector<std::string> requiredSymbols = metadataRequiredSymbols(metadata);
+    const std::vector<std::string> archiveMissing = missingSymbols(requiredSymbols, archiveVerifier.info().symbolNames);
+    if (!archiveMissing.empty())
+    {
+        error << "nsc: error: library artifact '" << libraryFile.generic_string() << "' is missing "
+              << archiveMissing.size() << " symbol(s) required by metadata module '" << metadata.moduleName
+              << "': " << describeSymbols(archiveMissing) << '\n';
+        return ExitCode::CompilationError;
+    }
+
+    std::size_t runtimeExportCount = 0;
+    if (!runtimePath.empty())
+    {
+        linker::PeExecutableVerifier runtimeVerifier;
+        if (!runtimeVerifier.verifyDynamicLibrary(runtimeFile))
+        {
+            error << "nsc: error: runtime artifact '" << runtimeFile.generic_string()
+                  << "' is not a valid PE DLL: " << runtimeVerifier.error() << '\n';
+            return ExitCode::CompilationError;
+        }
+        std::vector<std::string> actualExports = runtimeVerifier.info().exportedSymbols;
+        std::sort(actualExports.begin(), actualExports.end());
+        actualExports.erase(std::unique(actualExports.begin(), actualExports.end()), actualExports.end());
+        const std::vector<std::string> runtimeMissing = missingSymbols(requiredSymbols, actualExports);
+        const std::vector<std::string> runtimeUnexpected = missingSymbols(actualExports, requiredSymbols);
+        if (!runtimeMissing.empty() || !runtimeUnexpected.empty())
+        {
+            error << "nsc: error: runtime DLL export table does not match metadata "
+                     "module '"
+                  << metadata.moduleName << "'";
+            if (!runtimeMissing.empty())
+                error << "; missing " << runtimeMissing.size() << ": " << describeSymbols(runtimeMissing);
+            if (!runtimeUnexpected.empty())
+                error << "; unexpected " << runtimeUnexpected.size() << ": " << describeSymbols(runtimeUnexpected);
+            error << '\n';
+            return ExitCode::CompilationError;
+        }
+        runtimeExportCount = actualExports.size();
+    }
+
+    output << "NativeSharp library artifacts: valid\n"
+           << "module: " << metadata.moduleName << '\n'
+           << "metadata: " << metadataFile.generic_string() << '\n'
+           << "library: " << libraryFile.generic_string() << '\n'
+           << "archive-members: " << archiveVerifier.info().memberCount << '\n'
+           << "archive-symbols: " << archiveVerifier.info().symbolNames.size() << '\n'
+           << "required-symbols: " << requiredSymbols.size() << '\n';
+    if (runtimePath.empty())
+    {
+        output << "product-kind: static archive\n";
+    }
+    else
+    {
+        output << "product-kind: DLL plus import archive\n"
+               << "runtime: " << runtimeFile.generic_string() << '\n'
+               << "runtime-exports: " << runtimeExportCount << '\n';
+    }
+    output << "abi-fingerprint: " << interop::LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint) << '\n';
+    printMetadataAbiContract(metadata, output);
     return ExitCode::Success;
 }
 

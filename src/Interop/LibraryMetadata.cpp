@@ -590,20 +590,23 @@ bool buildMetadataModel(
         {
             // EL TAMANO DEL ENUM SALE DEL MODELO DE LAYOUT, no de un 4 escrito aqui.
             //
-            // Este era el SEPTIMO sitio con "un enum mide cuatro bytes" escrito a mano, y el mas
-            // caro de los que quedaban: los metadatos alimentan a los generadores de host --el
-            // enlace P/Invoke de C# y el de C++/CLI-- asi que un 4/4 fijo se propaga a codigo que
-            // otro compilador genera y que ya nadie relaciona con este fichero. Un `enum : byte`
-            // exportado hacia que el host reservara cuatro bytes donde el modulo pone uno.
+            // Este era el SEPTIMO sitio con "un enum mide cuatro bytes" escrito a
+            // mano, y el mas caro de los que quedaban: los metadatos alimentan a los
+            // generadores de host --el enlace P/Invoke de C# y el de C++/CLI-- asi
+            // que un 4/4 fijo se propaga a codigo que otro compilador genera y que ya
+            // nadie relaciona con este fichero. Un `enum : byte` exportado hacia que
+            // el host reservara cuatro bytes donde el modulo pone uno.
             //
-            // `valueLayoutForTypeKey` es la misma consulta que usan el modelo MIR y el HIR, asi que
-            // los metadatos no pueden discrepar del layout que el propio modulo materializa.
+            // `valueLayoutForTypeKey` es la misma consulta que usan el modelo MIR y
+            // el HIR, asi que los metadatos no pueden discrepar del layout que el
+            // propio modulo materializa.
             const std::optional<std::pair<std::uint64_t, std::uint64_t>> enumLayout =
                 compilation.objectLayoutModel()->valueLayoutForTypeKey(
                     *compilation.nameLookup(), "type:" + type.identity.key());
             record.size = enumLayout.has_value() ? enumLayout->first : 4;
             record.alignment = enumLayout.has_value() ? enumLayout->second : 4;
-            // EL SIGNO, que el tamano no lleva: `enum : byte` y `enum : sbyte` miden lo mismo.
+            // EL SIGNO, que el tamano no lleva: `enum : byte` y `enum : sbyte` miden
+            // lo mismo.
             record.enumUnderlyingTypeKey =
                 std::string(frontend::enumUnderlyingTypeKey(type.syntax));
         }
@@ -616,9 +619,10 @@ bool buildMetadataModel(
         else if (type.kind == frontend::NamedTypeDeclarationKind::Delegate && type.syntax != nullptr)
         {
             if (type.syntax->hasModifier(lexer::TokenKind::KwExtern)) record.delegateFlags |= 1U;
-            // Los dos delegates viajan en un registro LLVM `ptr`. El extern C apunta al codigo;
-            // el ordinario apunta a la celda ABI versionada. La diferencia queda en flags y en el
-            // contrato raiz, pero tamaño/alineacion de la REFERENCIA son iguales.
+            // Los dos delegates viajan en un registro LLVM `ptr`. El extern C apunta
+            // al codigo; el ordinario apunta a la celda ABI versionada. La diferencia
+            // queda en flags y en el contrato raiz, pero tamaño/alineacion de la
+            // REFERENCIA son iguales.
             record.referenceSize = kPointerSize;
             record.referenceAlignment = kPointerAlignment;
             record.delegateReturnTypeKey =
@@ -876,8 +880,9 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writer.u64(type.referenceSize);
         writer.u64(type.referenceAlignment);
         writer.u64(type.stableTypeId);
-        // Minor 2. Un lector de minor 1 no lo espera, asi que se escribe solo cuando el formato
-        // que se esta produciendo lo incluye -- la misma condicion que ya usa `ownership`.
+        // Minor 2. Un lector de minor 1 no lo espera, asi que se escribe solo
+        // cuando el formato que se esta produciendo lo incluye -- la misma
+        // condicion que ya usa `ownership`.
         if (metadata.formatMinor >= 2) writer.text(type.enumUnderlyingTypeKey);
         if (metadata.formatMinor >= 5)
         {
@@ -1298,6 +1303,58 @@ bool writeBytesAtomically(
     }
     return true;
 }
+
+std::string versionPair(std::uint16_t major, std::uint16_t minor)
+{
+    return std::to_string(major) + "." + std::to_string(minor);
+}
+
+// E5: una incompatibilidad ABI tiene que nombrar LA DECISION FISICA que
+// difiere. El mensaje anterior agrupaba ocho campos bajo "ABI contract is not
+// compatible"; era correcto para detener la compilacion, pero obligaba a abrir
+// el fichero o depurar el lector para saber si habia cambiado el layout de
+// objetos, la celda delegate o el transporte de excepciones. Esta funcion es la
+// unica tabla de compatibilidad del contrato 1.0 y la comparten el escritor de
+// modelos y el consumidor.
+bool verifyFrozenAbiContract(const LibraryMetadata& metadata, std::string& error)
+{
+    if (metadata.nativeAbiMajor != kNativeAbiMajor || metadata.nativeAbiMinor > kNativeAbiMinor)
+    {
+        error = "NativeSharp ABI contract mismatch: native ABI expected " +
+                versionPair(kNativeAbiMajor, kNativeAbiMinor) + ", found " +
+                versionPair(metadata.nativeAbiMajor, metadata.nativeAbiMinor);
+        return false;
+    }
+    if (metadata.runtimeAbiMajor != kRuntimeAbiMajor || metadata.runtimeAbiMinor > kRuntimeAbiMinor)
+    {
+        error = "NativeSharp ABI contract mismatch: runtime ABI expected " +
+                versionPair(kRuntimeAbiMajor, kRuntimeAbiMinor) + ", found " +
+                versionPair(metadata.runtimeAbiMajor, metadata.runtimeAbiMinor);
+        return false;
+    }
+    const auto exactVersion = [&](std::string_view component, std::uint16_t found, std::uint16_t expected) {
+        if (found == expected) return true;
+        error = "NativeSharp ABI contract mismatch: " + std::string(component) + " expected " +
+                std::to_string(expected) + ", found " + std::to_string(found);
+        return false;
+    };
+    if (!exactVersion("mangling ABI", metadata.manglingAbiVersion, kManglingAbiVersion) ||
+        !exactVersion("object ABI", metadata.objectAbiVersion, kObjectAbiVersion) ||
+        !exactVersion("delegate ABI", metadata.delegateAbiVersion, kDelegateAbiVersion) ||
+        !exactVersion("exception ABI", metadata.exceptionAbiVersion, kExceptionAbiVersion))
+    {
+        return false;
+    }
+    if (metadata.managedDelegateCellSize != kManagedDelegateCellSize)
+    {
+        error = "NativeSharp ABI contract mismatch: managed delegate cell size "
+                "expected " +
+                std::to_string(kManagedDelegateCellSize) + " bytes, found " +
+                std::to_string(metadata.managedDelegateCellSize) + " bytes";
+        return false;
+    }
+    return true;
+}
 }
 
 bool LibraryMetadataCodec::write(
@@ -1311,12 +1368,14 @@ bool LibraryMetadataCodec::write(
     return writeModel(metadata, destination, error);
 }
 
-// Escribe un MODELO ya construido, en la version menor que el propio modelo dice.
+// Escribe un MODELO ya construido, en la version menor que el propio modelo
+// dice.
 //
-// POR QUE EXISTE, y no es andamiaje de pruebas. La compatibilidad hacia atras de este formato solo
-// se puede MEDIR si se puede producir un fichero de una version anterior: sin esto, "un lector de
-// 1.2 lee un fichero de 1.1" es una afirmacion sobre codigo que nadie ejecuto nunca -- y este
-// proyecto no cuenta esas. Cada minor futuro hereda la prueba sin escribir nada nuevo.
+// POR QUE EXISTE, y no es andamiaje de pruebas. La compatibilidad hacia atras
+// de este formato solo se puede MEDIR si se puede producir un fichero de una
+// version anterior: sin esto, "un lector de 1.2 lee un fichero de 1.1" es una
+// afirmacion sobre codigo que nadie ejecuto nunca -- y este proyecto no cuenta
+// esas. Cada minor futuro hereda la prueba sin escribir nada nuevo.
 bool LibraryMetadataCodec::writeModel(
     const LibraryMetadata& model,
     const std::filesystem::path& destination,
@@ -1330,14 +1389,16 @@ bool LibraryMetadataCodec::writeModel(
             std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
         return false;
     }
-    // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. Escribir la constante por encima de lo que el modelo
-    // diga es exactamente lo que hacia el encabezado con el minor: dos fuentes de verdad para el
-    // mismo campo. Y aqui seria peor, porque esta funcion existe para MEDIR round-trips -- un
-    // campo que se sobrescribe en silencio hace que la prueba diga "el objetivo sobrevivio" cuando
-    // lo que sobrevivio es la constante.
+    // EL OBJETIVO SE VALIDA, NO SE SUSTITUYE. Escribir la constante por encima de
+    // lo que el modelo diga es exactamente lo que hacia el encabezado con el
+    // minor: dos fuentes de verdad para el mismo campo. Y aqui seria peor, porque
+    // esta funcion existe para MEDIR round-trips -- un campo que se sobrescribe
+    // en silencio hace que la prueba diga "el objetivo sobrevivio" cuando lo que
+    // sobrevivio es la constante.
     //
-    // NativeSharp 0.1 solo tiene un objetivo, asi que lo unico correcto es rechazar cualquier otro
-    // con su numero delante, y no producir un fichero que el lector rechazaria despues.
+    // NativeSharp 0.1 solo tiene un objetivo, asi que lo unico correcto es
+    // rechazar cualquier otro con su numero delante, y no producir un fichero que
+    // el lector rechazaria despues.
     if (metadata.targetId != kWindowsX64Target || metadata.pointerSize != kPointerSize ||
         metadata.pointerAlignment != kPointerAlignment)
     {
@@ -1347,18 +1408,7 @@ bool LibraryMetadataCodec::writeModel(
             "; NativeSharp 0.1 targets Windows x64 only";
         return false;
     }
-    if (metadata.formatMinor >= 8 &&
-        (metadata.nativeAbiMajor != kNativeAbiMajor || metadata.nativeAbiMinor > kNativeAbiMinor ||
-         metadata.runtimeAbiMajor != kRuntimeAbiMajor || metadata.runtimeAbiMinor > kRuntimeAbiMinor ||
-         metadata.manglingAbiVersion != kManglingAbiVersion ||
-         metadata.objectAbiVersion != kObjectAbiVersion ||
-         metadata.delegateAbiVersion != kDelegateAbiVersion ||
-         metadata.exceptionAbiVersion != kExceptionAbiVersion ||
-         metadata.managedDelegateCellSize != kManagedDelegateCellSize))
-    {
-        error = "metadata NativeSharp ABI contract is not compatible with this compiler/runtime";
-        return false;
-    }
+    if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
 
     metadata.abiFingerprint = sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -1371,15 +1421,16 @@ bool LibraryMetadataCodec::writeModel(
 
     ByteWriter file;
     file.raw(kMagic);
-    // El encabezado escribe el minor DEL MODELO, no la constante. El cuerpo ya se codifica
-    // segun `metadata.formatMinor` (`if (metadata.formatMinor >= N)`), asi que tomar el numero de
-    // otro sitio serian dos fuentes de verdad para el mismo campo dentro del mismo fichero -- y un
-    // encabezado que dijera 2 sobre un cuerpo escrito como 1 es un fichero que no se puede leer.
+    // El encabezado escribe el minor DEL MODELO, no la constante. El cuerpo ya se
+    // codifica segun `metadata.formatMinor` (`if (metadata.formatMinor >= N)`),
+    // asi que tomar el numero de otro sitio serian dos fuentes de verdad para el
+    // mismo campo dentro del mismo fichero -- y un encabezado que dijera 2 sobre
+    // un cuerpo escrito como 1 es un fichero que no se puede leer.
     file.u16(metadata.formatMajor);
     file.u16(metadata.formatMinor);
-    // El marcador de endianidad es una propiedad de la CODIFICACION, no del modelo: no hay campo
-    // que pueda decir otra cosa, y por eso este si es una constante. Los tres siguientes salen del
-    // modelo, ya validado arriba.
+    // El marcador de endianidad es una propiedad de la CODIFICACION, no del
+    // modelo: no hay campo que pueda decir otra cosa, y por eso este si es una
+    // constante. Los tres siguientes salen del modelo, ya validado arriba.
     file.u32(kEndianMarker);
     file.u32(metadata.targetId);
     file.u32(metadata.pointerSize);
@@ -1505,26 +1556,55 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     error.clear();
     if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
     {
-        error = "metadata format is not supported by this compiler";
+        error = "metadata format expected NSMETA " + std::to_string(kFormatMajor) + ".0 through " +
+                std::to_string(kFormatMajor) + "." + std::to_string(kFormatMinor) + ", found " +
+                std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor);
         return false;
     }
-    if (metadata.targetId != kWindowsX64Target || metadata.pointerSize != kPointerSize ||
-        metadata.pointerAlignment != kPointerAlignment || metadata.targetTriple != kTargetTriple)
+    if (metadata.targetId != kWindowsX64Target)
     {
-        error = "metadata target ABI does not match NativeSharp 0.1 Windows x64";
+        error = "metadata target ABI mismatch: target id expected " + std::to_string(kWindowsX64Target) + ", found " +
+                std::to_string(metadata.targetId);
         return false;
     }
-    if (metadata.formatMinor >= 8 &&
-        (metadata.nativeAbiMajor != kNativeAbiMajor || metadata.nativeAbiMinor > kNativeAbiMinor ||
-         metadata.runtimeAbiMajor != kRuntimeAbiMajor || metadata.runtimeAbiMinor > kRuntimeAbiMinor ||
-         metadata.manglingAbiVersion != kManglingAbiVersion ||
-         metadata.objectAbiVersion != kObjectAbiVersion ||
-         metadata.delegateAbiVersion != kDelegateAbiVersion ||
-         metadata.exceptionAbiVersion != kExceptionAbiVersion ||
-         metadata.managedDelegateCellSize != kManagedDelegateCellSize))
+    if (metadata.pointerSize != kPointerSize || metadata.pointerAlignment != kPointerAlignment)
     {
-        error = "metadata NativeSharp ABI contract is not compatible with this compiler/runtime";
+        error = "metadata target ABI mismatch: pointer size/alignment expected " + std::to_string(kPointerSize) + "/" +
+                std::to_string(kPointerAlignment) + ", found " + std::to_string(metadata.pointerSize) + "/" +
+                std::to_string(metadata.pointerAlignment);
         return false;
+    }
+    if (metadata.targetTriple != kTargetTriple)
+    {
+        error = "metadata target ABI mismatch: target triple expected '" + std::string(kTargetTriple) + "', found '" +
+                metadata.targetTriple + "'";
+        return false;
+    }
+    if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
+    if (metadata.formatMinor >= 8 && metadata.moduleName.empty())
+    {
+        error = "metadata module identity is empty";
+        return false;
+    }
+
+    // Un checksum valido demuestra integridad de bytes, no coherencia del modelo.
+    // Un fichero puede estar firmado por su propio productor y aun publicar dos
+    // identidades iguales o tablas paralelas de longitudes distintas. Esas formas
+    // se rechazan aqui antes de materializar fuente sintetica o comparar simbolos
+    // fisicos.
+    std::unordered_set<std::string> typeIdentities;
+    for (const LibraryMetadataType& type : metadata.types)
+    {
+        if (type.identityKey.empty() || type.fullyQualifiedName.empty())
+        {
+            error = "metadata contains a type with an empty canonical identity or name";
+            return false;
+        }
+        if (!typeIdentities.insert(type.identityKey).second)
+        {
+            error = "metadata contains duplicate type identity '" + type.identityKey + "'";
+            return false;
+        }
     }
     for (const LibraryMetadataType& type : metadata.types)
     {
@@ -1549,21 +1629,52 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     }
     if (metadata.formatMinor >= 6)
     {
+        std::unordered_set<std::string> dispatchTypes;
         for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
         {
+            if (!dispatchTypes.insert(dispatch.typeKey).second)
+            {
+                error = "metadata contains duplicate dispatch contract for '" + dispatch.typeKey + "'";
+                return false;
+            }
             if (dispatch.descriptorAccessorName.empty())
             {
                 error = "metadata dispatch contract for '" + dispatch.typeKey +
                     "' does not provide its class-descriptor accessor";
                 return false;
             }
+            if (dispatch.slotSignatures.size() != dispatch.slotCalleeNames.size())
+            {
+                error = "metadata dispatch contract for '" + dispatch.typeKey + "' has " +
+                        std::to_string(dispatch.slotSignatures.size()) + " slot signatures but " +
+                        std::to_string(dispatch.slotCalleeNames.size()) + " callees";
+                return false;
+            }
+            for (const LibraryMetadataDispatchInterface& interface : dispatch.interfaces)
+            {
+                if (interface.interfaceSignatures.size() != interface.implementationSignatures.size() ||
+                    interface.interfaceSignatures.size() != interface.calleeNames.size())
+                {
+                    error = "metadata interface dispatch contract '" + interface.interfaceTypeKey + "' on '" +
+                            dispatch.typeKey + "' has inconsistent slot counts";
+                    return false;
+                }
+            }
         }
     }
     if (metadata.formatMinor >= 7)
     {
         constexpr std::uint8_t kPublicAccessibility = 3U;
+        std::unordered_set<std::string> templateKeys;
         for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
         {
+            if (generic.canonicalKey.empty() || !templateKeys.insert(generic.canonicalKey).second)
+            {
+                error = generic.canonicalKey.empty()
+                    ? "metadata contains a generic template with an empty canonical key"
+                    : "metadata contains duplicate generic template '" + generic.canonicalKey + "'";
+                return false;
+            }
             if (generic.accessibility != kPublicAccessibility || generic.sourceText.empty())
             {
                 error = "metadata generic template '" + generic.canonicalKey +
@@ -1572,10 +1683,35 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             }
         }
     }
-    // El productor conserva la identidad exacta del ejecutable para poder rastrear el artefacto,
-    // pero `+build...` es metadata SemVer y NO una frontera de compatibilidad. Sin separar ambas
-    // preguntas, cada build incremental rechazaria las bibliotecas del build inmediatamente
-    // anterior aunque compartieran lenguaje, formato y ABI.
+    std::unordered_set<std::string> specializationKeys;
+    for (const LibraryMetadataGenericSpecialization& specialization : metadata.genericSpecializations)
+    {
+        if (specialization.specializationKey.empty() ||
+            !specializationKeys.insert(specialization.specializationKey).second)
+        {
+            error = specialization.specializationKey.empty()
+                ? "metadata contains a generic specialization with an empty canonical key"
+                : "metadata contains duplicate generic specialization '" +
+                    specialization.specializationKey + "'";
+            return false;
+        }
+    }
+    std::unordered_set<std::string> exportNames;
+    for (const LibraryMetadataExport& exportRecord : metadata.exports)
+    {
+        if (exportRecord.cAbiName.empty() || !exportNames.insert(exportRecord.cAbiName).second)
+        {
+            error = exportRecord.cAbiName.empty()
+                ? "metadata contains a C ABI export with an empty symbol name"
+                : "metadata contains duplicate C ABI export '" + exportRecord.cAbiName + "'";
+            return false;
+        }
+    }
+    // El productor conserva la identidad exacta del ejecutable para poder
+    // rastrear el artefacto, pero `+build...` es metadata SemVer y NO una
+    // frontera de compatibilidad. Sin separar ambas preguntas, cada build
+    // incremental rechazaria las bibliotecas del build inmediatamente anterior
+    // aunque compartieran lenguaje, formato y ABI.
     if (compilerReleasePart(metadata.producerVersion) != kCompilerReleaseVersion)
     {
         error = "metadata producer version '" + metadata.producerVersion +

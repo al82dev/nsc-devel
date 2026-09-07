@@ -198,7 +198,8 @@ completo pase su gate de release.
 
 ## Estado de cierre
 
-E2 está cerrado en implementación, pruebas focales y regresión completa. La representación materializable, la cache,
-los constraints, la identidad, la ambigüedad y la composición transitiva tienen cobertura. Lo que
-resta después de esta entrega pertenece a los siguientes bloques de 1.0 y a la certificación final
-del árbol conjunto, no a una segunda fase oculta de genéricos entre bibliotecas.
+E2 está cerrado en implementación, pruebas focales y regresión completa. La representación
+materializable, la cache, los constraints, la identidad, la ambigüedad y la composición transitiva
+tienen cobertura. La integración conjunta de E1–E4 quedó instalada y certificada por G00
+`20260907-112232-d023cfe0`, con cero fallos y árbol inmóvil. Lo que resta pertenece a los siguientes
+bloques de 1.0, no a una segunda fase oculta de genéricos entre bibliotecas.

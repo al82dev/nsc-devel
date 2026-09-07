@@ -188,6 +188,7 @@ certificados.
 
 ## Estado de cierre
 
-E1 está cerrado en implementación, pruebas focales y regresión completa. Antes de declarar el release completo sólo
-corresponde integrar su resultado con los demás bloques y volver a certificar el baseline del árbol
-final; no queda una segunda arquitectura de objetos pendiente dentro de este bloque.
+E1 está cerrado en implementación, pruebas focales y regresión completa. Su integración con E2–E4
+quedó además instalada y certificada por G00 `20260907-112232-d023cfe0`: estado `LANDED`, cero
+fallos y árbol inmóvil. No queda una segunda arquitectura de objetos pendiente dentro de este
+bloque.

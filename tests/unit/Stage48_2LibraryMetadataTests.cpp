@@ -10,8 +10,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,7 +59,8 @@ void writeProject(
         directory / (std::string(name) + ".nsproj"),
         "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name><OutputType>" + std::string(outputType) +
-            "</OutputType></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
+                                                               "</OutputType></PropertyGroup><ItemGroup><Compile "
+                                                               "Include=\"**/*.ns\" />"
             "</ItemGroup></Project>");
     writeFile(directory / "Api.ns", source);
 }
@@ -98,6 +99,21 @@ ExitCode verifyMetadata(
 {
     const std::string sourceText = source.string();
     const std::array<std::string_view, 2> args = {"--verify-library-metadata", sourceText};
+    return runDriver(args, output, error);
+}
+
+ExitCode verifyArtifacts(const std::filesystem::path& metadata, const std::filesystem::path& library,
+                         const std::filesystem::path& runtime, std::string& output, std::string& error)
+{
+    const std::string metadataText = metadata.string();
+    const std::string libraryText = library.string();
+    if (runtime.empty())
+    {
+        const std::array<std::string_view, 3> args = {"--verify-library-artifacts", metadataText, libraryText};
+        return runDriver(args, output, error);
+    }
+    const std::string runtimeText = runtime.string();
+    const std::array<std::string_view, 4> args = {"--verify-library-artifacts", metadataText, libraryText, runtimeText};
     return runDriver(args, output, error);
 }
 
@@ -210,7 +226,8 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(emitMetadata(directory / "MetaLib.nsproj", metadataPath, output, error) == ExitCode::Success,
         "Stage 48.2 emits .nsmeta explicitly without linking the binary product");
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
-        "explicit metadata generation creates parent directories and keeps stderr empty");
+                 "explicit metadata generation creates parent directories and "
+                 "keeps stderr empty");
     tests.expect(output.find("format: NSMETA 1.8") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
@@ -233,7 +250,8 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 1 &&
             metadata.delegateAbiVersion == 1 && metadata.exceptionAbiVersion == 1 &&
             metadata.managedDelegateCellSize == 32,
-        "NSMETA 1.8 separates its file version from the frozen NativeSharp/runtime ABI contract");
+                 "NSMETA 1.8 separates its file version from the frozen "
+                 "NativeSharp/runtime ABI contract");
 
     const LibraryMetadataType* pair = findType(metadata, "::Meta.Pair");
     tests.expect(pair != nullptr && pair->kind == LibraryMetadataTypeKind::Struct,
@@ -242,25 +260,29 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "struct physical layout survives metadata serialization");
     tests.expect(pair != nullptr && pair->fields[0].name == "X" && pair->fields[0].offset == 0 &&
             pair->fields[1].name == "Y" && pair->fields[1].offset == 4,
-        "field names and exact offsets are preserved for compile-time layout semantics");
+                 "field names and exact offsets are preserved for compile-time "
+                 "layout semantics");
 
-    // EL TAMANO DEL ENUM EN LOS METADATOS. Hasta el 2026-09-03 se escribia 4/4 para todos, sin
-    // preguntar. Un `enum : byte` exportado hacia entonces que el host generado reservara cuatro
-    // bytes donde el modulo pone uno -- el mismo defecto de ABI que el tipo subyacente vino a
-    // cerrar, en la salida que menos se mira.
+    // EL TAMANO DEL ENUM EN LOS METADATOS. Hasta el 2026-09-03 se escribia 4/4
+    // para todos, sin preguntar. Un `enum : byte` exportado hacia entonces que el
+    // host generado reservara cuatro bytes donde el modulo pone uno -- el mismo
+    // defecto de ABI que el tipo subyacente vino a cerrar, en la salida que menos
+    // se mira.
     const LibraryMetadataType* mode = findType(metadata, "::Meta.Mode");
     tests.expect(mode != nullptr && mode->size == 4 && mode->alignment == 4,
         "an enum with no declared underlying type stays 4/4 in metadata");
     const LibraryMetadataType* narrow = findType(metadata, "::Meta.Narrow");
     tests.expect(narrow != nullptr && narrow->size == 1 && narrow->alignment == 1,
         "`enum Narrow : byte` is persisted as 1/1, not 4/4");
-    // EL SIGNO, que el tamano NO lleva. `enum : byte` y `enum : sbyte` miden los dos un byte: un
-    // generador de host que solo leyera el tamano no podria distinguirlos, y elegir el signo
-    // contrario convertiria un 200 en un -56.
+    // EL SIGNO, que el tamano NO lleva. `enum : byte` y `enum : sbyte` miden los
+    // dos un byte: un generador de host que solo leyera el tamano no podria
+    // distinguirlos, y elegir el signo contrario convertiria un 200 en un -56.
     tests.expect(narrow != nullptr && narrow->enumUnderlyingTypeKey == "builtin:byte",
-        "metadata records the enum's underlying type key, so size alone need not carry the sign");
+                 "metadata records the enum's underlying type key, so size alone "
+                 "need not carry the sign");
     tests.expect(mode != nullptr && mode->enumUnderlyingTypeKey == "builtin:int",
-        "an enum with no declared underlying type records builtin:int explicitly");
+                 "an enum with no declared underlying type records builtin:int "
+                 "explicitly");
     const LibraryMetadataType* wide = findType(metadata, "::Meta.Wide");
     tests.expect(wide != nullptr && wide->size == 8 && wide->alignment == 8,
         "`enum Wide : long` is persisted as 8/8");
@@ -273,13 +295,15 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(transform != nullptr && transform->kind == LibraryMetadataTypeKind::Delegate &&
             transform->delegateFlags == 1U && transform->delegateReturnTypeKey == "builtin:int" &&
             transform->delegateParameterTypeKeys == std::vector<std::string>{"builtin:int"},
-        "NSMETA 1.8 preserves the complete extern C delegate signature introduced in 1.5");
+                 "NSMETA 1.8 preserves the complete extern C delegate signature "
+                 "introduced in 1.5");
     const LibraryMetadataType* managedTransform = findType(metadata, "::Meta.ManagedTransform");
     tests.expect(managedTransform != nullptr && managedTransform->kind == LibraryMetadataTypeKind::Delegate &&
             managedTransform->delegateFlags == 0U && managedTransform->referenceSize == 8 &&
             managedTransform->referenceAlignment == 8 &&
             managedTransform->delegateReturnTypeKey == "builtin:int",
-        "NSMETA 1.8 distinguishes a managed delegate cell from a raw callback and freezes its pointer carrier");
+                 "NSMETA 1.8 distinguishes a managed delegate cell from a raw "
+                 "callback and freezes its pointer carrier");
 
     const LibraryMetadataType* derived = findType(metadata, "::Meta.Derived");
     tests.expect(derived != nullptr && derived->kind == LibraryMetadataTypeKind::Class &&
@@ -289,14 +313,17 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             derived->interfaceTypeKeys.front().find("Meta.IValue") != std::string::npos,
         "class interface contracts are persisted");
     tests.expect(derived != nullptr && derived->size != 0 && derived->referenceSize == 8,
-        "class object layout and reference ABI are both persisted without exposing them as C structs");
+                 "class object layout and reference ABI are both persisted "
+                 "without exposing them as C structs");
 
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "Answer" && member.constantKind == 1 && member.constantBits == 42;
     }), "compile-time integral const values survive precompiled metadata");
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "Add" && !member.mangledName.empty() && member.cAbiName == "Add";
-    }), "metadata records both NativeSharp binary symbol identity and stable C ABI name");
+    }),
+                 "metadata records both NativeSharp binary symbol identity and "
+                 "stable C ABI name");
     const auto mutate = std::ranges::find_if(metadata.members, [](const auto& member) {
         return member.name == "Mutate";
     });
@@ -312,12 +339,14 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             assign->parameters[0].passKind == LibraryMetadataParameterPassKind::Out &&
             read != metadata.members.end() && read->parameters.size() == 1 &&
             read->parameters[0].passKind == LibraryMetadataParameterPassKind::In,
-        "NSMETA preserves ref, out, and in independently from their pointer carrier");
+                 "NSMETA preserves ref, out, and in independently from their pointer "
+                 "carrier");
     const auto defaults = std::ranges::find_if(metadata.members, [](const auto& member) {
         return member.name == "Defaults";
     });
     tests.expect(defaults != metadata.members.end() && defaults->parameters.size() == 7,
-        "precompiled metadata preserves the complete optional-parameter contract");
+                 "precompiled metadata preserves the complete optional-parameter "
+                 "contract");
     if (defaults != metadata.members.end() && defaults->parameters.size() == 7)
     {
         const auto& parameters = defaults->parameters;
@@ -337,14 +366,18 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             "boolean defaults survive the library boundary");
         tests.expect(parameters[5].defaultValueKind == LibraryMetadataDefaultValueKind::String &&
                 parameters[5].defaultValueText == "meta",
-            "string defaults survive the library boundary without retaining source spelling");
+                     "string defaults survive the library boundary without "
+                     "retaining source spelling");
         tests.expect(parameters[6].defaultValueKind == LibraryMetadataDefaultValueKind::Null,
-            "null defaults survive the library boundary without an invented payload");
+                     "null defaults survive the library boundary without an "
+                     "invented payload");
     }
     tests.expect(std::ranges::any_of(metadata.dispatchTables, [](const auto& dispatch) {
         return dispatch.typeKey.find("Meta.Derived") != std::string::npos &&
             !dispatch.descriptorAccessorName.empty() && !dispatch.slotSignatures.empty();
-    }), "virtual dispatch metadata includes the producer-owned descriptor accessor and its slots");
+    }),
+                 "virtual dispatch metadata includes the producer-owned descriptor "
+                 "accessor and its slots");
 }
 
 void testDeterminismAndAbiSensitivity(TestContext& tests, const std::filesystem::path& root)
@@ -381,11 +414,13 @@ public class Api
         "ABI-changed comparison metadata emits successfully");
     LibraryMetadata c;
     tests.expect(codec.read(changedMetadata, c, error) && c.abiFingerprint != a.abiFingerprint,
-        "changing an exported ABI signature changes the metadata ABI fingerprint");
+                 "changing an exported ABI signature changes the metadata ABI "
+                 "fingerprint");
 
-    // Golden mínimo del ABI 1.0: fija el orden y ancho de todos los campos raíz aunque no haya
-    // declaraciones. Si alguien reordena mangling/object/delegate/exception o cambia un ancho sin
-    // versionarlo, esta huella cambia y la revisión ve un diff concreto, no una sospecha.
+    // Golden mínimo del ABI 1.0: fija el orden y ancho de todos los campos raíz
+    // aunque no haya declaraciones. Si alguien reordena
+    // mangling/object/delegate/exception o cambia un ancho sin versionarlo, esta
+    // huella cambia y la revisión ve un diff concreto, no una sospecha.
     LibraryMetadata golden;
     golden.producerVersion = std::string(nativesharp::kCompilerVersion);
     golden.moduleName = "GoldenAbi10";
@@ -440,7 +475,8 @@ public class Api
     tests.expect(codec.read(firstPath, first, error) && codec.read(secondPath, second, error),
         "both default-value contracts round-trip through current NSMETA");
     tests.expect(first.abiFingerprint != second.abiFingerprint,
-        "changing only a parameter default changes the published library contract fingerprint");
+                 "changing only a parameter default changes the published "
+                 "library contract fingerprint");
 }
 
 void testAutomaticProducts(TestContext& tests, const std::filesystem::path& root)
@@ -450,7 +486,8 @@ void testAutomaticProducts(TestContext& tests, const std::filesystem::path& root
     std::string output;
     std::string error;
     tests.expect(emitProduct("--emit-project-oop-dll", shared / "SharedMeta.nsproj", shared / "SharedMeta.dll", output, error) == ExitCode::Success,
-        "SharedLibrary product now composes DLL, import LIB, generated header and metadata");
+                 "SharedLibrary product now composes DLL, import LIB, generated "
+                 "header and metadata");
     tests.expect(std::filesystem::is_regular_file(shared / "SharedMeta.dll") &&
             std::filesystem::is_regular_file(shared / "SharedMeta.lib") &&
             std::filesystem::is_regular_file(shared / "SharedMeta.h") &&
@@ -459,6 +496,17 @@ void testAutomaticProducts(TestContext& tests, const std::filesystem::path& root
     tests.expect(output.find("library-metadata:") != std::string::npos,
         "DLL product reports its metadata sidecar");
 
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(shared / "SharedMeta.nsmeta", shared / "SharedMeta.lib", shared / "SharedMeta.dll",
+                                 output, error) == ExitCode::Success &&
+                     output.find("NativeSharp library artifacts: valid") != std::string::npos &&
+                     output.find("product-kind: DLL plus import archive") != std::string::npos &&
+                     output.find("native-abi: 1.0") != std::string::npos &&
+                     output.find("delegate-cell-size: 32") != std::string::npos,
+                 "E6 standalone verifier certifies metadata, import archive, DLL "
+                 "exports and frozen ABI together");
+
     const auto statik = root / "Static";
     writeProject(statik, "StaticMeta", "StaticLibrary", R"NS(
 public struct Vec2 { public float X; public float Y; }
@@ -466,11 +514,40 @@ public class Math { public static int Internal(int value) { return value; } }
 )NS");
     output.clear(); error.clear();
     tests.expect(emitProduct("--emit-project-oop-lib", statik / "StaticMeta.nsproj", statik / "StaticMeta.lib", output, error) == ExitCode::Success,
-        "NativeSharp-only static libraries receive metadata even with no C exports");
+                 "NativeSharp-only static libraries receive metadata even with "
+                 "no C exports");
     tests.expect(std::filesystem::is_regular_file(statik / "StaticMeta.lib") &&
             std::filesystem::is_regular_file(statik / "StaticMeta.h") &&
             std::filesystem::is_regular_file(statik / "StaticMeta.nsmeta"),
-        "static library product composes archive, empty/usable host header and NativeSharp metadata");
+                 "static library product composes archive, empty/usable host header and "
+                 "NativeSharp metadata");
+
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(statik / "StaticMeta.nsmeta", statik / "StaticMeta.lib", {}, output, error) ==
+                         ExitCode::Success &&
+                     output.find("product-kind: static archive") != std::string::npos &&
+                     output.find("required-symbols:") != std::string::npos,
+                 "E6 standalone verifier certifies a NativeSharp-only static archive "
+                 "without requiring a DLL");
+
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(shared / "SharedMeta.nsmeta", statik / "StaticMeta.lib", {}, output, error) ==
+                         ExitCode::CompilationError &&
+                     error.find("is missing") != std::string::npos &&
+                     error.find("required by metadata module 'SharedMeta'") != std::string::npos,
+                 "E6 rejects a valid archive paired with metadata from another "
+                 "producer and names the missing symbols");
+
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(statik / "StaticMeta.nsmeta", statik / "StaticMeta.lib", shared / "SharedMeta.dll",
+                                 output, error) == ExitCode::CompilationError &&
+                     error.find("export table does not match metadata module 'StaticMeta'") != std::string::npos &&
+                     error.find("missing") != std::string::npos && error.find("unexpected") != std::string::npos,
+                 "E6 reports both sides of a DLL/metadata export mismatch instead of a "
+                 "generic contract failure");
 }
 
 void testGenericCompilerMetadata(TestContext& tests, const std::filesystem::path& root)
@@ -500,13 +577,16 @@ namespace GenericMeta
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(metadataPath, metadata, error), "generic metadata reads successfully");
-    tests.expect(metadata.genericTemplates.size() == 2,
-        "generic class/struct and generic method template identities are persisted");
+    tests.expect(metadata.genericTemplates.size() == 2, "generic class/struct and generic method template identities "
+                                                        "are persisted");
     tests.expect(std::ranges::all_of(metadata.genericTemplates, [](const auto& item) {
         return item.accessibility == 3U && !item.sourceText.empty();
-    }), "public generic templates carry a materializable declaration slice in NSMETA 1.7");
+    }),
+        "public generic templates carry a materializable declaration "
+        "slice in NSMETA 1.7");
     tests.expect(metadata.genericSpecializations.size() == 2,
-        "concrete Box<int> and Identity<int> specialization identities are persisted");
+                 "concrete Box<int> and Identity<int> specialization identities "
+                 "are persisted");
     tests.expect(std::ranges::any_of(metadata.genericSpecializations, [](const auto& item) {
         return item.specializationKey.find("Box`1<int>") != std::string::npos;
     }), "generic type specialization key survives metadata");
@@ -565,37 +645,118 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     incompatible.producerVersion = "0.2.0-dev-old";
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("producer version") != std::string::npos,
-        "compiler-version compatibility gate rejects metadata produced by a different compiler release");
+                 "compiler-version compatibility gate rejects metadata produced "
+                 "by a different compiler release");
     incompatible = metadata;
     incompatible.producerVersion = std::string(nativesharp::kCompilerReleaseVersion) +
         "+build.20000101T000000Z.0000000000000000";
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(incompatible, error),
-        "SemVer build metadata identifies the producer without breaking release compatibility");
+                 "SemVer build metadata identifies the producer without breaking "
+                 "release compatibility");
     incompatible = metadata;
     incompatible.pointerSize = 4;
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("target ABI") != std::string::npos,
-        "target ABI compatibility gate rejects non-Windows-x64 pointer contracts");
+                 "target ABI compatibility gate rejects non-Windows-x64 pointer "
+                 "contracts");
     incompatible = metadata;
     incompatible.delegateAbiVersion += 1;
     error.clear();
-    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("ABI contract") != std::string::npos,
-        "a different managed-delegate representation is rejected before compilation or link");
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("delegate ABI expected 1, found 2") != std::string::npos,
+                 "a different managed-delegate representation is rejected before "
+                 "compilation or link");
     incompatible = metadata;
     incompatible.exceptionAbiVersion += 1;
     error.clear();
-    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("ABI contract") != std::string::npos,
-        "a different exception transport/RTTI contract is rejected before compilation or link");
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) && error.find("exception ABI expected 1, found 2") != std::string::npos,
+                 "a different exception transport/RTTI contract is rejected "
+                 "before compilation or link");
+
+    incompatible = metadata;
+    incompatible.nativeAbiMajor = 2;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("native ABI expected 1.0, found 2.0") != std::string::npos,
+                 "E5 names the incompatible Native ABI version and both values");
+    incompatible = metadata;
+    incompatible.runtimeAbiMinor = 1;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("runtime ABI expected 1.0, found 1.1") != std::string::npos,
+                 "E5 names a newer runtime contract instead of collapsing all "
+                 "ABI fields into one message");
+    incompatible = metadata;
+    incompatible.manglingAbiVersion = 2;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("mangling ABI expected 1, found 2") != std::string::npos,
+                 "E5 identifies the mangling contract independently");
+    incompatible = metadata;
+    incompatible.objectAbiVersion = 2;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("object ABI expected 1, found 2") != std::string::npos,
+                 "E5 identifies the object-layout contract independently");
+    incompatible = metadata;
+    incompatible.managedDelegateCellSize = 16;
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("managed delegate cell size expected 32 bytes, found 16 bytes") != std::string::npos,
+                 "E5 reports the exact producer and consumer delegate-cell sizes");
+
+    incompatible = metadata;
+    incompatible.targetTriple = "x86_64-unknown-windows";
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("target triple expected 'x86_64-pc-windows-msvc'") != std::string::npos &&
+                     error.find("found 'x86_64-unknown-windows'") != std::string::npos,
+                 "E5 target diagnostics preserve expected and observed triples");
+    incompatible = metadata;
+    incompatible.moduleName.clear();
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("module identity is empty") != std::string::npos,
+                 "E5 rejects self-consistent metadata without a canonical "
+                 "producer identity");
+    incompatible = metadata;
+    incompatible.types.push_back(incompatible.types.front());
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("duplicate type identity") != std::string::npos,
+                 "E5 rejects duplicate canonical type identities before source "
+                 "materialization");
+    incompatible = metadata;
+    incompatible.exports.push_back(incompatible.exports.front());
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("duplicate C ABI export") != std::string::npos,
+                 "E5 rejects duplicate host export identities before physical "
+                 "artifact checks");
+    incompatible = metadata;
+    if (!incompatible.dispatchTables.empty())
+        incompatible.dispatchTables.front().slotCalleeNames.push_back("extra-callee");
+    error.clear();
+    tests.expect(!incompatible.dispatchTables.empty() && !codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("slot signatures") != std::string::npos && error.find("callees") != std::string::npos,
+                 "E5 rejects structurally inconsistent virtual-dispatch tables "
+                 "with both slot counts");
 
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
-            output.find("NativeSharp library metadata: valid") != std::string::npos,
-        "driver exposes a successful standalone metadata verification command");
+            output.find("NativeSharp library metadata: valid") != std::string::npos &&
+                     output.find("format: NSMETA 1.8") != std::string::npos &&
+                     output.find("native-abi: 1.0") != std::string::npos &&
+                     output.find("runtime-abi: 1.0") != std::string::npos &&
+                     output.find("object-abi: 1") != std::string::npos &&
+                     output.find("delegate-cell-size: 32") != std::string::npos,
+                 "driver verification prints the complete frozen ABI contract, "
+                 "not only its fingerprint");
     output.clear(); error.clear();
     tests.expect(verifyMetadata(corruptedPath, output, error) == ExitCode::CompilationError &&
             error.find("checksum mismatch") != std::string::npos,
-        "driver verification command rejects corrupted metadata with a useful diagnostic");
+                 "driver verification command rejects corrupted metadata with a "
+                 "useful diagnostic");
 }
 
 void testScopeAndFailureBehavior(TestContext& tests, const std::filesystem::path& root)

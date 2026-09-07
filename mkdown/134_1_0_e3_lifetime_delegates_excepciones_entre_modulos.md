@@ -231,3 +231,11 @@ Durante la corrida completa también se corrigieron expectativas históricas que
 la celda antigua de 16 bytes y el diagnóstico anterior de `raii`. No se relajaron verificaciones:
 ahora certifican explícitamente los cuatro punteros de la celda y reconocen al delegate administrado
 como una categoría ownable.
+
+## Certificación instalada
+
+La evidencia local anterior quedó promovida a baseline instalado el 7 de septiembre de 2026. G00
+`20260907-112232-d023cfe0` terminó `LANDED`, `certified: true`, con cero fallos. El mismo árbol fue
+medido antes y después, y el binario construido coincide byte por byte con el instalado. Por tanto,
+la semántica E3 descrita aquí ya no depende sólo del ejecutable de desarrollo: forma parte del
+compilador certificado y pasó las rutas de lld-link y NSLink.

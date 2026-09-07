@@ -10,6 +10,10 @@ LECTURA HISTÓRICA RECOMENDADA
     133_1_0_e2_genericos_entre_bibliotecas.md
     134_1_0_e3_lifetime_delegates_excepciones_entre_modulos.md
     135_1_0_e4_congelacion_abi_y_nsmeta_1_8.md
+    136_baseline_certificado_1_0_e1_e4.md
+    137_1_0_e5_diagnosticos_y_coherencia_abi.md
+    138_1_0_e6_verificacion_fisica_lib_dll.md
+    139_baseline_certificado_1_0_e5_e6.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -26,8 +30,21 @@ megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifeti
 excepciones entre módulos, y congelación ABI/NSMETA. Incluyen el recorrido del problema,
 decisiones, funciones, archivos, fallos descubiertos y matriz de pruebas.
 
-Entrega: Stage 56, fases C1 a C8 completas.
-Estado: ctest 237/237, build limpio desde cero con -DNSC_WARNINGS_AS_ERRORS=ON, cero warnings.
+El documento 136 registra el paso de cierre técnico local a producto instalado certificado. Explica
+qué demuestra G00, conserva las identidades y hashes exactos, y enlaza el baseline con E1–E4 sin
+confundir la versión comercial con la versión del contrato binario.
+
+Los documentos 137 y 138 continúan la historia con E5/E6: diagnósticos ABI por componente,
+coherencia estructural de NSMETA y una orden pública que verifica conjuntamente metadata, archivo
+COFF y DLL. Registran también las pruebas negativas y la validación focal previa a instalar.
+
+El documento 139 registra la promoción de E5/E6 a producto instalado: el segundo baseline G00,
+las identidades exactas del árbol y del ejecutable, las 11 etapas, los 324 casos y la razón por la
+que una identidad focal anterior y la identidad instalada no deben confundirse.
+
+Entrega instalada vigente: NativeSharp 0.1, Stage 57; `nsc 0.9.0` con E1–E6 completas.
+Estado vigente: G00 `20260907-131523-7eda857d`, 11 etapas, 324 casos, cero fallos,
+árbol inmóvil y ejecutable construido idéntico al instalado.
 
 Todo lo que hay aquí adentro es el árbol completo del compilador. No falta nada: fuentes,
 cabeceras, biblioteca estándar en NativeSharp, suites de prueba, casos contractuales de interop,

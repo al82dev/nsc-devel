@@ -1,40 +1,50 @@
 # 121 — Next Steps for the 1.0 Glory
 
 **Fecha:** 2026-09-06
-**Punto de partida:** `nsc 0.9.0` cerrado localmente; el último baseline instalado certificado es
-`0.8.0-alpha`. NativeSharp 0.1 / Stage 57. La identidad `+build.<UTC>.<hash>` se genera de nuevo
-para cada binario y se registra al certificar.
+**Punto de partida:** `nsc 0.9.0` instalado y certificado con las megaentregas E1–E6 rumbo a 1.0.
+NativeSharp 0.1 / Stage 57. La identidad `+build.<UTC>.<hash>` se genera de nuevo para cada binario
+y se registra al certificar.
 **Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
 herramientas gráficas y software de plataforma con rendimiento predecible.
 
-**Estado de la entrega más reciente:** `nsc 0.8.0-alpha+build.20260906T081445Z.b9aa99a37c342041`
-está instalado y certificado. G00 `20260906-021445-7c15dc93` terminó `LANDED`, `certified: true`;
-`built_nsc` e `installed_nsc` comparten el SHA-256
-`6d93b1645af25b85a0e5a92133ba1a5801ff2a621e0f368c063e7f5cab13e934`. Las 12 etapas pasaron y
-los 308 casos terminaron sin fallos ni omitidos, con CTest, fixtures y bug triage en lld-link y
-NSLink, O0/O2.
+**Estado de la entrega más reciente:**
+`nsc 0.9.0+build.20260907T191524Z.400a252ae1c4b36a` está instalado y certificado. G00
+`20260907-131523-7eda857d` terminó `LANDED`, `certified: true`, con **0 fallos**, **11 etapas** y
+**324 casos**. `built_nsc` e `installed_nsc` comparten el SHA-256
+`58c44dd8a966d526d4f83fa9e97bdcd223e3e992af0d61cce84e2018d3ba7d5c`; el árbol permaneció
+inmóvil en sus 1013 archivos medidos. Esta entrega incorpora y certifica E5 y E6 sobre el baseline
+anterior de E1–E4.
 
-**Cierre local de 0.9.0:** la frontera `.lib`/DLL cubre composición transitiva, llamadas
+**Cierre de 0.9.0:** la frontera `.lib`/DLL cubre composición transitiva, llamadas
 NativeSharp sin redeclaración, structs y enums con ABI exacto, receptores de instancia de structs,
 clases opacas con ownership y métodos concretos, y callbacks `extern C delegate`. NSMETA 1.5
 conserva ahora la firma de callbacks y sigue leyendo 1.0–1.4. Stage 46 suma **111 checks** por
 linker. El catálogo final da **297/297 efectivos con lld-link y 297/297 con NSLink**. El producto es
 `nsc 0.9.0+build.20260907T042535Z.03ca780e6debcd15`, SHA-256
-`ADB3BAF106CDC666D7E005436280FE2DECC7362530FB2E13D0057EF794622FC1`. Falta instalar este hash y
-ejecutar G00 para convertir el cierre técnico en baseline instalado certificado. El acta completa
-está en `129_cierre_native_sharp_0_9_0.md`.
+`ADB3BAF106CDC666D7E005436280FE2DECC7362530FB2E13D0057EF794622FC1`. Ésa es la identidad histórica
+del cierre técnico descrito en `129_cierre_native_sharp_0_9_0.md`; las megaentregas posteriores
+reconstruyeron el compilador y el baseline instalado vigente se registra abajo.
 
-**Avance local hacia 1.0 (2026-09-07):** E1–E4 ya están implementadas. E1 publica objetos,
+**Avance certificado hacia 1.0 (2026-09-07):** E1–E4 ya están implementadas. E1 publica objetos,
 constructores, métodos de instancia, jerarquía y destruction entries; E2 transporta templates
 públicos y especializaciones genéricas; E3 lleva delegates ordinarios, closures y excepciones
 tipadas a través de `.lib` y DLL con cleanup del productor; E4 congela Native ABI 1.0 y Runtime
 ABI 1.0 en NSMETA 1.8, con golden fingerprint y rechazo temprano de contratos incompatibles. La
-historia técnica y la matriz exacta están en los documentos 132–135. Este estado todavía necesita
-el baseline externo antes de convertirse en una versión certificada. La corrida local que apunta al
-`nsc.exe` recién construido terminó **297/297**; la construcción alternativa recompiló y aprobó las
-fixtures E3/E4, pero su catálogo CLI sigue configurado para medir el compilador instalado anterior.
-La instalación y G00 son, por diseño, el siguiente acto de certificación y no se fingieron en esta
-entrega.
+historia técnica y la matriz exacta están en los documentos 132–136. El baseline G00
+`20260907-112232-d023cfe0` terminó `LANDED`, `certified: true`, con **0 fallos**, **11 etapas** y
+**324 casos**. El árbol permaneció inmóvil (`S0 == S1`), y `built_nsc == installed_nsc` con SHA-256
+`dc56280ddf658bc798e9258d80facfeb72748516265cc3a316d4060317955e00`. Esto reemplaza el estado
+local provisional: E1–E4 están integradas en el compilador instalado y certificadas con lld-link y
+NSLink.
+
+**Avance certificado E5–E6 (2026-09-07):** E5 sustituye el rechazo ABI genérico por diagnósticos que
+nombran contrato, valor esperado y valor observado; además valida identidades duplicadas y tablas
+estructuralmente incoherentes antes de materializar un consumidor. E6 añade
+`--verify-library-artifacts`, que certifica en una sola operación la relación entre `.nsmeta`, el
+archivo COFF y, cuando existe, la tabla de exports de la DLL. El cierre técnico local terminó
+**297/297**; después, el G00 `20260907-131523-7eda857d` reconstruyó, instaló y certificó el árbol
+completo con **324 casos**, ambos enlazadores y 0 fallos. La implementación está en 137 y 138; el
+acta instalada, con identidades, hashes y lectura de la evidencia, está en 139.
 
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
@@ -1094,7 +1104,8 @@ Además:
 0.7.6  Entrega grande: NSC-LIMIT-012/013/015/019 + NSC-LUNAR-007 cerrados
 0.8.0-alpha  Entrega concentrada certificada; NSC-LIMIT-005/016/017/018/020/021 cerrados
 0.9.0        Cierre local: DLL/import `.lib`, estática, consumo precompilado y NSMETA 1.5
-0.9.0+G00    Instalación del hash de cierre y baseline certificado
+0.9.0+G00    Baseline instalado y certificado — completado el 2026-09-07
+1.0-E5/E6    Diagnósticos ABI y verificación física de bibliotecas — instaladas y certificadas
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

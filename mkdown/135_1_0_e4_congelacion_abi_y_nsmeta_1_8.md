@@ -244,13 +244,31 @@ nsc 0.9.0+build.20260907T170755Z.d17a6c16e692945b
 SHA-256 AE811A9E1B0A59FD08F4982938A2530BCE63954FDBA9A4D20F000D777DD8D52E
 ```
 
-El número de release permanece en 0.9.0 mientras el trabajo hacia 1.0 no haya sido instalado y
-certificado. La ABI interna ya declara 1.0 porque ese número identifica el contrato binario, no la
-etiqueta comercial del ejecutable; E4 separó precisamente ambas identidades.
+El número de release permanece en 0.9.0 aunque E1–E4 hayan sido instaladas y certificadas: cerrar
+bloques internos no promociona automáticamente la etiqueta pública. La ABI interna ya declara 1.0
+porque ese número identifica el contrato binario, no la etiqueta comercial del ejecutable; E4
+separó precisamente ambas identidades.
 
-La carpeta `build-test-nslink` conserva deliberadamente
-`NSC_TEST_COMPILER=C:/native-sharp/bin/nsc.exe`. Por eso sus pruebas CLI todavía miden el binario
-instalado anterior hasta que se haga la instalación; los ejecutables unitarios de esa carpeta sí
-fueron recompilados contra el árbol actual. No se sustituyó silenciosamente el instalado durante
-esta entrega. El cierre externo correcto es instalar el nuevo hash y ejecutar G00 con el árbol
-inmóvil.
+## Baseline instalado y certificado
+
+La instalación y el gate externo se completaron después de la evidencia local anterior. El acta
+canónica es G00 `20260907-112232-d023cfe0`:
+
+- estado `LANDED` y `certified: true`;
+- cero fallos, 11 etapas y 324 casos;
+- `S0 == S1 == 9b3c39b5c215d24da73e6091b03728fad8f3dc9650ab26cd5cf7fe61329248ed`;
+- 1013 archivos incluidos en la huella del árbol;
+- `built_nsc == installed_nsc ==
+  dc56280ddf658bc798e9258d80facfeb72748516265cc3a316d4060317955e00`;
+- CTest, fixtures y bug triage verdes tanto con lld-link como con NSLink.
+
+El producto instalado se identifica como:
+
+```text
+nsc 0.9.0+build.20260907T172233Z.312a1b69a3ec28c2
+```
+
+La diferencia respecto del build focal no es una discrepancia: el baseline reconstruye el producto
+y le asigna una identidad nueva. La igualdad que importa para el gate es entre ese binario recién
+construido y el que quedó instalado; sus hashes son idénticos. Con esto, E4 deja de estar en estado
+local provisional y la congelación ABI/NSMETA queda respaldada por el baseline del producto.
