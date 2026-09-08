@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/ToolchainContract.h"
@@ -56,8 +57,13 @@ bool populateInstallation(const std::filesystem::path &prefix) {
   }
   std::string error;
   return nativesharp::driver::writeToolchainContract(
-      prefix / "share/nativesharp/toolchain/NativeSharpToolchain.contract",
-      error);
+             prefix /
+                 "share/nativesharp/toolchain/NativeSharpToolchain.contract",
+             error) &&
+         nativesharp::driver::writeCompatibilityPolicy(
+             prefix /
+                 "share/nativesharp/toolchain/NativeSharpCompatibility.policy",
+             error);
 }
 } // namespace
 
@@ -126,6 +132,18 @@ int main() {
       "installation composes the exact toolchain-contract diagnostic");
   tests.expect(writeFile(contract, currentContract),
                "current contract fixture is restored");
+
+  const std::filesystem::path policy =
+      prefix / "share/nativesharp/toolchain/NativeSharpCompatibility.policy";
+  const std::string currentPolicy = driver::currentCompatibilityPolicy();
+  tests.expect(writeFile(policy, "NSCOMPAT 9\n"),
+               "incompatible compatibility policy fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed compatibility policy is invalid") !=
+                       std::string::npos,
+               "installation composes compatibility-policy diagnostics");
+  tests.expect(writeFile(policy, currentPolicy),
+               "current compatibility policy fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"

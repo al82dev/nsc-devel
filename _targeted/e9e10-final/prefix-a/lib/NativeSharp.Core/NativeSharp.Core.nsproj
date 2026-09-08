@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpCore</Name></PropertyGroup>
+  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+</Project>

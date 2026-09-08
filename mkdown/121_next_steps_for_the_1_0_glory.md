@@ -7,13 +7,21 @@ y se registra al certificar.
 **Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
 herramientas gráficas y software de plataforma con rendimiento predecible.
 
-**Estado de la entrega más reciente:**
-`nsc 0.9.0+build.20260907T191524Z.400a252ae1c4b36a` está instalado y certificado. G00
-`20260907-131523-7eda857d` terminó `LANDED`, `certified: true`, con **0 fallos**, **11 etapas** y
-**324 casos**. `built_nsc` e `installed_nsc` comparten el SHA-256
-`58c44dd8a966d526d4f83fa9e97bdcd223e3e992af0d61cce84e2018d3ba7d5c`; el árbol permaneció
-inmóvil en sus 1013 archivos medidos. Esta entrega incorpora y certifica E5 y E6 sobre el baseline
-anterior de E1–E4.
+**Estado de la entrega más reciente:** `nsc 0.9.0+build.20260908T053626Z.eefaf302df6e31c8`
+está instalado y certificado como NativeSharp 0.1 / Stage 66. G00
+`20260907-233625-801b209e` terminó `LANDED` con 11/11 etapas, 303/303 CTest por linker,
+324/324 casos y cero fallos. `S0 == S1` sobre 1034 archivos y `built_nsc == installed_nsc` con
+SHA-256 `9958ba8ab401ada17879b412670770b4504adb32b8ec9f3cee2fc6d7783d63b1`. El acta exacta
+está en 151.
+
+**Baseline anterior Stage 64:**
+`nsc 0.9.0+build.20260908T023103Z.84b08f1eced9c7f3` está instalado y certificado como NativeSharp
+0.1 / Stage 64. G00 `20260907-203102-950828a1` terminó `LANDED`, `certified: true`, con **0
+fallos**, **12/12 etapas** y **324/324 casos**. Las matrices CTest dieron **302/302** con lld-link
+y **302/302** con NSLink. `built_nsc` e `installed_nsc` comparten el SHA-256
+`e9cec52543a6cd709f41b085a9a119c46266b40dfa34dab56cedc9a4a18124fd`; el árbol permaneció
+inmóvil en sus 1029 archivos medidos. Esta entrega promueve el inventario criptográfico completo de
+la instalación; el acta exacta está en 149.
 
 **Cierre de 0.9.0:** la frontera `.lib`/DLL cubre composición transitiva, llamadas
 NativeSharp sin redeclaración, structs y enums con ABI exacto, receptores de instancia de structs,
@@ -66,7 +74,7 @@ trazadas a código y evidencia; la suite nueva pasa 95 checks y la selección fo
 fallos, árbol inmóvil y binario construido idéntico al instalado. El desarrollo está en 142 y el
 acta de certificación, en 143.
 
-**E9 certificada hasta Stage 63 y Stage 64 cerrado localmente (2026-09-07):** Stage 62 crea el contrato reproducible del toolchain. El propio
+**E9 certificada hasta Stage 64 (2026-09-07):** Stage 62 crea el contrato reproducible del toolchain. El propio
 `nsc` genera, imprime, escribe, verifica e instala `NativeSharpToolchain.contract`; el artefacto
 concentra las versiones de compilador, lenguaje, LLVM, NSMETA y ABI, además de la superficie
 certificada. G00 `20260907-175537-29408b6e` la promovió con 324/324 casos, cero fallos, árbol
@@ -77,9 +85,20 @@ de promoción está en 145. Stage 63 añade verificación del layout instalado e
 cero fallos, árbol inmóvil y ejecutable construido idéntico al instalado. La implementación está
 en 146 y el acta de promoción en 147. Stage 64 deriva del origen una lista de 76 archivos públicos,
 genera tamaño y SHA-256 de cada uno y hace que el `nsc.exe` instalado rechace ausencia, alteración o
-residuos dentro de los árboles que el paquete posee. La instalación aislada y las matrices locales
-de 302/302 por linker están verdes; la promoción G00 sigue pendiente. El método completo está en
-148.
+residuos dentro de los árboles que el paquete posee. G00 `20260907-203102-950828a1` promovió esa
+fotografía con 302/302 CTest por linker, 324/324 casos del runner, cero fallos, árbol inmóvil y
+ejecutable construido idéntico al instalado. El método completo está en 148 y el acta en 149.
+
+**E9+E10 certificadas (2026-09-07):** Stage 66 absorbe la etapa intermedia y entrega en
+una sola fotografía la comparación de builds independientes, enlace PE reproducible, planes
+`NSUPDATE 1` ligados a los manifiestos anterior y siguiente, retiro con preflight y preservación de
+archivos modificados, y la política instalada `NSCOMPAT 1`. Dos construcciones desde cero
+coincidieron en las 76 entradas deterministas y, usando una identidad reservada únicamente para el
+gate, produjeron `nsc.exe` completos con el mismo SHA-256. Una reinstalación física retiró un archivo
+obsoleto demostrado como propiedad anterior y verificó el árbol final. El desarrollo, los
+hallazgos y la evidencia de implementación están en 150. G00 `20260907-233625-801b209e` promovió
+la fotografía con 303/303 CTest por linker, 324/324 casos, cero fallos, árbol inmóvil y compilador
+construido idéntico al instalado. El acta de certificación está en 151.
 
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
@@ -1053,27 +1072,33 @@ baseline vigente es `20260907-170412-16b5b8cb`.
 
 ### 9.3 Toolchain
 
-**Estado E9 al 2026-09-07:** Stage 62 y Stage 63 están certificados; Stage 64 tiene cierre técnico
-local y espera G00. El paquete lleva un contrato canónico producido por el ejecutable y `nsc`
-puede rechazarlo campo por
-campo. La instalación ejecuta ahora el compilador recién copiado para validar contrato, Core y
-especificaciones desde el prefijo efectivo. Stage 64 añade un inventario `NSINSTALL 1` derivado de
-una lista `NSFILES 1`, con tamaño y SHA-256 por archivo, y lo verifica desde el ejecutable instalado.
-Sus matrices locales finales pasaron 302/302 con cada linker.
+**Estado E9 al 2026-09-07:** Stage 62, Stage 63, Stage 64 y Stage 66 están certificados. Además del
+contrato, layout e inventario previos,
+el gate construye e instala dos árboles limpios, compara `NSINSTALL 1`, fija únicamente la identidad
+del build para exigir igualdad completa de ambos `nsc.exe` y registra `NSREPRO 1`. La instalación
+genera `NSUPDATE 1`, comprueba los manifiestos anterior y siguiente, prevalida todo retiro y sólo
+elimina archivos que continúan iguales a los bytes cuya propiedad estaba registrada. El detalle de
+implementación está en 150 y la promoción está en 151.
 
 - contrato determinista de paquete: implementado y certificado en Stage 62;
 - versiones compatibles de compilador, lenguaje, LLVM, NSMETA y ABI: implementadas y verificables;
 - layout mínimo instalado autoverificable: implementado y certificado en Stage 63;
-- inventario criptográfico completo: implementado localmente en Stage 64, pendiente de G00;
-- empaquetado reproducible completo: falta la comparación de una segunda construcción independiente;
+- inventario criptográfico completo: implementado y certificado en Stage 64;
+- empaquetado reproducible completo: implementado y certificado en Stage 66;
 - compilación desde una máquina limpia: documentada con el toolchain vigente en Stage 64;
 - PDB y depuración funcional;
 - `.lib` externas y proyectos múltiples;
 - builds Debug/Release;
 - logs suficientes para reproducir un fallo;
-- actualización y desinstalación sin dejar dependencias ocultas.
+- actualización y retiro sin apropiarse de archivos vecinos: implementados y certificados en Stage 66.
 
 ### 9.4 Compatibilidad
+
+**Estado E10 al 2026-09-07:** implementada y certificada en Stage 66.
+`NativeSharpCompatibility.policy` publica por separado las versiones de compilador, lenguaje,
+NSMETA, Native ABI, Runtime ABI y formatos del paquete. El propio driver puede imprimirla,
+escribirla, verificarla y decidir un requisito canónico `major.minor.patch`. La política se instala,
+forma parte del inventario criptográfico y no contiene la identidad efímera de construcción.
 
 - Semantic Versioning para compilador y lenguaje;
 - versiones independientes para `.nsmeta` y ABI del runtime;
@@ -1163,7 +1188,7 @@ Además:
 1.0-E5/E6    Diagnósticos ABI y verificación física de bibliotecas — instaladas y certificadas
 1.0-E7       Especificación, gramática y trazabilidad normativa — instalada y certificada
 1.0-E8       Endurecimiento del compilador — Stage 61 instalado y certificado por G00
-1.0-E9       Contrato, instalación e inventario — Stage 62/63 certificados; Stage 64 pendiente de G00
+1.0-E9       Contrato, instalación e inventario — Stage 62/63/64 instalados y certificados
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

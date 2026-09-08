@@ -53,7 +53,7 @@ int main()
         nativesharp::kCompilerVersion.ends_with(buildId),
         "visible compiler version contains the exact build id");
     tests.expect(nativesharp::kLanguageVersion == "0.1", "language version is 0.1");
-    tests.expect(nativesharp::kCompilerStage == "64", "compiler stage tracks the real snapshot");
+    tests.expect(nativesharp::kCompilerStage == "66", "compiler stage tracks the real snapshot");
 
     return tests.result();
 }

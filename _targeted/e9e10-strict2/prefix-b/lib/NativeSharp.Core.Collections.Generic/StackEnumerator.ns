@@ -1,0 +1,32 @@
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Enumerator returned by Stack<T>.GetEnumerator() (P1.2 of
+    // STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md). See ListEnumerator.ns's class comment
+    // for the general design this whole family of enumerators follows.
+    //
+    // Iteration order matches Stack<T>.ToArray()/CopyTo() and real C#'s own Stack<T> enumerator:
+    // TOP-to-bottom (the most-recently-pushed element first), via Stack<T>'s own logical-index
+    // indexer (added alongside this enumerator).
+    public class StackEnumerator<T>
+    {
+        private Stack<T> source;
+        private int index;
+
+        public StackEnumerator(Stack<T> sourceStack)
+        {
+            source = sourceStack;
+            index = -1;
+        }
+
+        public bool MoveNext()
+        {
+            index = index + 1;
+            return index < source.Count();
+        }
+
+        public T Current
+        {
+            get { return source[index]; }
+        }
+    }
+}

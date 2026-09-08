@@ -1,6 +1,6 @@
 # Construcción, prueba e instalación de NativeSharp
 
-**Vigencia:** Stage 64, camino oficial Windows x64.
+**Vigencia:** Stage 66, camino oficial Windows x64.
 
 Esta guía describe el producto que el árbol soporta hoy. Su objetivo no es enumerar todas las
 combinaciones que CMake podría aceptar, sino dar una receta repetible para construir `nsc`, medir
@@ -20,6 +20,7 @@ La instalación pública es distinta del árbol de construcción. Contiene:
 - `<prefix>/lib/NativeSharp.Core*`;
 - `<prefix>/share/nativesharp/spec/*`;
 - `<prefix>/share/nativesharp/toolchain/NativeSharpToolchain.contract`;
+- `<prefix>/share/nativesharp/toolchain/NativeSharpCompatibility.policy`;
 - `<prefix>/share/nativesharp/toolchain/NativeSharpInstallation.files`;
 - `<prefix>/share/nativesharp/toolchain/NativeSharpInstallation.manifest`.
 
@@ -89,6 +90,7 @@ Compruebe la identidad del resultado:
 & "$buildRoot/bin/nsc.exe" --version
 & "$buildRoot/bin/nsc.exe" --print-llvm-version
 & "$buildRoot/bin/nsc.exe" --print-toolchain-contract
+& "$buildRoot/bin/nsc.exe" --print-compatibility-policy
 ```
 
 La identidad visible del binario incluye `+build.<UTC>.<id>` y cambia en cada construcción real.
@@ -108,7 +110,7 @@ Para repetir sólo los contratos de empaquetado de E9:
 
 ```powershell
 ctest --test-dir $buildRoot --output-on-failure `
-  -R 'nsc\.stage6(2\.toolchain-contract|3\.installation-verifier|4\.installation-manifest)'
+  -R 'nsc\.stage6(2\.toolchain-contract|3\.installation-verifier|4\.installation-manifest|6\.e9-e10-release-contract)'
 ```
 
 El número total de casos cambia cuando se agrega una suite. Lo contractual es `100% tests passed`
@@ -120,7 +122,7 @@ y cero fallos, no un total histórico copiado en esta guía.
 cmake --install $buildRoot --prefix $installRoot
 ```
 
-Stage 64 ejecuta al final:
+Stage 66 ejecuta al final:
 
 ```powershell
 & "$installRoot/bin/nsc.exe" --verify-installation $installRoot
@@ -150,6 +152,8 @@ Puede repetir la comprobación cuando sospeche que el paquete fue alterado:
 & "$installRoot/bin/nsc.exe" --verify-installation $installRoot
 & "$installRoot/bin/nsc.exe" --verify-toolchain-contract `
   "$installRoot/share/nativesharp/toolchain/NativeSharpToolchain.contract"
+& "$installRoot/bin/nsc.exe" --verify-compatibility-policy `
+  "$installRoot/share/nativesharp/toolchain/NativeSharpCompatibility.policy"
 & "$installRoot/bin/nsc.exe" --verify-installation-manifest $installRoot `
   "$installRoot/share/nativesharp/toolchain/NativeSharpInstallation.manifest"
 ```
@@ -254,5 +258,71 @@ las fuentes actuales, al producto instalado o a una matriz configurada contra ot
 - G00 ejecutado después, sin modificar el árbol durante la corrida.
 
 Cumplir esta lista prueba una construcción e instalación limpias y deja cada archivo público
-inventariado. La reproducibilidad byte por byte entre dos construcciones independientes es la
-siguiente capa de E9; Stage 64 todavía no la infiere de una sola instalación.
+inventariado. Para Stage 66, la reproducibilidad entre dos construcciones independientes se mide
+con el gate siguiente.
+
+## 11. Gate de reproducibilidad de Stage 66
+
+Use cuatro rutas nuevas o vacías. El gate no permite reciclar un build porque su propósito es
+detectar dependencias accidentales del cache o del directorio de salida:
+
+```powershell
+cmake `
+  -DNSC_SOURCE="$sourceRoot" `
+  -DNSC_BUILD_A="$sourceRoot/_repro/build-a" `
+  -DNSC_BUILD_B="$sourceRoot/_repro/build-b" `
+  -DNSC_PREFIX_A="$sourceRoot/_repro/prefix-a" `
+  -DNSC_PREFIX_B="$sourceRoot/_repro/prefix-b" `
+  -DNSC_REPORT="$sourceRoot/_repro/reproducibility.nsreport" `
+  -DNSC_FORCE_MONOLITHIC_LLVM=ON `
+  -DNSC_LLVM_LIBRARY=C:/clang-llvm/lib/LLVM-C.lib `
+  -DNSC_CXX_COMPILER=C:/clang-llvm/bin/clang-cl.exe `
+  -P cmake/VerifyReproducibleNativeSharpPackage.cmake
+```
+
+El resultado válido contiene `result=reproducible`, `differences=0` y
+`strict_compiler_binary=identical`. La identidad fija usada internamente pertenece sólo a esta
+comparación. No configure `NSC_BUILD_ID_OVERRIDE` en una distribución ordinaria: los builds
+normales deben conservar su identidad única.
+
+## 12. Actualización y retiro
+
+Una reinstalación normal mediante `cmake --install` detecta un manifiesto anterior, escribe el
+nuevo, calcula `NSUPDATE 1`, retira únicamente archivos que sólo pertenecían a la versión anterior
+y verifica el árbol final. Si un archivo retirado fue modificado desde que se generó el manifiesto,
+la instalación se detiene y conserva ese archivo.
+
+Para inspeccionar un cambio sin aplicarlo:
+
+```powershell
+& "$installRoot/bin/nsc.exe" --write-installation-update-plan `
+  previous.manifest next.manifest update.plan
+Get-Content update.plan
+```
+
+Para retirar una instalación se necesita ejecutar un `nsc.exe` externo al prefijo que se va a
+retirar; un proceso Windows no debe intentar borrar su propio ejecutable:
+
+```powershell
+& "C:/ruta-separada/nsc.exe" --write-installation-removal-plan `
+  "$installRoot/share/nativesharp/toolchain/NativeSharpInstallation.manifest" `
+  retirement.plan
+& "C:/ruta-separada/nsc.exe" --apply-installation-removal-plan `
+  $installRoot `
+  "$installRoot/share/nativesharp/toolchain/NativeSharpInstallation.manifest" `
+  none `
+  retirement.plan
+```
+
+El comando no elimina directorios compartidos ni archivos que no figuren en el manifiesto.
+
+## 13. Consultar compatibilidad
+
+```powershell
+& "$installRoot/bin/nsc.exe" --print-compatibility-policy
+& "$installRoot/bin/nsc.exe" --check-compiler-compatibility 0.9.0
+```
+
+Antes de 1.0, un requisito sólo se satisface dentro del mismo major y minor y con patch igual o
+mayor. La política instalada publica además los rangos NSMETA, Native ABI, Runtime ABI y versiones
+de todos los formatos del paquete. El capítulo 150 explica la razón y la evidencia de cada campo.

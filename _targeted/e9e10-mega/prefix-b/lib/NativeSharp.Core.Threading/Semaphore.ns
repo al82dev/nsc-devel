@@ -1,0 +1,110 @@
+namespace NativeSharp.Core.Threading
+{
+    // NativeSharp.Core.Threading.Semaphore -- Stage 54.5 "Otras primitivas de sincronizacion".
+    //
+    // Envoltorio sobre un semaforo de KERNEL real de Win32 (CreateSemaphoreA/WaitForSingleObject/
+    // ReleaseSemaphore/CloseHandle) -- un contador con limite superior que N hilos pueden decrementar
+    // (Wait) y cualquier hilo puede incrementar (Release), bloqueando a quien intenta decrementar un
+    // contador ya en cero hasta que alguien lo suba de nuevo. El caso de uso clasico que Mutex (Stage
+    // 54.3, un contador binario: 0 o 1) no puede cubrir por si solo: limitar cuantos hilos pueden usar
+    // un recurso compartido SIMULTANEAMENTE cuando ese limite es mayor a uno (por ejemplo, un pool de
+    // conexiones de tamaño fijo, o limitar cuantos hilos de trabajo procesan una cola a la vez).
+    //
+    // == Mismo patron estructural que Mutex, EXACTO: HANDLE de kernel, sin mecanismo nuevo ==
+    //
+    // A diferencia de Monitor (Stage 54.4, que necesito el mecanismo nuevo de "direccion de dos
+    // campos propios"), Semaphore es HANDLE-based de punta a punta -- cero riesgo arquitectonico
+    // nuevo, calco directo del patron que Mutex/Thread ya establecieron.
+    //
+    // == Wait() con timeout REAL: la primera vez que Semaphore/Event exponen esto a NativeSharp ==
+    //
+    // Cada wait anterior en este compilador (Thread.Join(), Mutex.Lock()) es incondicional --
+    // bloquea hasta que la condicion se cumple, sin limite de tiempo, Win32 INFINITE hardcodeado. Wait()
+    // aca (y Event.Wait(), que comparte el mismo runtime hook de bajo nivel, ver
+    // WindowsRuntimeBuilder.cpp) es la PRIMERA vez que el codigo NativeSharp puede pedir un timeout
+    // real y observar si expiro -- exactamente el tipo de corner case que la regla de rigor de Stage
+    // 54 exige verificar con un timeout que expira DE VERDAD, no solo el camino feliz.
+    // `millisecondsTimeout`: -1 significa esperar indefinidamente (reinterpretado como Win32 INFINITE
+    // == 0xFFFFFFFF al cruzar la frontera de 32 bits), cualquier valor >= 0 es un timeout real.
+    // Devuelve true si el semaforo fue adquirido (el contador se decremento con exito), false si el
+    // timeout expiro sin que el contador subiera de cero.
+    //
+    // == Release() siempre libera UN nivel -- por que no hay Release(int count) esta ronda ==
+    //
+    // Win32's ReleaseSemaphore acepta un conteo variable (lReleaseCount) -- un semaforo puede subirse
+    // en mas de uno por llamada. Esta ronda expone SOLO el caso de "un nivel a la vez"
+    // (ReleaseSemaphore(handle, 1, NULL)): es el caso de uso dominante (un productor libera un slot a
+    // la vez), y un Release(int count) es un superset estrictamente aditivo -- mismo mecanismo de
+    // compilador, solo mas superficie de API -- que puede agregarse despues si Alberto lo pide, sin
+    // tocar nada de lo ya construido.
+    //
+    // == Un HANDLE de 0 es un no-op seguro en todos lados, igual que Mutex ==
+    //
+    // Si CreateSemaphoreA falla (agotamiento de recursos, un caso excepcionalmente raro), handle_
+    // queda en 0 -- Wait()/Release()/Close() lo tratan como no-op seguro (Wait() devuelve false de
+    // inmediato, nunca crashea ni bloquea para siempre), mismo idioma que Mutex/Thread.
+    //
+    // == Es una clase (tipo referencia), no un struct -- mismo razonamiento que Mutex/Thread ==
+    public class Semaphore
+    {
+        // El HANDLE de Win32 devuelto por CreateSemaphoreA, guardado como nint -- mismo idioma que
+        // Mutex.handle_/Thread.handle_. Un valor de 0 significa "esto nunca fue un handle real".
+        private nint handle_;
+
+        // El constructor crea el semaforo de inmediato. `initialCount`: cuantos "permisos" tiene el
+        // semaforo al arrancar (debe ser >= 0 y <= maximumCount, exigido por Win32, no verificado por
+        // este compilador -- un valor invalido hace que CreateSemaphoreA falle, colapsando a handle_
+        // == 0 igual que cualquier otro fallo de Win32 en este runtime). `maximumCount`: el limite
+        // superior que Release() nunca puede superar.
+        public Semaphore(int initialCount, int maximumCount)
+        {
+            handle_ = SemaphoreCreate(initialCount, maximumCount);
+        }
+
+        // Intenta decrementar el contador del semaforo, bloqueando el hilo llamante hasta lograrlo o
+        // hasta que expire `millisecondsTimeout` (ver el comentario de cabecera de la clase para la
+        // convencion de -1 == indefinido). Devuelve true si se adquirio, false si el timeout expiro.
+        public bool Wait(int millisecondsTimeout)
+        {
+            return SemaphoreWait(handle_, millisecondsTimeout);
+        }
+
+        // Incrementa el contador del semaforo en UNO, potencialmente desbloqueando a un hilo esperando
+        // en Wait(). Ver el comentario de cabecera de la clase para por que siempre es "uno a la vez"
+        // esta ronda. Liberar mas alla de `maximumCount` falla de forma segura y silenciosa a nivel de
+        // NativeSharp (Win32 lo reporta, este wrapper lo descarta -- mismo "unchecked BOOL failure"
+        // que Mutex.Unlock() ya establece para ERROR_NOT_OWNER).
+        public void Release()
+        {
+            SemaphoreRelease(handle_);
+        }
+
+        // Libera el HANDLE de Win32 de este semaforo.
+        ~Semaphore()
+        {
+            SemaphoreClose(handle_);
+        }
+
+        // Las cuatro "core operations" de Stage 54.5 -- reconocidas por el compilador por clase +
+        // nombre + firma EXACTOS (ver MethodCoreOperationKind::SemaphoreCreate/Wait/Release/Close en
+        // ProjectMethodBodyModel.h), mismo mecanismo "helpers privados y estaticos" que Mutex ya
+        // establecio. Los cuerpos de abajo son placeholders -- nunca se ejecutan.
+        private static nint SemaphoreCreate(int initialCount, int maximumCount)
+        {
+            return 0;
+        }
+
+        private static bool SemaphoreWait(nint handle, int millisecondsTimeout)
+        {
+            return false;
+        }
+
+        private static void SemaphoreRelease(nint handle)
+        {
+        }
+
+        private static void SemaphoreClose(nint handle)
+        {
+        }
+    }
+}

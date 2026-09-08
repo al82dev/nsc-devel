@@ -23,6 +23,9 @@ LECTURA HISTÓRICA RECOMENDADA
     146_1_0_e9_instalacion_autoverificable_y_build_limpio.md
     147_baseline_certificado_1_0_e9_stage63.md
     148_1_0_e9_inventario_criptografico_de_instalacion.md
+    149_baseline_certificado_1_0_e9_stage64.md
+    150_1_0_e9_e10_cierre_reproducibilidad_ciclo_de_paquete_y_compatibilidad.md
+    151_baseline_certificado_1_0_e9_e10_stage66.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -55,6 +58,23 @@ payload esperado, los formatos `NSFILES 1` y `NSINSTALL 1`, la autoridad SHA-256
 NSMETA, los comandos públicos, los árboles propiedad del paquete, los 55 checks adversariales y
 las matrices locales 302/302. Registra también el fixture Stage 63 desacoplado del número de etapa
 y por qué las herramientas de NSLink pueden coexistir legítimamente en `bin`.
+
+El documento 149 registra la promoción de Stage 64. Conserva la corrida G00, los tiempos, la
+inmovilidad de los 1029 archivos, la igualdad entre compilador construido e instalado, las 76
+entradas autenticadas y sus hashes, las matrices 302/302 por linker y los 324 casos del runner.
+También explica por qué `NativeAsmCore.lib` puede coexistir en el prefijo sin debilitar la detección
+de residuos dentro de los árboles administrados.
+
+El documento 150 entrega juntos E9 y E10 en Stage 66. Explica la comparación de dos construcciones
+limpias, el timestamp PE descubierto por la puerta estricta, `/Brepro`, el SHA-256 idéntico de los
+dos compiladores con identidad reservada, los planes `NSUPDATE 1` ligados a ambos manifiestos, el
+preflight que conserva archivos modificados, una reinstalación física y la política `NSCOMPAT 1`.
+Incluye comandos, funciones, archivos y evidencia de implementación.
+
+El documento 151 registra la promoción G00 de Stage 66. Conserva la corrida, la inmovilidad de los
+1034 archivos, la igualdad entre compilador construido e instalado, las matrices 303/303 por
+linker, los 324 casos del runner y los hashes de los cuatro contratos centrales instalados. Con
+esta acta E9 y E10 quedan certificadas, no sólo implementadas.
 
 Los documentos 132 a 135 registran la implementación y el cierre técnico de las cuatro primeras
 megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifetime de delegates y
@@ -91,10 +111,11 @@ El documento 143 registra la promoción de E8. Conserva las identidades exactas 
 la diferencia entre las 11 etapas operativas y el registro final de certificación, y demuestra que
 las fuentes y el producto permanecieron estables durante los 324 casos.
 
-Entrega certificada vigente: NativeSharp 0.1, Stage 63; `nsc 0.9.0` con contrato e instalación
-autoverificable promovidos. Stage 64 tiene cierre técnico local: instalación aislada, inventario de
-76 archivos y 302/302 CTest por linker; aún no sustituye el baseline hasta pasar G00. El desarrollo
-está en 148; el baseline vigente continúa documentado en 147.
+Entrega certificada vigente: NativeSharp 0.1, Stage 64; `nsc 0.9.0` con contrato, instalación
+autoverificable e inventario criptográfico promovidos. El baseline G00 terminó con 302/302 CTest
+por linker, 324/324 casos del runner y cero fallos. El desarrollo está en 148 y el acta vigente en
+149. La fotografía de desarrollo vigente es Stage 66: E9+E10 están técnicamente cerradas y
+documentadas en 150, pero todavía no sustituyen ese baseline hasta completar G00.
 
 Todo lo que hay aquí adentro es el árbol completo del compilador. No falta nada: fuentes,
 cabeceras, biblioteca estándar en NativeSharp, suites de prueba, casos contractuales de interop,
@@ -108,7 +129,7 @@ CÓMO COMPILARLO
     cmake --build build
     ctest --test-dir build
 
-Requiere LLVM 20 y un C++20. En una máquina donde LLVM 20 no esté en la ruta por omisión:
+Requiere LLVM 23.x y un C++20. En una máquina donde LLVM 23.x no esté en la ruta por omisión:
 
     -DLLVM_DIR=<prefijo>/lib/cmake/llvm
 

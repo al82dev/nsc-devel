@@ -4,8 +4,8 @@
 **Versión compatible:** `nsc 0.9.0`  
 **Versión del lenguaje:** NativeSharp 0.1  
 **Etapa del compilador:** 64  
-**Estado:** implementación terminada, instalación aislada verificada y matrices locales verdes;
-pendiente de promoción mediante G00
+**Estado:** implementación terminada y promovida por G00; baseline Stage 64 certificado en el
+documento 149
 
 ## 1. De «están las piezas» a «son exactamente estos bytes»
 
@@ -387,8 +387,8 @@ hosts nativos.
 Después del hallazgo específico de `NativeAsmCore.lib`, se recompilaron la implementación y la
 suite en ambos árboles. La fotografía corregida pasó `nsc.stage60.language-contract` y
 `nsc.stage64.installation-manifest` 2/2 con cada configuración, además de los 55 checks directos y
-la verificación del prefijo oficial descrita arriba. G00 repetirá la matriz completa sobre esa
-fotografía al promoverla.
+la verificación del prefijo oficial descrita arriba. G00 repitió después la matriz completa y
+promovió esa fotografía; el acta exacta está en el documento 149.
 
 ## 13. Archivos creados y modificados
 
@@ -422,7 +422,16 @@ Stage 64 demuestra localmente que la instalación tiene un alcance derivado del 
 identidad criptográfica archivo por archivo y un verificador ejecutado por el producto instalado.
 Detecta ausencia, modificación y residuos sin apropiarse de herramientas vecinas.
 
-Todavía falta la promoción G00 de esta fotografía. Después del baseline, el siguiente bloque E9
-debe comparar dos construcciones independientes por categoría y explicar cuáles artefactos deben
-ser idénticos, cuáles contienen identidad efímera y por qué. Esa comparación será la base para
-cerrar reproducibilidad y después formalizar actualización/retiro sin residuos.
+G00 `20260907-203102-950828a1` promovió esta fotografía con 302/302 CTest por linker, 324/324
+casos del runner, cero fallos, árbol inmóvil y ejecutable construido idéntico al instalado. El acta
+con hashes, tiempos e interpretación está en 149.
+
+El siguiente bloque E9 debe comparar dos construcciones independientes por categoría y explicar
+cuáles artefactos deben ser idénticos, cuáles contienen identidad efímera y por qué. Esa comparación
+será la base para cerrar reproducibilidad y después formalizar actualización/retiro sin residuos.
+
+**Continuación histórica:** ese trabajo ya quedó implementado en la megaentrega conjunta E9+E10 de
+Stage 66. El documento 150 registra la comparación de dos árboles limpios, el cierre del timestamp
+PE con `/Brepro`, los planes ligados a ambos manifiestos, el retiro con preflight y la política
+`NSCOMPAT 1`. Este párrafo conserva la pregunta que Stage 64 dejó abierta y enlaza su respuesta; no
+reescribe retroactivamente el alcance del baseline certificado en 149.

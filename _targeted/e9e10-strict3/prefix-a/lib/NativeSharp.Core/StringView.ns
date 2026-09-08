@@ -1,0 +1,325 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.StringView -- SHR-010, Bloque 3 "vistas y tiempo de vida".
+    //
+    // POR QUE EXISTE, y no es una preferencia de estilo. El compilador actual usa
+    // `std::string_view` en 28 sitios; es la ausencia mas usada de toda la biblioteca estandar de
+    // C++ en este arbol (doc 80 seccion 2). Y el consumidor concreto es el lexer: hoy, para
+    // quedarse con un lexema, hay que llamar a `String.Substring`, que ASIGNA. Un archivo de
+    // treinta mil tokens son treinta mil asignaciones y treinta mil liberaciones para no mover ni
+    // un byte de sitio.
+    //
+    // ------------------------------------------------------------------------------------------
+    // QUE ES, FISICAMENTE: (puntero, longitud). Dos campos, dieciseis bytes, cero asignaciones.
+    //
+    //     borrowed struct StringView { char* start; int count; }
+    //
+    // `borrowed struct` NO es decoracion: es lo que hace que el compilador trate a este tipo como
+    // lo que es -- un valor que no posee nada y que muere cuando muere aquello de lo que presta.
+    // Con esa marca puesta, el compilador rechaza (SHR-013):
+    //
+    //   * devolver una vista enraizada en un LOCAL del metodo,
+    //   * declarar un CAMPO de tipo vista fuera de otra vista,
+    //   * capturar una vista en un lambda.
+    //
+    // Sin la marca, las tres cosas compilarian y darian un uso-despues-de-liberar silencioso. Con
+    // ella, ninguna llega a ejecutarse.
+    //
+    // ------------------------------------------------------------------------------------------
+    // COMO SE OBTIENE EL PUNTERO, y por que hizo falta tocar el compilador.
+    //
+    // `&texto[0]` NO compila: el operador `&` de este lenguaje exige un local, un parametro o un
+    // campo direccionable, y un caracter de una cadena no es ninguno de los tres. Por eso el
+    // Bloque 3 anadio UNA operacion nucleo, `String.CharacterPointer(texto, indice)`, que es el
+    // MISMO calculo de direccion que ya hacia `texto[indice]` -- misma comprobacion de rango,
+    // mismo GEP con paso 1 y desplazamiento 8 -- sin el load final.
+    //
+    // Y es lo que convierte "sin copiar" en algo MEDIBLE: una fixture puede comprobar que
+    // `Data()` de la vista cae dentro del buffer de la cadena original. Eso es aritmetica de
+    // punteros, no una afirmacion en un comentario.
+    //
+    // ------------------------------------------------------------------------------------------
+    // LO QUE NO PROMETE, dicho antes de que alguien lo asuma:
+    //
+    //   * NO es Unicode. Un `char` aqui es un byte, igual que en `String`, y todo lo que
+    //     clasifica caracteres es ASCII. `Length()` cuenta BYTES.
+    //   * NO copia nunca, ni siquiera cuando seria comodo. La unica forma de salir de una vista
+    //     con memoria propia es `ToString()`, que dice en su nombre y en su tipo (`owned string`)
+    //     que asigna.
+    //   * NO mantiene viva la cadena de la que presta. Eso es el punto entero del tipo, y es lo
+    //     que la comprobacion de escape del compilador vigila.
+    //   * NO termina en cero. `Data()` NO es una cadena de C. Pasarla a una API que espera `\0`
+    //     leeria mas alla del final.
+    public borrowed struct StringView
+    {
+        // Los dos campos, y no hay un tercero. Un `string` de origen guardado aqui haria que la
+        // vista pareciera mantener viva la cadena sin hacerlo, que es la peor de las dos
+        // opciones: la forma de un duenno con el comportamiento de un prestamo.
+        private char* start;
+        private int count;
+
+        public StringView(char* data, int length)
+        {
+            start = data;
+            count = length;
+        }
+
+        // La vista vacia. Puntero nulo, longitud cero -- y NO es lo mismo que una vista de
+        // longitud cero dentro de una cadena real, que tiene puntero valido. Las dos se
+        // comportan igual en todo lo que este tipo hace; la diferencia solo se ve en `Data()`, y
+        // se dice aqui para que nadie la descubra por sorpresa.
+        public static StringView Empty()
+        {
+            return new StringView(null, 0);
+        }
+
+        // La cadena entera, sin copiar.
+        //
+        // El caso vacio se atiende PRIMERO y a proposito: `String.CharacterPointer(texto, 0)` de
+        // una cadena vacia pide la direccion de un caracter que no existe, y la comprobacion de
+        // rango de la operacion nucleo lo atrapa -- correctamente. Una vista vacia se construye
+        // con puntero nulo, no pidiendo una direccion inexistente.
+        public static StringView Of(string text)
+        {
+            if (text == null || text.Length == 0)
+            {
+                return new StringView(null, 0);
+            }
+            return new StringView(String.CharacterPointer(text, 0), text.Length);
+        }
+
+        // Un tramo de la cadena. Los indices se RECORTAN al rango valido en vez de fallar,
+        // porque el consumidor natural es un lexer que pregunta por [inicio, inicio+largo) sobre
+        // un buffer cuyos limites ya conoce; hacerle repetir la comprobacion en cada llamada solo
+        // moveria el mismo `if` de sitio. Un tramo entero fuera de la cadena da la vista vacia,
+        // que es la respuesta correcta y no una excepcion.
+        public static StringView Of(string text, int start, int length)
+        {
+            if (text == null)
+            {
+                return new StringView(null, 0);
+            }
+            int begin = start;
+            if (begin < 0) { begin = 0; }
+            if (begin > text.Length) { begin = text.Length; }
+            int available = text.Length - begin;
+            int take = length;
+            if (take < 0) { take = 0; }
+            if (take > available) { take = available; }
+            if (take == 0)
+            {
+                return new StringView(null, 0);
+            }
+            return new StringView(String.CharacterPointer(text, begin), take);
+        }
+
+        public int Length()
+        {
+            return count;
+        }
+
+        public bool IsEmpty()
+        {
+            return count == 0;
+        }
+
+        // LA EVIDENCIA DE QUE NO HUBO COPIA. Devuelve el puntero tal cual, para que una prueba
+        // pueda comparar direcciones con la cadena original. No es para leer texto: para eso
+        // estan el indexador y `ToString()`.
+        public char* Data()
+        {
+            return start;
+        }
+
+        // COMPROBADO, y es una decision. El resto del lenguaje comprueba el rango de un arreglo
+        // y de una cadena; una vista que no lo hiciera seria el unico agujero del conjunto, y
+        // seria justo el tipo que mas se usa dentro de bucles. `throw` en vez de trampa porque el
+        // fallo es de un ARGUMENTO, no de la memoria: es catchable, exactamente como
+        // `Exception.ns` dice que deben ser los indices validados a mano.
+        public char this[int index]
+        {
+            get
+            {
+                if (index < 0 || index >= count)
+                {
+                    throw new ArgumentOutOfRangeException();
+                }
+                return start[index];
+            }
+        }
+
+        // Sin comprobar, y con el nombre diciendolo. Existe porque un lexer que acaba de
+        // comprobar `i < view.Length()` no tiene por que pagar la misma comparacion dos veces en
+        // el bucle mas caliente que va a escribir. Si el indice esta fuera, esto lee memoria
+        // ajena: usarlo es una afirmacion del que llama, no una peticion.
+        public char UncheckedAt(int index)
+        {
+            return start[index];
+        }
+
+        // Los dos `Slice` recortan igual que `Of(texto, inicio, largo)`, por la misma razon.
+        public StringView Slice(int start)
+        {
+            return Slice(start, count - start);
+        }
+
+        public StringView Slice(int start, int length)
+        {
+            int begin = start;
+            if (begin < 0) { begin = 0; }
+            if (begin > count) { begin = count; }
+            int available = count - begin;
+            int take = length;
+            if (take < 0) { take = 0; }
+            if (take > available) { take = available; }
+            if (take == 0)
+            {
+                return new StringView(null, 0);
+            }
+            return new StringView(this.start + begin, take);
+        }
+
+        // Dos vistas son iguales cuando tienen el mismo CONTENIDO, no la misma direccion. Dos
+        // vistas del mismo texto en dos cadenas distintas son iguales; es lo que un lexer
+        // necesita para reconocer una palabra clave sin asignar nada.
+        public static bool Equals(StringView left, StringView right)
+        {
+            if (left.Length() != right.Length()) { return false; }
+            int index = 0;
+            while (index < left.Length())
+            {
+                if (left.UncheckedAt(index) != right.UncheckedAt(index)) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        // La comparacion que de verdad se usa: vista contra literal. Sin ella, reconocer una
+        // palabra clave exigiria construir una vista del literal primero, y eso hace falta que
+        // el literal viva en algun sitio -- justo la friccion que este tipo existe para quitar.
+        public static bool Equals(StringView left, string right)
+        {
+            if (right == null) { return left.Length() == 0; }
+            if (left.Length() != right.Length) { return false; }
+            int index = 0;
+            while (index < right.Length)
+            {
+                if (left.UncheckedAt(index) != right[index]) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        public int IndexOf(char value)
+        {
+            int index = 0;
+            while (index < count)
+            {
+                if (start[index] == value) { return index; }
+                index = index + 1;
+            }
+            return -1;
+        }
+
+        public int LastIndexOf(char value)
+        {
+            int index = count - 1;
+            while (index >= 0)
+            {
+                if (start[index] == value) { return index; }
+                index = index - 1;
+            }
+            return -1;
+        }
+
+        public bool Contains(char value)
+        {
+            return IndexOf(value) >= 0;
+        }
+
+        public bool StartsWith(StringView prefix)
+        {
+            if (prefix.Length() > count) { return false; }
+            int index = 0;
+            while (index < prefix.Length())
+            {
+                if (start[index] != prefix.UncheckedAt(index)) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        public bool EndsWith(StringView suffix)
+        {
+            if (suffix.Length() > count) { return false; }
+            int offset = count - suffix.Length();
+            int index = 0;
+            while (index < suffix.Length())
+            {
+                if (start[offset + index] != suffix.UncheckedAt(index)) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+
+        // Los tres `Trim` devuelven OTRA VISTA, no una cadena. Recortar espacios sin asignar es
+        // la mitad de la razon de ser de este tipo.
+        public StringView TrimStart()
+        {
+            int begin = 0;
+            while (begin < count && IsAsciiSpace(start[begin]))
+            {
+                begin = begin + 1;
+            }
+            return Slice(begin, count - begin);
+        }
+
+        public StringView TrimEnd()
+        {
+            int last = count;
+            while (last > 0 && IsAsciiSpace(start[last - 1]))
+            {
+                last = last - 1;
+            }
+            return Slice(0, last);
+        }
+
+        public StringView Trim()
+        {
+            return TrimStart().TrimEnd();
+        }
+
+        // La MISMA clasificacion que usa `String` para sus Trim: espacio, tabulador, retorno,
+        // salto, avance de pagina y tabulador vertical. Escrita aqui porque la de `String` es
+        // privada, y duplicar seis comparaciones pesa menos que abrir un metodo de `String` que
+        // nadie mas pidio.
+        private static bool IsAsciiSpace(char value)
+        {
+            int code = (int)value;
+            return code == 32 || code == 9 || code == 10 || code == 13 || code == 11 || code == 12;
+        }
+
+        // LA UNICA SALIDA QUE ASIGNA, y lo dice el tipo de retorno. Existe porque tarde o
+        // temprano un valor tiene que sobrevivir a la cadena de la que se saco -- guardarlo en un
+        // campo, devolverlo de un metodo -- y ese es exactamente el momento en que hace falta una
+        // copia. El compilador rechaza las otras formas de intentarlo, asi que este metodo es la
+        // respuesta a un error de compilacion, no una comodidad.
+        public owned string ToString()
+        {
+            if (count == 0)
+            {
+                return String.Substring("", 0, 0);
+            }
+            char[] characters = new char[count];
+            int index = 0;
+            while (index < count)
+            {
+                characters[index] = start[index];
+                index = index + 1;
+            }
+            raii string text = String.FromCharArray(characters);
+            delete[] characters;
+            return move(text);
+        }
+    }
+}

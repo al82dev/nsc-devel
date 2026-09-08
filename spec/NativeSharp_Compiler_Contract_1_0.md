@@ -122,3 +122,57 @@ first offending relative path.
 The CMake install workflow shall generate and immediately verify the inventory through the newly
 installed compiler. A package whose bytes or managed file set differ from the expected current
 payload shall not be reported as a successful installation.
+
+## NSC-PKG-006 — Independent-build reproducibility
+
+`nsc --compare-installation-manifests <left> <right>` shall compare two canonical installation
+manifests by normalized path, size and SHA-256. The command shall emit a versioned `NSREPRO 1`
+report and fail when a deterministic path is missing or its contents differ.
+
+Only paths whose format intentionally embeds the per-build identity may be classified as volatile.
+For the current package those paths are `bin/nsc.exe` and, when distributed, `bin/nsc.pdb`.
+Volatility shall be reported by path; it must not silently exempt Core, specifications, contracts,
+metadata or library products from byte-for-byte comparison.
+
+The independent-build gate shall additionally build both compiler executables with one reserved,
+fixed build identity and require their complete SHA-256 values to match. The override is a gate-only
+normalization mechanism; ordinary builds shall continue to receive distinct identities.
+
+## NSC-PKG-007 — Authenticated update and retirement
+
+An update or retirement plan shall use the versioned `NSUPDATE 1` format and bind itself to the
+SHA-256 of the previous `NSINSTALL 1` manifest. An update plan shall also bind itself to the SHA-256
+of the next manifest. Update plans shall classify the union of old and new paths as `keep`,
+`replace`, `add` or `remove`; retirement plans shall contain only removal of manifest-owned paths.
+
+Applying the removal phase shall reject a changed previous or next manifest, an action inconsistent
+with those manifests, malformed or reordered paths, unowned removal targets, locally modified
+owned files and symbolic-link traversal. All removals shall pass preflight before the first file is
+deleted. Files belonging to another tool in a shared `bin` or `lib` directory shall never be
+inferred as NativeSharp property and shall survive both update and retirement.
+
+A full retirement shall also remove the bound installed manifest, which cannot contain its own
+digest, and prune empty package subdirectories. The installation prefix and the shared `bin`, `lib`
+and `share` roots shall survive.
+
+## NSC-COMPAT-001 — Installed compatibility policy
+
+Every distributable build shall generate and install `NativeSharpCompatibility.policy` in the
+canonical `NSCOMPAT 1` format. The policy shall independently publish compiler and language
+releases, NSMETA read/write versions, native and runtime ABI versions, package format versions and
+the deprecation rule. The build id shall not appear in this compatibility artifact.
+
+`nsc --print-compatibility-policy`, `--write-compatibility-policy` and
+`--verify-compatibility-policy` shall share one field authority. The installed-layout verifier and
+cryptographic inventory shall require and authenticate the same policy bytes.
+
+## NSC-COMPAT-002 — Version requirement decisions
+
+`nsc --check-compiler-compatibility <major.minor.patch>` shall accept only canonical semantic
+versions. Before compiler 1.0, compatibility requires the same major and minor with an installed
+patch greater than or equal to the requested patch. Starting with 1.0, a compiler may satisfy an
+older requirement only inside the same major line and when its minor/patch is not older.
+
+A supported behavior may be removed only after a diagnostic deprecation period of at least one
+minor release. A safety correction or miscompilation fix may reject formerly accepted input, but
+the compatibility notes shall identify that exception explicitly.

@@ -3,11 +3,26 @@ cmake_minimum_required(VERSION 3.25)
 project(
     NativeSharp
     VERSION 0.9.0
-    DESCRIPTION "NativeSharp stage 64 -- deterministic installation inventory"
+    DESCRIPTION "NativeSharp stage 66 -- reproducible package and compatibility contract"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+set(NSC_BUILD_ID_OVERRIDE "" CACHE STRING
+    "Fixed 16-digit lowercase hexadecimal build id; reserved for reproducibility gates")
+if(NOT NSC_BUILD_ID_OVERRIDE STREQUAL "")
+    string(LENGTH "${NSC_BUILD_ID_OVERRIDE}" NSC_BUILD_ID_OVERRIDE_LENGTH)
+    if(NOT NSC_BUILD_ID_OVERRIDE_LENGTH EQUAL 16 OR
+       NOT NSC_BUILD_ID_OVERRIDE MATCHES "^[0-9a-f]+$")
+        message(FATAL_ERROR
+            "NSC_BUILD_ID_OVERRIDE must contain exactly 16 lowercase hexadecimal digits")
+    endif()
+endif()
+set(NSC_BUILD_ID_OVERRIDE_ARGUMENT)
+if(NOT NSC_BUILD_ID_OVERRIDE STREQUAL "")
+    set(NSC_BUILD_ID_OVERRIDE_ARGUMENT
+        "-DNSC_BUILD_ID_OVERRIDE=${NSC_BUILD_ID_OVERRIDE}")
+endif()
 
 # CC1-000 / version de build. La version compatible es estable; la identidad visible cambia en
 # CADA construccion real de nsc, incluso en un build incremental que no vuelve a configurar CMake.
@@ -29,6 +44,7 @@ execute_process(
         "-DNSC_OUTPUT=${NSC_GENERATED_BUILD_ID_HEADER}"
         "-DNSC_TEMPLATE=${NSC_BUILD_ID_TEMPLATE}"
         "-DNSC_VERSION_BASE=${NSC_COMPILER_RELEASE_VERSION}"
+        ${NSC_BUILD_ID_OVERRIDE_ARGUMENT}
         -P "${NSC_BUILD_ID_GENERATOR}"
     RESULT_VARIABLE NSC_INITIAL_BUILD_ID_RESULT)
 if(NOT NSC_INITIAL_BUILD_ID_RESULT EQUAL 0)
@@ -40,6 +56,7 @@ add_custom_target(nsc_build_identity
         "-DNSC_OUTPUT=${NSC_GENERATED_BUILD_ID_HEADER}"
         "-DNSC_TEMPLATE=${NSC_BUILD_ID_TEMPLATE}"
         "-DNSC_VERSION_BASE=${NSC_COMPILER_RELEASE_VERSION}"
+        ${NSC_BUILD_ID_OVERRIDE_ARGUMENT}
         -P "${NSC_BUILD_ID_GENERATOR}"
     BYPRODUCTS "${NSC_GENERATED_BUILD_ID_HEADER}"
     COMMENT "Generando version unica para esta construccion de nsc"
@@ -341,9 +358,11 @@ nsc_enable_warnings(nsc_linker)
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
     src/Basic/Sha256.cpp
+    src/Driver/CompatibilityPolicy.cpp
     src/Driver/Driver.cpp
     src/Driver/InstallationManifest.cpp
     src/Driver/InstallationVerifier.cpp
+    src/Driver/PackageLifecycle.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryMetadata.cpp)
@@ -361,17 +380,27 @@ add_executable(nsc src/nsc/main.cpp)
 target_link_libraries(nsc PRIVATE nsc_driver)
 target_compile_features(nsc PRIVATE cxx_std_20)
 nsc_enable_warnings(nsc)
+if(MSVC)
+    # PE/COFF otherwise records the wall-clock link timestamp. /Brepro replaces that incidental
+    # value with deterministic content-derived data; ordinary builds still differ because their
+    # explicit NativeSharp build identity is intentionally unique.
+    target_link_options(nsc PRIVATE /Brepro)
+endif()
 
-# E9 / Stage 62. El manifiesto instalado lo escribe EL nsc que se acaba de enlazar. Asi CMake no
+# E9 / Stage 66. El manifiesto instalado lo escribe EL nsc que se acaba de enlazar. Asi CMake no
 # mantiene una segunda copia de versiones ABI y un paquete no puede afirmar una identidad distinta
 # de la que el compilador realmente verifica. El build id deliberadamente no forma parte del
 # contrato: identifica una construccion, pero no cambia compatibilidad.
 set(NSC_TOOLCHAIN_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpToolchain.contract")
+set(NSC_COMPATIBILITY_POLICY
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpCompatibility.policy")
 add_custom_command(TARGET nsc POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
     COMMAND $<TARGET_FILE:nsc> --write-toolchain-contract "${NSC_TOOLCHAIN_CONTRACT}"
+    COMMAND $<TARGET_FILE:nsc> --write-compatibility-policy "${NSC_COMPATIBILITY_POLICY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
+               "${NSC_COMPATIBILITY_POLICY}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
     VERBATIM)
 
@@ -392,6 +421,7 @@ file(GLOB_RECURSE NSC_INSTALLATION_SPECIFICATION_FILES
 set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
+    "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
@@ -446,6 +476,7 @@ install(TARGETS nsc RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
+install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
 if(WIN32)
     # La verificacion corre al FINAL: no basta que CMake haya intentado copiar los archivos. El
@@ -954,6 +985,25 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.stage64.installation-manifest
         COMMAND nsc_stage64_installation_manifest_tests)
+
+    # Stage 66 / megaentrega unica E9+E10. Stage 65 queda absorbido en esta fotografia final:
+    # compara dos instalaciones, produce planes autenticados de actualizacion/retiro y congela
+    # la politica de compatibilidad publica en un artefacto instalado y verificable.
+    add_executable(
+        nsc_stage66_e9_e10_release_contract_tests
+        tests/unit/Stage66E9E10ReleaseContractTests.cpp)
+    target_link_libraries(
+        nsc_stage66_e9_e10_release_contract_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(
+        nsc_stage66_e9_e10_release_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_stage66_e9_e10_release_contract_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage66_e9_e10_release_contract_tests)
+    add_test(
+        NAME nsc.stage66.e9-e10-release-contract
+        COMMAND nsc_stage66_e9_e10_release_contract_tests)
 
     # ---------------------------------------------------------------------------------------
     # Milestone CC1 -- Compiler Correctness & Semantic Consolidation.

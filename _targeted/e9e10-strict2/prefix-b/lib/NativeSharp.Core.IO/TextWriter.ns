@@ -1,0 +1,225 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.IO
+{
+    // NativeSharp.Core.IO.TextWriter -- Bloque 5, fase C. SHR-020.
+    //
+    // QUE ES. La respuesta a "donde va este texto", separada de "que texto es". Un compilador
+    // escribe diagnosticos, volcados de IR y ficheros de salida; hoy cada sitio decide por su
+    // cuenta si eso va a la consola, al canal de error o a un fichero, y cambiar de destino
+    // significa tocar el codigo que produce el texto. Con esto, quien produce el texto recibe un
+    // TextWriter y no sabe --ni le importa-- donde acaba.
+    //
+    // UN SOLO METODO VIRTUAL, Y ESA ES LA DECISION CENTRAL.
+    //
+    //     public virtual void Write(string texto)
+    //
+    // Todo lo demas --WriteLine, los Write de numeros, el relleno-- se construye ENCIMA de ese, no
+    // al lado. El motivo es concreto: cada metodo virtual es un sitio donde una implementacion
+    // futura puede ser incoherente con las demas (un FileTextWriter cuyo WriteLine usara CRLF
+    // mientras el de consola usa LF, y nadie lo nota hasta que se comparan dos salidas). Con uno
+    // solo, WriteLine significa lo mismo en las tres implementaciones POR CONSTRUCCION.
+    //
+    // El costo de esa decision es una llamada virtual por trozo en vez de una por linea. Para un
+    // compilador que escribe miles de lineas, no millones, es el intercambio correcto.
+    //
+    // NO ES ABSTRACTA. NativeSharp no tiene `abstract`, asi que la base tiene un Write que no hace
+    // nada. Un TextWriter construido directamente se traga el texto en silencio, que es el
+    // comportamiento de un /dev/null y el unico razonable para un cuerpo vacio -- y de paso sirve
+    // para desactivar la salida sin ramas en el llamador.
+    public class TextWriter
+    {
+        public virtual void Write(string texto)
+        {
+        }
+
+        // Salto de linea `\n` y no `\r\n`, tambien en Windows. El proyecto compara salidas byte a
+        // byte entre corridas y entre maquinas; un final de linea que dependa del sistema convierte
+        // cualquier comparacion en una diferencia falsa. Es el mismo criterio que StringBuilder.
+        public void WriteLine(string texto)
+        {
+            Write(texto);
+            Write("\n");
+        }
+
+        public void WriteLine()
+        {
+            Write("\n");
+        }
+
+        // Los Write de numeros pasan por String.ToString -- la unica conversion del proyecto, y la
+        // que esta medida (doc 92). Reimplementarla aqui seria una segunda copia de esa regla.
+        public void Write(int valor)
+        {
+            raii string texto = String.ToString(valor);
+            Write(texto);
+        }
+
+        public void Write(long valor)
+        {
+            raii string texto = String.ToString(valor);
+            Write(texto);
+        }
+
+        public void Write(ulong valor)
+        {
+            raii string texto = String.ToString(valor);
+            Write(texto);
+        }
+
+        public void Write(bool valor)
+        {
+            raii string texto = String.ToString(valor);
+            Write(texto);
+        }
+
+        public void Write(double valor)
+        {
+            raii string texto = String.ToString(valor);
+            Write(texto);
+        }
+
+        public void Write(char valor)
+        {
+            raii string texto = String.ToString(valor);
+            Write(texto);
+        }
+
+        // Sangria: lo que todo volcado de arbol necesita y lo que todo volcado de arbol acaba
+        // reescribiendo en su propio bucle.
+        public void WriteIndent(int niveles, int anchoPorNivel)
+        {
+            int cuantos = niveles * anchoPorNivel;
+            int i = 0;
+            while (i < cuantos)
+            {
+                Write(" ");
+                i = i + 1;
+            }
+        }
+    }
+
+    // A la consola. `error` elige el canal, que desde SHR-022 son dos de verdad y no uno con
+    // truco: el diagnostico va por error estandar y el resultado por salida estandar, que es lo que
+    // permite redirigir uno sin el otro.
+    public class ConsoleTextWriter : TextWriter
+    {
+        private bool canalDeError;
+
+        public ConsoleTextWriter()
+        {
+            canalDeError = false;
+        }
+
+        public ConsoleTextWriter(bool error)
+        {
+            canalDeError = error;
+        }
+
+        public override void Write(string texto)
+        {
+            if (canalDeError)
+            {
+                Console.ErrorWrite(texto);
+            }
+            else
+            {
+                Console.Write(texto);
+            }
+        }
+    }
+
+    // A memoria, sobre un StringBuilder. Es el que convierte "escribe donde te digan" en "dame el
+    // texto": el mismo codigo que emite un volcado puede acabar en la consola o en una cadena para
+    // compararla con la esperada, sin una sola rama.
+    //
+    // POSEE su StringBuilder. La alternativa --que se lo presten-- dejaria al llamador con dos
+    // maneras de tocar el mismo buffer y ninguna razon para elegir una.
+    public class StringTextWriter : TextWriter
+    {
+        private owned StringBuilder buffer;
+
+        public StringTextWriter()
+        {
+            buffer = new StringBuilder();
+        }
+
+        public StringTextWriter(int capacidadInicial)
+        {
+            buffer = new StringBuilder(capacidadInicial);
+        }
+
+        public override void Write(string texto)
+        {
+            buffer.Append(texto);
+        }
+
+        public int Length() { return buffer.Length(); }
+
+        public void Clear() { buffer.Clear(); }
+
+        // Ver StringBuilder.ToOwnedString sobre por que no se llama ToString.
+        public owned string ToOwnedString() { return buffer.ToOwnedString(); }
+    }
+
+    // A un fichero. ACUMULA EN MEMORIA Y VUELCA UNA VEZ, en Flush, y eso es a proposito.
+    //
+    // La alternativa era llamar a File.AppendAllText en cada Write, y eso son un CreateFileA, un
+    // SetFilePointer, un WriteFile y un CloseHandle POR TROZO -- cuatro llamadas al sistema para
+    // escribir una coma. Un volcado de IR de mil lineas serian decenas de miles de llamadas.
+    //
+    // La contrapartida, dicha claramente: si el proceso muere antes del Flush, no hay fichero. Para
+    // un compilador eso es lo correcto --un fichero de salida a medias es peor que ninguno-- pero
+    // lo convierte en la herramienta equivocada para una bitacora que tenga que sobrevivir a un
+    // cuelgue. Para eso esta ConsoleTextWriter por el canal de error, que no acumula nada.
+    public class FileTextWriter : TextWriter
+    {
+        private owned StringBuilder buffer;
+        private owned string ruta;
+        private bool anexar;
+
+        public FileTextWriter(string rutaDestino)
+        {
+            buffer = new StringBuilder();
+            ruta = String.Copy(rutaDestino);
+            anexar = false;
+        }
+
+        // `anexarAlFinal` decide entre reemplazar el fichero o anadir al final, y se fija en el
+        // constructor y no en Flush: quien crea el escritor sabe si esta empezando un fichero o
+        // continuando uno, y quien lo vuelca ya no tiene por que saberlo.
+        public FileTextWriter(string rutaDestino, bool anexarAlFinal)
+        {
+            buffer = new StringBuilder();
+            ruta = String.Copy(rutaDestino);
+            anexar = anexarAlFinal;
+        }
+
+        public override void Write(string texto)
+        {
+            buffer.Append(texto);
+        }
+
+        public int Pending() { return buffer.Length(); }
+
+        // Vuelca y VACIA. Vaciar es lo que hace que llamar a Flush dos veces no duplique el texto,
+        // y lo que permite volcar por tramos un fichero que no cabe entero en memoria.
+        public void Flush()
+        {
+            raii string contenido = buffer.ToOwnedString();
+            if (anexar)
+            {
+                File.AppendAllText(ruta, contenido);
+            }
+            else
+            {
+                File.WriteAllText(ruta, contenido);
+                // A partir del primer volcado se anexa: si no, un segundo Flush borraria lo que
+                // escribio el primero, que es justo lo contrario de lo que "volcar por tramos"
+                // significa.
+                anexar = true;
+            }
+            buffer.Clear();
+        }
+    }
+}

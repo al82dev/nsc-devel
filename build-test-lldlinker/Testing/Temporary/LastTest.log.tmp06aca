@@ -1,0 +1,1245 @@
+Start testing: Sep 07 21:36 Central Standard Time (Mexico)
+----------------------------------------------------------
+1/303 Testing: nsc.target-data-layout
+1/303 Test: nsc.target-data-layout
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_target_data_layout_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.target-data-layout" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+all TargetDataLayout tests passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.target-data-layout" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.target-data-layout" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/303 Testing: nsc.compilation-model
+2/303 Test: nsc.compilation-model
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_compilation_model_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.compilation-model" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 73 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.compilation-model" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.compilation-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/303 Testing: nsc.project-loader
+3/303 Test: nsc.project-loader
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_loader_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-loader" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 67 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-loader" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-loader" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/303 Testing: nsc.project-graph
+4/303 Test: nsc.project-graph
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_graph_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-graph" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 16 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-graph" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-graph" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/303 Testing: nsc.project-compilation
+5/303 Test: nsc.project-compilation
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_compilation_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-compilation" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 40 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-compilation" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-compilation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/303 Testing: nsc.project-name-lookup
+6/303 Test: nsc.project-name-lookup
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_name_lookup_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-name-lookup" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 76 checks
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-name-lookup" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-name-lookup" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/303 Testing: nsc.source-manager
+7/303 Test: nsc.source-manager
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_source_manager_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.source-manager" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 29 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.source-manager" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.source-manager" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/303 Testing: nsc.diagnostics
+8/303 Test: nsc.diagnostics
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_diagnostic_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.diagnostics" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 13 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.diagnostics" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.diagnostics" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/303 Testing: nsc.lexer
+9/303 Test: nsc.lexer
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_lexer_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.lexer" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 39 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.lexer" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.lexer" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/303 Testing: nsc.parser
+10/303 Test: nsc.parser
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_parser_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.parser" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 20 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.parser" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.parser" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/303 Testing: nsc.namespace-syntax
+11/303 Test: nsc.namespace-syntax
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_namespace_syntax_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.namespace-syntax" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 15 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.namespace-syntax" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.namespace-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/303 Testing: nsc.class-declarations
+12/303 Test: nsc.class-declarations
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_class_declaration_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.class-declarations" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 21 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.class-declarations" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.class-declarations" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/303 Testing: nsc.class-member-syntax
+13/303 Test: nsc.class-member-syntax
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_class_member_syntax_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.class-member-syntax" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 73 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.class-member-syntax" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.class-member-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/303 Testing: nsc.constructor-syntax
+14/303 Test: nsc.constructor-syntax
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_constructor_syntax_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.constructor-syntax" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 13 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.constructor-syntax" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.constructor-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/303 Testing: nsc.partial-class-aggregation
+15/303 Test: nsc.partial-class-aggregation
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_partial_class_aggregation_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.partial-class-aggregation" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 57 checks
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.partial-class-aggregation" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.partial-class-aggregation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/303 Testing: nsc.project-member-model
+16/303 Test: nsc.project-member-model
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_member_model_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-member-model" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 64 checks
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-member-model" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-member-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/303 Testing: nsc.project-type-conversion
+17/303 Test: nsc.project-type-conversion
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_type_conversion_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-type-conversion" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 22 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-type-conversion" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-type-conversion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/303 Testing: nsc.project-method-body-model
+18/303 Test: nsc.project-method-body-model
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_method_body_model_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-method-body-model" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 58 checks
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-method-body-model" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-method-body-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/303 Testing: nsc.project-construction-model
+19/303 Test: nsc.project-construction-model
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_construction_model_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-construction-model" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 64 checks
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-construction-model" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-construction-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/303 Testing: nsc.project-object-layout-model
+20/303 Test: nsc.project-object-layout-model
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_object_layout_model_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-object-layout-model" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 47 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-object-layout-model" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-object-layout-model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/303 Testing: nsc.project-oop-lowering
+21/303 Test: nsc.project-oop-lowering
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_project_oop_lowering_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.project-oop-lowering" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 71 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.project-oop-lowering" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.project-oop-lowering" time elapsed: 00:00:00
+----------------------------------------------------------
+
+22/303 Testing: nsc.macro-a-oop
+22/303 Test: nsc.macro-a-oop
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_macro_a_oop_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.macro-a-oop" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 63 checks
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.macro-a-oop" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.macro-a-oop" time elapsed: 00:00:00
+----------------------------------------------------------
+
+23/303 Testing: nsc.stage37.static-initialization
+23/303 Test: nsc.stage37.static-initialization
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage37_static_initialization_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage37.static-initialization" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 57 checks
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage37.static-initialization" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage37.static-initialization" time elapsed: 00:00:00
+----------------------------------------------------------
+
+24/303 Testing: nsc.stage35.recovery
+24/303 Test: nsc.stage35.recovery
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage35_recovery_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage35.recovery" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 89 checks
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage35.recovery" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage35.recovery" time elapsed: 00:00:00
+----------------------------------------------------------
+
+25/303 Testing: nsc.stage36.recovery
+25/303 Test: nsc.stage36.recovery
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage36_recovery_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage36.recovery" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 95 checks
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage36.recovery" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage36.recovery" time elapsed: 00:00:00
+----------------------------------------------------------
+
+26/303 Testing: nsc.stage38.properties-indexers-operators
+26/303 Test: nsc.stage38.properties-indexers-operators
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage38_properties_indexers_operators_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage38.properties-indexers-operators" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 92 checks
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage38.properties-indexers-operators" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage38.properties-indexers-operators" time elapsed: 00:00:00
+----------------------------------------------------------
+
+27/303 Testing: nsc.stage39.rtti-casts
+27/303 Test: nsc.stage39.rtti-casts
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage39_rtti_casts_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage39.rtti-casts" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 93 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage39.rtti-casts" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage39.rtti-casts" time elapsed: 00:00:00
+----------------------------------------------------------
+
+28/303 Testing: nsc.stage40.struct-value-abi
+28/303 Test: nsc.stage40.struct-value-abi
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage40_struct_value_abi_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage40.struct-value-abi" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 63 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage40.struct-value-abi" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage40.struct-value-abi" time elapsed: 00:00:00
+----------------------------------------------------------
+
+29/303 Testing: nsc.stage41.arrays-strings-core
+29/303 Test: nsc.stage41.arrays-strings-core
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage41_arrays_strings_core_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage41.arrays-strings-core" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 76 checks
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage41.arrays-strings-core" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage41.arrays-strings-core" time elapsed: 00:00:00
+----------------------------------------------------------
+
+30/303 Testing: nsc.stage42.delegates-events
+30/303 Test: nsc.stage42.delegates-events
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage42_delegates_events_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage42.delegates-events" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 62 checks
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage42.delegates-events" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage42.delegates-events" time elapsed: 00:00:00
+----------------------------------------------------------
+
+31/303 Testing: nsc.stage43.lambdas-closures
+31/303 Test: nsc.stage43.lambdas-closures
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage43_lambdas_closures_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage43.lambdas-closures" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 71 checks
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage43.lambdas-closures" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage43.lambdas-closures" time elapsed: 00:00:00
+----------------------------------------------------------
+
+32/303 Testing: nsc.stage44.generics-monomorphization
+32/303 Test: nsc.stage44.generics-monomorphization
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage44_generics_monomorphization_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage44.generics-monomorphization" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 73 checks
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage44.generics-monomorphization" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage44.generics-monomorphization" time elapsed: 00:00:00
+----------------------------------------------------------
+
+33/303 Testing: nsc.stage45.exceptions-syntax
+33/303 Test: nsc.stage45.exceptions-syntax
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_exceptions_syntax_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.exceptions-syntax" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 32 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.exceptions-syntax" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.exceptions-syntax" time elapsed: 00:00:00
+----------------------------------------------------------
+
+34/303 Testing: nsc.stage45.exception-sema
+34/303 Test: nsc.stage45.exception-sema
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_exception_sema_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.exception-sema" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 26 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.exception-sema" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.exception-sema" time elapsed: 00:00:00
+----------------------------------------------------------
+
+35/303 Testing: nsc.stage45.cleanup-scopes
+35/303 Test: nsc.stage45.cleanup-scopes
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_cleanup_scope_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.cleanup-scopes" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 25 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.cleanup-scopes" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.cleanup-scopes" time elapsed: 00:00:00
+----------------------------------------------------------
+
+36/303 Testing: nsc.stage45.finally-flow
+36/303 Test: nsc.stage45.finally-flow
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_finally_flow_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.finally-flow" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 27 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.finally-flow" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.finally-flow" time elapsed: 00:00:00
+----------------------------------------------------------
+
+37/303 Testing: nsc.stage45.using-disposable
+37/303 Test: nsc.stage45.using-disposable
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_using_disposable_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.using-disposable" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 36 checks
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.using-disposable" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.using-disposable" time elapsed: 00:00:00
+----------------------------------------------------------
+
+38/303 Testing: nsc.stage45.hir-exceptional-cfg
+38/303 Test: nsc.stage45.hir-exceptional-cfg
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_hir_exceptional_cfg_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.hir-exceptional-cfg" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 27 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.hir-exceptional-cfg" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.hir-exceptional-cfg" time elapsed: 00:00:00
+----------------------------------------------------------
+
+39/303 Testing: nsc.stage45.mir-exceptional-cfg
+39/303 Test: nsc.stage45.mir-exceptional-cfg
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_mir_exceptional_cfg_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.mir-exceptional-cfg" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 30 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.mir-exceptional-cfg" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.mir-exceptional-cfg" time elapsed: 00:00:00
+----------------------------------------------------------
+
+40/303 Testing: nsc.stage45.native-exception-runtime
+40/303 Test: nsc.stage45.native-exception-runtime
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_native_exception_runtime_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.native-exception-runtime" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 31 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.native-exception-runtime" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.native-exception-runtime" time elapsed: 00:00:00
+----------------------------------------------------------
+
+41/303 Testing: nsc.stage45.llvm-win64-eh-basic
+41/303 Test: nsc.stage45.llvm-win64-eh-basic
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_llvm_win64_eh_basic_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.llvm-win64-eh-basic" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 35 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.llvm-win64-eh-basic" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.llvm-win64-eh-basic" time elapsed: 00:00:00
+----------------------------------------------------------
+
+42/303 Testing: nsc.stage45.llvm-cleanup-funclets
+42/303 Test: nsc.stage45.llvm-cleanup-funclets
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_llvm_cleanup_funclet_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.llvm-cleanup-funclets" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 32 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.llvm-cleanup-funclets" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.llvm-cleanup-funclets" time elapsed: 00:00:00
+----------------------------------------------------------
+
+43/303 Testing: nsc.stage45.typed-catch-rtti
+43/303 Test: nsc.stage45.typed-catch-rtti
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_typed_catch_rtti_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.typed-catch-rtti" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 40 checks
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.typed-catch-rtti" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.typed-catch-rtti" time elapsed: 00:00:00
+----------------------------------------------------------
+
+44/303 Testing: nsc.stage45.linker-pe-eh
+44/303 Test: nsc.stage45.linker-pe-eh
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_linker_pe_eh_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45.linker-pe-eh" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 32 checks
+<end of output>
+Test time =   0.73 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45.linker-pe-eh" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45.linker-pe-eh" time elapsed: 00:00:00
+----------------------------------------------------------
+
+45/303 Testing: nsc.stage45-10.eh-raii-reuse-after-catch
+45/303 Test: nsc.stage45-10.eh-raii-reuse-after-catch
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45-10.eh-raii-reuse-after-catch" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 78 checks
+<end of output>
+Test time =  13.36 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45-10.eh-raii-reuse-after-catch" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45-10.eh-raii-reuse-after-catch" time elapsed: 00:00:13
+----------------------------------------------------------
+
+46/303 Testing: nsc.stage45-11.eh-cleanup-execution
+46/303 Test: nsc.stage45-11.eh-cleanup-execution
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage45_11_eh_cleanup_execution_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage45-11.eh-cleanup-execution" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 72 checks
+<end of output>
+Test time =  12.40 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45-11.eh-cleanup-execution" end time: Sep 07 21:36 Central Standard Time (Mexico)
+"nsc.stage45-11.eh-cleanup-execution" time elapsed: 00:00:12
+----------------------------------------------------------
+
+47/303 Testing: nsc.stage50-11.ownership-execution
+47/303 Test: nsc.stage50-11.ownership-execution
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage50_11_ownership_execution_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage50-11.ownership-execution" start time: Sep 07 21:36 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 196 checks
+<end of output>
+Test time =  50.25 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage50-11.ownership-execution" end time: Sep 07 21:37 Central Standard Time (Mexico)
+"nsc.stage50-11.ownership-execution" time elapsed: 00:00:50
+----------------------------------------------------------
+
+48/303 Testing: nsc.stage40-2.aggregate-abi-execution
+48/303 Test: nsc.stage40-2.aggregate-abi-execution
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage40_2_aggregate_abi_execution_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage40-2.aggregate-abi-execution" start time: Sep 07 21:37 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 64 checks
+<end of output>
+Test time =  15.96 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage40-2.aggregate-abi-execution" end time: Sep 07 21:37 Central Standard Time (Mexico)
+"nsc.stage40-2.aggregate-abi-execution" time elapsed: 00:00:15
+----------------------------------------------------------
+
+49/303 Testing: nsc.stage55x.interop-foundation
+49/303 Test: nsc.stage55x.interop-foundation
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage55x_interop_foundation_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage55x.interop-foundation" start time: Sep 07 21:37 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 20 checks
+<end of output>
+Test time =   2.38 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage55x.interop-foundation" end time: Sep 07 21:37 Central Standard Time (Mexico)
+"nsc.stage55x.interop-foundation" time elapsed: 00:00:02
+----------------------------------------------------------
+
+50/303 Testing: nsc.stage56.c1-interop-completion
+50/303 Test: nsc.stage56.c1-interop-completion
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage56_c1_interop_completion_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage56.c1-interop-completion" start time: Sep 07 21:37 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 92 checks
+<end of output>
+Test time =   7.92 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c1-interop-completion" end time: Sep 07 21:38 Central Standard Time (Mexico)
+"nsc.stage56.c1-interop-completion" time elapsed: 00:00:07
+----------------------------------------------------------
+
+51/303 Testing: nsc.stage56.c2c4-language-completion
+51/303 Test: nsc.stage56.c2c4-language-completion
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage56_c2c4_language_completion_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage56.c2c4-language-completion" start time: Sep 07 21:38 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 82 checks
+<end of output>
+Test time =   6.74 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c2c4-language-completion" end time: Sep 07 21:38 Central Standard Time (Mexico)
+"nsc.stage56.c2c4-language-completion" time elapsed: 00:00:06
+----------------------------------------------------------
+
+52/303 Testing: nsc.stage56.c6-struct-members
+52/303 Test: nsc.stage56.c6-struct-members
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage56_c6_struct_members_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage56.c6-struct-members" start time: Sep 07 21:38 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 50 checks
+<end of output>
+Test time =   5.99 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c6-struct-members" end time: Sep 07 21:38 Central Standard Time (Mexico)
+"nsc.stage56.c6-struct-members" time elapsed: 00:00:05
+----------------------------------------------------------
+
+53/303 Testing: nsc.stage56.c7-definite-assignment
+53/303 Test: nsc.stage56.c7-definite-assignment
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage56_c7_definite_assignment_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage56.c7-definite-assignment" start time: Sep 07 21:38 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 77 checks
+<end of output>
+Test time =   7.70 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c7-definite-assignment" end time: Sep 07 21:38 Central Standard Time (Mexico)
+"nsc.stage56.c7-definite-assignment" time elapsed: 00:00:07
+----------------------------------------------------------
+
+54/303 Testing: nsc.stage56.c8-type-root
+54/303 Test: nsc.stage56.c8-type-root
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage56_c8_type_root_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage56.c8-type-root" start time: Sep 07 21:38 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+The system cannot find the path specified.
+PASS: 55 checks
+<end of output>
+Test time =  58.84 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.c8-type-root" end time: Sep 07 21:39 Central Standard Time (Mexico)
+"nsc.stage56.c8-type-root" time elapsed: 00:00:58
+----------------------------------------------------------
+
+55/303 Testing: nsc.stage56.bugfix
+55/303 Test: nsc.stage56.bugfix
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage56_bugfix_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage56.bugfix" start time: Sep 07 21:39 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 58 checks
+<end of output>
+Test time =  61.19 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage56.bugfix" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage56.bugfix" time elapsed: 00:01:01
+----------------------------------------------------------
+
+56/303 Testing: nsc.stage57.language
+56/303 Test: nsc.stage57.language
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage57_language_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage57.language" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 27 checks
+<end of output>
+Test time =  21.59 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage57.language" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage57.language" time elapsed: 00:00:21
+----------------------------------------------------------
+
+57/303 Testing: nsc.stage60.language-contract
+57/303 Test: nsc.stage60.language-contract
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage60_language_contract_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage60.language-contract" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 957 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage60.language-contract" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage60.language-contract" time elapsed: 00:00:00
+----------------------------------------------------------
+
+58/303 Testing: nsc.stage61.compiler-hardening
+58/303 Test: nsc.stage61.compiler-hardening
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage61_compiler_hardening_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage61.compiler-hardening" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 177 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage61.compiler-hardening" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage61.compiler-hardening" time elapsed: 00:00:00
+----------------------------------------------------------
+
+59/303 Testing: nsc.stage62.toolchain-contract
+59/303 Test: nsc.stage62.toolchain-contract
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage62_toolchain_contract_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage62.toolchain-contract" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+FAIL: canonical contract has one header and sixteen ordered fields
+FAILED: 1 of 43 checks
+EVIDENCIA CONSERVADA EN: C:\Users\al82dev\AppData\Local\Temp\nativesharp_stage62_toolchain_contract
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Failed.
+"nsc.stage62.toolchain-contract" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage62.toolchain-contract" time elapsed: 00:00:00
+----------------------------------------------------------
+
+60/303 Testing: nsc.stage63.installation-verifier
+60/303 Test: nsc.stage63.installation-verifier
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage63_installation_verifier_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage63.installation-verifier" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 28 checks
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage63.installation-verifier" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage63.installation-verifier" time elapsed: 00:00:00
+----------------------------------------------------------
+
+61/303 Testing: nsc.stage64.installation-manifest
+61/303 Test: nsc.stage64.installation-manifest
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage64_installation_manifest_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage64.installation-manifest" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 55 checks
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage64.installation-manifest" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage64.installation-manifest" time elapsed: 00:00:00
+----------------------------------------------------------
+
+62/303 Testing: nsc.stage66.e9-e10-release-contract
+62/303 Test: nsc.stage66.e9-e10-release-contract
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_stage66_e9_e10_release_contract_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.stage66.e9-e10-release-contract" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 69 checks
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage66.e9-e10-release-contract" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.stage66.e9-e10-release-contract" time elapsed: 00:00:00
+----------------------------------------------------------
+
+63/303 Testing: nsc.version.identity
+63/303 Test: nsc.version.identity
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_cc1_build_identity_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.version.identity" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 9 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.version.identity" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.version.identity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+64/303 Testing: nsc.cc1.integer-evaluator
+64/303 Test: nsc.cc1.integer-evaluator
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_cc1_integer_evaluator_tests.exe"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.cc1.integer-evaluator" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 39 checks
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.integer-evaluator" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.cc1.integer-evaluator" time elapsed: 00:00:00
+----------------------------------------------------------
+
+65/303 Testing: nsc.cc1.correctness.cc1-c1-constants
+65/303 Test: nsc.cc1.correctness.cc1-c1-constants
+Command: "A:/nsc-devel/build-test-lldlinker/tests/nsc_cc1_correctness_tests.exe" "cc1-c1-constants"
+Directory: A:/nsc-devel/build-test-lldlinker
+"nsc.cc1.correctness.cc1-c1-constants" start time: Sep 07 21:40 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 6 checks
+<end of output>
+Test time =   7.37 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.cc1.correctness.cc1-c1-constants" end time: Sep 07 21:40 Central Standard Time (Mexico)
+"nsc.cc1.correctness.cc1-c1-constants" time elapsed: 00:00:07
+----------------------------------------------------------
+

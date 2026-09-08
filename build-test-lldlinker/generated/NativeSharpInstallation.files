@@ -73,5 +73,6 @@ share/nativesharp/spec/NativeSharp_Compiler_1_0_conformance.map
 share/nativesharp/spec/NativeSharp_Compiler_Contract_1_0.md
 share/nativesharp/spec/NativeSharp_Grammar_1_0.ebnf
 share/nativesharp/spec/NativeSharp_Language_Specification_1_0.md
+share/nativesharp/toolchain/NativeSharpCompatibility.policy
 share/nativesharp/toolchain/NativeSharpInstallation.files
 share/nativesharp/toolchain/NativeSharpToolchain.contract

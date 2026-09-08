@@ -1,0 +1,55 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.Exception -- Stage 52.
+    //
+    // The compiler's throw/catch machinery (Stage 45 exceptional control flow, Stage 49
+    // RAII-aware unwinding) has recognized exactly one root type by fully-qualified name since
+    // it was built: `NativeSharp.Core.Exception`. Every example that used `throw`/`catch` before
+    // this stage (Stage 45, Stage 49, ...) had to declare its own throwaway `Exception` class
+    // locally to satisfy that requirement, because the real one was never shipped as part of the
+    // core library -- so `throw`/`catch` were reachable in principle but not actually usable
+    // without every project re-declaring this same boilerplate class first. Stage 52 needs real
+    // exceptions (a missing Dictionary<TKey,TValue> key, an empty Queue<T>.Dequeue(), ...), so
+    // this file ships the real thing once, here, for every project to reuse.
+    //
+    // This is pure library code -- no compiler change was needed, or made, to add this file; the
+    // exception mechanism already fully worked, it simply had nothing named
+    // `NativeSharp.Core.Exception` to find.
+    public class Exception
+    {
+        public string Message;
+    }
+
+    // Mirrors System.InvalidOperationException: the receiver is in a state that does not support
+    // the requested operation (e.g. Queue<T>.Dequeue()/Stack<T>.Pop()/Peek() on an empty
+    // collection).
+    public class InvalidOperationException : Exception
+    {
+    }
+
+    // Mirrors System.ArgumentOutOfRangeException: an index/count argument fell outside the
+    // receiver's valid range. NativeSharp's own array bounds checks already trap on raw native
+    // index expressions (a hard runtime fault, not a catchable exception); collection methods
+    // that validate an index explicitly before touching storage throw this instead, so the
+    // failure is catchable exactly like real C#'s List<T>[index]/RemoveAt(index).
+    public class ArgumentOutOfRangeException : Exception
+    {
+    }
+
+    // Mirrors System.Collections.Generic.KeyNotFoundException: Dictionary<TKey,TValue>'s
+    // (and SortedDictionary<TKey,TValue>'s) indexer getter throws this for an absent key,
+    // exactly like real C#'s Dictionary<TKey,TValue> -- the non-throwing alternative is
+    // TryGetValue.
+    public class KeyNotFoundException : Exception
+    {
+    }
+
+    // Mirrors System.ArgumentException: an argument's VALUE (as opposed to merely its range,
+    // which is ArgumentOutOfRangeException's job) is invalid for the requested operation --
+    // e.g. Dictionary<TKey,TValue>.Add(key, value)/SortedDictionary<TKey,TValue>.Add(key, value)
+    // throw this when an entry for that key already exists, exactly like real C#'s
+    // Dictionary<TKey,TValue>.Add.
+    public class ArgumentException : Exception
+    {
+    }
+}

@@ -1,8 +1,10 @@
-#include <algorithm>
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
+#include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ToolchainContract.h"
+#include <algorithm>
 
 #include "nativesharp/AST/AstDumper.h"
 #include "nativesharp/Basic/Version.h"
@@ -18,47 +20,47 @@
 #include "nativesharp/Frontend/FrontendCompilation.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectCompilationDumper.h"
+#include "nativesharp/Frontend/ProjectConstructionModelDumper.h"
+#include "nativesharp/Frontend/ProjectDestructionModelDumper.h"
 #include "nativesharp/Frontend/ProjectGenericModelDumper.h"
-#include "nativesharp/Frontend/ProjectNameLookupDumper.h"
-#include "nativesharp/Frontend/ProjectMemberModelDumper.h"
-#include "nativesharp/Frontend/ProjectMethodBodyModelDumper.h"
 #include "nativesharp/Frontend/ProjectInheritanceModelDumper.h"
 #include "nativesharp/Frontend/ProjectInterfaceModelDumper.h"
-#include "nativesharp/Frontend/ProjectVirtualDispatchModelDumper.h"
-#include "nativesharp/Frontend/ProjectDestructionModelDumper.h"
-#include "nativesharp/Frontend/ProjectConstructionModelDumper.h"
+#include "nativesharp/Frontend/ProjectMemberModelDumper.h"
+#include "nativesharp/Frontend/ProjectMethodBodyModelDumper.h"
+#include "nativesharp/Frontend/ProjectNameLookupDumper.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
+#include "nativesharp/Frontend/ProjectVirtualDispatchModelDumper.h"
 #include "nativesharp/HIR/HirDumper.h"
 #include "nativesharp/HIR/HirVerifier.h"
-#include "nativesharp/Lexer/TokenDumper.h"
+#include "nativesharp/Interop/CHeaderGenerator.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmLowerer.h"
 #include "nativesharp/LLVM/LlvmModule.h"
-#include "nativesharp/LLVM/LlvmVersion.h"
-#include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
-#include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
+#include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
-#include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/LLVM/LlvmVersion.h"
+#include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
+#include "nativesharp/Lexer/TokenDumper.h"
 #include "nativesharp/Linker/CoffArchiveVerifier.h"
+#include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
 #include "nativesharp/Linker/WindowsExecutableBuilder.h"
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
-#include "nativesharp/Interop/CHeaderGenerator.h"
-#include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/MIR/MirDumper.h"
 #include "nativesharp/MIR/MirVerifier.h"
 #include "nativesharp/Passes/OptimizationDumper.h"
 #include "nativesharp/Passes/OptimizationVerifier.h"
 #include "nativesharp/Passes/PassPipelineDumper.h"
-#include "nativesharp/Sema/SemanticDumper.h"
-#include "nativesharp/Sema/SymbolDumper.h"
+#include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "nativesharp/SSA/SsaDumper.h"
 #include "nativesharp/SSA/SsaVerifier.h"
+#include "nativesharp/Sema/SemanticDumper.h"
+#include "nativesharp/Sema/SymbolDumper.h"
 #include "nativesharp/Source/SourceFile.h"
-#include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "nativesharp/Target/TargetDataLayout.h"
 #include "nativesharp/Target/TargetInfo.h"
 
@@ -90,8 +92,7 @@ struct LayoutRow
     BuiltinLayoutKind kind;
 };
 
-constexpr std::array<LayoutRow, 15> kLayoutRows = {{
-    {"bool", BuiltinLayoutKind::Bool},
+constexpr std::array<LayoutRow, 15> kLayoutRows = {{{"bool", BuiltinLayoutKind::Bool},
     {"byte", BuiltinLayoutKind::Byte},
     {"char", BuiltinLayoutKind::Char},
     {"short", BuiltinLayoutKind::Short},
@@ -105,10 +106,9 @@ constexpr std::array<LayoutRow, 15> kLayoutRows = {{
     {"float", BuiltinLayoutKind::Float},
     {"double", BuiltinLayoutKind::Double},
     {"enum", BuiltinLayoutKind::Enum},
-    {"pointer", BuiltinLayoutKind::Pointer}
-}};
+    {"pointer", BuiltinLayoutKind::Pointer}}};
 
-std::string foldedPathKey(const std::filesystem::path& path)
+std::string foldedPathKey(const std::filesystem::path &path)
 {
     std::string key = path.lexically_normal().generic_string();
     std::transform(key.begin(), key.end(), key.begin(), [](unsigned char value) {
@@ -154,10 +154,7 @@ std::string escapedStringLiteral(std::string_view value)
     return result;
 }
 
-bool sourceTypeForMetadataKey(
-    std::string typeKey,
-    std::string& sourceType,
-    std::string& error)
+bool sourceTypeForMetadataKey(std::string typeKey, std::string &sourceType, std::string &error)
 {
     std::vector<std::string> modifiers;
     while (!typeKey.empty())
@@ -231,7 +228,7 @@ std::string ownershipPrefix(interop::LibraryMetadataOwnershipKind ownership)
     return {};
 }
 
-bool isPublicNativeMethod(const interop::LibraryMetadataMember& member) noexcept
+bool isPublicNativeMethod(const interop::LibraryMetadataMember &member) noexcept
 {
     constexpr std::uint32_t kAbstract = 1U << 5U;
     constexpr std::uint32_t kExternC = 1U << 8U;
@@ -241,8 +238,8 @@ bool isPublicNativeMethod(const interop::LibraryMetadataMember& member) noexcept
     constexpr std::uint32_t kIndexerAccessor = 1U << 13U;
     constexpr std::uint32_t kUserOperator = 1U << 16U;
     constexpr std::uint32_t kUserConversion = 1U << 17U;
-    constexpr std::uint32_t kExcluded = kAbstract | kCompilerGenerated | kPropertyAccessor |
-        kIndexerAccessor | kUserOperator | kUserConversion;
+    constexpr std::uint32_t kExcluded =
+        kAbstract | kCompilerGenerated | kPropertyAccessor | kIndexerAccessor | kUserOperator | kUserConversion;
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kPublicAccessibility = 3U;
     return member.kind == kMethodKind && member.accessibility == kPublicAccessibility &&
@@ -278,30 +275,29 @@ std::string metadataBaseTypeKey(std::string typeKey)
     return typeKey;
 }
 
-const interop::LibraryMetadataType* metadataTypeForKey(const interop::LibraryMetadata& metadata,
-                                                       const std::string& typeKey)
+const interop::LibraryMetadataType *metadataTypeForKey(
+    const interop::LibraryMetadata &metadata, const std::string &typeKey)
 {
     const std::string base = metadataBaseTypeKey(typeKey);
     if (!base.starts_with("type:")) return nullptr;
     const std::string_view identity(base.data() + 5, base.size() - 5);
     const auto found =
-        std::ranges::find_if(metadata.types, [&](const auto& candidate) { return candidate.identityKey == identity; });
+        std::ranges::find_if(metadata.types, [&](const auto &candidate) { return candidate.identityKey == identity; });
     return found == metadata.types.end() ? nullptr : &*found;
 }
 
-bool canMaterializeContractType(const interop::LibraryMetadata& metadata,
-                                const std::string& typeKey,
-                                std::unordered_set<std::string>& visiting)
+bool canMaterializeContractType(
+    const interop::LibraryMetadata &metadata, const std::string &typeKey, std::unordered_set<std::string> &visiting)
 {
     const std::string base = metadataBaseTypeKey(typeKey);
     if (base.starts_with("builtin:")) return true;
-    const interop::LibraryMetadataType* type = metadataTypeForKey(metadata, base);
+    const interop::LibraryMetadataType *type = metadataTypeForKey(metadata, base);
     if (type == nullptr || type->fullyQualifiedName.find('+') != std::string::npos ||
         type->fullyQualifiedName.find('`') != std::string::npos ||
         (type->kind != interop::LibraryMetadataTypeKind::Class &&
-         type->kind != interop::LibraryMetadataTypeKind::Struct &&
-         type->kind != interop::LibraryMetadataTypeKind::Enum &&
-         type->kind != interop::LibraryMetadataTypeKind::Delegate))
+            type->kind != interop::LibraryMetadataTypeKind::Struct &&
+            type->kind != interop::LibraryMetadataTypeKind::Enum &&
+            type->kind != interop::LibraryMetadataTypeKind::Delegate))
     {
         return false;
     }
@@ -314,15 +310,15 @@ bool canMaterializeContractType(const interop::LibraryMetadata& metadata,
         // hablan la misma celda code/context/ destroy/reserved. Esa garantía
         // aparece por primera vez en el contrato 1.8.
         const bool managedAbiKnown = metadata.formatMinor >= 8 &&
-            metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
-            metadata.managedDelegateCellSize == interop::kManagedDelegateCellSize;
-        if (metadata.formatMinor < 5 || (!externC && !managedAbiKnown) ||
-            type->delegateReturnTypeKey.empty() || !visiting.insert(type->identityKey).second)
+                                     metadata.delegateAbiVersion == interop::kDelegateAbiVersion &&
+                                     metadata.managedDelegateCellSize == interop::kManagedDelegateCellSize;
+        if (metadata.formatMinor < 5 || (!externC && !managedAbiKnown) || type->delegateReturnTypeKey.empty() ||
+            !visiting.insert(type->identityKey).second)
         {
             return false;
         }
         bool valid = canMaterializeContractType(metadata, type->delegateReturnTypeKey, visiting);
-        for (const std::string& parameterTypeKey : type->delegateParameterTypeKeys)
+        for (const std::string &parameterTypeKey : type->delegateParameterTypeKeys)
             valid = canMaterializeContractType(metadata, parameterTypeKey, visiting) && valid;
         visiting.erase(type->identityKey);
         return valid;
@@ -342,7 +338,7 @@ bool canMaterializeContractType(const interop::LibraryMetadata& metadata,
         return true;
     }
     if (!visiting.insert(type->identityKey).second) return true;
-    for (const interop::LibraryMetadataField& field : type->fields)
+    for (const interop::LibraryMetadataField &field : type->fields)
     {
         if (!canMaterializeContractType(metadata, field.typeKey, visiting))
         {
@@ -354,20 +350,19 @@ bool canMaterializeContractType(const interop::LibraryMetadata& metadata,
     return true;
 }
 
-bool canMaterializeContractType(const interop::LibraryMetadata& metadata, const std::string& typeKey)
+bool canMaterializeContractType(const interop::LibraryMetadata &metadata, const std::string &typeKey)
 {
     std::unordered_set<std::string> visiting;
     return canMaterializeContractType(metadata, typeKey, visiting);
 }
 
-bool canMaterializeNativeMethod(const interop::LibraryMetadata& metadata, const interop::LibraryMetadataMember& member)
+bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
 {
     if (!isPublicNativeMethod(member)) return false;
     constexpr std::uint32_t kStatic = 1U << 0U;
-    const interop::LibraryMetadataType* declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
+    const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr) return false;
-    if ((member.flags & kStatic) == 0U &&
-        declaringType->kind != interop::LibraryMetadataTypeKind::Struct &&
+    if ((member.flags & kStatic) == 0U && declaringType->kind != interop::LibraryMetadataTypeKind::Struct &&
         declaringType->kind != interop::LibraryMetadataTypeKind::Class)
     {
         return false;
@@ -377,9 +372,8 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata& metadata, const 
     // a method only when every nominal type in its signature can be reconstructed
     // under those exact rules.
     if (!canMaterializeContractType(metadata, member.declaredTypeKey)) return false;
-    if (std::ranges::any_of(member.parameters, [&](const auto& parameter) {
-            return !canMaterializeContractType(metadata, parameter.typeKey);
-        }))
+    if (std::ranges::any_of(member.parameters,
+            [&](const auto &parameter) { return !canMaterializeContractType(metadata, parameter.typeKey); }))
     {
         return false;
     }
@@ -387,11 +381,11 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata& metadata, const 
     // NSMETA <=1.3 encoded the pointer carrier but not whether the source said
     // ref/out/in.
     return member.signatureKey.find("ref ") == std::string::npos &&
-        member.signatureKey.find("out ") == std::string::npos &&
-        member.signatureKey.find("in ") == std::string::npos;
+           member.signatureKey.find("out ") == std::string::npos &&
+           member.signatureKey.find("in ") == std::string::npos;
 }
 
-bool canMaterializeConstructor(const interop::LibraryMetadata& metadata, const interop::LibraryMetadataMember& member)
+bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
 {
     constexpr std::uint8_t kConstructorKind = 3U;
     constexpr std::uint8_t kPublicAccessibility = 3U;
@@ -399,13 +393,13 @@ bool canMaterializeConstructor(const interop::LibraryMetadata& metadata, const i
     {
         return false;
     }
-    const interop::LibraryMetadataType* declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
+    const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr || declaringType->kind != interop::LibraryMetadataTypeKind::Class)
     {
         return false;
     }
-    const auto dispatch = std::ranges::find_if(metadata.dispatchTables, [&](const auto& candidate)
-                                               { return candidate.typeKey == member.declaringTypeKey; });
+    const auto dispatch = std::ranges::find_if(
+        metadata.dispatchTables, [&](const auto &candidate) { return candidate.typeKey == member.declaringTypeKey; });
     if (dispatch == metadata.dispatchTables.end() || dispatch->descriptorAccessorName.empty())
     {
         // NSMETA <=1.5 remains readable and its ordinary methods remain consumable,
@@ -413,12 +407,12 @@ bool canMaterializeConstructor(const interop::LibraryMetadata& metadata, const i
         // `new` is intentionally not materialized for that predecessor.
         return false;
     }
-    return std::ranges::all_of(member.parameters, [&](const auto& parameter)
-                               { return canMaterializeContractType(metadata, parameter.typeKey); });
+    return std::ranges::all_of(member.parameters,
+        [&](const auto &parameter) { return canMaterializeContractType(metadata, parameter.typeKey); });
 }
 
-bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata& metadata,
-                                          const interop::LibraryMetadataMember& member)
+bool canMaterializePrecompiledDeclaration(
+    const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
 {
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kConstructorKind = 3U;
@@ -433,43 +427,37 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata& metada
     constexpr std::uint32_t kUserOperator = 1U << 16U;
     constexpr std::uint32_t kUserConversion = 1U << 17U;
 
-    const interop::LibraryMetadataType* declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
-    if (declaringType == nullptr)
-        return false;
+    const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
+    if (declaringType == nullptr) return false;
 
-    if (member.kind == kConstructorKind)
-        return canMaterializeConstructor(metadata, member);
+    if (member.kind == kConstructorKind) return canMaterializeConstructor(metadata, member);
     if (member.kind == kDestructorKind)
     {
         return declaringType->kind == interop::LibraryMetadataTypeKind::Class && !member.mangledName.empty();
     }
     if (member.kind != kMethodKind || (member.flags & (kCompilerGenerated | kPropertyAccessor | kIndexerAccessor |
-                                                       kUserOperator | kUserConversion)) != 0U)
+                                                          kUserOperator | kUserConversion)) != 0U)
     {
         return false;
     }
 
     const bool dispatchContract = (member.flags & (kVirtual | kOverride | kAbstract)) != 0U ||
                                   declaringType->kind == interop::LibraryMetadataTypeKind::Interface;
-    if (member.accessibility != kPublicAccessibility && !dispatchContract)
-        return false;
-    if ((member.flags & kAbstract) == 0U && member.mangledName.empty())
-        return false;
-    if (!canMaterializeContractType(metadata, member.declaredTypeKey))
-        return false;
-    return std::ranges::all_of(member.parameters, [&](const auto& parameter)
-                               { return canMaterializeContractType(metadata, parameter.typeKey); });
+    if (member.accessibility != kPublicAccessibility && !dispatchContract) return false;
+    if ((member.flags & kAbstract) == 0U && member.mangledName.empty()) return false;
+    if (!canMaterializeContractType(metadata, member.declaredTypeKey)) return false;
+    return std::ranges::all_of(member.parameters,
+        [&](const auto &parameter) { return canMaterializeContractType(metadata, parameter.typeKey); });
 }
 
-void collectMaterializedContractTypes(const interop::LibraryMetadata& metadata,
-                                      const std::string& typeKey,
-                                      std::set<std::string>& identities)
+void collectMaterializedContractTypes(
+    const interop::LibraryMetadata &metadata, const std::string &typeKey, std::set<std::string> &identities)
 {
-    const interop::LibraryMetadataType* type = metadataTypeForKey(metadata, typeKey);
+    const interop::LibraryMetadataType *type = metadataTypeForKey(metadata, typeKey);
     if (type == nullptr || !identities.insert(type->identityKey).second) return;
     if (type->kind == interop::LibraryMetadataTypeKind::Struct)
     {
-        for (const interop::LibraryMetadataField& field : type->fields)
+        for (const interop::LibraryMetadataField &field : type->fields)
             collectMaterializedContractTypes(metadata, field.typeKey, identities);
     }
     else if (type->kind == interop::LibraryMetadataTypeKind::Class ||
@@ -479,15 +467,14 @@ void collectMaterializedContractTypes(const interop::LibraryMetadata& metadata,
         // depende de la cadena de bases e interfaces. Esto es especialmente visible
         // al importar una excepción: el catch necesita reconstruir también el
         // ancestro que demuestra que es lanzable.
-        if (!type->baseTypeKey.empty())
-            collectMaterializedContractTypes(metadata, type->baseTypeKey, identities);
-        for (const std::string& interfaceTypeKey : type->interfaceTypeKeys)
+        if (!type->baseTypeKey.empty()) collectMaterializedContractTypes(metadata, type->baseTypeKey, identities);
+        for (const std::string &interfaceTypeKey : type->interfaceTypeKeys)
             collectMaterializedContractTypes(metadata, interfaceTypeKey, identities);
     }
     else if (type->kind == interop::LibraryMetadataTypeKind::Delegate)
     {
         collectMaterializedContractTypes(metadata, type->delegateReturnTypeKey, identities);
-        for (const std::string& parameterTypeKey : type->delegateParameterTypeKeys)
+        for (const std::string &parameterTypeKey : type->delegateParameterTypeKeys)
             collectMaterializedContractTypes(metadata, parameterTypeKey, identities);
     }
 }
@@ -504,19 +491,18 @@ std::string_view sourceAccessibility(std::uint8_t accessibility) noexcept
     }
 }
 
-const interop::LibraryMetadataMember* metadataFieldMember(const interop::LibraryMetadata& metadata,
-                                                          const interop::LibraryMetadataType& type,
-                                                          std::string_view name)
+const interop::LibraryMetadataMember *metadataFieldMember(
+    const interop::LibraryMetadata &metadata, const interop::LibraryMetadataType &type, std::string_view name)
 {
     constexpr std::uint8_t kFieldKind = 0U;
     const std::string typeKey = "type:" + type.identityKey;
-    const auto found = std::ranges::find_if(metadata.members, [&](const auto& member) {
+    const auto found = std::ranges::find_if(metadata.members, [&](const auto &member) {
         return member.kind == kFieldKind && member.declaringTypeKey == typeKey && member.name == name;
     });
     return found == metadata.members.end() ? nullptr : &*found;
 }
 
-std::string enumConstantSource(const interop::LibraryMetadataType& type, std::uint64_t bits)
+std::string enumConstantSource(const interop::LibraryMetadataType &type, std::uint64_t bits)
 {
     const bool signedUnderlying =
         type.enumUnderlyingTypeKey == "builtin:sbyte" || type.enumUnderlyingTypeKey == "builtin:short" ||
@@ -538,11 +524,11 @@ std::string_view parameterPassPrefix(interop::LibraryMetadataParameterPassKind p
     return {};
 }
 
-std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata& metadata)
+std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &metadata)
 {
     constexpr std::uint32_t kStatic = 1U << 0U;
     std::vector<std::string> symbols;
-    for (const interop::LibraryMetadataMember& member : metadata.members)
+    for (const interop::LibraryMetadataMember &member : metadata.members)
     {
         // Physical validation must remain stricter than source materialization.
         // Every public static method was already part of the published native
@@ -559,9 +545,9 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata& 
         }
     }
     constexpr std::uint8_t kPublicAccessibility = 3U;
-    for (const interop::LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+    for (const interop::LibraryMetadataDispatch &dispatch : metadata.dispatchTables)
     {
-        const interop::LibraryMetadataType* type = metadataTypeForKey(metadata, dispatch.typeKey);
+        const interop::LibraryMetadataType *type = metadataTypeForKey(metadata, dispatch.typeKey);
         if (type != nullptr && type->accessibility == kPublicAccessibility && !dispatch.descriptorAccessorName.empty())
         {
             symbols.push_back(dispatch.descriptorAccessorName);
@@ -572,11 +558,11 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata& 
     return symbols;
 }
 
-std::vector<std::string> metadataRequiredSymbols(const interop::LibraryMetadata& metadata)
+std::vector<std::string> metadataRequiredSymbols(const interop::LibraryMetadata &metadata)
 {
     std::vector<std::string> symbols = publishedNativeSymbols(metadata);
     symbols.reserve(symbols.size() + metadata.exports.size());
-    for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+    for (const interop::LibraryMetadataExport &exportRecord : metadata.exports)
     {
         symbols.push_back(exportRecord.cAbiName);
     }
@@ -585,13 +571,11 @@ std::vector<std::string> metadataRequiredSymbols(const interop::LibraryMetadata&
     return symbols;
 }
 
-std::vector<std::string> missingSymbols(
-    std::span<const std::string> expected,
-    std::span<const std::string> actual)
+std::vector<std::string> missingSymbols(std::span<const std::string> expected, std::span<const std::string> actual)
 {
     const std::unordered_set<std::string> actualSet(actual.begin(), actual.end());
     std::vector<std::string> missing;
-    for (const std::string& symbol : expected)
+    for (const std::string &symbol : expected)
     {
         if (!actualSet.contains(symbol)) missing.push_back(symbol);
     }
@@ -608,12 +592,11 @@ std::string describeSymbols(std::span<const std::string> symbols)
         if (index != 0) description << ", ";
         description << '\'' << symbols[index] << '\'';
     }
-    if (symbols.size() > displayed)
-        description << ", ... (" << (symbols.size() - displayed) << " more)";
+    if (symbols.size() > displayed) description << ", ... (" << (symbols.size() - displayed) << " more)";
     return description.str();
 }
 
-void printMetadataAbiContract(const interop::LibraryMetadata& metadata, std::ostream& output)
+void printMetadataAbiContract(const interop::LibraryMetadata &metadata, std::ostream &output)
 {
     if (metadata.formatMinor < 8)
     {
@@ -630,10 +613,7 @@ void printMetadataAbiContract(const interop::LibraryMetadata& metadata, std::ost
            << "exception-abi: " << metadata.exceptionAbiVersion << '\n';
 }
 
-bool sourceDefaultValue(
-    const interop::LibraryMetadataParameter& parameter,
-    std::string& source,
-    std::string& error)
+bool sourceDefaultValue(const interop::LibraryMetadataParameter &parameter, std::string &source, std::string &error)
 {
     using Kind = interop::LibraryMetadataDefaultValueKind;
     switch (parameter.defaultValueKind)
@@ -645,8 +625,7 @@ bool sourceDefaultValue(
             source = (parameter.defaultValueFlags & 1U) != 0U ? "-" : "";
             source += std::to_string(parameter.defaultValueBits);
             return true;
-        case Kind::Floating:
-        {
+        case Kind::Floating: {
             std::ostringstream stream;
             stream << std::setprecision(std::numeric_limits<double>::max_digits10)
                    << std::bit_cast<double>(parameter.defaultValueBits);
@@ -654,16 +633,14 @@ bool sourceDefaultValue(
             if (source.find_first_of(".eE") == std::string::npos) source += ".0";
             return true;
         }
-        case Kind::Character:
-        {
+        case Kind::Character: {
             const std::uint64_t value = parameter.defaultValueBits;
             if (value == '\\') source = "'\\\\'";
             else if (value == '\'') source = "'\\\''";
             else if (value == '\n') source = "'\\n'";
             else if (value == '\r') source = "'\\r'";
             else if (value == '\t') source = "'\\t'";
-            else if (value >= 32 && value <= 126)
-                source = std::string("'") + static_cast<char>(value) + "'";
+            else if (value >= 32 && value <= 126) source = std::string("'") + static_cast<char>(value) + "'";
             else
             {
                 error = "metadata-backed source import cannot spell non-ASCII character "
@@ -678,25 +655,21 @@ bool sourceDefaultValue(
     return false;
 }
 
-bool buildPrecompiledPublicSource(
-    const interop::LibraryMetadata& metadata,
-    std::string& source,
-    std::string& error)
+bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std::string &source, std::string &error)
 {
     struct PublishedType final
     {
-        const interop::LibraryMetadataType* type = nullptr;
-        std::vector<const interop::LibraryMetadataMember*> methods;
+        const interop::LibraryMetadataType *type = nullptr;
+        std::vector<const interop::LibraryMetadataMember *> methods;
     };
     std::map<std::string, PublishedType> published;
     std::set<std::string> contractTypeIdentities;
     std::set<std::string> genericMethodOwners;
     constexpr std::uint8_t kPublicAccessibility = 3U;
     constexpr std::uint8_t kGenericMethodKind = 3U;
-    for (const interop::LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+    for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
     {
-        if (generic.kind != kGenericMethodKind)
-            continue;
+        if (generic.kind != kGenericMethodKind) continue;
         if (generic.ownerName.find('+') != std::string::npos)
         {
             error = "metadata-backed generic method import does not yet support "
@@ -704,36 +677,34 @@ bool buildPrecompiledPublicSource(
                     generic.ownerName + "'";
             return false;
         }
-        genericMethodOwners.insert(generic.namespaceName.empty() ? generic.ownerName
-                                                                 : generic.namespaceName + "." + generic.ownerName);
+        genericMethodOwners.insert(
+            generic.namespaceName.empty() ? generic.ownerName : generic.namespaceName + "." + generic.ownerName);
     }
-    for (const interop::LibraryMetadataType& type : metadata.types)
+    for (const interop::LibraryMetadataType &type : metadata.types)
     {
         if (type.accessibility == kPublicAccessibility && (type.kind == interop::LibraryMetadataTypeKind::Class ||
-                                                           type.kind == interop::LibraryMetadataTypeKind::Interface))
+                                                              type.kind == interop::LibraryMetadataTypeKind::Interface))
         {
             published[type.identityKey].type = &type;
             collectMaterializedContractTypes(metadata, type.baseTypeKey, contractTypeIdentities);
-            for (const std::string& interfaceTypeKey : type.interfaceTypeKeys)
+            for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
                 collectMaterializedContractTypes(metadata, interfaceTypeKey, contractTypeIdentities);
-            for (const interop::LibraryMetadataField& field : type.fields)
+            for (const interop::LibraryMetadataField &field : type.fields)
                 collectMaterializedContractTypes(metadata, field.typeKey, contractTypeIdentities);
         }
     }
-    for (const interop::LibraryMetadataMember& member : metadata.members)
+    for (const interop::LibraryMetadataMember &member : metadata.members)
     {
         if (!canMaterializePrecompiledDeclaration(metadata, member))
         {
             continue;
         }
-        const auto type = std::find_if(
-            metadata.types.begin(), metadata.types.end(), [&](const auto& candidate) {
-                return "type:" + candidate.identityKey == member.declaringTypeKey;
-            });
+        const auto type = std::find_if(metadata.types.begin(), metadata.types.end(), [&](const auto &candidate) {
+            return "type:" + candidate.identityKey == member.declaringTypeKey;
+        });
         if (type == metadata.types.end())
         {
-            error = "metadata member '" + member.name +
-                "' refers to a declaring type that is not present";
+            error = "metadata member '" + member.name + "' refers to a declaring type that is not present";
             return false;
         }
         if (type->accessibility != kPublicAccessibility)
@@ -742,20 +713,19 @@ bool buildPrecompiledPublicSource(
             constexpr std::uint32_t kOverride = 1U << 4U;
             constexpr std::uint32_t kAbstract = 1U << 5U;
             constexpr std::uint8_t kDestructorKind = 4U;
-            if ((member.flags & (kVirtual | kOverride | kAbstract)) == 0U && member.kind != kDestructorKind)
-            continue;
+            if ((member.flags & (kVirtual | kOverride | kAbstract)) == 0U && member.kind != kDestructorKind) continue;
         }
-        PublishedType& group = published[type->identityKey];
+        PublishedType &group = published[type->identityKey];
         group.type = &*type;
         group.methods.push_back(&member);
         collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
-        for (const interop::LibraryMetadataParameter& parameter : member.parameters)
+        for (const interop::LibraryMetadataParameter &parameter : member.parameters)
             collectMaterializedContractTypes(metadata, parameter.typeKey, contractTypeIdentities);
     }
-    for (const std::string& identity : contractTypeIdentities)
+    for (const std::string &identity : contractTypeIdentities)
     {
         const auto type = std::ranges::find_if(
-            metadata.types, [&](const auto& candidate) { return candidate.identityKey == identity; });
+            metadata.types, [&](const auto &candidate) { return candidate.identityKey == identity; });
         if (type == metadata.types.end())
         {
             error = "metadata contract refers to missing type '" + identity + "'";
@@ -770,7 +740,7 @@ bool buildPrecompiledPublicSource(
     // declaraciones, de modo que una base ubicada en otro namespace conserve su
     // identidad sin reescribirla ni depender del archivo fuente original.
     std::set<std::string> importedNamespaces;
-    for (const auto& [identity, group] : published)
+    for (const auto &[identity, group] : published)
     {
         static_cast<void>(identity);
         if (group.type == nullptr) continue;
@@ -778,17 +748,15 @@ bool buildPrecompiledPublicSource(
         if (separator != std::string::npos)
             importedNamespaces.insert(group.type->fullyQualifiedName.substr(0, separator));
     }
-    for (const std::string& namespaceName : importedNamespaces)
+    for (const std::string &namespaceName : importedNamespaces)
         generated << "using " << namespaceName << ";\n";
     if (!importedNamespaces.empty()) generated << '\n';
-    const auto emitParameters = [&](const interop::LibraryMetadataMember& member) -> bool
-    {
+    const auto emitParameters = [&](const interop::LibraryMetadataMember &member) -> bool {
         for (std::size_t index = 0; index < member.parameters.size(); ++index)
         {
-            if (index != 0)
-                generated << ", ";
+            if (index != 0) generated << ", ";
             std::string parameterType;
-            const interop::LibraryMetadataParameter& parameter = member.parameters[index];
+            const interop::LibraryMetadataParameter &parameter = member.parameters[index];
             std::string sourceTypeKey = parameter.typeKey;
             if (parameter.passKind != interop::LibraryMetadataParameterPassKind::Value)
             {
@@ -801,23 +769,20 @@ bool buildPrecompiledPublicSource(
                 }
                 sourceTypeKey.pop_back();
             }
-            if (!sourceTypeForMetadataKey(sourceTypeKey, parameterType, error))
-                return false;
+            if (!sourceTypeForMetadataKey(sourceTypeKey, parameterType, error)) return false;
             generated << parameterPassPrefix(parameter.passKind) << ownershipPrefix(parameter.ownership)
                       << parameterType << ' '
                       << (parameter.name.empty() ? "arg" + std::to_string(index) : parameter.name);
             std::string defaultValue;
-            if (!sourceDefaultValue(parameter, defaultValue, error))
-                return false;
-            if (!defaultValue.empty())
-                generated << " = " << defaultValue;
+            if (!sourceDefaultValue(parameter, defaultValue, error)) return false;
+            if (!defaultValue.empty()) generated << " = " << defaultValue;
         }
         return true;
     };
-    for (const auto& [identity, group] : published)
+    for (const auto &[identity, group] : published)
     {
         static_cast<void>(identity);
-        const interop::LibraryMetadataType& type = *group.type;
+        const interop::LibraryMetadataType &type = *group.type;
         if (type.fullyQualifiedName.find('+') != std::string::npos ||
             type.fullyQualifiedName.find('`') != std::string::npos)
         {
@@ -828,12 +793,10 @@ bool buildPrecompiledPublicSource(
             return false;
         }
         const std::size_t separator = type.fullyQualifiedName.find_last_of('.');
-        const std::string namespaceName = separator == std::string::npos
-            ? std::string()
-            : type.fullyQualifiedName.substr(0, separator);
-        const std::string typeName = separator == std::string::npos
-            ? type.fullyQualifiedName
-            : type.fullyQualifiedName.substr(separator + 1);
+        const std::string namespaceName =
+            separator == std::string::npos ? std::string() : type.fullyQualifiedName.substr(0, separator);
+        const std::string typeName =
+            separator == std::string::npos ? type.fullyQualifiedName : type.fullyQualifiedName.substr(separator + 1);
         if (!namespaceName.empty()) generated << "namespace " << namespaceName << "\n{\n";
         const std::string_view typeAccessibility =
             type.accessibility == kPublicAccessibility ? std::string_view("public") : std::string_view("internal");
@@ -845,7 +808,7 @@ bool buildPrecompiledPublicSource(
             if ((type.delegateFlags & 1U) != 0U) generated << "extern C ";
             generated << "delegate " << returnType << ' ' << typeName << '(';
             for (std::size_t parameterIndex = 0; parameterIndex < type.delegateParameterTypeKeys.size();
-                 ++parameterIndex)
+                ++parameterIndex)
             {
                 if (parameterIndex != 0) generated << ", ";
                 std::string parameterType;
@@ -860,10 +823,10 @@ bool buildPrecompiledPublicSource(
         if (type.kind == interop::LibraryMetadataTypeKind::Enum)
         {
             std::string underlyingType;
-            if (!sourceTypeForMetadataKey(type.enumUnderlyingTypeKey.empty() ? "builtin:int"
-                                                                             : type.enumUnderlyingTypeKey,
-                                          underlyingType,
-                                          error))
+            if (!sourceTypeForMetadataKey(
+                    type.enumUnderlyingTypeKey.empty() ? "builtin:int" : type.enumUnderlyingTypeKey,
+                    underlyingType,
+                    error))
             {
                 return false;
             }
@@ -871,7 +834,7 @@ bool buildPrecompiledPublicSource(
             bool firstEnumerator = true;
             constexpr std::uint8_t kFieldKind = 0U;
             const std::string declaringTypeKey = "type:" + type.identityKey;
-            for (const interop::LibraryMetadataMember& member : metadata.members)
+            for (const interop::LibraryMetadataMember &member : metadata.members)
             {
                 if (member.kind != kFieldKind || member.declaringTypeKey != declaringTypeKey ||
                     member.constantKind == 0U)
@@ -884,40 +847,33 @@ bool buildPrecompiledPublicSource(
             }
             if (!firstEnumerator) generated << '\n';
             generated << "}\n";
-            if (!namespaceName.empty())
-                generated << "}\n";
+            if (!namespaceName.empty()) generated << "}\n";
             continue;
         }
 
         if (type.kind == interop::LibraryMetadataTypeKind::Interface)
         {
             generated << typeAccessibility << " interface " << typeName;
-            if (!type.interfaceTypeKeys.empty())
-                generated << " : ";
+            if (!type.interfaceTypeKeys.empty()) generated << " : ";
             for (std::size_t index = 0; index < type.interfaceTypeKeys.size(); ++index)
             {
-                if (index != 0)
-                    generated << ", ";
+                if (index != 0) generated << ", ";
                 std::string baseInterface;
-                if (!sourceTypeForMetadataKey(type.interfaceTypeKeys[index], baseInterface, error))
-                    return false;
+                if (!sourceTypeForMetadataKey(type.interfaceTypeKeys[index], baseInterface, error)) return false;
                 if (const std::size_t dot = baseInterface.find_last_of('.'); dot != std::string::npos)
                     baseInterface = baseInterface.substr(dot + 1);
                 generated << baseInterface;
             }
             generated << "\n{\n";
             constexpr std::uint8_t kMethodKind = 2U;
-            for (const interop::LibraryMetadataMember* member : group.methods)
+            for (const interop::LibraryMetadataMember *member : group.methods)
             {
-                if (member->kind != kMethodKind)
-                    continue;
+                if (member->kind != kMethodKind) continue;
                 std::string returnType;
-                if (!sourceTypeForMetadataKey(member->declaredTypeKey, returnType, error))
-                    return false;
+                if (!sourceTypeForMetadataKey(member->declaredTypeKey, returnType, error)) return false;
                 generated << "    public " << ownershipPrefix(member->declaredOwnership) << returnType << ' '
                           << member->name << '(';
-                if (!emitParameters(*member))
-                    return false;
+                if (!emitParameters(*member)) return false;
                 generated << ");\n";
             }
             generated << "}\n";
@@ -942,14 +898,12 @@ bool buildPrecompiledPublicSource(
             // and `size` makes the consumer reject a declaration it cannot reproduce.
             generated << "pack(" << type.alignment << ") align(" << type.alignment << ") size(" << type.size
                       << ") struct ";
-        } else
+        }
+        else
         {
-            if (genericMethodOwners.contains(type.fullyQualifiedName))
-                generated << "partial ";
-            if ((type.flags & (1U << 1U)) != 0U)
-                generated << "abstract ";
-            if ((type.flags & (1U << 2U)) != 0U)
-                generated << "sealed ";
+            if (genericMethodOwners.contains(type.fullyQualifiedName)) generated << "partial ";
+            if ((type.flags & (1U << 1U)) != 0U) generated << "abstract ";
+            if ((type.flags & (1U << 2U)) != 0U) generated << "sealed ";
             generated << "class ";
         }
         generated << typeName;
@@ -961,22 +915,19 @@ bool buildPrecompiledPublicSource(
             if (!type.baseTypeKey.empty())
             {
                 std::string baseType;
-                if (!sourceTypeForMetadataKey(type.baseTypeKey, baseType, error))
-                    return false;
+                if (!sourceTypeForMetadataKey(type.baseTypeKey, baseType, error)) return false;
                 if (const std::size_t dot = baseType.find_last_of('.'); dot != std::string::npos)
                     baseType = baseType.substr(dot + 1);
                 generated << baseType;
                 wroteBase = true;
             }
-            for (const std::string& interfaceTypeKey : type.interfaceTypeKeys)
+            for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
             {
                 std::string interfaceType;
-                if (!sourceTypeForMetadataKey(interfaceTypeKey, interfaceType, error))
-                    return false;
+                if (!sourceTypeForMetadataKey(interfaceTypeKey, interfaceType, error)) return false;
                 if (const std::size_t dot = interfaceType.find_last_of('.'); dot != std::string::npos)
                     interfaceType = interfaceType.substr(dot + 1);
-                if (wroteBase)
-                    generated << ", ";
+                if (wroteBase) generated << ", ";
                 generated << interfaceType;
                 wroteBase = true;
             }
@@ -988,15 +939,14 @@ bool buildPrecompiledPublicSource(
         {
             for (std::size_t fieldIndex = 0; fieldIndex < type.fields.size(); ++fieldIndex)
             {
-                const interop::LibraryMetadataField& field = type.fields[fieldIndex];
+                const interop::LibraryMetadataField &field = type.fields[fieldIndex];
                 std::string fieldType;
                 if (!sourceTypeForMetadataKey(field.typeKey, fieldType, error)) return false;
-                const interop::LibraryMetadataMember* member = metadataFieldMember(metadata, type, field.name);
+                const interop::LibraryMetadataMember *member = metadataFieldMember(metadata, type, field.name);
                 const std::string fieldName =
                     field.name.empty() ? "__nsc_layout_field_" + std::to_string(fieldIndex) : field.name;
                 generated << "    ";
-                if (type.kind == interop::LibraryMetadataTypeKind::Struct)
-                    generated << "at(" << field.offset << ") ";
+                if (type.kind == interop::LibraryMetadataTypeKind::Struct) generated << "at(" << field.offset << ") ";
                 generated << (member == nullptr ? std::string_view("private")
                                                 : sourceAccessibility(member->accessibility))
                           << ' ';
@@ -1005,7 +955,7 @@ bool buildPrecompiledPublicSource(
             }
         }
 
-        for (const interop::LibraryMetadataMember* member : group.methods)
+        for (const interop::LibraryMetadataMember *member : group.methods)
         {
             constexpr std::uint8_t kMethodKind = 2U;
             constexpr std::uint8_t kConstructorKind = 3U;
@@ -1018,13 +968,11 @@ bool buildPrecompiledPublicSource(
             if (member->kind == kConstructorKind)
             {
                 generated << "    " << sourceAccessibility(member->accessibility) << ' ' << typeName << '(';
-                if (!emitParameters(*member))
-                    return false;
+                if (!emitParameters(*member)) return false;
                 generated << ") { }\n";
                 continue;
             }
-            if (member->kind != kMethodKind)
-                continue;
+            if (member->kind != kMethodKind) continue;
             std::string returnType;
             if (!sourceTypeForMetadataKey(member->declaredTypeKey, returnType, error)) return false;
             constexpr std::uint32_t kStatic = 1U << 0U;
@@ -1034,14 +982,10 @@ bool buildPrecompiledPublicSource(
             constexpr std::uint32_t kSealed = 1U << 6U;
             generated << "    " << sourceAccessibility(member->accessibility) << ' ';
             if ((member->flags & kStatic) != 0U) generated << "static ";
-            if ((member->flags & kSealed) != 0U)
-                generated << "sealed ";
-            if ((member->flags & kOverride) != 0U)
-                generated << "override ";
-            else if ((member->flags & kAbstract) != 0U)
-                generated << "abstract ";
-            else if ((member->flags & kVirtual) != 0U)
-                generated << "virtual ";
+            if ((member->flags & kSealed) != 0U) generated << "sealed ";
+            if ((member->flags & kOverride) != 0U) generated << "override ";
+            else if ((member->flags & kAbstract) != 0U) generated << "abstract ";
+            else if ((member->flags & kVirtual) != 0U) generated << "virtual ";
             generated << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
             if (!emitParameters(*member)) return false;
             // The empty body is an implementation detail of the generated syntax.
@@ -1050,19 +994,18 @@ bool buildPrecompiledPublicSource(
             generated << (((member->flags & kAbstract) != 0U) ? ");\n" : ") { }\n");
         }
         generated << "}\n";
-        if (!namespaceName.empty())
-            generated << "}\n";
+        if (!namespaceName.empty()) generated << "}\n";
     }
     source = generated.str();
     return true;
 }
 
-bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata& metadata, std::string& source,
-                                           std::string& error)
+bool buildPrecompiledGenericTemplateSource(
+    const interop::LibraryMetadata &metadata, std::string &source, std::string &error)
 {
     constexpr std::uint8_t kGenericMethodKind = 3U;
     std::ostringstream generated;
-    for (const interop::LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+    for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
     {
         if (generic.sourceText.empty())
         {
@@ -1070,8 +1013,7 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata& metad
             // body.
             continue;
         }
-        if (!generic.namespaceName.empty())
-            generated << "namespace " << generic.namespaceName << "\n{\n";
+        if (!generic.namespaceName.empty()) generated << "namespace " << generic.namespaceName << "\n{\n";
         if (generic.kind == kGenericMethodKind)
         {
             if (generic.ownerName.empty() || generic.ownerName.find('+') != std::string::npos)
@@ -1082,8 +1024,8 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata& metad
             }
             const std::string fullyQualifiedOwner =
                 generic.namespaceName.empty() ? generic.ownerName : generic.namespaceName + "." + generic.ownerName;
-            const auto owner = std::ranges::find_if(metadata.types, [&](const auto& candidate)
-                                                    { return candidate.fullyQualifiedName == fullyQualifiedOwner; });
+            const auto owner = std::ranges::find_if(metadata.types,
+                [&](const auto &candidate) { return candidate.fullyQualifiedName == fullyQualifiedOwner; });
             if (owner == metadata.types.end() || owner->kind != interop::LibraryMetadataTypeKind::Class ||
                 owner->accessibility != 3U)
             {
@@ -1091,10 +1033,8 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata& metad
                 return false;
             }
             generated << "public partial ";
-            if ((owner->flags & (1U << 1U)) != 0U)
-                generated << "abstract ";
-            if ((owner->flags & (1U << 2U)) != 0U)
-                generated << "sealed ";
+            if ((owner->flags & (1U << 1U)) != 0U) generated << "abstract ";
+            if ((owner->flags & (1U << 2U)) != 0U) generated << "sealed ";
             generated << "class " << generic.ownerName << "\n{\n" << generic.sourceText << "\n}\n";
         }
         else
@@ -1108,9 +1048,7 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata& metad
 }
 
 bool configurePrecompiledModules(
-    const std::filesystem::path& projectFile,
-    frontend::ProjectCompilation& compilation,
-    std::string& error)
+    const std::filesystem::path &projectFile, frontend::ProjectCompilation &compilation, std::string &error)
 {
     compilation::ProjectGraphLoader loader;
     std::optional<compilation::ProjectGraph> graph = loader.load(projectFile, error);
@@ -1118,23 +1056,21 @@ bool configurePrecompiledModules(
 
     interop::LibraryMetadataCodec codec;
     std::vector<frontend::PrecompiledSyntaxModule> modules;
-    for (const compilation::Project& project : graph->projects())
+    for (const compilation::Project &project : graph->projects())
     {
-        for (const compilation::LibraryReference& reference : project.libraryReferences())
+        for (const compilation::LibraryReference &reference : project.libraryReferences())
         {
             interop::LibraryMetadata metadata;
-            if (!codec.read(reference.metadataPath, metadata, error) ||
-                !codec.verifyCurrentCompiler(metadata, error))
+            if (!codec.read(reference.metadataPath, metadata, error) || !codec.verifyCurrentCompiler(metadata, error))
             {
-                error = "cannot import precompiled metadata '" +
-                    reference.metadataPath.generic_string() + "': " + error;
+                error =
+                    "cannot import precompiled metadata '" + reference.metadataPath.generic_string() + "': " + error;
                 return false;
             }
             std::string publicSource;
             if (!buildPrecompiledPublicSource(metadata, publicSource, error))
             {
-                error = "cannot materialize public API for module '" + metadata.moduleName +
-                    "': " + error;
+                error = "cannot materialize public API for module '" + metadata.moduleName + "': " + error;
                 return false;
             }
             std::string templateSource;
@@ -1143,34 +1079,34 @@ bool configurePrecompiledModules(
                 error = "cannot materialize public templates for module '" + metadata.moduleName + "': " + error;
                 return false;
             }
-            modules.push_back({
-                project.projectFile(),
+            modules.push_back({project.projectFile(),
                 reference.metadataPath,
                 metadata.moduleName,
-                std::move(publicSource), std::move(templateSource), [&]()
-                               {
-                                   std::vector<frontend::PrecompiledGenericSpecialization> result;
-                                   result.reserve(metadata.genericSpecializations.size());
-                                   for (const interop::LibraryMetadataGenericSpecialization& specialization :
-                                        metadata.genericSpecializations)
-                                   {
-                                       result.push_back(
-                                           {static_cast<frontend::GenericTemplateKind>(specialization.kind),
-                                            specialization.templateKey, specialization.specializationKey,
-                                            specialization.specializedName, specialization.typeArguments});
-                                   }
-                                   return result;
-                               }()});
+                std::move(publicSource),
+                std::move(templateSource),
+                [&]() {
+                    std::vector<frontend::PrecompiledGenericSpecialization> result;
+                    result.reserve(metadata.genericSpecializations.size());
+                    for (const interop::LibraryMetadataGenericSpecialization &specialization :
+                        metadata.genericSpecializations)
+                    {
+                        result.push_back({static_cast<frontend::GenericTemplateKind>(specialization.kind),
+                            specialization.templateKey,
+                            specialization.specializationKey,
+                            specialization.specializedName,
+                            specialization.typeArguments});
+                    }
+                    return result;
+                }()});
         }
     }
     return compilation.setPrecompiledModules(std::move(modules), error);
 }
 
-bool appendValidatedLibraryReferences(
-    const frontend::ProjectCompilation& compilation,
-    std::vector<std::filesystem::path>& libraries,
-    std::vector<std::filesystem::path>& runtimeLibraries,
-    std::string& error)
+bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compilation,
+    std::vector<std::filesystem::path> &libraries,
+    std::vector<std::filesystem::path> &runtimeLibraries,
+    std::string &error)
 {
     error.clear();
     if (compilation.projectGraph() == nullptr)
@@ -1180,7 +1116,7 @@ bool appendValidatedLibraryReferences(
     }
 
     std::unordered_set<std::string> linkedLibraries;
-    for (const std::filesystem::path& library : libraries)
+    for (const std::filesystem::path &library : libraries)
     {
         linkedLibraries.insert(foldedPathKey(library));
     }
@@ -1189,15 +1125,15 @@ bool appendValidatedLibraryReferences(
     std::unordered_map<std::string, std::filesystem::path> moduleOwners;
     std::unordered_map<std::string, std::vector<PrecompiledExportContract>> publishedExports;
     std::unordered_map<std::string, std::string> publishedNativeMethods;
-    for (const compilation::Project& project : compilation.projectGraph()->projects())
+    for (const compilation::Project &project : compilation.projectGraph()->projects())
     {
         moduleOwners.emplace(project.moduleName(), project.projectFile());
     }
 
     interop::LibraryMetadataCodec metadataCodec;
-    for (const compilation::Project& project : compilation.projectGraph()->projects())
+    for (const compilation::Project &project : compilation.projectGraph()->projects())
     {
-        for (const compilation::LibraryReference& reference : project.libraryReferences())
+        for (const compilation::LibraryReference &reference : project.libraryReferences())
         {
             const std::string libraryKey = foldedPathKey(reference.libraryPath);
             if (validatedReferences.contains(libraryKey)) continue;
@@ -1206,7 +1142,7 @@ bool appendValidatedLibraryReferences(
             if (!archiveVerifier.verify(reference.libraryPath))
             {
                 error = "precompiled library '" + reference.libraryPath.string() +
-                    "' is not a valid COFF archive: " + archiveVerifier.error();
+                        "' is not a valid COFF archive: " + archiveVerifier.error();
                 return false;
             }
 
@@ -1214,76 +1150,66 @@ bool appendValidatedLibraryReferences(
             std::string metadataError;
             if (!metadataCodec.read(reference.metadataPath, metadata, metadataError))
             {
-                error = "cannot read metadata for precompiled library '" +
-                    reference.libraryPath.string() + "': " + metadataError;
+                error = "cannot read metadata for precompiled library '" + reference.libraryPath.string() +
+                        "': " + metadataError;
                 return false;
             }
             if (!metadataCodec.verifyCurrentCompiler(metadata, metadataError))
             {
-                error = "incompatible metadata for precompiled library '" +
-                    reference.libraryPath.string() + "': " + metadataError;
+                error = "incompatible metadata for precompiled library '" + reference.libraryPath.string() +
+                        "': " + metadataError;
                 return false;
             }
             if (metadata.moduleName.empty())
             {
                 error = "precompiled library metadata has an empty module identity: '" +
-                    reference.metadataPath.string() + "'";
+                        reference.metadataPath.string() + "'";
                 return false;
             }
 
             const std::unordered_set<std::string> archiveSymbols(
-                archiveVerifier.info().symbolNames.begin(),
-                archiveVerifier.info().symbolNames.end());
-            for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+                archiveVerifier.info().symbolNames.begin(), archiveVerifier.info().symbolNames.end());
+            for (const interop::LibraryMetadataExport &exportRecord : metadata.exports)
             {
                 if (archiveSymbols.contains(exportRecord.cAbiName)) continue;
-                error = "precompiled library '" + reference.libraryPath.string() +
-                    "' does not contain C ABI symbol '" + exportRecord.cAbiName +
-                    "' published by metadata module '" + metadata.moduleName + "'";
+                error = "precompiled library '" + reference.libraryPath.string() + "' does not contain C ABI symbol '" +
+                        exportRecord.cAbiName + "' published by metadata module '" + metadata.moduleName + "'";
                 return false;
             }
             const std::vector<std::string> nativeSymbols = publishedNativeSymbols(metadata);
-            for (const std::string& symbol : nativeSymbols)
+            for (const std::string &symbol : nativeSymbols)
             {
                 if (!archiveSymbols.contains(symbol))
                 {
                     error = "precompiled library '" + reference.libraryPath.string() +
-                        "' does not contain NativeSharp symbol '" + symbol +
-                        "' published by metadata module '" + metadata.moduleName + "'";
+                            "' does not contain NativeSharp symbol '" + symbol + "' published by metadata module '" +
+                            metadata.moduleName + "'";
                     return false;
                 }
-                const auto [ownerIterator, inserted] =
-                    publishedNativeMethods.emplace(symbol, metadata.moduleName);
+                const auto [ownerIterator, inserted] = publishedNativeMethods.emplace(symbol, metadata.moduleName);
                 if (!inserted && ownerIterator->second != metadata.moduleName)
                 {
-                    error = "NativeSharp symbol '" + symbol +
-                        "' is published by both module '" + ownerIterator->second + "' and '" +
-                        metadata.moduleName + "'";
+                    error = "NativeSharp symbol '" + symbol + "' is published by both module '" +
+                            ownerIterator->second + "' and '" + metadata.moduleName + "'";
                     return false;
                 }
             }
 
             const auto owner = moduleOwners.find(metadata.moduleName);
-            if (owner != moduleOwners.end() &&
-                foldedPathKey(owner->second) != foldedPathKey(reference.metadataPath))
+            if (owner != moduleOwners.end() && foldedPathKey(owner->second) != foldedPathKey(reference.metadataPath))
             {
                 error = "duplicate module name '" + metadata.moduleName + "' in precompiled library '" +
-                    reference.libraryPath.string() + "' and '" + owner->second.string() + "'";
+                        reference.libraryPath.string() + "' and '" + owner->second.string() + "'";
                 return false;
             }
-            if (owner == moduleOwners.end())
-                moduleOwners.emplace(metadata.moduleName, reference.libraryPath);
+            if (owner == moduleOwners.end()) moduleOwners.emplace(metadata.moduleName, reference.libraryPath);
 
-            const std::string runtimeName = reference.runtimePath.empty()
-                ? std::string()
-                : foldedName(reference.runtimePath.filename().string());
-            for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+            const std::string runtimeName =
+                reference.runtimePath.empty() ? std::string() : foldedName(reference.runtimePath.filename().string());
+            for (const interop::LibraryMetadataExport &exportRecord : metadata.exports)
             {
-                publishedExports[exportRecord.cAbiName].push_back({
-                    metadata.moduleName,
-                    runtimeName,
-                    exportRecord.returnTypeKey,
-                    exportRecord.parameterTypeKeys});
+                publishedExports[exportRecord.cAbiName].push_back(
+                    {metadata.moduleName, runtimeName, exportRecord.returnTypeKey, exportRecord.parameterTypeKeys});
             }
 
             if (!reference.runtimePath.empty())
@@ -1291,25 +1217,23 @@ bool appendValidatedLibraryReferences(
                 linker::PeExecutableVerifier peVerifier;
                 if (!peVerifier.verifyDynamicLibrary(reference.runtimePath))
                 {
-                    error = "runtime '" + reference.runtimePath.string() +
-                        "' is not a valid DLL: " + peVerifier.error();
+                    error =
+                        "runtime '" + reference.runtimePath.string() + "' is not a valid DLL: " + peVerifier.error();
                     return false;
                 }
                 std::vector<std::string> expectedExports;
                 expectedExports.reserve(metadata.exports.size() + nativeSymbols.size());
-                for (const interop::LibraryMetadataExport& exportRecord : metadata.exports)
+                for (const interop::LibraryMetadataExport &exportRecord : metadata.exports)
                 {
                     expectedExports.push_back(exportRecord.cAbiName);
                 }
-                expectedExports.insert(
-                    expectedExports.end(), nativeSymbols.begin(), nativeSymbols.end());
+                expectedExports.insert(expectedExports.end(), nativeSymbols.begin(), nativeSymbols.end());
                 std::sort(expectedExports.begin(), expectedExports.end());
                 expectedExports.erase(
                     std::unique(expectedExports.begin(), expectedExports.end()), expectedExports.end());
                 std::vector<std::string> actualExports = peVerifier.info().exportedSymbols;
                 std::sort(actualExports.begin(), actualExports.end());
-                actualExports.erase(
-                    std::unique(actualExports.begin(), actualExports.end()), actualExports.end());
+                actualExports.erase(std::unique(actualExports.begin(), actualExports.end()), actualExports.end());
                 if (actualExports != expectedExports)
                 {
                     const std::vector<std::string> missing = missingSymbols(expectedExports, actualExports);
@@ -1350,7 +1274,7 @@ bool appendValidatedLibraryReferences(
     }
 
     if (compilation.oopMirModel() == nullptr) return true;
-    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+    for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
     {
         if (function.isImportedNative)
         {
@@ -1367,19 +1291,18 @@ bool appendValidatedLibraryReferences(
         const auto found = publishedExports.find(function.cAbiName);
         if (found == publishedExports.end()) continue;
 
-        const PrecompiledExportContract* contract = nullptr;
+        const PrecompiledExportContract *contract = nullptr;
         if (!function.importDllName.empty())
         {
             const std::string requestedRuntime =
                 foldedName(std::filesystem::path(function.importDllName).filename().string());
-            for (const PrecompiledExportContract& candidate : found->second)
+            for (const PrecompiledExportContract &candidate : found->second)
             {
                 if (candidate.runtimeName != requestedRuntime) continue;
                 if (contract != nullptr)
                 {
-                    error = "extern C import '" + function.cAbiName +
-                        "' is published more than once by runtime DLL '" +
-                        function.importDllName + "'";
+                    error = "extern C import '" + function.cAbiName + "' is published more than once by runtime DLL '" +
+                            function.importDllName + "'";
                     return false;
                 }
                 contract = &candidate;
@@ -1405,8 +1328,7 @@ bool appendValidatedLibraryReferences(
             function.parameterTypeKeys != contract->parameterTypeKeys)
         {
             error = "extern C import '" + function.cAbiName +
-                "' does not match the metadata signature published by module '" +
-                contract->moduleName + "'";
+                    "' does not match the metadata signature published by module '" + contract->moduleName + "'";
             return false;
         }
     }
@@ -1414,19 +1336,16 @@ bool appendValidatedLibraryReferences(
 }
 
 bool verifyLinkedRuntimeLibraries(
-    std::span<const std::filesystem::path> runtimeLibraries,
-    const linker::PeExecutableInfo& image,
-    std::string& error)
+    std::span<const std::filesystem::path> runtimeLibraries, const linker::PeExecutableInfo &image, std::string &error)
 {
-    for (const std::filesystem::path& runtime : runtimeLibraries)
+    for (const std::filesystem::path &runtime : runtimeLibraries)
     {
         std::string expected = runtime.filename().string();
         std::transform(expected.begin(), expected.end(), expected.begin(), [](unsigned char value) {
             return static_cast<char>(std::tolower(value));
         });
-        const bool found = std::any_of(
-            image.importedLibraries.begin(), image.importedLibraries.end(),
-            [&](std::string actual) {
+        const bool found =
+            std::any_of(image.importedLibraries.begin(), image.importedLibraries.end(), [&](std::string actual) {
                 std::transform(actual.begin(), actual.end(), actual.begin(), [](unsigned char value) {
                     return static_cast<char>(std::tolower(value));
                 });
@@ -1434,19 +1353,16 @@ bool verifyLinkedRuntimeLibraries(
             });
         if (!found)
         {
-            error = "linked PE does not import declared runtime DLL '" +
-                runtime.filename().string() + "'; the import .lib does not match Runtime";
+            error = "linked PE does not import declared runtime DLL '" + runtime.filename().string() +
+                    "'; the import .lib does not match Runtime";
             return false;
         }
     }
     return true;
 }
-}
+} // namespace
 
-ExitCode Driver::run(
-    std::span<const std::string_view> arguments,
-    std::ostream& output,
-    std::ostream& error) const
+ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
 {
     if (arguments.empty())
     {
@@ -1454,8 +1370,7 @@ ExitCode Driver::run(
         return ExitCode::Success;
     }
 
-    llvm_backend::LlvmOptimizationLevel optimizationLevel =
-        llvm_backend::LlvmOptimizationLevel::O0;
+    llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
     bool optimizationLevelSeen = false;
     std::vector<std::string_view> normalizedArguments;
     normalizedArguments.reserve(arguments.size());
@@ -1487,18 +1402,10 @@ ExitCode Driver::run(
             optimizationLevelSeen = true;
             switch (argument[2])
             {
-                case '0':
-                    optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
-                    break;
-                case '1':
-                    optimizationLevel = llvm_backend::LlvmOptimizationLevel::O1;
-                    break;
-                case '2':
-                    optimizationLevel = llvm_backend::LlvmOptimizationLevel::O2;
-                    break;
-                case '3':
-                    optimizationLevel = llvm_backend::LlvmOptimizationLevel::O3;
-                    break;
+                case '0': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0; break;
+                case '1': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O1; break;
+                case '2': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O2; break;
+                case '3': optimizationLevel = llvm_backend::LlvmOptimizationLevel::O3; break;
                 default:
                     error << "nsc: error: unsupported LLVM optimization level '" << argument << "'\n";
                     return ExitCode::CommandLineError;
@@ -1572,6 +1479,11 @@ ExitCode Driver::run(
             output << currentToolchainContract();
             return ExitCode::Success;
         }
+        if (argument == "--print-compatibility-policy")
+        {
+            output << currentCompatibilityPolicy();
+            return ExitCode::Success;
+        }
         if (argument == "--print-linker")
         {
             return printLinker(output, error);
@@ -1615,6 +1527,43 @@ ExitCode Driver::run(
             output << "toolchain contract verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
+        if (action == "--write-compatibility-policy")
+        {
+            std::string policyError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeCompatibilityPolicy(destination, policyError))
+            {
+                error << "nsc: error: " << policyError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "compatibility policy written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-compatibility-policy")
+        {
+            std::string policyError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyCompatibilityPolicy(source, policyError))
+            {
+                error << "nsc: error: " << policyError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "compatibility policy verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--check-compiler-compatibility")
+        {
+            std::string explanation;
+            std::string compatibilityError;
+            const bool compatible = checkCompilerCompatibility(args[1], explanation, compatibilityError);
+            if (!compatible)
+            {
+                error << "nsc: error: " << (compatibilityError.empty() ? explanation : compatibilityError) << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << explanation << '\n';
+            return ExitCode::Success;
+        }
         if (action == "--verify-installation")
         {
             std::string installationError;
@@ -1631,15 +1580,14 @@ ExitCode Driver::run(
         {
             return verifyLibraryMetadata(args[1], output, error);
         }
-        if (action == "--check-project" || action == "--dump-project" ||
-            action == "--check-project-graph" || action == "--dump-project-graph" ||
-            action == "--check-project-syntax" || action == "--dump-project-compilation" ||
-            action == "--check-project-generics" || action == "--dump-project-generics" ||
-            action == "--check-project-names" || action == "--dump-project-names" ||
-            action == "--check-project-members" || action == "--dump-project-members" ||
-            action == "--check-project-inheritance" || action == "--dump-project-inheritance" ||
-            action == "--check-project-interfaces" || action == "--dump-project-interfaces" ||
-            action == "--check-project-generic-constraints" ||
+        if (action == "--check-project" || action == "--dump-project" || action == "--check-project-graph" ||
+            action == "--dump-project-graph" || action == "--check-project-syntax" ||
+            action == "--dump-project-compilation" || action == "--check-project-generics" ||
+            action == "--dump-project-generics" || action == "--check-project-names" ||
+            action == "--dump-project-names" || action == "--check-project-members" ||
+            action == "--dump-project-members" || action == "--check-project-inheritance" ||
+            action == "--dump-project-inheritance" || action == "--check-project-interfaces" ||
+            action == "--dump-project-interfaces" || action == "--check-project-generic-constraints" ||
             action == "--check-project-method-bodies" || action == "--dump-project-method-bodies" ||
             action == "--check-project-virtual-dispatch" || action == "--dump-project-virtual-dispatch" ||
             action == "--check-project-destruction" || action == "--dump-project-destruction" ||
@@ -1651,16 +1599,13 @@ ExitCode Driver::run(
         {
             return runProject(action, args[1], output, error);
         }
-        if (action == "--check" || action == "--dump-source" || action == "--dump-tokens" ||
-            action == "--dump-ast" || action == "--dump-symbols" || action == "--dump-sema" ||
-            action == "--dump-hir" || action == "--verify-hir" || action == "--dump-mir" ||
-            action == "--verify-mir" || action == "--dump-cfg" || action == "--verify-cfg" ||
-            action == "--dump-dominance" || action == "--verify-dominance" ||
-            action == "--dump-ssa" || action == "--verify-ssa" ||
-            action == "--dump-opt" || action == "--verify-opt" ||
-            action == "--dump-pass-pipeline" || action == "--dump-llvm" ||
-            action == "--verify-llvm" || action == "--dump-llvm-opt" ||
-            action == "--verify-llvm-opt")
+        if (action == "--check" || action == "--dump-source" || action == "--dump-tokens" || action == "--dump-ast" ||
+            action == "--dump-symbols" || action == "--dump-sema" || action == "--dump-hir" ||
+            action == "--verify-hir" || action == "--dump-mir" || action == "--verify-mir" || action == "--dump-cfg" ||
+            action == "--verify-cfg" || action == "--dump-dominance" || action == "--verify-dominance" ||
+            action == "--dump-ssa" || action == "--verify-ssa" || action == "--dump-opt" || action == "--verify-opt" ||
+            action == "--dump-pass-pipeline" || action == "--dump-llvm" || action == "--verify-llvm" ||
+            action == "--dump-llvm-opt" || action == "--verify-llvm-opt")
         {
             return runFrontend(action, args[1], optimizationLevel, output, error);
         }
@@ -1685,6 +1630,41 @@ ExitCode Driver::run(
         return ExitCode::Success;
     }
 
+    if (args.size() == 3 && args[0] == "--compare-installation-manifests")
+    {
+        ReproducibilityComparison comparison;
+        std::string comparisonError;
+        if (!compareInstallationManifests(std::filesystem::path(std::string(args[1])),
+                std::filesystem::path(std::string(args[2])),
+                comparison,
+                comparisonError))
+        {
+            error << "nsc: error: " << comparisonError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << comparison.report;
+        if (!comparison.reproducible)
+        {
+            error << "nsc: error: installation builds differ in " << comparison.differences << " deterministic entr"
+                  << (comparison.differences == 1 ? "y" : "ies") << '\n';
+            return ExitCode::CompilationError;
+        }
+        return ExitCode::Success;
+    }
+
+    if (args.size() == 3 && args[0] == "--write-installation-removal-plan")
+    {
+        std::string planError;
+        const std::filesystem::path destination{std::string(args[2])};
+        if (!writeInstallationRemovalPlan(std::filesystem::path(std::string(args[1])), destination, planError))
+        {
+            error << "nsc: error: " << planError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "installation removal plan written: " << destination.string() << '\n';
+        return ExitCode::Success;
+    }
+
     if (args.size() == 4 && args[0] == "--verify-library-artifacts")
     {
         return verifyLibraryArtifacts(args[1], args[2], args[3], output, error);
@@ -1705,8 +1685,41 @@ ExitCode Driver::run(
         return ExitCode::Success;
     }
 
-    if (args.size() == 3 && args[1] == "-o" &&
-        !args[0].empty() && args[0].front() != '-')
+    if (args.size() == 4 && args[0] == "--write-installation-update-plan")
+    {
+        std::string planError;
+        const std::filesystem::path destination{std::string(args[3])};
+        if (!writeInstallationUpdatePlan(std::filesystem::path(std::string(args[1])),
+                std::filesystem::path(std::string(args[2])),
+                destination,
+                planError))
+        {
+            error << "nsc: error: " << planError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "installation update plan written: " << destination.string() << '\n';
+        return ExitCode::Success;
+    }
+
+    if (args.size() == 5 && args[0] == "--apply-installation-removal-plan")
+    {
+        std::string planError;
+        const std::filesystem::path nextManifest =
+            args[3] == "none" ? std::filesystem::path{} : std::filesystem::path(std::string(args[3]));
+        if (!applyInstallationRemovalPlan(std::filesystem::path(std::string(args[1])),
+                std::filesystem::path(std::string(args[2])),
+                nextManifest,
+                std::filesystem::path(std::string(args[4])),
+                planError))
+        {
+            error << "nsc: error: " << planError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "installation removal plan applied: " << args[4] << '\n';
+        return ExitCode::Success;
+    }
+
+    if (args.size() == 3 && args[1] == "-o" && !args[0].empty() && args[0].front() != '-')
     {
         return runExecutableGeneration(args[0], args[2], optimizationLevel, output, error);
     }
@@ -1724,7 +1737,8 @@ ExitCode Driver::run(
         }
         if (action == "--emit-project-oop-exe")
         {
-            return runProjectOopExecutableGeneration(args[1], args[3], optimizationLevel, extraLinkLibraries, output, error);
+            return runProjectOopExecutableGeneration(
+                args[1], args[3], optimizationLevel, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-oop-lib")
         {
@@ -1732,7 +1746,8 @@ ExitCode Driver::run(
         }
         if (action == "--emit-project-oop-dll")
         {
-            return runProjectOopDynamicLibraryGeneration(args[1], args[3], optimizationLevel, extraLinkLibraries, output, error);
+            return runProjectOopDynamicLibraryGeneration(
+                args[1], args[3], optimizationLevel, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-host-header")
         {
@@ -1754,7 +1769,7 @@ ExitCode Driver::run(
     return ExitCode::CommandLineError;
 }
 
-void Driver::printHelp(std::ostream& output)
+void Driver::printHelp(std::ostream &output)
 {
     output << "NativeSharp compiler (NativeSharp " << kLanguageVersion << ", stage " << kCompilerStage << ")\n\n"
            << "Usage:\n"
@@ -1807,9 +1822,17 @@ void Driver::printHelp(std::ostream& output)
               "[file.dll]\n"
            << "  nsc --write-toolchain-contract <file.contract>\n"
            << "  nsc --verify-toolchain-contract <file.contract>\n"
+           << "  nsc --print-compatibility-policy\n"
+           << "  nsc --write-compatibility-policy <file.policy>\n"
+           << "  nsc --verify-compatibility-policy <file.policy>\n"
+           << "  nsc --check-compiler-compatibility <major.minor.patch>\n"
            << "  nsc --verify-installation <prefix>\n"
            << "  nsc --write-installation-manifest <prefix> <file-list> <manifest>\n"
            << "  nsc --verify-installation-manifest <prefix> <manifest>\n"
+           << "  nsc --compare-installation-manifests <left> <right>\n"
+           << "  nsc --write-installation-update-plan <current> <next> <plan>\n"
+           << "  nsc --write-installation-removal-plan <current> <plan>\n"
+           << "  nsc --apply-installation-removal-plan <prefix> <current> <next|none> <plan>\n"
            << "  nsc <file.ns>\n"
            << "  nsc --check <file.ns>\n"
            << "  nsc --dump-source <file.ns>\n"
@@ -1894,9 +1917,7 @@ void Driver::printHelp(std::ostream& output)
 }
 
 ExitCode Driver::printCodeGeneration(
-    llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    std::ostream& output,
-    std::ostream& error)
+    llvm_backend::LlvmOptimizationLevel optimizationLevel, std::ostream &output, std::ostream &error)
 {
     std::string targetError;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
@@ -1907,33 +1928,28 @@ ExitCode Driver::printCodeGeneration(
         return ExitCode::CompilationError;
     }
 
-    output
-        << "target-triple: " << targetMachine->triple() << '\n'
-        << "data-layout:   " << targetMachine->dataLayout() << '\n'
-        << "object-format: COFF\n"
-        << "machine:       AMD64 (0x8664)\n"
-        << "optimization:  " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n';
+    output << "target-triple: " << targetMachine->triple() << '\n'
+           << "data-layout:   " << targetMachine->dataLayout() << '\n'
+           << "object-format: COFF\n"
+           << "machine:       AMD64 (0x8664)\n"
+           << "optimization:  " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n';
     return ExitCode::Success;
 }
 
-void Driver::printLlvmPipeline(
-    llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    std::ostream& output)
+void Driver::printLlvmPipeline(llvm_backend::LlvmOptimizationLevel optimizationLevel, std::ostream &output)
 {
-    output
-        << "optimization-level: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-        << "pass-pipeline: " << llvm_backend::llvmOptimizationPipelineName(optimizationLevel) << '\n'
-        << "target-aware: yes\n"
-        << "verify-each: yes\n";
+    output << "optimization-level: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "pass-pipeline: " << llvm_backend::llvmOptimizationPipelineName(optimizationLevel) << '\n'
+           << "target-aware: yes\n"
+           << "verify-each: yes\n";
 }
 
-ExitCode Driver::runCodeGeneration(
-    std::string_view action,
+ExitCode Driver::runCodeGeneration(std::string_view action,
     std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    std::ostream& output,
-    std::ostream& error)
+    std::ostream &output,
+    std::ostream &error)
 {
     if (outputPath.empty())
     {
@@ -1999,17 +2015,15 @@ ExitCode Driver::runCodeGeneration(
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation observation;
     std::string optimizationError;
-    if (!optimizer.optimize(
-            *llvmModule, *targetMachine, optimizationLevel, &observation, optimizationError))
+    if (!optimizer.optimize(*llvmModule, *targetMachine, optimizationLevel, &observation, optimizationError))
     {
         error << "nsc: internal error: LLVM optimization failed: " << optimizationError << '\n';
         return ExitCode::CompilationError;
     }
 
-    const llvm_backend::LlvmCodeGenFileType fileType =
-        action == "--emit-obj"
-            ? llvm_backend::LlvmCodeGenFileType::Object
-            : llvm_backend::LlvmCodeGenFileType::Assembly;
+    const llvm_backend::LlvmCodeGenFileType fileType = action == "--emit-obj"
+                                                           ? llvm_backend::LlvmCodeGenFileType::Object
+                                                           : llvm_backend::LlvmCodeGenFileType::Assembly;
     const std::filesystem::path destination(outputPath);
     std::string emissionError;
     if (!targetMachine->emit(*llvmModule, destination, fileType, emissionError))
@@ -2028,11 +2042,10 @@ ExitCode Driver::runCodeGeneration(
             std::filesystem::remove(destination, removeError);
             return ExitCode::CompilationError;
         }
-        output
-            << "COFF object emission: ok\n"
-            << "machine: AMD64 (0x8664)\n"
-            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-            << "sections: " << verifier.info().sectionCount << '\n';
+        output << "COFF object emission: ok\n"
+               << "machine: AMD64 (0x8664)\n"
+               << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+               << "sections: " << verifier.info().sectionCount << '\n';
     }
     else
     {
@@ -2044,15 +2057,14 @@ ExitCode Driver::runCodeGeneration(
                      "unreadable\n";
             return ExitCode::CompilationError;
         }
-        output
-            << "assembly emission: ok\n"
-            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-            << "bytes: " << size << '\n';
+        output << "assembly emission: ok\n"
+               << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+               << "bytes: " << size << '\n';
     }
     return ExitCode::Success;
 }
 
-ExitCode Driver::printLinker(std::ostream& output, std::ostream& error)
+ExitCode Driver::printLinker(std::ostream &output, std::ostream &error)
 {
     std::string linkerError;
     std::unique_ptr<linker::LldLinker> linker = linker::LldLinker::discover(linkerError);
@@ -2062,19 +2074,18 @@ ExitCode Driver::printLinker(std::ostream& output, std::ostream& error)
         return ExitCode::CompilationError;
     }
 
-    output
-        << "linker: " << linker->executablePath().string() << '\n'
-        << "librarian: " <<
-            (linker->librarianExecutablePath().empty()
-                ? std::string("unavailable (set NSC_LLVM_LIB)")
-                : linker->librarianExecutablePath().string()) << '\n'
-        << "flavor: Windows COFF/PE\n"
-        << "target: x86_64-pc-windows-msvc\n"
-        << "subsystem: console\n";
+    output << "linker: " << linker->executablePath().string() << '\n'
+           << "librarian: "
+           << (linker->librarianExecutablePath().empty() ? std::string("unavailable (set NSC_LLVM_LIB)")
+                                                         : linker->librarianExecutablePath().string())
+           << '\n'
+           << "flavor: Windows COFF/PE\n"
+           << "target: x86_64-pc-windows-msvc\n"
+           << "subsystem: console\n";
     return ExitCode::Success;
 }
 
-ExitCode Driver::dumpRuntimeLlvm(std::ostream& output, std::ostream& error)
+ExitCode Driver::dumpRuntimeLlvm(std::ostream &output, std::ostream &error)
 {
     runtime::WindowsRuntimeBuilder builder;
     std::string runtimeError;
@@ -2089,12 +2100,11 @@ ExitCode Driver::dumpRuntimeLlvm(std::ostream& output, std::ostream& error)
     return ExitCode::Success;
 }
 
-ExitCode Driver::runExecutableGeneration(
-    std::string_view inputPath,
+ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    std::ostream& output,
-    std::ostream& error)
+    std::ostream &output,
+    std::ostream &error)
 {
     if (outputPath.empty())
     {
@@ -2146,16 +2156,15 @@ ExitCode Driver::runExecutableGeneration(
         return ExitCode::CompilationError;
     }
 
-    output
-        << "PE executable emission: ok\n"
-        << "machine: AMD64 (0x8664)\n"
-        << "format: PE32+\n"
-        << "subsystem: Windows CUI\n"
-        << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-        << "sections: " << builder.info().sectionCount << '\n'
-        << "entry-rva: " << builder.info().entryPointRva << '\n'
-        << "imports:";
-    for (const std::string& library : builder.info().importedLibraries)
+    output << "PE executable emission: ok\n"
+           << "machine: AMD64 (0x8664)\n"
+           << "format: PE32+\n"
+           << "subsystem: Windows CUI\n"
+           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "sections: " << builder.info().sectionCount << '\n'
+           << "entry-rva: " << builder.info().entryPointRva << '\n'
+           << "imports:";
+    for (const std::string &library : builder.info().importedLibraries)
     {
         output << ' ' << library;
     }
@@ -2163,7 +2172,7 @@ ExitCode Driver::runExecutableGeneration(
     return ExitCode::Success;
 }
 
-void Driver::printVersion(std::ostream& output)
+void Driver::printVersion(std::ostream &output)
 {
     // CC1-000: the unique build id appears both in the SemVer build metadata of
     // `kCompilerVersion` and on its own machine-friendly line. A consumer can
@@ -2173,44 +2182,37 @@ void Driver::printVersion(std::ostream& output)
            << "build " << kCompilerBuildId << '\n';
 }
 
-void Driver::printTarget(std::ostream& output)
+void Driver::printTarget(std::ostream &output)
 {
     const target::TargetInfo targetInfo = target::TargetInfo::WindowsX64();
-    output
-        << "architecture: " << targetInfo.architectureName() << '\n'
-        << "os:           " << targetInfo.operatingSystemName() << '\n'
-        << "object:       " << targetInfo.objectFormatName() << '\n'
-        << "abi:          " << targetInfo.abiName() << '\n'
-        << "llvm-triple:  " << targetInfo.llvmTriple() << '\n';
+    output << "architecture: " << targetInfo.architectureName() << '\n'
+           << "os:           " << targetInfo.operatingSystemName() << '\n'
+           << "object:       " << targetInfo.objectFormatName() << '\n'
+           << "abi:          " << targetInfo.abiName() << '\n'
+           << "llvm-triple:  " << targetInfo.llvmTriple() << '\n';
 }
 
-void Driver::printDataLayout(std::ostream& output)
+void Driver::printDataLayout(std::ostream &output)
 {
     const target::TargetDataLayout dataLayout = target::TargetDataLayout::WindowsX64();
-    output
-        << "endianness: little\n"
-        << "max-natural-alignment: " << dataLayout.maximumNaturalAlignment() << "\n"
-        << "type size align\n";
+    output << "endianness: little\n"
+           << "max-natural-alignment: " << dataLayout.maximumNaturalAlignment() << "\n"
+           << "type size align\n";
 
-    for (const LayoutRow& row : kLayoutRows)
+    for (const LayoutRow &row : kLayoutRows)
     {
         const target::TypeLayout layout = dataLayout.layoutOf(row.kind);
         output << row.name << ' ' << layout.size << ' ' << layout.alignment << '\n';
     }
 }
 
-ExitCode Driver::runProject(
-    std::string_view action,
-    std::string_view path,
-    std::ostream& output,
-    std::ostream& error)
+ExitCode Driver::runProject(std::string_view action, std::string_view path, std::ostream &output, std::ostream &error)
 {
     if (action == "--check-project" || action == "--dump-project")
     {
         compilation::ProjectLoader loader;
         std::string loadError;
-        const std::optional<compilation::Project> project =
-            loader.load(std::filesystem::path(path), loadError);
+        const std::optional<compilation::Project> project = loader.load(std::filesystem::path(path), loadError);
         if (!project.has_value())
         {
             error << "nsc: error: " << loadError << '\n';
@@ -2226,11 +2228,8 @@ ExitCode Driver::runProject(
 
         const std::size_t sourceCount = project->sourceSet().sources().size();
         const std::size_t referenceCount = project->projectReferences().size();
-        output
-            << "project check: ok (" << sourceCount << " source"
-            << (sourceCount == 1 ? "" : "s") << ", "
-            << referenceCount << " project reference"
-            << (referenceCount == 1 ? "" : "s") << ")\n";
+        output << "project check: ok (" << sourceCount << " source" << (sourceCount == 1 ? "" : "s") << ", "
+               << referenceCount << " project reference" << (referenceCount == 1 ? "" : "s") << ")\n";
         return ExitCode::Success;
     }
 
@@ -2238,8 +2237,7 @@ ExitCode Driver::runProject(
     {
         compilation::ProjectGraphLoader loader;
         std::string loadError;
-        const std::optional<compilation::ProjectGraph> graph =
-            loader.load(std::filesystem::path(path), loadError);
+        const std::optional<compilation::ProjectGraph> graph = loader.load(std::filesystem::path(path), loadError);
         if (!graph.has_value())
         {
             error << "nsc: error: " << loadError << '\n';
@@ -2260,8 +2258,7 @@ ExitCode Driver::runProject(
 
     frontend::ProjectCompilation projectCompilation;
     std::string loadError;
-    if (!configurePrecompiledModules(
-            std::filesystem::path(path), projectCompilation, loadError))
+    if (!configurePrecompiledModules(std::filesystem::path(path), projectCompilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -2304,22 +2301,15 @@ ExitCode Driver::runProject(
         : destructionAction  ? projectCompilation.compileProjectDestruction(std::filesystem::path(path), loadError)
         : virtualDispatchAction
             ? projectCompilation.compileProjectVirtualDispatch(std::filesystem::path(path), loadError)
-        : methodBodyAction
-            ? projectCompilation.compileProjectMethodBodies(std::filesystem::path(path), loadError)
+        : methodBodyAction ? projectCompilation.compileProjectMethodBodies(std::filesystem::path(path), loadError)
         : genericConstraintAction
-            ? projectCompilation.compileProjectGenericConstraints(
-                  std::filesystem::path(path), loadError)
-        : interfaceAction
-            ? projectCompilation.compileProjectInterfaces(std::filesystem::path(path), loadError)
-        : inheritanceAction
-            ? projectCompilation.compileProjectInheritance(std::filesystem::path(path), loadError)
-        : memberBindingAction
-            ? projectCompilation.compileProjectMembers(std::filesystem::path(path), loadError)
-            : nameBindingAction
-                ? projectCompilation.compileProjectNames(std::filesystem::path(path), loadError)
-                : genericAction
-                    ? projectCompilation.compileProjectGenerics(std::filesystem::path(path), loadError)
-                    : projectCompilation.compileProjectSyntax(std::filesystem::path(path), loadError);
+            ? projectCompilation.compileProjectGenericConstraints(std::filesystem::path(path), loadError)
+        : interfaceAction     ? projectCompilation.compileProjectInterfaces(std::filesystem::path(path), loadError)
+        : inheritanceAction   ? projectCompilation.compileProjectInheritance(std::filesystem::path(path), loadError)
+        : memberBindingAction ? projectCompilation.compileProjectMembers(std::filesystem::path(path), loadError)
+        : nameBindingAction   ? projectCompilation.compileProjectNames(std::filesystem::path(path), loadError)
+        : genericAction       ? projectCompilation.compileProjectGenerics(std::filesystem::path(path), loadError)
+                              : projectCompilation.compileProjectSyntax(std::filesystem::path(path), loadError);
     if (!loadError.empty())
     {
         error << "nsc: error: " << loadError << '\n';
@@ -2343,91 +2333,69 @@ ExitCode Driver::runProject(
         dumper.dump(*projectCompilation.nameLookup(), output);
     }
 
-    if (action == "--dump-project-members" &&
-        projectCompilation.nameLookup() != nullptr &&
+    if (action == "--dump-project-members" && projectCompilation.nameLookup() != nullptr &&
         projectCompilation.memberModel() != nullptr)
     {
         frontend::ProjectMemberModelDumper dumper;
-        dumper.dump(
-            *projectCompilation.memberModel(),
-            *projectCompilation.nameLookup(),
-            output);
+        dumper.dump(*projectCompilation.memberModel(), *projectCompilation.nameLookup(), output);
     }
 
-    if (action == "--dump-project-inheritance" &&
-        projectCompilation.nameLookup() != nullptr &&
+    if (action == "--dump-project-inheritance" && projectCompilation.nameLookup() != nullptr &&
         projectCompilation.inheritanceModel() != nullptr)
     {
         frontend::ProjectInheritanceModelDumper dumper;
         dumper.dump(*projectCompilation.inheritanceModel(), *projectCompilation.nameLookup(), output);
     }
 
-    if (action == "--dump-project-interfaces" &&
-        projectCompilation.interfaceModel() != nullptr)
+    if (action == "--dump-project-interfaces" && projectCompilation.interfaceModel() != nullptr)
     {
-        frontend::ProjectInterfaceModelDumper::dump(
-            *projectCompilation.interfaceModel(), output);
+        frontend::ProjectInterfaceModelDumper::dump(*projectCompilation.interfaceModel(), output);
     }
 
-    if (action == "--dump-project-virtual-dispatch" &&
-        projectCompilation.nameLookup() != nullptr &&
-        projectCompilation.memberModel() != nullptr &&
-        projectCompilation.virtualDispatchModel() != nullptr)
+    if (action == "--dump-project-virtual-dispatch" && projectCompilation.nameLookup() != nullptr &&
+        projectCompilation.memberModel() != nullptr && projectCompilation.virtualDispatchModel() != nullptr)
     {
         frontend::ProjectVirtualDispatchModelDumper dumper;
-        dumper.dump(
-            *projectCompilation.virtualDispatchModel(),
+        dumper.dump(*projectCompilation.virtualDispatchModel(),
             *projectCompilation.memberModel(),
             *projectCompilation.nameLookup(),
             output);
     }
 
-    if (action == "--dump-project-method-bodies" &&
-        projectCompilation.nameLookup() != nullptr &&
-        projectCompilation.memberModel() != nullptr &&
-        projectCompilation.methodBodyModel() != nullptr)
+    if (action == "--dump-project-method-bodies" && projectCompilation.nameLookup() != nullptr &&
+        projectCompilation.memberModel() != nullptr && projectCompilation.methodBodyModel() != nullptr)
     {
         frontend::ProjectMethodBodyModelDumper dumper;
-        dumper.dump(
-            *projectCompilation.methodBodyModel(),
+        dumper.dump(*projectCompilation.methodBodyModel(),
             *projectCompilation.memberModel(),
             *projectCompilation.nameLookup(),
             output);
     }
 
-    if (action == "--dump-project-destruction" &&
-        projectCompilation.nameLookup() != nullptr &&
-        projectCompilation.memberModel() != nullptr &&
-        projectCompilation.destructionModel() != nullptr)
+    if (action == "--dump-project-destruction" && projectCompilation.nameLookup() != nullptr &&
+        projectCompilation.memberModel() != nullptr && projectCompilation.destructionModel() != nullptr)
     {
-        frontend::ProjectDestructionModelDumper::dump(
-            *projectCompilation.destructionModel(),
+        frontend::ProjectDestructionModelDumper::dump(*projectCompilation.destructionModel(),
             *projectCompilation.nameLookup(),
             *projectCompilation.memberModel(),
             output);
     }
 
-    if (action == "--dump-project-constructions" &&
-        projectCompilation.nameLookup() != nullptr &&
-        projectCompilation.memberModel() != nullptr &&
-        projectCompilation.constructionModel() != nullptr)
+    if (action == "--dump-project-constructions" && projectCompilation.nameLookup() != nullptr &&
+        projectCompilation.memberModel() != nullptr && projectCompilation.constructionModel() != nullptr)
     {
         frontend::ProjectConstructionModelDumper dumper;
-        dumper.dump(
-            *projectCompilation.constructionModel(),
+        dumper.dump(*projectCompilation.constructionModel(),
             *projectCompilation.memberModel(),
             *projectCompilation.nameLookup(),
             output);
     }
 
-    if (action == "--dump-project-layouts" &&
-        projectCompilation.nameLookup() != nullptr &&
-        projectCompilation.memberModel() != nullptr &&
-        projectCompilation.objectLayoutModel() != nullptr)
+    if (action == "--dump-project-layouts" && projectCompilation.nameLookup() != nullptr &&
+        projectCompilation.memberModel() != nullptr && projectCompilation.objectLayoutModel() != nullptr)
     {
         frontend::ProjectObjectLayoutModelDumper dumper;
-        dumper.dump(
-            *projectCompilation.objectLayoutModel(),
+        dumper.dump(*projectCompilation.objectLayoutModel(),
             *projectCompilation.memberModel(),
             *projectCompilation.nameLookup(),
             output);
@@ -2444,16 +2412,12 @@ ExitCode Driver::runProject(
     }
 
     std::unique_ptr<llvm_backend::LlvmModule> oopLlvmModule;
-    if (oopLlvmAction && success &&
-        projectCompilation.nameLookup() != nullptr &&
-        projectCompilation.memberModel() != nullptr &&
-        projectCompilation.objectLayoutModel() != nullptr &&
+    if (oopLlvmAction && success && projectCompilation.nameLookup() != nullptr &&
+        projectCompilation.memberModel() != nullptr && projectCompilation.objectLayoutModel() != nullptr &&
         projectCompilation.oopMirModel() != nullptr)
     {
         llvm_backend::ProjectOopLlvmLowerer lowerer;
-        oopLlvmModule = lowerer.lower(
-            *projectCompilation.nameLookup(),
-            *projectCompilation.oopMirModel());
+        oopLlvmModule = lowerer.lower(*projectCompilation.nameLookup(), *projectCompilation.oopMirModel());
         if (oopLlvmModule == nullptr)
         {
             error << "nsc: error: " << lowerer.error() << '\n';
@@ -2484,157 +2448,137 @@ ExitCode Driver::runProject(
     {
         output << "project generic monomorphization check: ok ("
                << projectCompilation.genericModel()->templates().size() << " template"
-               << (projectCompilation.genericModel()->templates().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.genericModel()->specializations().size() << " specialization"
+               << (projectCompilation.genericModel()->templates().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.genericModel()->specializations().size() << " specialization"
                << (projectCompilation.genericModel()->specializations().size() == 1 ? "" : "s") << ")\n";
     }
     else if (action == "--check-project-names" && projectCompilation.nameLookup() != nullptr)
     {
-        output << "project name lookup check: ok ("
-               << projectCompilation.nameLookup()->namedTypes().size() << " named type"
-               << (projectCompilation.nameLookup()->namedTypes().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.nameLookup()->bindings().size() << " type binding"
+        output << "project name lookup check: ok (" << projectCompilation.nameLookup()->namedTypes().size()
+               << " named type" << (projectCompilation.nameLookup()->namedTypes().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.nameLookup()->bindings().size() << " type binding"
                << (projectCompilation.nameLookup()->bindings().size() == 1 ? "" : "s") << ")\n";
     }
-    else if (action == "--check-project-members" &&
-             projectCompilation.memberModel() != nullptr)
+    else if (action == "--check-project-members" && projectCompilation.memberModel() != nullptr)
     {
-        output << "project member binding check: ok ("
-               << projectCompilation.memberModel()->members().size() << " member"
-               << (projectCompilation.memberModel()->members().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.memberModel()->bodyBindings().size()
-               << " body binding"
-               << (projectCompilation.memberModel()->bodyBindings().size() == 1 ? "" : "s")
-               << ")\n";
+        output << "project member binding check: ok (" << projectCompilation.memberModel()->members().size()
+               << " member" << (projectCompilation.memberModel()->members().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.memberModel()->bodyBindings().size() << " body binding"
+               << (projectCompilation.memberModel()->bodyBindings().size() == 1 ? "" : "s") << ")\n";
     }
-    else if (action == "--check-project-inheritance" &&
-             projectCompilation.inheritanceModel() != nullptr)
+    else if (action == "--check-project-inheritance" && projectCompilation.inheritanceModel() != nullptr)
     {
         std::size_t edgeCount = 0;
-        for (const frontend::ClassInheritanceInfo& info : projectCompilation.inheritanceModel()->classes())
+        for (const frontend::ClassInheritanceInfo &info : projectCompilation.inheritanceModel()->classes())
         {
             edgeCount += info.baseTypeOrdinal.has_value() ? 1u : 0u;
         }
-        output << "project inheritance check: ok ("
-               << projectCompilation.inheritanceModel()->classes().size() << " class"
-               << (projectCompilation.inheritanceModel()->classes().size() == 1 ? "" : "es")
-               << ", " << edgeCount << " base edge" << (edgeCount == 1 ? "" : "s") << ")\n";
+        output << "project inheritance check: ok (" << projectCompilation.inheritanceModel()->classes().size()
+               << " class" << (projectCompilation.inheritanceModel()->classes().size() == 1 ? "" : "es") << ", "
+               << edgeCount << " base edge" << (edgeCount == 1 ? "" : "s") << ")\n";
     }
-    else if (action == "--check-project-interfaces" &&
-             projectCompilation.interfaceModel() != nullptr)
+    else if (action == "--check-project-interfaces" && projectCompilation.interfaceModel() != nullptr)
     {
-        output << "project interface semantic check: ok ("
-               << projectCompilation.interfaceModel()->interfaces().size() << " interface"
-               << (projectCompilation.interfaceModel()->interfaces().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.interfaceModel()->tablePlans().size() << " class-interface table"
+        output << "project interface semantic check: ok (" << projectCompilation.interfaceModel()->interfaces().size()
+               << " interface" << (projectCompilation.interfaceModel()->interfaces().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.interfaceModel()->tablePlans().size() << " class-interface table"
                << (projectCompilation.interfaceModel()->tablePlans().size() == 1 ? "" : "s") << ")\n";
     }
-    else if (action == "--check-project-generic-constraints" &&
-             projectCompilation.genericConstraintModel() != nullptr)
+    else if (action == "--check-project-generic-constraints" && projectCompilation.genericConstraintModel() != nullptr)
     {
-        const std::size_t violations =
-            projectCompilation.genericConstraintModel()->violations().size();
-        output << "project generic constraint check: ok (" << violations << " violation"
-               << (violations == 1 ? "" : "s") << ")\n";
+        const std::size_t violations = projectCompilation.genericConstraintModel()->violations().size();
+        output << "project generic constraint check: ok (" << violations << " violation" << (violations == 1 ? "" : "s")
+               << ")\n";
     }
-    else if (action == "--check-project-virtual-dispatch" &&
-             projectCompilation.virtualDispatchModel() != nullptr)
+    else if (action == "--check-project-virtual-dispatch" && projectCompilation.virtualDispatchModel() != nullptr)
     {
         output << "project virtual dispatch check: ok ("
                << projectCompilation.virtualDispatchModel()->virtualMethods().size() << " virtual method"
-               << (projectCompilation.virtualDispatchModel()->virtualMethods().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.virtualDispatchModel()->classTables().size() << " class table"
+               << (projectCompilation.virtualDispatchModel()->virtualMethods().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.virtualDispatchModel()->classTables().size() << " class table"
                << (projectCompilation.virtualDispatchModel()->classTables().size() == 1 ? "" : "s") << ")\n";
     }
-    else if (action == "--check-project-method-bodies" &&
-             projectCompilation.methodBodyModel() != nullptr)
+    else if (action == "--check-project-method-bodies" && projectCompilation.methodBodyModel() != nullptr)
     {
-        output << "project method-body semantic check: ok ("
-               << projectCompilation.methodBodyModel()->scopes().size() << " scope"
-               << (projectCompilation.methodBodyModel()->scopes().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.methodBodyModel()->locals().size() << " local"
-               << (projectCompilation.methodBodyModel()->locals().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.methodBodyModel()->nameBindings().size() << " name binding"
-               << (projectCompilation.methodBodyModel()->nameBindings().size() == 1 ? "" : "s")
-               << ", " << projectCompilation.methodBodyModel()->calls().size() << " call"
-               << (projectCompilation.methodBodyModel()->calls().size() == 1 ? "" : "s")
-               << ")\n";
+        output << "project method-body semantic check: ok (" << projectCompilation.methodBodyModel()->scopes().size()
+               << " scope" << (projectCompilation.methodBodyModel()->scopes().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.methodBodyModel()->locals().size() << " local"
+               << (projectCompilation.methodBodyModel()->locals().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.methodBodyModel()->nameBindings().size() << " name binding"
+               << (projectCompilation.methodBodyModel()->nameBindings().size() == 1 ? "" : "s") << ", "
+               << projectCompilation.methodBodyModel()->calls().size() << " call"
+               << (projectCompilation.methodBodyModel()->calls().size() == 1 ? "" : "s") << ")\n";
     }
-    else if (action == "--check-project-destruction" &&
-             projectCompilation.destructionModel() != nullptr)
+    else if (action == "--check-project-destruction" && projectCompilation.destructionModel() != nullptr)
     {
         std::size_t explicitDestructorCount = 0;
-        for (const frontend::ClassDestructionPlan& plan : projectCompilation.destructionModel()->plans())
+        for (const frontend::ClassDestructionPlan &plan : projectCompilation.destructionModel()->plans())
         {
             explicitDestructorCount += plan.explicitDestructorMemberOrdinal.has_value() ? 1u : 0u;
         }
-        output << "project destruction semantic check: ok ("
-               << projectCompilation.destructionModel()->plans().size() << " class plan"
-               << (projectCompilation.destructionModel()->plans().size() == 1 ? "" : "s")
-               << ", " << explicitDestructorCount << " explicit destructor"
-               << (explicitDestructorCount == 1 ? "" : "s") << ")\n";
+        output << "project destruction semantic check: ok (" << projectCompilation.destructionModel()->plans().size()
+               << " class plan" << (projectCompilation.destructionModel()->plans().size() == 1 ? "" : "s") << ", "
+               << explicitDestructorCount << " explicit destructor" << (explicitDestructorCount == 1 ? "" : "s")
+               << ")\n";
     }
-    else if (action == "--check-project-constructions" &&
-             projectCompilation.constructionModel() != nullptr)
+    else if (action == "--check-project-constructions" && projectCompilation.constructionModel() != nullptr)
     {
         std::size_t explicitCount = 0;
         std::size_t implicitCount = 0;
-        for (const frontend::ObjectConstructionBinding& construction :
-             projectCompilation.constructionModel()->constructions())
+        for (const frontend::ObjectConstructionBinding &construction :
+            projectCompilation.constructionModel()->constructions())
         {
-            explicitCount += construction.resolution == frontend::ConstructionResolutionKind::ResolvedExplicit ? 1u : 0u;
-            implicitCount += construction.resolution == frontend::ConstructionResolutionKind::ResolvedImplicitDefault ? 1u : 0u;
+            explicitCount +=
+                construction.resolution == frontend::ConstructionResolutionKind::ResolvedExplicit ? 1u : 0u;
+            implicitCount +=
+                construction.resolution == frontend::ConstructionResolutionKind::ResolvedImplicitDefault ? 1u : 0u;
         }
         output << "project construction semantic check: ok ("
                << projectCompilation.constructionModel()->constructions().size() << " construction"
-               << (projectCompilation.constructionModel()->constructions().size() == 1 ? "" : "s")
-               << ", " << explicitCount << " explicit, " << implicitCount << " implicit-default)\n";
+               << (projectCompilation.constructionModel()->constructions().size() == 1 ? "" : "s") << ", "
+               << explicitCount << " explicit, " << implicitCount << " implicit-default)\n";
     }
-    else if (action == "--check-project-layouts" &&
-             projectCompilation.objectLayoutModel() != nullptr)
+    else if (action == "--check-project-layouts" && projectCompilation.objectLayoutModel() != nullptr)
     {
         std::size_t fieldCount = 0;
-        for (const frontend::ClassObjectLayout& layout : projectCompilation.objectLayoutModel()->classLayouts())
+        for (const frontend::ClassObjectLayout &layout : projectCompilation.objectLayoutModel()->classLayouts())
         {
             fieldCount += layout.fields.size();
         }
-        output << "project object layout check: ok ("
-               << projectCompilation.objectLayoutModel()->classLayouts().size() << " class layout"
-               << (projectCompilation.objectLayoutModel()->classLayouts().size() == 1 ? "" : "s")
-               << ", " << fieldCount << " field layout"
-               << (fieldCount == 1 ? "" : "s")
-               << ", " << projectCompilation.objectLayoutModel()->allocationPlans().size() << " allocation plan"
+        output << "project object layout check: ok (" << projectCompilation.objectLayoutModel()->classLayouts().size()
+               << " class layout" << (projectCompilation.objectLayoutModel()->classLayouts().size() == 1 ? "" : "s")
+               << ", " << fieldCount << " field layout" << (fieldCount == 1 ? "" : "s") << ", "
+               << projectCompilation.objectLayoutModel()->allocationPlans().size() << " allocation plan"
                << (projectCompilation.objectLayoutModel()->allocationPlans().size() == 1 ? "" : "s") << ")\n";
     }
     else if (action == "--check-project-oop-hir" && projectCompilation.oopHirModel() != nullptr)
     {
-        output << "project OOP HIR check: ok (" << projectCompilation.oopHirModel()->functions().size()
-               << " callable" << (projectCompilation.oopHirModel()->functions().size() == 1 ? "" : "s") << ")\n";
+        output << "project OOP HIR check: ok (" << projectCompilation.oopHirModel()->functions().size() << " callable"
+               << (projectCompilation.oopHirModel()->functions().size() == 1 ? "" : "s") << ")\n";
     }
     else if (action == "--check-project-oop-mir" && projectCompilation.oopMirModel() != nullptr)
     {
-        output << "project OOP MIR check: ok (" << projectCompilation.oopMirModel()->functions().size()
-               << " callable" << (projectCompilation.oopMirModel()->functions().size() == 1 ? "" : "s") << ")\n";
+        output << "project OOP MIR check: ok (" << projectCompilation.oopMirModel()->functions().size() << " callable"
+               << (projectCompilation.oopMirModel()->functions().size() == 1 ? "" : "s") << ")\n";
     }
     else if (action == "--verify-project-oop-llvm" && oopLlvmModule != nullptr)
     {
         output << "project OOP LLVM verification: ok (" << projectCompilation.oopMirModel()->functions().size()
-               << " lowered callable" << (projectCompilation.oopMirModel()->functions().size() == 1 ? "" : "s") << ")\n";
+               << " lowered callable" << (projectCompilation.oopMirModel()->functions().size() == 1 ? "" : "s")
+               << ")\n";
     }
     return ExitCode::Success;
 }
 
-ExitCode Driver::runProjectOopCodeGeneration(
-    std::string_view inputPath,
+ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    std::ostream& output,
-    std::ostream& error)
+    std::ostream &output,
+    std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
-    if (!configurePrecompiledModules(
-            std::filesystem::path(inputPath), compilation, loadError))
+    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -2661,8 +2605,8 @@ ExitCode Driver::runProjectOopCodeGeneration(
     }
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
-    std::unique_ptr<llvm_backend::LlvmModule> module = lowerer.lower(
-        *compilation.nameLookup(), *compilation.oopMirModel());
+    std::unique_ptr<llvm_backend::LlvmModule> module =
+        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -2682,8 +2626,7 @@ ExitCode Driver::runProjectOopCodeGeneration(
     // LlvmOptimizer.h.
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation observation;
-    if (!optimizer.optimize(
-            *module, *targetMachine, optimizationLevel, &observation, targetError))
+    if (!optimizer.optimize(*module, *targetMachine, optimizationLevel, &observation, targetError))
     {
         error << "nsc: error: " << targetError << '\n';
         return ExitCode::CompilationError;
@@ -2701,8 +2644,8 @@ ExitCode Driver::runProjectOopCodeGeneration(
         error << "nsc: error: Stage 44 emitted invalid COFF object: " << verifier.error() << '\n';
         return ExitCode::CompilationError;
     }
-    output << "project OOP object emission: ok (machine=0x" << std::hex << verifier.info().machine
-           << std::dec << ", sections=" << verifier.info().sectionCount << ")\n";
+    output << "project OOP object emission: ok (machine=0x" << std::hex << verifier.info().machine << std::dec
+           << ", sections=" << verifier.info().sectionCount << ")\n";
     return ExitCode::Success;
 }
 
@@ -2712,16 +2655,19 @@ namespace
 // as (dll -> its symbols), in first-appearance order, for the linker's
 // import-library step. The compiler learned no API by name at any point -- this
 // is purely the shape the frontend recorded.
-std::vector<linker::ExternalImportModule> collectExternalImports(const frontend::ProjectOopMirModel& mirModel)
+std::vector<linker::ExternalImportModule> collectExternalImports(const frontend::ProjectOopMirModel &mirModel)
 {
     std::vector<linker::ExternalImportModule> modules;
     bool anyRuntimeBoundImport = false;
-    const auto addSymbol = [&modules](const std::string& dllName, const std::string& symbol)
-    {
-        linker::ExternalImportModule* found = nullptr;
-        for (linker::ExternalImportModule& module : modules)
+    const auto addSymbol = [&modules](const std::string &dllName, const std::string &symbol) {
+        linker::ExternalImportModule *found = nullptr;
+        for (linker::ExternalImportModule &module : modules)
         {
-            if (module.dllName == dllName) { found = &module; break; }
+            if (module.dllName == dllName)
+            {
+                found = &module;
+                break;
+            }
         }
         if (found == nullptr)
         {
@@ -2733,7 +2679,7 @@ std::vector<linker::ExternalImportModule> collectExternalImports(const frontend:
             found->symbols.push_back(symbol);
         }
     };
-    for (const frontend::ProjectOopMirFunction& function : mirModel.functions())
+    for (const frontend::ProjectOopMirFunction &function : mirModel.functions())
     {
         if (!function.isImportedC || function.importDllName.empty()) continue;
         // C1.2 "import identity": an import whose C symbol name is shared by two
@@ -2762,20 +2708,18 @@ std::vector<linker::ExternalImportModule> collectExternalImports(const frontend:
     }
     return modules;
 }
-}
+} // namespace
 
-ExitCode Driver::runProjectOopExecutableGeneration(
-    std::string_view inputPath,
+ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    const std::vector<std::filesystem::path>& extraLinkLibraries,
-    std::ostream& output,
-    std::ostream& error)
+    const std::vector<std::filesystem::path> &extraLinkLibraries,
+    std::ostream &output,
+    std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
-    if (!configurePrecompiledModules(
-            std::filesystem::path(inputPath), compilation, loadError))
+    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -2801,18 +2745,18 @@ ExitCode Driver::runProjectOopExecutableGeneration(
         return ExitCode::CompilationError;
     }
 
-    const frontend::ProjectOopMirFunction* entryFunction = nullptr;
+    const frontend::ProjectOopMirFunction *entryFunction = nullptr;
     const auto members = compilation.memberModel()->members();
-    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+    for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
     {
         if (function.isLambda || function.constructor || function.destructor ||
             function.memberOrdinal >= members.size())
         {
             continue;
         }
-        const frontend::ClassMemberSymbol& member = members[function.memberOrdinal];
-        if (member.kind != frontend::ClassMemberKind::Method || member.name != "Main" ||
-            !member.isStatic || !member.parameters.empty() || member.declaredTypeKey != "builtin:int")
+        const frontend::ClassMemberSymbol &member = members[function.memberOrdinal];
+        if (member.kind != frontend::ClassMemberKind::Method || member.name != "Main" || !member.isStatic ||
+            !member.parameters.empty() || member.declaredTypeKey != "builtin:int")
         {
             continue;
         }
@@ -2832,8 +2776,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(
     }
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
-    std::unique_ptr<llvm_backend::LlvmModule> module = lowerer.lower(
-        *compilation.nameLookup(), *compilation.oopMirModel());
+    std::unique_ptr<llvm_backend::LlvmModule> module =
+        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -2850,11 +2794,9 @@ ExitCode Driver::runProjectOopExecutableGeneration(
     std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     std::string referenceError;
-    if (!appendValidatedLibraryReferences(
-            compilation, linkLibraries, runtimeLibraries, referenceError))
+    if (!appendValidatedLibraryReferences(compilation, linkLibraries, runtimeLibraries, referenceError))
     {
-        error << "nsc: error: precompiled library reference validation failed: "
-              << referenceError << '\n';
+        error << "nsc: error: precompiled library reference validation failed: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -2863,12 +2805,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     const std::filesystem::path destination(outputPath);
-    if (!builder.build(
-            *module,
-            destination,
-            optimizationLevel,
-            entryFunction->mangledName,
-            buildError))
+    if (!builder.build(*module, destination, optimizationLevel, entryFunction->mangledName, buildError))
     {
         error << "nsc: error: OOP Windows executable generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
@@ -2877,25 +2814,23 @@ ExitCode Driver::runProjectOopExecutableGeneration(
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
-        error << "nsc: error: precompiled DLL/import-library mismatch: "
-              << referenceError << '\n';
+        error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
 
-    output
-        << "project OOP PE executable emission: ok\n"
-        << "entry-symbol: " << entryFunction->mangledName << '\n'
-        << "machine: AMD64 (0x8664)\n"
-        << "format: PE32+\n"
-        << "subsystem: Windows CUI\n"
-        << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-        << "linked-libraries: " << linkLibraries.size() << '\n'
-        << "sections: " << builder.info().sectionCount << '\n'
-        << "entry-rva: " << builder.info().entryPointRva << '\n'
-        << "exception-directory-rva: " << builder.info().exceptionDirectoryRva << '\n'
-        << "exception-directory-size: " << builder.info().exceptionDirectorySize << '\n'
-        << "imports:";
-    for (const std::string& library : builder.info().importedLibraries)
+    output << "project OOP PE executable emission: ok\n"
+           << "entry-symbol: " << entryFunction->mangledName << '\n'
+           << "machine: AMD64 (0x8664)\n"
+           << "format: PE32+\n"
+           << "subsystem: Windows CUI\n"
+           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "linked-libraries: " << linkLibraries.size() << '\n'
+           << "sections: " << builder.info().sectionCount << '\n'
+           << "entry-rva: " << builder.info().entryPointRva << '\n'
+           << "exception-directory-rva: " << builder.info().exceptionDirectoryRva << '\n'
+           << "exception-directory-size: " << builder.info().exceptionDirectorySize << '\n'
+           << "imports:";
+    for (const std::string &library : builder.info().importedLibraries)
     {
         output << ' ' << library;
     }
@@ -2903,18 +2838,15 @@ ExitCode Driver::runProjectOopExecutableGeneration(
     return ExitCode::Success;
 }
 
-
-ExitCode Driver::runProjectOopStaticLibraryGeneration(
-    std::string_view inputPath,
+ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    std::ostream& output,
-    std::ostream& error)
+    std::ostream &output,
+    std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
-    if (!configurePrecompiledModules(
-            std::filesystem::path(inputPath), compilation, loadError))
+    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -2939,7 +2871,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
                  "required models\n";
         return ExitCode::CompilationError;
     }
-    const compilation::Project* rootProject = compilation.projectGraph()->rootProject();
+    const compilation::Project *rootProject = compilation.projectGraph()->rootProject();
     if (rootProject == nullptr || rootProject->outputKind() != compilation::ProjectOutputKind::Library)
     {
         error << "nsc: error: --emit-project-oop-lib requires root OutputType "
@@ -2949,17 +2881,15 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     std::string referenceError;
-    if (!appendValidatedLibraryReferences(
-            compilation, referencedLibraries, runtimeLibraries, referenceError))
+    if (!appendValidatedLibraryReferences(compilation, referencedLibraries, runtimeLibraries, referenceError))
     {
-        error << "nsc: error: precompiled library reference validation failed: "
-              << referenceError << '\n';
+        error << "nsc: error: precompiled library reference validation failed: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
-    std::unique_ptr<llvm_backend::LlvmModule> module = lowerer.lower(
-        *compilation.nameLookup(), *compilation.oopMirModel());
+    std::unique_ptr<llvm_backend::LlvmModule> module =
+        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -2991,8 +2921,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
-        error << "nsc: error: Stage 48.1 static-library C header generation failed: "
-              << headerError << '\n';
+        error << "nsc: error: Stage 48.1 static-library C header generation failed: " << headerError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -3005,35 +2934,31 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
         std::filesystem::remove(headerDestination, removeError);
-        error << "nsc: error: Stage 48.2 static-library metadata generation failed: "
-              << metadataError << '\n';
+        error << "nsc: error: Stage 48.2 static-library metadata generation failed: " << metadataError << '\n';
         return ExitCode::CompilationError;
     }
 
-    output
-        << "project OOP static library emission: ok\n"
-        << "format: COFF archive (.lib)\n"
-        << "machine-members: AMD64 COFF\n"
-        << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-        << "library-references: " << referencedLibraries.size() << '\n'
-        << "archive-members: " << builder.archiveInfo().memberCount << '\n'
-        << "host-header: " << headerDestination.generic_string() << '\n'
-        << "library-metadata: " << metadataDestination.generic_string() << '\n';
+    output << "project OOP static library emission: ok\n"
+           << "format: COFF archive (.lib)\n"
+           << "machine-members: AMD64 COFF\n"
+           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "library-references: " << referencedLibraries.size() << '\n'
+           << "archive-members: " << builder.archiveInfo().memberCount << '\n'
+           << "host-header: " << headerDestination.generic_string() << '\n'
+           << "library-metadata: " << metadataDestination.generic_string() << '\n';
     return ExitCode::Success;
 }
 
-ExitCode Driver::runProjectOopDynamicLibraryGeneration(
-    std::string_view inputPath,
+ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    const std::vector<std::filesystem::path>& extraLinkLibraries,
-    std::ostream& output,
-    std::ostream& error)
+    const std::vector<std::filesystem::path> &extraLinkLibraries,
+    std::ostream &output,
+    std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
-    if (!configurePrecompiledModules(
-            std::filesystem::path(inputPath), compilation, loadError))
+    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -3058,7 +2983,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
                  "models\n";
         return ExitCode::CompilationError;
     }
-    const compilation::Project* rootProject = compilation.projectGraph()->rootProject();
+    const compilation::Project *rootProject = compilation.projectGraph()->rootProject();
     if (rootProject == nullptr || rootProject->outputKind() != compilation::ProjectOutputKind::SharedLibrary)
     {
         error << "nsc: error: --emit-project-oop-dll requires root OutputType "
@@ -3070,15 +2995,15 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
     const auto members = compilation.memberModel()->members();
     const std::size_t rootProjectOrdinal = compilation.projectGraph()->projects().size() - 1;
     std::vector<std::string> exportSymbols;
-    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+    for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
     {
-        if (function.isLambda || function.destructor ||
-            function.memberOrdinal >= members.size() || function.declaringTypeOrdinal >= types.size())
+        if (function.isLambda || function.destructor || function.memberOrdinal >= members.size() ||
+            function.declaringTypeOrdinal >= types.size())
         {
             continue;
         }
-        const frontend::ClassMemberSymbol& member = members[function.memberOrdinal];
-        const frontend::NamedTypeDeclaration& type = types[function.declaringTypeOrdinal];
+        const frontend::ClassMemberSymbol &member = members[function.memberOrdinal];
+        const frontend::NamedTypeDeclaration &type = types[function.declaringTypeOrdinal];
         if (type.projectOrdinal != rootProjectOrdinal ||
             type.accessibility != frontend::NamedTypeAccessibility::Public ||
             member.accessibility != frontend::ClassMemberAccessibility::Public)
@@ -3092,8 +3017,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
         }
         if (member.kind != frontend::ClassMemberKind::Method ||
             (!member.isStatic && type.kind != frontend::NamedTypeDeclarationKind::Struct &&
-             type.kind != frontend::NamedTypeDeclarationKind::Class) || member.isAbstract ||
-            member.isCompilerGenerated || member.isPropertyAccessor || member.isIndexerAccessor ||
+                type.kind != frontend::NamedTypeDeclarationKind::Class) ||
+            member.isAbstract || member.isCompilerGenerated || member.isPropertyAccessor || member.isIndexerAccessor ||
             member.isUserOperator || member.isUserConversion || (member.isExternC && !member.isExportedC))
         {
             continue;
@@ -3101,11 +3026,10 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
         exportSymbols.push_back(function.mangledName);
         if (member.isExportedC) exportSymbols.push_back(member.cAbiName);
     }
-    for (const frontend::ProjectOopMirDispatchTable& table : compilation.oopMirModel()->dispatchTables())
+    for (const frontend::ProjectOopMirDispatchTable &table : compilation.oopMirModel()->dispatchTables())
     {
-        if (table.isImported || table.typeOrdinal >= types.size())
-            continue;
-        const frontend::NamedTypeDeclaration& type = types[table.typeOrdinal];
+        if (table.isImported || table.typeOrdinal >= types.size()) continue;
+        const frontend::NamedTypeDeclaration &type = types[table.typeOrdinal];
         if (type.projectOrdinal == rootProjectOrdinal && type.accessibility == frontend::NamedTypeAccessibility::Public)
         {
             exportSymbols.push_back(table.descriptorAccessorName);
@@ -3121,8 +3045,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
     }
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
-    std::unique_ptr<llvm_backend::LlvmModule> module = lowerer.lower(
-        *compilation.nameLookup(), *compilation.oopMirModel());
+    std::unique_ptr<llvm_backend::LlvmModule> module =
+        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -3146,11 +3070,9 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
     std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     std::string referenceError;
-    if (!appendValidatedLibraryReferences(
-            compilation, linkLibraries, runtimeLibraries, referenceError))
+    if (!appendValidatedLibraryReferences(compilation, linkLibraries, runtimeLibraries, referenceError))
     {
-        error << "nsc: error: precompiled library reference validation failed: "
-              << referenceError << '\n';
+        error << "nsc: error: precompiled library reference validation failed: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -3158,25 +3080,17 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
-    if (!builder.buildDynamic(
-            *module,
-            exportSymbols,
-            destination,
-            importLibrary,
-            optimizationLevel,
-            buildError))
+    if (!builder.buildDynamic(*module, exportSymbols, destination, importLibrary, optimizationLevel, buildError))
     {
         error << "nsc: error: NativeSharp DLL generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
     }
-    if (!verifyLinkedRuntimeLibraries(
-            runtimeLibraries, builder.dynamicLibraryInfo(), referenceError))
+    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.dynamicLibraryInfo(), referenceError))
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
         std::filesystem::remove(importLibrary, removeError);
-        error << "nsc: error: precompiled DLL/import-library mismatch: "
-              << referenceError << '\n';
+        error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -3207,37 +3121,31 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(
         return ExitCode::CompilationError;
     }
 
-    output
-        << "project OOP DLL emission: ok\n"
-        << "format: PE32+ DLL\n"
-        << "machine: AMD64 (0x8664)\n"
-        << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-        << "linked-libraries: " << linkLibraries.size() << '\n'
-        << "import-library: " << importLibrary.generic_string() << '\n'
-        << "host-header: " << headerDestination.generic_string() << '\n'
-        << "library-metadata: " << metadataDestination.generic_string() << '\n'
-        << "exports: " << builder.dynamicLibraryInfo().exportedSymbols.size() << '\n';
-    for (const std::string& symbol : builder.dynamicLibraryInfo().exportedSymbols)
+    output << "project OOP DLL emission: ok\n"
+           << "format: PE32+ DLL\n"
+           << "machine: AMD64 (0x8664)\n"
+           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "linked-libraries: " << linkLibraries.size() << '\n'
+           << "import-library: " << importLibrary.generic_string() << '\n'
+           << "host-header: " << headerDestination.generic_string() << '\n'
+           << "library-metadata: " << metadataDestination.generic_string() << '\n'
+           << "exports: " << builder.dynamicLibraryInfo().exportedSymbols.size() << '\n';
+    for (const std::string &symbol : builder.dynamicLibraryInfo().exportedSymbols)
     {
         output << "  " << symbol << '\n';
     }
-    output
-        << "exception-directory-rva: " << builder.dynamicLibraryInfo().exceptionDirectoryRva << '\n'
-        << "exception-directory-size: " << builder.dynamicLibraryInfo().exceptionDirectorySize << '\n'
-        << "clr-header-rva: " << builder.dynamicLibraryInfo().clrDirectoryRva << '\n';
+    output << "exception-directory-rva: " << builder.dynamicLibraryInfo().exceptionDirectoryRva << '\n'
+           << "exception-directory-size: " << builder.dynamicLibraryInfo().exceptionDirectorySize << '\n'
+           << "clr-header-rva: " << builder.dynamicLibraryInfo().clrDirectoryRva << '\n';
     return ExitCode::Success;
 }
 
 ExitCode Driver::runProjectHostHeaderGeneration(
-    std::string_view inputPath,
-    std::string_view outputPath,
-    std::ostream& output,
-    std::ostream& error)
+    std::string_view inputPath, std::string_view outputPath, std::ostream &output, std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
-    if (!configurePrecompiledModules(
-            std::filesystem::path(inputPath), compilation, loadError))
+    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -3283,15 +3191,11 @@ ExitCode Driver::runProjectHostHeaderGeneration(
 }
 
 ExitCode Driver::runProjectLibraryMetadataGeneration(
-    std::string_view inputPath,
-    std::string_view outputPath,
-    std::ostream& output,
-    std::ostream& error)
+    std::string_view inputPath, std::string_view outputPath, std::ostream &output, std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
     std::string loadError;
-    if (!configurePrecompiledModules(
-            std::filesystem::path(inputPath), compilation, loadError))
+    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -3353,10 +3257,7 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
     return ExitCode::Success;
 }
 
-ExitCode Driver::verifyLibraryMetadata(
-    std::string_view inputPath,
-    std::ostream& output,
-    std::ostream& error)
+ExitCode Driver::verifyLibraryMetadata(std::string_view inputPath, std::ostream &output, std::ostream &error)
 {
     interop::LibraryMetadataCodec codec;
     interop::LibraryMetadata metadata;
@@ -3387,8 +3288,11 @@ ExitCode Driver::verifyLibraryMetadata(
     return ExitCode::Success;
 }
 
-ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath, std::string_view libraryPath,
-                                        std::string_view runtimePath, std::ostream& output, std::ostream& error)
+ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
+    std::string_view libraryPath,
+    std::string_view runtimePath,
+    std::ostream &output,
+    std::ostream &error)
 {
     const std::filesystem::path metadataFile(metadataPath);
     const std::filesystem::path libraryFile(libraryPath);
@@ -3478,12 +3382,11 @@ ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath, std::stri
     return ExitCode::Success;
 }
 
-ExitCode Driver::runFrontend(
-    std::string_view action,
+ExitCode Driver::runFrontend(std::string_view action,
     std::string_view path,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
-    std::ostream& output,
-    std::ostream& error)
+    std::ostream &output,
+    std::ostream &error)
 {
     frontend::FrontendCompilation compilation;
     std::string loadError;
@@ -3496,13 +3399,12 @@ ExitCode Driver::runFrontend(
         return ExitCode::CompilationError;
     }
 
-    const source::SourceFile* sourceFile = compilation.sourceManager().getFile(compilation.primaryFileId());
+    const source::SourceFile *sourceFile = compilation.sourceManager().getFile(compilation.primaryFileId());
     if (action == "--dump-source" && sourceFile != nullptr)
     {
-        output
-            << "file: " << sourceFile->displayPath() << '\n'
-            << "bytes: " << sourceFile->size() << '\n'
-            << "lines: " << sourceFile->lineCount() << '\n';
+        output << "file: " << sourceFile->displayPath() << '\n'
+               << "bytes: " << sourceFile->size() << '\n'
+               << "lines: " << sourceFile->lineCount() << '\n';
         for (std::uint32_t line = 1; line <= sourceFile->lineCount(); ++line)
         {
             output << line << ": " << sourceFile->lineText(line) << '\n';
@@ -3527,10 +3429,7 @@ ExitCode Driver::runFrontend(
              compilation.syntaxTree() != nullptr)
     {
         sema::SemanticDumper dumper;
-        dumper.dump(
-            compilation.syntaxTree(),
-            compilation.semanticAnalyzer()->model(),
-            output);
+        dumper.dump(compilation.syntaxTree(), compilation.semanticAnalyzer()->model(), output);
     }
     else if (action == "--dump-hir" && compilation.hirRoot() != nullptr)
     {
@@ -3622,17 +3521,14 @@ ExitCode Driver::runFrontend(
         }
         output << "Optimization verification: ok\n";
     }
-    else if (action == "--dump-pass-pipeline" &&
-             compilation.optimizationModule() != nullptr)
+    else if (action == "--dump-pass-pipeline" && compilation.optimizationModule() != nullptr)
     {
         passes::PassPipelineDumper dumper;
         dumper.dump(compilation.optimizationModule(), output);
     }
-    else if ((action == "--dump-llvm" || action == "--verify-llvm" ||
-              action == "--dump-llvm-opt" || action == "--verify-llvm-opt" ||
-              action == "--program" || action == "--check") &&
-             success && compilation.optimizationModule() != nullptr &&
-             compilation.semanticAnalyzer() != nullptr)
+    else if ((action == "--dump-llvm" || action == "--verify-llvm" || action == "--dump-llvm-opt" ||
+                 action == "--verify-llvm-opt" || action == "--program" || action == "--check") &&
+             success && compilation.optimizationModule() != nullptr && compilation.semanticAnalyzer() != nullptr)
     {
         llvm_backend::LlvmLowerer lowerer(compilation.semanticAnalyzer()->globalSymbols());
         std::unique_ptr<llvm_backend::LlvmModule> llvmModule = lowerer.lower(compilation.optimizationModule());
@@ -3675,8 +3571,7 @@ ExitCode Driver::runFrontend(
                 llvm_backend::LlvmOptimizationObservation observation;
                 std::string optimizationError;
                 if (!optimizer.optimize(
-                        *llvmModule, *targetMachine, optimizationLevel, &observation,
-                        optimizationError))
+                        *llvmModule, *targetMachine, optimizationLevel, &observation, optimizationError))
                 {
                     error << "nsc: internal error: LLVM optimization failed: " << optimizationError << '\n';
                     return ExitCode::CompilationError;
@@ -3688,10 +3583,8 @@ ExitCode Driver::runFrontend(
                 }
                 else if (action == "--verify-llvm-opt")
                 {
-                    output
-                        << "LLVM optimization verification: ok\n"
-                        << "optimization: "
-                        << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n';
+                    output << "LLVM optimization verification: ok\n"
+                           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n';
                 }
             }
         }
@@ -3729,4 +3622,4 @@ ExitCode Driver::runFrontend(
 
     return success ? ExitCode::Success : ExitCode::CompilationError;
 }
-}
+} // namespace nativesharp::driver

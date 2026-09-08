@@ -1,0 +1,89 @@
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Mirrors System.Collections.Generic.Comparer<T> -- a reusable, first-class wrapper around a
+    // `Comparison<T>`, for code that wants to pass "how to order a T" around as one object instead
+    // of a bare delegate (e.g. storing it in a field, or as a documented drop-in source for the
+    // `Comparison<TKey>`/`Comparison<T>` constructor overloads on SortedList<TKey,TValue>/
+    // SortedDictionary<TKey,TValue>/SortedSet<T>/PriorityQueue<TElement,TPriority> via
+    // `myComparer.Compare` as the delegate value).
+    //
+    // NativeSharp has no `IComparer<T>` interface (generics are unconstrained -- see Delegates.ns's
+    // class comment), so this is a concrete class, not an abstract base the way real C#'s
+    // `Comparer<T>` is. The parameterless constructor needs T's own `operator <`/`operator >` --
+    // exactly like every other unconstrained generic member in this package, it fails to compile
+    // at the instantiation site for a T with neither, which is the expected, honest outcome given
+    // there is no `where T : IComparable<T>` constraint to enforce it earlier.
+    //
+    // Deliberately exposed as two CONSTRUCTORS (`new Comparer<T>()` / `new Comparer<T>(cmp)`)
+    // rather than real C#'s `Comparer<T>.Default` static property / `Comparer<T>.Create(cmp)`
+    // static method -- verified directly against the compiler while writing this: a static member
+    // access on a generic class with an explicit type argument (`Comparer<int>.Default()`) does
+    // not parse as an expression today (only as a type, e.g. in a variable declaration), while
+    // `new Comparer<int>(...)` already works everywhere else in this package. An honest,
+    // documented syntax divergence, not a functional gap -- both constructions are available.
+    public class Comparer<T>
+    {
+        private Comparison<T> comparison;
+
+        public Comparer()
+        {
+            Comparison<T> natural = CompareNatural;
+            comparison = natural;
+        }
+
+        public Comparer(Comparison<T> comparisonFunc)
+        {
+            comparison = comparisonFunc;
+        }
+
+        // T's natural order, expressed as a `Comparison<T>`-shaped static method so it can be
+        // assigned directly to a `Comparison<T>` value (real C# uses `IComparable<T>.CompareTo`
+        // for this; NativeSharp has no such interface, so the natural `<`/`>` operators are used
+        // directly instead, matching every other unconstrained generic member in this package).
+        public static int CompareNatural(T a, T b)
+        {
+            if (a < b) { return -1; }
+            if (b < a) { return 1; }
+            return 0;
+        }
+
+        public int Compare(T a, T b)
+        {
+            return comparison(a, b);
+        }
+    }
+
+    // Mirrors System.Collections.Generic.EqualityComparer<T> -- a reusable, first-class wrapper
+    // around a `HashFunc<T>` plus structural `==`, for code that wants to pass "how to hash/equate
+    // a T" around as one object (e.g. as the source of the `HashFunc<T>` a
+    // Dictionary<TKey,TValue>/HashSet<T> constructor needs).
+    //
+    // Deliberately has NO parameterless constructor: real C#'s `EqualityComparer<T>.Default` falls
+    // back to `object.GetHashCode()`/`object.Equals()`, but NativeSharp has no universal `object`
+    // base type and no structural hashing operator at all -- a hash function is ALWAYS an
+    // explicit, caller-supplied `HashFunc<T>` in this package (see Dictionary.ns's class comment
+    // on why `Dictionary<TKey,TValue>` itself has no parameterless, comparer-free constructor
+    // either). The single `EqualityComparer(HashFunc<T>)` constructor is therefore the only way
+    // to build one -- an honest reflection of a real structural difference from C#, not an
+    // oversight. See Comparer<T>'s own class comment for why this is a constructor rather than a
+    // `Create(...)` static factory method.
+    public class EqualityComparer<T>
+    {
+        private HashFunc<T> hasher;
+
+        public EqualityComparer(HashFunc<T> hashFunc)
+        {
+            hasher = hashFunc;
+        }
+
+        public bool Equals(T a, T b)
+        {
+            return a == b;
+        }
+
+        public int GetHashCode(T value)
+        {
+            return hasher(value);
+        }
+    }
+}

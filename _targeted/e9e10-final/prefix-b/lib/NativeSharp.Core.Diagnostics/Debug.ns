@@ -1,0 +1,70 @@
+namespace NativeSharp.Core.Diagnostics
+{
+    // NativeSharp.Core.Diagnostics.Debug -- Stage 55.3 "Diagnostics".
+    //
+    // Tres utilidades de diagnostico basico, cada una envolviendo una unica llamada a Win32.
+    // Sigue exactamente la misma disciplina de "operacion nucleo" que el resto de Stage 53/54/55
+    // -- ver el comentario de cabecera de Process.ns para la explicacion completa del mecanismo;
+    // los cuerpos *Raw de abajo nunca se ejecutan.
+    //
+    // Simplificacion deliberada de CaptureStackFrameCount(): esta ronda expone UNICAMENTE la
+    // CANTIDAD de frames en la pila de llamadas actual (RtlCaptureStackBackTrace, pidiendole
+    // solamente el conteo, con un buffer de direcciones descartado internamente por el wrapper
+    // de runtime), no las direcciones reales de cada frame. Devolver las direcciones en si
+    // necesitaria un mecanismo de marshaling de arreglos que este compilador todavia no tiene
+    // para este caso (un "owned nint[]" alojado por el runtime, no por el caller) -- ver la nota
+    // equivalente en Environment.GetCommandLineArgCount/GetCommandLineArgs (Stage 53.5) para el
+    // mismo tipo de decision de alcance. Un conteo de frames ya es util por si solo (por ejemplo,
+    // para detectar recursion descontrolada antes de que la pila se agote), y es la pieza que
+    // esta ronda deja lista sin comprometerse a un diseño de arreglo que podria cambiar despues.
+    public class Debug
+    {
+        // True si este proceso esta corriendo bajo un debugger adjunto (IsDebuggerPresent) --
+        // uso tipico: saltear asserts costosos o timeouts largos cuando se esta debuggeando paso
+        // a paso. IsDebuggerPresent devuelve un BOOL de Win32 (int no-cero/cero); esta operacion
+        // ya lo normaliza a 0 o 1 en el propio wrapper de runtime (ver
+        // buildDebugIsDebuggerPresent en src/Runtime/WindowsRuntimeBuilder.cpp), por eso la
+        // comparacion contra 0 de abajo es exacta.
+        public static bool IsDebuggerPresent()
+        {
+            return IsDebuggerPresentRaw() != 0;
+        }
+
+        // Cantidad de frames en la pila de llamadas ACTUAL (RtlCaptureStackBackTrace) -- ver el
+        // comentario de cabecera de la clase para la simplificacion deliberada de esta ronda
+        // (solo el conteo, no las direcciones).
+        public static int CaptureStackFrameCount()
+        {
+            return (int)CaptureStackFrameCountRaw();
+        }
+
+        // Escribe "message" al canal de debug del sistema operativo (OutputDebugStringA) --
+        // visible en herramientas como DebugView o el debugger adjunto (si lo hay), NUNCA en la
+        // consola/stdout del proceso (para eso ver Console.WriteLine, si existe, o el mecanismo
+        // de salida estandar que ya tenga esta libreria). Marshaling identico al que
+        // Environment.SetEnvironmentVariable (Stage 53.2b) ya establecio: buildNullTerminatedCopy
+        // convierte el string de NativeSharp (length-prefixed, NO terminado en null) a un buffer
+        // ANSI terminado en null antes de la llamada real a Win32.
+        public static void OutputString(string message)
+        {
+            OutputStringRaw(message);
+        }
+
+        // Las tres "core operations" de Stage 55.3 -- ver el comentario de cabecera de la clase.
+        // Placeholders: nunca se ejecutan, el compilador reemplaza cada llamada por lowering
+        // nativo directo a LLVM.
+        private static long IsDebuggerPresentRaw()
+        {
+            return 0;
+        }
+
+        private static long CaptureStackFrameCountRaw()
+        {
+            return 0;
+        }
+
+        private static void OutputStringRaw(string message)
+        {
+        }
+    }
+}

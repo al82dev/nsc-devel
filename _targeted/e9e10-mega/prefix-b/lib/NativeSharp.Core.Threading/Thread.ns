@@ -1,0 +1,239 @@
+namespace NativeSharp.Core.Threading
+{
+    // NativeSharp.Core.Threading.ThreadStart -- Stage 54.1 "Threads".
+    //
+    // El delegate que arranca un hilo de sistema operativo nuevo. Deliberadamente CERO
+    // argumentos y CERO valor de retorno -- exactamente lo que System.Threading.ThreadStart es
+    // en C# real (a diferencia de ParameterizedThreadStart, que este stage no incluye: si un
+    // hilo necesita datos de entrada, una lambda que capture esos datos por valor escalar, o un
+    // metodo de instancia sobre un objeto que ya los tiene, cubre el mismo caso sin agregar una
+    // segunda forma de delegate).
+    //
+    // Cualquier delegate compatible con este contrato sirve como ThreadStart, sin restriccion
+    // adicional del compilador mas alla de las que YA existen desde Stage 42/43/50.7 para
+    // cualquier delegate:
+    //   - un metodo static (`new Thread(SomeClass.SomeStaticMethod)`),
+    //   - un metodo de instancia (`new Thread(algunaInstancia.AlgunMetodo)` -- el receptor via
+    //     por el nuevo hilo exactamente igual que cualquier otro delegate ligado a instancia),
+    //   - una lambda (`new Thread(() => { ... })`) -- solo puede capturar variables escalares
+    //     (int, bool, char, etc.), NUNCA un owner RAII, un local prestado, un parametro
+    //     prestado, ni un parametro owned: Stage 50.7 (analisis de escape de lambdas,
+    //     `collectLambdaCaptures` en ProjectMethodBodyModel.cpp) YA rechaza esos casos con un
+    //     diagnostico de compilacion, para CUALQUIER lambda, no solo para Thread.
+    //
+    // RIESGO ARQUITECTONICO DEJADO DELIBERADAMENTE ABIERTO EN ESTA RONDA (documentado a
+    // proposito, no un descuido -- ver el comentario de cabecera de la clase Thread mas abajo
+    // para la mitigacion parcial que SI se agrego): NativeSharp no tiene garbage collector, solo
+    // RAII/ownership determinista. Si el delegate pasado aca es un metodo de INSTANCIA cuyo
+    // receptor (`this`) es un owner RAII que el hilo principal destruye MIENTRAS el hilo en
+    // segundo plano todavia lo esta usando, el destructor de ese objeto corre en el momento
+    // exacto que el codigo del hilo principal indica (fin de scope), sin importar si el hilo
+    // en segundo plano todavia tiene una referencia viva -- a diferencia de C# real, donde el
+    // GC mantendria vivo cualquier objeto todavia referenciado por CUALQUIER hilo. El analisis
+    // de escape de Stage 50.7 es un sistema de patrones sintacticos, NO un analisis
+    // interprocedural de tiempos de vida: no puede (todavia) detectar este caso especifico para
+    // un receptor de metodo de instancia. La mitigacion que SI existe: Thread es una clase RAII
+    // cuyo destructor hace auto-Join() (ver mas abajo) -- combinado con la disciplina normal de
+    // orden de declaracion (declarar el Thread DESPUES de los objetos que va a usar, en el mismo
+    // scope, para que la destruccion en orden inverso que RAII ya garantiza junte el hilo ANTES
+    // de destruir esos objetos), esto cierra "gratis" la version mas comun de este error. Sigue
+    // siendo responsabilidad del developer, exactamente como con C++ std::thread/std::jthread --
+    // ver el comentario de cabecera de la clase Thread para la discusion completa.
+    public delegate void ThreadStart();
+
+    // NativeSharp.Core.Threading.Thread -- Stage 54.1 "Threads".
+    //
+    // Envoltorio RAII sobre un hilo de sistema operativo de Windows (CreateThread/
+    // WaitForSingleObject/CloseHandle). Es la PRIMERA "core operation" de todo NativeSharp cuyo
+    // handle de recurso de Win32 debe sobrevivir ENTRE llamadas separadas a metodos NativeSharp
+    // -- ThreadCreate() (adentro del constructor) devuelve el HANDLE, y una llamada
+    // POSTERIOR y separada a ThreadJoin()/ThreadDetach() (adentro de Join()/Detach()/~Thread())
+    // lo consume. Cada wrapper de Win32 anterior en este compilador (File.ReadAllText,
+    // Directory.GetFiles, etc.) abria un handle y lo cerraba antes de retornar, todo dentro de
+    // UNA sola llamada nucleo. Por eso el HANDLE se guarda como campo `nint handle_` -- `nint`
+    // es el tipo entero NativeSharp del mismo ancho que un puntero (64 bits en este target,
+    // ver ProjectOopMirModel.cpp/ProjectOopLlvmLowerer.cpp), el tipo natural para guardar un
+    // HANDLE opaco de Win32 por valor a lo largo de multiples sentencias NativeSharp -- el mismo
+    // idioma "handleAsInt" (LLVMBuildPtrToInt/LLVMBuildIntToPtr) que File.ReadAllText/
+    // WriteAllText/AppendAllText ya usan puertas adentro para comparar contra
+    // INVALID_HANDLE_VALUE, aplicado aca de punta a punta porque el handle cruza la frontera
+    // NativeSharp/runtime dos veces (una vez de salida en ThreadCreate, una vez de entrada en
+    // ThreadJoin/ThreadDetach) en vez de una sola.
+    //
+    // Es una clase (tipo referencia), no un struct -- mismo razonamiento que Stopwatch.ns
+    // (ver su comentario de cabecera) pero AUN MAS critico aca: si Thread fuera struct, cada
+    // copia por valor (pasarlo a una funcion, asignarlo a otra variable) duplicaria el MISMO
+    // HANDLE de Win32 en dos objetos independientes -- ambos creerian ser dueños del hilo, y
+    // eventualmente los dos llamarian a Join()/Detach()/~Thread() sobre el mismo HANDLE
+    // numerico, la clase de bug de doble-liberacion que RAII existe justamente para prevenir.
+    //
+    // == La mitigacion de seguridad de esta ronda: auto-Join() en el destructor ==
+    //
+    // `~Thread()` llama a `Join()` si el hilo todavia no fue unido ni destegado
+    // (`!joined_`) -- mirror exacto de C++20 `std::jthread` (a diferencia del `std::thread` de
+    // C++11, cuyo destructor llama std::terminate() si el hilo sigue "joinable"; NativeSharp
+    // elige el comportamiento MAS SEGURO de los dos: auto-join silencioso, nunca terminar el
+    // proceso solo por un Join() olvidado). Combinado con la garantia YA EXISTENTE de RAII
+    // (destruccion en orden INVERSO de declaracion, dentro de un mismo scope, desde Stage 49):
+    // si el codigo NativeSharp declara sus objetos "objetivo del hilo" PRIMERO y el Thread que
+    // los usa DESPUES, en el mismo scope, el fin de ese scope destruye el Thread PRIMERO (auto-
+    // Join(), bloqueando hasta que el hilo en segundo plano termine) y SOLO DESPUES destruye los
+    // objetos que ese hilo pudo haber estado usando -- el hilo en segundo plano ya no existe
+    // para cuando esos objetos se liberan. Esta mitigacion es "gratis" en el sentido de que
+    // reutiliza maquinaria que el compilador YA tiene desde Stage 49, pero sigue dependiendo de
+    // que el developer declare las cosas en el orden correcto -- exactamente como en C++, donde
+    // el orden de declaracion de variables locales importa por la misma razon. NO es un
+    // reemplazo de un analisis de tiempos de vida real; es una red de seguridad barata para el
+    // caso mas comun (uso estrictamente-anidado de un Thread dentro de un scope), no para cada
+    // caso imaginable (un Thread guardado en un campo de larga vida, pasado a otra funcion que
+    // lo guarda en una estructura de datos global, etc. -- esos casos siguen siendo
+    // responsabilidad del developer, sin red de seguridad, igual que en C++).
+    //
+    // == Limitacion deliberada, documentada, NO resuelta esta ronda: excepciones sin capturar ==
+    //
+    // Si el delegate ThreadStart lanza una excepcion NativeSharp que nadie captura DENTRO de esa
+    // funcion, esa excepcion escapa al hilo en segundo plano completo. El trampolin interno de
+    // runtime (`__nativesharp_thread_trampoline`, ver WindowsRuntimeBuilder.cpp) invoca el
+    // delegate con una llamada LLVM plana, SIN la maquinaria invoke/funclet de manejo de
+    // excepciones que el resto de este compilador usa desde Stage 45 para cualquier llamada en
+    // el hilo PRINCIPAL. El desenrollado SEH de esa excepcion no encuentra ningun manejador en
+    // la pila de ese hilo en segundo plano; el comportamiento por defecto de Windows ante una
+    // excepcion SEH sin manejar es terminar el PROCESO COMPLETO -- exactamente el mismo
+    // comportamiento que tendria cualquier excepcion SEH sin manejar en cualquier hilo de
+    // cualquier programa Win32/C++ comun, no una limitacion inventada por este compilador. Esto
+    // NO se puede ejercitar de forma segura en el ejemplo empaquetado de esta ronda (mataria al
+    // proceso de prueba completo) -- queda documentado aca y en el .md de la ronda, verificado
+    // por razonamiento sobre el comportamiento ya documentado de Windows, no por un test
+    // ejecutable. La leccion practica para codigo NativeSharp real: todo ThreadStart debe
+    // capturar sus propias excepciones si el hilo principal necesita seguir vivo pase lo que
+    // pase adentro del hilo en segundo plano.
+    public class Thread
+    {
+        // El HANDLE de Win32 devuelto por CreateThread, guardado como nint (ver el comentario
+        // de cabecera de la clase para el razonamiento completo). Un valor de 0 significa "esto
+        // NUNCA fue un handle de hilo real" -- ya sea porque CreateThread fallo (caso
+        // excepcionalmente raro de agotamiento de recursos del sistema operativo, la misma
+        // simplificacion de "cualquier fallo de Win32 colapsa a un valor seguro/inerte" que
+        // cada ronda de Stage 53 ya aplico), o porque ThreadJoin/ThreadDetach ya consumieron y
+        // cerraron este handle. ThreadJoin/ThreadDetach tratan 0 como no-op silencioso adentro
+        // del wrapper de runtime -- nunca crashean, nunca bloquean para siempre.
+        private nint handle_;
+
+        // true una vez que Join() o Detach() corrieron (a mano, o automaticamente desde
+        // ~Thread()) -- hace que ambos metodos sean idempotentes: llamar Join() dos veces, o
+        // Join() seguido de Detach(), o dejar que ~Thread() haga el auto-Join() despues de que
+        // el codigo de usuario ya llamo Join() explicitamente, son todos no-ops seguros en vez
+        // de una segunda operacion real sobre un HANDLE que la primera llamada ya pudo haber
+        // cerrado.
+        private bool joined_;
+
+        // El constructor ES el punto de arranque del hilo -- no hay un Start() separado. Mismo
+        // shape que C++11/20 std::thread/std::jthread: construir el objeto ya pone el hilo a
+        // correr de inmediato, no existe un estado "creado pero todavia no arrancado".
+        public Thread(ThreadStart start)
+        {
+            handle_ = ThreadCreate(start);
+            joined_ = false;
+        }
+
+        // Bloquea el hilo LLAMANTE hasta que este hilo termine de ejecutar, despues libera el
+        // HANDLE de Win32. Idempotente via joined_ (ver el comentario del campo arriba). Esta
+        // es la operacion "segura" de las dos -- despues de que Join() retorna, el codigo
+        // llamante tiene la garantia de que el hilo en segundo plano ya no esta corriendo, asi
+        // que cualquier objeto que ese hilo pudo haber usado ahora se puede destruir sin riesgo.
+        public void Join()
+        {
+            if (joined_)
+            {
+                return;
+            }
+            ThreadJoin(handle_);
+            joined_ = true;
+        }
+
+        // Libera el HANDLE de Win32 SIN esperar a que el hilo termine -- el hilo sigue
+        // ejecutando en segundo plano, completamente desconectado de este objeto Thread a
+        // partir de este punto (Windows no tiene una syscall de "detach" separada tipo pthread;
+        // cerrar el HANDLE simplemente le dice al sistema operativo "ya no me interesa poder
+        // esperar/observar este hilo", el hilo en si sigue corriendo solo -- ver el comentario
+        // de buildThreadDetach en WindowsRuntimeBuilder.cpp para el detalle Win32 completo).
+        // Detach() es la operacion PELIGROSA de las dos si el hilo referencia cualquier objeto
+        // del hilo principal: nada garantiza que ese objeto siga vivo para cuando el hilo
+        // detached termine de usarlo. Idempotente via joined_, igual que Join().
+        public void Detach()
+        {
+            if (joined_)
+            {
+                return;
+            }
+            ThreadDetach(handle_);
+            joined_ = true;
+        }
+
+        // La mitigacion de seguridad central de esta ronda -- ver el comentario de cabecera de
+        // la clase para la discusion completa. Auto-Join() (NUNCA auto-Detach(): un hilo
+        // olvidado silenciosamente en segundo plano, sin que nadie lo espere, es exactamente el
+        // tipo de peligro de tiempos de vida que esta mitigacion existe para prevenir -- si el
+        // developer realmente quiere ese comportamiento, Detach() sigue disponible, a mano,
+        // como una decision explicita).
+        ~Thread()
+        {
+            if (!joined_)
+            {
+                Join();
+            }
+        }
+
+        // Las tres "core operations" de Stage 54.1 -- reconocidas por el compilador por clase +
+        // nombre + firma EXACTOS (ver MethodCoreOperationKind::ThreadCreate/ThreadJoin/
+        // ThreadDetach en ProjectMethodBodyModel.h/.cpp), el mismo mecanismo que cada operacion
+        // nucleo desde Stage 51. Los cuerpos de abajo son placeholders -- nunca se ejecutan, el
+        // compilador reemplaza la llamada entera por lowering nativo directo a LLVM (ver
+        // ProjectOopHirModel.cpp/ProjectOopMirModel.cpp/ProjectOopLlvmLowerer.cpp) hacia los
+        // wrappers reales en src/Runtime/WindowsRuntimeBuilder.cpp
+        // (buildThreadCreate/buildThreadJoin/buildThreadDetach).
+        //
+        // A DIFERENCIA de cada operacion nucleo anterior (Console.WriteLine, NativeClock.*,
+        // Environment.*, File.*, Directory.*, Path.GetFullPath -- todas `public`, pensadas para
+        // que codigo de usuario las llame directamente), estas tres son PRIVADAS: nadie fuera de
+        // esta clase debe llamarlas -- el codigo de usuario interactua con Thread exclusivamente
+        // via el constructor/Join()/Detach()/destructor de arriba, nunca con el HANDLE crudo.
+        // Esto es una eleccion deliberada de diseño de biblioteca, no una restriccion nueva del
+        // compilador: el mecanismo de reconocimiento de "core operation" no distingue
+        // accesibilidad, solo clase+nombre+firma -- una operacion nucleo PUBLICA (como
+        // NativeClock.QueryCounterRaw) funciona exactamente igual que una PRIVADA como estas
+        // tres.
+        private static nint ThreadCreate(ThreadStart start)
+        {
+            return 0;
+        }
+
+        private static void ThreadJoin(nint handle)
+        {
+        }
+
+        private static void ThreadDetach(nint handle)
+        {
+        }
+
+        // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29). Sleep pausa el hilo
+        // LLAMANTE (no un objeto Thread en particular -- por eso vive como metodo static, igual
+        // que Environment.Exit, y no como metodo de instancia sobre `handle_`) durante
+        // "milliseconds" milisegundos, envolviendo Win32 Sleep(DWORD dwMilliseconds) -- ver
+        // buildThreadSleep en WindowsRuntimeBuilder.cpp. Simplificacion deliberada, misma
+        // disciplina de siempre: Win32 Sleep no falla ni tiene BOOL de retorno que consultar, asi
+        // que no hay caso de error que documentar aca (a diferencia de casi cualquier otro
+        // wrapper de este archivo). Sleep(0) es un caso especial documentado por Win32 mismo:
+        // cede el resto de su franja de tiempo actual a otro hilo listo de IGUAL prioridad, sin
+        // pausar de verdad si ninguno esta listo -- este compilador no agrega ningun
+        // comportamiento propio encima de esa semantica ya definida.
+        public static void Sleep(int milliseconds)
+        {
+            SleepRaw(milliseconds);
+        }
+
+        private static void SleepRaw(int milliseconds)
+        {
+        }
+    }
+}

@@ -1,0 +1,14 @@
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_build_identity.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_compilation.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_target.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_frontend.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_llvm.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_runtime.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_linker.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc_driver.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/nsc.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/edit_cache.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/rebuild_cache.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/list_install_components.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/install.dir
+A:/nsc-devel/_targeted/e9e10-strict3/build-a/CMakeFiles/install/local.dir

@@ -1,5 +1,6 @@
 #include "nativesharp/Driver/InstallationVerifier.h"
 
+#include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include <array>
@@ -87,6 +88,14 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   std::string contractError;
   if (!verifyToolchainContract(contractPath, contractError)) {
     error = "installed toolchain contract is invalid: " + contractError;
+    return false;
+  }
+
+  const std::filesystem::path policyPath =
+      prefix / "share/nativesharp/toolchain/NativeSharpCompatibility.policy";
+  std::string policyError;
+  if (!verifyCompatibilityPolicy(policyPath, policyError)) {
+    error = "installed compatibility policy is invalid: " + policyError;
     return false;
   }
 

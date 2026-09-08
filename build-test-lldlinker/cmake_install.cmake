@@ -49,6 +49,10 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/share/nativesharp/toolchain" TYPE FILE FILES "A:/nsc-devel/build-test-lldlinker/generated/NativeSharpCompatibility.policy")
+endif()
+
+if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/share/nativesharp/toolchain" TYPE FILE FILES "A:/nsc-devel/build-test-lldlinker/generated/NativeSharpInstallation.files")
 endif()
 

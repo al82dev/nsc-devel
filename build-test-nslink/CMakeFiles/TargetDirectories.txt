@@ -68,6 +68,7 @@ A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage61_compiler_hardening_tests.d
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage62_toolchain_contract_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage63_installation_verifier_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage64_installation_manifest_tests.dir
+A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage66_e9_e10_release_contract_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_cc1_build_identity_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_cc1_integer_evaluator_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_cc1_correctness_tests.dir

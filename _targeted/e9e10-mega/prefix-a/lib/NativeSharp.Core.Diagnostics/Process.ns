@@ -1,0 +1,149 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.Diagnostics
+{
+    // NativeSharp.Core.Diagnostics.Process -- Stage 55.1 "Process".
+    //
+    // Informacion y control basico sobre el proceso EN CURSO (nunca sobre otro proceso -- no hay
+    // aqui ningun mecanismo para abrir/inspeccionar un proceso ajeno, y crear procesos hijos
+    // (CreateProcess) esta deliberadamente fuera de alcance de esta ronda -- ver
+    // claude/05_metodo_de_trabajo_y_archivo_historico.md, seccion de particion de Stage 55).
+    // Sigue exactamente la misma disciplina de "operacion nucleo" que NativeSharp.Core.Environment
+    // (Stage 53.2) establecio: el compilador reconoce cada metodo *Raw por clase+nombre+firma
+    // exactos y sustituye la llamada entera por lowering nativo a LLVM (ver
+    // MethodCoreOperationKind::ProcessGetCurrentProcessIdRaw y hermanos en
+    // ProjectMethodBodyModel.h/.cpp, y buildProcessGetCurrentProcessId y hermanos en
+    // src/Runtime/WindowsRuntimeBuilder.cpp) -- los cuerpos *Raw de abajo nunca se ejecutan.
+    //
+    // Por que el HANDLE del proceso actual nunca se expone a NativeSharp: GetCurrentProcess()
+    // devuelve un pseudo-handle especial (siempre el valor -1, valido unicamente dentro del
+    // proceso que lo pide -- no es un HANDLE real que se pueda cerrar, duplicar ni pasar a otro
+    // proceso). Cada wrapper de runtime que lo necesita (K32GetProcessMemoryInfo, GetProcessTimes,
+    // GetPriorityClass/SetPriorityClass) lo obtiene el mismo, en el momento, con su propia llamada
+    // a GetCurrentProcess() -- exactamente igual que como CloseHandle nunca se llama sobre el (ese
+    // pseudo-handle no se cierra, ni falta que hiciera falta).
+    //
+    // Por que WorkingSetSize usa K32GetProcessMemoryInfo (el alias de kernel32.dll) y no
+    // GetProcessMemoryInfo de psapi.lib: el alias exportado directamente por KERNEL32.dll desde
+    // Windows Vista en adelante evita agregar una biblioteca de importacion nueva (psapi.lib) solo
+    // para esta unica funcion -- confirmado via investigacion antes de disenar esta ronda, mismo
+    // criterio que ya goberno la eleccion de SHELL32.dll para CommandLineToArgvW en Stage 53.5.
+    public class Process
+    {
+        // Identificador del proceso actual (GetCurrentProcessId) -- el mismo numero que
+        // Administrador de tareas / Get-Process muestran como "Id" para este proceso.
+        public static long CurrentProcessId()
+        {
+            return GetCurrentProcessIdRaw();
+        }
+
+        // Bloque 4, fase C -- SHR-032. Operacion nucleo: CreateProcessA + WaitForSingleObject +
+        // GetExitCodeProcess + CloseHandle.
+        //
+        // ESTO ES LO QUE DESBLOQUEA EL AUTO-HOSPEDADO. La cabecera de este archivo decia que
+        // crear procesos hijos estaba "deliberadamente fuera de alcance", y esa frase era el
+        // motivo por el que un `nsc` escrito en NativeSharp no podia lanzar el enlazador -- y por
+        // tanto no podia producir un ejecutable.
+        //
+        // Lanza `executable` con `commandLine`, redirige su stdout Y su stderr a `outputPath`,
+        // ESPERA a que termine y devuelve su codigo de salida.
+        //
+        //   executable   la ruta del .exe
+        //   commandLine  la linea COMPLETA, incluyendo el argv[0] -- asi lo espera Windows
+        //   outputPath   donde van stdout y stderr, INTERCALADOS en el orden en que ocurrieron
+        //
+        // Devuelve -1 si no se pudo lanzar: fichero de salida inaccesible --incluida una ruta
+        // vacia-- o CreateProcess fallido. Un proceso que devolviera 0xFFFFFFFF daria -1 tambien;
+        // se acepta a sabiendas, porque ningun compilador ni enlazador de esta familia lo hace y
+        // la alternativa seria partir la firma en dos por un caso que no ocurre.
+        //
+        // NO HAY TIEMPO LIMITE, a proposito: un enlazador que no termina es un fallo del
+        // enlazador, y matarlo a los N segundos lo disfrazaria de codigo de salida raro.
+        public static int Run(string executable, string commandLine, string outputPath)
+        {
+            return -1;
+        }
+
+        // Memoria fisica actualmente en uso por este proceso, en bytes (PROCESS_MEMORY_COUNTERS.
+        // WorkingSetSize via K32GetProcessMemoryInfo) -- una medicion instantanea, no un pico
+        // historico (para eso existe PeakWorkingSetSize en la misma estructura de Win32, no
+        // expuesto en esta ronda por no tener un uso tipico claro en un motor de juego).
+        public static long WorkingSetSize()
+        {
+            return GetWorkingSetSizeRaw();
+        }
+
+        // Tiempo de CPU en modo KERNEL consumido por este proceso desde que arranco, como
+        // TimeSpan. GetProcessTimes devuelve un FILETIME (100 ns por unidad) -- exactamente la
+        // misma unidad que TimeSpan.Ticks, asi que FromTicks lo envuelve sin ninguna conversion.
+        public static TimeSpan KernelTime()
+        {
+            return TimeSpan.FromTicks(GetKernelTimeRaw());
+        }
+
+        // Tiempo de CPU en modo USUARIO consumido por este proceso desde que arranco, como
+        // TimeSpan -- misma unidad y mismo mecanismo que KernelTime() de arriba. La suma de
+        // KernelTime() + UserTime() es el tiempo de CPU total consumido por este proceso (a
+        // diferencia de Stopwatch/NativeClock, que miden tiempo de PARED transcurrido, no tiempo
+        // de CPU realmente consumido).
+        public static TimeSpan UserTime()
+        {
+            return TimeSpan.FromTicks(GetUserTimeRaw());
+        }
+
+        // Clase de prioridad de este proceso (GetPriorityClass), como el entero crudo de Win32.
+        // Valores conocidos de Win32 (ver documentacion de SetPriorityClass): IDLE=0x40,
+        // BELOW_NORMAL=0x4000, NORMAL=0x20, ABOVE_NORMAL=0x8000, HIGH=0x80, REALTIME=0x100. No se
+        // agrego un enum NativeSharp para estos valores en esta ronda -- devolverlos/aceptarlos
+        // como int crudo evita introducir un tipo nuevo solo para seis constantes bien conocidas
+        // y documentadas en el Win32 SDK.
+        public static int PriorityClass()
+        {
+            return (int)GetPriorityClassRaw();
+        }
+
+        // Establece la clase de prioridad de este proceso (SetPriorityClass). Cambiar a
+        // REALTIME (0x100) requiere privilegios elevados en Windows real y puede fallar
+        // silenciosamente si el proceso no los tiene -- esta ronda no agrega deteccion de ese
+        // caso (Win32 mismo no lo distingue de forma simple sin GetLastError, y ningun caller
+        // real de esta libreria necesita esa distincion todavia).
+        public static void SetPriorityClass(int priorityClass)
+        {
+            SetPriorityClassRaw(priorityClass);
+        }
+
+        // Las seis "core operations" de Stage 55.1 -- ver el comentario de cabecera de la clase.
+        // Placeholders: nunca se ejecutan, el compilador reemplaza cada llamada por lowering
+        // nativo directo a LLVM. Privadas, mismo razonamiento de diseño de biblioteca que
+        // Environment.ns: el codigo de usuario interactua con Process exclusivamente via los
+        // metodos publicos de arriba, nunca con *Raw directamente.
+        private static long GetCurrentProcessIdRaw()
+        {
+            return 0;
+        }
+
+        private static long GetWorkingSetSizeRaw()
+        {
+            return 0;
+        }
+
+        private static long GetKernelTimeRaw()
+        {
+            return 0;
+        }
+
+        private static long GetUserTimeRaw()
+        {
+            return 0;
+        }
+
+        private static long GetPriorityClassRaw()
+        {
+            return 0;
+        }
+
+        private static void SetPriorityClassRaw(int priorityClass)
+        {
+        }
+    }
+}

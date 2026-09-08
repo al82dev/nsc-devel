@@ -3403,6 +3403,55 @@ rule CXX_EXECUTABLE_LINKER__nsc_stage64_installation_manifest_tests_Release
 #############################################
 # Rule for generating CXX dependencies.
 
+rule CXX_SCAN__nsc_stage66_e9_e10_release_contract_tests_Release
+  depfile = $DEP_FILE
+  command = C:\WINDOWS\system32\cmd.exe /C ""C:/clang-llvm/bin/clang-scan-deps.exe" -format=p1689 -- C:\clang-llvm\bin\clang-cl.exe $DEFINES $INCLUDES $FLAGS -x c++ $in -c -clang:-o -clang:$OBJ_FILE -clang:-MT -clang:$DYNDEP_INTERMEDIATE_FILE -clang:-MD -clang:-MF -clang:$DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && "A:/apps/cmake/bin/cmake.exe" -E rename $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"
+  description = Scanning $in for CXX dependencies
+
+
+#############################################
+# Rule to generate ninja dyndep files for CXX.
+
+rule CXX_DYNDEP__nsc_stage66_e9_e10_release_contract_tests_Release
+  command = A:\apps\cmake\bin\cmake.exe -E cmake_ninja_dyndep --tdi=CMakeFiles\nsc_stage66_e9_e10_release_contract_tests.dir\CXXDependInfo.json --lang=CXX --modmapfmt=clang --dd=$out @$out.rsp
+  description = Generating CXX dyndep file $out
+  rspfile = $out.rsp
+  rspfile_content = $in
+  restat = 1
+
+
+#############################################
+# Rule for compiling CXX files.
+
+rule CXX_COMPILER__nsc_stage66_e9_e10_release_contract_tests_scanned_Release
+  depfile = $DEP_FILE
+  deps = gcc
+  command = ${LAUNCHER}${CODE_CHECK}C:\clang-llvm\bin\clang-cl.exe  /nologo -TP $DEFINES $INCLUDES $FLAGS -clang:-MD -clang:-MT$out -clang:-MF$DEP_FILE @$DYNDEP_MODULE_MAP_FILE /Fo$out /Fd$TARGET_COMPILE_PDB -c -- $in
+  description = Building CXX object $out
+
+
+#############################################
+# Rule for compiling CXX files.
+
+rule CXX_COMPILER__nsc_stage66_e9_e10_release_contract_tests_unscanned_Release
+  depfile = $DEP_FILE
+  deps = gcc
+  command = ${LAUNCHER}${CODE_CHECK}C:\clang-llvm\bin\clang-cl.exe  /nologo -TP $DEFINES $INCLUDES $FLAGS -clang:-MD -clang:-MT$out -clang:-MF$DEP_FILE /Fo$out /Fd$TARGET_COMPILE_PDB -c -- $in
+  description = Building CXX object $out
+
+
+#############################################
+# Rule for linking CXX executable.
+
+rule CXX_EXECUTABLE_LINKER__nsc_stage66_e9_e10_release_contract_tests_Release
+  command = C:\WINDOWS\system32\cmd.exe /C "$PRE_LINK && A:\apps\cmake\bin\cmake.exe -E vs_link_exe --msvc-ver=1951 --intdir=$OBJECT_DIR --rc=C:\clang-llvm\bin\llvm-rc.exe --mt=C:\clang-llvm\bin\llvm-mt.exe --manifests $MANIFESTS -- C:\clang-llvm\bin\lld-link.exe /nologo $in  /out:$TARGET_FILE /implib:$TARGET_IMPLIB /pdb:$TARGET_PDB /version:0.0 $LINK_FLAGS $LINK_PATH $LINK_LIBRARIES && $POST_BUILD"
+  description = Linking CXX executable $TARGET_FILE
+  restat = $RESTAT
+
+
+#############################################
+# Rule for generating CXX dependencies.
+
 rule CXX_SCAN__nsc_cc1_build_identity_tests_Release
   depfile = $DEP_FILE
   command = C:\WINDOWS\system32\cmd.exe /C ""C:/clang-llvm/bin/clang-scan-deps.exe" -format=p1689 -- C:\clang-llvm\bin\clang-cl.exe $DEFINES $INCLUDES $FLAGS -x c++ $in -c -clang:-o -clang:$OBJ_FILE -clang:-MT -clang:$DYNDEP_INTERMEDIATE_FILE -clang:-MD -clang:-MF -clang:$DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && "A:/apps/cmake/bin/cmake.exe" -E rename $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"

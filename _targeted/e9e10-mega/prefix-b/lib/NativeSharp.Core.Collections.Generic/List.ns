@@ -1,0 +1,556 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Mirrors System.Collections.Generic.List<T> -- a growable array.
+    //
+    // Ownership design (see Delegates.ns for the equality/ordering story):
+    //   - Backing storage is `owned T[] items` -- for a reference-typed T this array truly owns
+    //     every element it holds; for a value-typed T (int, bool, a plain struct, ...) "owned"
+    //     is a harmless no-op (Stage 52 compiler fix 1/2/3), so the SAME source compiles and
+    //     behaves correctly for every T.
+    //   - `Add`/`Insert`/`SetAt` take `owned T value`: the caller must hand over ownership with
+    //     `move(...)` for a reference-typed T (a plain value-typed T needs no move() at all --
+    //     also a Stage 52 fix). `RemoveAt`/`Remove`/`Clear`/the destructor all `delete` the
+    //     element(s) they discard, which frees a reference-typed element and is a no-op for a
+    //     value-typed one.
+    //   - The indexer is READ-ONLY (`this[int index] { get; }`). NativeSharp property/indexer
+    //     setters have an implicit, unqualified `value` parameter that cannot be declared
+    //     `owned`, and -- this was checked directly against the compiler while designing this
+    //     package -- assigning a plain (non-owned) reference into an `owned T[]` slot is
+    //     currently accepted with no ownership-transfer check at all. That is safe for the
+    //     *internal*, same-array relocations this file performs (Sort's swaps, Insert/RemoveAt's
+    //     shifts: the pointer bit pattern only ever moves between slots of the SAME array, so the
+    //     "each live pointer has exactly one owning slot" invariant holds before and after), but
+    //     it would NOT be safe for a public `this[int index] { set; }` fed by outside code (the
+    //     caller could keep its own reference alive after handing it in, producing a second,
+    //     untracked owner of the same object -- a double-free waiting to happen). So the write
+    //     path is the explicit `SetAt(int index, owned T value)` method instead, which forces a
+    //     real ownership transfer at the call site exactly like `Add` does. This is a deliberate,
+    //     documented API-shape choice (get via `list[i]`, set via `list.SetAt(i, value)`) driven
+    //     by a genuine gap in the current compiler's array-assignment ownership checking; the
+    //     didactic writeup names it as a good target for a future stage's hardening pass.
+    //   - `ToArray()`/`CopyTo()` return/fill a plain (non-owned) `T[]` snapshot -- deliberately
+    //     NOT `owned T[]`. The snapshot aliases the list's own elements (exactly like real C#'s
+    //     ToArray(), whose returned array holds the same GC-tracked references as the source);
+    //     NativeSharp's owned/non-owned array distinction is what makes that safe here without a
+    //     GC: the type of the returned array itself says "these elements are not yours to free",
+    //     so `delete[]`-ing the snapshot frees only its own backing block, never the elements.
+    public class List<T>
+    {
+        private owned T[] items;
+        private int count;
+
+        public List()
+        {
+            items = new T[4];
+            count = 0;
+        }
+
+        public List(int capacity)
+        {
+            int actual = capacity;
+            if (actual < 1) { actual = 1; }
+            items = new T[actual];
+            count = 0;
+        }
+
+        public int Count()
+        {
+            return count;
+        }
+
+        // Enables `foreach (var x in list)`. Returns a fresh ListEnumerator<T> (see
+        // ListEnumerator.ns for the full design note on why this is a top-level class rather than
+        // a nested one) that borrows `this` and starts positioned before the first element --
+        // `owned` here is load-bearing, not decorative: foreach's parser-level desugaring binds
+        // the result to a `raii var` local specifically so the enumerator is destroyed
+        // automatically on every exit path (break/return/exception) via the same RAII machinery
+        // as any other raii owner, and a `raii` destination requires its initializer to be an
+        // owned-returning call (or `new`/`move`/`null`) -- a plain (non-owned) return here would
+        // make every `foreach` over a List<T> fail to compile.
+        public owned ListEnumerator<T> GetEnumerator()
+        {
+            return new ListEnumerator<T>(this);
+        }
+
+        public int Capacity()
+        {
+            return items.Length;
+        }
+
+        public T this[int index]
+        {
+            get { return items[index]; }
+        }
+
+        // Mirrors List<T>.EnsureCapacity: grows the backing array (using the same doubling
+        // strategy Add already relies on) so it holds at least `capacity` elements in one shot,
+        // and returns the resulting capacity. A no-op, returning the current capacity, when the
+        // backing array is already big enough. Public so callers can pre-size before a known-size
+        // batch of Add()s -- Add/Insert/AddRange call this same method internally.
+        public int EnsureCapacity(int capacity)
+        {
+            if (items.Length >= capacity) { return items.Length; }
+            int newCapacity = items.Length * 2;
+            if (newCapacity < capacity) { newCapacity = capacity; }
+            const T[] grown = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                grown[i] = move(items[i]);
+                i = i + 1;
+            }
+            delete[] items;
+            items = grown;
+            return items.Length;
+        }
+
+        // Mirrors List<T>.TrimExcess: shrinks the backing array down to exactly Count elements
+        // when Count is meaningfully smaller than Capacity (the same 90% threshold real C# uses),
+        // freeing the unused slots. A no-op otherwise -- never grows.
+        public void TrimExcess()
+        {
+            int threshold = (items.Length * 9) / 10;
+            if (count >= threshold) { return; }
+            int newCapacity = count;
+            if (newCapacity < 1) { newCapacity = 1; }
+            if (newCapacity == items.Length) { return; }
+            const T[] shrunk = new T[newCapacity];
+            int i = 0;
+            while (i < count)
+            {
+                shrunk[i] = move(items[i]);
+                i = i + 1;
+            }
+            delete[] items;
+            items = shrunk;
+        }
+
+        public void Add(owned T value)
+        {
+            EnsureCapacity(count + 1);
+            // `move(value)` is not decorative here -- it is the fix for a real, verified crash
+            // (Stage 52.x closure, "Bug #3"/RunList() crash: see 52_x_nativesharp_foreach.md
+            // section 6b). A plain `items[count] = value;` copies the parameter's pointer into
+            // the array WITHOUT telling the compiler that `value` has been consumed: `value` is
+            // an `owned T` parameter, and every owned parameter still holding a non-null pointer
+            // when its method returns is automatically destroyed by that method's own generated
+            // cleanup (emitOwnedParameterDestroy) -- correct behavior for a parameter that was
+            // simply dropped, but exactly wrong for one that was just stored somewhere else: the
+            // object gets destroyed a second time (a use-after-free/double-free) the instant
+            // `Add()` returns, even though a copy of the very same pointer now also lives in
+            // `items[count]`. The freed memory's vtable/descriptor slot is then garbage, so the
+            // NEXT read of that array element (another Add() reallocating the array, `~List()`,
+            // `delete items[i]`, foreach, ...) dereferences a dangling pointer -- observed as a
+            // page fault at execute access in Wine, at a crash site far away from this line,
+            // which is what made it hard to trace back here. `move(value)` nulls the parameter's
+            // own storage as part of the transfer, so the parameter's end-of-scope cleanup sees a
+            // null and correctly does nothing: ownership has genuinely moved into the array, with
+            // exactly one owner at every point in time. See SetAt/Insert just below for the same
+            // fix, and Queue.ns/Stack.ns/Dictionary.ns/SortedList.ns/PriorityQueue.ns/
+            // LinkedListNode.ns for the identical bug pattern found (via this same trace) and
+            // fixed across the rest of the collections library.
+            items[count] = move(value);
+            count = count + 1;
+        }
+
+        // Replaces the element at `index`, freeing the element it displaces first (a no-op for a
+        // value-typed T). See the class comment for why this is a method rather than
+        // `this[index] { set; }`.
+        public void SetAt(int index, owned T value)
+        {
+            delete items[index];
+            items[index] = move(value);
+        }
+
+        public void Insert(int index, owned T value)
+        {
+            EnsureCapacity(count + 1);
+            int i = count;
+            while (i > index)
+            {
+                items[i] = items[i - 1];
+                i = i - 1;
+            }
+            items[index] = move(value);
+            count = count + 1;
+        }
+
+        public void RemoveAt(int index)
+        {
+            delete items[index];
+            int i = index;
+            while (i < count - 1)
+            {
+                items[i] = items[i + 1];
+                i = i + 1;
+            }
+            count = count - 1;
+        }
+
+        // Mirrors List<T>.AddRange, adapted to NativeSharp's ownership model: NativeSharp has no
+        // IEnumerable<T> and (verified directly against the compiler while writing this method)
+        // no way for calling code to construct a movable `owned T[]` value at all -- `raii`
+        // locals only accept a class/interface/string type, never an array type, so there is no
+        // legal call site that could hand this method a genuinely owned array. `values` is
+        // therefore a plain (non-owned, not deleted here) `T[]`, and each element is copied in
+        // with plain assignment into `items` -- exactly the same "plain reference into an owned
+        // slot" gap the class comment already documents for Sort/Insert/RemoveAt's internal
+        // same-array moves, here extended to an external caller. For a value-typed T this is
+        // completely safe (owned is a no-op for value types). For a reference-typed T this is the
+        // known, deliberately-not-yet-hardened gap tracked as future ownership-validation work
+        // (see the Stage 52 closure notes) -- callers should treat AddRange like ToArray()'s
+        // mirror image: the source array's elements end up aliased into this list.
+        public void AddRange(T[] values)
+        {
+            EnsureCapacity(count + values.Length);
+            int i = 0;
+            while (i < values.Length)
+            {
+                items[count] = values[i];
+                count = count + 1;
+                i = i + 1;
+            }
+        }
+
+        // Mirrors List<T>.InsertRange -- same ownership caveat as AddRange, inserted starting at
+        // `index` instead of appended at the end.
+        public void InsertRange(int index, T[] values)
+        {
+            EnsureCapacity(count + values.Length);
+            int shiftFrom = count - 1;
+            while (shiftFrom >= index)
+            {
+                items[shiftFrom + values.Length] = items[shiftFrom];
+                shiftFrom = shiftFrom - 1;
+            }
+            int i = 0;
+            while (i < values.Length)
+            {
+                items[index + i] = values[i];
+                i = i + 1;
+            }
+            count = count + values.Length;
+        }
+
+        // Mirrors List<T>.RemoveRange: removes `rangeCount` elements starting at `index`,
+        // freeing each one first (a no-op for a value-typed T).
+        public void RemoveRange(int index, int rangeCount)
+        {
+            int i = index;
+            while (i < index + rangeCount)
+            {
+                delete items[i];
+                i = i + 1;
+            }
+            int dest = index;
+            int src = index + rangeCount;
+            while (src < count)
+            {
+                items[dest] = items[src];
+                dest = dest + 1;
+                src = src + 1;
+            }
+            count = count - rangeCount;
+        }
+
+        // Mirrors List<T>.GetRange, but returns a plain (non-owned) `T[]` snapshot of the range
+        // instead of a new `List<T>` -- the same deliberate divergence ToArray() already
+        // documents in the class comment: a second `owned T[]`-backed List<T> aliasing this
+        // list's own live elements would give a reference-typed T two independent owning
+        // destructors over the same object (a double-free), which NativeSharp's ownership model
+        // (no GC, no shared ownership) cannot express safely without a real IEnumerable/shared
+        // wrapper. A snapshot array is the ownership-safe equivalent.
+        public T[] GetRange(int index, int rangeCount)
+        {
+            const T[] result = new T[rangeCount];
+            int i = 0;
+            while (i < rangeCount)
+            {
+                result[i] = items[index + i];
+                i = i + 1;
+            }
+            return result;
+        }
+
+        public int IndexOf(T value)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (items[i] == value) { return i; }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        public int LastIndexOf(T value)
+        {
+            int i = count - 1;
+            while (i >= 0)
+            {
+                if (items[i] == value) { return i; }
+                i = i - 1;
+            }
+            return -1;
+        }
+
+        public bool Contains(T value)
+        {
+            return IndexOf(value) >= 0;
+        }
+
+        // Removes the first occurrence of `value` (compared with the receiver's own T's `==`,
+        // see Delegates.ns). Returns whether an element was actually removed.
+        public bool Remove(T value)
+        {
+            int index = IndexOf(value);
+            if (index < 0) { return false; }
+            RemoveAt(index);
+            return true;
+        }
+
+        public void Clear()
+        {
+            int i = 0;
+            while (i < count)
+            {
+                delete items[i];
+                i = i + 1;
+            }
+            count = 0;
+        }
+
+        public T[] ToArray()
+        {
+            const T[] result = new T[count];
+            int i = 0;
+            while (i < count)
+            {
+                result[i] = items[i];
+                i = i + 1;
+            }
+            return result;
+        }
+
+        public void CopyTo(T[] destination, int destinationIndex)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                destination[destinationIndex + i] = items[i];
+                i = i + 1;
+            }
+        }
+
+        public void Reverse()
+        {
+            int left = 0;
+            int right = count - 1;
+            while (left < right)
+            {
+                Swap(left, right);
+                left = left + 1;
+                right = right - 1;
+            }
+        }
+
+        private void Swap(int a, int b)
+        {
+            // A pure relocation of two pointer-sized bit patterns within the SAME owned array --
+            // see the class comment for why this is safe even though it uses the same
+            // plain-assignment-into-an-owned-slot mechanism that is unsafe for outside callers.
+            const T temp = items[a];
+            items[a] = items[b];
+            items[b] = temp;
+        }
+
+        // Sorts in place using T's own `<` (works for every numeric/orderable primitive, and for
+        // a class/struct T that defines `operator <` -- exactly like an unconstrained C++
+        // template; a T with no ordering fails to compile at the instantiation site, which is
+        // the expected, honest outcome given NativeSharp has no `where T : IComparable<T>`).
+        //
+        // DELEGA EN Algorithm.Sort DESDE EL BLOQUE 5, y ese cambio tiene dos mitades.
+        //
+        // La primera: esto era una INSERTION SORT O(n^2) escrita a mano aqui. Su propio comentario
+        // decia que era asi "porque este paquete no tiene forma de ejecutar y observar el binario
+        // compilado". Ese motivo ya no aplica -- el corpus de cc1 ejecuta y comprueba codigos de
+        // salida -- y mantener dos ordenaciones distintas en la misma biblioteca era crear a
+        // sabiendas otra copia de una regla, que es lo que ha costado tres builds en dos dias
+        // (ver mkdown/102, 103, 105, 106).
+        //
+        // La segunda, y hay que decirla porque es un cambio OBSERVABLE: heapsort NO ES ESTABLE y
+        // la insertion sort si lo era. Real C# tampoco garantiza estabilidad en List<T>.Sort, y
+        // std::sort tampoco, asi que no se rompe ninguna promesa escrita -- pero si dos elementos
+        // comparan iguales, su orden relativo ya no se conserva.
+        public void Sort()
+        {
+            Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count));
+        }
+
+        // Sorts in place using an explicit comparer, for a T with no natural `<` (or that needs a
+        // different ordering than its natural one) -- mirrors List<T>.Sort(Comparison<T>).
+        //
+        // En Algorithm esto se llamaba SortWith por el ID 132 (las plantillas genericas chocaban
+        // por nombre + aridad generica, sin mirar la lista de parametros). Ese ID se cerro el
+        // 2026-09-03 y ahora es una sobrecarga de Sort de verdad.
+        // Aqui siempre pudo llamarse Sort: es un miembro NO generico de una clase generica, que
+        // es otra cosa y nunca choco.
+        public void Sort(Comparison<T> comparer)
+        {
+            Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count), comparer);
+        }
+
+        // Binary search over an ALREADY-SORTED list (natural `<` ordering, matching Sort()).
+        // Unlike real C#'s List<T>.BinarySearch (which returns the bitwise complement of the
+        // insertion point on a miss), this returns plain -1 on a miss -- a deliberate
+        // simplification in spelling only; found/not-found plus the index is the same real
+        // information, just without the encode-the-insertion-point trick.
+        public int BinarySearch(T value)
+        {
+            int low = 0;
+            int high = count - 1;
+            while (low <= high)
+            {
+                int mid = low + (high - low) / 2;
+                if (items[mid] < value)
+                {
+                    low = mid + 1;
+                }
+                else if (value < items[mid])
+                {
+                    high = mid - 1;
+                }
+                else
+                {
+                    return mid;
+                }
+            }
+            return -1;
+        }
+
+        public int FindIndex(Predicate<T> match)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (match(items[i])) { return i; }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        // Mirrors real C#'s List<T>.Find: returns default(T) (0/false/null, depending on T) when
+        // no element matches, rather than trapping on an out-of-range read.
+        public T Find(Predicate<T> match)
+        {
+            int index = FindIndex(match);
+            if (index < 0) { return default(T); }
+            return items[index];
+        }
+
+        // Mirrors List<T>.FindLastIndex: the same scan as FindIndex, from the end.
+        public int FindLastIndex(Predicate<T> match)
+        {
+            int i = count - 1;
+            while (i >= 0)
+            {
+                if (match(items[i])) { return i; }
+                i = i - 1;
+            }
+            return -1;
+        }
+
+        // Mirrors List<T>.FindLast: returns default(T) when no element matches, same as Find.
+        public T FindLast(Predicate<T> match)
+        {
+            int index = FindLastIndex(match);
+            if (index < 0) { return default(T); }
+            return items[index];
+        }
+
+        // Mirrors List<T>.FindAll: a snapshot array of every matching element, in order. Plain
+        // (non-owned) `T[]`, for the same ownership reason ToArray()/GetRange() are -- see the
+        // class comment.
+        public T[] FindAll(Predicate<T> match)
+        {
+            int matchCount = 0;
+            int i = 0;
+            while (i < count)
+            {
+                if (match(items[i])) { matchCount = matchCount + 1; }
+                i = i + 1;
+            }
+            const T[] result = new T[matchCount];
+            int writeIndex = 0;
+            i = 0;
+            while (i < count)
+            {
+                if (match(items[i]))
+                {
+                    result[writeIndex] = items[i];
+                    writeIndex = writeIndex + 1;
+                }
+                i = i + 1;
+            }
+            return result;
+        }
+
+        public bool Exists(Predicate<T> match)
+        {
+            return FindIndex(match) >= 0;
+        }
+
+        public bool TrueForAll(Predicate<T> match)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (!match(items[i])) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public int RemoveAll(Predicate<T> match)
+        {
+            int removed = 0;
+            int i = 0;
+            while (i < count)
+            {
+                if (match(items[i]))
+                {
+                    RemoveAt(i);
+                    removed = removed + 1;
+                }
+                else
+                {
+                    i = i + 1;
+                }
+            }
+            return removed;
+        }
+
+        public void ForEach(Action<T> action)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                action(items[i]);
+                i = i + 1;
+            }
+        }
+
+        ~List()
+        {
+            int i = 0;
+            while (i < count)
+            {
+                delete items[i];
+                i = i + 1;
+            }
+            delete[] items;
+        }
+    }
+}
