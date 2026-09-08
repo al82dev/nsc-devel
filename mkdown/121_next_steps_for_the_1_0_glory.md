@@ -1,11 +1,12 @@
 # 121 — Next Steps for the 1.0 Glory
 
-**Fecha:** 2026-09-06
+**Fecha:** 2026-09-08
 **Punto de partida:** `nsc 0.9.0` instalado y certificado con las megaentregas E1–E6 rumbo a 1.0.
 NativeSharp 0.1 / Stage 57. La identidad `+build.<UTC>.<hash>` se genera de nuevo para cada binario
 y se registra al certificar.
-**Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain nativo para videojuegos,
-herramientas gráficas y software de plataforma con rendimiento predecible.
+**Objetivo:** llevar Native Sharp a 1.0 como lenguaje y toolchain para software nativo con
+rendimiento predecible, sin ligar su promoción a consumidores externos ni a catálogos de bindings
+que todavía evolucionan por separado.
 
 **Estado de la entrega más reciente:** `nsc 0.9.0+build.20260908T053626Z.eefaf302df6e31c8`
 está instalado y certificado como NativeSharp 0.1 / Stage 66. G00
@@ -111,7 +112,7 @@ ambos linkers. La regresión de IR que impide restaurar el doble free pasa 32/32
 
 ## 1. La promesa de Native Sharp 1.0
 
-Native Sharp 1.0 debe permitir escribir, compilar, enlazar, depurar y distribuir un juego nativo
+Native Sharp 1.0 debe permitir escribir, compilar, enlazar, depurar y distribuir software nativo
 para Windows sin depender de un runtime administrado y sin tener que abandonar el lenguaje para
 resolver sus caminos críticos.
 
@@ -125,8 +126,8 @@ La promesa es concreta:
 - interoperabilidad directa con C, Win32 y COM;
 - semántica idéntica en O0 y O2 salvo diferencias de rendimiento;
 - depuración nativa con fichero, línea, símbolos y stack traces útiles;
-- suficiente expresividad para escribir gameplay, render, audio, input, assets, herramientas y
-  código de engine sin heredar la complejidad histórica completa de C++.
+- suficiente expresividad para construir módulos nativos, bibliotecas y herramientas de alto
+  rendimiento sin heredar la complejidad histórica completa de C++.
 
 1.0 no significa «tener muchas features». Significa que lo que el lenguaje promete funciona de
 punta a punta, es diagnosticable y puede sostener un proyecto real.
@@ -183,7 +184,7 @@ Quedan fuera del lenguaje, de `NativeSharp.Core` y de los criterios de madurez:
 Si una propuesta necesita una de esas áreas para justificar su existencia, se rechaza. Que pueda
 implementarse no es motivo para implementarla.
 
-Una necesidad concreta de un juego puede resolverse mediante una biblioteca externa o un binding
+Una necesidad concreta de un consumidor puede resolverse mediante una biblioteca externa o un binding
 nativo sin convertirla en responsabilidad del lenguaje. La frontera es sencilla: Native Sharp
 debe poder **llamar código nativo**; no debe absorber todos los dominios de ese código.
 
@@ -262,7 +263,7 @@ aceptado debe convertirse en una prueba autocontenida dentro de `nsc`.
 
 La evolución es correcta: Native Sharp dejó de acumular sintaxis aislada y empezó a corregir las
 interacciones que aparecen en software nativo real. **0.8.0-alpha** cierra los workarounds de
-compilador que bloqueaban el port del juego salvo una exclusión deliberada: el estado global
+compilador que bloqueaban un consumidor externo salvo una exclusión deliberada: el estado global
 `static owned` no forma parte del contrato mientras no exista finalización de módulo real.
 La identidad `0.8.0-alpha` ya obtuvo certificación instalada. Promoverla a `0.8.0` cambia la
 identidad del artefacto y requiere repetir el baseline una última vez; no requiere añadir features.
@@ -284,10 +285,11 @@ No se agregan subsistemas. Se eliminan contradicciones y límites dentro de feat
 Un proyecto externo al repositorio puede compilar, enlazar y depurarse sin scripts privados ni
 conocimiento de la estructura interna del compilador.
 
-### 0.9.x-beta — congelación y juego piloto
+### 0.9.x-beta — congelación y consumidores externos
 
-La sintaxis, la semántica, el formato de proyecto y las ABI públicas se congelan. Un juego real se
-construye y prueba durante suficiente tiempo para descubrir interacciones que las fixtures no ven.
+La sintaxis, la semántica, el formato de proyecto y las ABI públicas se congelan. El corpus del
+compilador y consumidores externos se usan para descubrir interacciones que las fixtures aisladas
+no ven, sin convertir a esos consumidores en parte del producto.
 
 ### 1.0.0 — promesa de compatibilidad
 
@@ -873,9 +875,8 @@ La evidencia externa deja cuatro acciones concretas para los repositorios respon
 - `PKG-011`: detectar paquetes utilizados únicamente mediante `using Alias = ...`;
 - `nsb doctor`: corregir el falso «LISTO» cuando encontró `0/0` artifacts.
 
-`PKG-008` ya está corregido. Las superficies BIND-003 a BIND-007 continúan en el backlog de
-bindings y sólo pasan al contrato 1.0 cuando una plataforma soportada o el juego piloto las
-requiera explícitamente.
+`PKG-008` ya está corregido. Las superficies BIND-003 a BIND-007 continúan en el backlog separado
+de bindings. Su avance no forma parte del gate del compilador 1.0.
 
 ### 6.7 Gate de salida 0.8
 
@@ -891,7 +892,7 @@ Un repositorio nuevo, fuera de `A:\nsc-devel`, puede:
 
 ---
 
-## 7. Gate 0.85 — Plataforma de juego, no framework
+## 7. Gate 0.85 — ABI de plataforma, no catálogo de bindings
 
 ### 7.1 COM estático
 
@@ -929,12 +930,11 @@ No se agrega una colección infinita de nombres de CPU. Cada familia necesita be
 - ownership de buffers y handles queda escrito;
 - errores de ABI se detectan antes del backend cuando sea posible.
 
-### 7.4 Amplitud de bindings guiada por capacidades reales
+### 7.4 Los bindings no son gate del compilador
 
-La expansión de Assimp, ImGui, Win32, Raylib, SDL2, FreeType, STB, MP3, OpenGL y el resto del
-catálogo vive en el roadmap de bindings. Native Sharp 1.0 sólo adopta como contrato las superficies
-necesarias para su plataforma y juego piloto, más la obligación de que cada paquete describa y
-pruebe honestamente lo que publica.
+La expansión del catálogo vive en el roadmap y en los repositorios de bindings. Native Sharp 1.0
+sólo exige que el compilador pueda expresar y enlazar correctamente las ABI nativas que declara
+soportar. La cobertura concreta de cada paquete continúa evolucionando por separado.
 
 Prioridades transversales del ecosistema:
 
@@ -978,9 +978,9 @@ ese proyecto se convierta en gate del runtime.
 
 ### 7.6 Gate de salida 0.85
 
-Una aplicación Native Sharp abre una ventana propia, recibe input, inicializa una API gráfica,
-crea un dispositivo de audio, carga un asset y mantiene un loop sin thunks escritos a mano fuera
-del sistema normal de bindings.
+Fixtures mínimas y autocontenidas demuestran structs, enums, callbacks, function pointers, strings,
+buffers, handles y vtables en ambas direcciones. El gate mide las capacidades ABI del compilador;
+no exige un consumidor externo ni declara completo ningún catálogo externo.
 
 ---
 
@@ -1113,10 +1113,10 @@ forma parte del inventario criptográfico y no contiene la identidad efímera de
 2. Todas las fixtures ejecutadas en O0 y O2.
 3. Matriz `lld-link`/NSLink verde.
 4. ABI comparada con clang-cl/MSVC.
-5. Juego piloto compilado, depurado y ejecutado durante soak.
+5. Corpus del compilador ejecutado durante un soak reproducible y prolongado.
 6. Cero fuga o doble destrucción conocida en el corpus.
 7. Binarios reproducibles.
-8. Manual del lenguaje, guía de ownership, guía de FFI y tutorial del juego.
+8. Manual del lenguaje, guía de ownership, guía de FFI y guía de distribución del toolchain.
 9. Release candidate usada sin cambios semánticos durante un periodo de estabilización.
 10. Lista pública y corta de limitaciones aceptadas que no contradicen la promesa.
 
@@ -1193,7 +1193,7 @@ Además:
 1.0.0  contrato público
 ```
 
-El orden puede cambiar por un bug bloqueante o por evidencia del juego piloto. No cambia por el
+El orden puede cambiar por un bug bloqueante o por evidencia del corpus del compilador. No cambia por el
 deseo de añadir una feature llamativa.
 
 ---
@@ -1205,7 +1205,7 @@ plataformas que Java.
 
 La gloria es ésta:
 
-> Un programador abre un proyecto vacío, escribe un juego nativo con sintaxis clara, ve y controla
+> Un programador abre un proyecto vacío, escribe software nativo con sintaxis clara, ve y controla
 > sus costos, llama directamente a la plataforma, depura código fuente real, obtiene el mismo
 > comportamiento en Debug y Release, y puede confiar en que ownership, ABI y optimización no van a
 > traicionarlo.
