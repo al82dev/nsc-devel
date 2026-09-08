@@ -9,7 +9,7 @@ namespace nativesharp
 // consumidor del header generado por CMake.
 inline constexpr std::string_view kLanguageVersion = "0.1";
 inline constexpr std::string_view kCompilerReleaseVersion = "0.9.0";
-inline constexpr std::string_view kCompilerStage = "60";
+inline constexpr std::string_view kCompilerStage = "62";
 extern const std::string_view kCompilerVersion;
 extern const std::string_view kCompilerBuildId;
 }

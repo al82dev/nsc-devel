@@ -65,5 +65,12 @@ void DiagnosticRenderer::renderAll(const DiagnosticEngine& engine, std::ostream&
     {
         render(diagnostic, output);
     }
+
+    if (engine.suppressedDiagnosticCount() != 0)
+    {
+        output << "nsc: error: diagnostic limit reached after " << engine.errorCount()
+               << " errors; " << engine.suppressedDiagnosticCount()
+               << " additional diagnostics suppressed\n";
+    }
 }
 }

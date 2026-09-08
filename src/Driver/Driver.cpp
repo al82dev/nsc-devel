@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/ToolchainContract.h"
 
 #include "nativesharp/AST/AstDumper.h"
 #include "nativesharp/Basic/Version.h"
@@ -33,6 +34,7 @@
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmLowerer.h"
 #include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
@@ -1550,6 +1552,24 @@ ExitCode Driver::run(
             printLlvmPipeline(optimizationLevel, output);
             return ExitCode::Success;
         }
+        if (argument == "--print-llvm-version")
+        {
+            const llvm_backend::LlvmVersion version = llvm_backend::loadedLlvmVersion();
+            output << "LLVM " << llvm_backend::llvmVersionString(version)
+                   << " (supported: " << llvm_backend::kSupportedLlvmMajor << ".x)\n";
+            std::string versionError;
+            if (!llvm_backend::verifyLoadedLlvmVersion(versionError))
+            {
+                error << "nsc: internal error: " << versionError << '\n';
+                return ExitCode::InternalError;
+            }
+            return ExitCode::Success;
+        }
+        if (argument == "--print-toolchain-contract")
+        {
+            output << currentToolchainContract();
+            return ExitCode::Success;
+        }
         if (argument == "--print-linker")
         {
             return printLinker(output, error);
@@ -1569,6 +1589,30 @@ ExitCode Driver::run(
     if (args.size() == 2)
     {
         const std::string_view action = args[0];
+        if (action == "--write-toolchain-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeToolchainContract(destination, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "toolchain contract written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-toolchain-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyToolchainContract(source, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "toolchain contract verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
         if (action == "--verify-library-metadata")
         {
             return verifyLibraryMetadata(args[1], output, error);
@@ -1718,6 +1762,8 @@ void Driver::printHelp(std::ostream& output)
            << "  nsc --verify-library-metadata <file.nsmeta>\n"
            << "  nsc --verify-library-artifacts <file.nsmeta> <file.lib> "
               "[file.dll]\n"
+           << "  nsc --write-toolchain-contract <file.contract>\n"
+           << "  nsc --verify-toolchain-contract <file.contract>\n"
            << "  nsc <file.ns>\n"
            << "  nsc --check <file.ns>\n"
            << "  nsc --dump-source <file.ns>\n"
@@ -1748,6 +1794,8 @@ void Driver::printHelp(std::ostream& output)
            << "  nsc <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
            << "  nsc --print-codegen [-O0|-O1|-O2|-O3]\n"
            << "  nsc --print-llvm-pipeline [-O0|-O1|-O2|-O3]\n"
+           << "  nsc --print-llvm-version\n"
+           << "  nsc --print-toolchain-contract\n"
            << "  nsc --print-linker\n"
            << "  nsc --dump-runtime-llvm\n"
            << "  nsc --print-target\n"

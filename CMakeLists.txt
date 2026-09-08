@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(
     NativeSharp
     VERSION 0.9.0
-    DESCRIPTION "NativeSharp stage 60 -- normative language contract and traceability"
+    DESCRIPTION "NativeSharp stage 62 -- reproducible toolchain contract"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -266,10 +266,11 @@ if(LLVM_FOUND)
     # appears in LLVM 20. With the old declaration, configuring against a genuine LLVM 19 passed
     # here and then failed later at compile time with an unresolved symbol, which is exactly the
     # kind of contract break a version gate exists to prevent.
-    if(LLVM_PACKAGE_VERSION VERSION_LESS 20)
+    if(LLVM_PACKAGE_VERSION VERSION_LESS 23 OR LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 24)
         message(FATAL_ERROR
-            "NativeSharp requires LLVM 20 or newer (LLVMRunPassesOnFunction, used by the bug B-001 "
-            "-O0 SEH legalization in src/LLVM/LlvmOptimizer.cpp, is not present in LLVM 19's C API); "
+            "NativeSharp 0.9 supports LLVM 23.x; the API floor is LLVM 20 because "
+            "LLVMRunPassesOnFunction is required for -O0 SEH legalization, but only the LLVM 23 "
+            "line is qualified for the 1.0 release contract; "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
     message(STATUS "NativeSharp LLVM backend: LLVM ${LLVM_PACKAGE_VERSION} via LLVMConfig.cmake")
@@ -301,6 +302,7 @@ endif()
 
 add_library(nsc_llvm STATIC
     src/LLVM/LlvmModule.cpp
+    src/LLVM/LlvmVersion.cpp
     src/LLVM/LlvmOptimizationLevel.cpp
     src/LLVM/LlvmOptimizationObservation.cpp
     src/LLVM/LlvmProcessTrace.cpp
@@ -339,6 +341,7 @@ nsc_enable_warnings(nsc_linker)
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
     src/Driver/Driver.cpp
+    src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryMetadata.cpp)
 
@@ -355,6 +358,19 @@ add_executable(nsc src/nsc/main.cpp)
 target_link_libraries(nsc PRIVATE nsc_driver)
 target_compile_features(nsc PRIVATE cxx_std_20)
 nsc_enable_warnings(nsc)
+
+# E9 / Stage 62. El manifiesto instalado lo escribe EL nsc que se acaba de enlazar. Asi CMake no
+# mantiene una segunda copia de versiones ABI y un paquete no puede afirmar una identidad distinta
+# de la que el compilador realmente verifica. El build id deliberadamente no forma parte del
+# contrato: identifica una construccion, pero no cambia compatibilidad.
+set(NSC_TOOLCHAIN_CONTRACT
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpToolchain.contract")
+add_custom_command(TARGET nsc POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    COMMAND $<TARGET_FILE:nsc> --write-toolchain-contract "${NSC_TOOLCHAIN_CONTRACT}"
+    BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
+    COMMENT "Generando contrato reproducible del toolchain NativeSharp"
+    VERBATIM)
 
 # "--deploy": instala el compilador ya construido en la ruta de instalacion elegida (p. ej.
 # C:\native-sharp), junto con el arbol lib/ ENTERO -- las bibliotecas .ns
@@ -393,11 +409,12 @@ endif()
 install(TARGETS nsc RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
+install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 
 # =====================================================================================
 # NSC_TEST_COMPILER -- EL COMPILADOR QUE MIDE CTEST.
 #
-# Los 116 tests de mas abajo invocaban el OBJETIVO `nsc`, y CMake resuelve un objetivo al
+# Los 117 tests de mas abajo invocaban el OBJETIVO `nsc`, y CMake resuelve un objetivo al
 # binario del ARBOL DE BUILD: build-clang/bin/nsc.exe. Eso ata la bateria a un artefacto
 # intermedio en vez de al que se entrega. `cmake --install` copia ese binario a
 # C:/native-sharp/bin, y entre los dos caben una instalacion que fallo, un install que se
@@ -406,7 +423,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativeshar
 #
 # EL 2026-09-04 ESO SALIO A LA SUPERFICIE. test_nsc.bat construye el objetivo `pruebas`,
 # que EXCLUYE `nsc` a proposito -- para no cambiar el compilador que se esta midiendo. Sin
-# `build-clang/bin/nsc.exe`, 116 tests salieron `***Not Run` con "Could not find executable
+# `build-clang/bin/nsc.exe`, esos tests salieron `***Not Run` con "Could not find executable
 # A:/nsc-devel/build-clang/bin/nsc.exe". El defecto no era el fichero ausente: era que la
 # bateria apuntaba al sitio equivocado desde el principio, y solo se vio cuando el sitio
 # equivocado quedo vacio.
@@ -424,7 +441,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativeshar
 #   * test_nsc.bat no instala --es su promesa-- y por eso compara la fecha del ejecutable
 #     con la de las fuentes (build_al_dia.py --solo-nsc) y avisa antes de medir nada.
 #
-# Y dentro de la propia bateria queda `nsc.version`, el primero de los 116: comprueba
+# Y dentro de la propia bateria queda `nsc.version`, el primero de los 117: comprueba
 # version y stage contra un regex, asi que un compilador de otra stage se pone rojo ahi.
 #
 # FUERA DE WINDOWS no existe C:/, asi que el valor por defecto vuelve a ser el del arbol de
@@ -833,6 +850,36 @@ if(NSC_BUILD_TESTS)
     target_compile_definitions(nsc_stage60_language_contract_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_stage60_language_contract_tests)
     add_test(NAME nsc.stage60.language-contract COMMAND nsc_stage60_language_contract_tests)
+
+    # Stage 61 / 1.0-E8 -- compiler hardening. Exercises the diagnostic budget, executable crash
+    # boundary, the loaded LLVM 23.x gate, its public inspection command, and the traceability of
+    # the compiler contract. This suite links the real driver and LLVM runtime on purpose.
+    add_executable(nsc_stage61_compiler_hardening_tests tests/unit/Stage61CompilerHardeningTests.cpp)
+    target_link_libraries(
+        nsc_stage61_compiler_hardening_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage61_compiler_hardening_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_stage61_compiler_hardening_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage61_compiler_hardening_tests)
+    add_test(NAME nsc.stage61.compiler-hardening COMMAND nsc_stage61_compiler_hardening_tests)
+
+    # Stage 62 / 1.0-E9 -- contrato reproducible del toolchain. Prueba el formato canonico, su
+    # escritura e instalacion, el verificador estricto y las tres superficies publicas del driver.
+    add_executable(nsc_stage62_toolchain_contract_tests tests/unit/Stage62ToolchainContractTests.cpp)
+    target_link_libraries(
+        nsc_stage62_toolchain_contract_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage62_toolchain_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_stage62_toolchain_contract_tests
+        PRIVATE
+            NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            NSC_TOOLCHAIN_CONTRACT_PATH="${NSC_TOOLCHAIN_CONTRACT}")
+    add_dependencies(nsc_stage62_toolchain_contract_tests nsc)
+    nsc_enable_warnings(nsc_stage62_toolchain_contract_tests)
+    add_test(NAME nsc.stage62.toolchain-contract COMMAND nsc_stage62_toolchain_contract_tests)
 
     # ---------------------------------------------------------------------------------------
     # Milestone CC1 -- Compiler Correctness & Semantic Consolidation.

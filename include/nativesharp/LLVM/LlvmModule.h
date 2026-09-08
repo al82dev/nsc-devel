@@ -27,7 +27,6 @@ public:
 private:
     friend class LlvmLowerer;
     friend class ProjectOopLlvmLowerer;
-class ProjectOopLlvmLowerer;
     friend class LlvmOptimizer;
     friend class LlvmTargetMachine;
     friend class runtime::WindowsRuntimeBuilder;

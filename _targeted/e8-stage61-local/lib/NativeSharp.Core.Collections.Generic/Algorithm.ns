@@ -1,0 +1,275 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.Collections.Generic
+{
+    // NativeSharp.Core.Collections.Generic.Algorithm -- Bloque 5, fase A. SHR-052.
+    //
+    // NUEVE FUNCIONES, NO DIECIOCHO. La lista no sale de copiar <algorithm>: sale de contar lo que
+    // `src/` usa de verdad --find 13 · max 7 · min 5 · sort 2 · any_of 2 · y una cada uno reverse,
+    // remove_if, find_if, all_of--. No hay operaciones de heap, ni partition, ni unique, porque no
+    // se usan. Copiar la cabecera entera habria sido escribir el doble de codigo del que nadie
+    // llama y que nadie prueba.
+    //
+    // POR QUE VIVE AQUI Y NO EN NativeSharp.Core. Predicate<T> y Comparison<T> estan en ESTE
+    // paquete, y este paquete ya referencia a Core. Poner Algorithm en Core obligaria a que Core
+    // referenciara a Collections.Generic: una dependencia circular. Ademas es donde vive
+    // <algorithm> respecto de <vector> en cualquier biblioteca estandar.
+    //
+    // TODAS LAS LLAMADAS LLEVAN EL ARGUMENTO DE TIPO ESCRITO -- `Algorithm.Find<int>(v, 6)`, no
+    // `Algorithm.Find(v, 6)`. NativeSharp no infiere argumentos de tipo en metodos genericos
+    // estaticos; sin el, el error es "has no compatible member named 'Find'", que no dice que
+    // falta. Medido antes de escribir la primera firma.
+    //
+    // Y TODO PREDICADO SE LIGA A UNA LOCAL ANTES DE PASARLO:
+    //
+    //     Predicate<int> esPar = EsPar;
+    //     int donde = Algorithm.FindIf<int>(vista, esPar);
+    //
+    // Pasar el grupo de metodos directo en la llamada da "method group 'EsPar' can only be used as
+    // a call target". No es una limitacion de esta clase: es del lenguaje, y se dice aqui para que
+    // nadie la descubra en la linea de llamada.
+    public class Algorithm
+    {
+        // --- BUSQUEDA -----------------------------------------------------------------------
+
+        // Indice del primer elemento igual a `que`, o -1. Usa el `==` estructural de NativeSharp,
+        // que para primitivos es comparacion de valor y para clases/structs es identidad o el
+        // `operator ==` que el tipo defina -- lo mismo que hacen las colecciones de este paquete.
+        public static int Find<T>(ReadOnlySpan<T> donde, T que)
+        {
+            int i = 0;
+            while (i < donde.Length())
+            {
+                if (donde[i] == que) { return i; }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        // Indice del primer elemento que cumple el predicado, o -1.
+        public static int FindIf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion)
+        {
+            int i = 0;
+            while (i < donde.Length())
+            {
+                if (condicion(donde[i])) { return i; }
+                i = i + 1;
+            }
+            return -1;
+        }
+
+        // Sobre un rango VACIO devuelve false, que es el convenio de std::any_of y el unico que
+        // compone: "alguno cumple" sobre nada es falso.
+        public static bool AnyOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion)
+        {
+            int i = 0;
+            while (i < donde.Length())
+            {
+                if (condicion(donde[i])) { return true; }
+                i = i + 1;
+            }
+            return false;
+        }
+
+        // Sobre un rango VACIO devuelve true -- verdad vacua, igual que std::all_of. Parece raro y
+        // es lo correcto: "todos cumplen" sobre ningun elemento no tiene contraejemplo. Cambiarlo
+        // romperia la propiedad de que dividir un rango en dos y preguntar por cada mitad da lo
+        // mismo que preguntar por el entero.
+        public static bool AllOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion)
+        {
+            int i = 0;
+            while (i < donde.Length())
+            {
+                if (!condicion(donde[i])) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        // --- MINIMO Y MAXIMO ----------------------------------------------------------------
+
+        // Sobre DOS valores, no sobre un rango, porque asi es como se usan las doce llamadas de
+        // `src/`. Un Min/Max sobre un span seria una funcion mas que nadie llama.
+        //
+        // Empate: devuelve `a`. Es el convenio de std::min/std::max y no es indiferente cuando T
+        // tiene identidad --dos objetos "iguales" que no son el mismo--; quedando escrito, el
+        // resultado es predecible.
+        public static T Min<T>(T a, T b)
+        {
+            if (b < a) { return b; }
+            return a;
+        }
+
+        public static T Max<T>(T a, T b)
+        {
+            if (a < b) { return b; }
+            return a;
+        }
+
+        // --- TRANSFORMACION EN SITIO --------------------------------------------------------
+
+        public static void Reverse<T>(Span<T> datos)
+        {
+            int izquierda = 0;
+            int derecha = datos.Length() - 1;
+            while (izquierda < derecha)
+            {
+                var temporal = datos[izquierda];
+                datos[izquierda] = datos[derecha];
+                datos[derecha] = temporal;
+                izquierda = izquierda + 1;
+                derecha = derecha - 1;
+            }
+        }
+
+        // Compacta hacia el principio los elementos que NO cumplen el predicado y devuelve cuantos
+        // quedan. Lo que hay detras de esa longitud queda como estaba: no se toca ni se pone a
+        // cero, exactamente como std::remove_if deja la cola en un estado valido pero sin
+        // especificar.
+        //
+        // DEVUELVE LA NUEVA LONGITUD Y NO UN ITERADOR. std::remove_if devuelve el nuevo final y el
+        // llamador hace erase(); aqui no hay iteradores, y un entero lleva la misma informacion sin
+        // inventar un tipo para transportarla.
+        public static int RemoveIf<T>(Span<T> datos, Predicate<T> condicion)
+        {
+            int escribir = 0;
+            int leer = 0;
+            while (leer < datos.Length())
+            {
+                if (!condicion(datos[leer]))
+                {
+                    if (escribir != leer) { datos[escribir] = datos[leer]; }
+                    escribir = escribir + 1;
+                }
+                leer = leer + 1;
+            }
+            return escribir;
+        }
+
+        // --- ORDENACION ---------------------------------------------------------------------
+
+        // HEAPSORT, Y LA RAZON NO ES LA VELOCIDAD.
+        //
+        // O(n log n) GARANTIZADO, en sitio, y SIN RECURSION. Un quicksort medio es dos o tres veces
+        // mas rapido, y tiene un peor caso cuadratico y una pila que crece con la entrada. Un
+        // compilador ordenando tablas de simbolos prefiere que el peor caso sea el caso medio y no
+        // tener ninguna profundidad de pila que estimar. Introsort daria lo mejor de los dos a
+        // cambio de tres veces mas codigo, en un sitio donde el contenedor no puede ejecutar nada
+        // para comprobarlo.
+        //
+        // NO ES ESTABLE, y std::sort tampoco, asi que no se pierde ninguna garantia que el codigo
+        // de origen tuviera.
+        //
+        // SOBRECARGA DE Sort, desde el 2026-09-03. Aqui hubo un `SortWith` con este comentario:
+        //
+        //     "SortWith Y NO UNA SOBRECARGA DE Sort. ID 132: las plantillas genericas se
+        //      identifican por nombre + ARIDAD GENERICA, no por lista de parametros, asi que
+        //      Sort<T>(span) y Sort<T>(span, cmp) chocarian con duplicate generic template
+        //      identity. Se rodea renombrando."
+        //
+        // El ID 132 se cerro: la identidad de una plantilla generica incluye ahora la CUENTA DE
+        // PARAMETROS DE VALOR, asi que las dos conviven y el rodeo sobra. Un nombre peor que
+        // sobrevive al motivo que lo justificaba es deuda disfrazada de decision.
+        //
+        // LO QUE SIGUE SIN PODERSE, y esta escrito donde se arreglo: dos sobrecargas genericas con
+        // la MISMA cuenta de parametros y tipos distintos. Elegir entre ellas necesita los tipos
+        // de los argumentos, y la pasada generica corre antes del modelo semantico.
+        public static void Sort<T>(Span<T> datos)
+        {
+            int cuantos = datos.Length();
+            if (cuantos < 2) { return; }
+
+            // Construir el monticulo: se hunde cada nodo interno, del ultimo al primero. El ultimo
+            // nodo interno es (n/2 - 1); las hojas ya son monticulos de un elemento.
+            int i = cuantos / 2 - 1;
+            while (i >= 0)
+            {
+                Hundir<T>(datos, i, cuantos);
+                i = i - 1;
+            }
+
+            // Extraer: el mayor esta en la raiz, va al final, y se rehace el monticulo con uno
+            // menos. Cuando el monticulo se queda en uno, el arreglo esta ordenado.
+            int fin = cuantos - 1;
+            while (fin > 0)
+            {
+                var temporal = datos[0];
+                datos[0] = datos[fin];
+                datos[fin] = temporal;
+                Hundir<T>(datos, 0, fin);
+                fin = fin - 1;
+            }
+        }
+
+        public static void Sort<T>(Span<T> datos, Comparison<T> comparador)
+        {
+            int cuantos = datos.Length();
+            if (cuantos < 2) { return; }
+
+            int i = cuantos / 2 - 1;
+            while (i >= 0)
+            {
+                HundirCon<T>(datos, i, cuantos, comparador);
+                i = i - 1;
+            }
+
+            int fin = cuantos - 1;
+            while (fin > 0)
+            {
+                var temporal = datos[0];
+                datos[0] = datos[fin];
+                datos[fin] = temporal;
+                HundirCon<T>(datos, 0, fin, comparador);
+                fin = fin - 1;
+            }
+        }
+
+        // Baja el elemento de `raiz` hasta que los dos hijos sean menores o iguales. `limite` es
+        // cuantos elementos del principio siguen formando parte del monticulo -- lo demas ya esta
+        // colocado al final y no se toca.
+        //
+        // Iterativo y no recursivo: es la propiedad que hace que este sort no tenga profundidad de
+        // pila. Escrito una vez por variante en vez de con un comparador por omision, porque
+        // NativeSharp no tiene valores por omision de parametro y envolver `<` en un delegado
+        // costaria una llamada indirecta por comparacion.
+        private static void Hundir<T>(Span<T> datos, int raiz, int limite)
+        {
+            int actual = raiz;
+            while (true)
+            {
+                int mayor = actual;
+                int izquierdo = 2 * actual + 1;
+                int derecho = izquierdo + 1;
+
+                if (izquierdo < limite && datos[mayor] < datos[izquierdo]) { mayor = izquierdo; }
+                if (derecho < limite && datos[mayor] < datos[derecho]) { mayor = derecho; }
+                if (mayor == actual) { return; }
+
+                var temporal = datos[actual];
+                datos[actual] = datos[mayor];
+                datos[mayor] = temporal;
+                actual = mayor;
+            }
+        }
+
+        private static void HundirCon<T>(Span<T> datos, int raiz, int limite, Comparison<T> comparador)
+        {
+            int actual = raiz;
+            while (true)
+            {
+                int mayor = actual;
+                int izquierdo = 2 * actual + 1;
+                int derecho = izquierdo + 1;
+
+                if (izquierdo < limite && comparador(datos[mayor], datos[izquierdo]) < 0) { mayor = izquierdo; }
+                if (derecho < limite && comparador(datos[mayor], datos[derecho]) < 0) { mayor = derecho; }
+                if (mayor == actual) { return; }
+
+                var temporal = datos[actual];
+                datos[actual] = datos[mayor];
+                datos[mayor] = temporal;
+                actual = mayor;
+            }
+        }
+    }
+}

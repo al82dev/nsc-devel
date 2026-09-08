@@ -13,6 +13,7 @@
 #include "../support/TestContext.h"
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -79,7 +80,13 @@ int main()
     tests.expect(!specification.empty(), "normative specification is readable");
     tests.expect(!map.empty(), "conformance map is readable");
     tests.expect(!grammar.empty(), "normative grammar is readable");
-    tests.expect(nativesharp::kCompilerStage == "60", "E7 advances the compiler snapshot to Stage 60");
+    unsigned compilerStage = 0;
+    const std::string_view compilerStageText = nativesharp::kCompilerStage;
+    const auto stageParse =
+        std::from_chars(compilerStageText.data(), compilerStageText.data() + compilerStageText.size(), compilerStage);
+    tests.expect(stageParse.ec == std::errc() &&
+                     stageParse.ptr == compilerStageText.data() + compilerStageText.size() && compilerStage >= 60,
+                 "E7 remains present at Stage 60 and later snapshots");
 
     std::set<std::string> mappedIds;
     std::istringstream mapLines(map);

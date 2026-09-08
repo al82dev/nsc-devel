@@ -1,5 +1,7 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 
+#include "nativesharp/LLVM/LlvmVersion.h"
+
 #include "LlvmCApi.h"
 
 namespace nativesharp::llvm_backend
@@ -25,6 +27,10 @@ LlvmModule::~LlvmModule()
 bool LlvmModule::verify(std::string& error) const
 {
     error.clear();
+    if (!verifyLoadedLlvmVersion(error))
+    {
+        return false;
+    }
     if (module_ == nullptr)
     {
         error = "LLVM module is null";

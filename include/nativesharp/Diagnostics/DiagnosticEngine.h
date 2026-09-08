@@ -16,6 +16,10 @@ namespace nativesharp::diagnostics
 class DiagnosticEngine final
 {
 public:
+    static constexpr std::size_t kDefaultErrorLimit = 100;
+
+    explicit DiagnosticEngine(std::size_t errorLimit = kDefaultErrorLimit) noexcept;
+
     void report(
         DiagnosticId id,
         DiagnosticSeverity severity,
@@ -31,12 +35,20 @@ public:
     const std::vector<Diagnostic>& diagnostics() const noexcept;
     std::size_t errorCount() const noexcept;
     std::size_t warningCount() const noexcept;
+    std::size_t errorLimit() const noexcept;
+    bool errorLimitReached() const noexcept;
+    std::size_t suppressedDiagnosticCount() const noexcept;
     bool hasErrors() const noexcept;
     void clear();
 
 private:
+    bool suppress(DiagnosticSeverity severity) noexcept;
+
     std::vector<Diagnostic> diagnostics_;
+    std::size_t errorLimit_ = kDefaultErrorLimit;
     std::size_t errorCount_ = 0;
     std::size_t warningCount_ = 0;
+    std::size_t suppressedDiagnosticCount_ = 0;
+    bool errorLimitReached_ = false;
 };
 }

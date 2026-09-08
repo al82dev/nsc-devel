@@ -251,3 +251,10 @@ E7 queda cerrado localmente. Para promoverlo a baseline certificado aún falta e
 
 Hasta entonces, el último baseline certificado continúa siendo el documento 139. La existencia de
 un binario Stage 60 local no reescribe esa historia.
+
+## Promoción posterior
+
+El G00 `20260907-152255-f7e1f291` promovió después este cierre local a baseline instalado y
+certificado. El acta 141 conserva las huellas, la identidad del producto y los 324 resultados. Esta
+sección no altera la cronología anterior: documenta el momento posterior en que dejó de estar
+pendiente la certificación.

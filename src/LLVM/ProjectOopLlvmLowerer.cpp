@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
@@ -9415,6 +9416,10 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
     const frontend::ProjectOopMirModel& mirModel)
 {
     error_.clear();
+    if (!verifyLoadedLlvmVersion(error_))
+    {
+        return nullptr;
+    }
     if (!nameLookup.isBuilt() || !mirModel.isBuilt())
     {
         error_ = "Macro A LLVM lowering requires built project name lookup and physical OOP MIR";

@@ -46,13 +46,32 @@ archivo COFF y, cuando existe, la tabla de exports de la DLL. El cierre técnico
 completo con **324 casos**, ambos enlazadores y 0 fallos. La implementación está en 137 y 138; el
 acta instalada, con identidades, hashes y lectura de la evidencia, está en 139.
 
-**Avance local E7 (2026-09-07):** la semántica que estaba repartida entre el libro, documentos
+**Avance certificado E7 (2026-09-07):** la semántica que estaba repartida entre el libro, documentos
 históricos, pruebas y comentarios ya tiene una autoridad normativa única. La especificación 1.0 y
 su gramática EBNF cubren 42 cláusulas independientes; un mapa conecta cada una con archivos de
 implementación y evidencia ejecutable. Stage 60 valida esa trazabilidad con **954 checks** en cada
 árbol. Las 37 suites focales citadas pasaron 37/37, primero con lld-link y después con NSLink. La
-especificación se instala con el producto bajo `share/nativesharp/spec`. El detalle está en 140.
-Este cierre sigue siendo local: el G00 certificado vigente continúa siendo el de E1–E6.
+especificación se instala con el producto bajo `share/nativesharp/spec`. El detalle técnico está en
+140. El G00 `20260907-152255-f7e1f291` promovió el cierre: **11 etapas, 324 casos y 0 fallos**, con
+árbol inmóvil y ejecutable construido idéntico al instalado. El acta exacta está en 141.
+
+**E8 certificada (2026-09-07):** Stage 61 inicia el endurecimiento del compilador con tres límites
+operativos: un máximo predeterminado de 100 errores retenidos por compilación, una frontera que
+convierte excepciones C++ no controladas en diagnóstico y exit 70, y una única línea LLVM soportada
+—23.x— comprobada al configurar y contra la biblioteca realmente cargada. El comando
+`--print-llvm-version` hace visible esa identidad. Ocho cláusulas del contrato del compilador quedan
+trazadas a código y evidencia; la suite nueva pasa 95 checks y la selección focal, 10/10 en cada
+árbol. La matriz local cubrió 299/299 casos en ambos caminos de enlace. G00
+`20260907-170412-16b5b8cb` promovió después el Stage 61: 11 etapas operativas, 324 casos, cero
+fallos, árbol inmóvil y binario construido idéntico al instalado. El desarrollo está en 142 y el
+acta de certificación, en 143.
+
+**E9 certificada hasta Stage 62 (2026-09-07):** Stage 62 crea el contrato reproducible del toolchain. El propio
+`nsc` genera, imprime, escribe, verifica e instala `NativeSharpToolchain.contract`; el artefacto
+concentra las versiones de compilador, lenguaje, LLVM, NSMETA y ABI, además de la superficie
+certificada. G00 `20260907-175537-29408b6e` la promovió con 324/324 casos, cero fallos, árbol
+inmóvil y binario construido idéntico al instalado. El método y los 43 checks están en 144; el acta
+de promoción está en 145.
 
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
@@ -993,8 +1012,9 @@ todo cambio incompatible exige migración documentada y aumento de versión.
 
 ### 9.1 Lenguaje
 
-**Estado E7 al 2026-09-07:** cerrado localmente, pendiente de instalación y G00. La autoridad
-normativa, gramática y mapa de conformidad están en `spec/`; la historia técnica está en 140.
+**Estado E7 al 2026-09-07:** instalado, `LANDED` y certificado por G00. La autoridad normativa,
+gramática y mapa de conformidad están en `spec/`; la historia técnica está en 140 y el acta de
+promoción está en 141.
 
 - especificación 1.0 suficientemente precisa para decidir si un programa es válido;
 - contrato de enteros, floats, overflow, casts y división;
@@ -1008,6 +1028,11 @@ normativa, gramática y mapa de conformidad están en `spec/`; la historia técn
 
 ### 9.2 Compilador
 
+**Estado E8 al 2026-09-07:** primera megaentrega instalada y certificada en Stage 61. Ya están
+implementados el presupuesto de diagnósticos, la frontera de fallos internos, la verificación del
+LLVM cargado y el contrato trazable del compilador. Las matrices locales y G00 están verdes; el
+baseline vigente es `20260907-170412-16b5b8cb`.
+
 - cero P0/P1 conocidos;
 - cero miscompile conocido;
 - errores de usuario no provocan crash ni IR inválido;
@@ -1020,8 +1045,14 @@ normativa, gramática y mapa de conformidad están en `spec/`; la historia técn
 
 ### 9.3 Toolchain
 
-- instalador o paquete reproducible;
-- `nsc`, runtime, Core, NSLink y herramientas con versiones compatibles;
+**Estado E9 al 2026-09-07:** Stage 62 implementa y certifica la primera mitad verificable de este gate. El
+paquete ya lleva un contrato canónico producido por el ejecutable, instalado bajo
+`share/nativesharp/toolchain`, y `nsc` puede rechazarlo campo por campo si no coincide. Falta la
+baseline G00 está certificado y permanecen abiertos los puntos operativos indicados abajo.
+
+- contrato determinista de paquete: implementado y certificado en Stage 62;
+- versiones compatibles de compilador, lenguaje, LLVM, NSMETA y ABI: implementadas y verificables;
+- empaquetado reproducible completo: falta inventario y segunda construcción independiente;
 - compilación desde una máquina limpia documentada;
 - PDB y depuración funcional;
 - `.lib` externas y proyectos múltiples;
@@ -1117,7 +1148,9 @@ Además:
 0.9.0        Cierre local: DLL/import `.lib`, estática, consumo precompilado y NSMETA 1.5
 0.9.0+G00    Baseline instalado y certificado — completado el 2026-09-07
 1.0-E5/E6    Diagnósticos ABI y verificación física de bibliotecas — instaladas y certificadas
-1.0-E7       Especificación, gramática y trazabilidad normativa — cierre local
+1.0-E7       Especificación, gramática y trazabilidad normativa — instalada y certificada
+1.0-E8       Endurecimiento del compilador — Stage 61 instalado y certificado por G00
+1.0-E9       Contrato reproducible del toolchain — Stage 62 instalado y certificado por G00
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

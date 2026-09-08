@@ -1,0 +1,83 @@
+namespace NativeSharp.Core.Threading
+{
+    // NativeSharp.Core.Threading.ScopedLock -- Pre-Stage-56 "utilidades basicas" round (Alberto,
+    // 2026-08-29).
+    //
+    // El equivalente de NativeSharp a `std::lock_guard<std::mutex>` de C++ (o al `lock (obj) { }`
+    // de C# real, que el propio compilador de C# desazucara en un try/finally con Monitor.Enter/
+    // Exit): agarra un Mutex ya existente en el constructor, lo suelta en el destructor -- de
+    // forma que declarar un ScopedLock como variable `raii` garantiza, via la maquinaria RAII que
+    // este compilador YA tiene desde Stage 49 (destruccion determinista al fin de scope, en orden
+    // INVERSO de declaracion), que el Mutex SIEMPRE se libera al salir del scope, sin importar
+    // COMO se sale (un `return` en medio del scope, una excepcion NativeSharp que atraviesa el
+    // bloque, o simplemente llegar al final normalmente) -- exactamente el mismo problema que
+    // `std::lock_guard`/`lock(obj)` resuelven en sus lenguajes de origen: escribir manualmente
+    // `mutex.Lock(); ... mutex.Unlock();` alrededor de una seccion critica es facil de hacer mal
+    // en cuanto esa seccion tiene mas de un `return`, o puede lanzar una excepcion -- cualquier
+    // camino de salida que se salte el `Unlock()` final dejaria el Mutex bloqueado para siempre,
+    // un deadlock del resto del programa contra si mismo.
+    //
+    // == Por que el campo `mutex_` NO lleva `owned` ni `borrowed` ==
+    //
+    // ScopedLock NO es dueño del Mutex que envuelve -- el Mutex tipicamente vive mas tiempo que
+    // el ScopedLock (ver el comentario de cabecera de Mutex.ns: "un campo static compartido, NO
+    // una variable local raii"), y varios ScopedLock distintos (uno por cada seccion critica que
+    // usa el mismo Mutex, posiblemente en hilos distintos y en momentos distintos) pueden
+    // envolver el MISMO Mutex a lo largo de la vida del programa sin que ninguno de ellos sea "el
+    // dueño". Guardar el Mutex en un campo `owned` estaria mal por partida doble: (a) el
+    // constructor de ScopedLock no lo creo, no deberia reclamarlo, y (b) el destructor de
+    // ScopedLock terminaria cerrando el HANDLE de Win32 del Mutex real cuando el ScopedLock sale
+    // de scope -- rompiendolo para cualquier otro codigo (en este hilo o en otro) que todavia lo
+    // necesite. Guardarlo en un campo `borrowed` tampoco compila: el analizador semantico de
+    // Stage 50 rechaza CUALQUIER campo `borrowed` con un diagnostico explicito ("borrowed field
+    // ... is rejected ... because its lifetime may outlive its source owner", ver
+    // ProjectMemberModel.cpp) -- una restriccion deliberada de ESE stage, no un limite que esta
+    // ronda pueda ni deba tratar de esquivar.
+    //
+    // La solucion correcta, confirmada por un precedente YA EXISTENTE en este mismo compilador:
+    // un campo de tipo clase SIN calificador de ownership (ni `owned` ni `borrowed`) es una
+    // referencia NO POSEIDA -- exactamente el diseño que
+    // NativeSharp.Core.Collections.Generic.ListEnumerator<T> ya usa para su propio campo
+    // `source` (ver el comentario de cabecera de ese archivo: "this enumerator BORROWS the list
+    // it iterates -- it holds a plain (non-owned) back-reference... no field here is `owned`, so
+    // it needs no destructor"). ScopedLock sigue ese MISMO patron letra por letra: `mutex_` es un
+    // campo de clase liso, el constructor simplemente lo asigna, y el destructor de ScopedLock
+    // NUNCA destruye ni cierra el Mutex en si -- solo llama Unlock() sobre el, la misma operacion
+    // que cualquier codigo normal podria llamar a mano.
+    //
+    // == Uso tipico ==
+    //
+    //   private static Mutex sharedMutex = new Mutex();
+    //
+    //   public static int CriticalSection()
+    //   {
+    //       raii ScopedLock guard = new ScopedLock(sharedMutex);
+    //       // ... seccion critica: sharedMutex esta adquirido durante todo este bloque ...
+    //       return 42; // guard.~ScopedLock() corre ACA, sharedMutex.Unlock() garantizado,
+    //                  // sin importar por donde se sale del scope.
+    //   }
+    //
+    // Reentrancia: heredada directamente de Mutex (ver su comentario de cabecera) -- un mismo
+    // hilo puede anidar dos ScopedLock sobre el MISMO Mutex sin bloquearse contra si mismo (cada
+    // ScopedLock hace su propio Lock()/Unlock() balanceado, y el conteo de recursion real vive en
+    // el kernel de Windows, no en esta clase).
+    public class ScopedLock
+    {
+        private Mutex mutex_;
+
+        // Adquiere "mutex" de inmediato -- igual que Thread (Stage 54.1), el constructor ES la
+        // operacion, no hay un Acquire() separado.
+        public ScopedLock(Mutex mutex)
+        {
+            mutex_ = mutex;
+            mutex_.Lock();
+        }
+
+        // Libera "mutex" -- SOLO Unlock(), nunca Close()/destruye el Mutex en si (ver el
+        // comentario de cabecera de la clase para el razonamiento completo de ownership).
+        ~ScopedLock()
+        {
+            mutex_.Unlock();
+        }
+    }
+}

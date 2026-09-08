@@ -15,6 +15,11 @@ LECTURA HISTÓRICA RECOMENDADA
     138_1_0_e6_verificacion_fisica_lib_dll.md
     139_baseline_certificado_1_0_e5_e6.md
     140_1_0_e7_especificacion_normativa_y_trazabilidad.md
+    141_baseline_certificado_1_0_e7.md
+    142_1_0_e8_endurecimiento_del_compilador.md
+    143_baseline_certificado_1_0_e8.md
+    144_1_0_e9_contrato_reproducible_del_toolchain.md
+    145_baseline_certificado_1_0_e9_stage62.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -25,6 +30,13 @@ pipeline y qué evidencia permite distinguir intención histórica de implementa
 El documento 131 establece la regla permanente para continuar esa historia: cada cambio debe
 documentarse mientras se implementa, incluso si no existe commit, e incluir archivos, funciones,
 razonamiento, pruebas, resultado observable y trabajo que permanece abierto.
+
+El documento 144 abre E9 con Stage 62: explica por qué build id y compatibilidad son identidades
+distintas, cómo el propio `nsc` genera e instala un manifiesto determinista, qué campos forman el
+contrato del toolchain y cómo se diagnostica cualquier paquete incompatible.
+
+El documento 145 certifica esa primera entrega E9: conserva run, tiempos, hashes, inmovilidad,
+identidad instalada, contrato promovido y lectura precisa de los 324 casos de G00.
 
 Los documentos 132 a 135 registran la implementación y el cierre técnico de las cuatro primeras
 megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifetime de delegates y
@@ -48,8 +60,21 @@ normativa instalable, una gramática EBNF y un mapa cláusula→implementación�
 verifica mecánicamente. Registra también la corrida paralela inválida, su causa y las dos
 repeticiones secuenciales verdes.
 
-Entrega instalada vigente: NativeSharp 0.1, Stage 57; `nsc 0.9.0` con E1–E6 completas.
-Estado vigente: G00 `20260907-131523-7eda857d`, 11 etapas, 324 casos, cero fallos,
+El documento 141 registra la promoción de E7 a producto instalado. Conserva la identidad Stage 60,
+las huellas del árbol y del ejecutable, y explica qué agregan las 954 comprobaciones contractuales
+al gate completo de 324 casos.
+
+El documento 142 inicia E8 y explica por qué robustez no significa sólo “no se cayó en las pruebas”.
+Registra el presupuesto de diagnósticos, la frontera de excepciones internas, la calificación de
+LLVM 23.x, el nuevo comando de inspección, las ocho cláusulas del contrato del compilador y la
+evidencia Stage 61.
+
+El documento 143 registra la promoción de E8. Conserva las identidades exactas de Stage 61, explica
+la diferencia entre las 11 etapas operativas y el registro final de certificación, y demuestra que
+las fuentes y el producto permanecieron estables durante los 324 casos.
+
+Entrega instalada vigente: NativeSharp 0.1, Stage 61; `nsc 0.9.0` con E1–E8 completas.
+Estado vigente: G00 `20260907-170412-16b5b8cb`, 11 etapas, 324 casos, cero fallos,
 árbol inmóvil y ejecutable construido idéntico al instalado.
 
 Todo lo que hay aquí adentro es el árbol completo del compilador. No falta nada: fuentes,

@@ -1,3 +1,4 @@
+#include "nativesharp/Driver/CrashBoundary.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmProcessTrace.h"
@@ -7,7 +8,9 @@
 #include <string_view>
 #include <vector>
 
-int main(int argc, char** argv)
+namespace
+{
+int runCompiler(int argc, char** argv)
 {
     const auto isTraceWorkerArgument = [](const char* argument) {
         return std::string_view(argument) ==
@@ -77,4 +80,11 @@ int main(int argc, char** argv)
     const nativesharp::driver::Driver driver;
     const nativesharp::ExitCode exitCode = driver.run(arguments, std::cout, std::cerr);
     return static_cast<int>(exitCode);
+}
+}
+
+int main(int argc, char** argv)
+{
+    return nativesharp::driver::runWithCrashBoundary(
+        [&]() { return runCompiler(argc, argv); }, std::cerr);
 }

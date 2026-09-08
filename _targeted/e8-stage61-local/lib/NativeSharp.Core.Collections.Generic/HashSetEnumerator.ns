@@ -1,0 +1,40 @@
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Enumerator returned by HashSet<T>.GetEnumerator() (P1.2 of
+    // STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md). See ListEnumerator.ns's class comment
+    // for the general design this whole family of enumerators follows, and HashSet<T>.
+    // GetEnumerator()'s own comment for why this one is SNAPSHOT-based (via ToArray()) rather
+    // than a live indexer into the source, unlike List<T>/Queue<T>/Stack<T>'s enumerators.
+    //
+    // Ownership: `snapshot` is a plain (non-owned-element) array exactly like ToArray()'s own
+    // local of the same shape (HashSet.ns's ForEach() uses the identical pattern) -- its elements
+    // are borrowed copies still owned by the underlying Dictionary<T, bool>, but the ARRAY
+    // ALLOCATION ITSELF must be freed by whoever holds it, hence the destructor below.
+    public class HashSetEnumerator<T>
+    {
+        private T[] snapshot;
+        private int index;
+
+        public HashSetEnumerator(HashSet<T> sourceSet)
+        {
+            snapshot = sourceSet.ToArray();
+            index = -1;
+        }
+
+        public bool MoveNext()
+        {
+            index = index + 1;
+            return index < snapshot.Length;
+        }
+
+        public T Current
+        {
+            get { return snapshot[index]; }
+        }
+
+        ~HashSetEnumerator()
+        {
+            delete[] snapshot;
+        }
+    }
+}
