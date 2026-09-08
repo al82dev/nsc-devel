@@ -335,16 +335,35 @@ enum class Stage37ConstantKind
 {
     Integer,
     Floating,
-    Boolean
+    Boolean,
+    String
 };
 
 struct Stage37ConstantValue final
 {
+    Stage37ConstantValue() = default;
+    Stage37ConstantValue(
+        Stage37ConstantKind valueKind,
+        std::string valueTypeKey,
+        std::uint64_t integerValue,
+        double floatingValue,
+        bool booleanValue,
+        std::string stringValue = {})
+        : kind(valueKind),
+          typeKey(std::move(valueTypeKey)),
+          integer(integerValue),
+          floating(floatingValue),
+          boolean(booleanValue),
+          string(std::move(stringValue))
+    {
+    }
+
     Stage37ConstantKind kind = Stage37ConstantKind::Integer;
     std::string typeKey;
     std::uint64_t integer = 0;
     double floating = 0.0;
     bool boolean = false;
+    std::string string;
 };
 
 bool isSignedIntegralType(std::string_view typeKey) noexcept
@@ -660,13 +679,14 @@ bool ProjectMethodBodyModel::build(
             !ProjectTypeConversion::isIntegral(field.declaredTypeKey) &&
             field.declaredTypeKey != "builtin:bool" &&
             field.declaredTypeKey != "builtin:float" &&
-            field.declaredTypeKey != "builtin:double")
+            field.declaredTypeKey != "builtin:double" &&
+            field.declaredTypeKey != "builtin:string")
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 field.syntax->range(),
-                "Stage 37 const fields are limited to integral, bool, float, and double types");
+                "const fields are limited to integral, bool, float, double, and string types");
         }
     }
 
@@ -6975,9 +6995,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     continue;
                 }
 
-                // E11: explicitly typed lambda parameters participate in overload filtering.
-                // This deliberately does not guess from an untyped body: when two delegate
-                // targets remain possible the call is still ambiguous, exactly as in C#.
+                // E11/R5: a lambda can only convert to a delegate, so non-delegate overloads
+                // cannot make its target ambiguous. Explicit parameter types narrow compatible
+                // delegate signatures further. An untyped lambda still does not guess between
+                // two distinct delegate targets: it receives a context only when exactly one
+                // delegate type remains.
                 std::vector<std::string> compatibleDelegateTypes;
                 const ast::AstNode* lambda = expression->children()[index];
                 for (const auto& candidate : arityMatches)
@@ -6993,13 +7015,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         continue;
 
                     bool matches = true;
-                    bool hasExplicitType = false;
                     for (std::size_t lambdaParameter = 0;
                          lambdaParameter < lambda->children().size(); ++lambdaParameter)
                     {
                         const ast::AstNode* parameterSyntax = lambda->children()[lambdaParameter];
                         if (parameterSyntax == nullptr || parameterSyntax->typeSyntax() == nullptr) continue;
-                        hasExplicitType = true;
                         const std::string explicitType = memberModel_->canonicalTypeKey(
                             parameterSyntax->typeSyntax(), *nameLookup_);
                         if (explicitType != candidateParameterTypes[lambdaParameter])
@@ -7008,7 +7028,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             break;
                         }
                     }
-                    if (matches && hasExplicitType && std::ranges::find(
+                    if (matches && std::ranges::find(
                             compatibleDelegateTypes, candidateType) == compatibleDelegateTypes.end())
                         compatibleDelegateTypes.push_back(candidateType);
                 }
@@ -11007,6 +11027,12 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
             value.typeKey = std::string(target);
             return value;
         }
+        if (target == "builtin:string")
+        {
+            if (value.kind != Stage37ConstantKind::String) return std::nullopt;
+            value.typeKey = std::string(target);
+            return value;
+        }
         if (ProjectTypeConversion::isIntegral(target))
         {
             if (value.kind != Stage37ConstantKind::Integer) return std::nullopt;
@@ -11095,6 +11121,14 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
                     0,
                     0.0,
                     node->tokenKind() == TokenKind::KwTrue};
+            case ast::AstNodeKind::StringLiteralExpression:
+                return Stage37ConstantValue{
+                    Stage37ConstantKind::String,
+                    "builtin:string",
+                    0,
+                    0.0,
+                    false,
+                    node->text()};
 
             case ast::AstNodeKind::IdentifierExpression:
             case ast::AstNodeKind::MemberExpression:

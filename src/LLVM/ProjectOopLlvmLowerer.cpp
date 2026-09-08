@@ -1004,6 +1004,11 @@ private:
                 {
                     initializer = LLVMConstReal(type, field.constantFloatingValue);
                 }
+                else if (field.typeKey == "builtin:string")
+                {
+                    initializer = internStringLiteral(field.constantStringValue, error);
+                    if (initializer == nullptr) return false;
+                }
                 else
                 {
                     return fail(error, "Stage 37 const field type is not supported by native constant initialization");
@@ -7366,20 +7371,20 @@ private:
         return result;
     }
 
-    LLVMValueRef lowerStringLiteral(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef internStringLiteral(std::string_view value, std::string& error)
     {
-        const auto found = stringGlobals_.find(node->stringValue);
+        const auto found = stringGlobals_.find(std::string(value));
         if (found != stringGlobals_.end()) return found->second;
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
-        LLVMTypeRef bytesType = LLVMArrayType2(i8, node->stringValue.size() + 1U);
+        LLVMTypeRef bytesType = LLVMArrayType2(i8, value.size() + 1U);
         const std::string typeName = "__nsc_string_literal_type_" + std::to_string(stringSequence_);
         LLVMTypeRef literalType = LLVMStructCreateNamed(context_, typeName.c_str());
         LLVMTypeRef fields[] = {i64, bytesType};
         LLVMStructSetBody(literalType, fields, 2, 0);
         LLVMValueRef values[] = {
-            LLVMConstInt(i64, static_cast<std::uint64_t>(node->stringValue.size()), 0),
-            LLVMConstStringInContext2(context_, node->stringValue.data(), node->stringValue.size(), 0)};
+            LLVMConstInt(i64, static_cast<std::uint64_t>(value.size()), 0),
+            LLVMConstStringInContext2(context_, value.data(), value.size(), 0)};
         LLVMValueRef initializer = LLVMConstNamedStruct(literalType, values, 2);
         const std::string name = "__nsc_str_" + std::to_string(stringSequence_++);
         LLVMValueRef global = LLVMAddGlobal(module_, literalType, name.c_str());
@@ -7387,8 +7392,13 @@ private:
             return failValue(error, "Stage 41 failed to materialize native string literal");
         LLVMSetInitializer(global, initializer);
         LLVMSetGlobalConstant(global, 1);
-        stringGlobals_.emplace(node->stringValue, global);
+        stringGlobals_.emplace(value, global);
         return global;
+    }
+
+    LLVMValueRef lowerStringLiteral(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        return internStringLiteral(node->stringValue, error);
     }
 
     LLVMValueRef nullableStringLength(LLVMValueRef value, std::string_view stem)

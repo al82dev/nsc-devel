@@ -151,6 +151,35 @@ std::optional<double> floatingConstantValue(
 std::optional<bool> booleanConstantValue(
     const ProjectOopHirNode* node,
     const std::vector<ProjectOopMirStaticField>& knownFields) noexcept;
+std::optional<std::string> stringConstantValue(
+    const ProjectOopHirNode* node,
+    const std::vector<ProjectOopMirStaticField>& knownFields);
+
+std::optional<std::string> stringConstantValue(
+    const ProjectOopHirNode* node,
+    const std::vector<ProjectOopMirStaticField>& knownFields)
+{
+    if (node == nullptr) return std::nullopt;
+    if (node->kind == ProjectOopHirNodeKind::StringLiteral)
+    {
+        return node->stringValue;
+    }
+    if (node->kind == ProjectOopHirNodeKind::StaticFieldValue && node->memberOrdinal.has_value())
+    {
+        const ProjectOopMirStaticField* field = knownStaticField(*node->memberOrdinal, knownFields);
+        if (field != nullptr && field->typeKey == "builtin:string")
+        {
+            return field->constantStringValue;
+        }
+        return std::nullopt;
+    }
+    if (node->kind == ProjectOopHirNodeKind::Conversion && node->typeKey == "builtin:string" &&
+        !node->children.empty())
+    {
+        return stringConstantValue(node->children.front().get(), knownFields);
+    }
+    return std::nullopt;
+}
 
 std::optional<std::uint64_t> integerConstantValue(
     const ProjectOopHirNode* node,
@@ -959,6 +988,16 @@ bool ProjectOopMirModel::build(
                         {
                             staticField.hasConstantInitializer = true;
                             staticField.constantFloatingValue = *value;
+                        }
+                    }
+                    else if (field.declaredTypeKey == "builtin:string")
+                    {
+                        const std::optional<std::string> value =
+                            stringConstantValue(initializer.value.get(), staticFields_);
+                        if (value.has_value())
+                        {
+                            staticField.hasConstantInitializer = true;
+                            staticField.constantStringValue = *value;
                         }
                     }
                     break;

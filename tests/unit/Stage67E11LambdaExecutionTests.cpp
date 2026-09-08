@@ -110,6 +110,10 @@ delegate Transform Factory(int seed);
 delegate void Mutate(ref int value);
 delegate int ReadValue();
 
+class Runnable
+{
+}
+
 struct LargeValue
 {
     public int A;
@@ -124,6 +128,14 @@ class Boom : Exception
 
 class Program
 {
+    public static int Choose(ReadValue work) { return work(); }
+    public static int Choose(Runnable work) { return 0; }
+
+    public static int LambdaSelectsOnlyDelegateOverload()
+    {
+        return Choose(() => 42);
+    }
+
     public static int SharedMutation()
     {
         int state = 1;
@@ -217,7 +229,7 @@ class Program
         }
 
         return SharedMutation() + nestedResult + byReference - 42 + largeResult + fixedResult - 16 +
-            exceptionResult - 10;
+            exceptionResult - 10 + LambdaSelectsOnlyDelegateOverload() - 42;
     }
 }
 )NS");

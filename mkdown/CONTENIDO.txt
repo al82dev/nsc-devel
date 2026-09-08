@@ -30,6 +30,7 @@ LECTURA HISTÓRICA RECOMENDADA
     153_1_0_e11_lambdas_y_clausuras_lexicas_stage67.md
     154_baseline_certificado_1_0_e11_stage67.md
     155_handover_stage67_a_e12_release_ready.md
+    156_1_0_1_puente_nativeforms_com_y_subsystem_windows.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -98,6 +99,12 @@ certificado vigente.
 El documento 155 entrega Stage 67 a una rama nueva. Resume el diseño que debe preservarse, enumera
 archivos y pruebas de E11, distingue la fotografía certificada de las actas posteriores y define
 E12 como una megaentrega de estabilización y decisión reproducible de release-readiness.
+
+El documento 156 abre el trabajo de 1.0.1 desde un consumidor real. Demuestra que los casts entre
+`void*` y `extern C delegate` ya estaban implementados y cubiertos, deja el literal GUID como mejora
+ergonómica no bloqueante, implementa `/subsystem:windows` de punta a punta para LLD y NSLink, y
+permite que una lambda seleccione el único overload delegate aunque coexista con una forma de
+objeto. Todo ello sin alterar el ABI de entrada ni reimplementar COM en el compilador.
 
 Los documentos 132 a 135 registran la implementación y el cierre técnico de las cuatro primeras
 megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifetime de delegates y
@@ -221,3 +228,9 @@ puede verificar sin Windows está verificado y en verde: forma del IR, ejecutabl
 -O0 y -O2, layouts certificados contra clang apuntando al ABI de MSVC con -Werror, y — donde
 aplica — el código máquina de -O2 plegado a un retorno constante, que es la prueba más fuerte
 disponible de que la semántica es la que dice el fuente.
+
+
+1.0.1 — CONST STRING Y SUPERFICIE INTEROP (157_1_0_1_const_string_y_superficie_interop_verificada.md)
+---------------------------------------------------------------------------------------------------
+
+    Añade `const string` real y registra que entero→puntero, `p + 1` y operadores de usuario ya existían.

@@ -225,7 +225,9 @@ void testConstEvaluation(TestContext& tests, const std::filesystem::path& root)
         "public const int NegMod = (-5) % 2; "
         "public const int WrapDiv = (2147483647 + 1) / 2; "
         "public const int Shift = (-8) >> 1; "
-        "public const double Ratio = 5.0 / 2.0; }");
+        "public const double Ratio = 5.0 / 2.0; "
+        "public const string Product = \"NativeSharp\"; "
+        "public const string Alias = Product; }");
 
     ProjectCompilation compilation;
     std::string error;
@@ -241,6 +243,8 @@ void testConstEvaluation(TestContext& tests, const std::filesystem::path& root)
     const auto* wrapDiv = staticField(compilation, "WrapDiv");
     const auto* shift = staticField(compilation, "Shift");
     const auto* ratio = staticField(compilation, "Ratio");
+    const auto* product = staticField(compilation, "Product");
+    const auto* alias = staticField(compilation, "Alias");
     tests.expect(seed != nullptr && seed->hasConstantInitializer && seed->constantIntegerValue == 5,
         "integer const arithmetic is evaluated at compile time");
     tests.expect(twice != nullptr && twice->constantIntegerValue == 10,
@@ -257,6 +261,12 @@ void testConstEvaluation(TestContext& tests, const std::filesystem::path& root)
         "signed right shift in const evaluation preserves arithmetic sign extension");
     tests.expect(ratio != nullptr && ratio->hasConstantInitializer && ratio->constantFloatingValue == 2.5,
         "floating const arithmetic is materialized without a runtime initializer");
+    tests.expect(product != nullptr && product->hasConstantInitializer &&
+            product->constantStringValue == "NativeSharp",
+        "string literal const is preserved as a compile-time native string value");
+    tests.expect(alias != nullptr && alias->hasConstantInitializer &&
+            alias->constantStringValue == "NativeSharp",
+        "string const reference resolves to the same compile-time value");
 
     nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
     auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
@@ -268,6 +278,9 @@ void testConstEvaluation(TestContext& tests, const std::filesystem::path& root)
     tests.expect(llvm.find("constant i32 5") != std::string::npos &&
             llvm.find("constant i1 true") != std::string::npos,
         "LLVM emits native constant globals rather than runtime stores for const fields");
+    tests.expect(llvm.find("constant ptr @__nsc_str_") != std::string::npos &&
+            llvm.find("c\"NativeSharp\\00\"") != std::string::npos,
+        "LLVM const string fields point at immutable length-prefixed literal storage");
 }
 
 void testReadonlyRules(TestContext& tests, const std::filesystem::path& root)

@@ -118,6 +118,11 @@ Campos almacenan estado; métodos ejecutan cuerpos; propiedades e indexadores so
 operadores son métodos estáticos sujetos a las formas admitidas; constructores inicializan una
 instancia; destructores descargan obligaciones del objeto. Un miembro `static` no recibe `this`.
 
+Un campo `const` es estático e inmutable y su inicializador debe resolverse completamente durante
+la compilación. Se admiten constantes integrales, `bool`, `float`, `double` y `string`; un literal
+`string` o una referencia a otro `const string` se materializa como almacenamiento literal
+inmutable y no ejecuta un inicializador estático en runtime.
+
 `virtual` introduce o participa en dispatch; `override` debe encontrar una ranura compatible;
 `abstract` no aporta cuerpo concreto; `sealed` impide la extensión que nombre. Una combinación de
 modificadores sin significado se rechaza, no se ignora. Un accessor ausente no se sintetiza salvo
@@ -163,8 +168,10 @@ de cada captura.
 Una lambda es *target-typed*: debe existir un delegate destino. Sus parámetros pueden omitir el
 tipo, en cuyo caso lo reciben de ese delegate, o escribirlo expresamente. Un tipo o modo
 `ref`/`out`/`in` escrito debe coincidir exactamente con la firma destino. El tipo explícito participa
-en la selección de overload; una lambda sin tipos no resuelve por sí sola dos delegates igualmente
-aplicables.
+en la selección de overload. Como una lambda sólo puede convertirse a un delegate, los overloads
+cuyo parámetro correspondiente no es delegate no impiden contextualizarla. Una lambda sin tipos
+recibe contexto únicamente cuando queda un solo tipo delegate destino; no resuelve por sí sola dos
+tipos delegate distintos igualmente aplicables.
 
 Las variables ordinarias capturadas se representan mediante celdas compartidas. El método creador,
 las lambdas hermanas y las lambdas anidadas observan el mismo slot: una escritura realizada por

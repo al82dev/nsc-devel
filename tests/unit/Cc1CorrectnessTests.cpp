@@ -763,6 +763,13 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c52_lazy_generic_members/c52_lazy_generic_members.nsproj",
         "cc1-c52-lazy-generic-members", 42);
 
+    // 1.0.1 -- `const string` is a real compile-time constant, not a hidden cctor assignment.
+    // The fixture reads a literal, an alias and the empty string at O0 and O2. This is the source
+    // shape emitted by Silk.NET's three StringConstants files.
+    checkFixture(
+        tests, root, "tests/cc1/c53_const_string/c53_const_string.nsproj",
+        "cc1-c53-const-string", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

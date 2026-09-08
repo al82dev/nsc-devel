@@ -1,0 +1,27 @@
+// NativeSharp 1.0.1 -- constantes string usadas por bindings generados.
+//
+// El valor debe existir desde compilacion: no hay constructor estatico oculto ni escritura
+// mutable. Alias fija ademas que una constante string puede referir otra constante.
+using NativeSharp.Core;
+
+namespace cc1conststring
+{
+    public static class Names
+    {
+        public const string Product = "NativeSharp";
+        public const string Alias = Product;
+        public const string Empty = "";
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            if (Names.Product.Length != 11) { return 1; }
+            if (Names.Alias.Length != 11) { return 2; }
+            if (Names.Empty.Length != 0) { return 3; }
+            if (Names.Product != Names.Alias) { return 4; }
+            return 42;
+        }
+    }
+}

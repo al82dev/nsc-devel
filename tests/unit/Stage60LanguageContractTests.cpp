@@ -41,6 +41,10 @@ std::vector<std::string> split(std::string_view text, char delimiter)
     {
         const std::size_t end = text.find(delimiter, begin);
         fields.emplace_back(text.substr(begin, end == std::string_view::npos ? text.size() - begin : end - begin));
+        // A conforming checkout may use CRLF. std::getline removes '\n' but preserves '\r',
+        // which used to turn the final evidence path in every map row into a nonexistent file.
+        if (!fields.back().empty() && fields.back().back() == '\r')
+            fields.back().pop_back();
         if (end == std::string_view::npos)
             break;
         begin = end + 1;

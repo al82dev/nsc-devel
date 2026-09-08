@@ -134,6 +134,7 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
         {
             if (field.typeKey == "builtin:bool") output << " value=" << (field.constantBooleanValue ? "true" : "false");
             else if (field.typeKey == "builtin:float" || field.typeKey == "builtin:double") output << " value=" << field.constantFloatingValue;
+            else if (field.typeKey == "builtin:string") output << " bytes=" << field.constantStringValue.size();
             else output << " value=" << field.constantIntegerValue;
         }
         output << '\n';

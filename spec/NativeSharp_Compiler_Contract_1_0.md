@@ -54,6 +54,18 @@ Successful commands return 0, compilation failures return 1, invalid command lin
 internal compiler failures return 70. A diagnostic class must not silently change between releases
 without a compatibility note.
 
+## NSC-LINK-001 — Windows executable subsystem
+
+An executable shall use `IMAGE_SUBSYSTEM_WINDOWS_CUI` by default. The explicit driver option
+`/subsystem:windows` shall instead emit `IMAGE_SUBSYSTEM_WINDOWS_GUI`; `/subsystem:console` shall
+select the default explicitly. Option names and values are case-insensitive, may appear anywhere
+in an executable-emission command and shall be rejected for actions that do not emit an
+executable. Unsupported or duplicate subsystem options are command-line errors.
+
+The selected subsystem shall reach every supported PE linker without changing the NativeSharp
+entry-point ABI. The PE verifier shall accept both supported values and reject other subsystem
+values.
+
 ## NSC-NEG-001 — Negative evidence
 
 The release suite shall include malformed lexical, syntactic, semantic, project and command-line
