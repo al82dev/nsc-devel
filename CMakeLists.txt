@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(
     NativeSharp
     VERSION 0.9.0
-    DESCRIPTION "NativeSharp stage 62 -- reproducible toolchain contract"
+    DESCRIPTION "NativeSharp stage 64 -- deterministic installation inventory"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -340,7 +340,10 @@ nsc_enable_warnings(nsc_linker)
 
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
+    src/Basic/Sha256.cpp
     src/Driver/Driver.cpp
+    src/Driver/InstallationManifest.cpp
+    src/Driver/InstallationVerifier.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryMetadata.cpp)
@@ -371,6 +374,39 @@ add_custom_command(TARGET nsc POST_BUILD
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
     VERBATIM)
+
+# E9 / Stage 64. Esta lista describe el payload esperado por la version que se esta construyendo.
+# No se obtiene enumerando el prefijo despues de instalar: hacerlo asi legitimaria como actuales
+# los residuos de una version anterior. Las rutas se ordenan y normalizan al configurar; CMake
+# vuelve a configurarse si cambia el arbol publico de lib/ o spec/.
+file(GLOB_RECURSE NSC_INSTALLATION_LIBRARY_FILES
+    CONFIGURE_DEPENDS
+    LIST_DIRECTORIES false
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/lib"
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/*")
+file(GLOB_RECURSE NSC_INSTALLATION_SPECIFICATION_FILES
+    CONFIGURE_DEPENDS
+    LIST_DIRECTORIES false
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/spec"
+    "${CMAKE_CURRENT_SOURCE_DIR}/spec/*")
+set(NSC_INSTALLATION_EXPECTED_PATHS
+    "bin/nsc.exe"
+    "share/nativesharp/toolchain/NativeSharpInstallation.files"
+    "share/nativesharp/toolchain/NativeSharpToolchain.contract")
+foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
+    list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
+endforeach()
+foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_SPECIFICATION_FILES)
+    list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "share/nativesharp/spec/${_nsc_install_file}")
+endforeach()
+list(SORT NSC_INSTALLATION_EXPECTED_PATHS)
+set(NSC_INSTALLATION_FILE_LIST
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpInstallation.files")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(WRITE "${NSC_INSTALLATION_FILE_LIST}" "NSFILES 1\n")
+foreach(_nsc_install_path IN LISTS NSC_INSTALLATION_EXPECTED_PATHS)
+    file(APPEND "${NSC_INSTALLATION_FILE_LIST}" "${_nsc_install_path}\n")
+endforeach()
 
 # "--deploy": instala el compilador ya construido en la ruta de instalacion elegida (p. ej.
 # C:\native-sharp), junto con el arbol lib/ ENTERO -- las bibliotecas .ns
@@ -410,6 +446,13 @@ install(TARGETS nsc RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
+install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
+if(WIN32)
+    # La verificacion corre al FINAL: no basta que CMake haya intentado copiar los archivos. El
+    # nsc ya instalado valida el contrato y la superficie minima desde el prefijo efectivo, incluido
+    # uno reemplazado mediante `cmake --install --prefix`.
+    install(SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyInstalledNativeSharp.cmake")
+endif()
 
 # =====================================================================================
 # NSC_TEST_COMPILER -- EL COMPILADOR QUE MIDE CTEST.
@@ -880,6 +923,37 @@ if(NSC_BUILD_TESTS)
     add_dependencies(nsc_stage62_toolchain_contract_tests nsc)
     nsc_enable_warnings(nsc_stage62_toolchain_contract_tests)
     add_test(NAME nsc.stage62.toolchain-contract COMMAND nsc_stage62_toolchain_contract_tests)
+
+    # Stage 63 / 1.0-E9 -- la instalacion se valida como producto completo. Los casos negativos
+    # prueban cada familia del layout y el comando publico que ejecuta CMake al final del install.
+    add_executable(nsc_stage63_installation_verifier_tests tests/unit/Stage63InstallationVerifierTests.cpp)
+    target_link_libraries(
+        nsc_stage63_installation_verifier_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage63_installation_verifier_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_stage63_installation_verifier_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage63_installation_verifier_tests)
+    add_test(NAME nsc.stage63.installation-verifier COMMAND nsc_stage63_installation_verifier_tests)
+
+    # Stage 64 / 1.0-E9 -- inventario criptografico de la instalacion. Comparte la autoridad
+    # SHA-256 usada por NSMETA, prueba el formato determinista y demuestra rechazo de bytes
+    # alterados, archivos faltantes, residuos inesperados y entradas malformadas.
+    add_executable(
+        nsc_stage64_installation_manifest_tests
+        tests/unit/Stage64InstallationManifestTests.cpp)
+    target_link_libraries(
+        nsc_stage64_installation_manifest_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage64_installation_manifest_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_stage64_installation_manifest_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_stage64_installation_manifest_tests)
+    add_test(
+        NAME nsc.stage64.installation-manifest
+        COMMAND nsc_stage64_installation_manifest_tests)
 
     # ---------------------------------------------------------------------------------------
     # Milestone CC1 -- Compiler Correctness & Semantic Consolidation.

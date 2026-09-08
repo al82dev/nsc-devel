@@ -1,250 +1,258 @@
-# Cómo construir NativeSharp (`nsc`)
+# Construcción, prueba e instalación de NativeSharp
 
-Este documento no existía en el repo -- lo que sigue son los pasos reales, verificados contra
-este mismo árbol en este sandbox (Linux/GCC + LLVM 20 vía paquete del sistema), más las
-instrucciones equivalentes para Windows (tu máquina), que es donde correrás `nsc` para emitir y
-ejecutar los `.exe` reales sin pasar por Wine.
+**Vigencia:** Stage 64, camino oficial Windows x64.
 
-## Requisitos
+Esta guía describe el producto que el árbol soporta hoy. Su objetivo no es enumerar todas las
+combinaciones que CMake podría aceptar, sino dar una receta repetible para construir `nsc`, medir
+el ejecutable correcto e instalar un paquete que se verifica a sí mismo.
 
-- **CMake 3.25 o más nuevo** (`cmake_minimum_required` en `CMakeLists.txt`).
-- **Un compilador C++20**: MSVC (Visual Studio 2022, cualquier build reciente) en Windows; GCC 13+
-  o Clang en Linux/macOS.
-- **LLVM 19 o más nuevo**. Dos caminos posibles (`CMakeLists.txt`, ~líneas 211-243):
-  `find_package(LLVM CONFIG)` (necesita headers de desarrollo + `LLVMConfig.cmake` -- vcpkg o un
-  instalador con "LLVM development headers", ver la sección Windows más abajo), o un `.lib`/`.so`
-  monolítico solo (`-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE` + `-DNSC_LLVM_MONOLITHIC_LIBRARY=...`
-  -- SIN headers de LLVM, ver "Tu setup real" en la sección Windows: este proyecto nunca incluye
-  un header real de LLVM, mantiene su propia API C a mano en `src/LLVM/LlvmCApi.h`).
-- Los tests (`NSC_BUILD_TESTS`, ON por defecto) no necesitan nada adicional -- están enlazados
-  directo contra las librerías del propio compilador, sin un framework externo.
+## 1. Qué se está construyendo
 
-## Windows (tu máquina) -- recomendado: vcpkg
+El árbol produce tres familias de artefactos:
 
-La forma más simple de tener LLVM+CMake correctamente enlazados en Windows es vía
-[vcpkg](https://github.com/microsoft/vcpkg), que resuelve automáticamente los componentes y
-genera un `LLVMConfig.cmake` utilizable.
+- `build/bin/nsc.exe`: el compilador NativeSharp;
+- `build/lib/*.lib`: bibliotecas internas C++ usadas para construir el compilador;
+- `build/tests/*.exe`: ejecutables de prueba cuando `NSC_BUILD_TESTS=ON`.
+
+La instalación pública es distinta del árbol de construcción. Contiene:
+
+- `<prefix>/bin/nsc.exe`;
+- `<prefix>/lib/NativeSharp.Core*`;
+- `<prefix>/share/nativesharp/spec/*`;
+- `<prefix>/share/nativesharp/toolchain/NativeSharpToolchain.contract`;
+- `<prefix>/share/nativesharp/toolchain/NativeSharpInstallation.files`;
+- `<prefix>/share/nativesharp/toolchain/NativeSharpInstallation.manifest`.
+
+Las `.lib` internas de C++ no son parte de la superficie pública instalada. Las `.lib` y DLL que
+produce `nsc` para proyectos NativeSharp sí son artefactos del lenguaje y se validan mediante sus
+contratos NSMETA y ABI.
+
+## 2. Plataforma y herramientas calificadas
+
+La ruta oficial de 1.0 es:
+
+- Windows x64;
+- CMake 3.25 o posterior;
+- Ninja;
+- compilador C++20 `clang-cl`;
+- enlazador `lld-link` para construir `nsc`;
+- LLVM-C 23.x cargado desde una biblioteca monolítica;
+- `llvm-lib` disponible junto al resto de herramientas LLVM;
+- PowerShell para los comandos de esta guía.
+
+El compilador comprueba en ejecución que la biblioteca LLVM cargada pertenece a la línea 23.x.
+Una configuración que encuentra otra versión no constituye un toolchain certificado.
+
+La instalación usada en este árbol coloca las herramientas en `C:/clang-llvm`:
+
+```text
+C:/clang-llvm/bin/clang-cl.exe
+C:/clang-llvm/bin/lld-link.exe
+C:/clang-llvm/bin/llvm-lib.exe
+C:/clang-llvm/lib/LLVM-C.lib
+```
+
+NativeSharp mantiene las declaraciones de la API C que utiliza; por eso este camino enlaza
+directamente `LLVM-C.lib` y no necesita consumir la API C++ de LLVM.
+
+## 3. Construcción limpia de Release
+
+Desde la raíz del checkout, elija dos carpetas nuevas. El ejemplo usa rutas dentro del propio
+árbol para que la instalación sea aislada y removible:
 
 ```powershell
-# 1) Si no tienes vcpkg todavía:
-git clone https://github.com/microsoft/vcpkg
-.\vcpkg\bootstrap-vcpkg.bat
+$sourceRoot = (Get-Location).Path
+$buildRoot = Join-Path $sourceRoot '_clean/build-release'
+$installRoot = Join-Path $sourceRoot '_clean/install-release'
 
-# 2) Instala LLVM (tarda -- es un build grande; ~30-60 min típico)
-.\vcpkg\vcpkg install llvm[target-x86,tools]:x64-windows
+cmake -S $sourceRoot -B $buildRoot -G Ninja `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_CXX_COMPILER=C:/clang-llvm/bin/clang-cl.exe `
+  -DCMAKE_LINKER=C:/clang-llvm/bin/lld-link.exe `
+  -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld `
+  -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE `
+  -DNSC_LLVM_MONOLITHIC_LIBRARY=C:/clang-llvm/lib/LLVM-C.lib `
+  -DNSC_BUILD_TESTS=ON `
+  -DNSC_WARNINGS_AS_ERRORS=ON `
+  -DNSC_TEST_COMPILER="$buildRoot/bin/nsc.exe"
 
-# 3) Descomprime este zip en, por ejemplo, C:\src\nativesharp, y desde ahí:
-cd C:\src\nativesharp
-cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=C:\ruta\a\vcpkg\scripts\buildsystems\vcpkg.cmake
-cmake --build build --config Release -j
-
-# 4) Corre los tests
-cd build
-ctest -C Release --output-on-failure
+cmake --build $buildRoot --parallel
 ```
 
-`nsc.exe` queda en `build\Release\nsc.exe` (o `build\nsc.exe` si usaste un generador de un solo
-config como Ninja).
+Durante la primera configuración, CMake puede avisar que `NSC_TEST_COMPILER` todavía no existe.
+Es normal en una carpeta limpia: la construcción siguiente crea exactamente ese ejecutable. No
+debe cambiarse silenciosamente por otro `nsc.exe` ya instalado.
 
-### Alternativa: LLVM pre-compilado + Ninja
-
-Si ya tienes un LLVM instalado (por ejemplo el instalador oficial de llvm.org, o uno que ya usas
-para otro proyecto) y prefieres no pasar por vcpkg:
+Compruebe la identidad del resultado:
 
 ```powershell
-cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="C:\ruta\a\LLVM\lib\cmake\llvm"
-cmake --build build -j
-cd build
-ctest --output-on-failure
+& "$buildRoot/bin/nsc.exe" --version
+& "$buildRoot/bin/nsc.exe" --print-llvm-version
+& "$buildRoot/bin/nsc.exe" --print-toolchain-contract
 ```
 
-`LLVM_DIR` debe apuntar a la carpeta que contiene `LLVMConfig.cmake` dentro de tu instalación de
-LLVM (normalmente `<prefijo-LLVM>\lib\cmake\llvm`).
+La identidad visible del binario incluye `+build.<UTC>.<id>` y cambia en cada construcción real.
+El contrato de compatibilidad omite esa identidad efímera: dos builds compatibles deben producir
+los mismos bytes en `NativeSharpToolchain.contract`.
 
-Si tu LLVM no trae headers de desarrollo (solo el runtime/las libs), el CMake cae automáticamente
-al fallback de librería monolítica (`find_library(... NAMES LLVM LLVM-24 ... LLVM-19)`).
-
-### Tu setup real: `clang-cl` + `lld-link` + LLVM-C monolítico, sin headers de LLVM
-
-Este es el comando que de verdad usás vos, verificado que funciona (confirmado por vos mismo) --
-lo documento acá tal cual, en vez de solo el ejemplo especulativo de vcpkg de arriba:
+## 4. Pruebas del compilador recién construido
 
 ```powershell
-cmake -S . -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release ^
-    -DCMAKE_C_COMPILER="C:/clang-llvm/bin/clang-cl.exe" ^
-    -DCMAKE_CXX_COMPILER="C:/clang-llvm/bin/clang-cl.exe" ^
-    -DCMAKE_LINKER="C:/clang-llvm/bin/lld-link.exe" ^
-    -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" ^
-    -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE ^
-    -DNSC_LLVM_MONOLITHIC_LIBRARY="C:/clang-llvm/lib/LLVM-C.lib" ^
-    -DNSC_BUILD_TESTS=ON ^
-    -DNSC_WARNINGS_AS_ERRORS=ON
-
-cmake --build build-clang --parallel
-
-cd build-clang
-ctest --output-on-failure
+ctest --test-dir $buildRoot --output-on-failure --no-tests=error
 ```
 
-Por qué esto funciona SIN los headers de LLVM (corrigiendo lo que decía este documento antes): el
-proyecto entero -- todo `src/LLVM/*.cpp` -- nunca incluye un header real de LLVM (`llvm/...h`).
-En vez de eso usa `src/LLVM/LlvmCApi.h`, un subconjunto de la API C de LLVM mantenido A MANO
-dentro de este mismo repo (declaraciones `extern "C"` propias, sin depender del header oficial).
-Por eso alcanza con linkear contra `LLVM-C.lib` (el import de la superficie C estable de LLVM,
-no la biblioteca monolítica C++ completa) -- no hace falta ninguna instalación de LLVM con
-headers de desarrollo para compilar `nsc` con este camino. Detalle de las piezas:
+La línea de configuración `NSC_TEST_COMPILER="$buildRoot/bin/nsc.exe"` es parte de la prueba. Sin
+ella, una máquina con otra instalación podría medir un compilador diferente del recién construido.
 
-- `-DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE`: salta directo la búsqueda de `LLVMConfig.cmake`
-  (evita que CMake intente la ruta de vcpkg/headers de arriba) y cae al `else()` de
-  `CMakeLists.txt` (líneas ~236-243), que solo hace `find_library`.
-- `-DNSC_LLVM_MONOLITHIC_LIBRARY=...`: como esta variable ya viene definida en la línea de
-  comando, el `find_library(... REQUIRED)` interno no busca nada -- usa directo la ruta que le
-  diste.
-- `-DCMAKE_LINKER=".../lld-link.exe"` + `-DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"`: `clang-cl`
-  como front-end de compilación (compatible ABI-wise con MSVC), `lld-link` como linker real --
-  la combinación que usa este proyecto en vez del `link.exe` de MSVC.
-- `-G Ninja`: generador de un solo config -- por eso `cmake --build build-clang --parallel` no
-  necesita `--config Release` (ya quedó fijado en el paso de configuración vía
-  `CMAKE_BUILD_TYPE`), y por la misma razón el deploy de abajo tampoco lleva `--config`.
-
-**Deploy con este mismo setup** (ver la sección "Instalar/desplegar" más abajo para el porqué
-completo): después del `cmake --build build-clang --parallel` de arriba,
+Para repetir sólo los contratos de empaquetado de E9:
 
 ```powershell
-cmake --install build-clang --prefix C:\native-sharp
+ctest --test-dir $buildRoot --output-on-failure `
+  -R 'nsc\.stage6(2\.toolchain-contract|3\.installation-verifier|4\.installation-manifest)'
 ```
 
-(sin `--config` -- innecesario con Ninja, que es de un solo config; `cmake --install` simplemente
-reusa el build ya hecho en `build-clang`).
+El número total de casos cambia cuando se agrega una suite. Lo contractual es `100% tests passed`
+y cero fallos, no un total histórico copiado en esta guía.
 
-## Linux (como este sandbox de verificación)
-
-```bash
-# Debian/Ubuntu -- LLVM 20 vía el paquete del sistema (lo que este sandbox usa)
-sudo apt install cmake llvm-20-dev clang-20 ninja-build
-
-cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j"$(nproc)"
-cd build && ctest --output-on-failure
-```
-
-## macOS
-
-```bash
-brew install cmake llvm ninja
-cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DLLVM_DIR="$(brew --prefix llvm)/lib/cmake/llvm"
-cmake --build build -j
-cd build && ctest --output-on-failure
-```
-
-## Compilar solo `nsc`, sin los tests (build rápido)
-
-Por defecto `NSC_BUILD_TESTS` está en `ON` (ver `option(NSC_BUILD_TESTS ...)` al inicio de
-`CMakeLists.txt`), así que un build normal compila también los ~95 ejecutables de test junto con
-el compilador. Si solo quieres `nsc` (por ejemplo para iterar rápido en Windows sin esperar el
-build completo), apágalo en el `cmake` de configuración:
-
-```bash
-cmake -B build -S . -DNSC_BUILD_TESTS=OFF ...   # + tus flags de LLVM/generador de siempre
-cmake --build build -j
-```
-
-Con esto CMake ni siquiera genera los targets de test -- no es que se salten al correr, es que no
-existen (verificado: 160 pasos de build en vez de varios cientos, y `build/` termina con
-únicamente `bin/nsc`, sin carpeta `tests/`). Si ya tienes un `build/` configurado con tests
-encendidos, puedes reconfigurar el mismo directorio en vez de borrar y empezar de cero:
-
-```bash
-cmake -S . -B build -DNSC_BUILD_TESTS=OFF
-cmake --build build -j
-```
-
-(Nota: si vienes de un `build/` que ya había compilado tests, los ejecutables de test viejos se
-quedan en disco -- `cmake`/`ninja` no los borra al desactivar la opción, simplemente deja de
-regenerarlos/actualizarlos. Para un build 100% limpio sin residuos, usa un directorio de build
-nuevo.)
-
-## Dónde queda cada archivo generado
-
-`CMakeLists.txt` fija explícitamente tres carpetas de salida dentro de `build/` (el directorio
-que le pasas a `cmake -B`), en vez de dejar que CMake las ponga donde le parezca por defecto:
-
-- `build/bin/nsc` (o `build/bin/nsc.exe` en Windows) -- el compilador. Único ejecutable de
-  "producto" del proyecto.
-- `build/lib/` -- las 7 librerías estáticas internas del propio compilador (`nsc_compilation`,
-  `nsc_target`, `nsc_frontend`, `nsc_llvm`, `nsc_runtime`, `nsc_linker`, `nsc_driver`) -- `.a` en
-  Linux/macOS, `.lib` en Windows/MSVC. No son algo que uses directamente vos; quedan ahí en vez
-  de sueltas en la raíz de `build/` por prolijidad y porque algunas cadenas de herramientas
-  (linkers, IDEs) esperan encontrar todo lo enlazable junto.
-- `build/tests/` -- todos los ejecutables de test (solo si `NSC_BUILD_TESTS=ON`, el default;
-  con `NSC_BUILD_TESTS=OFF` esta carpeta directamente no se crea).
-
-Verificado desde cero (build limpio, sin residuos de un `build/` anterior): con
-`NSC_BUILD_TESTS=ON` la raíz de `build/` no tiene ni un `.a`/ejecutable suelto -- todo cae en su
-carpeta -- y con `NSC_BUILD_TESTS=OFF` sencillamente no existe `build/tests/`.
-
-`ctest` sigue funcionando igual sin importar esto -- CMake registra la ruta real de cada
-ejecutable de test internamente, no depende de que estén en la raíz de `build/`.
-
-## Instalar/desplegar el compilador en otra ruta (`cmake --install`)
-
-`build/` es la carpeta de TRABAJO (ahí vive todo lo que este documento describe arriba, incluidos
-los `.a`/`.lib` internos y los ejecutables de test) -- no hace falta que sea la ruta desde la que
-después usás `nsc` para tus propios proyectos. Para copiar el compilador YA CONSTRUIDO más las
-bibliotecas `.ns` que cualquier proyecto NativeSharp necesita (`lib/NativeSharp.Core`,
-`NativeSharp.Core.Threading`, `NativeSharp.Core.Collections.Generic`, `NativeSharp.Core.IO`,
-`NativeSharp.Core.Diagnostics`) a una ruta de instalación fija -- por ejemplo `C:\native-sharp`,
-que es además la ruta que los `build.bat` de `examples/tutorial_NN_*/` ya buscan como fallback si
-no encuentran `nsc.exe` relativo al propio ejemplo -- usá el mecanismo estándar de instalación de
-CMake, DESPUÉS de un build normal:
+## 5. Instalación autoverificable
 
 ```powershell
-cmake --build build --config Release -j
-cmake --install build --config Release --prefix C:\native-sharp
+cmake --install $buildRoot --prefix $installRoot
 ```
 
-(Este ejemplo usa un generador multi-config tipo Visual Studio, de ahí el `--config Release` en
-ambos pasos. Con tu setup real de `clang-cl`+`lld-link`+Ninja de la sección "Windows" de arriba
--- de un solo config -- ambos comandos van SIN `--config`: `cmake --build build-clang --parallel`
-+ `cmake --install build-clang --prefix C:\native-sharp`, exactamente como se muestra ahí.)
+Stage 64 ejecuta al final:
 
-```bash
-# Linux/macOS, mismo mecanismo:
-cmake --build build -j
-cmake --install build --prefix /ruta/que/quieras
+```powershell
+& "$installRoot/bin/nsc.exe" --verify-installation $installRoot
+& "$installRoot/bin/nsc.exe" --verify-installation-manifest $installRoot `
+  "$installRoot/share/nativesharp/toolchain/NativeSharpInstallation.manifest"
 ```
 
-Esto deja `<prefix>\bin\nsc.exe` y `<prefix>\lib\NativeSharp.Core\...`,
-`<prefix>\lib\NativeSharp.Core.Threading\...`, etc. -- el árbol `lib/` completo, no solo las
-bibliotecas que tocó la última ronda. Podés instalar sobre la misma ruta las veces que quieras
-(cada `cmake --install` sobreescribe el `nsc.exe` y refresca `lib/` con lo que haya en el
-checkout actual) -- es la forma recomendada de mantener tu instalación en `C:\native-sharp` al
-día después de aplicar cada ZIP incremental nuevo, en vez de copiar archivos a mano.
+No son comprobaciones decorativas. La primera valida:
 
-No hace falta volver a correr `cmake -B build -S .` para esto -- `cmake --install` reusa la
-configuración y el build ya hechos en `build/`; solo hace falta que `cmake --build` haya corrido
-al menos una vez antes (para que exista `nsc.exe` en `build/bin/` para copiar).
+1. el prefijo y `bin/nsc.exe`;
+2. el contrato instalado y cada uno de sus campos;
+3. los manifiestos de los cinco proyectos Core distribuidos;
+4. la especificación, gramática y mapas normativos del lenguaje y compilador.
 
-## Verificación de que quedó bien
+Después, el instalador genera `NativeSharpInstallation.manifest` desde la lista esperada producida
+por el árbol fuente. La segunda orden comprueba tamaño y SHA-256 de cada archivo, además de detectar
+faltantes y residuos dentro de cada directorio Core seleccionado, `share/nativesharp/spec` y
+`share/nativesharp/toolchain`. `bin` y `lib` son contenedores compartidos con otras herramientas:
+el inventario autentica sus archivos propios sin atribuirse ejecutables o archivos `.lib` vecinos.
 
-```bash
-ctest --output-on-failure
-# esperado: 100% tests passed, 0 tests failed out of 210 (o el número que diga TEST_MATRIX_52.md
-# / TEST_MATRIX_51.md al momento de esta entrega)
+Si falta un componente o el contrato pertenece a otro compilador, `cmake --install` termina con
+error. Una copia parcial ya no puede presentarse como instalación exitosa.
+
+Puede repetir la comprobación cuando sospeche que el paquete fue alterado:
+
+```powershell
+& "$installRoot/bin/nsc.exe" --verify-installation $installRoot
+& "$installRoot/bin/nsc.exe" --verify-toolchain-contract `
+  "$installRoot/share/nativesharp/toolchain/NativeSharpToolchain.contract"
+& "$installRoot/bin/nsc.exe" --verify-installation-manifest $installRoot `
+  "$installRoot/share/nativesharp/toolchain/NativeSharpInstallation.manifest"
 ```
 
-Si algo falla, la salida de `ctest --output-on-failure` incluye el nombre del test y su output
-completo -- pégamelo tal cual y lo reviso.
+## 6. Separar build, instalación y baseline
 
-## Uso básico de `nsc` una vez construido
+Son tres evidencias diferentes:
 
-```bash
-# Emitir un ejecutable Windows x64 real a partir de un .nsproj:
-nsc --emit-project-oop-exe ruta/al/proyecto.nsproj -O0 -o salida.exe
-
-# Solo chequeo semántico, sin generar código (rápido, útil mientras escribes):
-nsc --check-project-method-bodies ruta/al/proyecto.nsproj
+```text
+fuentes -> build/bin/nsc.exe -> instalación/bin/nsc.exe -> baseline G00
 ```
 
-`salida.exe` es un binario Windows x64 real (PE32+) -- en tu máquina lo corres directo, sin Wine.
+- La construcción demuestra que las fuentes producen un compilador.
+- La instalación demuestra que el paquete mínimo quedó completo y compatible.
+- G00 demuestra además que el árbol no cambió durante la corrida, que el ejecutable construido es
+  idéntico al instalado y que la matriz certificada terminó sin fallos.
+
+Una ejecución local verde no sustituye la promoción G00. Tampoco conviene configurar una matriz
+para que mida una instalación vieja: revise siempre la línea `ctest mide el compilador` emitida por
+CMake.
+
+## 7. Construir sólo el compilador
+
+Para una iteración rápida sin generar las suites:
+
+```powershell
+cmake -S $sourceRoot -B "$sourceRoot/_clean/build-nsc-only" -G Ninja `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_CXX_COMPILER=C:/clang-llvm/bin/clang-cl.exe `
+  -DCMAKE_LINKER=C:/clang-llvm/bin/lld-link.exe `
+  -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld `
+  -DCMAKE_DISABLE_FIND_PACKAGE_LLVM=TRUE `
+  -DNSC_LLVM_MONOLITHIC_LIBRARY=C:/clang-llvm/lib/LLVM-C.lib `
+  -DNSC_BUILD_TESTS=OFF `
+  -DNSC_WARNINGS_AS_ERRORS=ON
+
+cmake --build "$sourceRoot/_clean/build-nsc-only" --target nsc --parallel
+```
+
+Esto acelera una iteración, pero no es evidencia de cierre: antes de entregar hay que volver a una
+carpeta con pruebas activadas, ejecutar la matriz y crear el baseline correspondiente.
+
+## 8. Debug y Release: qué significan hoy
+
+`CMAKE_BUILD_TYPE=Debug` o `Release` controla cómo se construye el ejecutable C++ `nsc.exe`.
+No implica por sí mismo que un programa NativeSharp emitido contenga información de depuración.
+
+Para programas NativeSharp, `-O0` y `-O2` ya seleccionan los niveles de optimización certificados y
+deben conservar la misma semántica observable. La emisión nativa de información de fichero/línea y
+PDB es una entrega separada todavía pendiente; esta guía no presenta los símbolos del compilador
+host como si fueran símbolos del programa compilado.
+
+## 9. Diagnóstico de fallos frecuentes
+
+### CMake mide otro compilador
+
+Síntoma: la línea `ctest mide el compilador` apunta a una instalación anterior.
+
+Corrección: reconfigure la carpeta con la ruta absoluta del binario que desea probar:
+
+```powershell
+cmake -S $sourceRoot -B $buildRoot `
+  -DNSC_TEST_COMPILER="$buildRoot/bin/nsc.exe"
+```
+
+### La versión LLVM es rechazada
+
+Compruebe la biblioteca realmente cargada:
+
+```powershell
+& "$buildRoot/bin/nsc.exe" --print-llvm-version
+```
+
+Stage 64 exige la línea LLVM 23.x. Cambiar sólo el nombre del archivo no cambia la versión que el
+runtime reporta.
+
+### La instalación falla al final
+
+Lea el primer componente nombrado por `--verify-installation`. El diagnóstico incluye la ruta
+esperada y distingue ejecutable, contrato, proyecto Core o documento normativo. Corrija la regla
+de instalación o el artefacto productor; no copie manualmente el archivo para ocultar un paquete
+incompleto.
+
+### Una prueba falla después de recompilar
+
+Conserve la salida completa del caso, la identidad de `nsc --version`, la ruta mostrada por
+`NSC_TEST_COMPILER` y el linker medido. Esos cuatro datos permiten saber si el fallo pertenece a
+las fuentes actuales, al producto instalado o a una matriz configurada contra otro binario.
+
+## 10. Lista de comprobación para una máquina limpia
+
+- checkout en una ruta nueva;
+- carpeta de build inexistente antes de configurar;
+- herramientas LLVM 23.x disponibles en rutas explícitas;
+- warnings tratados como errores;
+- `NSC_TEST_COMPILER` apuntando al binario del build que se mide;
+- construcción completa sin reutilizar objetos anteriores;
+- CTest al 100%;
+- prefijo de instalación nuevo;
+- mensaje final `NativeSharp installation verified`;
+- identidad, contrato y hashes conservados con la evidencia;
+- G00 ejecutado después, sin modificar el árbol durante la corrida.
+
+Cumplir esta lista prueba una construcción e instalación limpias y deja cada archivo público
+inventariado. La reproducibilidad byte por byte entre dos construcciones independientes es la
+siguiente capa de E9; Stage 64 todavía no la infiere de una sola instalación.

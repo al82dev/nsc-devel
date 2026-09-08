@@ -1,0 +1,50 @@
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Enumerator returned by List<T>.GetEnumerator() so `foreach (var x in list)` resolves
+    // through the enumerator-pattern candidate (see the didactic writeup in
+    // 52_x_nativesharp_foreach.md for the full array-vs-enumerator design). NativeSharp cannot
+    // express this as a nested type -- parseClassMember never recurses into
+    // parseClassDeclaration, so `class List<T> { class Enumerator { ... } }` is not legal syntax
+    // in this compiler -- so, exactly like LinkedListNode<T> already is for LinkedList<T>, this
+    // is a top-level generic class living alongside the collection it iterates instead of inside
+    // it.
+    //
+    // Ownership: this enumerator BORROWS the list it iterates -- it holds a plain (non-owned)
+    // back-reference to the source List<T>, the same shape LinkedListNode<T>.previous already
+    // uses for a non-owning back-pointer, plus a plain int cursor. It owns no resources of its
+    // own (no field here is `owned`), so it needs no destructor: `delete`-ing (or letting a
+    // `raii` local of this type go out of scope, which is how `foreach` itself uses it) is purely
+    // bookkeeping cleanup with nothing to free. The enumerator must not outlive the list it
+    // borrows from, exactly like foreach's own `__foreach_enumerator` never does (it is scoped to
+    // a single foreach statement).
+    //
+    // Every element is read back through the list's own `this[int]` indexer -- this class
+    // duplicates none of List<T>'s storage or bookkeeping, it only tracks "which index is next".
+    public class ListEnumerator<T>
+    {
+        private List<T> source;
+        private int index;
+
+        public ListEnumerator(List<T> sourceList)
+        {
+            source = sourceList;
+            index = -1;
+        }
+
+        public bool MoveNext()
+        {
+            index = index + 1;
+            return index < source.Count();
+        }
+
+        // `Current` is a get-only PROPERTY (P1.1 of the closure review), not a method: real C#'s
+        // IEnumerator<T>.Current is a property, and foreach's own enumerator-mode desugaring
+        // (Parser::parseForeachStatement's patternCandidate) now reads it as a plain member
+        // access, `$__foreach_enumerator.Current`, with no call parentheses. Every enumerator
+        // class this compiler ships must therefore expose `Current` the same way.
+        public T Current
+        {
+            get { return source[index]; }
+        }
+    }
+}

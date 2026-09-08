@@ -1,4 +1,5 @@
 #include "nativesharp/Basic/ExitCode.h"
+#include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
@@ -68,8 +69,8 @@ int main() {
                "contract identifies the compatible compiler release");
   tests.expect(contract.find("language=0.1\n") != std::string::npos,
                "contract identifies the language line");
-  tests.expect(contract.find("stage=62\n") != std::string::npos,
-               "contract identifies Stage 62");
+  tests.expect(contract.find("stage=" + std::string(kCompilerStage) + "\n") != std::string::npos,
+               "contract identifies the current compiler stage");
   tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") !=
                    std::string::npos,
                "contract identifies the supported target");
@@ -169,8 +170,11 @@ int main() {
       "incompatible field values name found and expected contracts");
   tests.expect(
       verifyFails(malformed,
-                  replacing(contract, "language=0.1\nstage=62",
-                            "stage=62\nlanguage=0.1"),
+                  replacing(contract,
+                            "language=0.1\nstage=" +
+                                std::string(kCompilerStage),
+                            "stage=" + std::string(kCompilerStage) +
+                                "\nlanguage=0.1"),
                   "out of canonical order", error),
       "otherwise valid fields still require deterministic canonical order");
   tests.expect(verifyFails(malformed,

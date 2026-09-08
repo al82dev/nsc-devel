@@ -66,12 +66,20 @@ trazadas a código y evidencia; la suite nueva pasa 95 checks y la selección fo
 fallos, árbol inmóvil y binario construido idéntico al instalado. El desarrollo está en 142 y el
 acta de certificación, en 143.
 
-**E9 certificada hasta Stage 62 (2026-09-07):** Stage 62 crea el contrato reproducible del toolchain. El propio
+**E9 certificada hasta Stage 63 y Stage 64 cerrado localmente (2026-09-07):** Stage 62 crea el contrato reproducible del toolchain. El propio
 `nsc` genera, imprime, escribe, verifica e instala `NativeSharpToolchain.contract`; el artefacto
 concentra las versiones de compilador, lenguaje, LLVM, NSMETA y ABI, además de la superficie
 certificada. G00 `20260907-175537-29408b6e` la promovió con 324/324 casos, cero fallos, árbol
 inmóvil y binario construido idéntico al instalado. El método y los 43 checks están en 144; el acta
-de promoción está en 145.
+de promoción está en 145. Stage 63 añade verificación del layout instalado ejecutada por el propio
+`nsc.exe` recién copiado y corrige la guía de construcción limpia. G00
+`20260907-190718-3fc07605` promovió Stage 63 con 301/301 CTest por linker, 324/324 casos del runner,
+cero fallos, árbol inmóvil y ejecutable construido idéntico al instalado. La implementación está
+en 146 y el acta de promoción en 147. Stage 64 deriva del origen una lista de 76 archivos públicos,
+genera tamaño y SHA-256 de cada uno y hace que el `nsc.exe` instalado rechace ausencia, alteración o
+residuos dentro de los árboles que el paquete posee. La instalación aislada y las matrices locales
+de 302/302 por linker están verdes; la promoción G00 sigue pendiente. El método completo está en
+148.
 
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
@@ -1045,15 +1053,20 @@ baseline vigente es `20260907-170412-16b5b8cb`.
 
 ### 9.3 Toolchain
 
-**Estado E9 al 2026-09-07:** Stage 62 implementa y certifica la primera mitad verificable de este gate. El
-paquete ya lleva un contrato canónico producido por el ejecutable, instalado bajo
-`share/nativesharp/toolchain`, y `nsc` puede rechazarlo campo por campo si no coincide. Falta la
-baseline G00 está certificado y permanecen abiertos los puntos operativos indicados abajo.
+**Estado E9 al 2026-09-07:** Stage 62 y Stage 63 están certificados; Stage 64 tiene cierre técnico
+local y espera G00. El paquete lleva un contrato canónico producido por el ejecutable y `nsc`
+puede rechazarlo campo por
+campo. La instalación ejecuta ahora el compilador recién copiado para validar contrato, Core y
+especificaciones desde el prefijo efectivo. Stage 64 añade un inventario `NSINSTALL 1` derivado de
+una lista `NSFILES 1`, con tamaño y SHA-256 por archivo, y lo verifica desde el ejecutable instalado.
+Sus matrices locales finales pasaron 302/302 con cada linker.
 
 - contrato determinista de paquete: implementado y certificado en Stage 62;
 - versiones compatibles de compilador, lenguaje, LLVM, NSMETA y ABI: implementadas y verificables;
-- empaquetado reproducible completo: falta inventario y segunda construcción independiente;
-- compilación desde una máquina limpia documentada;
+- layout mínimo instalado autoverificable: implementado y certificado en Stage 63;
+- inventario criptográfico completo: implementado localmente en Stage 64, pendiente de G00;
+- empaquetado reproducible completo: falta la comparación de una segunda construcción independiente;
+- compilación desde una máquina limpia: documentada con el toolchain vigente en Stage 64;
 - PDB y depuración funcional;
 - `.lib` externas y proyectos múltiples;
 - builds Debug/Release;
@@ -1150,7 +1163,7 @@ Además:
 1.0-E5/E6    Diagnósticos ABI y verificación física de bibliotecas — instaladas y certificadas
 1.0-E7       Especificación, gramática y trazabilidad normativa — instalada y certificada
 1.0-E8       Endurecimiento del compilador — Stage 61 instalado y certificado por G00
-1.0-E9       Contrato reproducible del toolchain — Stage 62 instalado y certificado por G00
+1.0-E9       Contrato, instalación e inventario — Stage 62/63 certificados; Stage 64 pendiente de G00
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

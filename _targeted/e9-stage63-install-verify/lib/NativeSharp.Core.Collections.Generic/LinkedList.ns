@@ -1,0 +1,343 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Core.Collections.Generic
+{
+    // Mirrors System.Collections.Generic.LinkedList<T> -- a doubly-linked list of
+    // LinkedListNode<T> (see LinkedListNode.ns for the per-node ownership design: a node owns
+    // its Value and its own Next, Previous is a non-owning back-reference).
+    //
+    // The list itself owns exactly the HEAD node (stored, like every other collection in this
+    // package, as a single-element owned array rather than a bare field -- see
+    // LinkedListNode.ns's class comment for why); every other live node is owned transitively,
+    // one Next link at a time, all the way to the tail. `tail` is a non-owning cache pointer for
+    // O(1) AddLast/RemoveLast, exactly mirroring how `previous` works inside each node.
+    //
+    // Clear() (and the destructor) deliberately do NOT just `delete headSlot[0];` and let each
+    // node's destructor recursively free the rest of the chain -- for a long list that would
+    // recurse as deep as the list itself and risk a native stack overflow purely from an internal
+    // cleanup pass. Instead they walk the chain iteratively, evacuating each node's Next (via
+    // TakeNext()) before deleting that node, so no single delete ever cascades into more than one
+    // node -- see Clear()'s comment.
+    public class LinkedList<T>
+    {
+        private owned LinkedListNode<T>[] headSlot;
+        private LinkedListNode<T> tail;
+        private int count;
+
+        public LinkedList()
+        {
+            headSlot = new LinkedListNode<T>[1];
+            tail = null;
+            count = 0;
+        }
+
+        public int Count()
+        {
+            return count;
+        }
+
+        public LinkedListNode<T> First()
+        {
+            return headSlot[0];
+        }
+
+        public LinkedListNode<T> Last()
+        {
+            return tail;
+        }
+
+        public LinkedListNode<T> AddFirst(owned T value)
+        {
+            owned LinkedListNode<T>[] created = new LinkedListNode<T>[1];
+            created[0] = new LinkedListNode<T>();
+            created[0].SetValue(move(value));
+
+            bool wasEmpty = headSlot[0] == null;
+            if (!wasEmpty)
+            {
+                headSlot[0].SetPrevious(created[0]);
+            }
+            raii LinkedListNode<T> discarded = created[0].SetNext(move(headSlot[0]));
+            headSlot[0] = move(created[0]);
+            if (wasEmpty)
+            {
+                tail = headSlot[0];
+            }
+            count = count + 1;
+            delete[] created;
+            return headSlot[0];
+        }
+
+        public LinkedListNode<T> AddLast(owned T value)
+        {
+            owned LinkedListNode<T>[] created = new LinkedListNode<T>[1];
+            created[0] = new LinkedListNode<T>();
+            created[0].SetValue(move(value));
+
+            if (tail == null)
+            {
+                headSlot[0] = move(created[0]);
+                tail = headSlot[0];
+            }
+            else
+            {
+                created[0].SetPrevious(tail);
+                raii LinkedListNode<T> discarded = tail.SetNext(move(created[0]));
+                tail = tail.Next();
+            }
+            count = count + 1;
+            delete[] created;
+            return tail;
+        }
+
+        public owned T RemoveFirst()
+        {
+            if (headSlot[0] == null)
+            {
+                throw new InvalidOperationException();
+            }
+            raii LinkedListNode<T> removed = move(headSlot[0]);
+            headSlot[0] = removed.TakeNext();
+            if (headSlot[0] != null)
+            {
+                headSlot[0].SetPrevious(null);
+            }
+            else
+            {
+                tail = null;
+            }
+            count = count - 1;
+            return removed.TakeValue();
+        }
+
+        public owned T RemoveLast()
+        {
+            if (tail == null)
+            {
+                throw new InvalidOperationException();
+            }
+            LinkedListNode<T> previous = tail.Previous();
+            if (previous == null)
+            {
+                raii LinkedListNode<T> removed = move(headSlot[0]);
+                tail = null;
+                count = count - 1;
+                return removed.TakeValue();
+            }
+            raii LinkedListNode<T> removedNode = previous.TakeNext();
+            tail = previous;
+            count = count - 1;
+            return removedNode.TakeValue();
+        }
+
+        // Mirrors LinkedList<T>.AddAfter(LinkedListNode<T>, T): inserts a new node holding
+        // `value` immediately after `node`. `node` must already belong to this list (not
+        // validated -- the same node-identity trust the rest of this class already relies on;
+        // see the class comment's ownership-hardening note).
+        public LinkedListNode<T> AddAfter(LinkedListNode<T> node, owned T value)
+        {
+            if (node == tail)
+            {
+                return AddLast(move(value));
+            }
+
+            owned LinkedListNode<T>[] created = new LinkedListNode<T>[1];
+            created[0] = new LinkedListNode<T>();
+            created[0].SetValue(move(value));
+
+            raii LinkedListNode<T> afterNode = node.TakeNext();
+            afterNode.SetPrevious(created[0]);
+            created[0].SetPrevious(node);
+            raii LinkedListNode<T> discardedFromCreated = created[0].SetNext(move(afterNode));
+            LinkedListNode<T> createdRef = created[0];
+            raii LinkedListNode<T> discardedFromNode = node.SetNext(move(created[0]));
+
+            count = count + 1;
+            delete[] created;
+            return createdRef;
+        }
+
+        // Mirrors LinkedList<T>.AddBefore(LinkedListNode<T>, T): inserts a new node holding
+        // `value` immediately before `node`, by delegating to AddFirst (when `node` is the head)
+        // or to AddAfter(node.Previous(), value) otherwise.
+        public LinkedListNode<T> AddBefore(LinkedListNode<T> node, owned T value)
+        {
+            if (node == headSlot[0])
+            {
+                return AddFirst(move(value));
+            }
+            LinkedListNode<T> previous = node.Previous();
+            return AddAfter(previous, move(value));
+        }
+
+        // Mirrors LinkedList<T>.Find: the first node (head to tail) whose Value equals `value`,
+        // or null if none does.
+        public LinkedListNode<T> Find(T value)
+        {
+            LinkedListNode<T> current = headSlot[0];
+            while (current != null)
+            {
+                if (current.Value() == value) { return current; }
+                current = current.Next();
+            }
+            return null;
+        }
+
+        // Mirrors LinkedList<T>.FindLast: the last node (tail to head) whose Value equals
+        // `value`, or null if none does.
+        public LinkedListNode<T> FindLast(T value)
+        {
+            LinkedListNode<T> current = tail;
+            while (current != null)
+            {
+                if (current.Value() == value) { return current; }
+                current = current.Previous();
+            }
+            return null;
+        }
+
+        // Mirrors LinkedList<T>.Remove(LinkedListNode<T>): O(1) removal via `node`'s own
+        // Previous/Next links, unlike Remove(T value) which has to scan for it. `node` must
+        // already belong to this list (not validated, same caveat as AddAfter/AddBefore).
+        public void Remove(LinkedListNode<T> node)
+        {
+            LinkedListNode<T> previous = node.Previous();
+            if (previous == null)
+            {
+                raii LinkedListNode<T> removed = move(headSlot[0]);
+                headSlot[0] = removed.TakeNext();
+                if (headSlot[0] != null)
+                {
+                    headSlot[0].SetPrevious(null);
+                }
+                else
+                {
+                    tail = null;
+                }
+            }
+            else
+            {
+                raii LinkedListNode<T> removed = previous.TakeNext();
+                raii LinkedListNode<T> afterRemoved = removed.TakeNext();
+                if (afterRemoved != null)
+                {
+                    afterRemoved.SetPrevious(previous);
+                }
+                else
+                {
+                    tail = previous;
+                }
+                raii LinkedListNode<T> relinked = previous.SetNext(move(afterRemoved));
+            }
+            count = count - 1;
+        }
+
+        // Removes the first node whose Value equals `value` (structural `==`, see Delegates.ns
+        // for the equality story shared with every other collection). Returns whether a node was
+        // actually removed.
+        public bool Remove(T value)
+        {
+            LinkedListNode<T> current = headSlot[0];
+            while (current != null)
+            {
+                if (current.Value() == value)
+                {
+                    LinkedListNode<T> previous = current.Previous();
+                    if (previous == null)
+                    {
+                        raii LinkedListNode<T> removed = move(headSlot[0]);
+                        headSlot[0] = removed.TakeNext();
+                        if (headSlot[0] != null)
+                        {
+                            headSlot[0].SetPrevious(null);
+                        }
+                        else
+                        {
+                            tail = null;
+                        }
+                    }
+                    else
+                    {
+                        raii LinkedListNode<T> removed = previous.TakeNext();
+                        raii LinkedListNode<T> afterRemoved = removed.TakeNext();
+                        if (afterRemoved != null)
+                        {
+                            afterRemoved.SetPrevious(previous);
+                        }
+                        else
+                        {
+                            tail = previous;
+                        }
+                        raii LinkedListNode<T> relinked = previous.SetNext(move(afterRemoved));
+                    }
+                    count = count - 1;
+                    return true;
+                }
+                current = current.Next();
+            }
+            return false;
+        }
+
+        public bool Contains(T value)
+        {
+            LinkedListNode<T> current = headSlot[0];
+            while (current != null)
+            {
+                if (current.Value() == value) { return true; }
+                current = current.Next();
+            }
+            return false;
+        }
+
+        public T[] ToArray()
+        {
+            const T[] result = new T[count];
+            LinkedListNode<T> current = headSlot[0];
+            int i = 0;
+            while (current != null)
+            {
+                result[i] = current.Value();
+                i = i + 1;
+                current = current.Next();
+            }
+            return result;
+        }
+
+        // Unlinks and frees every node, one at a time, WITHOUT ever letting a node's own
+        // destructor cascade into the rest of the chain (see the class comment). Each iteration
+        // evacuates the current node's Next via TakeNext() -- leaving the current node's own
+        // nextSlot empty -- before deleting it, so deleting `cursor[0]` only ever frees that one
+        // node's Value and its (now-empty) backing arrays.
+        public void Clear()
+        {
+            owned LinkedListNode<T>[] cursor = new LinkedListNode<T>[1];
+            owned LinkedListNode<T>[] nextHolder = new LinkedListNode<T>[1];
+            cursor[0] = move(headSlot[0]);
+            while (cursor[0] != null)
+            {
+                nextHolder[0] = cursor[0].TakeNext();
+                delete cursor[0];
+                cursor[0] = nextHolder[0];
+            }
+            delete[] cursor;
+            delete[] nextHolder;
+            tail = null;
+            count = 0;
+        }
+
+        // P1.2 of STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md. Unlike List<T>/Queue<T>/
+        // Stack<T>, LinkedListEnumerator<T> needs no logical-index indexer on this class: it
+        // walks the live node chain directly through First()/LinkedListNode<T>.Next(), the same
+        // public accessors any other caller already uses to traverse this list by hand.
+        public owned LinkedListEnumerator<T> GetEnumerator()
+        {
+            return new LinkedListEnumerator<T>(this);
+        }
+
+        ~LinkedList()
+        {
+            Clear();
+            delete[] headSlot;
+        }
+    }
+}

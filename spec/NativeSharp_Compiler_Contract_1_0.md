@@ -81,3 +81,44 @@ directories. `nsc --verify-toolchain-contract <path>` shall reject unsupported h
 lines, unknown, duplicate, missing, reordered or incompatible fields with a diagnostic that names
 the cause. Contract input and compatibility failures return the compilation-error class, never an
 internal compiler failure.
+
+## NSC-PKG-003 — Installed layout verification
+
+The supported Windows installation shall contain the compiler executable, its canonical toolchain
+contract, the manifest of every distributed Core project and the normative language and compiler
+specifications.
+`nsc --verify-installation <prefix>` shall validate that complete minimum layout and the contents
+of the installed toolchain contract. It shall name the first missing or incompatible component and
+return the compilation-error class.
+
+The CMake install workflow shall run this command through the newly installed executable after all
+package files have been copied. An incomplete installation must not be reported as successful.
+
+## NSC-PKG-004 — Deterministic installation inventory
+
+The supported installation workflow shall derive an ordered expected-file list from the public
+payload selected by the current source tree, never by accepting every file already present in the
+destination prefix. The list shall use normalized forward-slash relative paths and the versioned
+`NSFILES 1` text format.
+
+After copying the payload, the newly installed compiler shall write
+`NativeSharpInstallation.manifest` in the versioned `NSINSTALL 1` text format. Every entry shall
+contain the lowercase SHA-256 digest, decimal byte size and normalized relative path of one expected
+file. Entries shall be sorted by path. The manifest shall exclude itself and include the expected
+file list that defined its scope.
+
+## NSC-PKG-005 — Complete installation integrity verification
+
+`nsc --verify-installation-manifest <prefix> <manifest>` shall reject malformed headers or entries,
+non-canonical paths, duplicate or reordered entries, missing files, size differences, SHA-256
+differences and unexpected regular files inside the complete trees owned by this package:
+`share/nativesharp/spec`, `share/nativesharp/toolchain` and each library subdirectory selected by
+the expected-file list. Under the shared `lib` directory, only those selected subdirectories are
+complete package-owned trees;
+unrelated archives may coexist beside them. The exact `bin/nsc.exe` path is authenticated, while
+unrelated tool executables may coexist in the shared `bin` directory. Diagnostics shall name the
+first offending relative path.
+
+The CMake install workflow shall generate and immediately verify the inventory through the newly
+installed compiler. A package whose bytes or managed file set differ from the expected current
+payload shall not be reported as a successful installation.

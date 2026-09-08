@@ -20,6 +20,9 @@ LECTURA HISTÓRICA RECOMENDADA
     143_baseline_certificado_1_0_e8.md
     144_1_0_e9_contrato_reproducible_del_toolchain.md
     145_baseline_certificado_1_0_e9_stage62.md
+    146_1_0_e9_instalacion_autoverificable_y_build_limpio.md
+    147_baseline_certificado_1_0_e9_stage63.md
+    148_1_0_e9_inventario_criptografico_de_instalacion.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -37,6 +40,21 @@ contrato del toolchain y cómo se diagnostica cualquier paquete incompatible.
 
 El documento 145 certifica esa primera entrega E9: conserva run, tiempos, hashes, inmovilidad,
 identidad instalada, contrato promovido y lectura precisa de los 324 casos de G00.
+
+El documento 146 continúa E9 con Stage 63: convierte la instalación en un producto que el
+`nsc.exe` recién copiado verifica desde su propio prefijo, registra el comando público, la cláusula
+NSC-PKG-003, los 25 checks focales y las matrices 301/301 con ambos linkers. También sustituye la
+guía de construcción obsoleta por la ruta Windows x64 y LLVM 23.x vigente.
+
+El documento 147 registra la promoción de Stage 63. Conserva tiempos, hashes, identidad instalada,
+inmovilidad de los 1024 archivos, las 301 pruebas CTest por linker y los 324 casos del runner. Explica
+por qué esos contadores miden capas distintas y fija el inventario criptográfico como siguiente E9.
+
+El documento 148 implementa ese siguiente paso en Stage 64. Explica cómo el origen define el
+payload esperado, los formatos `NSFILES 1` y `NSINSTALL 1`, la autoridad SHA-256 compartida con
+NSMETA, los comandos públicos, los árboles propiedad del paquete, los 55 checks adversariales y
+las matrices locales 302/302. Registra también el fixture Stage 63 desacoplado del número de etapa
+y por qué las herramientas de NSLink pueden coexistir legítimamente en `bin`.
 
 Los documentos 132 a 135 registran la implementación y el cierre técnico de las cuatro primeras
 megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifetime de delegates y
@@ -73,9 +91,10 @@ El documento 143 registra la promoción de E8. Conserva las identidades exactas 
 la diferencia entre las 11 etapas operativas y el registro final de certificación, y demuestra que
 las fuentes y el producto permanecieron estables durante los 324 casos.
 
-Entrega instalada vigente: NativeSharp 0.1, Stage 61; `nsc 0.9.0` con E1–E8 completas.
-Estado vigente: G00 `20260907-170412-16b5b8cb`, 11 etapas, 324 casos, cero fallos,
-árbol inmóvil y ejecutable construido idéntico al instalado.
+Entrega certificada vigente: NativeSharp 0.1, Stage 63; `nsc 0.9.0` con contrato e instalación
+autoverificable promovidos. Stage 64 tiene cierre técnico local: instalación aislada, inventario de
+76 archivos y 302/302 CTest por linker; aún no sustituye el baseline hasta pasar G00. El desarrollo
+está en 148; el baseline vigente continúa documentado en 147.
 
 Todo lo que hay aquí adentro es el árbol completo del compilador. No falta nada: fuentes,
 cabeceras, biblioteca estándar en NativeSharp, suites de prueba, casos contractuales de interop,

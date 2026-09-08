@@ -1,0 +1,137 @@
+namespace NativeSharp.Core.Threading
+{
+    // NativeSharp.Core.Threading.Mutex -- Stage 54.3 "Mutex".
+    //
+    // Envoltorio sobre un mutex de KERNEL de Win32 (CreateMutexA/WaitForSingleObject/
+    // ReleaseMutex/CloseHandle) -- exclusion mutua real entre hilos de NativeSharp que corren en
+    // simultaneo, protegiendo una seccion critica de codigo o datos ARBITRARIOS, a diferencia de
+    // AtomicInt32/AtomicInt64 (Stage 54.2), que solo resuelven el caso especifico de un unico
+    // contador entero compartido.
+    //
+    // == Por que un mutex de KERNEL y no una CRITICAL_SECTION liviana ==
+    //
+    // Win32 ofrece dos primitivas de exclusion mutua intra-proceso: un mutex de kernel (el que
+    // esta clase envuelve) y una CRITICAL_SECTION (mas liviana, sin trap al kernel en el camino
+    // sin contencion, pero un tipo de dato opaco de TAMAÑO FIJO que el llamante debe alojar el
+    // mismo -- 40 bytes en x64 -- e inicializar/destruir explicitamente). Se eligio el mutex de
+    // kernel por una razon puramente arquitectonica de ESTE compilador, no de rendimiento: su
+    // API completa (crear, esperar, liberar, cerrar) opera sobre un HANDLE opaco de tipo
+    // puntero, exactamente el mismo "nint HANDLE de ida y vuelta entre llamadas NativeSharp
+    // separadas" que Thread (Stage 54.1) ya establecio y que este compilador ya sabe representar
+    // sin ningun mecanismo nuevo. Una CRITICAL_SECTION, en cambio, necesitaria que esta clase
+    // alojara sus 40 bytes en algun lugar que el codigo NativeSharp del runtime pudiera pasarle a
+    // Win32 por DIRECCION -- y NativeSharp no tiene una forma de exponer eso sin volver a chocar
+    // contra el mismo limite que ya forzo el rediseño completo de Stage 54.2 (la tuberia OOP
+    // moderna no baja los operadores `&`/`*`, ver Atomics.ns para la discusion completa). El
+    // mutex de kernel evita ese problema por completo, al costo de ser marginalmente mas lento en
+    // el camino sin contencion -- un costo aceptable para esta ronda, y reversible en el futuro
+    // si hiciera falta (ver "Que sigue" en 59_stage54_3_mutex.md).
+    //
+    // == Semantica REENTRANTE (recursiva) -- una propiedad real de Win32, no una simplificacion ==
+    //
+    // Un mutex de kernel de Win32 es adquirible RECURSIVAMENTE por el mismo hilo: si un hilo que
+    // ya posee el mutex llama Lock() de nuevo, la llamada tiene EXITO de inmediato (Win32
+    // incrementa un contador de recursion interno), no bloquea contra si mismo. Cada Lock()
+    // adicional necesita su Unlock() correspondiente para liberar el mutex por completo -- el
+    // mismo contrato que `std::recursive_mutex` de C++ (a diferencia de `std::mutex`, que
+    // bloquearia contra si mismo -- un deadlock inmediato). Esta clase no agrega ningun conteo
+    // propio: reusa integramente el conteo de recursion que el kernel de Windows ya mantiene.
+    //
+    // == Es una clase (tipo referencia), no un struct ==
+    //
+    // Mismo razonamiento que Thread.ns: si Mutex fuera struct, cada copia por valor duplicaria
+    // el MISMO HANDLE en dos objetos independientes, ambos creyendo ser dueños del mutex.
+    //
+    // == Ciclo de vida tipico: un campo static compartido, NO una variable local raii ==
+    //
+    // A diferencia de Thread (tipicamente `raii`, de vida corta, atado a un scope), un Mutex
+    // normalmente protege un recurso compartido durante TODA la vida del programa -- se declara
+    // como campo `static` (ver Main.ns), nunca se destruye explicitamente, y el sistema
+    // operativo libera su HANDLE automaticamente cuando el proceso termina, exactamente igual
+    // que cualquier handle de Win32 que un proceso nunca cierra a mano. El destructor de esta
+    // clase existe por disciplina RAII (y para el caso, menos comun, de un Mutex `raii` de vida
+    // corta -- ver Main.ns Seccion 4), no porque cada Mutex deba tener uno declarado localmente.
+    //
+    // == Limitacion documentada, deliberada: destruir un Mutex mientras otro hilo lo espera ==
+    //
+    // Si un Mutex se destruye (fin de scope de una variable `raii`, o simplemente porque el
+    // programa termina) mientras otro hilo esta bloqueado esperandolo dentro de Lock()
+    // (WaitForSingleObject), ese hilo puede fallar de forma no determinista una vez que el
+    // ultimo HANDLE al objeto de kernel se cierra -- el mismo riesgo de tiempos de vida entre
+    // hilos que Thread.ns ya documenta para un `ThreadStart` ligado a un receptor RAII. Esta
+    // ronda no agrega ninguna proteccion nueva contra esto: sigue siendo responsabilidad del
+    // developer, igual que en C++ con cualquier primitiva de sincronizacion compartida entre
+    // hilos.
+    public class Mutex
+    {
+        // El HANDLE de Win32 devuelto por CreateMutexA, guardado como nint -- mismo idioma que
+        // Thread.handle_ (ver su comentario para el razonamiento completo). Un valor de 0
+        // significa "esto nunca fue un handle de mutex real" (CreateMutexA fallo, un caso
+        // excepcionalmente raro de agotamiento de recursos) -- Lock()/Unlock()/Close() tratan 0
+        // como no-op silencioso adentro del wrapper de runtime, nunca crashean.
+        private nint handle_;
+
+        // El constructor crea el mutex de inmediato, SIN adquirirlo (bInitialOwner=FALSE en
+        // CreateMutexA -- ver WindowsRuntimeBuilder.cpp) -- un Mutex recien creado esta
+        // DESBLOQUEADO, listo para que cualquier hilo lo adquiera con Lock().
+        public Mutex()
+        {
+            handle_ = MutexCreate();
+        }
+
+        // Bloquea el hilo LLAMANTE hasta adquirir exclusividad sobre este mutex. Si el hilo
+        // llamante YA es dueño de este mutex, tiene exito de inmediato (semantica reentrante,
+        // ver el comentario de cabecera de la clase) -- cada Lock() adicional necesita su propio
+        // Unlock() correspondiente.
+        public void Lock()
+        {
+            MutexLock(handle_);
+        }
+
+        // Libera UN nivel de posesion de este mutex. Llamar Unlock() sobre un mutex que el hilo
+        // llamante nunca adquirio (un "release" sin "acquire" previo) es un NO-OP seguro a nivel
+        // de NativeSharp -- Win32 lo reporta como una falla recuperable (ERROR_NOT_OWNER) que
+        // este wrapper descarta deliberadamente, nunca crashea ni lanza una excepcion NativeSharp
+        // (ver el comentario de cabecera de buildMutexUnlock en WindowsRuntimeBuilder.cpp, y
+        // Main.ns Seccion 3 para la verificacion empaquetada de este caso exacto).
+        public void Unlock()
+        {
+            MutexUnlock(handle_);
+        }
+
+        // Libera el HANDLE de Win32 de este mutex. NO verifica que el mutex este desbloqueado --
+        // ver la limitacion documentada en el comentario de cabecera de la clase.
+        ~Mutex()
+        {
+            MutexClose(handle_);
+        }
+
+        // Las cuatro "core operations" de Stage 54.3 -- reconocidas por el compilador por clase +
+        // nombre + firma EXACTOS (ver MethodCoreOperationKind::MutexCreate/MutexLock/
+        // MutexUnlock/MutexClose en ProjectMethodBodyModel.h/.cpp), EXACTO mismo mecanismo y
+        // mismo shape (un HANDLE nint de ida y vuelta) que las tres de Thread (Stage 54.1) --
+        // cero mecanismo de compilador nuevo hizo falta para esta ronda, a diferencia de Stage
+        // 54.2. Los cuerpos de abajo son placeholders -- nunca se ejecutan, el compilador
+        // reemplaza la llamada entera por lowering nativo directo a LLVM hacia los wrappers
+        // reales en src/Runtime/WindowsRuntimeBuilder.cpp (buildMutexCreate/buildMutexLock/
+        // buildMutexUnlock/buildMutexClose). Privadas, mismo razonamiento de diseño de
+        // biblioteca que Thread.ns: el codigo de usuario interactua con Mutex exclusivamente via
+        // el constructor/Lock()/Unlock()/destructor de arriba, nunca con el HANDLE crudo.
+        private static nint MutexCreate()
+        {
+            return 0;
+        }
+
+        private static void MutexLock(nint handle)
+        {
+        }
+
+        private static void MutexUnlock(nint handle)
+        {
+        }
+
+        private static void MutexClose(nint handle)
+        {
+        }
+    }
+}

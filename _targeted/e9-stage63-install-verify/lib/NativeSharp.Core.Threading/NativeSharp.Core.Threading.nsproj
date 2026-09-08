@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpCoreThreading</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../NativeSharp.Core/NativeSharp.Core.nsproj" />
+  </ItemGroup>
+</Project>

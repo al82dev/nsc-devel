@@ -1,5 +1,7 @@
 #include <algorithm>
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/InstallationManifest.h"
+#include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include "nativesharp/AST/AstDumper.h"
@@ -1613,6 +1615,18 @@ ExitCode Driver::run(
             output << "toolchain contract verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
+        if (action == "--verify-installation")
+        {
+            std::string installationError;
+            const std::filesystem::path prefix{std::string(args[1])};
+            if (!verifyInstallation(prefix, installationError))
+            {
+                error << "nsc: error: " << installationError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "NativeSharp installation verified: " << prefix.string() << '\n';
+            return ExitCode::Success;
+        }
         if (action == "--verify-library-metadata")
         {
             return verifyLibraryMetadata(args[1], output, error);
@@ -1657,9 +1671,38 @@ ExitCode Driver::run(
         return verifyLibraryArtifacts(args[1], args[2], {}, output, error);
     }
 
+    if (args.size() == 3 && args[0] == "--verify-installation-manifest")
+    {
+        std::string manifestError;
+        const std::filesystem::path prefix{std::string(args[1])};
+        const std::filesystem::path manifest{std::string(args[2])};
+        if (!verifyInstallationManifest(prefix, manifest, manifestError))
+        {
+            error << "nsc: error: " << manifestError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "installation manifest verified: " << manifest.string() << '\n';
+        return ExitCode::Success;
+    }
+
     if (args.size() == 4 && args[0] == "--verify-library-artifacts")
     {
         return verifyLibraryArtifacts(args[1], args[2], args[3], output, error);
+    }
+
+    if (args.size() == 4 && args[0] == "--write-installation-manifest")
+    {
+        std::string manifestError;
+        const std::filesystem::path prefix{std::string(args[1])};
+        const std::filesystem::path expectedFiles{std::string(args[2])};
+        const std::filesystem::path destination{std::string(args[3])};
+        if (!writeInstallationManifest(prefix, expectedFiles, destination, manifestError))
+        {
+            error << "nsc: error: " << manifestError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "installation manifest written: " << destination.string() << '\n';
+        return ExitCode::Success;
     }
 
     if (args.size() == 3 && args[1] == "-o" &&
@@ -1764,6 +1807,9 @@ void Driver::printHelp(std::ostream& output)
               "[file.dll]\n"
            << "  nsc --write-toolchain-contract <file.contract>\n"
            << "  nsc --verify-toolchain-contract <file.contract>\n"
+           << "  nsc --verify-installation <prefix>\n"
+           << "  nsc --write-installation-manifest <prefix> <file-list> <manifest>\n"
+           << "  nsc --verify-installation-manifest <prefix> <manifest>\n"
            << "  nsc <file.ns>\n"
            << "  nsc --check <file.ns>\n"
            << "  nsc --dump-source <file.ns>\n"

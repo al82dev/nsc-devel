@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Compilation/Project.h"
@@ -176,7 +177,7 @@ std::uint32_t rotateRight(std::uint32_t value, unsigned amount) noexcept
     return (value >> amount) | (value << (32U - amount));
 }
 
-std::array<std::uint8_t, 32> sha256(std::span<const std::uint8_t> input)
+basic::Sha256Digest sha256Implementation(std::span<const std::uint8_t> input)
 {
     static constexpr std::array<std::uint32_t, 64> constants = {
         0x428a2f98U, 0x71374491U, 0xb5c0fbcfU, 0xe9b5dba5U, 0x3956c25bU, 0x59f111f1U, 0x923f82a4U, 0xab1c5ed5U,
@@ -1357,6 +1358,21 @@ bool verifyFrozenAbiContract(const LibraryMetadata& metadata, std::string& error
 }
 }
 
+// SHA-256 was originally introduced here for NSMETA. Keep the proven compression implementation
+// as the single authority while exposing it to package verification through the Basic API.
+}
+
+namespace nativesharp::basic
+{
+Sha256Digest sha256(std::span<const std::uint8_t> input)
+{
+    return nativesharp::interop::sha256Implementation(input);
+}
+}
+
+namespace nativesharp::interop
+{
+
 bool LibraryMetadataCodec::write(
     const frontend::ProjectCompilation& compilation,
     const std::filesystem::path& destination,
@@ -1410,14 +1426,14 @@ bool LibraryMetadataCodec::writeModel(
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
 
-    metadata.abiFingerprint = sha256(encodeAbiProjection(metadata));
+    metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
     if (payload.size() > kMaximumPayloadSize)
     {
         error = "NativeSharp metadata payload exceeds 128 MiB format limit";
         return false;
     }
-    const std::array<std::uint8_t, 32> payloadHash = sha256(payload);
+    const std::array<std::uint8_t, 32> payloadHash = basic::sha256(payload);
 
     ByteWriter file;
     file.raw(kMagic);
@@ -1513,7 +1529,7 @@ bool LibraryMetadataCodec::read(
         return false;
     }
     const std::span<const std::uint8_t> payload(bytes.data() + kHeaderSize, static_cast<std::size_t>(payloadSize));
-    if (!sameFingerprint(sha256(payload), payloadHash))
+    if (!sameFingerprint(basic::sha256(payload), payloadHash))
     {
         error = "NativeSharp metadata payload checksum mismatch";
         return false;
@@ -1539,7 +1555,7 @@ bool LibraryMetadataCodec::read(
         decoded.managedDelegateCellSize = 0;
     }
     if (!decodePayload(payload, decoded, error)) return false;
-    const std::array<std::uint8_t, 32> recomputedAbi = sha256(encodeAbiProjection(decoded));
+    const std::array<std::uint8_t, 32> recomputedAbi = basic::sha256(encodeAbiProjection(decoded));
     if (!sameFingerprint(recomputedAbi, decoded.abiFingerprint))
     {
         error = "NativeSharp metadata ABI fingerprint mismatch";
