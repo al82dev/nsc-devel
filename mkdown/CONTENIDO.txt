@@ -29,6 +29,7 @@ LECTURA HISTÓRICA RECOMENDADA
     152_1_0_gate_del_compilador_desacoplado_de_bindings_y_consumidores.md
     153_1_0_e11_lambdas_y_clausuras_lexicas_stage67.md
     154_baseline_certificado_1_0_e11_stage67.md
+    155_handover_stage67_a_e12_release_ready.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -93,6 +94,10 @@ El documento 154 registra la promoción G00 de E11. Conserva el run exacto, S0=S
 compilador instalado, los hashes del paquete, las 12 etapas, las matrices CTest 304/304 por
 enlazador y las 324 ejecuciones O0/O2. Desde esa acta Stage 67 sustituye a Stage 66 como baseline
 certificado vigente.
+
+El documento 155 entrega Stage 67 a una rama nueva. Resume el diseño que debe preservarse, enumera
+archivos y pruebas de E11, distingue la fotografía certificada de las actas posteriores y define
+E12 como una megaentrega de estabilización y decisión reproducible de release-readiness.
 
 Los documentos 132 a 135 registran la implementación y el cierre técnico de las cuatro primeras
 megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifetime de delegates y
