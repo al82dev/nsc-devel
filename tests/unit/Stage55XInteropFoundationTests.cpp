@@ -356,19 +356,29 @@ namespace proj {
         "extern C delegate requires a static method");
 }
 
-void testExternCDelegateRejectsLambda(TestContext& tests, const std::filesystem::path& root)
+void testExternCDelegateLambda(TestContext& tests, const std::filesystem::path& root)
 {
-    const std::string source = R"NS(
+    const std::string noncapturing = R"NS(
 namespace proj {
     extern C delegate int Fn(int v);
     class Program {
-        public static int Main() { Fn f = v => v + 1; return f(1); }
+        public static int Main() { Fn f = (int v) => v + 1; return f(41); }
+    }
+}
+)NS";
+    run(tests, root, "ExternCDelegateLambda", noncapturing, 42);
+
+    const std::string capturing = R"NS(
+namespace proj {
+    extern C delegate int Fn(int v);
+    class Program {
+        public static int Main() { int bias = 1; Fn f = v => v + bias; return f(41); }
     }
 }
 )NS";
     reject(
-        tests, root, "ExternCDelegateLambdaRejected", source,
-        "extern C delegate cannot bind a lambda");
+        tests, root, "ExternCDelegateCapturingLambdaRejected", capturing,
+        "extern C lambda must not capture state");
 }
 
 void testImportSignatureRejectsManagedString(TestContext& tests, const std::filesystem::path& root)
@@ -576,7 +586,7 @@ int main()
     testAddressOfAndDereference(tests, root);
     testExternCDelegateYieldsRawFunctionPointer(tests, root);
     testExternCDelegateRejectsInstanceMethod(tests, root);
-    testExternCDelegateRejectsLambda(tests, root);
+    testExternCDelegateLambda(tests, root);
     testImportSignatureRejectsManagedString(tests, root);
     testCrossHostStructsAndCallbacks(tests, root);
 

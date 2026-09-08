@@ -393,7 +393,9 @@ int main()
                      conformance.find("NSC-PKG-007|implemented|") != std::string::npos &&
                      conformance.find("NSC-COMPAT-001|implemented|") != std::string::npos,
         "new normative clauses map to code and executable evidence");
-    tests.expect(kCompilerStage == "66", "single E9/E10 delivery carries final Stage 66 identity");
+    tests.expect(
+        std::stoul(std::string(kCompilerStage)) >= 66,
+        "the current compiler retains the E9/E10 Stage 66 release contract");
 
     return tests.resultKeeping(evidence);
 }

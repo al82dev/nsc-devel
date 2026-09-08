@@ -220,6 +220,9 @@ enum class ProjectOopMirNodeKind
     DelegateCreate,
     LambdaCreate,
     ClosureCaptureLoad,
+    ClosureCaptureAddress,
+    CaptureCellReference,
+    ClosureCaptureCellReference,
     DelegateInvoke,
     EventAdd,
     EventRemove,
@@ -453,6 +456,9 @@ struct ProjectOopMirFunction final
     std::optional<std::size_t> lambdaOrdinal;
     bool hasClosureEnvironment = false;
     std::vector<std::string> captureTypeKeys;
+    std::vector<std::size_t> capturedLocalOrdinals;
+    std::vector<std::size_t> capturedParameterOrdinals;
+    bool capturesThisCell = false;
     std::string genericSpecializationKey;
     std::string mangledName;
     std::string returnTypeKey;

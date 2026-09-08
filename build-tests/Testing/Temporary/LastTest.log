@@ -1,35 +1,83 @@
-Start testing: Sep 07 12:29 Central Standard Time (Mexico)
+Start testing: Sep 08 02:30 Central Standard Time (Mexico)
 ----------------------------------------------------------
-115/297 Testing: nsc.stage48_2.library-metadata
-115/297 Test: nsc.stage48_2.library-metadata
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage48_2_library_metadata_tests.exe"
+42/304 Testing: nsc.stage45.llvm-win64-eh-basic
+42/304 Test: nsc.stage45.llvm-win64-eh-basic
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_llvm_win64_eh_basic_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage48_2.library-metadata" start time: Sep 07 12:29 Central Standard Time (Mexico)
+"nsc.stage45.llvm-win64-eh-basic" start time: Sep 08 02:30 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 94 checks
+PASS: 35 checks
 <end of output>
-Test time =   0.92 sec
+Test time =   0.07 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage48_2.library-metadata" end time: Sep 07 12:29 Central Standard Time (Mexico)
-"nsc.stage48_2.library-metadata" time elapsed: 00:00:00
+"nsc.stage45.llvm-win64-eh-basic" end time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage45.llvm-win64-eh-basic" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-131/297 Testing: nsc.stage50_9.metadata-host-compatibility
-131/297 Test: nsc.stage50_9.metadata-host-compatibility
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage50_9_metadata_host_compatibility_tests.exe"
+43/304 Testing: nsc.stage45.llvm-cleanup-funclets
+43/304 Test: nsc.stage45.llvm-cleanup-funclets
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_llvm_cleanup_funclet_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage50_9.metadata-host-compatibility" start time: Sep 07 12:29 Central Standard Time (Mexico)
+"nsc.stage45.llvm-cleanup-funclets" start time: Sep 08 02:30 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 56 checks
+PASS: 32 checks
 <end of output>
-Test time =   0.10 sec
+Test time =   0.04 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage50_9.metadata-host-compatibility" end time: Sep 07 12:29 Central Standard Time (Mexico)
-"nsc.stage50_9.metadata-host-compatibility" time elapsed: 00:00:00
+"nsc.stage45.llvm-cleanup-funclets" end time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage45.llvm-cleanup-funclets" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Sep 07 12:29 Central Standard Time (Mexico)
+46/304 Testing: nsc.stage45-10.eh-raii-reuse-after-catch
+46/304 Test: nsc.stage45-10.eh-raii-reuse-after-catch
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45-10.eh-raii-reuse-after-catch" start time: Sep 08 02:30 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 78 checks
+<end of output>
+Test time =  12.91 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45-10.eh-raii-reuse-after-catch" end time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage45-10.eh-raii-reuse-after-catch" time elapsed: 00:00:12
+----------------------------------------------------------
+
+47/304 Testing: nsc.stage45-11.eh-cleanup-execution
+47/304 Test: nsc.stage45-11.eh-cleanup-execution
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_11_eh_cleanup_execution_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage45-11.eh-cleanup-execution" start time: Sep 08 02:30 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 72 checks
+<end of output>
+Test time =  11.74 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage45-11.eh-cleanup-execution" end time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage45-11.eh-cleanup-execution" time elapsed: 00:00:11
+----------------------------------------------------------
+
+58/304 Testing: nsc.stage60.language-contract
+58/304 Test: nsc.stage60.language-contract
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage60_language_contract_tests.exe"
+Directory: A:/nsc-devel/build-tests
+"nsc.stage60.language-contract" start time: Sep 08 02:30 Central Standard Time (Mexico)
+Output:
+----------------------------------------------------------
+PASS: 975 checks
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"nsc.stage60.language-contract" end time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage60.language-contract" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 08 02:30 Central Standard Time (Mexico)

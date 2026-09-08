@@ -113,7 +113,10 @@ aggregate-initializer = "{", [ expression-or-initializer,
 expression-or-initializer = expression | aggregate-initializer ;
 
 expression = assignment-expression | lambda-expression ;
-lambda-expression = ( identifier | "(", [ parameter-list ], ")" ), "=>", ( expression | block ) ;
+lambda-expression = ( identifier | "(", [ lambda-parameter-list ], ")" ),
+                    "=>", ( expression | block ) ;
+lambda-parameter-list = lambda-parameter, { ",", lambda-parameter } ;
+lambda-parameter = identifier | parameter ;
 assignment-expression = conditional-expression,
                         [ assignment-operator, assignment-expression ] ;
 conditional-expression = logical-or-expression,

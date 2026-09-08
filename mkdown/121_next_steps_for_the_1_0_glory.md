@@ -8,12 +8,12 @@ y se registra al certificar.
 rendimiento predecible, sin ligar su promoción a consumidores externos ni a catálogos de bindings
 que todavía evolucionan por separado.
 
-**Estado de la entrega más reciente:** `nsc 0.9.0+build.20260908T053626Z.eefaf302df6e31c8`
-está instalado y certificado como NativeSharp 0.1 / Stage 66. G00
-`20260907-233625-801b209e` terminó `LANDED` con 11/11 etapas, 303/303 CTest por linker,
-324/324 casos y cero fallos. `S0 == S1` sobre 1034 archivos y `built_nsc == installed_nsc` con
-SHA-256 `9958ba8ab401ada17879b412670770b4504adb32b8ec9f3cee2fc6d7783d63b1`. El acta exacta
-está en 151.
+**Estado de la entrega más reciente:** `nsc 0.9.0+build.20260908T152440Z.079cf744116ec119`
+está instalado y certificado como NativeSharp 0.1 / Stage 67. G00
+`20260908-092439-7d0bd312` terminó `LANDED` con 12/12 etapas, 304/304 CTest por enlazador,
+324/324 casos y cero fallos. `S0 == S1` sobre 1035 archivos y `built_nsc == installed_nsc` con
+SHA-256 `f7e920496191650c460ff580ed49d05e0cbefb6356d685f2a7784c28b65668e6`. La implementación
+didáctica está en 153 y el acta exacta en 154.
 
 **Baseline anterior Stage 64:**
 `nsc 0.9.0+build.20260908T023103Z.84b08f1eced9c7f3` está instalado y certificado como NativeSharp
@@ -100,6 +100,14 @@ obsoleto demostrado como propiedad anterior y verificó el árbol final. El desa
 hallazgos y la evidencia de implementación están en 150. G00 `20260907-233625-801b209e` promovió
 la fotografía con 303/303 CTest por linker, 324/324 casos, cero fallos, árbol inmóvil y compilador
 construido idéntico al instalado. El acta de certificación está en 151.
+
+**E11 certificada (2026-09-08):** Stage 67 reemplaza la captura por copia por celdas léxicas
+compartidas con lifetime contado, mutación visible entre lambdas hermanas, anidamiento y capturas
+transitivas. Añade parámetros explícitos y por referencia, participación en overload resolution,
+captura de structs grandes y fixed arrays, cleanup normal/excepcional y lambda sin captura como
+callback C. G00 `20260908-092439-7d0bd312` promovió la entrega con 304/304 CTest por enlazador,
+324/324 ejecuciones, cero fallos, árbol inmóvil y compilador construido idéntico al instalado. La
+implementación está en 153 y la certificación en 154.
 
 **Incidente de validación de 0.8.0-alpha:** CTest llegó primero a **297/297 verde**, pero el runner externo reveló
 que ese arnés no ejecutaba `c25`–`c28` en Windows. Las cuatro fixtures sufrían un doble free en el
@@ -209,7 +217,8 @@ El núcleo ya existe. No se vuelve a planificar:
 - `owned`, `borrowed`, `raii` y `move`;
 - definite assignment;
 - genéricos monomorfizados y structs genéricos;
-- delegates, lambdas y eventos;
+- delegates y eventos; las clausuras completas quedaron implementadas y certificadas por E11 /
+  Stage 67;
 - arrays, fixed arrays, spans, colecciones y `foreach`;
 - unions, pack, align, offsets y ABI Win64;
 - enums con tipo subyacente y nombres sin reflection;
@@ -1189,6 +1198,8 @@ Además:
 1.0-E7       Especificación, gramática y trazabilidad normativa — instalada y certificada
 1.0-E8       Endurecimiento del compilador — Stage 61 instalado y certificado por G00
 1.0-E9       Contrato, instalación e inventario — Stage 62/63/64 instalados y certificados
+1.0-E10      Reproducibilidad, ciclo de paquete y compatibilidad — Stage 66 certificado
+1.0-E11      Clausuras léxicas compartidas y lambdas tipadas — Stage 67 certificado
 1.0.0-rc.1  instalación externa y periodo de estabilización
 1.0.0  contrato público
 ```

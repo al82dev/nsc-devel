@@ -1893,7 +1893,8 @@ private:
         const auto visit = [&](const frontend::ProjectOopMirNode* node, auto&& self) -> void
         {
             if (node == nullptr) return;
-            if (node->kind == frontend::ProjectOopMirNodeKind::DelegateCreate &&
+            if ((node->kind == frontend::ProjectOopMirNodeKind::DelegateCreate ||
+                 node->kind == frontend::ProjectOopMirNodeKind::LambdaCreate) &&
                 isExternCDelegateType(node->typeKey) && !node->calleeName.empty() &&
                 std::find(targets.begin(), targets.end(), node->calleeName) == targets.end())
             {
@@ -2503,7 +2504,12 @@ private:
         currentFunction_ = found->second.function;
         currentMirFunction_ = &function;
         parameterStorage_.clear();
-            localStorage_.clear();
+        localStorage_.clear();
+        parameterCaptureCells_.clear();
+        localCaptureCells_.clear();
+        thisCaptureCell_ = nullptr;
+        ownedCaptureCells_.clear();
+        captureCellExceptionalCleanupBlock_ = nullptr;
         activeCatchExceptions_.clear();
         loopStack_.clear();
         exceptionDispatchBlocks_.clear();
@@ -2546,6 +2552,27 @@ private:
             LLVMSetValueName2(thisValue_, "this", 4);
         }
 
+        if (function.capturesThisCell)
+        {
+            if (thisValue_ == nullptr)
+                return fail(error, "E11 captured this has no receiver value");
+            LLVMValueRef valueAddress = nullptr;
+            const std::string thisTypeKey = "type:" +
+                nameLookup_.namedTypes()[function.declaringTypeOrdinal].identity.key();
+            thisCaptureCell_ = allocateCaptureCell(
+                thisTypeKey, valueAddress, "capture.this", error);
+            if (thisCaptureCell_ == nullptr || valueAddress == nullptr) return false;
+            LLVMValueRef capturedThis = thisValue_;
+            if (isStructValue(thisTypeKey))
+            {
+                LLVMTypeRef thisType = llvmType(thisTypeKey, error);
+                if (thisType == nullptr) return false;
+                capturedThis = LLVMBuildLoad2(builder_, thisType, thisValue_, "capture.this.load");
+            }
+            LLVMBuildStore(builder_, capturedThis, valueAddress);
+            ownedCaptureCells_.push_back(thisCaptureCell_);
+        }
+
         sretStorage_ = nullptr;
         if (sretReturn)
         {
@@ -2557,6 +2584,27 @@ private:
             LLVMValueRef value = LLVMGetParam(
                 currentFunction_, parameterBase + static_cast<unsigned>(index));
             LLVMSetValueName2(value, ("p" + std::to_string(index)).c_str(), ("p" + std::to_string(index)).size());
+            const bool captured = std::ranges::find(
+                function.capturedParameterOrdinals, index) != function.capturedParameterOrdinals.end();
+            if (captured)
+            {
+                LLVMValueRef valueAddress = nullptr;
+                LLVMValueRef cell = allocateCaptureCell(
+                    function.parameterTypeKeys[index], valueAddress,
+                    "capture.p" + std::to_string(index), error);
+                if (cell == nullptr || valueAddress == nullptr) return false;
+                if (isIndirectStructTypeKey(function.parameterTypeKeys[index]))
+                {
+                    LLVMTypeRef type = llvmType(function.parameterTypeKeys[index], error);
+                    if (type == nullptr) return false;
+                    value = LLVMBuildLoad2(builder_, type, value, "capture.param.aggregate.load");
+                }
+                LLVMBuildStore(builder_, value, valueAddress);
+                parameterStorage_[index] = valueAddress;
+                parameterCaptureCells_[index] = cell;
+                ownedCaptureCells_.push_back(cell);
+                continue;
+            }
             if (isIndirectStructTypeKey(function.parameterTypeKeys[index]))
             {
                 // Win64 indirect aggregate: the incoming value IS a pointer to a copy the caller
@@ -2579,7 +2627,7 @@ private:
         collectCleanupRegions(function.body.get(), error);
         if (!error.empty()) return false;
         const bool hasExceptionalControl = containsExceptionalControl(function.body.get());
-        if (hasExceptionalControl)
+        if (hasExceptionalControl || !ownedCaptureCells_.empty())
         {
             LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         }
@@ -2598,6 +2646,7 @@ private:
         {
             if (function.constructor || function.returnTypeKey == "builtin:void")
             {
+                releaseOwnedCaptureCells();
                 LLVMBuildRetVoid(builder_);
             }
             else
@@ -2626,13 +2675,32 @@ private:
                     : node->typeKey;
                 LLVMTypeRef type = llvmType(typeKey, error);
                 if (type == nullptr) return;
-                LLVMValueRef slot = LLVMBuildAlloca(
-                    builder_, type, ("local" + std::to_string(*node->localOrdinal) + ".addr").c_str());
+                const bool captured = currentMirFunction_ != nullptr && std::ranges::find(
+                    currentMirFunction_->capturedLocalOrdinals,
+                    *node->localOrdinal) != currentMirFunction_->capturedLocalOrdinals.end();
+                LLVMValueRef slot = nullptr;
+                if (captured)
+                {
+                    LLVMValueRef cell = allocateCaptureCell(
+                        typeKey,
+                        slot,
+                        "capture.local" + std::to_string(*node->localOrdinal),
+                        error);
+                    if (cell == nullptr || slot == nullptr) return;
+                    localCaptureCells_[*node->localOrdinal] = cell;
+                    ownedCaptureCells_.push_back(cell);
+                }
+                else
+                {
+                    slot = LLVMBuildAlloca(
+                        builder_, type,
+                        ("local" + std::to_string(*node->localOrdinal) + ".addr").c_str());
+                }
                 // An indirect-struct carrier is [N x i8], whose alloca defaults to align 1 --
                 // but member accesses through the slot do naturally-aligned typed loads and
                 // stores, so the slot must carry the struct layout's real alignment.
                 const unsigned structAlignment = structAlignmentFor(typeKey);
-                if (structAlignment > 1U) LLVMSetAlignment(slot, structAlignment);
+                if (!captured && structAlignment > 1U) LLVMSetAlignment(slot, structAlignment);
                 localStorage_[*node->localOrdinal] = slot;
             }
         }
@@ -2951,6 +3019,16 @@ private:
                 funcletStack_.back().cleanupDepthAtEntry,
                 activeCleanupRegions_.size());
             finalTarget = funcletStack_.back().unwindDestination;
+        }
+
+        // A captured local/parameter has one reference owned by the creating activation. If an
+        // invoke leaves that activation, normal return lowering never runs, so put that reference
+        // behind a function-level SEH cleanup. Local catches deliberately retain the cells: the
+        // method is still alive and may continue using both the local and closures after catch.
+        if (!hasLocalHandler && finalTarget == nullptr && !ownedCaptureCells_.empty())
+        {
+            finalTarget = captureCellExceptionalCleanup(error);
+            if (finalTarget == nullptr) return nullptr;
         }
 
         std::vector<std::size_t> path;
@@ -3472,6 +3550,7 @@ private:
         {
             if (isReturn)
             {
+                releaseOwnedCaptureCells();
                 if (returnValue == nullptr) LLVMBuildRetVoid(builder_);
                 else emitAbiReturn(returnValue);
             }
@@ -3556,6 +3635,7 @@ private:
 
         if (isReturn)
         {
+            releaseOwnedCaptureCells();
             if (returnValue == nullptr)
             {
                 LLVMBuildRetVoid(builder_);
@@ -3651,6 +3731,13 @@ private:
                     }),
                 cleanupPath.end());
             finalTarget = funcletStack_.back().unwindDestination;
+        }
+
+        if (!node->exceptionTargetRegionOrdinal.has_value() && finalTarget == nullptr &&
+            !ownedCaptureCells_.empty())
+        {
+            finalTarget = captureCellExceptionalCleanup(error);
+            if (finalTarget == nullptr) return false;
         }
 
         LLVMBasicBlockRef unwindTarget = cleanupPath.empty()
@@ -5814,6 +5901,12 @@ private:
                 return lowerLambdaCreate(node, error);
             case frontend::ProjectOopMirNodeKind::ClosureCaptureLoad:
                 return lowerClosureCaptureLoad(node, error);
+            case frontend::ProjectOopMirNodeKind::ClosureCaptureAddress:
+                return closureCaptureAddress(node, error);
+            case frontend::ProjectOopMirNodeKind::CaptureCellReference:
+                return lowerCaptureCellReference(node, error);
+            case frontend::ProjectOopMirNodeKind::ClosureCaptureCellReference:
+                return closureCaptureCell(node, error);
             case frontend::ProjectOopMirNodeKind::DelegateCreate:
                 return lowerDelegateCreate(node, error);
             case frontend::ProjectOopMirNodeKind::DelegateInvoke:
@@ -6054,6 +6147,223 @@ private:
             builder_, LLVMInt8TypeInContext(context_), base, indices, 1, name);
     }
 
+    std::pair<std::uint64_t, std::uint64_t> captureValueLayout(
+        std::string_view typeKey, std::string& error) const
+    {
+        if (const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey); layout != nullptr)
+            return {layout->size, layout->alignment};
+        if (const frontend::builtins::IntegerTypeInfo* info =
+                frontend::builtins::findIntegerType(typeKey); info != nullptr)
+        {
+            const std::uint64_t bytes = std::max<std::uint64_t>(1, info->width / 8U);
+            return {bytes, bytes};
+        }
+        if (const frontend::builtins::IntegerTypeInfo* info = enumUnderlyingInfo(typeKey); info != nullptr)
+        {
+            const std::uint64_t bytes = std::max<std::uint64_t>(1, info->width / 8U);
+            return {bytes, bytes};
+        }
+        if (typeKey == "builtin:bool" || typeKey == "builtin:char") return {1, 1};
+        if (typeKey == "builtin:float") return {4, 4};
+        if (typeKey == "builtin:double") return {8, 8};
+        if (typeKey == "builtin:string" || frontend::ProjectTypeConversion::isNativeArray(typeKey) ||
+            isPointerLike(typeKey) || isClassReference(typeKey) || isDelegateReference(typeKey))
+            return {8, 8};
+        if (const std::optional<std::string> element =
+                frontend::ProjectMemberModel::fixedArrayElementTypeKey(typeKey); element.has_value())
+        {
+            const std::optional<std::uint64_t> count =
+                frontend::ProjectMemberModel::fixedArrayCount(typeKey);
+            const auto [elementSize, elementAlignment] = captureValueLayout(*element, error);
+            if (!count.has_value() || elementSize == 0)
+            {
+                if (error.empty()) error = "E11 cannot size captured fixed array '" + std::string(typeKey) + "'";
+                return {0, 0};
+            }
+            return {elementSize * *count, elementAlignment};
+        }
+        error = "E11 cannot determine capture-cell layout for '" + std::string(typeKey) + "'";
+        return {0, 0};
+    }
+
+    bool ensureCaptureCellRuntime(std::string& error)
+    {
+        if (captureCellRetainFunction_ != nullptr && captureCellReleaseFunction_ != nullptr) return true;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef parameters[] = {ptr};
+        captureCellFunctionType_ = LLVMFunctionType(
+            LLVMVoidTypeInContext(context_), parameters, 1, 0);
+        captureCellRetainFunction_ = LLVMAddFunction(
+            module_, "__nativesharp_capture_cell_retain", captureCellFunctionType_);
+        captureCellReleaseFunction_ = LLVMAddFunction(
+            module_, "__nativesharp_capture_cell_release", captureCellFunctionType_);
+        if (captureCellRetainFunction_ == nullptr || captureCellReleaseFunction_ == nullptr)
+            return fail(error, "E11 could not declare capture-cell lifetime helpers");
+
+        LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
+        LLVMBasicBlockRef retainEntry = LLVMAppendBasicBlockInContext(
+            context_, captureCellRetainFunction_, "entry");
+        LLVMPositionBuilderAtEnd(helper, retainEntry);
+        LLVMValueRef retainCell = LLVMGetParam(captureCellRetainFunction_, 0);
+        LLVMBuildAtomicRMW(
+            helper, LLVMAtomicRMWBinOpAdd, retainCell,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0),
+            LLVMAtomicOrderingSequentiallyConsistent, 0);
+        LLVMBuildRetVoid(helper);
+
+        LLVMBasicBlockRef releaseEntry = LLVMAppendBasicBlockInContext(
+            context_, captureCellReleaseFunction_, "entry");
+        LLVMBasicBlockRef releaseFree = LLVMAppendBasicBlockInContext(
+            context_, captureCellReleaseFunction_, "free");
+        LLVMBasicBlockRef releaseDone = LLVMAppendBasicBlockInContext(
+            context_, captureCellReleaseFunction_, "done");
+        LLVMPositionBuilderAtEnd(helper, releaseEntry);
+        LLVMValueRef releaseCell = LLVMGetParam(captureCellReleaseFunction_, 0);
+        LLVMValueRef oldCount = LLVMBuildAtomicRMW(
+            helper, LLVMAtomicRMWBinOpAdd, releaseCell,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), ~std::uint64_t{0}, 0),
+            LLVMAtomicOrderingSequentiallyConsistent, 0);
+        LLVMValueRef last = LLVMBuildICmp(
+            helper, LLVMIntEQ, oldCount,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0),
+            "capture.cell.last");
+        LLVMBuildCondBr(helper, last, releaseFree, releaseDone);
+        LLVMPositionBuilderAtEnd(helper, releaseFree);
+        LLVMValueRef freeArguments[] = {releaseCell};
+        LLVMBuildCall2(
+            helper, deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
+        LLVMBuildBr(helper, releaseDone);
+        LLVMPositionBuilderAtEnd(helper, releaseDone);
+        LLVMBuildRetVoid(helper);
+        LLVMDisposeBuilder(helper);
+        return true;
+    }
+
+    LLVMValueRef allocateCaptureCell(
+        std::string_view typeKey,
+        LLVMValueRef& valueAddress,
+        std::string_view stem,
+        std::string& error)
+    {
+        if (!ensureCaptureCellRuntime(error)) return nullptr;
+        const auto [valueSize, valueAlignment] = captureValueLayout(typeKey, error);
+        if (valueSize == 0 || valueAlignment == 0) return nullptr;
+        const std::uint64_t valueOffset =
+            ((8U + valueAlignment - 1U) / valueAlignment) * valueAlignment;
+        LLVMValueRef bytes = LLVMConstInt(
+            LLVMInt64TypeInContext(context_), valueOffset + valueSize, 0);
+        LLVMValueRef arguments[] = {bytes};
+        LLVMValueRef cell = buildNoUnwindCall(
+            allocationFunctionType_, allocationFunction_, arguments, 1,
+            (std::string(stem) + ".cell").c_str());
+        cell = checkedStage42Allocation(cell, std::string(stem) + ".cell.alloc", error);
+        if (cell == nullptr) return nullptr;
+        LLVMBuildStore(
+            builder_, LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0), cell);
+        valueAddress = byteOffset(
+            cell, valueOffset, (std::string(stem) + ".value.addr").c_str());
+        return cell;
+    }
+
+    void retainCaptureCell(LLVMValueRef cell)
+    {
+        LLVMValueRef arguments[] = {cell};
+        buildNoUnwindCall(
+            captureCellFunctionType_, captureCellRetainFunction_, arguments, 1, "");
+    }
+
+    void releaseCaptureCell(LLVMValueRef cell)
+    {
+        LLVMValueRef arguments[] = {cell};
+        buildNoUnwindCall(
+            captureCellFunctionType_, captureCellReleaseFunction_, arguments, 1, "");
+    }
+
+    void releaseOwnedCaptureCells()
+    {
+        for (LLVMValueRef cell : ownedCaptureCells_) releaseCaptureCell(cell);
+    }
+
+    LLVMBasicBlockRef captureCellExceptionalCleanup(std::string& error)
+    {
+        if (captureCellExceptionalCleanupBlock_ != nullptr)
+            return captureCellExceptionalCleanupBlock_;
+        if (ownedCaptureCells_.empty()) return nullptr;
+
+        LLVMBasicBlockRef sourceBlock = LLVMGetInsertBlock(builder_);
+        if (sourceBlock == nullptr)
+        {
+            error = "E11 cannot emit capture-cell exceptional cleanup without an insertion block";
+            return nullptr;
+        }
+
+        const std::vector<FuncletContext> savedFunclets = funcletStack_;
+        captureCellExceptionalCleanupBlock_ = appendBlock("eh.capture.cells");
+        LLVMPositionBuilderAtEnd(builder_, captureCellExceptionalCleanupBlock_);
+        LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
+            builder_, nullptr, nullptr, 0, "eh.capture.cells.pad");
+        if (cleanupPad == nullptr)
+        {
+            captureCellExceptionalCleanupBlock_ = nullptr;
+            LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+            error = "E11 failed to create the function-level capture-cell cleanuppad";
+            return nullptr;
+        }
+
+        // The release calls are emitted inside this funclet and therefore carry the required
+        // operand bundle on Windows SEH. The cells themselves dominate the block because all are
+        // allocated in the function entry before statement lowering starts.
+        funcletStack_.clear();
+        funcletStack_.push_back(FuncletContext{
+            cleanupPad, FuncletKind::Cleanup, 0, nullptr, nullptr});
+        releaseOwnedCaptureCells();
+        LLVMBuildCleanupRet(builder_, cleanupPad, nullptr);
+        funcletStack_ = savedFunclets;
+        LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+        return captureCellExceptionalCleanupBlock_;
+    }
+
+    LLVMValueRef closureContextDestroy(
+        std::string_view calleeName,
+        std::size_t captureCount,
+        std::string& error)
+    {
+        const auto existing = closureContextDestroyFunctions_.find(std::string(calleeName));
+        if (existing != closureContextDestroyFunctions_.end()) return existing->second;
+        if (!ensureCaptureCellRuntime(error)) return nullptr;
+
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef parameters[] = {ptr};
+        LLVMTypeRef functionType = LLVMFunctionType(
+            LLVMVoidTypeInContext(context_), parameters, 1, 0);
+        const std::string name = "__nsc_closure_context_destroy_" + std::string(calleeName);
+        LLVMValueRef function = LLVMAddFunction(module_, name.c_str(), functionType);
+        if (function == nullptr)
+            return failValue(error, "E11 could not create closure-context destroy helper");
+
+        LLVMBuilderRef savedBuilder = builder_;
+        LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
+        builder_ = helper;
+        LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, function, "entry");
+        LLVMPositionBuilderAtEnd(builder_, entry);
+        LLVMValueRef environment = LLVMGetParam(function, 0);
+        for (std::size_t index = 0; index < captureCount; ++index)
+        {
+            LLVMValueRef slot = byteOffset(
+                environment, static_cast<std::uint64_t>(index) * 8U, "closure.cell.slot");
+            LLVMValueRef cell = LLVMBuildLoad2(builder_, ptr, slot, "closure.cell");
+            releaseCaptureCell(cell);
+        }
+        LLVMValueRef freeArguments[] = {environment};
+        buildNoUnwindCall(
+            deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
+        LLVMBuildRetVoid(builder_);
+        builder_ = savedBuilder;
+        LLVMDisposeBuilder(helper);
+        closureContextDestroyFunctions_[std::string(calleeName)] = function;
+        return function;
+    }
+
     LLVMValueRef checkedStage42Allocation(LLVMValueRef memory, std::string_view stem, std::string& error)
     {
         if (memory == nullptr) return nullptr;
@@ -6146,22 +6456,62 @@ private:
         return error.empty();
     }
 
-    LLVMValueRef lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error)
+    LLVMValueRef closureCaptureCell(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (currentMirFunction_ == nullptr || !currentMirFunction_->isLambda ||
             !currentMirFunction_->hasClosureEnvironment || closureEnvironment_ == nullptr)
         {
-            return failValue(error, "Stage 43 closure capture load has no environment receiver");
+            return failValue(error, "E11 closure capture has no environment receiver");
         }
         const std::size_t capture = static_cast<std::size_t>(node->immediate);
         if (capture >= currentMirFunction_->captureTypeKeys.size())
-            return failValue(error, "Stage 43 closure capture ordinal is invalid");
+            return failValue(error, "E11 closure capture ordinal is invalid");
+        LLVMValueRef slot = byteOffset(
+            closureEnvironment_, static_cast<std::uint64_t>(capture) * 8U,
+            "closure.capture.cell.addr");
+        return LLVMBuildLoad2(
+            builder_, LLVMPointerTypeInContext(context_, 0), slot, "closure.capture.cell");
+    }
+
+    LLVMValueRef closureCaptureAddress(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        LLVMValueRef cell = closureCaptureCell(node, error);
+        if (cell == nullptr) return nullptr;
+        const auto [valueSize, valueAlignment] = captureValueLayout(node->typeKey, error);
+        if (valueSize == 0 || valueAlignment == 0) return nullptr;
+        const std::uint64_t valueOffset =
+            ((8U + valueAlignment - 1U) / valueAlignment) * valueAlignment;
+        return byteOffset(cell, valueOffset, "closure.capture.value.addr");
+    }
+
+    LLVMValueRef lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        LLVMValueRef address = closureCaptureAddress(node, error);
+        if (address == nullptr) return nullptr;
+        const std::size_t capture = static_cast<std::size_t>(node->immediate);
         LLVMTypeRef type = llvmType(currentMirFunction_->captureTypeKeys[capture], error);
         if (type == nullptr || type == LLVMVoidTypeInContext(context_))
-            return failValue(error, "Stage 43 closure capture has invalid LLVM type");
-        LLVMValueRef address = byteOffset(
-            closureEnvironment_, static_cast<std::uint64_t>(capture) * 8U, "closure.capture.addr");
+            return failValue(error, "E11 closure capture has invalid LLVM type");
         return LLVMBuildLoad2(builder_, type, address, "closure.capture.load");
+    }
+
+    LLVMValueRef lowerCaptureCellReference(const frontend::ProjectOopMirNode* node, std::string& error)
+    {
+        if (node->localOrdinal.has_value())
+        {
+            const auto found = localCaptureCells_.find(*node->localOrdinal);
+            if (found != localCaptureCells_.end()) return found->second;
+        }
+        else if (node->parameterOrdinal.has_value())
+        {
+            const auto found = parameterCaptureCells_.find(*node->parameterOrdinal);
+            if (found != parameterCaptureCells_.end()) return found->second;
+        }
+        else if (thisCaptureCell_ != nullptr)
+        {
+            return thisCaptureCell_;
+        }
+        return failValue(error, "E11 lambda creation cannot find the shared capture cell");
     }
 
     LLVMValueRef lowerLambdaCreate(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -6169,6 +6519,13 @@ private:
         const auto found = functions_.find(node->calleeName);
         if (found == functions_.end() || found->second.function == nullptr)
             return failValue(error, "Stage 43 lambda generated callable is unavailable: " + node->calleeName);
+
+        if (isExternCDelegateType(node->typeKey))
+        {
+            if (!node->children.empty())
+                return failValue(error, "E11 extern C lambda reached LLVM with captured state");
+            return callbackGuardThunk(node->calleeName, error);
+        }
 
         LLVMValueRef receiver = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
         if (!node->children.empty())
@@ -6185,6 +6542,7 @@ private:
             {
                 LLVMValueRef value = lowerExpression(node->children[index].get(), error);
                 if (value == nullptr) return nullptr;
+                retainCaptureCell(value);
                 LLVMValueRef address = byteOffset(
                     receiver, static_cast<std::uint64_t>(index) * 8U, "closure.capture.store.addr");
                 LLVMBuildStore(builder_, value, address);
@@ -6192,7 +6550,8 @@ private:
         }
         LLVMValueRef contextDestroy = node->children.empty()
             ? LLVMConstNull(LLVMPointerTypeInContext(context_, 0))
-            : deallocationFunction_;
+            : closureContextDestroy(node->calleeName, node->children.size(), error);
+        if (contextDestroy == nullptr && !node->children.empty()) return nullptr;
         return allocateDelegateCell(
             found->second.function, receiver, contextDestroy, "lambda.delegate", error);
     }
@@ -9397,6 +9756,15 @@ private:
     LLVMValueRef constructionThisOverride_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> parameterStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> localStorage_;
+    std::unordered_map<std::size_t, LLVMValueRef> parameterCaptureCells_;
+    std::unordered_map<std::size_t, LLVMValueRef> localCaptureCells_;
+    LLVMValueRef thisCaptureCell_ = nullptr;
+    std::vector<LLVMValueRef> ownedCaptureCells_;
+    LLVMBasicBlockRef captureCellExceptionalCleanupBlock_ = nullptr;
+    LLVMTypeRef captureCellFunctionType_ = nullptr;
+    LLVMValueRef captureCellRetainFunction_ = nullptr;
+    LLVMValueRef captureCellReleaseFunction_ = nullptr;
+    std::unordered_map<std::string, LLVMValueRef> closureContextDestroyFunctions_;
     std::unordered_map<std::size_t, LLVMBasicBlockRef> exceptionDispatchBlocks_;
     std::unordered_map<std::size_t, const frontend::ProjectOopMirNode*> cleanupRegions_;
     std::unordered_map<std::size_t, CachedCleanup> cleanupChainCache_;
@@ -9420,6 +9788,7 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
     {
         return nullptr;
     }
+
     if (!nameLookup.isBuilt() || !mirModel.isBuilt())
     {
         error_ = "Macro A LLVM lowering requires built project name lookup and physical OOP MIR";

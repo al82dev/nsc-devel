@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(
     NativeSharp
     VERSION 0.9.0
-    DESCRIPTION "NativeSharp stage 66 -- reproducible package and compatibility contract"
+    DESCRIPTION "NativeSharp stage 67 -- E11 shared lexical closures"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -706,6 +706,13 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_stage43_lambdas_closures_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_stage43_lambdas_closures_tests)
     add_test(NAME nsc.stage43.lambdas-closures COMMAND nsc_stage43_lambdas_closures_tests)
+
+    add_executable(nsc_stage67_e11_lambda_execution_tests tests/unit/Stage67E11LambdaExecutionTests.cpp)
+    target_link_libraries(nsc_stage67_e11_lambda_execution_tests PRIVATE
+        nsc_driver nsc_linker nsc_llvm nsc_frontend nsc_target nsc_runtime)
+    target_compile_features(nsc_stage67_e11_lambda_execution_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_stage67_e11_lambda_execution_tests)
+    add_test(NAME nsc.stage67.e11-lambda-execution COMMAND nsc_stage67_e11_lambda_execution_tests)
 
     add_executable(nsc_stage44_generics_monomorphization_tests tests/unit/Stage44GenericsMonomorphizationTests.cpp)
     target_link_libraries(nsc_stage44_generics_monomorphization_tests PRIVATE nsc_llvm nsc_frontend nsc_target nsc_runtime)

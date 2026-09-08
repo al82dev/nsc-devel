@@ -155,7 +155,7 @@ namespace Demo
     ProjectCompilation compilation;
     std::string error;
     const bool ok = compilation.compileProjectOopMir(directory / "Stage43Positive.nsproj", error);
-    tests.expect(ok && error.empty(), "Stage 43 lambda/closure fixture reaches OOP MIR");
+    tests.expect(ok && error.empty(), "Stage 43 lambda/closure fixture reaches OOP MIR: " + error);
     tests.expect(compilation.methodBodyModel() != nullptr, "Stage 43 exposes lambda Sema bindings");
     tests.expect(compilation.oopHirModel() != nullptr, "Stage 43 produces OOP HIR");
     tests.expect(compilation.oopMirModel() != nullptr, "Stage 43 produces OOP MIR");
@@ -225,7 +225,7 @@ namespace Demo
         captureSlots += function.captureTypeKeys.size();
     }
     tests.expect(syntheticMirFunctions == 10, "MIR preserves all synthetic lambda callables");
-    tests.expect(captureSlots == 6, "MIR records the six snapshot capture slots used by the fixture");
+    tests.expect(captureSlots == 6, "MIR records the six shared-cell capture references used by the fixture");
     tests.expect(countMirKind(compilation, ProjectOopMirNodeKind::LambdaCreate) == 10,
         "MIR preserves lambda construction separately from method-group delegate creation");
     tests.expect(countMirKind(compilation, ProjectOopMirNodeKind::ClosureCaptureLoad) >= 6,
@@ -245,7 +245,7 @@ namespace Demo
     tests.expect(llvm.find("ptr %closure.env") != std::string::npos,
         "capturing lambda callable receives closure environment as hidden first parameter");
     tests.expect(llvm.find("closure.env = call ptr @__nativesharp_alloc(i64 8)") != std::string::npos,
-        "single-capture closure allocates one 8-byte environment slot");
+        "single-capture closure stores one cell pointer in its environment");
     tests.expect(llvm.find("@__nativesharp_alloc(i64 16)") != std::string::npos,
         "multi-capture environments use explicit 16-byte allocations");
     tests.expect(llvm.find("@__nativesharp_alloc(i64 32)") != std::string::npos &&
@@ -253,7 +253,7 @@ namespace Demo
             llvm.find("lambda.delegate.cell.free.addr") != std::string::npos,
         "managed delegates use the frozen 32-byte code/context/destroy/free ABI cell");
     tests.expect(llvm.find("closure.capture.store.addr") != std::string::npos,
-        "captured values are snapshotted into closure storage at lambda creation");
+        "lambda creation stores shared-cell references in closure storage");
     tests.expect(llvm.find("closure.capture.load") != std::string::npos,
         "generated callable reloads captured values from closure storage");
     tests.expect(llvm.find("store ptr null, ptr %lambda.delegate.receiver.addr") != std::string::npos,
@@ -302,6 +302,7 @@ class Program
         return callback(40);
     }
 }
+
 )NS");
 
     ProjectCompilation compilation;
@@ -324,6 +325,84 @@ class Program
         "scope exit destroys the closure environment and cell through producer callbacks");
 }
 
+void testE11TypedAndNestedLambdas(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "E11TypedAndNested";
+    writeProject(directory, "E11TypedAndNested");
+    writeFile(directory / "Main.ns", R"NS(
+delegate int Transform(int value);
+delegate Transform Factory(int seed);
+delegate long LongTransform(long value);
+class Program
+{
+    public static int Use(Transform value) { return 1; }
+    public static int Use(LongTransform value) { return 2; }
+    public static int TypedOverload() { return Use((int value) => value + 1); }
+
+    public static int SharedMutation()
+    {
+        int state = 1;
+        Transform read = (int value) => state + value;
+        Transform write = (int value) => { state = value; return state; };
+        state = 4;
+        int before = read(1);
+        write(10);
+        return before + state + read(2);
+    }
+
+    public static Transform Make(int methodSeed)
+    {
+        Factory outer = (int outerSeed) =>
+        {
+            int localSeed = 3;
+            return (int value) => value + outerSeed + localSeed + methodSeed;
+        };
+        return outer(2);
+    }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(directory / "E11TypedAndNested.nsproj", error);
+    tests.expect(ok && error.empty(),
+        "E11 explicitly typed and nested lambdas reach OOP MIR");
+    if (!ok || compilation.methodBodyModel() == nullptr || compilation.nameLookup() == nullptr ||
+        compilation.oopMirModel() == nullptr) return;
+    const auto lambdas = compilation.methodBodyModel()->lambdaBindings();
+    tests.expect(lambdas.size() == 5,
+        "E11 keeps typed-overload, nested and sibling lexical lambda identities");
+    tests.expect(std::ranges::any_of(lambdas, [](const auto& lambda) {
+        return std::ranges::any_of(lambda.captures, [](const auto& capture) {
+            return capture.sourceKind ==
+                nativesharp::frontend::MethodLambdaCaptureSourceKind::ParentCapture;
+        });
+    }), "E11 inner lambda receives transitive captures through its parent environment");
+    tests.expect(std::ranges::count_if(lambdas, [](const auto& lambda) {
+        return std::ranges::any_of(lambda.captures, [](const auto& capture) {
+            return capture.name == "state";
+        });
+    }) == 2, "E11 sibling lambdas bind the same captured local identity");
+
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+    tests.expect(module != nullptr && lowerer.error().empty(),
+        "E11 nested-lambda MIR lowers to LLVM");
+    if (module != nullptr)
+    {
+        std::string verifyError;
+        tests.expect(module->verify(verifyError), "E11 nested-lambda LLVM verifies");
+        const std::string llvm = module->text();
+        tests.expect(llvm.find("__nativesharp_capture_cell_retain") != std::string::npos &&
+                llvm.find("__nativesharp_capture_cell_release") != std::string::npos,
+            "E11 emits reference-counted shared capture-cell lifetime");
+        tests.expect(llvm.find("eh.capture.cells") != std::string::npos,
+            "E11 emits a function-level exceptional cleanup for creator-owned cells");
+        tests.expect(llvm.find("closure.capture.value.addr") != std::string::npos,
+            "E11 reads and writes captured variables through their shared cell address");
+    }
+}
+
 void testNegativeContracts(TestContext& tests, const std::filesystem::path& root)
 {
     const auto expectMethodReject = [&](std::string_view name, std::string_view source, std::string_view expected) {
@@ -334,7 +413,15 @@ void testNegativeContracts(TestContext& tests, const std::filesystem::path& root
         std::string error;
         const bool ok = compilation.compileProjectMethodBodies(directory / (std::string(name) + ".nsproj"), error);
         tests.expect(!ok, std::string(name) + " is rejected");
-        tests.expect(hasDiagnosticText(compilation, expected), std::string(name) + " reports its Stage 43 contract");
+        std::string observed;
+        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+        {
+            if (!observed.empty()) observed += " | ";
+            observed += diagnostic.message();
+        }
+        tests.expect(
+            hasDiagnosticText(compilation, expected),
+            std::string(name) + " reports its lambda contract; observed: " + observed);
     };
 
     expectMethodReject("LambdaNeedsTarget", R"NS(
@@ -345,6 +432,16 @@ class H { public static void F() { int value = x => x; } }
 delegate int D(int x, int y);
 class H { public static void F() { D value = x => x; } }
 )NS", "lambda parameter count does not match target delegate signature");
+
+    expectMethodReject("ExplicitParameterTypeMismatch", R"NS(
+delegate int D(int x);
+class H { public static void F() { D value = (long x) => 1; } }
+)NS", "but target delegate requires");
+
+    expectMethodReject("ExplicitParameterModeMismatch", R"NS(
+delegate void D(ref int x);
+class H { public static void F() { D value = (in int x) => { int y = x; }; } }
+)NS", "pass mode does not match target delegate");
 
     expectMethodReject("DuplicateParameters", R"NS(
 delegate int D(int x, int y);
@@ -360,16 +457,6 @@ class H { public static void F() { D value = x => x + 1; } }
 delegate void D(int x);
 class H { public static void F() { D value = x => x + 1; } }
 )NS", "void delegate lambda expression body must have type void");
-
-    expectMethodReject("CapturedLocalIsSnapshot", R"NS(
-delegate int D(int x);
-class H { public static D F() { int seed = 1; D value = x => { seed = x; return seed; }; return value; } }
-)NS", "left side of assignment is not assignable");
-
-    expectMethodReject("NestedLambdaDeferred", R"NS(
-delegate int D(int x);
-class H { public static D F() { D outer = x => { D inner = y => y; return x; }; return outer; } }
-)NS", "nested lambdas are deferred beyond Stage 43");
 
     expectMethodReject("AmbiguousCallTarget", R"NS(
 delegate int A(int x);
@@ -394,10 +481,20 @@ class H
 )NS");
     ProjectCompilation compilation;
     std::string error;
-    const bool ok = compilation.compileProjectOopHir(directory / "LargeStructCapture.nsproj", error);
-    tests.expect(!ok, "closure capture of a struct larger than one 8-byte slot is rejected");
-    tests.expect(error.find("struct values only when their native size is at most 8 bytes") != std::string::npos,
-        "large struct capture reports the explicit Stage 43 environment ABI boundary");
+    const bool ok = compilation.compileProjectOopMir(directory / "LargeStructCapture.nsproj", error);
+    tests.expect(ok && error.empty(), "E11 captures structs larger than one machine word");
+    if (ok && compilation.nameLookup() != nullptr && compilation.oopMirModel() != nullptr)
+    {
+        nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+        auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+        tests.expect(module != nullptr && lowerer.error().empty(),
+            "E11 large-struct capture lowers to LLVM");
+        if (module != nullptr)
+        {
+            std::string verifyError;
+            tests.expect(module->verify(verifyError), "E11 large-struct capture LLVM verifies");
+        }
+    }
 }
 }
 
@@ -412,6 +509,7 @@ int main()
     testLexicalContract(tests);
     testPositivePipeline(tests, root);
     testOwnedDelegateLifetime(tests, root);
+    testE11TypedAndNestedLambdas(tests, root);
     testNegativeContracts(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);

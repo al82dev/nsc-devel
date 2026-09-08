@@ -5265,24 +5265,29 @@ bool Parser::looksLikeLambdaExpression() const noexcept
     }
     if (!at(TokenKind::LeftParen)) return false;
 
+    // E11: the old recognizer only admitted `(x, y) => ...`; consequently an explicitly typed
+    // C#-shaped lambda such as `(int x, int y) => ...` was parsed as a parenthesized expression
+    // and failed before semantic analysis could compare it with its delegate target.  `=>` is
+    // not an operator in an ordinary parenthesized expression, so the unambiguous lexical rule
+    // is simply: the matching ')' is followed by `=>`.  Track nesting so generic/array type
+    // syntax inside the parameter list does not terminate the probe early.
     std::size_t cursor = index_ + 1;
-    if (cursor >= tokens_.size()) return false;
-    if (tokens_[cursor].kind() == TokenKind::RightParen)
-    {
-        return cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == TokenKind::FatArrow;
-    }
+    std::size_t parenthesisDepth = 1;
+    std::size_t bracketDepth = 0;
     while (cursor < tokens_.size())
     {
-        if (tokens_[cursor].kind() != TokenKind::Identifier) return false;
-        ++cursor;
-        if (cursor >= tokens_.size()) return false;
-        if (tokens_[cursor].kind() == TokenKind::Comma)
+        const TokenKind kind = tokens_[cursor].kind();
+        if (kind == TokenKind::LeftParen) ++parenthesisDepth;
+        else if (kind == TokenKind::RightParen)
         {
-            ++cursor;
-            continue;
+            if (--parenthesisDepth == 0)
+                return cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == TokenKind::FatArrow;
         }
-        if (tokens_[cursor].kind() != TokenKind::RightParen) return false;
-        return cursor + 1 < tokens_.size() && tokens_[cursor + 1].kind() == TokenKind::FatArrow;
+        else if (kind == TokenKind::LeftBracket) ++bracketDepth;
+        else if (kind == TokenKind::RightBracket && bracketDepth != 0) --bracketDepth;
+        else if (kind == TokenKind::Semicolon && parenthesisDepth == 1 && bracketDepth == 0)
+            return false;
+        ++cursor;
     }
     return false;
 }
@@ -5305,11 +5310,23 @@ ast::AstNode* Parser::parseLambdaExpression()
         {
             while (true)
             {
-                const lexer::Token& parameter = current();
-                expect(TokenKind::Identifier, "lambda parameter name");
-                auto* node = arena_.make<ast::AstNode>(ast::AstNodeKind::ParameterDeclaration, parameter.range());
-                node->setText(std::string(parameter.lexeme()));
-                parameters.push_back(node);
+                // `(x, y)` keeps contextual parameter types.  Every other spelling goes through
+                // the ordinary parameter parser, making `(int x, ref int y)` use the same type,
+                // modifier and pass-mode AST representation as a method/delegate declaration.
+                if (at(TokenKind::Identifier) &&
+                    (peek().kind() == TokenKind::Comma || peek().kind() == TokenKind::RightParen))
+                {
+                    const lexer::Token& parameter = consume();
+                    auto* node = arena_.make<ast::AstNode>(
+                        ast::AstNodeKind::ParameterDeclaration, parameter.range());
+                    node->setText(std::string(parameter.lexeme()));
+                    parameters.push_back(node);
+                }
+                else
+                {
+                    ast::AstNode* parameter = parseParameter();
+                    if (parameter != nullptr) parameters.push_back(parameter);
+                }
                 if (!consumeIf(TokenKind::Comma)) break;
             }
         }

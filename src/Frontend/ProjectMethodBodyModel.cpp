@@ -5770,9 +5770,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                     result.ownershipSourceParameterOrdinal = borrow.sourceOwnerParameterOrdinal;
                     result.borrowedLocalOrdinal = scopeName->semanticOrdinal;
                 }
-                const bool capturedOuterLocal = currentLambdaOrdinal_.has_value() &&
-                    (!local.lambdaOrdinal.has_value() || *local.lambdaOrdinal != *currentLambdaOrdinal_);
-                result.assignable = !local.isConst && !capturedOuterLocal &&
+                // E11 heap-homes an outer local captured by a lambda in a shared cell.  It is an
+                // lvalue on both sides of the closure boundary, exactly like the source local;
+                // const and borrowed locals keep their existing restrictions.
+                result.assignable = !local.isConst &&
                     local.ownership != sema::OwnershipKind::Borrowed;
                 nameBindings_.push_back(MethodNameBinding{
                     MethodNameBindingKind::Local,
@@ -5835,8 +5836,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             // `in` is read-only by definition: it exists to avoid a copy, not to give the callee
             // a channel back to the caller. `ref`/`out` are assignable, and for `out` that is not
             // a permission but an obligation -- see the definite-assignment check on returns.
-            result.assignable = !currentLambdaOrdinal_.has_value() &&
-                parameter.passKind != ParameterPassKind::In;
+            // E11 captured parameters are shared cells too.  `in` remains read-only; value/ref/
+            // out parameters preserve the same assignability inside a closure as in the method.
+            result.assignable = parameter.passKind != ParameterPassKind::In;
             nameBindings_.push_back(MethodNameBinding{
                 MethodNameBindingKind::Parameter,
                 expression,
@@ -6967,7 +6969,51 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     const std::size_t parameter = candidate.second.explicitParameterOrdinals[index];
                     return candidate.first->parameters[parameter].typeKey == firstType;
                 });
-                if (agreed && isDelegateTypeKey(firstType)) lambdaTargetTypes[index] = firstType;
+                if (agreed && isDelegateTypeKey(firstType))
+                {
+                    lambdaTargetTypes[index] = firstType;
+                    continue;
+                }
+
+                // E11: explicitly typed lambda parameters participate in overload filtering.
+                // This deliberately does not guess from an untyped body: when two delegate
+                // targets remain possible the call is still ambiguous, exactly as in C#.
+                std::vector<std::string> compatibleDelegateTypes;
+                const ast::AstNode* lambda = expression->children()[index];
+                for (const auto& candidate : arityMatches)
+                {
+                    const std::size_t parameter = candidate.second.explicitParameterOrdinals[index];
+                    const std::string& candidateType = candidate.first->parameters[parameter].typeKey;
+                    std::string ignoredReturn;
+                    std::vector<std::string> candidateParameterTypes;
+                    std::size_t ignoredOrdinal = 0;
+                    if (!delegateSignature(
+                            candidateType, ignoredReturn, candidateParameterTypes, ignoredOrdinal) ||
+                        candidateParameterTypes.size() != lambda->children().size())
+                        continue;
+
+                    bool matches = true;
+                    bool hasExplicitType = false;
+                    for (std::size_t lambdaParameter = 0;
+                         lambdaParameter < lambda->children().size(); ++lambdaParameter)
+                    {
+                        const ast::AstNode* parameterSyntax = lambda->children()[lambdaParameter];
+                        if (parameterSyntax == nullptr || parameterSyntax->typeSyntax() == nullptr) continue;
+                        hasExplicitType = true;
+                        const std::string explicitType = memberModel_->canonicalTypeKey(
+                            parameterSyntax->typeSyntax(), *nameLookup_);
+                        if (explicitType != candidateParameterTypes[lambdaParameter])
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if (matches && hasExplicitType && std::ranges::find(
+                            compatibleDelegateTypes, candidateType) == compatibleDelegateTypes.end())
+                        compatibleDelegateTypes.push_back(candidateType);
+                }
+                if (compatibleDelegateTypes.size() == 1)
+                    lambdaTargetTypes[index] = compatibleDelegateTypes.front();
             }
         }
     }
@@ -11392,18 +11438,75 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     bool safe = true;
-    const auto addCapture = [&](MethodLambdaCapture capture) -> std::size_t
+    const auto addCaptureTo = [&](MethodLambdaBinding& target, MethodLambdaCapture capture) -> std::size_t
     {
         const std::optional<std::size_t> existing = lambdaCaptureOrdinal(
-            binding, capture.kind, capture.localOrdinal, capture.parameterOrdinal);
+            target, capture.kind, capture.localOrdinal, capture.parameterOrdinal);
         if (existing.has_value()) return *existing;
-        const std::size_t ordinal = binding.captures.size();
-        binding.captures.push_back(std::move(capture));
+        const std::size_t ordinal = target.captures.size();
+        target.captures.push_back(std::move(capture));
         return ordinal;
+    };
+    const auto routeThroughParents = [&](MethodLambdaCapture capture) -> MethodLambdaCapture
+    {
+        switch (capture.kind)
+        {
+            case MethodLambdaCaptureKind::Local:
+                capture.sourceKind = MethodLambdaCaptureSourceKind::OriginalLocal;
+                capture.sourceOrdinal = capture.localOrdinal;
+                break;
+            case MethodLambdaCaptureKind::Parameter:
+                capture.sourceKind = MethodLambdaCaptureSourceKind::OriginalParameter;
+                capture.sourceOrdinal = capture.parameterOrdinal;
+                break;
+            case MethodLambdaCaptureKind::ThisReference:
+                capture.sourceKind = MethodLambdaCaptureSourceKind::OriginalThis;
+                capture.sourceOrdinal.reset();
+                break;
+        }
+
+        // activeLambdaBindings_ contains the lexical ancestors after the current lambda has been
+        // popped.  Walk from the outermost to the immediate parent.  Every intermediate lambda
+        // either owns the local/parameter itself or receives a transitive capture slot, producing
+        // a real closure chain for arbitrary nesting depth.
+        for (MethodLambdaBinding* ancestor : activeLambdaBindings_)
+        {
+            if (ancestor == nullptr) continue;
+
+            bool ownedByAncestor = false;
+            if (capture.kind == MethodLambdaCaptureKind::Local && capture.localOrdinal.has_value() &&
+                *capture.localOrdinal < locals_.size())
+            {
+                const MethodLocalSymbol& local = locals_[*capture.localOrdinal];
+                ownedByAncestor = local.lambdaOrdinal == ancestor->lambdaOrdinal;
+                if (ownedByAncestor)
+                {
+                    if (local.lambdaParameterOrdinal.has_value())
+                    {
+                        capture.sourceKind = MethodLambdaCaptureSourceKind::ParentParameter;
+                        capture.sourceOrdinal = local.lambdaParameterOrdinal;
+                    }
+                    else
+                    {
+                        capture.sourceKind = MethodLambdaCaptureSourceKind::ParentLocal;
+                        capture.sourceOrdinal = capture.localOrdinal;
+                    }
+                }
+            }
+            if (ownedByAncestor) continue;
+
+            const std::size_t parentCapture = addCaptureTo(*ancestor, capture);
+            capture.sourceKind = MethodLambdaCaptureSourceKind::ParentCapture;
+            capture.sourceOrdinal = parentCapture;
+        }
+        return capture;
     };
 
     for (std::size_t index = nameBindingBegin; index < nameBindings_.size(); ++index)
     {
+        const auto owner = lambdaByNameBindingOrdinal_.find(index);
+        if (owner == lambdaByNameBindingOrdinal_.end() || owner->second != binding.lambdaOrdinal)
+            continue;
         const MethodNameBinding& name = nameBindings_[index];
         if (name.methodMemberOrdinal != methodMemberOrdinal || name.syntax == nullptr) continue;
 
@@ -11416,7 +11519,10 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                 if (local.lambdaParameterOrdinal.has_value())
                 {
                     lambdaValueBindings_.push_back(MethodLambdaValueBinding{
-                        name.syntax, binding.lambdaOrdinal, true, *local.lambdaParameterOrdinal, local.typeKey});
+                        name.syntax, binding.lambdaOrdinal, true,
+                        *local.lambdaParameterOrdinal < binding.parameterByReference.size() &&
+                            binding.parameterByReference[*local.lambdaParameterOrdinal],
+                        *local.lambdaParameterOrdinal, local.typeKey});
                 }
                 continue;
             }
@@ -11447,10 +11553,14 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                             "' cannot be captured by a lambda because the delegate may outlive its source owner");
                 safe = false;
             }
-            const std::size_t capture = addCapture(MethodLambdaCapture{
-                MethodLambdaCaptureKind::Local, local.name, local.typeKey, *name.localOrdinal, std::nullopt});
+            MethodLambdaCapture captureDescription{
+                MethodLambdaCaptureKind::Local, local.name, local.typeKey,
+                *name.localOrdinal, std::nullopt,
+                MethodLambdaCaptureSourceKind::OriginalLocal, *name.localOrdinal};
+            captureDescription = routeThroughParents(std::move(captureDescription));
+            const std::size_t capture = addCaptureTo(binding, std::move(captureDescription));
             lambdaValueBindings_.push_back(MethodLambdaValueBinding{
-                name.syntax, binding.lambdaOrdinal, false, capture, local.typeKey});
+                name.syntax, binding.lambdaOrdinal, false, false, capture, local.typeKey});
             continue;
         }
 
@@ -11486,11 +11596,14 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                             "' cannot be captured by a lambda because the delegate may outlive the owner");
                 safe = false;
             }
-            const std::size_t capture = addCapture(MethodLambdaCapture{
+            MethodLambdaCapture captureDescription{
                 MethodLambdaCaptureKind::Parameter, parameter.name, parameter.typeKey,
-                std::nullopt, *name.parameterOrdinal});
+                std::nullopt, *name.parameterOrdinal,
+                MethodLambdaCaptureSourceKind::OriginalParameter, *name.parameterOrdinal};
+            captureDescription = routeThroughParents(std::move(captureDescription));
+            const std::size_t capture = addCaptureTo(binding, std::move(captureDescription));
             lambdaValueBindings_.push_back(MethodLambdaValueBinding{
-                name.syntax, binding.lambdaOrdinal, false, capture, parameter.typeKey});
+                name.syntax, binding.lambdaOrdinal, false, false, capture, parameter.typeKey});
             continue;
         }
 
@@ -11508,12 +11621,16 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
         if (needsThis)
         {
             const std::string typeKey = implicitThisTypeKey(methodMemberOrdinal);
-            const std::size_t capture = addCapture(MethodLambdaCapture{
-                MethodLambdaCaptureKind::ThisReference, "this", typeKey, std::nullopt, std::nullopt});
+            MethodLambdaCapture captureDescription{
+                MethodLambdaCaptureKind::ThisReference, "this", typeKey,
+                std::nullopt, std::nullopt,
+                MethodLambdaCaptureSourceKind::OriginalThis, std::nullopt};
+            captureDescription = routeThroughParents(std::move(captureDescription));
+            const std::size_t capture = addCaptureTo(binding, std::move(captureDescription));
             if (name.kind == MethodNameBindingKind::ThisReference || name.kind == MethodNameBindingKind::BaseReference)
             {
                 lambdaValueBindings_.push_back(MethodLambdaValueBinding{
-                    name.syntax, binding.lambdaOrdinal, false, capture, typeKey});
+                    name.syntax, binding.lambdaOrdinal, false, false, capture, typeKey});
             }
         }
     }
@@ -11528,34 +11645,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     diagnostics::DiagnosticEngine& diagnostics)
 {
     ExpressionResult result;
-    // Interop Foundation: a lambda always closes over an environment cell, and an extern C
-    // delegate is a bare C function pointer with no environment channel -- the two shapes are
-    // incompatible by construction. Bind a named static method instead.
-    {
-        const std::optional<std::size_t> delegateType = delegateTypeOrdinalForTypeKey(delegateTypeKey);
-        if (delegateType.has_value() && nameLookup_ != nullptr &&
-            *delegateType < nameLookup_->namedTypes().size() &&
-            nameLookup_->namedTypes()[*delegateType].syntax != nullptr &&
-            nameLookup_->namedTypes()[*delegateType].syntax->hasModifier(lexer::TokenKind::KwExtern))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                syntax != nullptr ? syntax->range() : SourceRange{},
-                "extern C delegate cannot bind a lambda; a C function pointer has no closure environment -- use a static method");
-            return result;
-        }
-    }
     if (syntax == nullptr || syntax->kind() != ast::AstNodeKind::LambdaExpression)
         return result;
-    if (currentLambdaOrdinal_.has_value())
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidConversion, diagnostics::DiagnosticSeverity::Error,
-            syntax->range(), "nested lambdas are deferred beyond Stage 43");
-        return result;
-    }
-
     std::string returnType;
     std::vector<std::string> parameterTypes;
     std::size_t delegateOrdinal = 0;
@@ -11576,7 +11667,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
 
     MethodLambdaBinding binding;
     binding.syntax = syntax;
-    binding.lambdaOrdinal = lambdaBindings_.size();
+    binding.lambdaOrdinal = nextLambdaOrdinal_++;
+    binding.parentLambdaOrdinal = currentLambdaOrdinal_;
     binding.ownerMemberOrdinal = methodMemberOrdinal;
     binding.scopeOrdinal = scopeOrdinal;
     binding.delegateTypeKey = std::string(delegateTypeKey);
@@ -11586,6 +11678,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     binding.blockBody = syntax->flag();
     binding.generatedName = "__nsc_lambda_" + std::to_string(methodMemberOrdinal) + "_" +
         std::to_string(binding.lambdaOrdinal);
+
+    std::vector<const ast::AstNode*> delegateParameters;
+    if (nameLookup_ != nullptr && delegateOrdinal < nameLookup_->namedTypes().size())
+    {
+        const ast::AstNode* delegateSyntax = nameLookup_->namedTypes()[delegateOrdinal].syntax;
+        if (delegateSyntax != nullptr)
+        {
+            for (const ast::AstNode* child : delegateSyntax->children())
+            {
+                if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration)
+                    delegateParameters.push_back(child);
+            }
+        }
+    }
 
     const std::size_t lambdaScope = createScope(MethodScopeKind::Block, methodMemberOrdinal, scopeOrdinal);
     std::unordered_set<std::string> parameterNames;
@@ -11601,7 +11707,53 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
                 "duplicate lambda parameter '" + name + "'");
             return result;
         }
+
+        // E11 typed lambdas.  An omitted type is contextual; a written type is a contract and
+        // must match the target delegate exactly.  ref/out/in are represented as pointer types
+        // by the parser, but their spelling still matters: accepting `ref` for an `out` target
+        // would make definite-assignment and caller guarantees disagree even though both have
+        // the same machine representation.
+        const ast::AstNode* delegateParameter =
+            index < delegateParameters.size() ? delegateParameters[index] : nullptr;
+        const std::string lambdaPass = parameterSyntax != nullptr ? parameterSyntax->auxiliaryText() : std::string{};
+        const std::string delegatePass = delegateParameter != nullptr
+            ? delegateParameter->auxiliaryText() : std::string{};
+        if (!lambdaPass.empty() || !delegatePass.empty())
+        {
+            if (lambdaPass != delegatePass)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameterSyntax != nullptr ? parameterSyntax->range() : syntax->range(),
+                    "lambda parameter '" + name + "' pass mode does not match target delegate");
+                return result;
+            }
+        }
+        if (parameterSyntax != nullptr && parameterSyntax->typeSyntax() != nullptr)
+        {
+            const std::string explicitType =
+                memberModel_->canonicalTypeKey(parameterSyntax->typeSyntax(), *nameLookup_);
+            if (explicitType != parameterTypes[index])
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    parameterSyntax->range(),
+                    "lambda parameter '" + name + "' has type '" + explicitType +
+                        "' but target delegate requires '" + parameterTypes[index] + "'");
+                return result;
+            }
+        }
+
+        const bool byReference = !delegatePass.empty();
+        const std::string valueType = byReference && !parameterTypes[index].empty() &&
+                parameterTypes[index].back() == '*'
+            ? parameterTypes[index].substr(0, parameterTypes[index].size() - 1)
+            : parameterTypes[index];
         binding.parameterNames.push_back(name);
+        binding.parameterValueTypeKeys.push_back(valueType);
+        binding.parameterByReference.push_back(byReference);
         MethodLocalSymbol local;
         local.methodMemberOrdinal = methodMemberOrdinal;
         local.scopeOrdinal = lambdaScope;
@@ -11611,7 +11763,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
         local.range = parameterSyntax != nullptr ? parameterSyntax->range() : syntax->range();
         local.syntax = parameterSyntax;
         local.name = name;
-        local.typeKey = parameterTypes[index];
+        local.typeKey = valueType;
         local.lambdaOrdinal = binding.lambdaOrdinal;
         local.lambdaParameterOrdinal = index;
         const std::size_t localOrdinal = locals_.size();
@@ -11630,6 +11782,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     const std::string previousReturn = currentLambdaReturnTypeKey_;
     currentLambdaOrdinal_ = binding.lambdaOrdinal;
     currentLambdaReturnTypeKey_ = returnType;
+    activeLambdaBindings_.push_back(&binding);
     const std::size_t previousCatchDepth = currentCatchDepth_;
     currentCatchDepth_ = 0;
 
@@ -11675,9 +11828,27 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     currentLambdaOrdinal_ = previousLambda;
     currentLambdaReturnTypeKey_ = previousReturn;
     currentCatchDepth_ = previousCatchDepth;
+    activeLambdaBindings_.pop_back();
     restoreOwnershipFlow(previousOwnershipFlow);
+    // Nested lambda bodies are analyzed while their parent body is being walked.  Claim only the
+    // bindings not already claimed by a child, so the parent's capture scan cannot accidentally
+    // treat names used solely inside a nested lambda as direct parent uses.
+    for (std::size_t index = nameBindingBegin; index < nameBindings_.size(); ++index)
+    {
+        if (!lambdaByNameBindingOrdinal_.contains(index))
+            lambdaByNameBindingOrdinal_[index] = binding.lambdaOrdinal;
+    }
     if (!collectLambdaCaptures(binding, nameBindingBegin, methodMemberOrdinal, diagnostics))
     {
+        bodyValid = false;
+    }
+    if (isExternCDelegateTypeKey(delegateTypeKey) && !binding.captures.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "extern C lambda must not capture state; a C function pointer has no environment channel");
         bodyValid = false;
     }
     lambdaBindings_.push_back(std::move(binding));
@@ -11686,7 +11857,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     result.typeKey = std::string(delegateTypeKey);
     result.valid = true;
     result.assignable = false;
-    result.ownershipFreshOwner = true;
+    result.ownershipFreshOwner = !isExternCDelegateTypeKey(delegateTypeKey);
     recordExpressionType(syntax, methodMemberOrdinal, scopeOrdinal, result);
     return result;
 }

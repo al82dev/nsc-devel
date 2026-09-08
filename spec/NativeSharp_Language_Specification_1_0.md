@@ -2,7 +2,7 @@
 
 **Estado:** contrato normativo candidato para 1.0  
 **Lenguaje implementado al redactarlo:** NativeSharp 0.1  
-**Compilador de desarrollo:** `nsc 0.9.0`, Stage 60  
+**Compilador de desarrollo:** `nsc 0.9.0`, Stage 67
 **Target contractual:** `x86_64-pc-windows-msvc`
 
 ## 1. Cómo leer esta especificación
@@ -159,6 +159,28 @@ Un delegate contiene una firma, un destino invocable y, cuando corresponde, cont
 incluye tipos, modos de parámetro, ownership y calling convention. Una lambda sin captura puede
 materializarse sin contexto; una lambda con captura posee o presta su entorno conforme al análisis
 de cada captura.
+
+Una lambda es *target-typed*: debe existir un delegate destino. Sus parámetros pueden omitir el
+tipo, en cuyo caso lo reciben de ese delegate, o escribirlo expresamente. Un tipo o modo
+`ref`/`out`/`in` escrito debe coincidir exactamente con la firma destino. El tipo explícito participa
+en la selección de overload; una lambda sin tipos no resuelve por sí sola dos delegates igualmente
+aplicables.
+
+Las variables ordinarias capturadas se representan mediante celdas compartidas. El método creador,
+las lambdas hermanas y las lambdas anidadas observan el mismo slot: una escritura realizada por
+cualquiera es visible para las demás. Una lambda anidada transporta a través de su padre las celdas
+de parámetros, locales o capturas transitivas que necesita. La celda conserva el tamaño y la
+alineación reales del valor, incluidos structs grandes y fixed arrays; no existe un límite de una
+palabra de máquina.
+
+El entorno posee referencias contadas a esas celdas. Destruir el delegate libera su referencia y
+la activación creadora libera la suya tanto al retornar normalmente como al salir por excepción.
+Una captura no convierte silenciosamente ownership: owners `raii`, valores `borrowed`, vistas y
+parámetros `owned` no se pueden capturar mientras no exista una transferencia explícita válida.
+
+Un `extern C delegate` no tiene canal de entorno. Por ello admite una lambda sin captura, que se
+materializa como function pointer protegido por la frontera de excepciones C, y rechaza de forma
+diagnosticada cualquier lambda con captura.
 
 Un evento controla la lista de invocación mediante sus operaciones admitidas; no cambia el lifetime
 de un delegate de manera implícita. Copiar, almacenar o transferir un delegate debe respetar la

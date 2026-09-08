@@ -38,6 +38,7 @@ A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage40_struct_value_abi_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage41_arrays_strings_core_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage42_delegates_events_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage43_lambdas_closures_tests.dir
+A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage67_e11_lambda_execution_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage44_generics_monomorphization_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage45_exceptions_syntax_tests.dir
 A:/nsc-devel/build-test-nslink/CMakeFiles/nsc_stage45_exception_sema_tests.dir

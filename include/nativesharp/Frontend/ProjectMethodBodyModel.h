@@ -938,6 +938,16 @@ enum class MethodLambdaCaptureKind
     ThisReference
 };
 
+enum class MethodLambdaCaptureSourceKind
+{
+    OriginalLocal,
+    OriginalParameter,
+    OriginalThis,
+    ParentLocal,
+    ParentParameter,
+    ParentCapture
+};
+
 struct MethodLambdaCapture final
 {
     MethodLambdaCaptureKind kind = MethodLambdaCaptureKind::Local;
@@ -945,6 +955,8 @@ struct MethodLambdaCapture final
     std::string typeKey;
     std::optional<std::size_t> localOrdinal;
     std::optional<std::size_t> parameterOrdinal;
+    MethodLambdaCaptureSourceKind sourceKind = MethodLambdaCaptureSourceKind::OriginalLocal;
+    std::optional<std::size_t> sourceOrdinal;
 };
 
 struct MethodLambdaValueBinding final
@@ -952,6 +964,9 @@ struct MethodLambdaValueBinding final
     const ast::AstNode* syntax = nullptr;
     std::size_t lambdaOrdinal = 0;
     bool lambdaParameter = false;
+    // E11: ref/out/in lambda parameters use the delegate's physical pointer parameter but expose
+    // its pointee in the body, exactly like an ordinary method parameter.
+    bool lambdaParameterByReference = false;
     std::size_t valueOrdinal = 0;
     std::string typeKey;
 };
@@ -960,6 +975,7 @@ struct MethodLambdaBinding final
 {
     const ast::AstNode* syntax = nullptr;
     std::size_t lambdaOrdinal = 0;
+    std::optional<std::size_t> parentLambdaOrdinal;
     std::size_t ownerMemberOrdinal = 0;
     std::size_t scopeOrdinal = 0;
     std::string delegateTypeKey;
@@ -967,6 +983,8 @@ struct MethodLambdaBinding final
     std::string returnTypeKey;
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
+    std::vector<std::string> parameterValueTypeKeys;
+    std::vector<bool> parameterByReference;
     std::vector<MethodLambdaCapture> captures;
     bool blockBody = false;
     std::string generatedName;
@@ -1718,6 +1736,9 @@ private:
     std::vector<FinallyContext> finallyStack_;
     std::vector<MethodLambdaBinding> lambdaBindings_;
     std::vector<MethodLambdaValueBinding> lambdaValueBindings_;
+    std::vector<MethodLambdaBinding*> activeLambdaBindings_;
+    std::unordered_map<std::size_t, std::size_t> lambdaByNameBindingOrdinal_;
+    std::size_t nextLambdaOrdinal_ = 0;
     std::vector<MethodDelegateBinding> delegateBindings_;
     std::optional<std::size_t> currentLambdaOrdinal_;
     std::string currentLambdaReturnTypeKey_;

@@ -577,6 +577,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::DelegateCreate: return "delegate-create";
         case ProjectOopMirNodeKind::LambdaCreate: return "lambda-create";
         case ProjectOopMirNodeKind::ClosureCaptureLoad: return "closure-capture-load";
+        case ProjectOopMirNodeKind::ClosureCaptureAddress: return "closure-capture-address";
+        case ProjectOopMirNodeKind::CaptureCellReference: return "capture-cell-reference";
+        case ProjectOopMirNodeKind::ClosureCaptureCellReference: return "closure-capture-cell-reference";
         case ProjectOopMirNodeKind::DelegateInvoke: return "delegate-invoke";
         case ProjectOopMirNodeKind::EventAdd: return "event-add";
         case ProjectOopMirNodeKind::EventRemove: return "event-remove";
@@ -849,6 +852,12 @@ bool ProjectOopMirModel::build(
         function.lambdaOrdinal = source.lambdaOrdinal;
         function.hasClosureEnvironment = source.hasClosureEnvironment;
         function.captureTypeKeys = source.captureTypeKeys;
+        function.capturedLocalOrdinals = source.capturedLocalOrdinals;
+        function.capturedParameterOrdinals = source.capturedParameterOrdinals;
+        function.capturesThisCell = source.capturesThisCell;
+        function.capturedLocalOrdinals = source.capturedLocalOrdinals;
+        function.capturedParameterOrdinals = source.capturedParameterOrdinals;
+        function.capturesThisCell = source.capturesThisCell;
         function.genericSpecializationKey = source.genericSpecializationKey;
         function.mangledName = source.mangledName;
         function.returnTypeKey = source.returnTypeKey;
@@ -1528,6 +1537,17 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::ClosureCaptureValue:
             result->kind = ProjectOopMirNodeKind::ClosureCaptureLoad;
+            result->immediate = node->integerValue;
+            break;
+        case ProjectOopHirNodeKind::ClosureCaptureAddress:
+            result->kind = ProjectOopMirNodeKind::ClosureCaptureAddress;
+            result->immediate = node->integerValue;
+            break;
+        case ProjectOopHirNodeKind::CaptureCellReference:
+            result->kind = ProjectOopMirNodeKind::CaptureCellReference;
+            break;
+        case ProjectOopHirNodeKind::ClosureCaptureCellReference:
+            result->kind = ProjectOopMirNodeKind::ClosureCaptureCellReference;
             result->immediate = node->integerValue;
             break;
         case ProjectOopHirNodeKind::DelegateCreate:

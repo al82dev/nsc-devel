@@ -594,6 +594,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::DelegateCreate: return "delegate-create";
         case ProjectOopHirNodeKind::LambdaCreate: return "lambda-create";
         case ProjectOopHirNodeKind::ClosureCaptureValue: return "closure-capture-value";
+        case ProjectOopHirNodeKind::ClosureCaptureAddress: return "closure-capture-address";
+        case ProjectOopHirNodeKind::CaptureCellReference: return "capture-cell-reference";
+        case ProjectOopHirNodeKind::ClosureCaptureCellReference: return "closure-capture-cell-reference";
         case ProjectOopHirNodeKind::DelegateInvoke: return "delegate-invoke";
         case ProjectOopHirNodeKind::EventAdd: return "event-add";
         case ProjectOopHirNodeKind::EventRemove: return "event-remove";
@@ -1152,6 +1155,62 @@ bool ProjectOopHirModel::build(
         currentLambda_ = nullptr;
         if (function.body == nullptr || !error.empty()) return false;
         functions_.push_back(std::move(function));
+    }
+
+    // E11 closure cells belong to the callable that creates the lambda.  Mark the creator's
+    // locals/parameters here, after regular and synthetic functions both exist, so LLVM can
+    // heap-home those variables once and every delegate can retain the same cell.
+    const auto appendUnique = [](std::vector<std::size_t>& values, std::size_t value)
+    {
+        if (std::ranges::find(values, value) == values.end()) values.push_back(value);
+    };
+    for (const MethodLambdaBinding& lambda : methodBodyModel.lambdaBindings())
+    {
+        if (lambda.captures.empty()) continue;
+        ProjectOopHirFunction* creator = nullptr;
+        if (lambda.parentLambdaOrdinal.has_value())
+        {
+            for (ProjectOopHirFunction& candidate : functions_)
+            {
+                if (candidate.isLambda && candidate.lambdaOrdinal == lambda.parentLambdaOrdinal)
+                {
+                    creator = &candidate;
+                    break;
+                }
+            }
+        }
+        else if (lambda.ownerMemberOrdinal < functionByMember_.size() &&
+                 functionByMember_[lambda.ownerMemberOrdinal].has_value())
+        {
+            creator = &functions_[*functionByMember_[lambda.ownerMemberOrdinal]];
+        }
+        if (creator == nullptr)
+        {
+            error = "E11 lambda creator function is unavailable";
+            return false;
+        }
+
+        for (const MethodLambdaCapture& capture : lambda.captures)
+        {
+            switch (capture.sourceKind)
+            {
+                case MethodLambdaCaptureSourceKind::OriginalLocal:
+                case MethodLambdaCaptureSourceKind::ParentLocal:
+                    if (capture.sourceOrdinal.has_value())
+                        appendUnique(creator->capturedLocalOrdinals, *capture.sourceOrdinal);
+                    break;
+                case MethodLambdaCaptureSourceKind::OriginalParameter:
+                case MethodLambdaCaptureSourceKind::ParentParameter:
+                    if (capture.sourceOrdinal.has_value())
+                        appendUnique(creator->capturedParameterOrdinals, *capture.sourceOrdinal);
+                    break;
+                case MethodLambdaCaptureSourceKind::OriginalThis:
+                    creator->capturesThisCell = true;
+                    break;
+                case MethodLambdaCaptureSourceKind::ParentCapture:
+                    break;
+            }
+        }
     }
 
     // Keep a canonical lowered form for every explicit field initializer.  Static initializers are
@@ -1894,39 +1953,38 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         node->integerValue = stage43Lambda->lambdaOrdinal;
         for (const MethodLambdaCapture& capture : stage43Lambda->captures)
         {
-            if (isStructValueType(capture.typeKey) && inheritanceModel_ != nullptr && objectLayoutModel_ != nullptr)
-            {
-                const std::optional<std::size_t> typeOrdinal =
-                    inheritanceModel_->typeOrdinalForTypeKey(capture.typeKey);
-                const StructValueLayout* layout = typeOrdinal.has_value()
-                    ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
-                if (layout == nullptr || layout->size > 8)
-                {
-                    error = "Stage 43 closure capture supports struct values only when their native size is at most 8 bytes";
-                    return nullptr;
-                }
-            }
-            const bool dynamicArrayReference = capture.typeKey.size() >= 2 &&
-                capture.typeKey.ends_with("[]");
-            if (!dynamicArrayReference && capture.typeKey.find('[') != std::string::npos)
-            {
-                error = "Stage 43 closure capture of fixed inline arrays is deferred; capture a native array reference instead";
-                return nullptr;
-            }
             std::unique_ptr<ProjectOopHirNode> value;
-            if (capture.kind == MethodLambdaCaptureKind::Local && capture.localOrdinal.has_value())
+            switch (capture.sourceKind)
             {
-                value = makeNode(ProjectOopHirNodeKind::LocalValue, expression, capture.typeKey);
-                value->localOrdinal = capture.localOrdinal;
-            }
-            else if (capture.kind == MethodLambdaCaptureKind::Parameter && capture.parameterOrdinal.has_value())
-            {
-                value = makeNode(ProjectOopHirNodeKind::ParameterValue, expression, capture.typeKey);
-                value->parameterOrdinal = capture.parameterOrdinal;
-            }
-            else if (capture.kind == MethodLambdaCaptureKind::ThisReference)
-            {
-                value = makeNode(ProjectOopHirNodeKind::ThisValue, expression, capture.typeKey);
+                case MethodLambdaCaptureSourceKind::OriginalLocal:
+                case MethodLambdaCaptureSourceKind::ParentLocal:
+                    if (capture.sourceOrdinal.has_value())
+                    {
+                        value = makeNode(ProjectOopHirNodeKind::CaptureCellReference, expression, capture.typeKey);
+                        value->localOrdinal = capture.sourceOrdinal;
+                    }
+                    break;
+                case MethodLambdaCaptureSourceKind::OriginalParameter:
+                case MethodLambdaCaptureSourceKind::ParentParameter:
+                    if (capture.sourceOrdinal.has_value())
+                    {
+                        value = makeNode(ProjectOopHirNodeKind::CaptureCellReference, expression, capture.typeKey);
+                        value->parameterOrdinal = capture.sourceOrdinal;
+                    }
+                    break;
+                case MethodLambdaCaptureSourceKind::OriginalThis:
+                    value = makeNode(ProjectOopHirNodeKind::CaptureCellReference, expression, capture.typeKey);
+                    break;
+                case MethodLambdaCaptureSourceKind::ParentCapture:
+                    if (capture.sourceOrdinal.has_value())
+                    {
+                        value = makeNode(
+                            ProjectOopHirNodeKind::ClosureCaptureCellReference,
+                            expression,
+                            capture.typeKey);
+                        value->integerValue = *capture.sourceOrdinal;
+                    }
+                    break;
             }
             if (value == nullptr)
             {
@@ -2081,7 +2139,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "Stage 43 lambda this-reference has no captured receiver";
                     return nullptr;
                 }
-                auto node = makeNode(ProjectOopHirNodeKind::ClosureCaptureValue, expression, resultType);
+                auto node = makeNode(
+                    addressContext && isStructValueType(resultType)
+                        ? ProjectOopHirNodeKind::ClosureCaptureAddress
+                        : ProjectOopHirNodeKind::ClosureCaptureValue,
+                    expression,
+                    resultType);
                 node->integerValue = *capture;
                 return node;
             }
@@ -2161,18 +2224,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 {
                     if (lambdaValue->lambdaParameter)
                     {
+                        if (lambdaValue->lambdaParameterByReference)
+                        {
+                            const std::string pointerType = lambdaValue->typeKey + "*";
+                            auto pointer = makeNode(
+                                ProjectOopHirNodeKind::ParameterValue, expression, pointerType);
+                            pointer->parameterOrdinal = lambdaValue->valueOrdinal;
+                            if (addressContext) return pointer;
+                            auto value = makeNode(
+                                ProjectOopHirNodeKind::PointerLoad, expression, lambdaValue->typeKey);
+                            value->children.push_back(std::move(pointer));
+                            return value;
+                        }
                         auto node = makeNode(
                             addressContext ? ProjectOopHirNodeKind::ParameterAddress : ProjectOopHirNodeKind::ParameterValue,
                             expression, lambdaValue->typeKey);
                         node->parameterOrdinal = lambdaValue->valueOrdinal;
                         return node;
                     }
-                    if (addressContext)
-                    {
-                        error = "Stage 43 captures outer locals/parameters by value and does not expose capture addresses";
-                        return nullptr;
-                    }
-                    auto node = makeNode(ProjectOopHirNodeKind::ClosureCaptureValue, expression, lambdaValue->typeKey);
+                    auto node = makeNode(
+                        addressContext
+                            ? ProjectOopHirNodeKind::ClosureCaptureAddress
+                            : ProjectOopHirNodeKind::ClosureCaptureValue,
+                        expression,
+                        lambdaValue->typeKey);
                     node->integerValue = lambdaValue->valueOrdinal;
                     return node;
                 }
@@ -4492,7 +4567,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerReceiver(
                 error = "Stage 43 implicit instance receiver has no captured this";
                 return nullptr;
             }
-            auto node = makeNode(ProjectOopHirNodeKind::ClosureCaptureValue, receiverSyntax, std::string(receiverTypeKey));
+            auto node = makeNode(
+                isStructValueType(receiverTypeKey)
+                    ? ProjectOopHirNodeKind::ClosureCaptureAddress
+                    : ProjectOopHirNodeKind::ClosureCaptureValue,
+                receiverSyntax,
+                std::string(receiverTypeKey));
             node->integerValue = *capture;
             return node;
         }

@@ -38,6 +38,7 @@ A:/nsc-devel/build-tests/CMakeFiles/nsc_stage40_struct_value_abi_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage41_arrays_strings_core_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage42_delegates_events_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage43_lambdas_closures_tests.dir
+A:/nsc-devel/build-tests/CMakeFiles/nsc_stage67_e11_lambda_execution_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage44_generics_monomorphization_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage45_exceptions_syntax_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage45_exception_sema_tests.dir
@@ -63,6 +64,12 @@ A:/nsc-devel/build-tests/CMakeFiles/nsc_stage56_c7_definite_assignment_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage56_c8_type_root_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage56_bugfix_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_stage57_language_tests.dir
+A:/nsc-devel/build-tests/CMakeFiles/nsc_stage60_language_contract_tests.dir
+A:/nsc-devel/build-tests/CMakeFiles/nsc_stage61_compiler_hardening_tests.dir
+A:/nsc-devel/build-tests/CMakeFiles/nsc_stage62_toolchain_contract_tests.dir
+A:/nsc-devel/build-tests/CMakeFiles/nsc_stage63_installation_verifier_tests.dir
+A:/nsc-devel/build-tests/CMakeFiles/nsc_stage64_installation_manifest_tests.dir
+A:/nsc-devel/build-tests/CMakeFiles/nsc_stage66_e9_e10_release_contract_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_cc1_build_identity_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_cc1_integer_evaluator_tests.dir
 A:/nsc-devel/build-tests/CMakeFiles/nsc_cc1_correctness_tests.dir

@@ -27,6 +27,8 @@ LECTURA HISTÓRICA RECOMENDADA
     150_1_0_e9_e10_cierre_reproducibilidad_ciclo_de_paquete_y_compatibilidad.md
     151_baseline_certificado_1_0_e9_e10_stage66.md
     152_1_0_gate_del_compilador_desacoplado_de_bindings_y_consumidores.md
+    153_1_0_e11_lambdas_y_clausuras_lexicas_stage67.md
+    154_baseline_certificado_1_0_e11_stage67.md
 
 Reconstruye la evolución completa del compilador desde sus contratos iniciales hasta el
 cierre de 0.9.0. No se limita al historial de commits: cruza las conversaciones de diseño,
@@ -81,6 +83,17 @@ El documento 152 separa el gate 1.0 del compilador de la madurez de bindings y c
 externos. Registra qué propiedades sí pertenecen a `nsc`, qué criterios se retiraron del roadmap y
 por qué las fixtures ABI autocontenidas sustituyen cualquier aplicación obligatoria.
 
+El documento 153 implementa E11 en Stage 67. Sustituye las capturas por copia por celdas léxicas
+compartidas, permite mutación entre lambdas hermanas, anidamiento y capturas transitivas, parámetros
+tipados y por referencia, structs grandes, fixed arrays y lambdas sin captura como callbacks C.
+Explica el layout, el conteo de referencias, el cleanup normal y excepcional, cada archivo tocado y
+la fixture ejecutable O0/O2.
+
+El documento 154 registra la promoción G00 de E11. Conserva el run exacto, S0=S1, la identidad del
+compilador instalado, los hashes del paquete, las 12 etapas, las matrices CTest 304/304 por
+enlazador y las 324 ejecuciones O0/O2. Desde esa acta Stage 67 sustituye a Stage 66 como baseline
+certificado vigente.
+
 Los documentos 132 a 135 registran la implementación y el cierre técnico de las cuatro primeras
 megaentregas de 1.0: objetos precompilados, genéricos entre bibliotecas, lifetime de delegates y
 excepciones entre módulos, y congelación ABI/NSMETA. Incluyen el recorrido del problema,
@@ -116,11 +129,8 @@ El documento 143 registra la promoción de E8. Conserva las identidades exactas 
 la diferencia entre las 11 etapas operativas y el registro final de certificación, y demuestra que
 las fuentes y el producto permanecieron estables durante los 324 casos.
 
-Entrega certificada vigente: NativeSharp 0.1, Stage 64; `nsc 0.9.0` con contrato, instalación
-autoverificable e inventario criptográfico promovidos. El baseline G00 terminó con 302/302 CTest
-por linker, 324/324 casos del runner y cero fallos. El desarrollo está en 148 y el acta vigente en
-149. La fotografía de desarrollo vigente es Stage 66: E9+E10 están técnicamente cerradas y
-documentadas en 150, pero todavía no sustituyen ese baseline hasta completar G00.
+Entrega certificada vigente: NativeSharp 0.1, Stage 67; `nsc 0.9.0` con E11 promovida por G00.
+La implementación está documentada en 153 y la evidencia de instalación y certificación en 154.
 
 Todo lo que hay aquí adentro es el árbol completo del compilador. No falta nada: fuentes,
 cabeceras, biblioteca estándar en NativeSharp, suites de prueba, casos contractuales de interop,
