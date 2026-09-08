@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
@@ -46,10 +47,12 @@ public:
     // appended to the link line as-is.
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
+    void setSubsystem(WindowsExecutableSubsystem subsystem) noexcept;
 
 private:
     PeExecutableInfo info_;
     std::vector<ExternalImportModule> externalImports_;
     std::vector<std::filesystem::path> extraLinkLibraries_;
+    WindowsExecutableSubsystem subsystem_ = WindowsExecutableSubsystem::Console;
 };
 }

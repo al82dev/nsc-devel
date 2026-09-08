@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/Linker/LldLinker.h"
 
 #include <filesystem>
 #include <iosfwd>
@@ -44,6 +45,7 @@ private:
         std::string_view inputPath,
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        linker::WindowsExecutableSubsystem subsystem,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
         std::ostream& output,
         std::ostream& error);
@@ -86,6 +88,7 @@ private:
         std::string_view inputPath,
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        linker::WindowsExecutableSubsystem subsystem,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProject(

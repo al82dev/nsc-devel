@@ -133,6 +133,11 @@ std::string foldedName(std::string value)
     return value;
 }
 
+std::string_view subsystemDisplayName(linker::WindowsExecutableSubsystem subsystem)
+{
+    return subsystem == linker::WindowsExecutableSubsystem::Windows ? "Windows GUI" : "Windows CUI";
+}
+
 std::string escapedStringLiteral(std::string_view value)
 {
     std::string result;
@@ -1372,6 +1377,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
     bool optimizationLevelSeen = false;
+    linker::WindowsExecutableSubsystem subsystem = linker::WindowsExecutableSubsystem::Console;
+    bool subsystemSeen = false;
     std::vector<std::string_view> normalizedArguments;
     normalizedArguments.reserve(arguments.size());
     // Interop Foundation: external .lib inputs for the link. Extracted here (like
@@ -1382,6 +1389,31 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     for (std::size_t argumentIndex = 0; argumentIndex < arguments.size(); ++argumentIndex)
     {
         const std::string_view argument = arguments[argumentIndex];
+        const std::string foldedArgument = foldedName(std::string(argument));
+        if (foldedArgument.starts_with("/subsystem:"))
+        {
+            if (subsystemSeen)
+            {
+                error << "nsc: error: duplicate executable subsystem\n";
+                return ExitCode::CommandLineError;
+            }
+            subsystemSeen = true;
+            if (foldedArgument == "/subsystem:console")
+            {
+                subsystem = linker::WindowsExecutableSubsystem::Console;
+            }
+            else if (foldedArgument == "/subsystem:windows")
+            {
+                subsystem = linker::WindowsExecutableSubsystem::Windows;
+            }
+            else
+            {
+                error << "nsc: error: unsupported executable subsystem '" << argument
+                      << "'; expected /subsystem:console or /subsystem:windows\n";
+                return ExitCode::CommandLineError;
+            }
+            continue;
+        }
         if (argument == "--link-lib")
         {
             if (argumentIndex + 1 >= arguments.size())
@@ -1428,6 +1460,16 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     }
 
     const std::span<const std::string_view> args(normalizedArguments);
+
+    const bool executableInvocation =
+        (args.size() == 3 && args[1] == "-o" && !args[0].empty() && args[0].front() != '-') ||
+        (args.size() == 4 && args[2] == "-o" &&
+            (args[0] == "--emit-exe" || args[0] == "--emit-project-oop-exe"));
+    if (subsystemSeen && !executableInvocation)
+    {
+        error << "nsc: error: /subsystem is only valid when emitting an executable\n";
+        return ExitCode::CommandLineError;
+    }
 
     if (args.size() == 1)
     {
@@ -1721,7 +1763,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     if (args.size() == 3 && args[1] == "-o" && !args[0].empty() && args[0].front() != '-')
     {
-        return runExecutableGeneration(args[0], args[2], optimizationLevel, output, error);
+        return runExecutableGeneration(args[0], args[2], optimizationLevel, subsystem, output, error);
     }
 
     if (args.size() == 4 && args[2] == "-o")
@@ -1738,7 +1780,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         if (action == "--emit-project-oop-exe")
         {
             return runProjectOopExecutableGeneration(
-                args[1], args[3], optimizationLevel, extraLinkLibraries, output, error);
+                args[1], args[3], optimizationLevel, subsystem, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-oop-lib")
         {
@@ -1759,7 +1801,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (action == "--emit-exe")
         {
-            return runExecutableGeneration(args[1], args[3], optimizationLevel, output, error);
+            return runExecutableGeneration(args[1], args[3], optimizationLevel, subsystem, output, error);
         }
     }
 
@@ -1809,7 +1851,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.obj>\n"
            << "  nsc --emit-project-oop-exe <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.exe>\n"
+              "<file.exe> [/subsystem:console|/subsystem:windows]\n"
            << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.lib>\n"
            << "  nsc --emit-project-oop-dll <file.nsproj> [-O0|-O1|-O2|-O3] -o "
@@ -1859,8 +1901,10 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-llvm-opt <file.ns> [-O0|-O1|-O2|-O3]\n"
            << "  nsc --emit-obj <file.ns> [-O0|-O1|-O2|-O3] -o <file.obj>\n"
            << "  nsc --emit-asm <file.ns> [-O0|-O1|-O2|-O3] -o <file.asm>\n"
-           << "  nsc --emit-exe <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
-           << "  nsc <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe>\n"
+           << "  nsc --emit-exe <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe> "
+              "[/subsystem:console|/subsystem:windows]\n"
+           << "  nsc <file.ns> [-O0|-O1|-O2|-O3] -o <file.exe> "
+              "[/subsystem:console|/subsystem:windows]\n"
            << "  nsc --print-codegen [-O0|-O1|-O2|-O3]\n"
            << "  nsc --print-llvm-pipeline [-O0|-O1|-O2|-O3]\n"
            << "  nsc --print-llvm-version\n"
@@ -2103,6 +2147,7 @@ ExitCode Driver::dumpRuntimeLlvm(std::ostream &output, std::ostream &error)
 ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    linker::WindowsExecutableSubsystem subsystem,
     std::ostream &output,
     std::ostream &error)
 {
@@ -2148,6 +2193,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     }
 
     linker::WindowsExecutableBuilder builder;
+    builder.setSubsystem(subsystem);
     std::string buildError;
     const std::filesystem::path destination(outputPath);
     if (!builder.build(*module, destination, optimizationLevel, buildError))
@@ -2159,7 +2205,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     output << "PE executable emission: ok\n"
            << "machine: AMD64 (0x8664)\n"
            << "format: PE32+\n"
-           << "subsystem: Windows CUI\n"
+           << "subsystem: " << subsystemDisplayName(subsystem) << '\n'
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "sections: " << builder.info().sectionCount << '\n'
            << "entry-rva: " << builder.info().entryPointRva << '\n'
@@ -2713,6 +2759,7 @@ std::vector<linker::ExternalImportModule> collectExternalImports(const frontend:
 ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    linker::WindowsExecutableSubsystem subsystem,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
     std::ostream &error)
@@ -2801,6 +2848,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     }
 
     linker::WindowsExecutableBuilder builder;
+    builder.setSubsystem(subsystem);
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
@@ -2822,7 +2870,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << "entry-symbol: " << entryFunction->mangledName << '\n'
            << "machine: AMD64 (0x8664)\n"
            << "format: PE32+\n"
-           << "subsystem: Windows CUI\n"
+           << "subsystem: " << subsystemDisplayName(subsystem) << '\n'
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
            << "sections: " << builder.info().sectionCount << '\n'

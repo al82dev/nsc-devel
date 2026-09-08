@@ -709,10 +709,11 @@ bool LldLinker::linkDynamicLibrary(
     return true;
 }
 
-bool LldLinker::linkConsoleExecutable(
+bool LldLinker::linkExecutable(
     std::span<const std::filesystem::path> objectFiles,
     std::span<const std::filesystem::path> importLibraries,
     const std::filesystem::path& outputPath,
+    WindowsExecutableSubsystem subsystem,
     std::string& error) const
 {
     error.clear();
@@ -732,7 +733,9 @@ bool LldLinker::linkConsoleExecutable(
     std::vector<std::string> arguments = {
         "/nodefaultlib",
         "/entry:__nativesharp_start",
-        "/subsystem:console",
+        subsystem == WindowsExecutableSubsystem::Windows
+            ? "/subsystem:windows"
+            : "/subsystem:console",
         "/machine:x64",
         "/dynamicbase",
         "/nxcompat",

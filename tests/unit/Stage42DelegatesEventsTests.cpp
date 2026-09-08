@@ -310,6 +310,82 @@ class H
         tests.expect(module->text().find("call void @__nativesharp_trap(i32 7)") != std::string::npos,
             "invoking a null delegate uses established NullReference trap reason 7");
 }
+
+void testIndirectAggregateEventArgument(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "IndirectAggregateEventArgument";
+    writeProject(directory, "IndirectAggregateEventArgument");
+    writeFile(directory / "Main.ns", R"NS(
+struct Payload
+{
+    public int A;
+    public int B;
+    public int C;
+}
+
+delegate void PayloadChanged(Payload value);
+
+class Listener
+{
+    public static int StaticTotal;
+    public int InstanceTotal;
+
+    public static void OnStatic(Payload value)
+    {
+        StaticTotal = value.A + value.B + value.C;
+    }
+
+    public void OnInstance(Payload value)
+    {
+        InstanceTotal = value.A + value.B + value.C;
+        value.A = 100;
+    }
+}
+
+class Publisher
+{
+    public event PayloadChanged Changed;
+    public void Raise(Payload value) { Changed(value); }
+}
+
+class Harness
+{
+    public static int Run()
+    {
+        Listener listener = new Listener();
+        Publisher publisher = new Publisher();
+        publisher.Changed += Listener.OnStatic;
+        publisher.Changed += listener.OnInstance;
+        Payload value;
+        value.A = 1;
+        value.B = 2;
+        value.C = 3;
+        publisher.Raise(value);
+        return listener.InstanceTotal + Listener.StaticTotal;
+    }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(
+        directory / "IndirectAggregateEventArgument.nsproj", error);
+    tests.expect(ok && error.empty(), "12-byte event argument reaches OOP MIR");
+    if (!ok || compilation.nameLookup() == nullptr || compilation.oopMirModel() == nullptr) return;
+
+    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+    tests.expect(module != nullptr && lowerer.error().empty(), "12-byte event argument lowers to LLVM");
+    if (module == nullptr) return;
+
+    std::string verifyError;
+    tests.expect(
+        module->verify(verifyError),
+        "instance/static event handlers receive a verifier-clean indirect 12-byte argument: " + verifyError);
+    tests.expect(
+        module->text().find("abi.arg.copy") != std::string::npos,
+        "event invocation materializes a Win64 by-value copy for an indirect aggregate");
+}
 }
 
 int main()
@@ -323,6 +399,7 @@ int main()
     testPositivePipeline(tests, root);
     testNegativeContracts(tests, root);
     testNullDelegateInvocationTrap(tests, root);
+    testIndirectAggregateEventArgument(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

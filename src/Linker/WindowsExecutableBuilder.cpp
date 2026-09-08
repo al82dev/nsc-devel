@@ -337,7 +337,7 @@ bool WindowsExecutableBuilder::build(
     }
 
     const std::array<std::filesystem::path, 2> objectFiles = {programObject, runtimeObject};
-    if (!linker->linkConsoleExecutable(objectFiles, importLibraries, outputPath, linkerError))
+    if (!linker->linkExecutable(objectFiles, importLibraries, outputPath, subsystem_, linkerError))
     {
         error = linkerError;
         return false;
@@ -364,6 +364,11 @@ void WindowsExecutableBuilder::setExternalImports(std::vector<ExternalImportModu
 void WindowsExecutableBuilder::setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries)
 {
     extraLinkLibraries_ = std::move(extraLibraries);
+}
+
+void WindowsExecutableBuilder::setSubsystem(WindowsExecutableSubsystem subsystem) noexcept
+{
+    subsystem_ = subsystem;
 }
 
 const PeExecutableInfo& WindowsExecutableBuilder::info() const noexcept

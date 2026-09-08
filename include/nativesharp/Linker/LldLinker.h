@@ -8,6 +8,12 @@
 
 namespace nativesharp::linker
 {
+enum class WindowsExecutableSubsystem
+{
+    Console,
+    Windows,
+};
+
 class LldLinker final
 {
 public:
@@ -38,10 +44,11 @@ public:
         const std::filesystem::path& importLibraryPath,
         std::string& error) const;
 
-    bool linkConsoleExecutable(
+    bool linkExecutable(
         std::span<const std::filesystem::path> objectFiles,
         std::span<const std::filesystem::path> importLibraries,
         const std::filesystem::path& outputPath,
+        WindowsExecutableSubsystem subsystem,
         std::string& error) const;
 
 private:

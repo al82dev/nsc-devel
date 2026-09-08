@@ -6952,7 +6952,22 @@ private:
         LLVMValueRef handler = LLVMBuildLoad2(builder_, ptr, currentPhi, "event.invoke.handler");
         LLVMValueRef next = LLVMBuildLoad2(
             builder_, ptr, byteOffset(currentPhi, 8, "event.invoke.next.addr"), "event.invoke.next");
-        if (emitDelegateCall(handler, arguments, node->argumentTypeKeys, "builtin:void", error) == nullptr)
+        // An event is a sequence of delegate calls. Apply the Win64 aggregate adaptation inside
+        // the loop so every subscriber gets a fresh by-value copy, whether its target is static
+        // or receives a hidden instance receiver.
+        std::vector<LLVMValueRef> abiArguments;
+        abiArguments.reserve(arguments.size());
+        for (std::size_t index = 0; index < arguments.size(); ++index)
+        {
+            LLVMValueRef value = arguments[index];
+            if (index < node->argumentTypeKeys.size())
+            {
+                value = wrapIndirectArgument(value, node->argumentTypeKeys[index], error);
+                if (value == nullptr) return nullptr;
+            }
+            abiArguments.push_back(value);
+        }
+        if (emitDelegateCall(handler, abiArguments, node->argumentTypeKeys, "builtin:void", error) == nullptr)
             return nullptr;
         LLVMBasicBlockRef afterCall = LLVMGetInsertBlock(builder_);
         LLVMBuildBr(builder_, loopBlock);

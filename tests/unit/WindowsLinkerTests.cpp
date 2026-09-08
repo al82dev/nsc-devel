@@ -23,6 +23,7 @@ namespace
 using nativesharp::frontend::FrontendCompilation;
 using nativesharp::linker::PeExecutableVerifier;
 using nativesharp::linker::WindowsExecutableBuilder;
+using nativesharp::linker::WindowsExecutableSubsystem;
 using nativesharp::llvm_backend::LlvmLowerer;
 using nativesharp::llvm_backend::LlvmModule;
 
@@ -221,9 +222,9 @@ int main()
             tests.expect(!verifier.verify(corruptedPath), "PE verifier rejects a zero entry point");
 
             corrupted = original;
-            setU16(corrupted, optionalOffset + 68, 2);
+            setU16(corrupted, optionalOffset + 68, 9);
             writeBytes(corruptedPath, corrupted);
-            tests.expect(!verifier.verify(corruptedPath), "PE verifier rejects the GUI subsystem");
+            tests.expect(!verifier.verify(corruptedPath), "PE verifier rejects an unsupported subsystem");
 
             corrupted = original;
             setU32(corrupted, optionalOffset + 112 + (14 * 8), 1);
@@ -231,6 +232,30 @@ int main()
             tests.expect(!verifier.verify(corruptedPath), "PE verifier rejects an unexpected CLR header");
 
             std::filesystem::remove(corruptedPath, cleanupError);
+        }
+    }
+
+    {
+        FrontendCompilation guiCompilation;
+        std::unique_ptr<LlvmLowerer> guiLowerer;
+        std::unique_ptr<LlvmModule> guiModule =
+            compileProgram("int Main() { return 0; }", guiCompilation, guiLowerer);
+        tests.expect(guiModule != nullptr, "GUI subsystem fixture reaches LLVM lowering");
+        if (guiModule != nullptr)
+        {
+            const std::filesystem::path guiPath =
+                std::filesystem::temp_directory_path() / "nativesharp_stage19_gui_test.exe";
+            std::filesystem::remove(guiPath, cleanupError);
+            WindowsExecutableBuilder guiBuilder;
+            guiBuilder.setSubsystem(WindowsExecutableSubsystem::Windows);
+            std::string guiError;
+            tests.expect(guiBuilder.build(*guiModule, guiPath, guiError),
+                "WindowsExecutableBuilder links an executable for the Windows GUI subsystem");
+            PeExecutableVerifier guiVerifier;
+            tests.expect(guiVerifier.verify(guiPath), "PE verifier accepts a Windows GUI executable");
+            tests.expect(guiVerifier.info().subsystem == 2,
+                "GUI executable declares IMAGE_SUBSYSTEM_WINDOWS_GUI");
+            std::filesystem::remove(guiPath, cleanupError);
         }
     }
 

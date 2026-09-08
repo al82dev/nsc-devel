@@ -14,6 +14,7 @@ constexpr std::uint16_t kImageFileMachineAmd64 = 0x8664;
 constexpr std::uint16_t kImageFileExecutableImage = 0x0002;
 constexpr std::uint16_t kImageFileDll = 0x2000;
 constexpr std::uint16_t kPe32PlusMagic = 0x020b;
+constexpr std::uint16_t kWindowsGuiSubsystem = 2;
 constexpr std::uint16_t kWindowsCuiSubsystem = 3;
 constexpr std::size_t kDosPeOffsetField = 0x3c;
 constexpr std::size_t kCoffHeaderSize = 20;
@@ -251,9 +252,9 @@ bool PeExecutableVerifier::verifyImage(
             error_ = "PE executable has a zero entry-point RVA";
             return false;
         }
-        if (info_.subsystem != kWindowsCuiSubsystem)
+        if (info_.subsystem != kWindowsCuiSubsystem && info_.subsystem != kWindowsGuiSubsystem)
         {
-            error_ = "PE executable subsystem is not Windows CUI";
+            error_ = "PE executable subsystem is neither Windows GUI nor Windows CUI";
             return false;
         }
         if (info_.importDirectoryRva == 0)

@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Linker/PeExecutableVerifier.h"
 
 #include "../support/TestContext.h"
 
@@ -52,6 +53,8 @@ int main()
         tests.expect(
             output.str().find(helpText) != std::string::npos,
             "help text is written to stdout");
+        tests.expect(output.str().find("/subsystem:windows") != std::string::npos,
+            "help documents Windows GUI executable emission");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
     }
 
@@ -836,6 +839,8 @@ int main()
         std::filesystem::temp_directory_path() / "nativesharp_driver_stage19.exe";
     const std::filesystem::path defaultExecutablePath =
         std::filesystem::temp_directory_path() / "nativesharp_driver_stage19_default.exe";
+    const std::filesystem::path guiExecutablePath =
+        std::filesystem::temp_directory_path() / "nativesharp_driver_stage19_gui.exe";
     const std::filesystem::path invalidExecutablePath =
         std::filesystem::temp_directory_path() / "nativesharp_driver_stage19_invalid.exe";
     const std::filesystem::path unresolvedExecutablePath =
@@ -843,6 +848,7 @@ int main()
     std::error_code stage19CleanupError;
     std::filesystem::remove(executablePath, stage19CleanupError);
     std::filesystem::remove(defaultExecutablePath, stage19CleanupError);
+    std::filesystem::remove(guiExecutablePath, stage19CleanupError);
     std::filesystem::remove(invalidExecutablePath, stage19CleanupError);
     std::filesystem::remove(unresolvedExecutablePath, stage19CleanupError);
 
@@ -891,6 +897,68 @@ int main()
     {
         std::ostringstream output;
         std::ostringstream error;
+        const std::string input = validPath.string();
+        const std::string destination = guiExecutablePath.string();
+        const std::vector<std::string_view> arguments =
+            {"/SUBSYSTEM:WINDOWS", "--emit-exe", input, "-o", destination};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::Success,
+            "/subsystem:windows links a Windows GUI executable case-insensitively");
+        nativesharp::linker::PeExecutableVerifier verifier;
+        tests.expect(verifier.verify(guiExecutablePath),
+            "GUI executable emitted by the driver passes PE verification");
+        tests.expect(verifier.info().subsystem == 2,
+            "driver propagates /subsystem:windows to IMAGE_SUBSYSTEM_WINDOWS_GUI");
+        tests.expect(output.str().find("subsystem: Windows GUI") != std::string::npos,
+            "driver reports the selected Windows GUI subsystem");
+        tests.expect(error.str().empty(), "successful GUI executable generation keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::string input = validPath.string();
+        const std::string destination = guiExecutablePath.string();
+        const std::vector<std::string_view> arguments =
+            {"--emit-exe", input, "/subsystem:native", "-o", destination};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError, "unsupported executable subsystem is rejected");
+        tests.expect(error.str().find("unsupported executable subsystem") != std::string::npos,
+            "unsupported subsystem has a precise diagnostic");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::string input = validPath.string();
+        const std::string destination = guiExecutablePath.string();
+        const std::vector<std::string_view> arguments = {"--emit-exe",
+            input,
+            "/subsystem:console",
+            "/subsystem:windows",
+            "-o",
+            destination};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError, "duplicate executable subsystem is rejected");
+        tests.expect(error.str().find("duplicate executable subsystem") != std::string::npos,
+            "duplicate subsystem has a precise diagnostic");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::string input = validPath.string();
+        const std::vector<std::string_view> arguments = {"--check", input, "/subsystem:windows"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError,
+            "/subsystem is rejected for actions that do not emit an executable");
+        tests.expect(error.str().find("only valid when emitting an executable") != std::string::npos,
+            "non-executable subsystem use has a precise diagnostic");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
         const std::string input = invalidPath.string();
         const std::string destination = invalidExecutablePath.string();
         const std::vector<std::string_view> arguments = {"--emit-exe", input, "-o", destination};
@@ -928,6 +996,7 @@ int main()
 
     std::filesystem::remove(executablePath, stage19CleanupError);
     std::filesystem::remove(defaultExecutablePath, stage19CleanupError);
+    std::filesystem::remove(guiExecutablePath, stage19CleanupError);
     std::filesystem::remove(invalidExecutablePath, stage19CleanupError);
     std::filesystem::remove(unresolvedExecutablePath, stage19CleanupError);
     std::filesystem::remove(validPath);
