@@ -121,6 +121,14 @@ int main()
             !ProjectIntegerEvaluator::isSignedInteger("builtin:uint") &&
             !ProjectIntegerEvaluator::isSignedInteger("builtin:char"),
         "signedness table matches the language");
+    {
+        const auto maximumUnsigned =
+            evaluator.evaluate(literal(arena, std::numeric_limits<std::uint64_t>::max()));
+        tests.expect(
+            maximumUnsigned.has_value() && maximumUnsigned->typeKey == "builtin:ulong" &&
+                maximumUnsigned->bits == std::numeric_limits<std::uint64_t>::max(),
+            "an unsuffixed positive literal above long.MaxValue is typed as ulong");
+    }
 
     // -------------------------------------------------------------------------------------
     // normalize -- la operacion central. C-001.

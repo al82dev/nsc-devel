@@ -39,3 +39,10 @@ enum initializer for 'Value' must be an integral constant expression
 `Stage51EnumOopSupportTests` contiene el caso canónico y verifica que `All` se registre con valor 15.
 También conserva un caso rojo con una llamada a método como inicializador. Un ejecutable enfocado,
 construido por el `nsc` instalado, devolvió 42 tanto en O0 como en O2 al leer y comparar `All`.
+
+## Seguimiento de rango unsigned
+
+El primer baseline completo posterior encontró que el evaluador compartido tipaba
+`18446744073709551615` sin sufijo como `long` antes de comprobar un enum `ulong`. La causa, la
+corrección y la recertificación están registradas por separado en
+`161_1_0_1_literal_positivo_ulong_y_rango_enum.md`.

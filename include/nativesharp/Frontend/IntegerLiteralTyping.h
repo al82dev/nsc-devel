@@ -66,7 +66,14 @@ constexpr std::string_view integerLiteralTypeKey(
 
     // Con menos delante la cota sube en uno: 2147483648 es la MAGNITUD de int.MinValue.
     const std::uint64_t intBound = negated ? 2147483648ULL : 2147483647ULL;
-    return value <= intBound ? "builtin:int" : "builtin:long";
+    if (value <= intBound) return "builtin:int";
+
+    // La misma asimetria existe en 64 bits. Sin menos, el bit 63 ya no cabe en `long` pero el
+    // literal sigue siendo representable como `ulong`; tiparlo siempre como `long` convertia
+    // 18446744073709551615 en -1 antes de que el consumidor pudiera comprobar su rango.
+    const std::uint64_t longBound =
+        negated ? 0x8000000000000000ULL : 0x7FFFFFFFFFFFFFFFULL;
+    return value <= longBound ? "builtin:long" : "builtin:ulong";
 }
 
 static_assert(integerLiteralTypeKey("7", 7, false) == "builtin:int", "un literal sin sufijo es int");
@@ -82,4 +89,10 @@ static_assert(integerLiteralTypeKey("2147483648", 2147483648ULL, true) == "built
 static_assert(integerLiteralTypeKey("9223372036854775808", 9223372036854775808ULL, true) ==
         "builtin:long",
     "y lo mismo en 64 bits: -9223372036854775808 es long.MinValue");
+static_assert(integerLiteralTypeKey("9223372036854775808", 9223372036854775808ULL, false) ==
+        "builtin:ulong",
+    "sin menos, el bit 63 ya requiere ulong");
+static_assert(integerLiteralTypeKey("18446744073709551615", 18446744073709551615ULL, false) ==
+        "builtin:ulong",
+    "ulong.MaxValue sin sufijo conserva los 64 bits sin signo");
 }

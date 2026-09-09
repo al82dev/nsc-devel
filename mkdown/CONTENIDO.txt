@@ -252,3 +252,9 @@ disponible de que la semántica es la que dice el fuente.
 --------------------------------------------------------------------------------------------------
 
     Une `string-literal` y `builtin:string` sin introducir una conversión general al estilo C#.
+
+
+1.0.1 — LITERAL POSITIVO ULONG Y RANGO ENUM (161_1_0_1_literal_positivo_ulong_y_rango_enum.md)
+------------------------------------------------------------------------------------------------
+
+    Corrige la frontera `long`/`ulong` descubierta por el baseline al ejecutar enums de 64 bits.
