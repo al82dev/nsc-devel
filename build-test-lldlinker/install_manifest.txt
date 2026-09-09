@@ -70,6 +70,7 @@ C:\native-sharp/lib/NativeSharp.Core.Threading/Thread.ns
 C:\native-sharp/share/nativesharp/spec/NativeSharp_1_0_conformance.map
 C:\native-sharp/share/nativesharp/spec/NativeSharp_Compiler_1_0_conformance.map
 C:\native-sharp/share/nativesharp/spec/NativeSharp_Compiler_Contract_1_0.md
+C:\native-sharp/share/nativesharp/spec/NativeSharp_Debug_Artifact_Contract_1_0.md
 C:\native-sharp/share/nativesharp/spec/NativeSharp_Grammar_1_0.ebnf
 C:\native-sharp/share/nativesharp/spec/NativeSharp_Language_Specification_1_0.md
 C:\native-sharp/share/nativesharp/toolchain/NativeSharpToolchain.contract

@@ -18,17 +18,17 @@ nsc.project-type-conversion 18 0.000722011
 nsc.project-method-body-model 20 0.00408523
 nsc.project-construction-model 20 0.00432576
 nsc.project-object-layout-model 18 0.00218003
-nsc.project-oop-lowering 20 0.00305151
+nsc.project-oop-lowering 22 0.00353597
 nsc.macro-a-oop 18 0.00654191
 nsc.stage37.static-initialization 18 0.00496734
 nsc.stage35.recovery 21 0.0049648
 nsc.stage36.recovery 18 0.00529503
 nsc.stage38.properties-indexers-operators 19 0.00583434
 nsc.stage39.rtti-casts 21 0.00282594
-nsc.stage40.struct-value-abi 18 0.00341505
+nsc.stage40.struct-value-abi 20 0.00496637
 nsc.stage41.arrays-strings-core 18 0.00367685
 nsc.stage42.delegates-events 18 0.00463908
-nsc.stage43.lambdas-closures 22 0.00645518
+nsc.stage43.lambdas-closures 23 0.00579898
 nsc.stage44.generics-monomorphization 18 0.00426433
 nsc.stage45.exceptions-syntax 18 0.000739578
 nsc.stage45.exception-sema 18 0.00211852
@@ -49,7 +49,7 @@ nsc.stage40-2.aggregate-abi-execution 18 0.880067
 nsc.stage55x.interop-foundation 22 0.141543
 nsc.stage56.c1-interop-completion 18 0.432862
 nsc.stage56.c2c4-language-completion 18 0.368921
-nsc.stage56.c6-struct-members 18 0.330905
+nsc.stage56.c6-struct-members 19 0.309908
 nsc.stage56.c7-definite-assignment 18 0.427128
 nsc.stage56.c8-type-root 18 3.18693
 nsc.stage56.bugfix 18 3.32959
@@ -104,7 +104,7 @@ nsc.cc1.correctness.cc1-c45-tipos-anidados 18 0.387409
 nsc.cc1.correctness.cc1-c46-sobrecargas-genericas 18 0.392797
 nsc.cc1.correctness 17 0.228217
 nsc.stage46.native-libraries 51 0.307498
-nsc.stage47.host-c-abi 24 0.104711
+nsc.stage47.host-c-abi 25 0.105287
 nsc.stage48_1.c-header 22 0.0886737
 nsc.stage48_2.library-metadata 47 0.019594
 nsc.stage48_3.c-host 22 0.0980065
@@ -153,7 +153,7 @@ nsc.prestage56.utilities 18 0.0695046
 nsc.semantics 18 0.000796744
 nsc.hir 18 0.000800256
 nsc.hir-verifier 18 0.000701644
-nsc.mir 18 0.000885461
+nsc.mir 19 0.00132719
 nsc.mir-verifier 18 0.000728444
 nsc.cfg 18 0.000818233
 nsc.cfg-verifier 18 0.000717056
@@ -295,7 +295,8 @@ nsc.cc1.correctness.cc1-c49-temporary-string-borrow 17 0.386368
 nsc.cc1.correctness.cc1-c50-inferred-array-initializer 17 0.0389138
 nsc.cc1.correctness.cc1-c51-default-parameters 18 0.382243
 nsc.cc1.correctness.cc1-c52-lazy-generic-members 17 0.416015
-nsc.stage67.e11-lambda-execution 1 0.889413
+nsc.stage67.e11-lambda-execution 2 0.45449
 nsc.stage66.e9-e10-release-contract 1 0.122512
 nsc.stage60.language-contract 1 0.0161741
+nsc.debug.codeview-pdb 5 0.303784
 ---

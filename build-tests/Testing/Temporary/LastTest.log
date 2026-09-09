@@ -1,83 +1,83 @@
-Start testing: Sep 08 02:30 Central Standard Time (Mexico)
+Start testing: Sep 09 01:04 Central Standard Time (Mexico)
 ----------------------------------------------------------
-42/304 Testing: nsc.stage45.llvm-win64-eh-basic
-42/304 Test: nsc.stage45.llvm-win64-eh-basic
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_llvm_win64_eh_basic_tests.exe"
+21/307 Testing: nsc.project-oop-lowering
+21/307 Test: nsc.project-oop-lowering
+Command: "A:/nsc-devel/build-tests/tests/nsc_project_oop_lowering_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage45.llvm-win64-eh-basic" start time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.project-oop-lowering" start time: Sep 09 01:04 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 35 checks
+PASS: 71 checks
 <end of output>
-Test time =   0.07 sec
+Test time =   0.08 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage45.llvm-win64-eh-basic" end time: Sep 08 02:30 Central Standard Time (Mexico)
-"nsc.stage45.llvm-win64-eh-basic" time elapsed: 00:00:00
+"nsc.project-oop-lowering" end time: Sep 09 01:04 Central Standard Time (Mexico)
+"nsc.project-oop-lowering" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-43/304 Testing: nsc.stage45.llvm-cleanup-funclets
-43/304 Test: nsc.stage45.llvm-cleanup-funclets
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_llvm_cleanup_funclet_tests.exe"
+28/307 Testing: nsc.stage40.struct-value-abi
+28/307 Test: nsc.stage40.struct-value-abi
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage40_struct_value_abi_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage45.llvm-cleanup-funclets" start time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage40.struct-value-abi" start time: Sep 09 01:04 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 32 checks
+PASS: 63 checks
 <end of output>
-Test time =   0.04 sec
+Test time =   0.10 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage45.llvm-cleanup-funclets" end time: Sep 08 02:30 Central Standard Time (Mexico)
-"nsc.stage45.llvm-cleanup-funclets" time elapsed: 00:00:00
+"nsc.stage40.struct-value-abi" end time: Sep 09 01:04 Central Standard Time (Mexico)
+"nsc.stage40.struct-value-abi" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-46/304 Testing: nsc.stage45-10.eh-raii-reuse-after-catch
-46/304 Test: nsc.stage45-10.eh-raii-reuse-after-catch
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_10_eh_raii_reuse_after_catch_tests.exe"
+32/307 Testing: nsc.stage67.e11-lambda-execution
+32/307 Test: nsc.stage67.e11-lambda-execution
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage67_e11_lambda_execution_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage45-10.eh-raii-reuse-after-catch" start time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage67.e11-lambda-execution" start time: Sep 09 01:04 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 78 checks
+PASS: 4 checks
 <end of output>
-Test time =  12.91 sec
+Test time =   0.91 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage45-10.eh-raii-reuse-after-catch" end time: Sep 08 02:30 Central Standard Time (Mexico)
-"nsc.stage45-10.eh-raii-reuse-after-catch" time elapsed: 00:00:12
+"nsc.stage67.e11-lambda-execution" end time: Sep 09 01:04 Central Standard Time (Mexico)
+"nsc.stage67.e11-lambda-execution" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-47/304 Testing: nsc.stage45-11.eh-cleanup-execution
-47/304 Test: nsc.stage45-11.eh-cleanup-execution
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage45_11_eh_cleanup_execution_tests.exe"
+122/307 Testing: nsc.stage47.host-c-abi
+122/307 Test: nsc.stage47.host-c-abi
+Command: "A:/nsc-devel/build-tests/tests/nsc_stage47_host_c_abi_tests.exe"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage45-11.eh-cleanup-execution" start time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.stage47.host-c-abi" start time: Sep 09 01:04 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 72 checks
+PASS: 80 checks
 <end of output>
-Test time =  11.74 sec
+Test time =   2.63 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage45-11.eh-cleanup-execution" end time: Sep 08 02:30 Central Standard Time (Mexico)
-"nsc.stage45-11.eh-cleanup-execution" time elapsed: 00:00:11
+"nsc.stage47.host-c-abi" end time: Sep 09 01:04 Central Standard Time (Mexico)
+"nsc.stage47.host-c-abi" time elapsed: 00:00:02
 ----------------------------------------------------------
 
-58/304 Testing: nsc.stage60.language-contract
-58/304 Test: nsc.stage60.language-contract
-Command: "A:/nsc-devel/build-tests/tests/nsc_stage60_language_contract_tests.exe"
+190/307 Testing: nsc.debug.codeview-pdb
+190/307 Test: nsc.debug.codeview-pdb
+Command: "A:/apps/cmake/bin/cmake.exe" "-E" "env" "NSC_LLD_LINK=C:/clang-llvm/bin/lld-link.exe" "A:/apps/cmake/bin/cmake.exe" "-DNSC_EXECUTABLE=A:/nsc-devel/build-tests/bin/nsc.exe" "-DLLVM_PDBUTIL=C:/clang-llvm/bin/llvm-pdbutil.exe" "-DLLVM_READOBJ=C:/clang-llvm/bin/llvm-readobj.exe" "-DDEBUG_FIXTURE=A:/nsc-devel/tests/integration/debug_pdb/DebugPdb.nsproj" "-DDEBUG_OUTPUT_DIR=A:/nsc-devel/build-tests/debug-artifact-test" "-P" "A:/nsc-devel/cmake/VerifyNativeSharpDebugArtifacts.cmake"
 Directory: A:/nsc-devel/build-tests
-"nsc.stage60.language-contract" start time: Sep 08 02:30 Central Standard Time (Mexico)
+"nsc.debug.codeview-pdb" start time: Sep 09 01:04 Central Standard Time (Mexico)
 Output:
 ----------------------------------------------------------
-PASS: 975 checks
+-- NativeSharp O0/O2 CodeView and PDB artifacts verified
 <end of output>
-Test time =   0.02 sec
+Test time =   1.52 sec
 ----------------------------------------------------------
 Test Passed.
-"nsc.stage60.language-contract" end time: Sep 08 02:30 Central Standard Time (Mexico)
-"nsc.stage60.language-contract" time elapsed: 00:00:00
+"nsc.debug.codeview-pdb" end time: Sep 09 01:04 Central Standard Time (Mexico)
+"nsc.debug.codeview-pdb" time elapsed: 00:00:01
 ----------------------------------------------------------
 
-End testing: Sep 08 02:30 Central Standard Time (Mexico)
+End testing: Sep 09 01:04 Central Standard Time (Mexico)

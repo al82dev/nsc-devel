@@ -71,6 +71,7 @@ lib/NativeSharp.Core/Utf8.ns
 share/nativesharp/spec/NativeSharp_1_0_conformance.map
 share/nativesharp/spec/NativeSharp_Compiler_1_0_conformance.map
 share/nativesharp/spec/NativeSharp_Compiler_Contract_1_0.md
+share/nativesharp/spec/NativeSharp_Debug_Artifact_Contract_1_0.md
 share/nativesharp/spec/NativeSharp_Grammar_1_0.ebnf
 share/nativesharp/spec/NativeSharp_Language_Specification_1_0.md
 share/nativesharp/toolchain/NativeSharpCompatibility.policy

@@ -225,8 +225,17 @@ NSC_BUILD_ID_OVERRIDE:STRING=
 //Build NativeSharp frontend tests
 NSC_BUILD_TESTS:BOOL=ON
 
+//Path to a program.
+NSC_DEBUG_LLD_LINK_EXECUTABLE:FILEPATH=C:/clang-llvm/bin/lld-link.exe
+
 //Path to a library.
 NSC_LLVM_MONOLITHIC_LIBRARY:FILEPATH=C:/clang-llvm/lib/LLVM-C.lib
+
+//Path to a program.
+NSC_LLVM_PDBUTIL_EXECUTABLE:FILEPATH=C:/clang-llvm/bin/llvm-pdbutil.exe
+
+//Path to a program.
+NSC_LLVM_READOBJ_EXECUTABLE:FILEPATH=C:/clang-llvm/bin/llvm-readobj.exe
 
 //Ejecutable nsc que mide ctest (vacio = C:/native-sharp/bin/nsc.exe
 // en Windows)

@@ -1661,6 +1661,17 @@ build lib\nsc_frontend.lib: CXX_STATIC_LIBRARY_LINKER__nsc_frontend_Release CMak
 
 build cmake_object_order_depends_target_nsc_llvm: phony || cmake_object_order_depends_target_nsc_compilation cmake_object_order_depends_target_nsc_frontend cmake_object_order_depends_target_nsc_target
 
+build CMakeFiles\nsc_llvm.dir\src\LLVM\DebugInformationKind.cpp.obj: CXX_COMPILER__nsc_llvm_unscanned_Release A$:\nsc-devel\src\LLVM\DebugInformationKind.cpp || cmake_object_order_depends_target_nsc_llvm
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\nsc_llvm.dir\src\LLVM\DebugInformationKind.cpp.obj.d
+  FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++20 -MD /W4 /permissive- /WX
+  INCLUDES = -IA:\nsc-devel\build-test-nslink\generated -IA:\nsc-devel\include
+  OBJECT_DIR = CMakeFiles\nsc_llvm.dir
+  OBJECT_FILE_DIR = CMakeFiles\nsc_llvm.dir\src\LLVM
+  TARGET_COMPILE_PDB = CMakeFiles\nsc_llvm.dir\nsc_llvm.pdb
+  TARGET_PDB = lib\nsc_llvm.pdb
+  TARGET_SUPPORT_DIR = CMakeFiles\nsc_llvm.dir
+
 build CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmModule.cpp.obj: CXX_COMPILER__nsc_llvm_unscanned_Release A$:\nsc-devel\src\LLVM\LlvmModule.cpp || cmake_object_order_depends_target_nsc_llvm
   CONFIG = Release
   DEP_FILE = CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmModule.cpp.obj.d
@@ -1779,7 +1790,7 @@ build CMakeFiles\nsc_llvm.dir\src\LLVM\CoffObjectVerifier.cpp.obj: CXX_COMPILER_
 #############################################
 # Link the static library lib\nsc_llvm.lib
 
-build lib\nsc_llvm.lib: CXX_STATIC_LIBRARY_LINKER__nsc_llvm_Release CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmModule.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmVersion.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmOptimizationLevel.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmOptimizationObservation.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmProcessTrace.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmOptimizer.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmLowerer.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\ProjectOopLlvmLowerer.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmTargetMachine.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\CoffObjectVerifier.cpp.obj || lib\nsc_compilation.lib lib\nsc_frontend.lib lib\nsc_target.lib
+build lib\nsc_llvm.lib: CXX_STATIC_LIBRARY_LINKER__nsc_llvm_Release CMakeFiles\nsc_llvm.dir\src\LLVM\DebugInformationKind.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmModule.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmVersion.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmOptimizationLevel.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmOptimizationObservation.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmProcessTrace.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmOptimizer.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmLowerer.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\ProjectOopLlvmLowerer.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\LlvmTargetMachine.cpp.obj CMakeFiles\nsc_llvm.dir\src\LLVM\CoffObjectVerifier.cpp.obj || lib\nsc_compilation.lib lib\nsc_frontend.lib lib\nsc_target.lib
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -MD
   LINK_FLAGS = /machine:x64
