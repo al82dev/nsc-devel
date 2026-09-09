@@ -79,6 +79,10 @@ es válida si preserva el dominio definido por el tipo de origen o corresponde a
 nominal válida. Las conversiones numéricas que estrechan, reinterpretaciones de puntero y
 conversiones declaradas `explicit` requieren cast escrito.
 
+En una comparación de igualdad o desigualdad, el literal entero `0` puede convertirse
+implícitamente a cualquier enum. Ningún otro literal entero recibe esa conversión y dos enums
+nominalmente distintos siguen siendo incompatibles.
+
 La selección de overload considera aridad, argumentos genéricos, constraints, modos
 `ref`/`out`/`in`, ownership y calidad de conversión. Debe existir un mejor candidato único. Ningún
 candidato o varios candidatos igualmente buenos son errores; el orden de declaración no desempata.
@@ -109,6 +113,11 @@ reglas de ownership de sus hojas. Una interface declara una superficie de dispat
 datos a la instancia. Un enum es un conjunto nominal de constantes representado por un entero. Un
 delegate es un valor invocable con firma exacta y posible contexto.
 
+El inicializador explícito de un miembro enum es una expresión constante integral. Puede combinar
+literales y miembros anteriores del mismo enum mediante los operadores integrales admitidos; el
+resultado debe caber en el tipo subyacente. Una llamada, una referencia dinámica o cualquier forma
+que no pueda resolverse completamente durante la compilación se rechaza.
+
 La igualdad de nombres cortos no iguala tipos. La identidad canónica incluye namespace, anidamiento,
 módulo de origen y, cuando aplica, argumentos genéricos.
 
@@ -122,6 +131,11 @@ Un campo `const` es estático e inmutable y su inicializador debe resolverse com
 la compilación. Se admiten constantes integrales, `bool`, `float`, `double` y `string`; un literal
 `string` o una referencia a otro `const string` se materializa como almacenamiento literal
 inmutable y no ejecuta un inicializador estático en runtime.
+
+Una auto-propiedad de instancia que declara únicamente `get;` puede recibir una asignación simple
+dentro de un constructor del mismo tipo, por nombre implícito o mediante `this`. Esa escritura
+inicializa su backing field generado; no sintetiza un setter y cualquier escritura desde otro
+método, otro objeto o un tipo externo se rechaza.
 
 `virtual` introduce o participa en dispatch; `override` debe encontrar una ranura compatible;
 `abstract` no aporta cuerpo concreto; `sealed` impide la extensión que nombre. Una combinación de
@@ -271,6 +285,10 @@ comportamiento observable salvo las variaciones que el propio estándar permite.
 `&&` y `||` cortocircuitan. En `condición ? verdadero : falso` se evalúa la condición y exactamente
 una rama. Una implementación no puede evaluar ambas ramas y seleccionar después. Las expresiones
 condicionales se asocian a la derecha.
+
+Cuando una rama tiene tipo `string-literal` y la otra `builtin:string`, el resultado tiene tipo
+`builtin:string` y la rama literal usa la conversión implícita de literal a cadena nativa. Esta
+regla no introduce una búsqueda general de tipo base común entre referencias.
 
 Las llamadas evalúan receptor y argumentos una sola vez. Cuando una construcción promete orden de
 izquierda a derecha, los efectos observables deben conservar ese orden en O0 y O2.

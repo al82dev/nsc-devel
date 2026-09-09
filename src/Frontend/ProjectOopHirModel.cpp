@@ -2702,6 +2702,49 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             {
                 return nullptr;
             }
+
+            // The semantic model admits exactly one implicit integer-to-enum form: literal zero
+            // in ==/!=. Materialize that decision as the same Conversion node an explicit enum
+            // cast uses. This matters for byte/short/long-backed enums: leaving the zero as i32
+            // would make the LLVM comparison operands disagree even though the frontend accepted
+            // them.
+            const auto isEnumTypeKey = [&](std::string_view typeKey) noexcept
+            {
+                if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+                const std::string_view identity = typeKey.substr(5);
+                return std::any_of(
+                    nameLookup_->namedTypes().begin(),
+                    nameLookup_->namedTypes().end(),
+                    [&](const NamedTypeDeclaration& type)
+                    {
+                        return type.kind == NamedTypeDeclarationKind::Enum &&
+                            type.identity.key() == identity;
+                    });
+            };
+            const auto isZeroIntegerLiteral = [](const ast::AstNode* syntax) noexcept
+            {
+                return syntax != nullptr &&
+                    syntax->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
+                    syntax->integerValue() == 0;
+            };
+            if (expression->tokenKind() == lexer::TokenKind::EqualEqual ||
+                expression->tokenKind() == lexer::TokenKind::BangEqual)
+            {
+                if (isEnumTypeKey(left->typeKey) && isZeroIntegerLiteral(expression->second()))
+                {
+                    auto converted = makeNode(
+                        ProjectOopHirNodeKind::Conversion, expression->second(), left->typeKey);
+                    converted->children.push_back(std::move(right));
+                    right = std::move(converted);
+                }
+                else if (isEnumTypeKey(right->typeKey) && isZeroIntegerLiteral(expression->first()))
+                {
+                    auto converted = makeNode(
+                        ProjectOopHirNodeKind::Conversion, expression->first(), right->typeKey);
+                    converted->children.push_back(std::move(left));
+                    left = std::move(converted);
+                }
+            }
             std::optional<std::string> numericOperandType;
             if (ProjectTypeConversion::isNumeric(resultType))
             {

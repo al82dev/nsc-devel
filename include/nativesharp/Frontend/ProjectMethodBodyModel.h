@@ -1418,21 +1418,24 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         bool allowMethodGroup = false,
         bool allowEvent = false,
-        bool allowMove = false);
+        bool allowMove = false,
+        bool allowConstructorPropertyWrite = false);
     ExpressionResult analyzeIdentifier(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
         bool allowMethodGroup,
-        bool allowEvent);
+        bool allowEvent,
+        bool allowConstructorPropertyWrite);
     ExpressionResult analyzeMember(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
         bool allowMethodGroup,
-        bool allowEvent);
+        bool allowEvent,
+        bool allowConstructorPropertyWrite);
     ExpressionResult analyzeCall(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
@@ -1536,6 +1539,10 @@ private:
     bool readonlyFieldAssignable(
         const ClassMemberSymbol& field,
         std::size_t contextMemberOrdinal) const noexcept;
+    std::optional<std::size_t> automaticPropertyBackingField(
+        std::size_t typeOrdinal,
+        std::string_view propertyName,
+        bool isStatic) const noexcept;
     bool isCompileTimeConstantExpression(
         const ast::AstNode* expression,
         std::size_t contextMemberOrdinal) const;

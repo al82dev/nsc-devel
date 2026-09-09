@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -1641,6 +1642,83 @@ EnumSuccessor enumValueNext(EnumValue value)
     if (value.magnitude == ~std::uint64_t{0}) return EnumSuccessor{value, false};
     return EnumSuccessor{EnumValue{value.magnitude + 1U, false}, true};
 }
+
+// Enum members are registered before method-body name binding runs, but their initializers need
+// the same typed integer constant evaluator used by const fields and switch labels. This adapter
+// deliberately resolves only names already registered in the enum being collected. That permits
+// the normal left-to-right idiom (`All = Red | Green | Blue | Alpha`) without making a dynamic
+// expression, a member from another type, or a forward reference look constant by accident.
+class EnumInitializerResolver final : public ProjectConstantMemberResolver
+{
+public:
+    EnumInitializerResolver(
+        const ProjectMemberModel& members,
+        const ProjectNameLookup& names) noexcept
+        : members_(members), names_(names)
+    {
+    }
+
+    std::optional<std::size_t> resolveConstantMember(
+        const ast::AstNode* syntax,
+        std::optional<std::size_t> declaringTypeOrdinal) const override
+    {
+        if (syntax == nullptr || !declaringTypeOrdinal.has_value() ||
+            syntax->kind() != ast::AstNodeKind::IdentifierExpression)
+        {
+            return std::nullopt;
+        }
+
+        const std::vector<std::size_t> candidates =
+            members_.findMembers(*declaringTypeOrdinal, syntax->text());
+        if (candidates.size() != 1) return std::nullopt;
+        return candidates.front();
+    }
+
+    bool describeConstantMember(
+        std::size_t memberOrdinal,
+        bool& isEnumConstant,
+        std::int64_t& enumConstantValue,
+        std::string& enumUnderlyingTypeKey,
+        const ast::AstNode*& initializer,
+        std::string& declaredTypeKey,
+        std::optional<std::size_t>& declaringTypeOrdinal) const override
+    {
+        if (memberOrdinal >= members_.members().size()) return false;
+        const ClassMemberSymbol& member = members_.members()[memberOrdinal];
+        if (!member.isEnumConstant || member.declaringTypeOrdinal >= names_.namedTypes().size())
+        {
+            return false;
+        }
+
+        isEnumConstant = true;
+        enumConstantValue = member.enumConstantValue;
+        enumUnderlyingTypeKey = std::string(
+            ::nativesharp::frontend::enumUnderlyingTypeKey(
+                names_.namedTypes()[member.declaringTypeOrdinal].syntax));
+        initializer = nullptr;
+        declaredTypeKey = member.declaredTypeKey;
+        declaringTypeOrdinal = member.declaringTypeOrdinal;
+        return true;
+    }
+
+    std::string resolveTypeKey(const ast::TypeSyntax* typeSyntax) const override
+    {
+        return members_.canonicalTypeKey(typeSyntax, names_);
+    }
+
+private:
+    const ProjectMemberModel& members_;
+    const ProjectNameLookup& names_;
+};
+
+EnumValue enumValueFromIntegerConstant(const ProjectIntegerValue& value)
+{
+    if (ProjectIntegerEvaluator::isSignedInteger(value.typeKey) && value.asSigned() < 0)
+    {
+        return EnumValue{std::uint64_t{0} - value.bits, true};
+    }
+    return EnumValue{value.bits, false};
+}
 }
 
 bool ProjectMemberModel::collectEnumMembers(
@@ -1677,6 +1755,8 @@ bool ProjectMemberModel::collectEnumMembers(
     }
 
     std::unordered_map<std::string, const ast::AstNode*> seen;
+    const EnumInitializerResolver initializerResolver(*this, *nameLookup_);
+    const ProjectIntegerEvaluator integerEvaluator(&initializerResolver);
     EnumSuccessor nextValue;
     for (const ast::AstNode* memberNode : type.syntax->children())
     {
@@ -1721,25 +1801,19 @@ bool ProjectMemberModel::collectEnumMembers(
         if (memberNode->first() != nullptr)
         {
             const ast::AstNode* initializer = memberNode->first();
-            bool negative = false;
-            if (initializer->kind() == ast::AstNodeKind::UnaryExpression &&
-                initializer->tokenKind() == lexer::TokenKind::Minus && initializer->first() != nullptr)
-            {
-                negative = true;
-                initializer = initializer->first();
-            }
-            if (initializer->kind() != ast::AstNodeKind::IntegerLiteralExpression)
+            const std::optional<ProjectIntegerValue> folded =
+                integerEvaluator.evaluate(initializer, typeOrdinal);
+            if (!folded.has_value())
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidEnumInitializer,
                     diagnostics::DiagnosticSeverity::Error,
                     memberNode->range(),
                     "enum initializer for '" + memberNode->text() +
-                        "' must be a plain integer literal in the Stage 51.x OOP pipeline "
-                        "(general constant-expression folding for enum initializers is not supported yet)");
+                        "' must be an integral constant expression");
                 continue;
             }
-            value = EnumValue{initializer->integerValue(), negative};
+            value = enumValueFromIntegerConstant(*folded);
         }
         // LA COMPROBACION DE RANGO ESTA FUERA DEL `if` A PROPOSITO. El valor de un miembro sin
         // inicializador sale del auto-incremento, y ese tambien se puede salir: en
@@ -1819,6 +1893,17 @@ void ProjectMemberModel::scanMethodBody(
     {
         scanMethodBody(node->first(), typeOrdinal, methodMemberOrdinal, diagnostics);
         std::vector<std::size_t> candidates = findMembers(typeOrdinal, node->text());
+        if (candidates.empty())
+        {
+            for (const std::size_t ordinal : findMembers(typeOrdinal, "get_" + node->text()))
+            {
+                if (ordinal < members_.size() && members_[ordinal].isPropertyAccessor &&
+                    members_[ordinal].isGetter)
+                {
+                    candidates.push_back(ordinal);
+                }
+            }
+        }
         if (candidates.empty())
         {
             diagnostics.report(

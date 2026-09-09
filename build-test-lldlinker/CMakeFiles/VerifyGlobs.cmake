@@ -52,6 +52,7 @@ set(OLD_GLOB
   "A:/nsc-devel/tests/cc1/c51_default_parameters/c51_default_parameters.nsproj"
   "A:/nsc-devel/tests/cc1/c52_lazy_generic_members/c52_lazy_generic_members.nsproj"
   "A:/nsc-devel/tests/cc1/c53_const_string/c53_const_string.nsproj"
+  "A:/nsc-devel/tests/cc1/c54_constructor_get_only_enum_zero/c54_constructor_get_only_enum_zero.nsproj"
   "A:/nsc-devel/tests/cc1/c5_catch_break/c5_catch_break.nsproj"
   "A:/nsc-devel/tests/cc1/c6_catch_return/c6_catch_return.nsproj"
   "A:/nsc-devel/tests/cc1/c7_finally_switch/c7_finally_switch.nsproj"

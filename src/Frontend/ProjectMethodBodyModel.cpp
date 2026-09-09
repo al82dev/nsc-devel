@@ -4246,7 +4246,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     diagnostics::DiagnosticEngine& diagnostics,
     bool allowMethodGroup,
     bool allowEvent,
-    bool allowMove)
+    bool allowMove,
+    bool allowConstructorPropertyWrite)
 {
     if (expression == nullptr)
     {
@@ -4261,7 +4262,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     {
         case ast::AstNodeKind::IdentifierExpression:
             result = analyzeIdentifier(
-                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent);
+                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent,
+                allowConstructorPropertyWrite);
             break;
         case ast::AstNodeKind::ThisExpression:
             if (!contextHasImplicitThis(methodMemberOrdinal))
@@ -4655,7 +4657,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         }
         case ast::AstNodeKind::MemberExpression:
             result = analyzeMember(
-                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent);
+                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent,
+                allowConstructorPropertyWrite);
             break;
         // IDs 80 y 83. `p->campo` y `p->Metodo()` ya no llegan aqui: el parser los convierte en
         // `(*p).campo` y `(*p).Metodo()`, que es la MISMA operacion y la que siempre funciono.
@@ -4663,7 +4666,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         // sigue existiendo en el AST y un `default` mudo seria peor que una ruta explicita.
         case ast::AstNodeKind::PointerMemberExpression:
             result = analyzeMember(
-                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent);
+                expression, methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup, allowEvent,
+                allowConstructorPropertyWrite);
             break;
         case ast::AstNodeKind::CallExpression:
             result = analyzeCall(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -4764,6 +4768,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             if (whenTrue.typeKey == whenFalse.typeKey)
             {
                 result.typeKey = whenTrue.typeKey;
+                result.valid = true;
+                mergeOwnership();
+                break;
+            }
+            // A string literal already converts implicitly to the native string value everywhere
+            // else (assignment, arguments and returns).  The conditional join must use that same
+            // conversion instead of treating `string-literal` as an unrelated final type.  This
+            // is deliberately narrow: it does not add the C# reference-type best-common-type
+            // lattice described above.
+            if ((whenTrue.typeKey == "string-literal" &&
+                 whenFalse.typeKey == "builtin:string") ||
+                (whenTrue.typeKey == "builtin:string" &&
+                 whenFalse.typeKey == "string-literal"))
+            {
+                result.typeKey = "builtin:string";
                 result.valid = true;
                 mergeOwnership();
                 break;
@@ -5697,7 +5716,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics,
     bool allowMethodGroup,
-    bool allowEvent)
+    bool allowEvent,
+    bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     const std::optional<ScopeName> scopeName = lookupScopeName(scopeOrdinal, expression->text());
@@ -6039,6 +6059,37 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         if (!propertyGetters.empty())
         {
             const bool staticProperty = memberModel_->members()[propertyGetters.front()].isStatic;
+            const std::optional<std::size_t> backing =
+                allowConstructorPropertyWrite && propertySetters.empty() && !staticProperty &&
+                    caller->kind == ClassMemberKind::Constructor
+                ? automaticPropertyBackingField(
+                      accessingTypeOrdinal, expression->text(), false)
+                : std::nullopt;
+            if (backing.has_value())
+            {
+                const ClassMemberSymbol& field = memberModel_->members()[*backing];
+                result.typeKey = field.declaredTypeKey;
+                result.valid = true;
+                result.assignable = true;
+                result.assignmentMemberOrdinal = *backing;
+                result.receiverTypeKey = thisTypeKey;
+                result.receiverTypeOrdinal = accessingTypeOrdinal;
+                nameBindings_.push_back(MethodNameBinding{
+                    MethodNameBindingKind::ImplicitField,
+                    expression,
+                    methodMemberOrdinal,
+                    scopeOrdinal,
+                    expression->text(),
+                    result.typeKey,
+                    std::nullopt,
+                    std::nullopt,
+                    {*backing},
+                    nullptr,
+                    thisTypeKey,
+                    accessingTypeOrdinal,
+                    false});
+                return result;
+            }
             result = resolveSyntheticCall(
                 expression,
                 methodMemberOrdinal,
@@ -6114,7 +6165,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics,
     bool allowMethodGroup,
-    bool allowEvent)
+    bool allowEvent,
+    bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     if (expression == nullptr || expression->first() == nullptr || memberModel_ == nullptr ||
@@ -6601,6 +6653,40 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             protectedReceiverType);
         if (!propertyGetters.empty())
         {
+            const ClassMemberSymbol& getter = memberModel_->members()[propertyGetters.front()];
+            const std::optional<std::size_t> backing =
+                allowConstructorPropertyWrite && propertySetters.empty() && !typeReceiver &&
+                    !getter.isStatic && caller->kind == ClassMemberKind::Constructor &&
+                    caller->declaringTypeOrdinal == *receiverType &&
+                    expression->first()->kind() == ast::AstNodeKind::ThisExpression
+                ? automaticPropertyBackingField(*receiverType, expression->text(), false)
+                : std::nullopt;
+            if (backing.has_value())
+            {
+                const ClassMemberSymbol& field = memberModel_->members()[*backing];
+                result.typeKey = field.declaredTypeKey;
+                result.valid = true;
+                result.assignable = true;
+                result.assignmentMemberOrdinal = *backing;
+                result.receiverSyntax = expression->first();
+                result.receiverTypeKey = receiver.typeKey;
+                result.receiverTypeOrdinal = receiverType;
+                nameBindings_.push_back(MethodNameBinding{
+                    MethodNameBindingKind::ExplicitThisField,
+                    expression,
+                    methodMemberOrdinal,
+                    scopeOrdinal,
+                    expression->text(),
+                    result.typeKey,
+                    std::nullopt,
+                    std::nullopt,
+                    {*backing},
+                    expression->first(),
+                    receiver.typeKey,
+                    receiverType,
+                    false});
+                return result;
+            }
             const bool interfaceCall = !typeReceiver && interfaceModel_ != nullptr &&
                 interfaceModel_->isInterface(*receiverType);
             result = resolveSyntheticCall(
@@ -9572,6 +9658,27 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeBinary(
         return result;
     }
 
+    // C#'s narrow implicit enumeration conversion: the integer literal zero may stand for the
+    // zero value of any enum. Keep this local to equality/inequality; it does not make arbitrary
+    // integers comparable with enums, and it does not erase the nominal distinction between two
+    // different enum types.
+    const auto isZeroIntegerLiteral = [](const ast::AstNode* syntax) noexcept
+    {
+        return syntax != nullptr &&
+            syntax->kind() == ast::AstNodeKind::IntegerLiteralExpression &&
+            syntax->integerValue() == 0;
+    };
+    const bool enumZeroComparison =
+        (operation == TokenKind::EqualEqual || operation == TokenKind::BangEqual) &&
+        ((isEnumTypeKey(left.typeKey) && isZeroIntegerLiteral(expression->second())) ||
+         (isEnumTypeKey(right.typeKey) && isZeroIntegerLiteral(expression->first())));
+    if (enumZeroComparison)
+    {
+        result.typeKey = "builtin:bool";
+        result.valid = true;
+        return result;
+    }
+
     // NSC-LIMIT-004. `left == right` SOBRE DOS STRUCTS.
     //
     // Va antes del bloque generico de comparacion y despues de los operadores definidos por el
@@ -10001,7 +10108,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     if (!left.valid)
     {
         left = analyzeExpression(
-            expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics, false, true);
+            expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+            false, true, false, expression->tokenKind() == TokenKind::Equal);
     }
     definiteAssignmentWriteTarget_ = previousWriteTarget;
     if (!left.valid)
@@ -10995,6 +11103,26 @@ bool ProjectMethodBodyModel::readonlyFieldAssignable(
     const ClassMemberSymbol* context = methodSymbol(contextMemberOrdinal);
     return context != nullptr && context->kind == ClassMemberKind::Constructor &&
         context->declaringTypeOrdinal == field.declaringTypeOrdinal;
+}
+
+std::optional<std::size_t> ProjectMethodBodyModel::automaticPropertyBackingField(
+    std::size_t typeOrdinal,
+    std::string_view propertyName,
+    bool isStatic) const noexcept
+{
+    if (memberModel_ == nullptr) return std::nullopt;
+    for (const std::size_t ordinal : memberModel_->membersOfType(typeOrdinal))
+    {
+        if (ordinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+        if (member.kind == ClassMemberKind::Field && member.isCompilerGenerated &&
+            !member.isEventBacking && member.associatedName == propertyName &&
+            member.isStatic == isStatic)
+        {
+            return ordinal;
+        }
+    }
+    return std::nullopt;
 }
 
 bool ProjectMethodBodyModel::isCompileTimeConstantExpression(

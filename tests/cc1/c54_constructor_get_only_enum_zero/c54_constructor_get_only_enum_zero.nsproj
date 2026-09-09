@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>c54_constructor_get_only_enum_zero</Name></PropertyGroup>
+  <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
+</Project>

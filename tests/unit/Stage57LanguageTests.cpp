@@ -337,5 +337,24 @@ class P
 )NS",
         "continue is only valid within a loop");
 
+    // The string-literal/native-string join is one existing implicit conversion, not permission
+    // to invent a common type for unrelated conditional branches.
+    checkRejected(
+        tests,
+        root,
+        "conditional-incompatible-branches",
+        R"NS(
+class P
+{
+    public static int Main()
+    {
+        bool chooseText = true;
+        string text = chooseText ? "native" : 42;
+        return text.Length;
+    }
+}
+)NS",
+        "branches of a conditional expression have incompatible types");
+
     return tests.result();
 }

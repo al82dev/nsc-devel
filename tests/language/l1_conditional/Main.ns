@@ -76,6 +76,14 @@ namespace languagecontract
             long mixed = n > 0 ? small : wide;
             if (mixed != 4) { return 13; }
 
+            // A literal is already implicitly convertible to native string in assignments,
+            // arguments and returns.  A conditional uses that same conversion in either branch.
+            string text = "native";
+            string emptyFirst = true ? "" : text;
+            if (emptyFirst.Length != 0) { return 17; }
+            string textFirst = false ? text : "";
+            if (textFirst.Length != 0) { return 18; }
+
             // Composes where a statement cannot: inside an argument, and inside a return.
             if (Twice(true ? 20 : 0) != 40) { return 14; }
             if (Choose(true) != 21) { return 15; }

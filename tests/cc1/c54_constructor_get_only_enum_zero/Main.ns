@@ -1,0 +1,45 @@
+// NativeSharp 1.0.1 -- two source-compatible forms used directly by SaruCSHARP.
+
+namespace cc1constructorpropertyenumzero
+{
+    public enum Buttons
+    {
+        None = 0,
+        Left = 1,
+        Right = 2
+    }
+
+    public class GamePadTriggers
+    {
+        public float Left { get; }
+        public float Right { get; }
+
+        public GamePadTriggers(float left, float right)
+        {
+            Left = left;
+            Right = right;
+        }
+    }
+
+    public static class GamePadDPad
+    {
+        public static bool GetButtonState(Buttons buttons, Buttons button)
+        {
+            return (buttons & button) != 0;
+        }
+    }
+
+    class Program
+    {
+        public static int Main()
+        {
+            GamePadTriggers triggers = new GamePadTriggers(0.25f, 0.75f);
+            if (triggers.Left != 0.25f) { return 1; }
+            if (triggers.Right != 0.75f) { return 2; }
+            if (!GamePadDPad.GetButtonState(Buttons.Left, Buttons.Left)) { return 3; }
+            if (GamePadDPad.GetButtonState(Buttons.Left, Buttons.Right)) { return 4; }
+            delete triggers;
+            return 42;
+        }
+    }
+}

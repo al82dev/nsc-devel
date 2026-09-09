@@ -353,6 +353,18 @@ namespace Demo
 
 void testNegatives(TestContext& tests, const std::filesystem::path& root)
 {
+    expectValid(tests, root, "GetOnlyConstructorAssignment", R"NS(
+class Pair
+{
+    public int Left { get; }
+    public int Right { get; }
+    public Pair(int left, int right)
+    {
+        Left = left;
+        this.Right = right;
+    }
+}
+)NS");
     expectInvalid(tests, root, "SetOnly",
         "class C { public int Value { set { } } }", "getter");
     expectInvalid(tests, root, "DuplicateGet",
@@ -393,7 +405,10 @@ void testNegatives(TestContext& tests, const std::filesystem::path& root)
         "class C { public int Value { get; private set; } } class H { public void F(C c) { c.Value = 1; } }",
         "no accessible setter");
     expectInvalid(tests, root, "GetOnlyAssignment",
-        "class C { public int Value { get { return 1; } } public void F() { Value = 2; } }",
+        "class C { public int Value { get; } public void F() { Value = 2; } }",
+        "no accessible setter");
+    expectInvalid(tests, root, "GetOnlyAssignmentThroughOtherInstance",
+        "class C { public int Value { get; } public C(C other) { other.Value = 2; } }",
         "no accessible setter");
     expectValid(tests, root, "PropertyCompoundSupported",
         "class C { public int Value { get; set; } public void F() { Value += 1; } }");

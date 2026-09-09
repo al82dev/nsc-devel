@@ -234,3 +234,15 @@ disponible de que la semántica es la que dice el fuente.
 ---------------------------------------------------------------------------------------------------
 
     Añade `const string` real y registra que entero→puntero, `p + 1` y operadores de usuario ya existían.
+
+
+1.0.1 — EXPRESIONES CONSTANTES EN ENUMS (158_1_0_1_expresiones_constantes_en_inicializadores_enum.md)
+-----------------------------------------------------------------------------------------------------
+
+    Permite `All = Red | Green | Blue | Alpha` reutilizando el evaluador entero constante tipado.
+
+
+1.0.1 — INICIALIZACIÓN GET-ONLY Y ENUM CERO (159_1_0_1_inicializacion_get_only_y_comparacion_enum_cero.md)
+----------------------------------------------------------------------------------------------------------
+
+    Inicializa auto-propiedades `get;` desde su constructor y admite `enum == 0` / `enum != 0`.

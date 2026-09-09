@@ -226,6 +226,8 @@ add_test("nsc.cc1.correctness.cc1-c52-lazy-generic-members" "A:/nsc-devel/build-
 set_tests_properties("nsc.cc1.correctness.cc1-c52-lazy-generic-members" PROPERTIES  _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1119;add_test;A:/nsc-devel/CMakeLists.txt;0;")
 add_test("nsc.cc1.correctness.cc1-c53-const-string" "A:/nsc-devel/build-test-nslink/tests/nsc_cc1_correctness_tests.exe" "cc1-c53-const-string")
 set_tests_properties("nsc.cc1.correctness.cc1-c53-const-string" PROPERTIES  _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1119;add_test;A:/nsc-devel/CMakeLists.txt;0;")
+add_test("nsc.cc1.correctness.cc1-c54-constructor-get-only-enum-zero" "A:/nsc-devel/build-test-nslink/tests/nsc_cc1_correctness_tests.exe" "cc1-c54-constructor-get-only-enum-zero")
+set_tests_properties("nsc.cc1.correctness.cc1-c54-constructor-get-only-enum-zero" PROPERTIES  _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1119;add_test;A:/nsc-devel/CMakeLists.txt;0;")
 add_test("nsc.cc1.correctness.cc1-c40-receptor-estatico-calificado" "A:/nsc-devel/build-test-nslink/tests/nsc_cc1_correctness_tests.exe" "cc1-c40-receptor-estatico-calificado")
 set_tests_properties("nsc.cc1.correctness.cc1-c40-receptor-estatico-calificado" PROPERTIES  _BACKTRACE_TRIPLES "A:/nsc-devel/CMakeLists.txt;1119;add_test;A:/nsc-devel/CMakeLists.txt;0;")
 add_test("nsc.cc1.correctness.cc1-c41-propiedad-receptor-struct" "A:/nsc-devel/build-test-nslink/tests/nsc_cc1_correctness_tests.exe" "cc1-c41-propiedad-receptor-struct")

@@ -770,6 +770,14 @@ int main(int argc, char** argv)
         tests, root, "tests/cc1/c53_const_string/c53_const_string.nsproj",
         "cc1-c53-const-string", 42);
 
+    // NSC-SARU-002/003. A get-only auto-property is initialized through its generated backing
+    // field only inside the declaring constructor, and literal zero converts to an enum for
+    // equality/inequality. These are the exact GamePadTriggers/GamePadDPad source forms.
+    checkFixture(
+        tests, root,
+        "tests/cc1/c54_constructor_get_only_enum_zero/c54_constructor_get_only_enum_zero.nsproj",
+        "cc1-c54-constructor-get-only-enum-zero", 42);
+
     // NSC-LIMIT-001/002. Dos modulos publican un tipo `Color`; el consumidor llama miembros
     // estaticos por nombre calificado, alias de namespace y alias de tipo. Tambien lee un campo,
     // una propiedad y el miembro `C` de un enum, de modo que la prueba cruza hasta MIR, LLVM,

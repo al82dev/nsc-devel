@@ -10,8 +10,8 @@
 // This test covers the fix end to end: member registration (ProjectMemberModel), qualified access
 // and equality/parameter type-checking (ProjectMethodBodyModel), constant-field materialization
 // (ProjectOopMirModel, reusing the Stage 37 native constant-field mechanism), and LLVM lowering
-// (constant globals + explicit enum<->int cast), for both auto-incremented and explicit-literal
-// enum members.
+// (constant globals + explicit enum<->int cast), for auto-incremented members, literal members
+// and typed integral constant expressions over preceding members.
 
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -66,7 +66,7 @@ const ClassMemberSymbol* findEnumConstant(
 }
 
 // ---------------------------------------------------------------------------------------
-// 1. Member registration: auto-increment and explicit-literal values, at the member-model level.
+// 1. Member registration: auto-increment, literals and constant expressions, at member-model level.
 // ---------------------------------------------------------------------------------------
 
 void testEnumMemberRegistration(TestContext& tests, const std::filesystem::path& root)
@@ -86,6 +86,15 @@ public enum Explicit
     Alpha = 10,
     Beta,
     Gamma = 100
+}
+
+public enum ColorWriteChannels
+{
+    Red = 1,
+    Green = 2,
+    Blue = 4,
+    Alpha = 8,
+    All = Red | Green | Blue | Alpha
 }
 
 class H
@@ -118,6 +127,11 @@ class H
     tests.expect(alpha != nullptr && alpha->enumConstantValue == 10, "explicit-literal enum member keeps its value");
     tests.expect(beta != nullptr && beta->enumConstantValue == 11, "auto-increment resumes from the last explicit value");
     tests.expect(gamma != nullptr && gamma->enumConstantValue == 100, "a second explicit literal overrides the running counter");
+
+    const ClassMemberSymbol* all = findEnumConstant(compilation, "ColorWriteChannels", "All");
+    tests.expect(
+        all != nullptr && all->enumConstantValue == 15,
+        "a bitwise expression over preceding enum members is folded in an enum initializer");
 }
 
 // ---------------------------------------------------------------------------------------
@@ -136,11 +150,28 @@ public enum Mode
     Third
 }
 
+public enum Buttons : byte
+{
+    None = 0,
+    Left = 1,
+    Right = 2
+}
+
 class Checker
 {
     public static bool IsSecond(Mode value)
     {
         return value == Mode.Second;
+    }
+
+    public static bool IsPressed(Buttons buttons, Buttons button)
+    {
+        return (buttons & button) != 0;
+    }
+
+    public static bool IsNone(Buttons buttons)
+    {
+        return 0 == buttons;
     }
 
     public static int Run()
@@ -149,6 +180,9 @@ class Checker
         if (!IsSecond(m)) { return 1; }
         if (IsSecond(Mode.First)) { return 2; }
         if ((int)Mode.Third != 2) { return 3; }
+        if (!IsPressed(Buttons.Left, Buttons.Left)) { return 4; }
+        if (IsPressed(Buttons.Left, Buttons.Right)) { return 5; }
+        if (!IsNone(Buttons.None)) { return 6; }
         return 0;
     }
 }
@@ -223,24 +257,40 @@ class H
         tests.expect(!ok || !error.empty(), "duplicate enum member name is still rejected as a semantic error");
     }
     {
-        const auto directory = root / "NonLiteral";
-        writeProject(directory, "NonLiteral");
+        const auto directory = root / "NonConstant";
+        writeProject(directory, "NonConstant");
         writeFile(directory / "Main.ns", R"NS(
 public enum Mode
 {
-    First = 1 + 1
+    First = H.Value()
 }
 class H
 {
-    public static int Touch() { return 0; }
+    public static int Value() { return 2; }
 }
 )NS");
         ProjectCompilation compilation;
         std::string error;
-        const bool ok = compilation.compileProjectOopMir(directory / "NonLiteral.nsproj", error);
+        const bool ok = compilation.compileProjectOopMir(directory / "NonConstant.nsproj", error);
         tests.expect(!ok || !error.empty(),
-            "a non-literal enum initializer is rejected rather than silently mis-evaluated "
-            "(this OOP-pipeline enum support only folds plain integer literals, by design)");
+            "a dynamic enum initializer is rejected rather than silently mis-evaluated");
+    }
+    {
+        const auto directory = root / "EnumNonZeroComparison";
+        writeProject(directory, "EnumNonZeroComparison");
+        writeFile(directory / "Main.ns", R"NS(
+public enum Buttons { None = 0, Left = 1 }
+class H
+{
+    public static bool Invalid(Buttons buttons) { return buttons != 1; }
+}
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMethodBodies(
+            directory / "EnumNonZeroComparison.nsproj", error);
+        tests.expect(!ok || !error.empty(),
+            "an enum comparison with a nonzero integer literal remains rejected");
     }
 }
 }
