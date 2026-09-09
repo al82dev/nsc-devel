@@ -426,6 +426,8 @@ bool canMaterializePrecompiledDeclaration(
     constexpr std::uint32_t kVirtual = 1U << 3U;
     constexpr std::uint32_t kOverride = 1U << 4U;
     constexpr std::uint32_t kAbstract = 1U << 5U;
+    constexpr std::uint32_t kExternC = 1U << 8U;
+    constexpr std::uint32_t kExportedC = 1U << 9U;
     constexpr std::uint32_t kCompilerGenerated = 1U << 10U;
     constexpr std::uint32_t kPropertyAccessor = 1U << 12U;
     constexpr std::uint32_t kIndexerAccessor = 1U << 13U;
@@ -445,6 +447,12 @@ bool canMaterializePrecompiledDeclaration(
     {
         return false;
     }
+    // A plain `extern C` declaration belongs to the producer's native implementation. Its raw
+    // support symbol can remain undefined in a static archive and is intentionally not exported
+    // by a DLL. Reconstructing it as an ordinary precompiled NativeSharp method invents a mangled
+    // symbol that neither product publishes. Only `export extern C` is part of the consumable
+    // NativeSharp surface (and keeps its ordinary NativeSharp entry alongside the C ABI thunk).
+    if ((member.flags & kExternC) != 0U && (member.flags & kExportedC) == 0U) return false;
 
     const bool dispatchContract = (member.flags & (kVirtual | kOverride | kAbstract)) != 0U ||
                                   declaringType->kind == interop::LibraryMetadataTypeKind::Interface;

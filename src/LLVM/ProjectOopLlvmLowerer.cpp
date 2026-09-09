@@ -1949,6 +1949,31 @@ private:
             return fail(error, "1.0-E1 failed to create class-descriptor accessor type");
         }
 
+        // A local class can inherit (directly or through another local class) from a class whose
+        // descriptor lives in a precompiled static library or DLL. NSMETA deliberately publishes
+        // an accessor for that descriptor rather than promising that the descriptor DATA symbol
+        // is linkable -- the latter is not true for the DLL product. Mark the complete local
+        // descendant chain now so its descriptor can be completed at runtime through accessors.
+        for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
+        {
+            if (table.isImported) runtimeDescriptorAccessorTypes_.insert(table.typeOrdinal);
+        }
+        bool addedRuntimeDescriptor = true;
+        while (addedRuntimeDescriptor)
+        {
+            addedRuntimeDescriptor = false;
+            for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
+            {
+                if (table.isImported || !table.baseTypeOrdinal.has_value() ||
+                    !runtimeDescriptorAccessorTypes_.contains(*table.baseTypeOrdinal))
+                {
+                    continue;
+                }
+                addedRuntimeDescriptor =
+                    runtimeDescriptorAccessorTypes_.insert(table.typeOrdinal).second || addedRuntimeDescriptor;
+            }
+        }
+
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
             if (table.isImported)
@@ -2079,6 +2104,20 @@ private:
                 return fail(error, "Macro A failed to declare class descriptor " + table.descriptorName);
             }
             descriptorGlobals_[table.typeOrdinal] = descriptor;
+
+            if (table.descriptorAccessorName.empty())
+            {
+                return fail(error, "1.0-E1 local class has no descriptor-accessor name");
+            }
+            LLVMValueRef accessor = LLVMAddFunction(
+                module_, table.descriptorAccessorName.c_str(), descriptorAccessorFunctionType_);
+            if (accessor == nullptr)
+            {
+                return fail(error, "1.0-E1 failed to declare class-descriptor accessor " +
+                    table.descriptorAccessorName);
+            }
+            descriptorAccessorFunctions_[table.typeOrdinal] =
+                FunctionInfo{accessor, descriptorAccessorFunctionType_};
         }
 
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
@@ -2093,12 +2132,15 @@ private:
             LLVMValueRef baseDescriptor = LLVMConstNull(ptr);
             if (table.baseTypeOrdinal.has_value())
             {
-                const auto baseFound = descriptorGlobals_.find(*table.baseTypeOrdinal);
-                if (baseFound == descriptorGlobals_.end())
+                if (!runtimeDescriptorAccessorTypes_.contains(table.typeOrdinal))
                 {
-                    return fail(error, "Macro A descriptor cannot resolve its base descriptor");
+                    const auto baseFound = descriptorGlobals_.find(*table.baseTypeOrdinal);
+                    if (baseFound == descriptorGlobals_.end())
+                    {
+                        return fail(error, "Macro A descriptor cannot resolve its local base descriptor");
+                    }
+                    baseDescriptor = baseFound->second;
                 }
-                baseDescriptor = baseFound->second;
             }
 
             LLVMValueRef vtable = LLVMConstNull(ptr);
@@ -2139,26 +2181,59 @@ private:
             };
             LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType_, values, 7);
             LLVMSetInitializer(descriptorFound->second, initializer);
-            LLVMSetGlobalConstant(descriptorFound->second, 1);
+            LLVMSetGlobalConstant(
+                descriptorFound->second,
+                runtimeDescriptorAccessorTypes_.contains(table.typeOrdinal) ? 0 : 1);
 
-            if (table.descriptorAccessorName.empty())
+            const auto accessorFound = descriptorAccessorFunctions_.find(table.typeOrdinal);
+            if (accessorFound == descriptorAccessorFunctions_.end())
             {
-                return fail(error, "1.0-E1 local class has no descriptor-accessor name");
+                return fail(error, "1.0-E1 lost a declared class-descriptor accessor");
             }
-            LLVMValueRef accessor = LLVMAddFunction(
-                module_, table.descriptorAccessorName.c_str(), descriptorAccessorFunctionType_);
-            if (accessor == nullptr)
-            {
-                return fail(error, "1.0-E1 failed to define class-descriptor accessor " +
-                    table.descriptorAccessorName);
-            }
+            LLVMValueRef accessor = accessorFound->second.function;
             LLVMBasicBlockRef accessorEntry = LLVMAppendBasicBlockInContext(context_, accessor, "entry");
             LLVMBuilderRef accessorBuilder = LLVMCreateBuilderInContext(context_);
             LLVMPositionBuilderAtEnd(accessorBuilder, accessorEntry);
+            if (runtimeDescriptorAccessorTypes_.contains(table.typeOrdinal))
+            {
+                if (!table.baseTypeOrdinal.has_value())
+                {
+                    LLVMDisposeBuilder(accessorBuilder);
+                    return fail(error, "1.0-E1 runtime descriptor has no base type");
+                }
+                const auto baseAccessor = descriptorAccessorFunctions_.find(*table.baseTypeOrdinal);
+                if (baseAccessor == descriptorAccessorFunctions_.end())
+                {
+                    LLVMDisposeBuilder(accessorBuilder);
+                    return fail(error, "1.0-E1 runtime descriptor cannot resolve its base accessor");
+                }
+                LLVMValueRef resolvedBase = LLVMBuildCall2(
+                    accessorBuilder,
+                    baseAccessor->second.functionType,
+                    baseAccessor->second.function,
+                    nullptr,
+                    0,
+                    "base.classdesc");
+                LLVMValueRef baseField = LLVMBuildStructGEP2(
+                    accessorBuilder,
+                    descriptorType_,
+                    descriptorFound->second,
+                    0,
+                    "base.classdesc.addr");
+                // More than one thread may construct the first object of this type. Publish the
+                // identical base pointer exactly once; a plain repeated store would race with
+                // another accessor or with RTTI reading the completed descriptor chain.
+                LLVMBuildAtomicCmpXchg(
+                    accessorBuilder,
+                    baseField,
+                    LLVMConstNull(ptr),
+                    resolvedBase,
+                    LLVMAtomicOrderingSequentiallyConsistent,
+                    LLVMAtomicOrderingSequentiallyConsistent,
+                    0);
+            }
             LLVMBuildRet(accessorBuilder, descriptorFound->second);
             LLVMDisposeBuilder(accessorBuilder);
-            descriptorAccessorFunctions_[table.typeOrdinal] =
-                FunctionInfo{accessor, descriptorAccessorFunctionType_};
         }
         return true;
     }
@@ -9544,13 +9619,13 @@ private:
             return failValue(error, "Macro A allocation is missing its target class ordinal");
         }
         LLVMValueRef descriptorValue = nullptr;
-        const auto importedDescriptor = descriptorAccessorFunctions_.find(*node->targetTypeOrdinal);
-        if (importedDescriptor != descriptorAccessorFunctions_.end() &&
-            descriptorGlobals_.find(*node->targetTypeOrdinal) == descriptorGlobals_.end())
+        const auto descriptorAccessor = descriptorAccessorFunctions_.find(*node->targetTypeOrdinal);
+        if (descriptorAccessor != descriptorAccessorFunctions_.end() &&
+            runtimeDescriptorAccessorTypes_.contains(*node->targetTypeOrdinal))
         {
             descriptorValue = buildNoUnwindCall(
-                importedDescriptor->second.functionType,
-                importedDescriptor->second.function,
+                descriptorAccessor->second.functionType,
+                descriptorAccessor->second.function,
                 nullptr,
                 0,
                 "classdesc");
@@ -10406,6 +10481,10 @@ private:
     LLVMTypeRef destructionEntryFunctionType_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> descriptorGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> descriptorAccessorFunctions_;
+    // Imported descriptors are only promised through their PE-safe accessor. Local descendants
+    // of those descriptors also use their accessors so the complete base chain is initialized
+    // before an object publishes its most-derived descriptor pointer.
+    std::unordered_set<std::size_t> runtimeDescriptorAccessorTypes_;
     std::unordered_map<std::size_t, LLVMValueRef> interfaceMapGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> destructionFunctions_;
     std::unordered_map<std::size_t, LLVMValueRef> vtableGlobals_;

@@ -313,6 +313,68 @@ namespace Stage46.Shared
 
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
 {
+    // C8's optional Object root must remain usable when it arrives through NSMETA. The consumer's
+    // Program has no explicit base, so the inheritance model attaches the imported Object and the
+    // LLVM descriptor must resolve it through the producer's PE-safe descriptor accessor.
+    const auto objectRoot = root / "PrecompiledObjectRoot";
+    const auto objectProducer = objectRoot / "Producer";
+    const auto objectConsumer = objectRoot / "Consumer";
+    writeProject(objectProducer, "ObjectProducer", "StaticLibrary", R"NS(
+namespace NativeSharp.Core
+{
+    public class Object { }
+    public class MathUtil
+    {
+        public static int Max(int left, int right) { return left > right ? left : right; }
+    }
+}
+)NS");
+    std::string output;
+    std::string error;
+    const auto objectLibrary = objectProducer / "ObjectProducer.lib";
+    const ExitCode objectProducerResult = emitLibrary(
+        "--emit-project-oop-lib",
+        objectProducer / "ObjectProducer.nsproj",
+        objectLibrary,
+        output,
+        error,
+        false);
+    tests.expect(objectProducerResult == ExitCode::Success,
+                 "precompiled Object-root producer emits its static archive and NSMETA (" + error + ")");
+    writeFile(objectConsumer / "Main.ns", R"NS(
+namespace Consumer
+{
+    using NativeSharp.Core;
+    public class Program
+    {
+        public static int Main() { return MathUtil.Max(4, 42); }
+    }
+}
+)NS");
+    writeFile(objectConsumer / "ObjectConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ObjectConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/ObjectProducer.lib\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    const auto objectExecutable = objectConsumer / "ObjectConsumer.exe";
+    const ExitCode objectConsumerResult = emitLibrary(
+        "--emit-project-oop-exe",
+        objectConsumer / "ObjectConsumer.nsproj",
+        objectExecutable,
+        output,
+        error,
+        false);
+    tests.expect(objectConsumerResult == ExitCode::Success,
+                 "consumer resolves its implicit precompiled Object base through the published "
+                 "descriptor accessor (" + error + ")");
+#ifdef _WIN32
+    if (objectConsumerResult == ExitCode::Success)
+        tests.expect(runExecutable(objectExecutable) == 42,
+                     "consumer with an implicit precompiled Object base executes to 42");
+#endif
+
     const std::string producerSource = R"NS(
 namespace NativeSharp.Core
 {
@@ -322,6 +384,14 @@ using NativeSharp.Core;
 
 namespace Precompiled
 {
+    public class NativeSupport
+    {
+        extern C
+        {
+            public void Copy(void* destination, void* source, long count);
+        }
+    }
+
     public struct Pair
     {
         public int X;
@@ -493,8 +563,6 @@ namespace Consumer
     const auto staticProducer = staticRoot / "Producer";
     const auto staticConsumer = staticRoot / "Consumer";
     writeProject(staticProducer, "StaticProducer", "StaticLibrary", producerSource);
-    std::string output;
-    std::string error;
     const auto staticLibrary = staticProducer / "NativeMath.lib";
     tests.expect(
         emitLibrary(
