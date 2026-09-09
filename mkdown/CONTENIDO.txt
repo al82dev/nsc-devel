@@ -270,3 +270,9 @@ disponible de que la semántica es la que dice el fuente.
 ----------------------------------------------------------------------------
 
     Ejecuta desde consola la misma matriz G0.2 y el mismo PipelineWorker que usa la GUI.
+
+
+BASELINE CERTIFICADO 1.0.1 — STRINGS Y ENUMS (164_baseline_certificado_1_0_1_strings_y_enums.md)
+------------------------------------------------------------------------------------------------
+
+    Acta G00 de la matriz completa: identidad, hashes, conteos, corrida roja y estado LANDED.
