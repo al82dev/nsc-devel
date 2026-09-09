@@ -276,3 +276,9 @@ BASELINE CERTIFICADO 1.0.1 — STRINGS Y ENUMS (164_baseline_certificado_1_0_1_s
 ------------------------------------------------------------------------------------------------
 
     Acta G00 de la matriz completa: identidad, hashes, conteos, corrida roja y estado LANDED.
+
+
+POLÍTICA LOCAL DE HISTORIAL DE DESARROLLO (165_politica_local_de_historial_de_desarrollo.md)
+--------------------------------------------------------------------------------------------
+
+    Define la documentación, verificación, baseline y commit bilingüe exigidos por cada cambio.
