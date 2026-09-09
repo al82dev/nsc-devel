@@ -464,6 +464,7 @@ struct ProjectOopMirFunction final
     std::string mangledName;
     std::string returnTypeKey;
     sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
+    std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
     std::vector<sema::OwnershipKind> parameterOwnerships;
     std::vector<std::size_t> localOrdinals;

@@ -891,6 +891,7 @@ bool ProjectOopMirModel::build(
         function.mangledName = source.mangledName;
         function.returnTypeKey = source.returnTypeKey;
         function.returnOwnership = source.returnOwnership;
+        function.parameterNames = source.parameterNames;
         function.parameterTypeKeys = source.parameterTypeKeys;
         function.parameterOwnerships = source.parameterOwnerships;
         function.localOrdinals = source.localOrdinals;

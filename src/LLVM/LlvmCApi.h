@@ -21,6 +21,7 @@ struct LLVMOpaquePassBuilderOptions;
 struct LLVMOpaqueOperandBundle;
 struct LLVMOpaqueMetadata;
 struct LLVMOpaqueDIBuilder;
+struct LLVMOpaqueDbgRecord;
 
 using LLVMContextRef = LLVMOpaqueContext*;
 using LLVMModuleRef = LLVMOpaqueModule*;
@@ -36,6 +37,7 @@ using LLVMPassBuilderOptionsRef = LLVMOpaquePassBuilderOptions*;
 using LLVMOperandBundleRef = LLVMOpaqueOperandBundle*;
 using LLVMMetadataRef = LLVMOpaqueMetadata*;
 using LLVMDIBuilderRef = LLVMOpaqueDIBuilder*;
+using LLVMDbgRecordRef = LLVMOpaqueDbgRecord*;
 using LLVMBool = int;
 
 enum LLVMModuleFlagBehavior
@@ -65,6 +67,15 @@ enum LLVMDIFlags
 {
     LLVMDIFlagZero = 0,
 };
+
+using LLVMDWARFTypeEncoding = unsigned;
+constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingAddress = 0x01;
+constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingBoolean = 0x02;
+constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingFloat = 0x04;
+constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingSigned = 0x05;
+constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingSignedChar = 0x06;
+constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingUnsigned = 0x07;
+constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingUnsignedChar = 0x08;
 
 // Values are fixed by llvm-c/Core.h and llvm-c/Analysis.h.
 enum LLVMIntPredicate
@@ -280,7 +291,77 @@ LLVMMetadataRef LLVMDIBuilderCreateDebugLocation(
     unsigned column,
     LLVMMetadataRef scope,
     LLVMMetadataRef inlinedAt);
+LLVMMetadataRef LLVMDIBuilderCreateUnspecifiedType(
+    LLVMDIBuilderRef builder,
+    const char* name,
+    std::size_t nameLength);
+LLVMMetadataRef LLVMDIBuilderCreateBasicType(
+    LLVMDIBuilderRef builder,
+    const char* name,
+    std::size_t nameLength,
+    std::uint64_t sizeInBits,
+    LLVMDWARFTypeEncoding encoding,
+    LLVMDIFlags flags);
+LLVMMetadataRef LLVMDIBuilderCreatePointerType(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef pointeeType,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    unsigned addressSpace,
+    const char* name,
+    std::size_t nameLength);
+LLVMMetadataRef LLVMDIBuilderCreateStructType(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    LLVMDIFlags flags,
+    LLVMMetadataRef derivedFrom,
+    LLVMMetadataRef* elements,
+    unsigned elementCount,
+    unsigned runtimeLanguage,
+    LLVMMetadataRef vtableHolder,
+    const char* uniqueId,
+    std::size_t uniqueIdLength);
+LLVMMetadataRef LLVMDIBuilderCreateExpression(
+    LLVMDIBuilderRef builder,
+    std::uint64_t* addressOperations,
+    std::size_t addressOperationCount);
+LLVMMetadataRef LLVMDIBuilderCreateAutoVariable(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    LLVMMetadataRef type,
+    LLVMBool alwaysPreserve,
+    LLVMDIFlags flags,
+    std::uint32_t alignInBits);
+LLVMMetadataRef LLVMDIBuilderCreateParameterVariable(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    unsigned argumentNumber,
+    LLVMMetadataRef file,
+    unsigned line,
+    LLVMMetadataRef type,
+    LLVMBool alwaysPreserve,
+    LLVMDIFlags flags);
+LLVMDbgRecordRef LLVMDIBuilderInsertDeclareRecordAtEnd(
+    LLVMDIBuilderRef builder,
+    LLVMValueRef storage,
+    LLVMMetadataRef variable,
+    LLVMMetadataRef expression,
+    LLVMMetadataRef location,
+    LLVMBasicBlockRef block);
 void LLVMSetSubprogram(LLVMValueRef function, LLVMMetadataRef subprogram);
+void LLVMSetIsNewDbgInfoFormat(LLVMModuleRef module, LLVMBool useNewFormat);
 LLVMMetadataRef LLVMGetCurrentDebugLocation2(LLVMBuilderRef builder);
 void LLVMSetCurrentDebugLocation2(LLVMBuilderRef builder, LLVMMetadataRef location);
 

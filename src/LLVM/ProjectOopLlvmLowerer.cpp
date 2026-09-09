@@ -497,6 +497,7 @@ private:
         debugBuilder_ = LLVMCreateDIBuilder(module_);
         if (debugBuilder_ == nullptr)
             return fail(error, "failed to create the LLVM debug information builder");
+        LLVMSetIsNewDbgInfoFormat(module_, 1);
 
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
         LLVMMetadataRef debugVersion = LLVMValueAsMetadata(
@@ -577,8 +578,14 @@ private:
             "." + member.name;
         if (function.isLambda)
             displayName += ".lambda#" + std::to_string(function.lambdaOrdinal.value_or(0));
+        std::vector<LLVMMetadataRef> signatureTypes;
+        signatureTypes.reserve(function.parameterTypeKeys.size() + 1);
+        signatureTypes.push_back(debugType(function.returnTypeKey));
+        for (const std::string& parameterType : function.parameterTypeKeys)
+            signatureTypes.push_back(debugType(parameterType));
         LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
-            debugBuilder_, file, nullptr, 0, LLVMDIFlagZero);
+            debugBuilder_, file, signatureTypes.data(),
+            static_cast<unsigned>(signatureTypes.size()), LLVMDIFlagZero);
         if (functionType == nullptr) return nullptr;
         return LLVMDIBuilderCreateFunction(
             debugBuilder_, file,
@@ -616,6 +623,205 @@ private:
         }
         return LLVMDIBuilderCreateDebugLocation(
             context_, position.line, position.column, scope, nullptr);
+    }
+
+    const frontend::NamedTypeDeclaration* debugNamedType(std::string_view typeKey) const noexcept
+    {
+        if (!typeKey.starts_with("type:")) return nullptr;
+        const std::string_view key = typeKey.substr(5);
+        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
+        {
+            if (type.identity.key() == key) return &type;
+        }
+        return nullptr;
+    }
+
+    LLVMMetadataRef debugType(std::string_view typeKey)
+    {
+        if (debugBuilder_ == nullptr || typeKey == "builtin:void") return nullptr;
+        const std::string cacheKey(typeKey);
+        const auto cached = debugTypes_.find(cacheKey);
+        if (cached != debugTypes_.end()) return cached->second;
+
+        const auto basic = [&](std::string_view name, std::uint64_t bits,
+                               LLVMDWARFTypeEncoding encoding)
+        {
+            return LLVMDIBuilderCreateBasicType(
+                debugBuilder_, name.data(), name.size(), bits, encoding, LLVMDIFlagZero);
+        };
+        LLVMMetadataRef type = nullptr;
+        if (typeKey == "builtin:bool")
+            type = basic("bool", 8, LLVMDWARFTypeEncodingBoolean);
+        else if (typeKey == "builtin:sbyte")
+            type = basic("sbyte", 8, LLVMDWARFTypeEncodingSignedChar);
+        else if (typeKey == "builtin:byte")
+            type = basic("byte", 8, LLVMDWARFTypeEncodingUnsignedChar);
+        else if (typeKey == "builtin:char")
+            type = basic("char", 8, LLVMDWARFTypeEncodingUnsignedChar);
+        else if (typeKey == "builtin:short")
+            type = basic("short", 16, LLVMDWARFTypeEncodingSigned);
+        else if (typeKey == "builtin:ushort")
+            type = basic("ushort", 16, LLVMDWARFTypeEncodingUnsigned);
+        else if (typeKey == "builtin:int")
+            type = basic("int", 32, LLVMDWARFTypeEncodingSigned);
+        else if (typeKey == "builtin:uint")
+            type = basic("uint", 32, LLVMDWARFTypeEncodingUnsigned);
+        else if (typeKey == "builtin:long" || typeKey == "builtin:nint")
+            type = basic(typeKey == "builtin:long" ? "long" : "nint", 64,
+                         LLVMDWARFTypeEncodingSigned);
+        else if (typeKey == "builtin:ulong" || typeKey == "builtin:nuint")
+            type = basic(typeKey == "builtin:ulong" ? "ulong" : "nuint", 64,
+                         LLVMDWARFTypeEncodingUnsigned);
+        else if (typeKey == "builtin:float")
+            type = basic("float", 32, LLVMDWARFTypeEncodingFloat);
+        else if (typeKey == "builtin:double")
+            type = basic("double", 64, LLVMDWARFTypeEncodingFloat);
+        else if (!typeKey.empty() && typeKey.back() == '*')
+        {
+            const std::string_view pointeeKey = typeKey.substr(0, typeKey.size() - 1);
+            LLVMMetadataRef pointee = pointeeKey == "builtin:void"
+                ? LLVMDIBuilderCreateUnspecifiedType(debugBuilder_, "void", 4)
+                : debugType(pointeeKey);
+            const std::string name = std::string(typeKey);
+            type = LLVMDIBuilderCreatePointerType(
+                debugBuilder_, pointee, 64, 64, 0, name.data(), name.size());
+        }
+        else if (const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey);
+                 named != nullptr)
+        {
+            const std::string name = named->identity.fullyQualifiedName();
+            if (const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(typeKey);
+                enumInfo != nullptr)
+            {
+                type = basic(
+                    name, enumInfo->width,
+                    enumInfo->isSigned ? LLVMDWARFTypeEncodingSigned
+                                       : LLVMDWARFTypeEncodingUnsigned);
+            }
+            else if (const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+                     layout != nullptr)
+            {
+                LLVMMetadataRef file = debugFile(named->range.begin());
+                const unsigned line = named->range.isValid()
+                    ? sourceManager_->getPosition(named->range.begin()).line
+                    : 0;
+                const std::string uniqueId = "nativesharp:" + named->identity.key();
+                type = LLVMDIBuilderCreateStructType(
+                    debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                    layout->size * 8, static_cast<std::uint32_t>(layout->alignment * 8),
+                    LLVMDIFlagZero, nullptr, nullptr, 0, 0, nullptr,
+                    uniqueId.data(), uniqueId.size());
+            }
+            else
+            {
+                LLVMMetadataRef pointee = LLVMDIBuilderCreateUnspecifiedType(
+                    debugBuilder_, name.data(), name.size());
+                type = LLVMDIBuilderCreatePointerType(
+                    debugBuilder_, pointee, 64, 64, 0, name.data(), name.size());
+            }
+        }
+        else
+        {
+            const std::string name = typeKey == "builtin:string"
+                ? "string"
+                : std::string(typeKey);
+            LLVMMetadataRef pointee = LLVMDIBuilderCreateUnspecifiedType(
+                debugBuilder_, name.data(), name.size());
+            if (typeKey == "builtin:string" || typeKey == "string-literal" ||
+                frontend::ProjectTypeConversion::isNativeArray(typeKey) ||
+                frontend::ProjectTypeConversion::isNativeCoreReference(typeKey))
+            {
+                type = LLVMDIBuilderCreatePointerType(
+                    debugBuilder_, pointee, 64, 64, 0, name.data(), name.size());
+            }
+            else
+            {
+                type = pointee;
+            }
+        }
+        if (type != nullptr) debugTypes_.emplace(cacheKey, type);
+        return type;
+    }
+
+    bool emitDebugParameter(
+        const frontend::ProjectOopMirFunction& function,
+        std::size_t index,
+        LLVMValueRef storage,
+        std::string& error)
+    {
+        if (debugInformation_ != DebugInformationKind::Full || currentDebugSubprogram_ == nullptr)
+            return true;
+        if (storage == nullptr || index >= function.parameterTypeKeys.size())
+            return fail(error, "debug parameter is missing its LLVM storage or type");
+
+        SourceRange range;
+        std::string name = index < function.parameterNames.size()
+            ? function.parameterNames[index]
+            : "p" + std::to_string(index);
+        if (!function.isLambda && memberModel_ != nullptr &&
+            function.memberOrdinal < memberModel_->members().size())
+        {
+            const frontend::ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+            range = index < member.parameters.size() ? member.parameters[index].range : member.range;
+        }
+        else if (function.body != nullptr && function.body->syntax != nullptr)
+        {
+            range = function.body->syntax->range();
+        }
+        if (!range.isValid()) return true;
+        LLVMMetadataRef file = debugFile(range.begin());
+        LLVMMetadataRef type = debugType(function.parameterTypeKeys[index]);
+        if (file == nullptr || type == nullptr) return true;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
+            debugBuilder_, currentDebugSubprogram_, name.data(), name.size(),
+            static_cast<unsigned>(index + 1), file, position.line, type, 1, LLVMDIFlagZero);
+        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
+        LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+            context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+        if (variable == nullptr || expression == nullptr || location == nullptr)
+            return fail(error, "failed to create debug metadata for parameter '" + name + "'");
+        if (LLVMDIBuilderInsertDeclareRecordAtEnd(
+                debugBuilder_, storage, variable, expression, location,
+                LLVMGetInsertBlock(builder_)) == nullptr)
+            return fail(error, "failed to emit debug storage for parameter '" + name + "'");
+        return true;
+    }
+
+    bool emitDebugLocal(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef storage,
+        std::string& error)
+    {
+        if (debugInformation_ != DebugInformationKind::Full || currentDebugSubprogram_ == nullptr ||
+            node == nullptr || storage == nullptr || node->stringValue.empty() ||
+            !node->localOrdinal.has_value())
+            return true;
+        if (!debugDeclaredLocals_.insert(*node->localOrdinal).second) return true;
+        if (node->syntax == nullptr || !node->syntax->range().isValid()) return true;
+        const SourceRange range = node->syntax->range();
+        LLVMMetadataRef file = debugFile(range.begin());
+        const std::string_view typeKey = node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
+                node->kind == frontend::ProjectOopMirNodeKind::CatchRegion
+            ? std::string_view(node->elementTypeKey)
+            : std::string_view(node->typeKey);
+        LLVMMetadataRef type = debugType(typeKey);
+        if (file == nullptr || type == nullptr) return true;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
+            debugBuilder_, currentDebugSubprogram_, node->stringValue.data(),
+            node->stringValue.size(), file, position.line, type, 1, LLVMDIFlagZero,
+            0);
+        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
+        LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+            context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+        if (variable == nullptr || expression == nullptr || location == nullptr)
+            return fail(error, "failed to create debug metadata for local '" + node->stringValue + "'");
+        if (LLVMDIBuilderInsertDeclareRecordAtEnd(
+                debugBuilder_, storage, variable, expression, location,
+                LLVMGetInsertBlock(builder_)) == nullptr)
+            return fail(error, "failed to emit debug storage for local '" + node->stringValue + "'");
+        return true;
     }
 
     bool declareRuntime(std::string& error)
@@ -2704,6 +2910,7 @@ private:
         currentMirFunction_ = &function;
         currentDebugSubprogram_ = found->second.subprogram;
         currentDebugFileScopes_.clear();
+        debugDeclaredLocals_.clear();
         currentDebugFileKey_ = 0;
         if (memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
             currentDebugFileKey_ = memberModel_->members()[function.memberOrdinal].fileId.value();
@@ -2813,6 +3020,7 @@ private:
                 parameterStorage_[index] = valueAddress;
                 parameterCaptureCells_[index] = cell;
                 ownedCaptureCells_.push_back(cell);
+                if (!emitDebugParameter(function, index, valueAddress, error)) return false;
                 continue;
             }
             if (isIndirectStructTypeKey(function.parameterTypeKeys[index]))
@@ -2823,6 +3031,7 @@ private:
                 // safe). So the pointer itself is the parameter home: member GEPs, whole-value
                 // loads and stores all work through it unchanged, and no second copy is made.
                 parameterStorage_[index] = value;
+                if (!emitDebugParameter(function, index, value, error)) return false;
                 continue;
             }
             LLVMTypeRef type = llvmType(function.parameterTypeKeys[index], error);
@@ -2830,6 +3039,7 @@ private:
             LLVMValueRef storage = LLVMBuildAlloca(builder_, type, ("p" + std::to_string(index) + ".addr").c_str());
             LLVMBuildStore(builder_, value, storage);
             parameterStorage_[index] = storage;
+            if (!emitDebugParameter(function, index, storage, error)) return false;
         }
 
         collectLocalAllocas(function.body.get(), error);
@@ -3885,6 +4095,7 @@ private:
         const auto localFound = localStorage_.find(*node->localOrdinal);
         if (localFound == localStorage_.end() || localFound->second == nullptr)
             return fail(error, "Stage 45.10 using MIR has no allocated resource local");
+        if (!emitDebugLocal(node, localFound->second, error)) return false;
 
         LLVMValueRef initializer = lowerExpression(node->children[0].get(), error);
         if (initializer == nullptr) return false;
@@ -4081,6 +4292,13 @@ private:
                 return true;
 
             case frontend::ProjectOopMirNodeKind::LocalDeclaration:
+                if (node->localOrdinal.has_value())
+                {
+                    const auto storage = localStorage_.find(*node->localOrdinal);
+                    if (storage != localStorage_.end() &&
+                        !emitDebugLocal(node, storage->second, error))
+                        return false;
+                }
                 if (!node->children.empty() && node->children.front() != nullptr)
                 {
                     LLVMValueRef value = lowerExpression(node->children.front().get(), error);
@@ -4438,6 +4656,11 @@ private:
                     {
                         if (hasFinally) activeCleanupRegions_.pop_back();
                         return fail(error, "Stage 45.11 typed catch local has no LLVM storage");
+                    }
+                    if (!emitDebugLocal(catchNode, localFound->second, error))
+                    {
+                        if (hasFinally) activeCleanupRegions_.pop_back();
+                        return false;
                     }
                     LLVMBuildStore(builder_, caughtException, localFound->second);
                 }
@@ -9752,6 +9975,8 @@ private:
     LLVMDIBuilderRef debugBuilder_ = nullptr;
     LLVMMetadataRef debugCompileUnit_ = nullptr;
     std::unordered_map<std::uint32_t, LLVMMetadataRef> debugFiles_;
+    std::unordered_map<std::string, LLVMMetadataRef> debugTypes_;
+    std::unordered_set<std::size_t> debugDeclaredLocals_;
     LLVMValueRef trapFunction_ = nullptr;
     LLVMTypeRef trapFunctionType_ = nullptr;
     LLVMValueRef rttiClassTestFunction_ = nullptr;

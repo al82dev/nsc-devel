@@ -1,12 +1,31 @@
 namespace DebugFixture
 {
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+    }
+
     public static class Program
     {
+        public static int Compute(int left, int right)
+        {
+            int total = left + right;
+            return total;
+        }
+
+        public static int Sum(Pair pair)
+        {
+            return pair.Left + pair.Right;
+        }
+
         public static int Main()
         {
-            int value = 40;
-            value = value + 2;
-            return value;
+            int answer = Compute(40, 2);
+            Pair pair;
+            pair.Left = answer;
+            pair.Right = 0;
+            return Sum(pair);
         }
     }
 }

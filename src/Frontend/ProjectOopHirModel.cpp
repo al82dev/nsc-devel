@@ -906,6 +906,7 @@ bool ProjectOopHirModel::build(
             : member.declaredOwnership;
         for (const MethodParameterSymbol& parameter : member.parameters)
         {
+            function.parameterNames.push_back(parameter.name);
             function.parameterTypeKeys.push_back(parameter.typeKey);
             function.parameterOwnerships.push_back(parameter.ownership);
         }
@@ -1113,6 +1114,7 @@ bool ProjectOopHirModel::build(
         function.isStatic = !function.hasClosureEnvironment;
         function.mangledName = lambda.generatedName;
         function.returnTypeKey = lambda.returnTypeKey;
+        function.parameterNames = lambda.parameterNames;
         function.parameterTypeKeys = lambda.parameterTypeKeys;
         for (const MethodLambdaCapture& capture : lambda.captures)
             function.captureTypeKeys.push_back(capture.typeKey);
@@ -1396,6 +1398,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 return nullptr;
             }
             auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
+            node->stringValue = local->name;
             const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());
             node->localOrdinal = localIndex;
             if (local->isRaii)
@@ -1810,6 +1813,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto node = makeNode(ProjectOopHirNodeKind::UsingRegion, statement, "builtin:void");
             node->localOrdinal = binding->resourceLocalOrdinal;
             node->elementTypeKey = binding->resourceTypeKey;
+            if (binding->resourceLocalOrdinal < methodBodyModel_->locals().size())
+                node->stringValue = methodBodyModel_->locals()[binding->resourceLocalOrdinal].name;
             node->cleanupRegionOrdinal = cleanupOrdinal;
             node->disposeContractMemberOrdinal = binding->disposeContractMemberOrdinal;
             node->disposeImplementationMemberOrdinal = binding->disposeImplementationMemberOrdinal;
@@ -1882,6 +1887,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 {
                     catchNode->localOrdinal = static_cast<std::size_t>(
                         local - methodBodyModel_->locals().data());
+                    catchNode->stringValue = local->name;
                 }
                 auto catchBody = lowerBlock(catchClause->first(), memberOrdinal, error);
                 if (catchBody == nullptr)

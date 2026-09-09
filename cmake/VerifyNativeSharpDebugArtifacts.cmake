@@ -41,6 +41,35 @@ if(NOT sections_result EQUAL 0 OR debug_s_index EQUAL -1)
         "${sections_dump}\n${sections_error}")
 endif()
 
+set(line_executable "${DEBUG_OUTPUT_DIR}/debug_lines.exe")
+set(line_pdb "${DEBUG_OUTPUT_DIR}/debug_lines.pdb")
+execute_process(
+    COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-exe "${DEBUG_FIXTURE}"
+        -gline-tables-only -O0 -o "${line_executable}"
+    RESULT_VARIABLE line_executable_result
+    OUTPUT_VARIABLE line_executable_output
+    ERROR_VARIABLE line_executable_error)
+if(NOT line_executable_result EQUAL 0 OR
+   NOT EXISTS "${line_executable}" OR NOT EXISTS "${line_pdb}")
+    message(FATAL_ERROR
+        "line-tables-only executable/PDB compilation failed (${line_executable_result})\n"
+        "stdout:\n${line_executable_output}\nstderr:\n${line_executable_error}")
+endif()
+execute_process(
+    COMMAND "${LLVM_PDBUTIL}" dump -summary -symbols --modi=0 "${line_pdb}"
+    RESULT_VARIABLE line_pdb_result
+    OUTPUT_VARIABLE line_pdb_dump
+    ERROR_VARIABLE line_pdb_error)
+if(NOT line_pdb_result EQUAL 0 OR
+   NOT line_pdb_dump MATCHES "Has Debug Info: true" OR
+   NOT line_pdb_dump MATCHES "DebugFixture\\.Program\\.Compute" OR
+   NOT line_pdb_dump MATCHES "DebugFixture\\.Program\\.Main" OR
+   line_pdb_dump MATCHES "S_LOCAL" OR line_pdb_dump MATCHES "S_DEFRANGE")
+    message(FATAL_ERROR
+        "line-tables-only PDB did not preserve the line-only profile boundary\n"
+        "${line_pdb_dump}\n${line_pdb_error}")
+endif()
+
 foreach(level IN ITEMS O0 O2)
     string(TOLOWER "${level}" stem)
     set(executable "${DEBUG_OUTPUT_DIR}/debug_${stem}.exe")
@@ -75,16 +104,28 @@ foreach(level IN ITEMS O0 O2)
     endif()
 
     execute_process(
-        COMMAND "${LLVM_PDBUTIL}" dump -summary -modules -files -symbols --modi=0 "${pdb}"
+        COMMAND "${LLVM_PDBUTIL}" dump -summary -modules -files -types -symbols --modi=0 "${pdb}"
         RESULT_VARIABLE pdb_result
         OUTPUT_VARIABLE pdb_dump
         ERROR_VARIABLE pdb_error)
     if(NOT pdb_result EQUAL 0 OR
        NOT pdb_dump MATCHES "Has Debug Info: true" OR
+       NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Compute" OR
+       NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Sum" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Main" OR
-       NOT pdb_dump MATCHES "Main\\.ns")
+       NOT pdb_dump MATCHES "Main\\.ns" OR
+       NOT pdb_dump MATCHES "S_LOCAL[^\n]*`left`" OR
+       NOT pdb_dump MATCHES "S_LOCAL[^\n]*`right`" OR
+       NOT pdb_dump MATCHES "S_LOCAL[^\n]*`total`" OR
+       NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`answer`" OR
+       NOT pdb_dump MATCHES "S_LOCAL[^\n]*`pair`" OR
+       NOT pdb_dump MATCHES "type=0x0074 \\(int\\), flags = param" OR
+       NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.Pair" OR
+       NOT pdb_dump MATCHES "sizeof 8" OR
+       NOT pdb_dump MATCHES "int \\(DebugFixture\\.Pair\\)" OR
+       NOT pdb_dump MATCHES "S_DEFRANGE")
         message(FATAL_ERROR
-            "${level} PDB is missing debug summary, function or source file\n"
+            "${level} PDB is missing debug summary, functions, variables, types or ranges\n"
             "${pdb_dump}\n${pdb_error}")
     endif()
 
@@ -96,10 +137,8 @@ foreach(level IN ITEMS O0 O2)
     set(lines_valid TRUE)
     if(NOT lines_result EQUAL 0 OR
        NOT lines_dump MATCHES "Main\\.ns" OR
-       NOT lines_dump MATCHES "[ \n]9 [0-9A-F]+")
-        set(lines_valid FALSE)
-    endif()
-    if(level STREQUAL "O0" AND NOT lines_dump MATCHES "[ \n]7 [0-9A-F]+")
+       NOT lines_dump MATCHES "[ \n]14 [0-9A-F]+" OR
+       NOT lines_dump MATCHES "[ \n]28 [0-9A-F]+")
         set(lines_valid FALSE)
     endif()
     if(NOT lines_valid)
