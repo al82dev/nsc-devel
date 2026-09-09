@@ -318,6 +318,7 @@ else()
 endif()
 
 add_library(nsc_llvm STATIC
+    src/LLVM/DebugInformationKind.cpp
     src/LLVM/LlvmModule.cpp
     src/LLVM/LlvmVersion.cpp
     src/LLVM/LlvmOptimizationLevel.cpp
@@ -1607,6 +1608,30 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_driver_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
+
+    find_program(NSC_LLVM_PDBUTIL_EXECUTABLE
+        NAMES llvm-pdbutil
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
+    find_program(NSC_LLVM_READOBJ_EXECUTABLE
+        NAMES llvm-readobj
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
+    find_program(NSC_DEBUG_LLD_LINK_EXECUTABLE
+        NAMES lld-link lld-link.exe
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
+    add_test(
+        NAME nsc.debug.codeview-pdb
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
+            "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
+            "-DDEBUG_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_pdb/DebugPdb.nsproj"
+            "-DDEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-artifact-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugArtifacts.cmake")
 
     # CC1-000: este regex comprueba la identidad visible del compilador instalado. El stage exacto
     # se extrae de Version.h para conservar una sola fuente de verdad sin aceptar una instalacion

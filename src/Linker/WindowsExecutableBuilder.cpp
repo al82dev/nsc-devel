@@ -337,7 +337,14 @@ bool WindowsExecutableBuilder::build(
     }
 
     const std::array<std::filesystem::path, 2> objectFiles = {programObject, runtimeObject};
-    if (!linker->linkExecutable(objectFiles, importLibraries, outputPath, subsystem_, linkerError))
+    std::filesystem::path pdbPath;
+    if (debugInformation_ != llvm_backend::DebugInformationKind::None)
+    {
+        pdbPath = outputPath;
+        pdbPath.replace_extension(".pdb");
+    }
+    if (!linker->linkExecutable(
+            objectFiles, importLibraries, outputPath, subsystem_, pdbPath, linkerError))
     {
         error = linkerError;
         return false;
@@ -348,6 +355,7 @@ bool WindowsExecutableBuilder::build(
     {
         std::error_code cleanupError;
         std::filesystem::remove(outputPath, cleanupError);
+        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
         error = "linked PE verification failed: " + verifier.error();
         return false;
     }
@@ -364,6 +372,12 @@ void WindowsExecutableBuilder::setExternalImports(std::vector<ExternalImportModu
 void WindowsExecutableBuilder::setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries)
 {
     extraLinkLibraries_ = std::move(extraLibraries);
+}
+
+void WindowsExecutableBuilder::setDebugInformation(
+    llvm_backend::DebugInformationKind debugInformation) noexcept
+{
+    debugInformation_ = debugInformation;
 }
 
 void WindowsExecutableBuilder::setSubsystem(WindowsExecutableSubsystem subsystem) noexcept

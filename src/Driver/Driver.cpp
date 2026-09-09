@@ -1377,6 +1377,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
     bool optimizationLevelSeen = false;
+    llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
+    bool debugInformationSeen = false;
     linker::WindowsExecutableSubsystem subsystem = linker::WindowsExecutableSubsystem::Console;
     bool subsystemSeen = false;
     std::vector<std::string_view> normalizedArguments;
@@ -1444,6 +1446,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             }
             continue;
         }
+        if (argument == "-g0")
+        {
+            debugInformation = llvm_backend::DebugInformationKind::None;
+            debugInformationSeen = true;
+            continue;
+        }
+        if (argument == "-gline-tables-only")
+        {
+            debugInformation = llvm_backend::DebugInformationKind::LineTablesOnly;
+            debugInformationSeen = true;
+            continue;
+        }
+        if (argument == "-g")
+        {
+            debugInformation = llvm_backend::DebugInformationKind::Full;
+            debugInformationSeen = true;
+            continue;
+        }
+        if (argument.starts_with("-g"))
+        {
+            error << "nsc: error: unsupported debug information option '" << argument
+                  << "'; expected -g0, -gline-tables-only or -g\n";
+            return ExitCode::CommandLineError;
+        }
         if (argument.size() >= 2 && argument[0] == '-' && argument[1] == 'O')
         {
             error << "nsc: error: unsupported LLVM optimization level '" << argument << "'\n";
@@ -1465,9 +1491,17 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         (args.size() == 3 && args[1] == "-o" && !args[0].empty() && args[0].front() != '-') ||
         (args.size() == 4 && args[2] == "-o" &&
             (args[0] == "--emit-exe" || args[0] == "--emit-project-oop-exe"));
+    const bool debugCapableInvocation = args.size() == 4 && args[2] == "-o" &&
+        (args[0] == "--emit-project-oop-obj" || args[0] == "--emit-project-oop-exe");
     if (subsystemSeen && !executableInvocation)
     {
         error << "nsc: error: /subsystem is only valid when emitting an executable\n";
+        return ExitCode::CommandLineError;
+    }
+    if (debugInformationSeen && !debugCapableInvocation)
+    {
+        error << "nsc: error: debug information is currently supported when emitting "
+                 "a project OOP object or executable\n";
         return ExitCode::CommandLineError;
     }
 
@@ -1775,12 +1809,14 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (action == "--emit-project-oop-obj")
         {
-            return runProjectOopCodeGeneration(args[1], args[3], optimizationLevel, output, error);
+            return runProjectOopCodeGeneration(
+                args[1], args[3], optimizationLevel, debugInformation, output, error);
         }
         if (action == "--emit-project-oop-exe")
         {
             return runProjectOopExecutableGeneration(
-                args[1], args[3], optimizationLevel, subsystem, extraLinkLibraries, output, error);
+                args[1], args[3], optimizationLevel, debugInformation,
+                subsystem, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-oop-lib")
         {
@@ -1849,9 +1885,10 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-project-oop-llvm <file.nsproj>\n"
            << "  nsc --dump-project-oop-llvm <file.nsproj>\n"
            << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.obj>\n"
+              "<file.obj> [-g0|-gline-tables-only|-g]\n"
            << "  nsc --emit-project-oop-exe <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.exe> [/subsystem:console|/subsystem:windows]\n"
+              "<file.exe> [-g0|-gline-tables-only|-g] "
+              "[/subsystem:console|/subsystem:windows]\n"
            << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.lib>\n"
            << "  nsc --emit-project-oop-dll <file.nsproj> [-O0|-O1|-O2|-O3] -o "
@@ -1916,6 +1953,8 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --version\n\n"
            << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
               "compilation command.\n"
+           << "Debug flags -g0, -gline-tables-only and -g are independent from "
+              "optimization and currently apply to project OOP object/executable emission.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
               "selects the static librarian.\n"
            << "Stage 37 semantics remain preserved: static members, deterministic "
@@ -2619,6 +2658,7 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
 ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
     std::ostream &output,
     std::ostream &error)
 {
@@ -2652,7 +2692,9 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+            *compilation.oopMirModel(), compilation.sourceManager(),
+            debugInformation, optimizationLevel);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -2691,7 +2733,8 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
         return ExitCode::CompilationError;
     }
     output << "project OOP object emission: ok (machine=0x" << std::hex << verifier.info().machine << std::dec
-           << ", sections=" << verifier.info().sectionCount << ")\n";
+           << ", sections=" << verifier.info().sectionCount << ")\n"
+           << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n';
     return ExitCode::Success;
 }
 
@@ -2759,6 +2802,7 @@ std::vector<linker::ExternalImportModule> collectExternalImports(const frontend:
 ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
     linker::WindowsExecutableSubsystem subsystem,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
@@ -2824,7 +2868,9 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+            *compilation.oopMirModel(), compilation.sourceManager(),
+            debugInformation, optimizationLevel);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -2849,6 +2895,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
 
     linker::WindowsExecutableBuilder builder;
     builder.setSubsystem(subsystem);
+    builder.setDebugInformation(debugInformation);
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
@@ -2872,6 +2919,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << "format: PE32+\n"
            << "subsystem: " << subsystemDisplayName(subsystem) << '\n'
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
            << "sections: " << builder.info().sectionCount << '\n'
            << "entry-rva: " << builder.info().entryPointRva << '\n'

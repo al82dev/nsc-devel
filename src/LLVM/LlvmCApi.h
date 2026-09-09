@@ -19,6 +19,8 @@ struct LLVMOpaqueTargetData;
 struct LLVMOpaqueError;
 struct LLVMOpaquePassBuilderOptions;
 struct LLVMOpaqueOperandBundle;
+struct LLVMOpaqueMetadata;
+struct LLVMOpaqueDIBuilder;
 
 using LLVMContextRef = LLVMOpaqueContext*;
 using LLVMModuleRef = LLVMOpaqueModule*;
@@ -32,7 +34,37 @@ using LLVMTargetDataRef = LLVMOpaqueTargetData*;
 using LLVMErrorRef = LLVMOpaqueError*;
 using LLVMPassBuilderOptionsRef = LLVMOpaquePassBuilderOptions*;
 using LLVMOperandBundleRef = LLVMOpaqueOperandBundle*;
+using LLVMMetadataRef = LLVMOpaqueMetadata*;
+using LLVMDIBuilderRef = LLVMOpaqueDIBuilder*;
 using LLVMBool = int;
+
+enum LLVMModuleFlagBehavior
+{
+    LLVMModuleFlagBehaviorError = 0,
+    LLVMModuleFlagBehaviorWarning = 1,
+    LLVMModuleFlagBehaviorRequire = 2,
+    LLVMModuleFlagBehaviorOverride = 3,
+    LLVMModuleFlagBehaviorAppend = 4,
+    LLVMModuleFlagBehaviorAppendUnique = 5,
+};
+
+enum LLVMDWARFSourceLanguage
+{
+    // Exact ordinal from llvm-c/DebugInfo.h in LLVM 23.
+    LLVMDWARFSourceLanguageC_sharp = 48,
+};
+
+enum LLVMDWARFEmissionKind
+{
+    LLVMDWARFEmissionNone = 0,
+    LLVMDWARFEmissionFull = 1,
+    LLVMDWARFEmissionLineTablesOnly = 2,
+};
+
+enum LLVMDIFlags
+{
+    LLVMDIFlagZero = 0,
+};
 
 // Values are fixed by llvm-c/Core.h and llvm-c/Analysis.h.
 enum LLVMIntPredicate
@@ -157,6 +189,12 @@ LLVMModuleRef LLVMModuleCreateWithNameInContext(const char* moduleId, LLVMContex
 void LLVMDisposeModule(LLVMModuleRef module);
 void LLVMSetTarget(LLVMModuleRef module, const char* triple);
 void LLVMSetDataLayout(LLVMModuleRef module, const char* dataLayout);
+void LLVMAddModuleFlag(
+    LLVMModuleRef module,
+    LLVMModuleFlagBehavior behavior,
+    const char* key,
+    std::size_t keyLength,
+    LLVMMetadataRef value);
 char* LLVMPrintModuleToString(LLVMModuleRef module);
 void LLVMDisposeMessage(char* message);
 // NSC-LIMIT-005. El triple y el data layout SEGUN EL MODULO, no segun el TargetMachine: entre uno
@@ -173,11 +211,78 @@ void LLVMGetVersion(unsigned* major, unsigned* minor, unsigned* patch);
 // nuestro propio descriptor esta desviado, y en Windows la DLL de LLVM puede tener otro. Se elige
 // un TIPO y no un modulo porque imprime tres bytes --«i32»-- y no tiene ningun efecto.
 LLVMContextRef LLVMGetModuleContext(LLVMModuleRef module);
+LLVMMetadataRef LLVMValueAsMetadata(LLVMValueRef value);
 void LLVMDumpType(LLVMTypeRef type);
 LLVMBool LLVMVerifyModule(
     LLVMModuleRef module,
     LLVMVerifierFailureAction action,
     char** outMessage);
+
+unsigned LLVMDebugMetadataVersion();
+LLVMDIBuilderRef LLVMCreateDIBuilder(LLVMModuleRef module);
+void LLVMDisposeDIBuilder(LLVMDIBuilderRef builder);
+void LLVMDIBuilderFinalize(LLVMDIBuilderRef builder);
+LLVMMetadataRef LLVMDIBuilderCreateCompileUnit(
+    LLVMDIBuilderRef builder,
+    LLVMDWARFSourceLanguage language,
+    LLVMMetadataRef file,
+    const char* producer,
+    std::size_t producerLength,
+    LLVMBool optimized,
+    const char* flags,
+    std::size_t flagsLength,
+    unsigned runtimeVersion,
+    const char* splitName,
+    std::size_t splitNameLength,
+    LLVMDWARFEmissionKind kind,
+    unsigned dwoId,
+    LLVMBool splitDebugInlining,
+    LLVMBool debugInfoForProfiling,
+    const char* sysRoot,
+    std::size_t sysRootLength,
+    const char* sdk,
+    std::size_t sdkLength);
+LLVMMetadataRef LLVMDIBuilderCreateFile(
+    LLVMDIBuilderRef builder,
+    const char* filename,
+    std::size_t filenameLength,
+    const char* directory,
+    std::size_t directoryLength);
+LLVMMetadataRef LLVMDIBuilderCreateSubroutineType(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef file,
+    LLVMMetadataRef* parameterTypes,
+    unsigned parameterTypeCount,
+    LLVMDIFlags flags);
+LLVMMetadataRef LLVMDIBuilderCreateFunction(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    const char* linkageName,
+    std::size_t linkageNameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    LLVMMetadataRef type,
+    LLVMBool localToUnit,
+    LLVMBool definition,
+    unsigned scopeLine,
+    LLVMDIFlags flags,
+    LLVMBool optimized);
+LLVMMetadataRef LLVMDIBuilderCreateLexicalBlockFile(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    LLVMMetadataRef file,
+    unsigned discriminator);
+LLVMMetadataRef LLVMDIBuilderCreateDebugLocation(
+    LLVMContextRef context,
+    unsigned line,
+    unsigned column,
+    LLVMMetadataRef scope,
+    LLVMMetadataRef inlinedAt);
+void LLVMSetSubprogram(LLVMValueRef function, LLVMMetadataRef subprogram);
+LLVMMetadataRef LLVMGetCurrentDebugLocation2(LLVMBuilderRef builder);
+void LLVMSetCurrentDebugLocation2(LLVMBuilderRef builder, LLVMMetadataRef location);
 
 void LLVMInitializeX86TargetInfo();
 void LLVMInitializeX86Target();

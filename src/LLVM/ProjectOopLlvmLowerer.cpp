@@ -3,6 +3,7 @@
 #include "LlvmCApi.h"
 #include "SignedDivisionCorrection.h"
 
+#include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Frontend/BuiltinIntegerTypes.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -14,11 +15,13 @@
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -258,9 +261,17 @@ class OopLlvmImplementation final
 public:
     OopLlvmImplementation(
         const frontend::ProjectNameLookup& nameLookup,
-        const frontend::ProjectOopMirModel& mirModel)
+        const frontend::ProjectMemberModel* memberModel,
+        const frontend::ProjectOopMirModel& mirModel,
+        const source::SourceManager* sourceManager,
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimizationLevel)
         : nameLookup_(nameLookup),
-          mirModel_(mirModel)
+          memberModel_(memberModel),
+          mirModel_(mirModel),
+          sourceManager_(sourceManager),
+          debugInformation_(debugInformation),
+          optimizationLevel_(optimizationLevel)
     {
     }
 
@@ -278,6 +289,12 @@ public:
         }
         LLVMSetTarget(module_, kTargetTriple);
 
+        if (!initializeDebugInformation(error))
+        {
+            dispose();
+            return false;
+        }
+
         if (!declareRuntime(error) || !declareStaticFields(error) || !declareFunctions(error) ||
             !declareTypeInitializers(error) || !declareDestructionEntries(error) ||
             !emitDispatchMetadata(error) || !defineRttiHelpers(error) || !defineTypedCatchFilters(error) ||
@@ -286,6 +303,13 @@ public:
         {
             dispose();
             return false;
+        }
+
+        if (debugBuilder_ != nullptr)
+        {
+            LLVMDIBuilderFinalize(debugBuilder_);
+            LLVMDisposeDIBuilder(debugBuilder_);
+            debugBuilder_ = nullptr;
         }
 
         LLVMDisposeBuilder(builder_);
@@ -327,6 +351,7 @@ private:
     {
         LLVMValueRef function = nullptr;
         LLVMTypeRef functionType = nullptr;
+        LLVMMetadataRef subprogram = nullptr;
     };
 
     enum class FuncletKind
@@ -415,6 +440,11 @@ private:
 
     void dispose() noexcept
     {
+        if (debugBuilder_ != nullptr)
+        {
+            LLVMDisposeDIBuilder(debugBuilder_);
+            debugBuilder_ = nullptr;
+        }
         if (builder_ != nullptr)
         {
             LLVMDisposeBuilder(builder_);
@@ -430,6 +460,162 @@ private:
             LLVMContextDispose(context_);
             context_ = nullptr;
         }
+    }
+
+    class ScopedDebugLocation final
+    {
+    public:
+        ScopedDebugLocation(LLVMBuilderRef builder, LLVMMetadataRef location)
+            : builder_(builder)
+        {
+            if (builder_ == nullptr || location == nullptr) return;
+            previous_ = LLVMGetCurrentDebugLocation2(builder_);
+            LLVMSetCurrentDebugLocation2(builder_, location);
+            active_ = true;
+        }
+
+        ~ScopedDebugLocation()
+        {
+            if (active_) LLVMSetCurrentDebugLocation2(builder_, previous_);
+        }
+
+        ScopedDebugLocation(const ScopedDebugLocation&) = delete;
+        ScopedDebugLocation& operator=(const ScopedDebugLocation&) = delete;
+
+    private:
+        LLVMBuilderRef builder_ = nullptr;
+        LLVMMetadataRef previous_ = nullptr;
+        bool active_ = false;
+    };
+
+    bool initializeDebugInformation(std::string& error)
+    {
+        if (debugInformation_ == DebugInformationKind::None) return true;
+        if (sourceManager_ == nullptr || memberModel_ == nullptr)
+            return fail(error, "debug information requires project members and a source manager");
+
+        debugBuilder_ = LLVMCreateDIBuilder(module_);
+        if (debugBuilder_ == nullptr)
+            return fail(error, "failed to create the LLVM debug information builder");
+
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+        LLVMMetadataRef debugVersion = LLVMValueAsMetadata(
+            LLVMConstInt(i32, LLVMDebugMetadataVersion(), 0));
+        LLVMMetadataRef codeView = LLVMValueAsMetadata(LLVMConstInt(i32, 1, 0));
+        LLVMAddModuleFlag(
+            module_, LLVMModuleFlagBehaviorWarning, "Debug Info Version", 18, debugVersion);
+        LLVMAddModuleFlag(
+            module_, LLVMModuleFlagBehaviorWarning, "CodeView", 8, codeView);
+
+        LLVMMetadataRef primaryFile = nullptr;
+        for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
+        {
+            if (function.memberOrdinal >= memberModel_->members().size()) continue;
+            const frontend::ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+            if (!member.range.isValid()) continue;
+            primaryFile = debugFile(member.range.begin());
+            if (primaryFile != nullptr) break;
+        }
+        if (primaryFile == nullptr)
+        {
+            static constexpr std::string_view unknown = "unknown.ns";
+            primaryFile = LLVMDIBuilderCreateFile(
+                debugBuilder_, unknown.data(), unknown.size(), "", 0);
+        }
+        if (primaryFile == nullptr)
+            return fail(error, "failed to create the primary LLVM debug source file");
+
+        static constexpr std::string_view producer = "NativeSharp nsc 1.0.1";
+        const LLVMDWARFEmissionKind emission =
+            debugInformation_ == DebugInformationKind::LineTablesOnly
+            ? LLVMDWARFEmissionLineTablesOnly
+            : LLVMDWARFEmissionFull;
+        debugCompileUnit_ = LLVMDIBuilderCreateCompileUnit(
+            debugBuilder_, LLVMDWARFSourceLanguageC_sharp, primaryFile,
+            producer.data(), producer.size(),
+            optimizationLevel_ == LlvmOptimizationLevel::O0 ? 0 : 1,
+            "", 0, 0, "", 0, emission, 0, 0, 0, "", 0, "", 0);
+        if (debugCompileUnit_ == nullptr)
+            return fail(error, "failed to create the LLVM debug compile unit");
+        return true;
+    }
+
+    LLVMMetadataRef debugFile(SourceLocation location)
+    {
+        if (debugBuilder_ == nullptr || sourceManager_ == nullptr || !location.isValid())
+            return nullptr;
+        const std::uint32_t fileKey = location.fileId().value();
+        const auto existing = debugFiles_.find(fileKey);
+        if (existing != debugFiles_.end()) return existing->second;
+        const source::SourceFile* sourceFile = sourceManager_->getFile(location.fileId());
+        if (sourceFile == nullptr) return nullptr;
+        const std::filesystem::path normalized = sourceFile->path().lexically_normal();
+        const std::string filename = normalized.filename().generic_string();
+        const std::string directory = normalized.parent_path().generic_string();
+        LLVMMetadataRef file = LLVMDIBuilderCreateFile(
+            debugBuilder_, filename.data(), filename.size(), directory.data(), directory.size());
+        if (file != nullptr) debugFiles_.emplace(fileKey, file);
+        return file;
+    }
+
+    LLVMMetadataRef createDebugSubprogram(const frontend::ProjectOopMirFunction& function)
+    {
+        if (debugBuilder_ == nullptr || function.isImportedC || function.isImportedNative ||
+            memberModel_ == nullptr || function.memberOrdinal >= memberModel_->members().size())
+            return nullptr;
+        const frontend::ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+        SourceRange range = member.range;
+        if (function.isLambda && function.body != nullptr && function.body->syntax != nullptr &&
+            function.body->syntax->range().isValid())
+            range = function.body->syntax->range();
+        if (!range.isValid()) return nullptr;
+        LLVMMetadataRef file = debugFile(range.begin());
+        if (file == nullptr) return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        std::string displayName =
+            nameLookup_.namedTypes()[function.declaringTypeOrdinal].identity.fullyQualifiedName() +
+            "." + member.name;
+        if (function.isLambda)
+            displayName += ".lambda#" + std::to_string(function.lambdaOrdinal.value_or(0));
+        LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
+            debugBuilder_, file, nullptr, 0, LLVMDIFlagZero);
+        if (functionType == nullptr) return nullptr;
+        return LLVMDIBuilderCreateFunction(
+            debugBuilder_, file,
+            displayName.data(), displayName.size(),
+            function.mangledName.data(), function.mangledName.size(),
+            file, position.line, functionType,
+            function.isExportedC ? 0 : 1, 1, position.line,
+            LLVMDIFlagZero,
+            optimizationLevel_ == LlvmOptimizationLevel::O0 ? 0 : 1);
+    }
+
+    LLVMMetadataRef debugLocation(const frontend::ProjectOopMirNode* node)
+    {
+        if (debugBuilder_ == nullptr || sourceManager_ == nullptr ||
+            currentDebugSubprogram_ == nullptr || node == nullptr || node->syntax == nullptr)
+            return nullptr;
+        const SourceRange range = node->syntax->range();
+        if (!range.isValid()) return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        LLVMMetadataRef scope = currentDebugSubprogram_;
+        const std::uint32_t fileKey = range.begin().fileId().value();
+        if (fileKey != currentDebugFileKey_)
+        {
+            const auto existing = currentDebugFileScopes_.find(fileKey);
+            if (existing != currentDebugFileScopes_.end())
+            {
+                scope = existing->second;
+            }
+            else if (LLVMMetadataRef file = debugFile(range.begin()); file != nullptr)
+            {
+                scope = LLVMDIBuilderCreateLexicalBlockFile(
+                    debugBuilder_, currentDebugSubprogram_, file, 0);
+                if (scope != nullptr) currentDebugFileScopes_.emplace(fileKey, scope);
+            }
+        }
+        return LLVMDIBuilderCreateDebugLocation(
+            context_, position.line, position.column, scope, nullptr);
     }
 
     bool declareRuntime(std::string& error)
@@ -1293,7 +1479,15 @@ private:
                     function.isStatic ? 0U : 1U,
                     function.returnTypeKey);
             }
-            functions_[function.mangledName] = FunctionInfo{llvmFunction, functionType};
+            LLVMMetadataRef subprogram = createDebugSubprogram(function);
+            if (debugBuilder_ != nullptr && !function.isImportedC && !function.isImportedNative &&
+                subprogram == nullptr)
+            {
+                error = "failed to create LLVM debug subprogram for " + function.mangledName;
+                return false;
+            }
+            if (subprogram != nullptr) LLVMSetSubprogram(llvmFunction, subprogram);
+            functions_[function.mangledName] = FunctionInfo{llvmFunction, functionType, subprogram};
         }
         return true;
     }
@@ -2508,6 +2702,17 @@ private:
         }
         currentFunction_ = found->second.function;
         currentMirFunction_ = &function;
+        currentDebugSubprogram_ = found->second.subprogram;
+        currentDebugFileScopes_.clear();
+        currentDebugFileKey_ = 0;
+        if (memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
+            currentDebugFileKey_ = memberModel_->members()[function.memberOrdinal].fileId.value();
+        LLVMSetCurrentDebugLocation2(
+            builder_,
+            currentDebugSubprogram_ == nullptr
+                ? nullptr
+                : LLVMDIBuilderCreateDebugLocation(
+                    context_, 0, 0, currentDebugSubprogram_, nullptr));
         parameterStorage_.clear();
         localStorage_.clear();
         parameterCaptureCells_.clear();
@@ -3832,6 +4037,7 @@ private:
     bool lowerStatement(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return true;
+        ScopedDebugLocation scopedDebugLocation(builder_, debugLocation(node));
         switch (node->kind)
         {
             case frontend::ProjectOopMirNodeKind::Block:
@@ -4519,6 +4725,7 @@ private:
     LLVMValueRef lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node == nullptr) return nullptr;
+        ScopedDebugLocation scopedDebugLocation(builder_, debugLocation(node));
         switch (node->kind)
         {
             case frontend::ProjectOopMirNodeKind::MoveValue:
@@ -9534,10 +9741,17 @@ private:
     }
 
     const frontend::ProjectNameLookup& nameLookup_;
+    const frontend::ProjectMemberModel* memberModel_ = nullptr;
     const frontend::ProjectOopMirModel& mirModel_;
+    const source::SourceManager* sourceManager_ = nullptr;
+    DebugInformationKind debugInformation_ = DebugInformationKind::None;
+    LlvmOptimizationLevel optimizationLevel_ = LlvmOptimizationLevel::O0;
     LLVMContextRef context_ = nullptr;
     LLVMModuleRef module_ = nullptr;
     LLVMBuilderRef builder_ = nullptr;
+    LLVMDIBuilderRef debugBuilder_ = nullptr;
+    LLVMMetadataRef debugCompileUnit_ = nullptr;
+    std::unordered_map<std::uint32_t, LLVMMetadataRef> debugFiles_;
     LLVMValueRef trapFunction_ = nullptr;
     LLVMTypeRef trapFunctionType_ = nullptr;
     LLVMValueRef rttiClassTestFunction_ = nullptr;
@@ -9776,6 +9990,9 @@ private:
     std::unordered_map<std::string, FunctionInfo> callbackGuardThunks_;
     LLVMValueRef currentFunction_ = nullptr;
     const frontend::ProjectOopMirFunction* currentMirFunction_ = nullptr;
+    LLVMMetadataRef currentDebugSubprogram_ = nullptr;
+    std::uint32_t currentDebugFileKey_ = 0;
+    std::unordered_map<std::uint32_t, LLVMMetadataRef> currentDebugFileScopes_;
     LLVMValueRef thisValue_ = nullptr;
     LLVMValueRef closureEnvironment_ = nullptr;
     LLVMValueRef constructionThisOverride_ = nullptr;
@@ -9819,11 +10036,37 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
         error_ = "Macro A LLVM lowering requires built project name lookup and physical OOP MIR";
         return nullptr;
     }
-    OopLlvmImplementation implementation(nameLookup, mirModel);
+    // The compatibility overload intentionally preserves the historical no-debug path used by
+    // lowerer unit tests and internal callers that do not own a SourceManager.
+    OopLlvmImplementation implementation(
+        nameLookup, nullptr, mirModel,
+        nullptr, DebugInformationKind::None, LlvmOptimizationLevel::O0);
     if (!implementation.lower(error_))
     {
         return nullptr;
     }
+    return std::unique_ptr<LlvmModule>(
+        new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));
+}
+
+std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel)
+{
+    error_.clear();
+    if (!verifyLoadedLlvmVersion(error_)) return nullptr;
+    if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !mirModel.isBuilt())
+    {
+        error_ = "debug OOP LLVM lowering requires built project names, members and physical MIR";
+        return nullptr;
+    }
+    OopLlvmImplementation implementation(
+        nameLookup, &memberModel, mirModel, &sourceManager, debugInformation, optimizationLevel);
+    if (!implementation.lower(error_)) return nullptr;
     return std::unique_ptr<LlvmModule>(
         new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));
 }

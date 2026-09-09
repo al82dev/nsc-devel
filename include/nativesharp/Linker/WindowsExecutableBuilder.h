@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
@@ -48,11 +49,13 @@ public:
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
     void setSubsystem(WindowsExecutableSubsystem subsystem) noexcept;
+    void setDebugInformation(llvm_backend::DebugInformationKind debugInformation) noexcept;
 
 private:
     PeExecutableInfo info_;
     std::vector<ExternalImportModule> externalImports_;
     std::vector<std::filesystem::path> extraLinkLibraries_;
     WindowsExecutableSubsystem subsystem_ = WindowsExecutableSubsystem::Console;
+    llvm_backend::DebugInformationKind debugInformation_ = llvm_backend::DebugInformationKind::None;
 };
 }

@@ -716,6 +716,17 @@ bool LldLinker::linkExecutable(
     WindowsExecutableSubsystem subsystem,
     std::string& error) const
 {
+    return linkExecutable(objectFiles, importLibraries, outputPath, subsystem, {}, error);
+}
+
+bool LldLinker::linkExecutable(
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::filesystem::path> importLibraries,
+    const std::filesystem::path& outputPath,
+    WindowsExecutableSubsystem subsystem,
+    const std::filesystem::path& pdbPath,
+    std::string& error) const
+{
     error.clear();
     if (!validateObjectFiles(objectFiles, "PE linking", error) ||
         !validateLibraries(importLibraries, "PE linking", error))
@@ -725,6 +736,11 @@ bool LldLinker::linkExecutable(
     if (outputPath.empty() || containsQuote(outputPath))
     {
         error = "PE output path is empty or contains an unsupported quote character";
+        return false;
+    }
+    if (!pdbPath.empty() && containsQuote(pdbPath))
+    {
+        error = "PDB output path contains an unsupported quote character";
         return false;
     }
 
@@ -741,6 +757,12 @@ bool LldLinker::linkExecutable(
         "/nxcompat",
         "/highentropyva",
         responsePathArgument("/out:", outputPath)};
+    if (!pdbPath.empty())
+    {
+        arguments.push_back("/debug:full");
+        arguments.push_back(responsePathArgument("/pdb:", pdbPath));
+        arguments.push_back("/pdbaltpath:%_PDB%");
+    }
     for (const std::filesystem::path& path : objectFiles)
     {
         arguments.push_back(responseFileArgument(path));
@@ -756,6 +778,7 @@ bool LldLinker::linkExecutable(
 
     std::error_code cleanupError;
     std::filesystem::remove(outputPath, cleanupError);
+    if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
     const bool success = runResponseFile(responsePath, logPath, error);
     if (!keepLinkTemporaries())
     {
@@ -765,11 +788,18 @@ bool LldLinker::linkExecutable(
     if (!success)
     {
         std::filesystem::remove(outputPath, cleanupError);
+        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
         return false;
     }
     if (!std::filesystem::is_regular_file(outputPath))
     {
         error = "lld-link reported success but did not create the requested PE executable";
+        return false;
+    }
+    if (!pdbPath.empty() && !std::filesystem::is_regular_file(pdbPath))
+    {
+        std::filesystem::remove(outputPath, cleanupError);
+        error = "lld-link reported success but did not create the requested PDB";
         return false;
     }
     return true;

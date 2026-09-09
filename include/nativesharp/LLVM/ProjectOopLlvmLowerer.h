@@ -1,12 +1,21 @@
 #pragma once
 
+#include "nativesharp/LLVM/DebugInformationKind.h"
+#include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+
 #include <memory>
 #include <string>
 
 namespace nativesharp::frontend
 {
 class ProjectNameLookup;
+class ProjectMemberModel;
 class ProjectOopMirModel;
+}
+
+namespace nativesharp::source
+{
+class SourceManager;
 }
 
 namespace nativesharp::llvm_backend
@@ -19,6 +28,14 @@ public:
     std::unique_ptr<LlvmModule> lower(
         const frontend::ProjectNameLookup& nameLookup,
         const frontend::ProjectOopMirModel& mirModel);
+
+    std::unique_ptr<LlvmModule> lower(
+        const frontend::ProjectNameLookup& nameLookup,
+        const frontend::ProjectMemberModel& memberModel,
+        const frontend::ProjectOopMirModel& mirModel,
+        const source::SourceManager& sourceManager,
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimizationLevel);
 
     const std::string& error() const noexcept;
 

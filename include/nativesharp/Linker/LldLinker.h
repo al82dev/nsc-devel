@@ -51,6 +51,14 @@ public:
         WindowsExecutableSubsystem subsystem,
         std::string& error) const;
 
+    bool linkExecutable(
+        std::span<const std::filesystem::path> objectFiles,
+        std::span<const std::filesystem::path> importLibraries,
+        const std::filesystem::path& outputPath,
+        WindowsExecutableSubsystem subsystem,
+        const std::filesystem::path& pdbPath,
+        std::string& error) const;
+
 private:
     explicit LldLinker(std::filesystem::path executablePath) noexcept;
 

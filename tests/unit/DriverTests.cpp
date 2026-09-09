@@ -55,7 +55,20 @@ int main()
             "help text is written to stdout");
         tests.expect(output.str().find("/subsystem:windows") != std::string::npos,
             "help documents Windows GUI executable emission");
+        tests.expect(output.str().find("-gline-tables-only") != std::string::npos,
+            "help documents standard CodeView/PDB debug profiles");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--check", "input.ns", "-gprivate"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError,
+            "an unknown -g spelling returns the command-line exit class");
+        tests.expect(error.str().find("expected -g0, -gline-tables-only or -g") != std::string::npos,
+            "an unknown -g spelling names the supported standard profiles");
     }
 
     {

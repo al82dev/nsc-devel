@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Basic/ExitCode.h"
+#include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/Linker/LldLinker.h"
 
@@ -39,12 +40,14 @@ private:
         std::string_view inputPath,
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        llvm_backend::DebugInformationKind debugInformation,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProjectOopExecutableGeneration(
         std::string_view inputPath,
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        llvm_backend::DebugInformationKind debugInformation,
         linker::WindowsExecutableSubsystem subsystem,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
         std::ostream& output,
