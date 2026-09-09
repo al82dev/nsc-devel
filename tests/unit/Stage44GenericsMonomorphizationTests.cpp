@@ -213,6 +213,48 @@ namespace Demo
 void testAdvancedMonomorphization(TestContext& tests, const std::filesystem::path& root)
 {
     {
+        const auto directory = root / "GenericInterfaceImplementation";
+        writeProject(directory, "GenericInterfaceImplementation");
+        writeFile(directory / "Main.ns", R"NS(
+interface IValue
+{
+    int Get();
+}
+
+class Box<T> : IValue
+{
+    public T Value;
+    public Box(T value) { Value = value; }
+    public int Get() { return 42; }
+}
+
+class Program
+{
+    public static int Read(IValue value) { return value.Get(); }
+    public static int Main()
+    {
+        Box<int> box = new Box<int>(42);
+        return Read(box);
+    }
+}
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectOopMir(
+            directory / "GenericInterfaceImplementation.nsproj", error);
+        tests.expect(ok && error.empty(),
+            "a closed generic interface implementation is demanded by its interface table");
+        if (ok && compilation.oopHirModel() != nullptr)
+        {
+            const std::string hir = nativesharp::frontend::ProjectOopHirModelDumper::dump(
+                *compilation.oopHirModel());
+            tests.expect(hir.find("Box__g1__int") != std::string::npos &&
+                    hir.find("Get") != std::string::npos,
+                "the interface-only generic implementation reaches concrete HIR");
+        }
+    }
+
+    {
         const auto directory = root / "NestedRecursive";
         writeProject(directory, "NestedRecursive");
         writeFile(directory / "Main.ns", R"NS(

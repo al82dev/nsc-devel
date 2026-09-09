@@ -466,6 +466,24 @@ bool ProjectMethodBodyModel::build(
     };
 
     std::unordered_set<std::size_t> demandedGenericMethods;
+    // A concrete interface table is an executable reference just like a direct call or delegate
+    // conversion. A method cloned from `Box<T>` is otherwise deferred, and an invocation through
+    // `IValue` selects the interface contract member rather than the concrete `Box<int>.Get`
+    // member. Waiting for the call/delegate closure below therefore leaves the implementation
+    // without bindings: Stage 36 can see the semantic slot but HIR has no function to put in it.
+    // Seed every concrete implementation selected by ProjectInterfaceModel before analyzing the
+    // transitive call graph. Constraint-invalid specializations remain protected by the normal
+    // specializationSatisfiesConstraints guard inside the loop.
+    for (const ClassInterfaceTablePlan& plan : interfaceModel.tablePlans())
+    {
+        for (const std::optional<std::size_t> implementation : plan.implementationMemberOrdinals)
+        {
+            if (implementation.has_value() && isDeferredGenericMethod(*implementation))
+            {
+                demandedGenericMethods.insert(*implementation);
+            }
+        }
+    }
     while (true)
     {
         for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
