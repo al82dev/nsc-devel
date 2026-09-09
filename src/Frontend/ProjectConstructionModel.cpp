@@ -74,6 +74,24 @@ bool sameProject(
     return nameLookup.namedTypes()[leftTypeOrdinal].projectOrdinal ==
         nameLookup.namedTypes()[rightTypeOrdinal].projectOrdinal;
 }
+
+bool isStringLiteralBorrow(
+    const MethodParameterSymbol& parameter,
+    const MethodExpressionTypeBinding& argument) noexcept
+{
+    return parameter.ownership == sema::OwnershipKind::Borrowed &&
+        parameter.typeKey == "builtin:string" && argument.typeKey == "string-literal";
+}
+
+bool isFreshOwnedStringBorrow(
+    const MethodParameterSymbol& parameter,
+    const MethodExpressionTypeBinding& argument) noexcept
+{
+    return parameter.ownership == sema::OwnershipKind::Borrowed &&
+        parameter.typeKey == "builtin:string" &&
+        argument.ownership == sema::OwnershipKind::Owned &&
+        argument.ownershipTransfer && argument.ownershipFreshOwner;
+}
 }
 
 bool ProjectConstructionModel::build(
@@ -646,18 +664,28 @@ void ProjectConstructionModel::bindConstructorInitializer(
             // tipo. El veredicto se calcula igualmente para que `ownershipFits` tenga exactamente
             // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
             // candidato cuando la fisica ya lo habia aceptado.
-            const OwnershipArgumentFit fit = classifyOwnershipArgument(
-                methodBodyModel_->typeKeyIsOwnable(candidateSymbol.parameters[parameterOrdinal].typeKey),
-                candidateSymbol.parameters[parameterOrdinal].ownership,
+            const MethodParameterSymbol& parameter = candidateSymbol.parameters[parameterOrdinal];
+            const bool literalBorrow = isStringLiteralBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const bool freshBorrow = isFreshOwnedStringBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const OwnershipArgumentFit fit = literalBorrow || freshBorrow
+                ? OwnershipArgumentFit::Ok
+                : classifyOwnershipArgument(
+                methodBodyModel_->typeKeyIsOwnable(parameter.typeKey),
+                parameter.ownership,
                 argumentTypes[argumentOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownershipTransfer,
                 argumentTypes[argumentOrdinal].ownershipFreshOwner);
             candidate.ownershipFits.push_back(fit);
+            if (freshBorrow)
+            {
+                candidate.fullExpressionBorrowArgumentOrdinals.push_back(argumentOrdinal);
+            }
             if (conversion.exists() && fit != OwnershipArgumentFit::Ok)
             {
                 candidate.viable = false;
             }
-            if (fit == OwnershipArgumentFit::Ok && argumentTypes[argumentOrdinal].ownershipTransfer)
+            if (fit == OwnershipArgumentFit::Ok && !freshBorrow &&
+                argumentTypes[argumentOrdinal].ownershipTransfer)
             {
                 ConstructorOwnershipTransfer transfer;
                 transfer.parameterOrdinal = parameterOrdinal;
@@ -766,6 +794,8 @@ void ProjectConstructionModel::bindConstructorInitializer(
             }
             // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
             binding.selectedOwnershipTransfers = selected.ownershipTransfers;
+            binding.selectedFullExpressionBorrowArgumentOrdinals =
+                selected.fullExpressionBorrowArgumentOrdinals;
         }
     }
 
@@ -1064,18 +1094,28 @@ void ProjectConstructionModel::bindConstruction(
             // tipo. El veredicto se calcula igualmente para que `ownershipFits` tenga exactamente
             // un elemento por argumento --el diagnostico indexa por posicion-- pero solo tumba al
             // candidato cuando la fisica ya lo habia aceptado.
-            const OwnershipArgumentFit fit = classifyOwnershipArgument(
-                methodBodyModel_->typeKeyIsOwnable(constructor.parameters[parameterOrdinal].typeKey),
-                constructor.parameters[parameterOrdinal].ownership,
+            const MethodParameterSymbol& parameter = constructor.parameters[parameterOrdinal];
+            const bool literalBorrow = isStringLiteralBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const bool freshBorrow = isFreshOwnedStringBorrow(parameter, argumentTypes[argumentOrdinal]);
+            const OwnershipArgumentFit fit = literalBorrow || freshBorrow
+                ? OwnershipArgumentFit::Ok
+                : classifyOwnershipArgument(
+                methodBodyModel_->typeKeyIsOwnable(parameter.typeKey),
+                parameter.ownership,
                 argumentTypes[argumentOrdinal].ownership,
                 argumentTypes[argumentOrdinal].ownershipTransfer,
                 argumentTypes[argumentOrdinal].ownershipFreshOwner);
             candidate.ownershipFits.push_back(fit);
+            if (freshBorrow)
+            {
+                candidate.fullExpressionBorrowArgumentOrdinals.push_back(argumentOrdinal);
+            }
             if (conversion.exists() && fit != OwnershipArgumentFit::Ok)
             {
                 candidate.viable = false;
             }
-            if (fit == OwnershipArgumentFit::Ok && argumentTypes[argumentOrdinal].ownershipTransfer)
+            if (fit == OwnershipArgumentFit::Ok && !freshBorrow &&
+                argumentTypes[argumentOrdinal].ownershipTransfer)
             {
                 ConstructorOwnershipTransfer transfer;
                 transfer.parameterOrdinal = parameterOrdinal;
@@ -1217,6 +1257,8 @@ void ProjectConstructionModel::bindConstruction(
     }
     // NSC-LIMIT-010: las transferencias del candidato elegido viajan al binding final.
     binding.selectedOwnershipTransfers = selected.ownershipTransfers;
+    binding.selectedFullExpressionBorrowArgumentOrdinals =
+        selected.fullExpressionBorrowArgumentOrdinals;
     constructions_.push_back(std::move(binding));
 }
 

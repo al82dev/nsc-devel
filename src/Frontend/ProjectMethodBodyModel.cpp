@@ -7360,6 +7360,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
              candidate.name == "ErrorWriteLine" || candidate.name == "ErrorWrite");
     };
 
+    // A literal's bytes have process lifetime. Passing that value to an explicitly borrowed
+    // native-string parameter creates no owner and therefore needs neither a move nor a hidden
+    // cleanup. Keep the exception tied to the literal type and an explicit borrowed contract.
+    const auto isStringLiteralBorrow = [](
+        const ClassMemberSymbol& candidate,
+        std::size_t parameterOrdinal,
+        const ExpressionResult& argument) noexcept
+    {
+        return parameterOrdinal < candidate.parameters.size() &&
+            candidate.parameters[parameterOrdinal].ownership == sema::OwnershipKind::Borrowed &&
+            candidate.parameters[parameterOrdinal].typeKey == "builtin:string" &&
+            argument.typeKey == "string-literal";
+    };
+
     bool hasMatchingArity = false;
     // Las candidatas que eran viables por tipos y propiedad y cayeron SOLO por su `where`. Si al
     // final no queda ninguna viable, estas son las que explican por que.
@@ -7434,7 +7448,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     // bloque es el comentario historico de Stage 52 que explica POR QUE el orden
                     // de las comprobaciones es el que es; se conserva porque esa razon no esta en
                     // ningun otro sitio.
-                    if (!isFullExpressionBorrow(
+                    if (!isStringLiteralBorrow(
+                            candidate, parameterOrdinal, resolvedArguments[argumentOrdinal]) &&
+                        !isFullExpressionBorrow(
                             candidate, parameterOrdinal, resolvedArguments[argumentOrdinal]) &&
                         classifyOwnershipArgument(
                             parameterOwnable,
@@ -7582,6 +7598,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     }
                     if (candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed &&
                         diagnosticParameterOwnable &&
+                        resolvedArguments[argumentOrdinal].typeKey != "string-literal" &&
                         !resolvedArguments[argumentOrdinal].ownershipTransfer &&
                         resolvedArguments[argumentOrdinal].ownership == sema::OwnershipKind::None)
                     {

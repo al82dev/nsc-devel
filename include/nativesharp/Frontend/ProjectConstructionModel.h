@@ -63,6 +63,9 @@ struct ConstructorCandidateBinding final
     std::vector<OwnershipArgumentFit> ownershipFits;
     // Las transferencias que este candidato exigiria si saliera elegido.
     std::vector<ConstructorOwnershipTransfer> ownershipTransfers;
+    // Argumentos que producen un string owned temporal prestado solo durante la construccion.
+    // No son transferencias: HIR les crea un owner oculto y lo destruye al terminar la expresion.
+    std::vector<std::size_t> fullExpressionBorrowArgumentOrdinals;
 };
 
 
@@ -105,6 +108,7 @@ struct ConstructorInitializerBinding final
     // NSC-LIMIT-010: `this(...)` y `base(...)` transfieren propiedad con las mismas reglas
     // que un `new`, asi que registran las mismas transferencias.
     std::vector<ConstructorOwnershipTransfer> selectedOwnershipTransfers;
+    std::vector<std::size_t> selectedFullExpressionBorrowArgumentOrdinals;
 };
 
 enum class ImplicitDefaultConstructorResolutionKind
@@ -151,6 +155,7 @@ struct ObjectConstructionBinding final
     // NSC-LIMIT-010. Las transferencias del candidato ELEGIDO, copiadas aqui para que quien
     // lea el binding final no tenga que volver a recorrer los candidatos evaluados.
     std::vector<ConstructorOwnershipTransfer> selectedOwnershipTransfers;
+    std::vector<std::size_t> selectedFullExpressionBorrowArgumentOrdinals;
 };
 
 class ProjectConstructionModel final

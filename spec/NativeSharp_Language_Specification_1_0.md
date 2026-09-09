@@ -344,6 +344,11 @@ guardarse en almacenamiento más longevo ni capturarse en un closure que pueda e
 temporal producido dentro de una expresión completa permanece válido hasta terminar esa expresión
 y se limpia después, también por la ruta excepcional.
 
+La regla de expresión completa se aplica igual a argumentos de métodos y constructores. Un literal
+de cadena puede prestarse directamente porque su almacenamiento tiene duración de proceso; un
+resultado `owned string` fresco recibe un dueño temporal oculto hasta que termina la llamada o la
+construcción.
+
 Los `borrowed struct` son valores vista: copiar la vista no copia ni prolonga el almacenamiento que
 observa. Arrays o agregados que transportan vistas conservan esa restricción transitivamente.
 

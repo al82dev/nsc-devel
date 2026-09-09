@@ -8,11 +8,46 @@ using NativeSharp.Core;
 
 namespace c49temporaryborrow
 {
+    public class Utf8Copy
+    {
+        public int Length;
+
+        public Utf8Copy(borrowed string value)
+        {
+            Length = value.Length;
+        }
+    }
+
+    public class ChainedCopy
+    {
+        public int Length;
+
+        public ChainedCopy(borrowed string value)
+        {
+            Length = value.Length;
+        }
+
+        public ChainedCopy() : this("i" + "j")
+        {
+        }
+    }
+
     public class Program
     {
         private static int CombinedLength(borrowed string first, borrowed string second)
         {
             return first.Length + second.Length;
+        }
+
+        private static int LiteralLength(borrowed string value)
+        {
+            return value.Length;
+        }
+
+        private static int ConstructFromBorrowed(borrowed string value)
+        {
+            raii Utf8Copy copy = new Utf8Copy(value);
+            return copy.Length;
         }
 
         public static int Main()
@@ -24,6 +59,18 @@ namespace c49temporaryborrow
             // Two simultaneous fresh owners lent to an explicitly borrowed user method.
             int total = CombinedLength("c" + "d", "e" + "f");
             if (total != 4) { return 9; }
+
+            // A literal has process lifetime and is directly borrowable.
+            if (LiteralLength("literal") != 7) { return 10; }
+
+            // Constructors obey the same full-expression borrow contract as ordinary calls.
+            raii Utf8Copy literalCopy = new Utf8Copy("native");
+            if (literalCopy.Length != 6) { return 11; }
+            if (ConstructFromBorrowed("g" + "h") != 2) { return 12; }
+            raii Utf8Copy temporaryCopy = new Utf8Copy("k" + "l");
+            if (temporaryCopy.Length != 2) { return 13; }
+            raii ChainedCopy chained = new ChainedCopy();
+            if (chained.Length != 2) { return 14; }
 
             // Core intrinsic path: this used to require a named raii string too.
             Console.Write("g" + "h");

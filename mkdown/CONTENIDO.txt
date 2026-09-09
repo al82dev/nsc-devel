@@ -258,3 +258,9 @@ disponible de que la semántica es la que dice el fuente.
 ------------------------------------------------------------------------------------------------
 
     Corrige la frontera `long`/`ulong` descubierta por el baseline al ejecutar enums de 64 bits.
+
+
+1.0.1 — BORROWED STRING EN CONSTRUCTORES (162_1_0_1_borrowed_string_en_constructores.md)
+-----------------------------------------------------------------------------------------
+
+    Extiende el préstamo de expresión completa a literales y strings owned frescos en constructores.

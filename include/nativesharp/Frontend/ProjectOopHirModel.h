@@ -556,6 +556,10 @@ private:
         std::size_t targetMemberOrdinal,
         std::size_t targetParameterOrdinal,
         bool& hasOwnedTemporary);
+    std::unique_ptr<ProjectOopHirNode> wrapFreshOwnedTemporaryBorrow(
+        std::unique_ptr<ProjectOopHirNode> value,
+        const ast::AstNode* argumentSyntax,
+        bool& hasOwnedTemporary);
     std::unique_ptr<ProjectOopHirNode> wrapFullExpressionCleanup(
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* syntax,

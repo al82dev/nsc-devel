@@ -277,6 +277,20 @@ class Case
 }
 )NS", "borrowed value cannot be stored in field 'Cache'");
 
+    // Accepting a full-expression string borrow at a constructor boundary must not make the
+    // parameter storable in the constructed object. The ordinary escape rule remains in force.
+    expectInvalid(tests, root, "ConstructorFieldStore", R"NS(
+class Case
+{
+    public string Cache;
+
+    public Case(borrowed string input)
+    {
+        Cache = input;
+    }
+}
+)NS", "borrowed value cannot be stored in field 'Cache'");
+
     expectInvalid(tests, root, "BorrowedFieldDeclaration", prefix() + R"NS(
 class Case
 {

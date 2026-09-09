@@ -979,6 +979,7 @@ bool ProjectOopHirModel::build(
                     ProjectOopHirNodeKind::ThisValue,
                     initializerBinding->initializerSyntax,
                     inheritanceModel.typeKeyForOrdinal(*initializerBinding->targetTypeOrdinal)));
+                bool initializerHasOwnedTemporary = false;
                 if (initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit &&
                     initializerBinding->initializerSyntax != nullptr)
                 {
@@ -995,6 +996,13 @@ bool ProjectOopHirModel::build(
                         {
                             argument = wrapImplicitConversion(
                                 std::move(argument), initializerBinding->selectedConversions[index], argumentSyntax);
+                        }
+                        if (std::ranges::find(
+                                initializerBinding->selectedFullExpressionBorrowArgumentOrdinals,
+                                index) != initializerBinding->selectedFullExpressionBorrowArgumentOrdinals.end())
+                        {
+                            argument = wrapFreshOwnedTemporaryBorrow(
+                                std::move(argument), argumentSyntax, initializerHasOwnedTemporary);
                         }
                         initializerCall->children.push_back(std::move(argument));
                         if (index >= initializerBinding->selectedArgumentParameterOrdinals.size())
@@ -1040,7 +1048,9 @@ bool ProjectOopHirModel::build(
                         }
                     }
                 }
-                prefix.push_back(std::move(initializerCall));
+                prefix.push_back(wrapFullExpressionCleanup(
+                    std::move(initializerCall), initializerBinding->initializerSyntax,
+                    initializerHasOwnedTemporary));
             }
 
             // A this(...) delegating constructor must not execute this type's field initializers:
@@ -4248,6 +4258,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             node->memberOrdinal = binding->selectedConstructorMemberOrdinal;
             node->argumentCount =
                 expression->children().size() + binding->selectedDefaultArguments.size();
+            bool hasOwnedTemporary = false;
             for (std::size_t index = 0; index < expression->children().size(); ++index)
             {
                 auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);
@@ -4260,6 +4271,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 {
                     argument = wrapImplicitConversion(
                         std::move(argument), binding->selectedConversions[index], expression->children()[index]);
+                }
+                if (std::ranges::find(
+                        binding->selectedFullExpressionBorrowArgumentOrdinals,
+                        index) != binding->selectedFullExpressionBorrowArgumentOrdinals.end())
+                {
+                    argument = wrapFreshOwnedTemporaryBorrow(
+                        std::move(argument), expression->children()[index], hasOwnedTemporary);
                 }
                 node->children.push_back(std::move(argument));
                 if (index >= binding->selectedArgumentParameterOrdinals.size())
@@ -4321,7 +4339,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     }
                 }
             }
-            return node;
+            return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
         }
 
         case ast::AstNodeKind::AggregateInitializerExpression:
@@ -4685,6 +4703,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapCallArgumentBorrow(
         return value;
     }
 
+    if (borrow->kind == MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter)
+    {
+        return wrapFreshOwnedTemporaryBorrow(
+            std::move(value), argumentSyntax, hasOwnedTemporary);
+    }
+
     auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, argumentSyntax, value->typeKey);
     borrowed->borrowKind = borrow->kind;
     borrowed->localOrdinal = borrow->sourceLocalOrdinal;
@@ -4692,10 +4716,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapCallArgumentBorrow(
     borrowed->children.push_back(std::move(value));
     value = std::move(borrowed);
 
-    if (borrow->kind != MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter)
-    {
-        return value;
-    }
+    return value;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFreshOwnedTemporaryBorrow(
+    std::unique_ptr<ProjectOopHirNode> value,
+    const ast::AstNode* argumentSyntax,
+    bool& hasOwnedTemporary)
+{
+    auto borrowed = makeNode(ProjectOopHirNodeKind::BorrowValue, argumentSyntax, value->typeKey);
+    borrowed->borrowKind = MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+    borrowed->children.push_back(std::move(value));
+    value = std::move(borrowed);
 
     // The slot is both the owner and the exactly-once guard. It is initialized only after the
     // fresh expression succeeds; from that point until FullExpressionCleanup finishes, every
