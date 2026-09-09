@@ -246,3 +246,9 @@ disponible de que la semántica es la que dice el fuente.
 ----------------------------------------------------------------------------------------------------------
 
     Inicializa auto-propiedades `get;` desde su constructor y admite `enum == 0` / `enum != 0`.
+
+
+1.0.1 — UNIÓN CONDICIONAL DE STRINGS NATIVOS (160_1_0_1_union_condicional_de_strings_nativos.md)
+--------------------------------------------------------------------------------------------------
+
+    Une `string-literal` y `builtin:string` sin introducir una conversión general al estilo C#.
