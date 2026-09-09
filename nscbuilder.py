@@ -4,6 +4,9 @@
 Requisitos:
     python -m pip install PySide6
 
+Uso automatizado:
+    python nscbuilder.py --baseline [--jobs N]
+
 Los resultados se guardan como archivos ordinarios bajo:
     <repo>\\_nscbuilder\\history\\<fecha-id>\\
 
@@ -244,6 +247,49 @@ class RunPlan:
     keep_link_temps: bool
     selected_ctests: list[str]
     selected_cases: list[str]
+
+
+def make_baseline_plan(
+    jobs: int,
+    *,
+    compiler_build_dir: str | Path = DEFAULT_BUILD,
+    prefix: str | Path = DEFAULT_PREFIX,
+    llvm_root: str | Path = DEFAULT_LLVM,
+    nslink_exe: str | Path = DEFAULT_NSLINK,
+    test_build_lld: str | Path = DEFAULT_TEST_BUILD_LLD,
+    test_build_nslink: str | Path = DEFAULT_TEST_BUILD_NSLINK,
+    build_runner: str = "ninja",
+) -> RunPlan:
+    """Construye el plan inmutable de G0.2 compartido por GUI y consola."""
+    return RunPlan(
+        operation="baseline",
+        root=str(ROOT),
+        compiler_build_dir=str(compiler_build_dir),
+        prefix=str(prefix),
+        llvm_root=str(llvm_root),
+        nslink_exe=str(nslink_exe),
+        build_mode="incremental",
+        build_target="nsc",
+        build_runner=build_runner,
+        build_test_trees=True,
+        test_build_target="pruebas",
+        test_build_mode="incremental",
+        test_build_dirs={
+            "lld-link": str(test_build_lld),
+            "NSLink": str(test_build_nslink),
+        },
+        linkers=["lld-link", "NSLink"],
+        optimizations=["-O0", "-O2"],
+        jobs=jobs,
+        run_build=True,
+        sync_libraries=True,
+        run_ctest=True,
+        run_cases=True,
+        run_triage=True,
+        keep_link_temps=False,
+        selected_ctests=[],
+        selected_cases=[],
+    )
 
 
 @dataclass
@@ -3789,33 +3835,15 @@ class MainWindow(QMainWindow):
             # G0.2 no es configurable a proposito. Un baseline parcial --un solo enlazador, un solo
             # nivel de optimizacion, sin fixtures-- seria un certificado que no dice lo que parece
             # decir, y el Gate 0 existe justamente para que no exista esa clase de verde.
-            return RunPlan(
-                operation="baseline",
-                root=str(ROOT),
+            return make_baseline_plan(
+                self.test_jobs.value(),
                 compiler_build_dir=self.build_path.text().strip(),
                 prefix=self.prefix_path.text().strip(),
                 llvm_root=self.llvm_path.text().strip(),
                 nslink_exe=self.nslink_path.text().strip(),
-                build_mode="incremental",
-                build_target="nsc",
+                test_build_lld=test_build_dirs["lld-link"],
+                test_build_nslink=test_build_dirs["NSLink"],
                 build_runner=str(self.build_runner.currentData()),
-                build_test_trees=True,
-                # `pruebas` y no `nsc`: dentro del árbol de pruebas, `nsc` no es ninguno de sus
-                # 128 ejecutables. G0.2 se salvaba de eso solo porque ya estaban construidos.
-                test_build_target="pruebas",
-                test_build_mode="incremental",
-                test_build_dirs=test_build_dirs,
-                linkers=["lld-link", "NSLink"],
-                optimizations=["-O0", "-O2"],
-                jobs=self.test_jobs.value(),
-                run_build=True,
-                sync_libraries=True,
-                run_ctest=True,
-                run_cases=True,
-                run_triage=True,
-                keep_link_temps=False,
-                selected_ctests=[],
-                selected_cases=[],
             )
         return RunPlan(
             operation=operation,
@@ -4191,13 +4219,51 @@ def dark_stylesheet() -> str:
     """
 
 
+def run_baseline_cli(jobs: int) -> int:
+    """Ejecuta G0.2 sin crear una ventana y devuelve un código apto para automatización."""
+    result: dict = {}
+    last_line: list[str] = []
+    worker = PipelineWorker(make_baseline_plan(jobs), import_case_table(ROOT))
+
+    def print_output(line: str, _level: str, _channel: str, _optimization: str) -> None:
+        # Los mensajes generales se publican en los dos canales de la GUI. En consola se imprime
+        # una sola vez cada duplicado consecutivo sin alterar los logs canónicos del runner.
+        if last_line and last_line[0] == line:
+            return
+        last_line[:] = [line]
+        print(line, flush=True)
+
+    def print_stage(name: str, status: str, seconds: float, exit_code: int) -> None:
+        print(f"==== {status.upper():9} {name} ({seconds:.3f} s, exit {exit_code})", flush=True)
+
+    worker.output.connect(print_output)
+    worker.stage_finished.connect(print_stage)
+    worker.finished.connect(result.update)
+    worker.run()
+
+    report = result.get("report")
+    if report:
+        print(f"Reporte: {report}", flush=True)
+    return 0 if result.get("status") == "passed" else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--help", action="store_true")
+    parser.add_argument("--baseline", action="store_true")
+    parser.add_argument("--jobs", type=int, default=min(os.cpu_count() or 4, 16))
     args, qt_args = parser.parse_known_args()
     if args.help:
         print(__doc__)
         return 0
+    if args.baseline:
+        if qt_args:
+            print(f"Argumentos no reconocidos para --baseline: {' '.join(qt_args)}", file=sys.stderr)
+            return 2
+        if not 1 <= args.jobs <= 128:
+            print("--jobs debe estar entre 1 y 128", file=sys.stderr)
+            return 2
+        return run_baseline_cli(args.jobs)
     app = QApplication([sys.argv[0], *qt_args])
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")

@@ -264,3 +264,9 @@ disponible de que la semántica es la que dice el fuente.
 -----------------------------------------------------------------------------------------
 
     Extiende el préstamo de expresión completa a literales y strings owned frescos en constructores.
+
+
+1.0.1 — BASELINE G00 DESDE CONSOLA (163_1_0_1_baseline_g00_desde_consola.md)
+----------------------------------------------------------------------------
+
+    Ejecuta desde consola la misma matriz G0.2 y el mismo PipelineWorker que usa la GUI.
