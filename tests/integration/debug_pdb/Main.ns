@@ -1,6 +1,31 @@
+namespace NativeSharp.Core
+{
+    public class Exception { }
+}
+
 namespace DebugFixture
 {
+    using NativeSharp.Core;
+
     extern C delegate int Transform(int value);
+    delegate int Reader();
+
+    public class DebugProblem : Exception { }
+
+    public class GeneratedState
+    {
+        public static int Seed = 42;
+    }
+
+    public class Resource
+    {
+        public int Value;
+
+        ~Resource()
+        {
+            Value = 0;
+        }
+    }
 
     public struct Pair
     {
@@ -31,6 +56,20 @@ namespace DebugFixture
             return value + 1;
         }
 
+        public static int Read(Reader reader)
+        {
+            return reader();
+        }
+
+        public static int MaybeThrow(bool fail)
+        {
+            if (fail)
+            {
+                throw new DebugProblem();
+            }
+            return GeneratedState.Seed;
+        }
+
         public static export extern C int ExportedIdentity(int value)
         {
             return value;
@@ -49,6 +88,20 @@ namespace DebugFixture
                 int scoped = pair.Total();
                 answer = scoped;
             }
+            int captured = answer;
+            raii Reader reader = () => captured;
+            answer = Read(reader);
+            raii Resource resource = new Resource();
+            resource.Value = answer;
+            try
+            {
+                answer = MaybeThrow(false);
+            }
+            catch (DebugProblem problem)
+            {
+                answer = 0;
+            }
+            answer = resource.Value;
             return answer;
         }
     }

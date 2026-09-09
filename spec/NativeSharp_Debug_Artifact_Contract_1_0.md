@@ -58,6 +58,12 @@ The profile shall cover ordinary methods, constructors, lambdas, callbacks, C ex
 wrappers, static initializers, destruction helpers, interface thunks and Windows SEH funclets.
 Generated procedures shall remain distinguishable from user-authored procedures.
 
+Internal synthesized procedures that own executable behavior, including static initialization,
+destruction entries, typed-catch filters and closure-context destruction, shall be marked
+artificial but shall not be classified as thunks. ABI adaptation boundaries, including C exports
+and callback exception guards, shall be marked both artificial and thunk. This distinction must
+survive in the standard CodeView/PDB procedure record kind.
+
 ## NSC-DEBUG-005 — Source identity and reproducibility
 
 Source records shall use normalized paths and content checksums when the LLVM/CodeView producer

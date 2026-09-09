@@ -619,6 +619,42 @@ private:
             optimizationLevel_ == LlvmOptimizationLevel::O0 ? 0 : 1);
     }
 
+    LLVMMetadataRef createSynthesizedDebugSubprogram(
+        SourceRange range,
+        std::string_view displayName,
+        std::string_view linkageName,
+        std::string_view returnTypeKey,
+        const std::vector<std::string>& parameterTypeKeys,
+        bool localToUnit,
+        bool thunk)
+    {
+        if (debugBuilder_ == nullptr || sourceManager_ == nullptr)
+            return nullptr;
+        if (!range.isValid()) return nullptr;
+        LLVMMetadataRef file = debugFile(range.begin());
+        if (file == nullptr) return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        std::vector<LLVMMetadataRef> signatureTypes;
+        signatureTypes.reserve(parameterTypeKeys.size() + 1);
+        signatureTypes.push_back(debugType(returnTypeKey));
+        for (const std::string& parameterType : parameterTypeKeys)
+            signatureTypes.push_back(debugType(parameterType));
+        LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
+            debugBuilder_, file, signatureTypes.data(),
+            static_cast<unsigned>(signatureTypes.size()), LLVMDIFlagZero);
+        if (functionType == nullptr) return nullptr;
+        LLVMDIFlags flags = LLVMDIFlagArtificial;
+        if (thunk)
+            flags = static_cast<LLVMDIFlags>(flags | LLVMDIFlagThunk);
+        return LLVMDIBuilderCreateFunction(
+            debugBuilder_, file,
+            displayName.data(), displayName.size(),
+            linkageName.data(), linkageName.size(),
+            file, position.line, functionType,
+            localToUnit ? 1 : 0, 1, position.line, flags,
+            optimizationLevel_ == LlvmOptimizationLevel::O0 ? 0 : 1);
+    }
+
     LLVMMetadataRef createGeneratedDebugSubprogram(
         const frontend::ProjectOopMirFunction& origin,
         std::string_view role,
@@ -634,30 +670,21 @@ private:
         if (origin.isLambda && origin.body != nullptr && origin.body->syntax != nullptr &&
             origin.body->syntax->range().isValid())
             range = origin.body->syntax->range();
-        if (!range.isValid()) return nullptr;
-        LLVMMetadataRef file = debugFile(range.begin());
-        if (file == nullptr) return nullptr;
-        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         std::string displayName =
             nameLookup_.namedTypes()[origin.declaringTypeOrdinal].identity.fullyQualifiedName() +
             "." + member.name + " [generated: " + std::string(role) + "]";
-        std::vector<LLVMMetadataRef> signatureTypes;
-        signatureTypes.reserve(origin.parameterTypeKeys.size() + 1);
-        signatureTypes.push_back(debugType(origin.returnTypeKey));
-        for (const std::string& parameterType : origin.parameterTypeKeys)
-            signatureTypes.push_back(debugType(parameterType));
-        LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
-            debugBuilder_, file, signatureTypes.data(),
-            static_cast<unsigned>(signatureTypes.size()), LLVMDIFlagZero);
-        if (functionType == nullptr) return nullptr;
-        const auto flags = static_cast<LLVMDIFlags>(LLVMDIFlagArtificial | LLVMDIFlagThunk);
-        return LLVMDIBuilderCreateFunction(
-            debugBuilder_, file,
-            displayName.data(), displayName.size(),
-            linkageName.data(), linkageName.size(),
-            file, position.line, functionType,
-            localToUnit ? 1 : 0, 1, position.line, flags,
-            optimizationLevel_ == LlvmOptimizationLevel::O0 ? 0 : 1);
+        return createSynthesizedDebugSubprogram(
+            range, displayName, linkageName, origin.returnTypeKey,
+            origin.parameterTypeKeys, localToUnit, true);
+    }
+
+    LLVMMetadataRef debugSubprogramLocation(SourceRange range, LLVMMetadataRef subprogram)
+    {
+        if (subprogram == nullptr || sourceManager_ == nullptr || !range.isValid())
+            return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        return LLVMDIBuilderCreateDebugLocation(
+            context_, position.line, position.column, subprogram, nullptr);
     }
 
     LLVMMetadataRef debugSubprogramLocation(
@@ -671,10 +698,7 @@ private:
         if (origin.isLambda && origin.body != nullptr && origin.body->syntax != nullptr &&
             origin.body->syntax->range().isValid())
             range = origin.body->syntax->range();
-        if (!range.isValid()) return nullptr;
-        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
-        return LLVMDIBuilderCreateDebugLocation(
-            context_, position.line, position.column, subprogram, nullptr);
+        return debugSubprogramLocation(range, subprogram);
     }
 
     LLVMMetadataRef debugLocation(const frontend::ProjectOopMirNode* node)
@@ -1639,14 +1663,30 @@ private:
             staticInitOwnerGlobals_[typeOrdinal] = owner;
 
             LLVMTypeRef functionType = LLVMFunctionType(voidType, nullptr, 0, 0);
-            LLVMValueRef function = LLVMAddFunction(
-                module_, ("__nsc_cctor_" + suffix).c_str(), functionType);
+            const std::string functionName = "__nsc_cctor_" + suffix;
+            LLVMValueRef function = LLVMAddFunction(module_, functionName.c_str(), functionType);
             if (function == nullptr)
             {
                 return fail(error, "Stage 37 failed to declare type initializer");
             }
             applyUwtableAttribute(function);
-            staticInitFunctions_[typeOrdinal] = FunctionInfo{function, functionType};
+            LLVMMetadataRef subprogram = nullptr;
+            if (typeOrdinal < nameLookup_.namedTypes().size())
+            {
+                const frontend::NamedTypeDeclaration& type = nameLookup_.namedTypes()[typeOrdinal];
+                const std::vector<std::string> noParameters;
+                const std::string displayName =
+                    type.identity.fullyQualifiedName() + ".cctor [generated]";
+                subprogram = createSynthesizedDebugSubprogram(
+                    type.range, displayName, functionName, "builtin:void",
+                    noParameters, true, false);
+            }
+            if (debugBuilder_ != nullptr && subprogram == nullptr)
+            {
+                return fail(error, "failed to create debug subprogram for type initializer " + functionName);
+            }
+            if (subprogram != nullptr) LLVMSetSubprogram(function, subprogram);
+            staticInitFunctions_[typeOrdinal] = FunctionInfo{function, functionType, subprogram};
         }
         return true;
     }
@@ -1673,6 +1713,16 @@ private:
             returnStorage_ = nullptr;
             sretStorage_ = nullptr;
             blockCounter_ = 0;
+            currentDebugSubprogram_ = info.subprogram;
+            currentDebugScope_ = currentDebugSubprogram_;
+            debugDeclaredLocals_.clear();
+            currentDebugFileKey_ = 0;
+            SourceRange debugRange;
+            if (typeOrdinal < nameLookup_.namedTypes().size())
+            {
+                debugRange = nameLookup_.namedTypes()[typeOrdinal].range;
+                if (debugRange.isValid()) currentDebugFileKey_ = debugRange.begin().fileId().value();
+            }
 
             // Stage 54.3 "Mutex" -- FIXED a genuine data race in this guard, found while
             // stress-testing Mutex under real thread contention (see 59_stage54_3_mutex.md for
@@ -1713,6 +1763,8 @@ private:
             LLVMBasicBlockRef initialize = appendBlock("cctor.initialize");
             LLVMBasicBlockRef done = appendBlock("cctor.done");
             LLVMPositionBuilderAtEnd(builder_, entry);
+            ScopedDebugLocation generatedLocation(
+                builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
             LLVMValueRef stateGlobal = staticInitStateGlobals_[typeOrdinal];
             LLVMValueRef ownerGlobal = staticInitOwnerGlobals_[typeOrdinal];
             LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
@@ -1798,6 +1850,9 @@ private:
             LLVMPositionBuilderAtEnd(builder_, done);
             LLVMBuildRetVoid(builder_);
         }
+        currentDebugSubprogram_ = nullptr;
+        currentDebugScope_ = nullptr;
+        currentDebugFileKey_ = 0;
         return true;
     }
 
@@ -1908,8 +1963,25 @@ private:
                 return fail(error, "Stage 35 failed to declare destruction entry " +
                     table.destructionEntryName);
             }
+            LLVMMetadataRef subprogram = nullptr;
+            if (table.typeOrdinal < nameLookup_.namedTypes().size())
+            {
+                const frontend::NamedTypeDeclaration& type = nameLookup_.namedTypes()[table.typeOrdinal];
+                const std::vector<std::string> parameters = {table.typeKey};
+                const std::string displayName =
+                    type.identity.fullyQualifiedName() + ".destruction-entry [generated]";
+                subprogram = createSynthesizedDebugSubprogram(
+                    type.range, displayName, table.destructionEntryName, "builtin:void",
+                    parameters, true, false);
+            }
+            if (debugBuilder_ != nullptr && subprogram == nullptr)
+            {
+                return fail(error, "failed to create debug subprogram for destruction entry " +
+                    table.destructionEntryName);
+            }
+            if (subprogram != nullptr) LLVMSetSubprogram(function, subprogram);
             destructionFunctions_[table.typeOrdinal] = FunctionInfo{
-                function, destructionEntryFunctionType_};
+                function, destructionEntryFunctionType_, subprogram};
         }
         return true;
     }
@@ -2448,6 +2520,23 @@ private:
             {
                 return fail(error, "Stage 45.11 failed to declare typed catch filter " + name);
             }
+            LLVMMetadataRef subprogram = nullptr;
+            SourceRange debugRange;
+            if (typeOrdinal < nameLookup_.namedTypes().size())
+            {
+                const frontend::NamedTypeDeclaration& type = nameLookup_.namedTypes()[typeOrdinal];
+                debugRange = type.range;
+                const std::vector<std::string> parameters = {"builtin:void*", "builtin:void*"};
+                const std::string displayName =
+                    type.identity.fullyQualifiedName() + ".catch-filter [generated]";
+                subprogram = createSynthesizedDebugSubprogram(
+                    debugRange, displayName, name, "builtin:int", parameters, true, false);
+            }
+            if (debugBuilder_ != nullptr && subprogram == nullptr)
+            {
+                return fail(error, "failed to create debug subprogram for typed catch filter " + name);
+            }
+            if (subprogram != nullptr) LLVMSetSubprogram(function, subprogram);
             typedCatchFilters_[typeOrdinal] = function;
             // Multi-catch fix (see lowerTryRegion's catchswitch comment): the parent-side clause
             // dispatch tests the caught object with __nativesharp_rtti_is_class, which needs the
@@ -2456,11 +2545,16 @@ private:
             typedCatchTypeIds_[typeOrdinal] = table->stableTypeId;
 
             currentFunction_ = function;
+            currentDebugSubprogram_ = subprogram;
+            currentDebugScope_ = currentDebugSubprogram_;
+            currentDebugFileKey_ = debugRange.isValid() ? debugRange.begin().fileId().value() : 0;
             blockCounter_ = 0;
             LLVMBasicBlockRef entry = appendBlock("eh.typed.filter.entry");
             LLVMBasicBlockRef typeCheck = appendBlock("eh.typed.filter.type");
             LLVMBasicBlockRef reject = appendBlock("eh.typed.filter.reject");
             LLVMPositionBuilderAtEnd(builder_, entry);
+            ScopedDebugLocation generatedLocation(
+                builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
 
             LLVMValueRef domainArguments[] = {LLVMGetParam(function, 0), LLVMGetParam(function, 1)};
             LLVMValueRef domainResult = LLVMBuildCall2(
@@ -2490,6 +2584,9 @@ private:
         }
 
         currentFunction_ = nullptr;
+        currentDebugSubprogram_ = nullptr;
+        currentDebugScope_ = nullptr;
+        currentDebugFileKey_ = 0;
         blockCounter_ = 0;
         return true;
     }
@@ -3091,8 +3188,21 @@ private:
             sretStorage_ = nullptr;
             blockCounter_ = 0;
 
+            currentDebugSubprogram_ = entryFound->second.subprogram;
+            currentDebugScope_ = currentDebugSubprogram_;
+            debugDeclaredLocals_.clear();
+            currentDebugFileKey_ = 0;
+            SourceRange debugRange;
+            if (table.typeOrdinal < nameLookup_.namedTypes().size())
+            {
+                debugRange = nameLookup_.namedTypes()[table.typeOrdinal].range;
+                if (debugRange.isValid()) currentDebugFileKey_ = debugRange.begin().fileId().value();
+            }
+
             LLVMBasicBlockRef entry = appendBlock("destroy.entry");
             LLVMPositionBuilderAtEnd(builder_, entry);
+            ScopedDebugLocation generatedLocation(
+                builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
             LLVMValueRef object = LLVMGetParam(currentFunction_, 0);
             LLVMSetValueName2(object, "object", 6);
 
@@ -3174,6 +3284,9 @@ private:
                 deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
             LLVMBuildRetVoid(builder_);
         }
+        currentDebugSubprogram_ = nullptr;
+        currentDebugScope_ = nullptr;
+        currentDebugFileKey_ = 0;
         (void)ptr;
         return true;
     }
@@ -7074,23 +7187,63 @@ private:
         if (function == nullptr)
             return failValue(error, "E11 could not create closure-context destroy helper");
 
+        LLVMMetadataRef subprogram = nullptr;
+        SourceRange debugRange;
+        const frontend::ProjectOopMirFunction* origin = nullptr;
+        for (const frontend::ProjectOopMirFunction& candidate : mirModel_.functions())
+        {
+            if (candidate.mangledName == calleeName)
+            {
+                origin = &candidate;
+                break;
+            }
+        }
+        if (origin != nullptr && memberModel_ != nullptr &&
+            origin->memberOrdinal < memberModel_->members().size() &&
+            origin->declaringTypeOrdinal < nameLookup_.namedTypes().size())
+        {
+            const frontend::ClassMemberSymbol& member = memberModel_->members()[origin->memberOrdinal];
+            debugRange = member.range;
+            if (origin->body != nullptr && origin->body->syntax != nullptr &&
+                origin->body->syntax->range().isValid())
+                debugRange = origin->body->syntax->range();
+            std::string displayName =
+                nameLookup_.namedTypes()[origin->declaringTypeOrdinal].identity.fullyQualifiedName() +
+                "." + member.name;
+            if (origin->isLambda)
+                displayName += ".lambda#" + std::to_string(origin->lambdaOrdinal.value_or(0));
+            displayName += " [generated: closure context destroy]";
+            const std::vector<std::string> debugParameters = {"builtin:void*"};
+            subprogram = createSynthesizedDebugSubprogram(
+                debugRange, displayName, name, "builtin:void",
+                debugParameters, true, false);
+        }
+        if (debugBuilder_ != nullptr && subprogram == nullptr)
+            return failValue(error, "failed to create debug subprogram for closure-context destroy helper " + name);
+        if (subprogram != nullptr) LLVMSetSubprogram(function, subprogram);
+
         LLVMBuilderRef savedBuilder = builder_;
         LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
         builder_ = helper;
         LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, function, "entry");
         LLVMPositionBuilderAtEnd(builder_, entry);
-        LLVMValueRef environment = LLVMGetParam(function, 0);
-        for (std::size_t index = 0; index < captureCount; ++index)
         {
-            LLVMValueRef slot = byteOffset(
-                environment, static_cast<std::uint64_t>(index) * 8U, "closure.cell.slot");
-            LLVMValueRef cell = LLVMBuildLoad2(builder_, ptr, slot, "closure.cell");
-            releaseCaptureCell(cell);
+            ScopedDebugLocation generatedLocation(
+                builder_, debugSubprogramLocation(debugRange, subprogram));
+            LLVMValueRef environment = LLVMGetParam(function, 0);
+            LLVMSetValueName2(environment, "context", 7);
+            for (std::size_t index = 0; index < captureCount; ++index)
+            {
+                LLVMValueRef slot = byteOffset(
+                    environment, static_cast<std::uint64_t>(index) * 8U, "closure.cell.slot");
+                LLVMValueRef cell = LLVMBuildLoad2(builder_, ptr, slot, "closure.cell");
+                releaseCaptureCell(cell);
+            }
+            LLVMValueRef freeArguments[] = {environment};
+            buildNoUnwindCall(
+                deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
+            LLVMBuildRetVoid(builder_);
         }
-        LLVMValueRef freeArguments[] = {environment};
-        buildNoUnwindCall(
-            deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
-        LLVMBuildRetVoid(builder_);
         builder_ = savedBuilder;
         LLVMDisposeBuilder(helper);
         closureContextDestroyFunctions_[std::string(calleeName)] = function;

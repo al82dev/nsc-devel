@@ -88,6 +88,16 @@ foreach(level IN ITEMS O0 O2)
     if(NOT EXISTS "${executable}" OR NOT EXISTS "${pdb}")
         message(FATAL_ERROR "${level} did not create both debug_${stem}.exe and debug_${stem}.pdb")
     endif()
+    execute_process(
+        COMMAND "${executable}"
+        RESULT_VARIABLE execution_result
+        OUTPUT_VARIABLE execution_output
+        ERROR_VARIABLE execution_error)
+    if(NOT execution_result EQUAL 42)
+        message(FATAL_ERROR
+            "${level} debug fixture changed behavior (${execution_result}, expected 42)\n"
+            "stdout:\n${execution_output}\nstderr:\n${execution_error}")
+    endif()
 
     execute_process(
         COMMAND "${LLVM_READOBJ}" --coff-debug-directory "${executable}"
@@ -115,6 +125,10 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Sum" OR
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`[^`]*Increment[^`]*__c_boundary`" OR
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`ExportedIdentity`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.GeneratedState\\.cctor \\[generated\\]`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Resource\\.destruction-entry \\[generated\\]`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.DebugProblem\\.catch-filter \\[generated\\]`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.Main\\.lambda#0 \\[generated: closure context destroy\\]`" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Main" OR
        NOT pdb_dump MATCHES "Main\\.ns" OR
        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`left`" OR
@@ -150,8 +164,8 @@ foreach(level IN ITEMS O0 O2)
     set(lines_valid TRUE)
     if(NOT lines_result EQUAL 0 OR
        NOT lines_dump MATCHES "Main\\.ns" OR
-       NOT lines_dump MATCHES "[ \n]20 [0-9A-F]+" OR
-       NOT lines_dump MATCHES "[ \n]52 [0-9A-F]+")
+       NOT lines_dump MATCHES "[ \n]45 [0-9A-F]+" OR
+       NOT lines_dump MATCHES "[ \n]105 [0-9A-F]+")
         set(lines_valid FALSE)
     endif()
     if(NOT lines_valid)
