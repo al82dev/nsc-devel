@@ -282,3 +282,9 @@ POLÍTICA LOCAL DE HISTORIAL DE DESARROLLO (165_politica_local_de_historial_de_d
 --------------------------------------------------------------------------------------------
 
     Define la documentación, verificación, baseline y commit bilingüe exigidos por cada cambio.
+
+
+HISTORIAL ACUMULATIVO DE CAMBIOS 1.0.1 (166_historial_acumulativo_de_cambios_1_0_1.md)
+---------------------------------------------------------------------------------------
+
+    Reúne commit por commit la implementación, archivos, decisiones, pruebas y baseline de la serie.
