@@ -66,7 +66,15 @@ enum LLVMDWARFEmissionKind
 enum LLVMDIFlags
 {
     LLVMDIFlagZero = 0,
+    LLVMDIFlagPrivate = 1,
+    LLVMDIFlagProtected = 2,
+    LLVMDIFlagPublic = 3,
+    LLVMDIFlagArtificial = 1 << 6,
+    LLVMDIFlagObjectPointer = 1 << 10,
+    LLVMDIFlagThunk = 1 << 25,
 };
+
+constexpr unsigned LLVMDWARFTagStructureType = 0x13;
 
 using LLVMDWARFTypeEncoding = unsigned;
 constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingAddress = 0x01;
@@ -285,6 +293,12 @@ LLVMMetadataRef LLVMDIBuilderCreateLexicalBlockFile(
     LLVMMetadataRef scope,
     LLVMMetadataRef file,
     unsigned discriminator);
+LLVMMetadataRef LLVMDIBuilderCreateLexicalBlock(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    LLVMMetadataRef file,
+    unsigned line,
+    unsigned column);
 LLVMMetadataRef LLVMDIBuilderCreateDebugLocation(
     LLVMContextRef context,
     unsigned line,
@@ -327,6 +341,32 @@ LLVMMetadataRef LLVMDIBuilderCreateStructType(
     LLVMMetadataRef vtableHolder,
     const char* uniqueId,
     std::size_t uniqueIdLength);
+LLVMMetadataRef LLVMDIBuilderCreateMemberType(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    std::uint64_t offsetInBits,
+    LLVMDIFlags flags,
+    LLVMMetadataRef type);
+LLVMMetadataRef LLVMDIBuilderCreateReplaceableCompositeType(
+    LLVMDIBuilderRef builder,
+    unsigned tag,
+    const char* name,
+    std::size_t nameLength,
+    LLVMMetadataRef scope,
+    LLVMMetadataRef file,
+    unsigned line,
+    unsigned runtimeLanguage,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    LLVMDIFlags flags,
+    const char* uniqueId,
+    std::size_t uniqueIdLength);
 LLVMMetadataRef LLVMDIBuilderCreateExpression(
     LLVMDIBuilderRef builder,
     std::uint64_t* addressOperations,
@@ -360,6 +400,9 @@ LLVMDbgRecordRef LLVMDIBuilderInsertDeclareRecordAtEnd(
     LLVMMetadataRef expression,
     LLVMMetadataRef location,
     LLVMBasicBlockRef block);
+void LLVMMetadataReplaceAllUsesWith(
+    LLVMMetadataRef temporaryTarget,
+    LLVMMetadataRef replacement);
 void LLVMSetSubprogram(LLVMValueRef function, LLVMMetadataRef subprogram);
 void LLVMSetIsNewDbgInfoFormat(LLVMModuleRef module, LLVMBool useNewFormat);
 LLVMMetadataRef LLVMGetCurrentDebugLocation2(LLVMBuilderRef builder);

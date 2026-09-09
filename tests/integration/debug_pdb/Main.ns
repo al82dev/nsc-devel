@@ -1,9 +1,16 @@
 namespace DebugFixture
 {
+    extern C delegate int Transform(int value);
+
     public struct Pair
     {
         public int Left;
         public int Right;
+
+        public int Total()
+        {
+            return this.Left + this.Right;
+        }
     }
 
     public static class Program
@@ -19,13 +26,30 @@ namespace DebugFixture
             return pair.Left + pair.Right;
         }
 
+        public static int Increment(int value)
+        {
+            return value + 1;
+        }
+
+        public static export extern C int ExportedIdentity(int value)
+        {
+            return value;
+        }
+
         public static int Main()
         {
             int answer = Compute(40, 2);
+            Transform transform = Increment;
+            answer = transform(answer - 1);
             Pair pair;
             pair.Left = answer;
             pair.Right = 0;
-            return Sum(pair);
+            if (answer == 42)
+            {
+                int scoped = pair.Total();
+                answer = scoped;
+            }
+            return answer;
         }
     }
 }

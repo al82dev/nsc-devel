@@ -665,7 +665,7 @@ bool ProjectOopMirModel::build(
     for (const StructValueLayout& layout : objectLayoutModel.structLayouts())
     {
         structLayouts_.push_back(ProjectOopMirStructLayout{
-            layout.typeOrdinal, layout.typeKey, layout.size, layout.alignment});
+            layout.typeOrdinal, layout.typeKey, layout.size, layout.alignment, layout.fields});
     }
     functionByMember_.resize(memberModel.members().size());
     dispatchTableByType_.resize(nameLookup.namedTypes().size());

@@ -322,6 +322,7 @@ struct ProjectOopMirStructLayout final
     std::string typeKey;
     std::uint64_t size = 0;
     std::uint64_t alignment = 1;
+    std::vector<ObjectFieldLayout> fields;
 };
 
 struct ProjectOopMirStaticField final

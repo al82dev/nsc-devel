@@ -110,8 +110,11 @@ foreach(level IN ITEMS O0 O2)
         ERROR_VARIABLE pdb_error)
     if(NOT pdb_result EQUAL 0 OR
        NOT pdb_dump MATCHES "Has Debug Info: true" OR
+       NOT pdb_dump MATCHES "DebugFixture\\.Pair\\.Total" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Compute" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Sum" OR
+       NOT pdb_dump MATCHES "S_THUNK32[^\n]*`[^`]*Increment[^`]*__c_boundary`" OR
+       NOT pdb_dump MATCHES "S_THUNK32[^\n]*`ExportedIdentity`" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Main" OR
        NOT pdb_dump MATCHES "Main\\.ns" OR
        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`left`" OR
@@ -119,13 +122,23 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`total`" OR
        NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`answer`" OR
        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`pair`" OR
+       NOT pdb_dump MATCHES "S_LOCAL[^\n]*`this`" OR
+       NOT pdb_dump MATCHES "S_BLOCK32" OR
        NOT pdb_dump MATCHES "type=0x0074 \\(int\\), flags = param" OR
        NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.Pair" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Left`[^\n]*offset = 0[^\n]*attrs = public" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Right`[^\n]*offset = 4[^\n]*attrs = public" OR
        NOT pdb_dump MATCHES "sizeof 8" OR
        NOT pdb_dump MATCHES "int \\(DebugFixture\\.Pair\\)" OR
        NOT pdb_dump MATCHES "S_DEFRANGE")
         message(FATAL_ERROR
             "${level} PDB is missing debug summary, functions, variables, types or ranges\n"
+            "${pdb_dump}\n${pdb_error}")
+    endif()
+    if(level STREQUAL "O0" AND
+       (NOT pdb_dump MATCHES "S_BLOCK32[^\n]*``[\n\r ]+parent = [0-9]+, end = [0-9]+[\n\r ]+code size = [0-9]+, addr = [^\n]+[\n\r ]+[^\n]*S_LOCAL[^\n]*`scoped`"))
+        message(FATAL_ERROR
+            "O0 PDB is missing the nested lexical scope and its local\n"
             "${pdb_dump}\n${pdb_error}")
     endif()
 
@@ -137,8 +150,8 @@ foreach(level IN ITEMS O0 O2)
     set(lines_valid TRUE)
     if(NOT lines_result EQUAL 0 OR
        NOT lines_dump MATCHES "Main\\.ns" OR
-       NOT lines_dump MATCHES "[ \n]14 [0-9A-F]+" OR
-       NOT lines_dump MATCHES "[ \n]28 [0-9A-F]+")
+       NOT lines_dump MATCHES "[ \n]20 [0-9A-F]+" OR
+       NOT lines_dump MATCHES "[ \n]52 [0-9A-F]+")
         set(lines_valid FALSE)
     endif()
     if(NOT lines_valid)

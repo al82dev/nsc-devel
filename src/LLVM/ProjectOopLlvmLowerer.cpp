@@ -488,6 +488,28 @@ private:
         bool active_ = false;
     };
 
+    class ScopedDebugScope final
+    {
+    public:
+        ScopedDebugScope(LLVMMetadataRef& slot, LLVMMetadataRef scope)
+            : slot_(slot), previous_(slot)
+        {
+            if (scope != nullptr) slot_ = scope;
+        }
+
+        ~ScopedDebugScope()
+        {
+            slot_ = previous_;
+        }
+
+        ScopedDebugScope(const ScopedDebugScope&) = delete;
+        ScopedDebugScope& operator=(const ScopedDebugScope&) = delete;
+
+    private:
+        LLVMMetadataRef& slot_;
+        LLVMMetadataRef previous_ = nullptr;
+    };
+
     bool initializeDebugInformation(std::string& error)
     {
         if (debugInformation_ == DebugInformationKind::None) return true;
@@ -597,6 +619,64 @@ private:
             optimizationLevel_ == LlvmOptimizationLevel::O0 ? 0 : 1);
     }
 
+    LLVMMetadataRef createGeneratedDebugSubprogram(
+        const frontend::ProjectOopMirFunction& origin,
+        std::string_view role,
+        std::string_view linkageName,
+        bool localToUnit)
+    {
+        if (debugBuilder_ == nullptr || memberModel_ == nullptr ||
+            origin.memberOrdinal >= memberModel_->members().size() ||
+            origin.declaringTypeOrdinal >= nameLookup_.namedTypes().size())
+            return nullptr;
+        const frontend::ClassMemberSymbol& member = memberModel_->members()[origin.memberOrdinal];
+        SourceRange range = member.range;
+        if (origin.isLambda && origin.body != nullptr && origin.body->syntax != nullptr &&
+            origin.body->syntax->range().isValid())
+            range = origin.body->syntax->range();
+        if (!range.isValid()) return nullptr;
+        LLVMMetadataRef file = debugFile(range.begin());
+        if (file == nullptr) return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        std::string displayName =
+            nameLookup_.namedTypes()[origin.declaringTypeOrdinal].identity.fullyQualifiedName() +
+            "." + member.name + " [generated: " + std::string(role) + "]";
+        std::vector<LLVMMetadataRef> signatureTypes;
+        signatureTypes.reserve(origin.parameterTypeKeys.size() + 1);
+        signatureTypes.push_back(debugType(origin.returnTypeKey));
+        for (const std::string& parameterType : origin.parameterTypeKeys)
+            signatureTypes.push_back(debugType(parameterType));
+        LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
+            debugBuilder_, file, signatureTypes.data(),
+            static_cast<unsigned>(signatureTypes.size()), LLVMDIFlagZero);
+        if (functionType == nullptr) return nullptr;
+        const auto flags = static_cast<LLVMDIFlags>(LLVMDIFlagArtificial | LLVMDIFlagThunk);
+        return LLVMDIBuilderCreateFunction(
+            debugBuilder_, file,
+            displayName.data(), displayName.size(),
+            linkageName.data(), linkageName.size(),
+            file, position.line, functionType,
+            localToUnit ? 1 : 0, 1, position.line, flags,
+            optimizationLevel_ == LlvmOptimizationLevel::O0 ? 0 : 1);
+    }
+
+    LLVMMetadataRef debugSubprogramLocation(
+        const frontend::ProjectOopMirFunction& origin,
+        LLVMMetadataRef subprogram)
+    {
+        if (subprogram == nullptr || sourceManager_ == nullptr || memberModel_ == nullptr ||
+            origin.memberOrdinal >= memberModel_->members().size())
+            return nullptr;
+        SourceRange range = memberModel_->members()[origin.memberOrdinal].range;
+        if (origin.isLambda && origin.body != nullptr && origin.body->syntax != nullptr &&
+            origin.body->syntax->range().isValid())
+            range = origin.body->syntax->range();
+        if (!range.isValid()) return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        return LLVMDIBuilderCreateDebugLocation(
+            context_, position.line, position.column, subprogram, nullptr);
+    }
+
     LLVMMetadataRef debugLocation(const frontend::ProjectOopMirNode* node)
     {
         if (debugBuilder_ == nullptr || sourceManager_ == nullptr ||
@@ -605,20 +685,16 @@ private:
         const SourceRange range = node->syntax->range();
         if (!range.isValid()) return nullptr;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
-        LLVMMetadataRef scope = currentDebugSubprogram_;
+        LLVMMetadataRef scope = currentDebugScope_ != nullptr
+            ? currentDebugScope_
+            : currentDebugSubprogram_;
         const std::uint32_t fileKey = range.begin().fileId().value();
         if (fileKey != currentDebugFileKey_)
         {
-            const auto existing = currentDebugFileScopes_.find(fileKey);
-            if (existing != currentDebugFileScopes_.end())
-            {
-                scope = existing->second;
-            }
-            else if (LLVMMetadataRef file = debugFile(range.begin()); file != nullptr)
+            if (LLVMMetadataRef file = debugFile(range.begin()); file != nullptr)
             {
                 scope = LLVMDIBuilderCreateLexicalBlockFile(
-                    debugBuilder_, currentDebugSubprogram_, file, 0);
-                if (scope != nullptr) currentDebugFileScopes_.emplace(fileKey, scope);
+                    debugBuilder_, scope, file, 0);
             }
         }
         return LLVMDIBuilderCreateDebugLocation(
@@ -634,6 +710,18 @@ private:
             if (type.identity.key() == key) return &type;
         }
         return nullptr;
+    }
+
+    static LLVMDIFlags debugMemberFlags(frontend::ClassMemberAccessibility accessibility) noexcept
+    {
+        switch (accessibility)
+        {
+            case frontend::ClassMemberAccessibility::Private: return LLVMDIFlagPrivate;
+            case frontend::ClassMemberAccessibility::Protected: return LLVMDIFlagProtected;
+            case frontend::ClassMemberAccessibility::Public: return LLVMDIFlagPublic;
+            case frontend::ClassMemberAccessibility::Internal: return LLVMDIFlagZero;
+        }
+        return LLVMDIFlagZero;
     }
 
     LLVMMetadataRef debugType(std::string_view typeKey)
@@ -706,11 +794,58 @@ private:
                     ? sourceManager_->getPosition(named->range.begin()).line
                     : 0;
                 const std::string uniqueId = "nativesharp:" + named->identity.key();
-                type = LLVMDIBuilderCreateStructType(
+                LLVMMetadataRef temporary = LLVMDIBuilderCreateReplaceableCompositeType(
+                    debugBuilder_, LLVMDWARFTagStructureType, name.data(), name.size(),
+                    debugCompileUnit_, file, line, 0, layout->size * 8,
+                    static_cast<std::uint32_t>(layout->alignment * 8), LLVMDIFlagZero,
+                    uniqueId.data(), uniqueId.size());
+                if (temporary == nullptr) return nullptr;
+                debugTypes_.emplace(cacheKey, temporary);
+
+                std::vector<LLVMMetadataRef> members;
+                members.reserve(layout->fields.size());
+                for (const frontend::ObjectFieldLayout& field : layout->fields)
+                {
+                    std::string fieldName = "field" + std::to_string(field.memberOrdinal);
+                    LLVMMetadataRef fieldFile = file;
+                    unsigned fieldLine = line;
+                    LLVMDIFlags fieldFlags = LLVMDIFlagZero;
+                    if (memberModel_ != nullptr && field.memberOrdinal < memberModel_->members().size())
+                    {
+                        const frontend::ClassMemberSymbol& member =
+                            memberModel_->members()[field.memberOrdinal];
+                        fieldName = member.name;
+                        fieldFlags = debugMemberFlags(member.accessibility);
+                        if (member.range.isValid())
+                        {
+                            fieldFile = debugFile(member.range.begin());
+                            fieldLine = sourceManager_->getPosition(member.range.begin()).line;
+                        }
+                    }
+                    LLVMMetadataRef fieldType = debugType(field.typeKey);
+                    if (fieldType == nullptr)
+                    {
+                        fieldType = LLVMDIBuilderCreateUnspecifiedType(
+                            debugBuilder_, field.typeKey.data(), field.typeKey.size());
+                    }
+                    LLVMMetadataRef member = LLVMDIBuilderCreateMemberType(
+                        debugBuilder_, temporary, fieldName.data(), fieldName.size(), fieldFile,
+                        fieldLine, field.size * 8,
+                        static_cast<std::uint32_t>(field.alignment * 8), field.offset * 8,
+                        fieldFlags, fieldType);
+                    if (member != nullptr) members.push_back(member);
+                }
+
+                LLVMMetadataRef complete = LLVMDIBuilderCreateStructType(
                     debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
                     layout->size * 8, static_cast<std::uint32_t>(layout->alignment * 8),
-                    LLVMDIFlagZero, nullptr, nullptr, 0, 0, nullptr,
+                    LLVMDIFlagZero, nullptr, members.data(),
+                    static_cast<unsigned>(members.size()), 0, nullptr,
                     uniqueId.data(), uniqueId.size());
+                if (complete == nullptr) return nullptr;
+                LLVMMetadataReplaceAllUsesWith(temporary, complete);
+                debugTypes_[cacheKey] = complete;
+                type = complete;
             }
             else
             {
@@ -788,6 +923,53 @@ private:
         return true;
     }
 
+    bool emitDebugThis(
+        const frontend::ProjectOopMirFunction& function,
+        std::string& error)
+    {
+        if (debugInformation_ != DebugInformationKind::Full || function.isStatic ||
+            function.isLambda || currentDebugSubprogram_ == nullptr)
+            return true;
+        if (thisValue_ == nullptr || function.declaringTypeOrdinal >= nameLookup_.namedTypes().size())
+            return fail(error, "debug receiver is missing its LLVM value or declaring type");
+        if (memberModel_ == nullptr || function.memberOrdinal >= memberModel_->members().size())
+            return true;
+
+        const frontend::ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+        if (!member.range.isValid()) return true;
+        const std::string thisTypeKey = "type:" +
+            nameLookup_.namedTypes()[function.declaringTypeOrdinal].identity.key();
+        LLVMMetadataRef type = debugType(thisTypeKey);
+        LLVMMetadataRef file = debugFile(member.range.begin());
+        if (type == nullptr || file == nullptr) return true;
+        const source::SourcePosition position = sourceManager_->getPosition(member.range.begin());
+
+        LLVMValueRef storage = thisValue_;
+        if (!isStructValue(thisTypeKey))
+        {
+            LLVMTypeRef llvmThisType = llvmType(thisTypeKey, error);
+            if (llvmThisType == nullptr) return false;
+            storage = LLVMBuildAlloca(builder_, llvmThisType, "this.addr");
+            LLVMBuildStore(builder_, thisValue_, storage);
+        }
+        const auto flags = static_cast<LLVMDIFlags>(
+            LLVMDIFlagArtificial | LLVMDIFlagObjectPointer);
+        static constexpr std::string_view thisName = "this";
+        LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
+            debugBuilder_, currentDebugSubprogram_, thisName.data(), thisName.size(), 0,
+            file, position.line, type, 1, flags);
+        LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
+        LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+            context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+        if (variable == nullptr || expression == nullptr || location == nullptr)
+            return fail(error, "failed to create debug metadata for 'this'");
+        if (LLVMDIBuilderInsertDeclareRecordAtEnd(
+                debugBuilder_, storage, variable, expression, location,
+                LLVMGetInsertBlock(builder_)) == nullptr)
+            return fail(error, "failed to emit debug storage for 'this'");
+        return true;
+    }
+
     bool emitDebugLocal(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef storage,
@@ -808,13 +990,16 @@ private:
         LLVMMetadataRef type = debugType(typeKey);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        LLVMMetadataRef scope = currentDebugScope_ != nullptr
+            ? currentDebugScope_
+            : currentDebugSubprogram_;
         LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
-            debugBuilder_, currentDebugSubprogram_, node->stringValue.data(),
+            debugBuilder_, scope, node->stringValue.data(),
             node->stringValue.size(), file, position.line, type, 1, LLVMDIFlagZero,
             0);
         LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
         LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
-            context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+            context_, position.line, position.column, scope, nullptr);
         if (variable == nullptr || expression == nullptr || location == nullptr)
             return fail(error, "failed to create debug metadata for local '" + node->stringValue + "'");
         if (LLVMDIBuilderInsertDeclareRecordAtEnd(
@@ -2400,6 +2585,14 @@ private:
         {
             return failValue(error, "C1.3 callback boundary lost the target's MIR record: " + targetName);
         }
+        LLVMMetadataRef subprogram = createGeneratedDebugSubprogram(
+            *mirFunction, "C callback boundary", thunkName, true);
+        if (debugBuilder_ != nullptr && subprogram == nullptr)
+        {
+            return failValue(error, "failed to create debug subprogram for callback boundary " +
+                thunkName);
+        }
+        if (subprogram != nullptr) LLVMSetSubprogram(thunk, subprogram);
         const bool sretReturn = isIndirectStructTypeKey(mirFunction->returnTypeKey);
         if (sretReturn)
         {
@@ -2414,6 +2607,8 @@ private:
         LLVMBasicBlockRef savedBlock = LLVMGetInsertBlock(builder_);
         currentFunction_ = thunk;
         blockCounter_ = 0;
+        ScopedDebugLocation generatedDebugLocation(
+            builder_, debugSubprogramLocation(*mirFunction, subprogram));
 
         LLVMBasicBlockRef entryBlock = appendBlock("boundary.entry");
         LLVMBasicBlockRef returnBlock = appendBlock("boundary.return");
@@ -2463,7 +2658,7 @@ private:
         currentFunction_ = savedFunction;
         blockCounter_ = savedBlockCounter;
         if (savedBlock != nullptr) LLVMPositionBuilderAtEnd(builder_, savedBlock);
-        callbackGuardThunks_[targetName] = FunctionInfo{thunk, thunkType};
+        callbackGuardThunks_[targetName] = FunctionInfo{thunk, thunkType, subprogram};
         return thunk;
     }
 
@@ -2703,6 +2898,14 @@ private:
             {
                 return fail(error, "Stage 47 failed to declare C ABI wrapper " + function.cAbiName);
             }
+            LLVMMetadataRef subprogram = createGeneratedDebugSubprogram(
+                function, "C ABI wrapper", function.cAbiName, false);
+            if (debugBuilder_ != nullptr && subprogram == nullptr)
+            {
+                return fail(error, "failed to create debug subprogram for C ABI wrapper " +
+                    function.cAbiName);
+            }
+            if (subprogram != nullptr) LLVMSetSubprogram(wrapper, subprogram);
             if (sretReturn)
             {
                 applySretAttributes(
@@ -2714,6 +2917,8 @@ private:
             currentFunction_ = wrapper;
             currentMirFunction_ = nullptr;
             blockCounter_ = 0;
+            ScopedDebugLocation generatedDebugLocation(
+                builder_, debugSubprogramLocation(function, subprogram));
             LLVMBasicBlockRef entry = appendBlock("cabi.entry");
             LLVMPositionBuilderAtEnd(builder_, entry);
 
@@ -2909,7 +3114,7 @@ private:
         currentFunction_ = found->second.function;
         currentMirFunction_ = &function;
         currentDebugSubprogram_ = found->second.subprogram;
-        currentDebugFileScopes_.clear();
+        currentDebugScope_ = currentDebugSubprogram_;
         debugDeclaredLocals_.clear();
         currentDebugFileKey_ = 0;
         if (memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
@@ -2967,6 +3172,7 @@ private:
             closureEnvironment_ = nullptr;
             thisValue_ = LLVMGetParam(currentFunction_, 0);
             LLVMSetValueName2(thisValue_, "this", 4);
+            if (!emitDebugThis(function, error)) return false;
         }
 
         if (function.capturesThisCell)
@@ -4253,6 +4459,23 @@ private:
         {
             case frontend::ProjectOopMirNodeKind::Block:
             {
+                LLVMMetadataRef lexicalScope = nullptr;
+                if (debugInformation_ == DebugInformationKind::Full &&
+                    currentDebugScope_ != nullptr && node->syntax != nullptr &&
+                    node->syntax->range().isValid())
+                {
+                    const SourceRange range = node->syntax->range();
+                    LLVMMetadataRef file = debugFile(range.begin());
+                    const source::SourcePosition position =
+                        sourceManager_->getPosition(range.begin());
+                    if (file != nullptr)
+                    {
+                        lexicalScope = LLVMDIBuilderCreateLexicalBlock(
+                            debugBuilder_, currentDebugScope_, file,
+                            position.line, position.column);
+                    }
+                }
+                ScopedDebugScope scopedDebugScope(currentDebugScope_, lexicalScope);
                 const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
                 for (const auto& child : node->children)
                 {
@@ -10216,8 +10439,8 @@ private:
     LLVMValueRef currentFunction_ = nullptr;
     const frontend::ProjectOopMirFunction* currentMirFunction_ = nullptr;
     LLVMMetadataRef currentDebugSubprogram_ = nullptr;
+    LLVMMetadataRef currentDebugScope_ = nullptr;
     std::uint32_t currentDebugFileKey_ = 0;
-    std::unordered_map<std::uint32_t, LLVMMetadataRef> currentDebugFileScopes_;
     LLVMValueRef thisValue_ = nullptr;
     LLVMValueRef closureEnvironment_ = nullptr;
     LLVMValueRef constructionThisOverride_ = nullptr;
