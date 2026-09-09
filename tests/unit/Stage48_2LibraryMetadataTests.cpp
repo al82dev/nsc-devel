@@ -507,6 +507,44 @@ void testAutomaticProducts(TestContext& tests, const std::filesystem::path& root
                  "E6 standalone verifier certifies metadata, import archive, DLL "
                  "exports and frozen ABI together");
 
+    const auto genericShared = root / "GenericShared";
+    writeProject(genericShared, "GenericShared", "SharedLibrary", R"NS(
+namespace GenericDll
+{
+    public struct Box<T>
+    {
+        private T value;
+        public Box(T item) { value = item; }
+        public T Value() { return value; }
+    }
+
+    public class Boxes
+    {
+        public static Box<int> Make() { return new Box<int>(42); }
+    }
+}
+)NS");
+    output.clear();
+    error.clear();
+    tests.expect(emitProduct("--emit-project-oop-dll", genericShared / "GenericShared.nsproj",
+                             genericShared / "GenericShared.dll", output, error) == ExitCode::Success,
+                 "a DLL with an exported concrete generic struct constructor is emitted");
+    LibraryMetadataCodec genericCodec;
+    LibraryMetadata genericMetadata;
+    error.clear();
+    tests.expect(genericCodec.read(genericShared / "GenericShared.nsmeta", genericMetadata, error),
+                 "the concrete generic DLL metadata reads successfully");
+    tests.expect(std::ranges::any_of(genericMetadata.members, [](const auto& member) {
+        return member.kind == 3U && member.accessibility == 3U &&
+               member.mangledName.starts_with("__nsc_ctor_");
+    }), "NSMETA records the public constructor of the concrete Box<int> specialization");
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(genericShared / "GenericShared.nsmeta", genericShared / "GenericShared.lib",
+                                 genericShared / "GenericShared.dll", output, error) == ExitCode::Success,
+                 "an exported concrete generic struct constructor remains synchronized "
+                 "between the DLL export table and NSMETA verification");
+
     const auto statik = root / "Static";
     writeProject(statik, "StaticMeta", "StaticLibrary", R"NS(
 public struct Vec2 { public float X; public float Y; }

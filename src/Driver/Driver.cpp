@@ -291,6 +291,19 @@ const interop::LibraryMetadataType *metadataTypeForKey(
     return found == metadata.types.end() ? nullptr : &*found;
 }
 
+bool isPublishedNativeConstructor(
+    const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member) noexcept
+{
+    constexpr std::uint8_t kConstructorKind = 3U;
+    constexpr std::uint8_t kPublicAccessibility = 3U;
+    if (member.kind != kConstructorKind || member.accessibility != kPublicAccessibility || member.mangledName.empty())
+    {
+        return false;
+    }
+    const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
+    return declaringType != nullptr && declaringType->accessibility == kPublicAccessibility;
+}
+
 bool canMaterializeContractType(
     const interop::LibraryMetadata &metadata, const std::string &typeKey, std::unordered_set<std::string> &visiting)
 {
@@ -543,16 +556,16 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
     std::vector<std::string> symbols;
     for (const interop::LibraryMetadataMember &member : metadata.members)
     {
-        // Physical validation must remain stricter than source materialization.
-        // Every public static method was already part of the published native
-        // surface; struct instance methods join it only when their receiver
-        // contract can be reconstructed safely.
+        // Physical validation and source materialization answer different
+        // questions. The verifier must account for every symbol the producer
+        // exported, including struct constructors that a precompiled consumer
+        // does not reconstruct as `new` declarations.
         if (isPublicNativeMethod(member) &&
             ((member.flags & kStatic) != 0U || canMaterializeNativeMethod(metadata, member)))
         {
             symbols.push_back(member.mangledName);
         }
-        else if (canMaterializeConstructor(metadata, member))
+        else if (isPublishedNativeConstructor(metadata, member))
         {
             symbols.push_back(member.mangledName);
         }
