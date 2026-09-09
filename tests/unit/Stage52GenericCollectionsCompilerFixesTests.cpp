@@ -704,6 +704,107 @@ namespace Saru
         "a closed generic returned by a producer is assignable to the identical type in its consumer");
 }
 
+// ---------------------------------------------------------------------------------------
+// NSC-LIMIT-023: unlike NSC-LIMIT-022, the project that DECLARES the type argument never
+// specializes the generic. A third project is the first one to request Dictionary<string, T>.
+// The substituted T must keep the declaration project selected at that request site; stamping
+// the clone with the consumer project makes name lookup retry Texture2D/Song/IAsset inside the
+// generic library and reports them as unknown there.
+// ---------------------------------------------------------------------------------------
+
+void testFirstExternalGenericSpecializationKeepsArgumentDeclarationOrigin(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto genericDirectory = root / "Limit023GenericLib";
+    writeProject(genericDirectory, "Limit023GenericLib");
+    writeFile(genericDirectory / "Dictionary.ns", R"NS(
+namespace Limit023.Collections
+{
+    public class Dictionary<TKey, TValue>
+    {
+        public TValue Value;
+    }
+}
+)NS");
+
+    const auto typesDirectory = root / "Limit023Types";
+    writeProject(typesDirectory, "Limit023Types");
+    writeFile(typesDirectory / "Assets.ns", R"NS(
+namespace Limit023.Assets
+{
+    public interface IAsset { int Kind(); }
+
+    public class Texture2D : IAsset
+    {
+        public int Kind() { return 1; }
+    }
+
+    public struct Song
+    {
+        public int Id;
+    }
+
+    public class Programs
+    {
+        public class ShaderProgram : IAsset
+        {
+            public int Kind() { return 2; }
+        }
+    }
+}
+)NS");
+
+    // The consumer sees Limit023Types only through this project. This guards the same failure
+    // when the type declaration is reached through more than one ProjectReference level.
+    const auto bridgeDirectory = root / "Limit023Bridge";
+    writeProjectWithReference(
+        bridgeDirectory, "Limit023Bridge", typesDirectory / "Limit023Types.nsproj");
+    writeFile(bridgeDirectory / "Bridge.ns", R"NS(
+namespace Limit023.Bridge
+{
+    public class Marker { }
+}
+)NS");
+
+    const auto consumerDirectory = root / "Limit023Consumer";
+    writeFile(
+        consumerDirectory / "Limit023Consumer.nsproj",
+        "<Project><PropertyGroup><Name>Limit023Consumer</Name></PropertyGroup><ItemGroup>"
+        "<Compile Include=\"**/*.ns\" /><ProjectReference Include=\"" +
+            genericDirectory.generic_string() + "/Limit023GenericLib.nsproj\" />"
+        "<ProjectReference Include=\"" + bridgeDirectory.generic_string() +
+            "/Limit023Bridge.nsproj\" /></ItemGroup></Project>");
+    writeFile(consumerDirectory / "Main.ns", R"NS(
+using Limit023.Assets;
+using Limit023.Collections;
+
+namespace Limit023.Game
+{
+    public class Runner
+    {
+        public static int Main()
+        {
+            Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>();
+            Dictionary<string, Song> songs = new Dictionary<string, Song>();
+            Dictionary<string, IAsset> assets = new Dictionary<string, IAsset>();
+            Dictionary<string, Programs.ShaderProgram> shaders =
+                new Dictionary<string, Programs.ShaderProgram>();
+            return 42;
+        }
+    }
+}
+)NS");
+
+    const std::string llvm = compileAndEmitObject(
+        tests,
+        consumerDirectory,
+        "first Dictionary<string, T> specialization with externally declared T (NSC-LIMIT-023)");
+    tests.expect(!llvm.empty(),
+        "a consumer can create the first specialization over external class, struct, interface, "
+        "and nested project types");
+}
+
 std::size_t countOccurrences(std::string_view text, std::string_view needle)
 {
     if (needle.empty()) return 0;
@@ -1506,6 +1607,7 @@ int main()
     testMoveStillRejectsNonNativeArrayIndexSource(tests, root);
     testCrossProjectGenericDelegateAndClassInstantiation(tests, root);
     testCrossProjectClosedGenericReturnKeepsOneIdentity(tests, root);
+    testFirstExternalGenericSpecializationKeepsArgumentDeclarationOrigin(tests, root);
     testCrossProjectGenericConstraintWithConsumerType(tests, root);
     testCrossProjectGenericConstraintWithGlobalConsumerType(tests, root);
     testCrossProjectGenericConstraintKeepsHomonymousConsumersDistinct(tests, root);

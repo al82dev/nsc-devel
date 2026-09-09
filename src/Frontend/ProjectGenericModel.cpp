@@ -372,6 +372,7 @@ void ProjectGenericModel::collectTemplates(
         std::replace(sourceName.begin(), sourceName.end(), '+', '.');
         declaredTypeIdentities_.push_back(DeclaredTypeIdentity{
             unit.projectOrdinal(),
+            currentNamespace,
             std::move(sourceName),
             std::string(unit.moduleName()) + "::" +
                 qualifiedName(currentNamespace, qualifiedTypeName),
@@ -587,14 +588,15 @@ bool ProjectGenericModel::processTypeSyntax(
                     "' does not name a unique visible generic class/struct template");
             return false;
         }
-        if (const std::optional<std::string> identity =
-                resolveDeclaredTypeIdentity(
-                    syntax, unit.projectOrdinal(), namespaceName, scope);
-            identity.has_value())
+        if (const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
+                syntax, unit.projectOrdinal(), namespaceName, scope);
+            declaration != nullptr)
         {
-            std::string canonical = "type:" + *identity;
+            std::string canonical = "type:" + declaration->identityKey;
             appendTypeModifiers(canonical, syntax);
             resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+            resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
+                declaration->projectOrdinal, declaration->namespaceName};
         }
         return true;
     }
@@ -1197,6 +1199,11 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
         {
             result->setOriginNamespace(source->originNamespace().value());
         }
+        if (const auto origin = resolvedTypeOriginBySyntax_.find(source);
+            origin != resolvedTypeOriginBySyntax_.end())
+        {
+            resolvedTypeOriginBySyntax_[result] = origin->second;
+        }
     }
 
     for (const ast::TypeModifierSyntax& modifier : source->modifiers())
@@ -1261,13 +1268,23 @@ void ProjectGenericModel::preserveOrAttachInstantiationOrigin(ast::TypeSyntax* s
         return;
     }
 
-    // This node names an argument supplied by the current instantiation site, not a type from
-    // the template declaration that now owns the clone. Keep the spelling untouched: the origin
-    // is lookup context, not specialization identity. An empty namespace is meaningful (the
-    // consumer's global namespace), so store it explicitly instead of falling back later to the
-    // template's namespace. Once a prior substitution supplied an origin, never re-derive it.
-    syntax->setOriginProjectOrdinal(currentInstantiationProjectOrdinal_);
-    syntax->setOriginNamespace(currentInstantiationNamespace_);
+    // This node names a substituted argument, not a type written in the template that now owns
+    // the clone. Prefer the declaration selected while processing the request site: the project
+    // that writes Dictionary<string, Texture2D> may be a third project, distinct from both the
+    // Dictionary template and the project that declares Texture2D. If the early pass could not
+    // select a declaration, retain the historical request-site fallback. Keep the spelling
+    // untouched either way: origin is lookup context, never specialization identity.
+    if (const auto origin = resolvedTypeOriginBySyntax_.find(syntax);
+        origin != resolvedTypeOriginBySyntax_.end())
+    {
+        syntax->setOriginProjectOrdinal(origin->second.projectOrdinal);
+        syntax->setOriginNamespace(origin->second.namespaceName);
+    }
+    else
+    {
+        syntax->setOriginProjectOrdinal(currentInstantiationProjectOrdinal_);
+        syntax->setOriginNamespace(currentInstantiationNamespace_);
+    }
 }
 
 ast::AstNode* ProjectGenericModel::cloneNode(
@@ -1393,7 +1410,7 @@ std::string ProjectGenericModel::typeSpecializationIdentity(const ast::TypeSynta
         ";namespace[" + std::to_string(namespaceName.size()) + "]=" + namespaceName;
 }
 
-std::optional<std::string> ProjectGenericModel::resolveDeclaredTypeIdentity(
+const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDeclaredTypeIdentity(
     const ast::TypeSyntax* syntax,
     std::size_t projectOrdinal,
     std::string_view namespaceName,
@@ -1402,7 +1419,7 @@ std::optional<std::string> ProjectGenericModel::resolveDeclaredTypeIdentity(
     if (syntax == nullptr || lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
         !syntax->typeArguments().empty())
     {
-        return std::nullopt;
+        return nullptr;
     }
 
     projectOrdinal = syntax->originProjectOrdinal().value_or(projectOrdinal);
@@ -1428,7 +1445,7 @@ std::optional<std::string> ProjectGenericModel::resolveDeclaredTypeIdentity(
 
     for (const QualifiedNameRung& rung : qualifiedNameLadder(site, syntax->baseName()))
     {
-        std::vector<std::string> identities;
+        std::vector<const DeclaredTypeIdentity*> identities;
         for (const std::string& spelling : rung.spellings)
         {
             for (const DeclaredTypeIdentity& declaration : declaredTypeIdentities_)
@@ -1454,19 +1471,20 @@ std::optional<std::string> ProjectGenericModel::resolveDeclaredTypeIdentity(
                             projectVisible(projectOrdinal, declaration.projectOrdinal);
                         break;
                 }
-                if (!visible || std::find(
-                        identities.begin(), identities.end(), declaration.identityKey) !=
-                        identities.end())
+                if (!visible || std::find_if(
+                        identities.begin(), identities.end(), [&](const DeclaredTypeIdentity* identity) {
+                            return identity != nullptr && identity->identityKey == declaration.identityKey;
+                        }) != identities.end())
                 {
                     continue;
                 }
-                identities.push_back(declaration.identityKey);
+                identities.push_back(&declaration);
             }
         }
         if (identities.size() == 1) return identities.front();
-        if (identities.size() > 1) return std::nullopt;
+        if (identities.size() > 1) return nullptr;
     }
-    return std::nullopt;
+    return nullptr;
 }
 
 void ProjectGenericModel::appendTypeModifiers(

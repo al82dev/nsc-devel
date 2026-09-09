@@ -76,21 +76,21 @@ public:
     // with a <ProjectReference> to that library) -- so an argument type declared only in the
     // requesting project (the overwhelmingly common case: "List<MyOwnClass>") was reported as
     // an "unknown type name", because the library's own project cannot see it and the library
-    // never depends on its consumers. This field lets a substituted node carry the REQUESTING
-    // project's ordinal explicitly, overriding the enclosing unit's, so it resolves the way the
-    // person who wrote `List<MyOwnClass>` actually meant. Unset (nullopt) for every ordinary,
-    // non-substituted type syntax node -- fully backward compatible.
+    // never depends on its consumers. This field lets a substituted node carry the argument
+    // DECLARATION project's ordinal explicitly (or the requesting project as a conservative
+    // fallback when the early generic pass cannot select the declaration), overriding the
+    // enclosing template unit. Unset (nullopt) for every ordinary, non-substituted type syntax
+    // node -- fully backward compatible.
     std::optional<std::size_t> originProjectOrdinal() const noexcept;
     void setOriginProjectOrdinal(std::size_t projectOrdinal) noexcept;
 
     // Stage 52 fix: companion to originProjectOrdinal, needed for the SAME cross-project
     // generics scenario -- but for the lexical namespace rather than the project. A substituted
     // node is walked (ProjectNameLookup::bindTypeSyntax) under the TEMPLATE's own namespace
-    // (e.g. "NativeSharp.Core.Collections.Generic", from List<T>'s body), not the REQUESTING
-    // call site's namespace where the argument was actually written (e.g. "Stage52LibTest", from
-    // "List<Payload>" in the application project) -- so an unqualified argument type name needs
-    // this override to be found via the ordinary enclosing-namespace lookup tier. Deliberately
-    // kept SEPARATE from baseName(): an earlier version of this fix instead prefixed baseName()
+    // (e.g. "NativeSharp.Core.Collections.Generic", from List<T>'s body), not the argument
+    // declaration's namespace (which may belong to a third referenced project) -- so an
+    // unqualified argument type name needs this override to be found via ordinary lookup.
+    // Deliberately kept SEPARATE from baseName(): an earlier version of this fix prefixed baseName()
     // itself with the requesting namespace, which broke generic specialization identity --
     // ProjectGenericModel's specialization cache key is derived from typeSpelling(), i.e. the
     // argument's raw baseName(), so "Predicate<Payload>" (from the application's own top-level

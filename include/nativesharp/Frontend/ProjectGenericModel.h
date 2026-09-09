@@ -129,9 +129,16 @@ private:
     struct DeclaredTypeIdentity final
     {
         std::size_t projectOrdinal = 0;
+        std::string namespaceName;
         std::string sourceName;
         std::string identityKey;
         bool isPublic = false;
+    };
+
+    struct DeclaredTypeOrigin final
+    {
+        std::size_t projectOrdinal = 0;
+        std::string namespaceName;
     };
 
     void collectTemplates(
@@ -267,7 +274,7 @@ private:
 
     std::string typeSpelling(const ast::TypeSyntax* syntax) const;
     std::string typeSpecializationIdentity(const ast::TypeSyntax* syntax) const;
-    std::optional<std::string> resolveDeclaredTypeIdentity(
+    const DeclaredTypeIdentity* resolveDeclaredTypeIdentity(
         const ast::TypeSyntax* syntax,
         std::size_t projectOrdinal,
         std::string_view namespaceName,
@@ -286,6 +293,7 @@ private:
     std::vector<GenericSpecializationRecord> specializations_;
     std::unordered_map<std::string, std::size_t> specializationByKey_;
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
+    std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::vector<std::vector<std::size_t>> visibleProjects_;
     std::vector<std::string> projectModuleNames_;
     bool built_ = false;
@@ -295,14 +303,12 @@ private:
     // ensureTypeSpecialization/ensureMethodSpecialization call, in processTypeSyntax/
     // processGenericCall, where the requesting ProjectSyntaxUnit and namespace are available).
     // cloneType reads these when substituting a generic parameter for a plain (non-builtin,
-    // non-generic) type argument, to qualify the substituted name with the REQUESTING
-    // namespace and tag it with the REQUESTING project's ordinal (TypeSyntax::
-    // originProjectOrdinal) -- see that field's comment for why this is necessary: without it,
-    // a type argument that only the requesting project (not the template's own defining
-    // project) can see fails to resolve once it is cloned into the template's specialization
-    // body. This is call-site state, not persistent instance state -- it is only ever read
-    // synchronously within the ensureTypeSpecialization/ensureMethodSpecialization call that
-    // immediately follows each assignment, never across a later, unrelated call.
+    // non-generic) type argument. A successfully predeclared argument carries the DECLARATION
+    // project/namespace from resolvedTypeOriginBySyntax_; these call-site values are the fallback
+    // only for an argument that this early generic pass could not resolve canonically. This is
+    // call-site state, not persistent instance state -- it is only ever read synchronously within
+    // the ensureTypeSpecialization/ensureMethodSpecialization call that immediately follows each
+    // assignment, never across a later, unrelated call.
     std::size_t currentInstantiationProjectOrdinal_ = 0;
     std::string currentInstantiationNamespace_;
     // NSC-LIMIT-007: donde se pidio la especializacion que se esta materializando. Viaja por el
