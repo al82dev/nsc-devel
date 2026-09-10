@@ -199,7 +199,7 @@ void testNativeProductAndHeader(TestContext& tests, const std::filesystem::path&
             std::filesystem::is_regular_file(outputDirectory / "Stage48_5HostApi.h") &&
             std::filesystem::is_regular_file(outputDirectory / "Stage48_5HostApi.nsmeta"),
         "C# host product still carries the common import library, C header and .nsmeta sidecars");
-    tests.expect(output.find("exports: 45") != std::string::npos,
+    tests.expect(output.find("exports: 46") != std::string::npos,
         "Stage 48.5 library reports 21 stable C wrappers plus its complete NativeSharp callable/type surface");
 
     const std::string header = readFile(outputDirectory / "Stage48_5HostApi.h");
@@ -235,14 +235,14 @@ void testNativeProductAndHeader(TestContext& tests, const std::filesystem::path&
             "P/Invoke target DLL is PE32+ AMD64");
         tests.expect(info.clrDirectoryRva == 0,
             "NativeSharp P/Invoke target contains no CLR header and remains fully native");
-        tests.expect(info.exportedSymbols.size() == 45,
+        tests.expect(info.exportedSymbols.size() == 46,
             "P/Invoke target DLL exports the 21-entry host contract and the complete NativeSharp surface");
         tests.expect(contains(info.exportedSymbols, "NS485_Add") &&
                 contains(info.exportedSymbols, "NS485_Counter_Destroy") &&
                 contains(info.exportedSymbols, "NS485_InvokeBuffer"),
             "representative scalar, ownership and callback entry points are exported undecorated");
         tests.expect(std::count_if(info.exportedSymbols.begin(), info.exportedSymbols.end(),
-                         [](const std::string& symbol) { return symbol.find("HostApi") != std::string::npos; }) == 24,
+                         [](const std::string& symbol) { return symbol.find("HostApi") != std::string::npos; }) == 25,
             "every public HostApi method and its ABI support symbols have mangled NativeSharp exports");
     }
 }

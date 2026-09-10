@@ -4064,10 +4064,10 @@ namespace cc1promoir
         };
 
         tests.expect(
-            foldedTo("Mixed", "= constant i64 2"),
+            foldedTo("Mixed", "constant i64 2"),
             "121: `1 + 1L` folds to the constant 2 in the IR, not to a runtime add");
         tests.expect(
-            foldedTo("Chained", "= constant i64 42"),
+            foldedTo("Chained", "constant i64 42"),
             "121: a const built on another folded const folds too -- 2 + 40 = 42");
 
         // 122, EL LADO NEGATIVO, y es lo que la fixture c17 no pudo decir. Si estas dos fallan,
@@ -4079,10 +4079,10 @@ namespace cc1promoir
         // numero no se puede distinguir "el signo se perdio al ensanchar" (4294967296) de "el
         // signo se ignoro" (2). Una asercion que solo dice que fallo obliga a otra corrida entera.
         tests.expect(
-            foldedTo("NegativeWide", "= constant i64 0"),
+            foldedTo("NegativeWide", "constant i64 0"),
             "127: `(-1) + 1L` folds to 0 -- the sign survives the widening to long\n" + text);
         tests.expect(
-            foldedTo("NegativeSum", "= constant i64 5"),
+            foldedTo("NegativeSum", "constant i64 5"),
             "127: `(0 - 5) + 10L` folds to 5 -- a negative magnitude plus a wider literal\n" +
                 text);
     }

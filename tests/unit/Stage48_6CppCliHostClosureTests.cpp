@@ -144,7 +144,7 @@ void testNativeProduct(TestContext& tests, const std::filesystem::path& root)
         "Stage 48.6 emits the same generated C/C++ ABI header");
     tests.expect(std::filesystem::is_regular_file(outputDirectory / "Stage48_6HostApi.nsmeta"),
         "Stage 48.6 emits compiler metadata beside the native product");
-    tests.expect(output.find("exports: 45") != std::string::npos,
+    tests.expect(output.find("exports: 46") != std::string::npos,
         "Stage 48.6 native product reports 21 stable C wrappers plus its complete NativeSharp callable/type surface");
 
     const std::string header = readFile(outputDirectory / "Stage48_6HostApi.h");
@@ -173,13 +173,13 @@ void testNativeProduct(TestContext& tests, const std::filesystem::path& root)
         tests.expect(info.machine == 0x8664, "Stage 48.6 NativeSharp DLL targets AMD64");
         tests.expect(info.optionalHeaderMagic == 0x20b, "Stage 48.6 NativeSharp DLL uses PE32+");
         tests.expect(info.clrDirectoryRva == 0, "NativeSharp side of the C++/CLI bridge has no CLR header");
-        tests.expect(info.exportedSymbols.size() == 45,
+        tests.expect(info.exportedSymbols.size() == 46,
             "Stage 48.6 native DLL exports the 21-entry bridge ABI and the complete NativeSharp surface");
         tests.expect(contains(info.exportedSymbols, "NS486_Add") && contains(info.exportedSymbols, "NS486_Invoke") &&
                 contains(info.exportedSymbols, "NS486_Counter_Destroy"),
             "representative scalar, callback and lifetime exports remain undecorated");
         tests.expect(std::count_if(info.exportedSymbols.begin(), info.exportedSymbols.end(),
-                         [](const std::string& symbol) { return symbol.find("HostApi") != std::string::npos; }) == 24,
+                         [](const std::string& symbol) { return symbol.find("HostApi") != std::string::npos; }) == 25,
             "every public HostApi method and its ABI support symbols have mangled NativeSharp exports");
     }
 
