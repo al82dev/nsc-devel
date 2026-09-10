@@ -3500,7 +3500,7 @@ public class Program
 {
     public static int Main()
     {
-        return Precompiled.GenericAlgorithms.Secret<int>(42);
+        return Precompiled.GenericAlgorithms.ClosureLeaf<int>(42);
     }
 }
 )NS");

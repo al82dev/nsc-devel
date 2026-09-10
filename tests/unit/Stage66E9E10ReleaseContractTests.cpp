@@ -251,8 +251,8 @@ int main()
     tests.expect(policy.find("compiler_release=0.9.0\n") != std::string::npos &&
                      policy.find("language_release=0.1.0\n") != std::string::npos,
         "policy separates compiler and language releases");
-    tests.expect(policy.find("nsmeta_read=1.0-1.10\n") != std::string::npos &&
-                     policy.find("nsmeta_write=1.10\n") != std::string::npos,
+    tests.expect(policy.find("nsmeta_read=1.0-1.11\n") != std::string::npos &&
+                     policy.find("nsmeta_write=1.11\n") != std::string::npos,
         "policy publishes metadata read and write ranges independently");
     tests.expect(
         policy.find("native_abi=1.0\n") != std::string::npos && policy.find("runtime_abi=1.0\n") != std::string::npos,

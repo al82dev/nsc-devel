@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 11 (2026-09-10): las plantillas reutilizables conservan su grafo de dependencias y la
+// clausura privada transitiva necesaria para materializarlas sin ampliar la API publica.
 // MINOR 10 (2026-09-10): una declaracion publica `extern C from` conserva la DLL que posee el
 // simbolo para que el consumidor reconstruya el import real sin atribuirselo al productor.
 // MINOR 9 (2026-09-10): las constantes string conservan sus bytes para que el consumidor pueda
@@ -36,7 +38,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 10;
+inline constexpr std::uint16_t kMetadataFormatMinor = 11;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una
@@ -183,6 +185,10 @@ struct LibraryMetadataGenericTemplate final
     // The consumer parses both in the producer's synthetic project, while only public roots are
     // nameable from the consumer project.
     std::string sourceText;
+    // NSMETA 1.11: canonical template identities directly required by this declaration/body.
+    // Same-module edges must be present in the file; external-module edges are resolved from the
+    // consumer's other LibraryReferences.
+    std::vector<std::string> dependencies;
 };
 
 struct LibraryMetadataGenericSpecialization final

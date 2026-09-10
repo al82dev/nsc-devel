@@ -81,7 +81,7 @@ int main()
     tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") != std::string::npos,
         "contract identifies the supported target");
     tests.expect(contract.find("llvm=23.x\n") != std::string::npos, "contract identifies the qualified LLVM line");
-    tests.expect(contract.find("nsmeta=1.10\n") != std::string::npos, "contract identifies the library metadata format");
+    tests.expect(contract.find("nsmeta=1.11\n") != std::string::npos, "contract identifies the library metadata format");
     tests.expect(contract.find("native_abi=1.0\n") != std::string::npos &&
                      contract.find("runtime_abi=1.0\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");

@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <optional>
@@ -666,11 +667,71 @@ bool buildMetadataModel(
         metadata.members.push_back(std::move(record));
     }
 
+    const auto genericTemplates = compilation.genericModel()->templates();
+    std::unordered_map<std::string, const frontend::GenericTemplateRecord*> genericByKey;
+    for (const frontend::GenericTemplateRecord& generic : genericTemplates)
+        genericByKey.emplace(generic.canonicalKey, &generic);
+
     std::unordered_set<std::string> rootTemplateKeys;
-    for (const frontend::GenericTemplateRecord& generic : compilation.genericModel()->templates())
+    std::unordered_set<std::string> includedTemplateKeys;
+    for (const frontend::GenericTemplateRecord& publicRoot : genericTemplates)
     {
-        if (generic.projectOrdinal != *rootOrdinal) continue;
-        if (generic.syntax == nullptr) continue;
+        if (publicRoot.projectOrdinal != *rootOrdinal ||
+            publicRoot.accessibility != frontend::GenericTemplateAccessibility::Public)
+            continue;
+
+        std::vector<std::string> chain;
+        std::unordered_set<std::string> visiting;
+        std::function<bool(const frontend::GenericTemplateRecord&)> includeClosure =
+            [&](const frontend::GenericTemplateRecord& generic)
+        {
+            if (generic.projectOrdinal != *rootOrdinal) return true;
+            if (includedTemplateKeys.contains(generic.canonicalKey)) return true;
+            if (!visiting.insert(generic.canonicalKey).second) return true;
+            chain.push_back(generic.canonicalKey);
+
+            if (!generic.unresolvedDependencies.empty())
+            {
+                error = "reusable template closure is incomplete\n  public root: " +
+                    publicRoot.canonicalKey + "\n  required template: " +
+                    generic.unresolvedDependencies.front() + "\n  owner: " +
+                    generic.moduleName + "::" + generic.ownerName +
+                    "\n  dependency chain: ";
+                for (std::size_t index = 0; index < chain.size(); ++index)
+                {
+                    if (index != 0) error += " -> ";
+                    error += chain[index];
+                }
+                return false;
+            }
+
+            for (const std::string& dependencyKey : generic.dependencies)
+            {
+                const auto dependency = genericByKey.find(dependencyKey);
+                if (dependency == genericByKey.end())
+                {
+                    error = "reusable template closure is incomplete\n  public root: " +
+                        publicRoot.canonicalKey + "\n  required template: " + dependencyKey +
+                        "\n  owner: " + generic.moduleName + "::" + generic.ownerName +
+                        "\n  dependency chain: ";
+                    for (const std::string& entry : chain) error += entry + " -> ";
+                    error += dependencyKey;
+                    return false;
+                }
+                if (!includeClosure(*dependency->second)) return false;
+            }
+            chain.pop_back();
+            visiting.erase(generic.canonicalKey);
+            includedTemplateKeys.insert(generic.canonicalKey);
+            return true;
+        };
+        if (!includeClosure(publicRoot)) return false;
+    }
+
+    for (const frontend::GenericTemplateRecord& generic : genericTemplates)
+    {
+        if (!includedTemplateKeys.contains(generic.canonicalKey) || generic.syntax == nullptr)
+            continue;
         LibraryMetadataGenericTemplate record;
         record.kind = static_cast<std::uint8_t>(generic.kind);
         record.accessibility = static_cast<std::uint8_t>(generic.accessibility);
@@ -681,6 +742,7 @@ bool buildMetadataModel(
         record.name = generic.name;
         record.parameters = generic.parameters;
         record.sourceText = std::string(compilation.sourceManager().getText(generic.syntax->range()));
+        record.dependencies = generic.dependencies;
         rootTemplateKeys.insert(record.canonicalKey);
         metadata.genericTemplates.push_back(std::move(record));
     }
@@ -902,6 +964,7 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writer.text(generic.name);
         writeStringVector(writer, generic.parameters);
         if (metadata.formatMinor >= 7) writer.text(generic.sourceText);
+        if (metadata.formatMinor >= 11) writeStringVector(writer, generic.dependencies);
     }
 
     writer.u32(static_cast<std::uint32_t>(metadata.genericSpecializations.size()));
@@ -1108,7 +1171,8 @@ bool decodePayload(
             !reader.text(generic.canonicalKey) || !reader.text(generic.moduleName) ||
             !reader.text(generic.namespaceName) || !reader.text(generic.ownerName) || !reader.text(generic.name) ||
             !readStringVector(reader, generic.parameters) ||
-            (metadata.formatMinor >= 7 && !reader.text(generic.sourceText)))
+            (metadata.formatMinor >= 7 && !reader.text(generic.sourceText)) ||
+            (metadata.formatMinor >= 11 && !readStringVector(reader, generic.dependencies)))
         {
             error = "truncated generic-template metadata";
             return false;
@@ -1354,6 +1418,25 @@ bool LibraryMetadataCodec::writeModel(
         return false;
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
+
+    // A down-level file must preserve the semantics of that historical minor, not merely omit
+    // the bytes introduced later. NSMETA <= 1.10 contained public templates only; retaining a
+    // private closure entry while dropping its 1.11 dependency edges would create a file that no
+    // historical producer could have emitted and would silently widen what old readers hydrate.
+    if (metadata.formatMinor < 11)
+    {
+        std::erase_if(metadata.genericTemplates, [](const LibraryMetadataGenericTemplate& generic) {
+            return generic.accessibility != 3U;
+        });
+        std::unordered_set<std::string> publicTemplateKeys;
+        for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+            publicTemplateKeys.insert(generic.canonicalKey);
+        std::erase_if(
+            metadata.genericSpecializations,
+            [&](const LibraryMetadataGenericSpecialization& specialization) {
+                return !publicTemplateKeys.contains(specialization.templateKey);
+            });
+    }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -1725,6 +1808,7 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     {
         constexpr std::uint8_t kPublicAccessibility = 3U;
         std::unordered_set<std::string> templateKeys;
+        std::unordered_map<std::string, const LibraryMetadataGenericTemplate*> templateByKey;
         for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
         {
             if (generic.canonicalKey.empty() || !templateKeys.insert(generic.canonicalKey).second)
@@ -1739,6 +1823,60 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 error = "metadata generic template '" + generic.canonicalKey +
                     "' does not provide a valid materializable declaration";
                 return false;
+            }
+            templateByKey.emplace(generic.canonicalKey, &generic);
+            if (metadata.formatMinor >= 11)
+            {
+                std::unordered_set<std::string> dependencyKeys;
+                for (const std::string& dependency : generic.dependencies)
+                {
+                    if (dependency.empty() || !dependencyKeys.insert(dependency).second)
+                    {
+                        error = dependency.empty()
+                            ? "metadata generic template '" + generic.canonicalKey +
+                                "' contains an empty closure dependency"
+                            : "metadata generic template '" + generic.canonicalKey +
+                                "' contains duplicate closure dependency '" + dependency + "'";
+                        return false;
+                    }
+                }
+            }
+        }
+
+        if (metadata.formatMinor >= 11)
+        {
+            const std::string sameModulePrefix = metadata.moduleName + "::";
+            for (const LibraryMetadataGenericTemplate& publicRoot : metadata.genericTemplates)
+            {
+                if (publicRoot.accessibility != kPublicAccessibility) continue;
+                std::vector<std::string> chain;
+                std::unordered_set<std::string> visiting;
+                std::function<bool(const LibraryMetadataGenericTemplate&)> verifyClosure =
+                    [&](const LibraryMetadataGenericTemplate& generic)
+                {
+                    if (!visiting.insert(generic.canonicalKey).second) return true;
+                    chain.push_back(generic.canonicalKey);
+                    for (const std::string& dependencyKey : generic.dependencies)
+                    {
+                        const auto dependency = templateByKey.find(dependencyKey);
+                        if (dependency == templateByKey.end())
+                        {
+                            if (!dependencyKey.starts_with(sameModulePrefix)) continue;
+                            error = "reusable template closure is incomplete\n  public root: " +
+                                publicRoot.canonicalKey + "\n  required template: " +
+                                dependencyKey + "\n  owner: " + metadata.moduleName +
+                                "\n  dependency chain: ";
+                            for (const std::string& entry : chain) error += entry + " -> ";
+                            error += dependencyKey;
+                            return false;
+                        }
+                        if (!verifyClosure(*dependency->second)) return false;
+                    }
+                    chain.pop_back();
+                    visiting.erase(generic.canonicalKey);
+                    return true;
+                };
+                if (!verifyClosure(publicRoot)) return false;
             }
         }
     }

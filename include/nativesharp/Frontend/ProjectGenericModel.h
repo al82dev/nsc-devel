@@ -60,6 +60,13 @@ struct GenericTemplateRecord final
     // valida es ProjectGenericConstraintModel, con las tres ya construidas.
     std::vector<ast::GenericConstraintClause> constraints;
     std::string canonicalKey;
+    // Canonical identities reached from this template's declaration/body. The producer uses
+    // these edges to compute the reusable fixed-point closure; NSMETA persists them so artifact
+    // verification can prove that every same-module dependency is present.
+    std::vector<std::string> dependencies;
+    // Explicit generic uses that could not be resolved while inspecting the template. They are
+    // harmless in an unreachable private template, but make a public reusable closure invalid.
+    std::vector<std::string> unresolvedDependencies;
 };
 
 struct GenericSpecializationRecord final
@@ -150,6 +157,8 @@ private:
         std::string namespaceName;
     };
 
+    struct GenericLookupScope;
+
     void collectTemplates(
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
@@ -158,6 +167,35 @@ private:
         const std::string& ownerName,
         bool insideGenericType,
         diagnostics::DiagnosticEngine& diagnostics);
+
+    void discoverTemplateDependencies(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope);
+    void collectTemplateDependencies(
+        TemplateState& root,
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        const ast::AstNode* rootSyntax);
+    void collectTypeDependency(
+        TemplateState& root,
+        ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* syntax,
+        const std::string& namespaceName,
+        const GenericLookupScope& scope);
+    void collectCallDependency(
+        TemplateState& root,
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* call,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope);
+    TemplateState* stateForSyntax(const ast::AstNode* syntax) noexcept;
 
     // LOS `using` VIGENTES EN EL SITIO, que esta fase tambien necesita.
     //

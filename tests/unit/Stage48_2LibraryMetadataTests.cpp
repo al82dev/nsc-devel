@@ -266,7 +266,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
                  "explicit metadata generation creates parent directories and "
                  "keeps stderr empty");
-    tests.expect(output.find("format: NSMETA 1.10") != std::string::npos &&
+    tests.expect(output.find("format: NSMETA 1.11") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
 
@@ -698,6 +698,7 @@ namespace GenericMeta
     public struct Box<T> { public T Value; }
     public class Algorithms
     {
+        private static T Unused<T>(T value) { return value; }
         private static T IdentityCore<T>(T value) { return value; }
         public static T Identity<T>(T value) { return IdentityCore<T>(value); }
         public static int Run()
@@ -725,6 +726,25 @@ namespace GenericMeta
     tests.expect(std::ranges::any_of(metadata.genericTemplates, [](const auto& item) {
         return item.name == "IdentityCore" && item.accessibility == 0U;
     }), "private generic helper retains private accessibility in NSMETA");
+    tests.expect(std::ranges::none_of(metadata.genericTemplates, [](const auto& item) {
+        return item.name == "Unused";
+    }), "unreachable private generic implementation is not leaked into NSMETA");
+    const auto identity = std::ranges::find_if(metadata.genericTemplates, [](const auto& item) {
+        return item.name == "Identity";
+    });
+    tests.expect(identity != metadata.genericTemplates.end() && identity->dependencies.size() == 1U &&
+                     identity->dependencies.front().find("IdentityCore") != std::string::npos,
+                 "public generic root records its private closure edge");
+    LibraryMetadata incompleteClosure = metadata;
+    std::erase_if(incompleteClosure.genericTemplates, [](const auto& item) {
+        return item.name == "IdentityCore";
+    });
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incompleteClosure, error) &&
+                     error.find("reusable template closure is incomplete") != std::string::npos &&
+                     error.find("IdentityCore") != std::string::npos &&
+                     error.find("dependency chain") != std::string::npos,
+                 "verifier rejects a missing private closure entry and reports its chain");
     tests.expect(metadata.genericSpecializations.size() == 3,
                  "concrete Box<int>, Identity<int>, and private IdentityCore<int> "
                  "specialization identities are persisted");
@@ -818,7 +838,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     writeBytes(futureMinorPath, futureMinor);
     error.clear();
     tests.expect(!codec.read(futureMinorPath, ignored, error) &&
-                     error.find("unsupported NativeSharp metadata format 1.11") != std::string::npos,
+                     error.find("unsupported NativeSharp metadata format 1.12") != std::string::npos,
                  "a future NSMETA minor is rejected before payload decoding");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
@@ -1024,7 +1044,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
             output.find("NativeSharp library metadata: valid") != std::string::npos &&
-                     output.find("format: NSMETA 1.10") != std::string::npos &&
+                     output.find("format: NSMETA 1.11") != std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
                      output.find("runtime-abi: 1.0") != std::string::npos &&
                      output.find("object-abi: 1") != std::string::npos &&

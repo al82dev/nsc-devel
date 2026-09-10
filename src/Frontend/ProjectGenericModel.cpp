@@ -275,6 +275,31 @@ bool ProjectGenericModel::build(
         }
     }
 
+    // Record the declaration-level dependency graph before any template is cloned. A producer
+    // can then publish exactly the fixed-point closure of its public roots, and the NSMETA
+    // verifier can prove that a same-module edge was not silently dropped.
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+    {
+        if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+        discoverTemplateDependencies(
+            *unitPtr, unitPtr->syntaxTree(), "", "", GenericLookupScope{});
+    }
+    for (TemplateState& state : templateStates_)
+    {
+        std::sort(state.record.dependencies.begin(), state.record.dependencies.end());
+        state.record.dependencies.erase(
+            std::unique(state.record.dependencies.begin(), state.record.dependencies.end()),
+            state.record.dependencies.end());
+        std::sort(
+            state.record.unresolvedDependencies.begin(),
+            state.record.unresolvedDependencies.end());
+        state.record.unresolvedDependencies.erase(
+            std::unique(
+                state.record.unresolvedDependencies.begin(),
+                state.record.unresolvedDependencies.end()),
+            state.record.unresolvedDependencies.end());
+    }
+
     // LA DETECCION DE DUPLICADOS ES SOLO PARA TIPOS, desde el 2026-09-03.
     //
     // Dos plantillas de METODO con el mismo nombre y la misma aridad generica YA NO son un error:
@@ -1612,6 +1637,224 @@ bool ProjectGenericModel::projectVisible(std::size_t from, std::size_t target) c
     if (from >= visibleProjects_.size()) return false;
     return std::find(visibleProjects_[from].begin(), visibleProjects_[from].end(), target) !=
         visibleProjects_[from].end();
+}
+
+ProjectGenericModel::TemplateState* ProjectGenericModel::stateForSyntax(
+    const ast::AstNode* syntax) noexcept
+{
+    const auto found = std::ranges::find_if(templateStates_, [&](const TemplateState& state) {
+        return state.syntax == syntax;
+    });
+    return found == templateStates_.end() ? nullptr : &*found;
+}
+
+void ProjectGenericModel::discoverTemplateDependencies(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* node,
+    const std::string& namespaceName,
+    const std::string& ownerName,
+    const GenericLookupScope& scope)
+{
+    if (node == nullptr) return;
+
+    std::string currentNamespace = namespaceName;
+    if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+        currentNamespace = namespaceAppend(namespaceName, node->text());
+
+    GenericLookupScope currentScope = scope;
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr) continue;
+        if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
+        {
+            const std::string written = child->text();
+            if (written.empty()) continue;
+            const auto add = [&](std::string candidate)
+            {
+                if (std::find(
+                        currentScope.importedNamespaces.begin(),
+                        currentScope.importedNamespaces.end(),
+                        candidate) == currentScope.importedNamespaces.end())
+                    currentScope.importedNamespaces.push_back(std::move(candidate));
+            };
+            const std::vector<std::string> segments = splitDotted(currentNamespace);
+            for (std::size_t depth = segments.size(); depth > 0; --depth)
+            {
+                std::string prefixed;
+                for (std::size_t index = 0; index < depth; ++index)
+                {
+                    if (!prefixed.empty()) prefixed.push_back('.');
+                    prefixed += segments[index];
+                }
+                prefixed.push_back('.');
+                prefixed += written;
+                add(std::move(prefixed));
+            }
+            add(written);
+        }
+        else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
+                 !child->auxiliaryText().empty())
+        {
+            currentScope.aliases[child->text()] = child->auxiliaryText();
+        }
+    }
+
+    if (TemplateState* root = stateForSyntax(node); root != nullptr)
+    {
+        const std::string templateOwner = root->record.kind == GenericTemplateKind::Method
+            ? ownerName
+            : appendOwner(ownerName, node->text());
+        collectTemplateDependencies(
+            *root, unit, node, currentNamespace, templateOwner, currentScope, node);
+        return;
+    }
+
+    const std::string childOwner =
+        (node->kind() == ast::AstNodeKind::ClassDeclaration ||
+         node->kind() == ast::AstNodeKind::StructDeclaration)
+            ? appendOwner(ownerName, node->text())
+            : ownerName;
+    for (ast::AstNode* child : node->children())
+        discoverTemplateDependencies(
+            unit, child, currentNamespace, childOwner, currentScope);
+}
+
+void ProjectGenericModel::collectTypeDependency(
+    TemplateState& root,
+    ProjectSyntaxUnit& unit,
+    const ast::TypeSyntax* syntax,
+    const std::string& namespaceName,
+    const GenericLookupScope& scope)
+{
+    if (syntax == nullptr) return;
+    static_cast<void>(scope);
+    for (const ast::TypeSyntax* argument : syntax->typeArguments())
+        collectTypeDependency(root, unit, argument, namespaceName, scope);
+    if (syntax->typeArguments().empty()) return;
+
+    TemplateState* target = resolveTypeTemplate(
+        unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
+    if (target == nullptr)
+        target = resolveTypeTemplate(
+            unit, namespaceName, syntax->baseName(),
+            std::numeric_limits<std::size_t>::max());
+    if (target == nullptr)
+    {
+        root.record.unresolvedDependencies.push_back(
+            "generic type '" + syntax->baseName() + "<...>'");
+        return;
+    }
+    root.record.dependencies.push_back(target->record.canonicalKey);
+}
+
+void ProjectGenericModel::collectCallDependency(
+    TemplateState& root,
+    ProjectSyntaxUnit& unit,
+    const ast::AstNode* call,
+    const std::string& namespaceName,
+    const std::string& ownerName,
+    const GenericLookupScope& scope)
+{
+    if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression ||
+        call->typeSyntaxes().empty()) return;
+
+    const ast::AstNode* callee = call->first();
+    const std::string methodName = methodCalleeName(call);
+    std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);
+    if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        const std::string written = receiverSourceSpelling(callee->first());
+        if (!written.empty()) requestedOwner = written;
+    }
+
+    const std::vector<std::string> namespaceSegments = splitDotted(namespaceName);
+    const std::vector<std::string> enclosingTypes =
+        enclosingTypeSpellings(namespaceName, ownerName);
+    QualifiedNameSite site;
+    site.namespaceSegments = namespaceSegments;
+    site.enclosingTypeNames = enclosingTypes;
+    site.aliases = &scope.aliases;
+    site.importedNamespaces = scope.importedNamespaces;
+
+    const std::size_t arity = call->typeSyntaxes().size();
+    const std::size_t argumentCount = call->children().size();
+    const std::vector<TemplateState*> named = templatesNamedBy(
+        unit, site, requestedOwner, methodName, arity, argumentCount);
+    const std::vector<TemplateState*> targets = collectMethodTemplates(
+        unit, site, requestedOwner, methodName, arity, argumentCount);
+    if (!targets.empty())
+    {
+        for (const TemplateState* target : targets)
+            root.record.dependencies.push_back(target->record.canonicalKey);
+        return;
+    }
+
+    TemplateState* fallback = resolveMethodTemplate(
+        unit, site, requestedOwner, methodName, arity, argumentCount);
+    if (fallback == nullptr)
+        fallback = resolveMethodTemplate(
+            unit, site, requestedOwner, methodName,
+            std::numeric_limits<std::size_t>::max(), argumentCount);
+    if (fallback != nullptr)
+    {
+        root.record.dependencies.push_back(fallback->record.canonicalKey);
+        return;
+    }
+
+    root.record.unresolvedDependencies.push_back(
+        std::string(named.size() > 1U ? "ambiguous generic method '" : "missing generic method '") +
+        methodName + "<...>'");
+}
+
+void ProjectGenericModel::collectTemplateDependencies(
+    TemplateState& root,
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* node,
+    const std::string& namespaceName,
+    const std::string& ownerName,
+    const GenericLookupScope& scope,
+    const ast::AstNode* rootSyntax)
+{
+    if (node == nullptr) return;
+    if (node != rootSyntax && stateForSyntax(node) != nullptr) return;
+
+    std::string currentNamespace = namespaceName;
+    if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+        currentNamespace = namespaceAppend(namespaceName, node->text());
+
+    GenericLookupScope currentScope = scope;
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr) continue;
+        if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
+            currentScope.importedNamespaces.push_back(child->text());
+        else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
+                 !child->auxiliaryText().empty())
+            currentScope.aliases[child->text()] = child->auxiliaryText();
+    }
+
+    collectTypeDependency(root, unit, node->typeSyntax(), currentNamespace, currentScope);
+    for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
+        collectTypeDependency(root, unit, syntax, currentNamespace, currentScope);
+    collectCallDependency(
+        root, unit, node, currentNamespace, ownerName, currentScope);
+
+    collectTemplateDependencies(
+        root, unit, node->first(), currentNamespace, ownerName, currentScope, rootSyntax);
+    collectTemplateDependencies(
+        root, unit, node->second(), currentNamespace, ownerName, currentScope, rootSyntax);
+    collectTemplateDependencies(
+        root, unit, node->third(), currentNamespace, ownerName, currentScope, rootSyntax);
+
+    const std::string childOwner = node == rootSyntax
+        ? ownerName
+        : ((node->kind() == ast::AstNodeKind::ClassDeclaration ||
+            node->kind() == ast::AstNodeKind::StructDeclaration)
+               ? appendOwner(ownerName, node->text())
+               : ownerName);
+    for (ast::AstNode* child : node->children())
+        collectTemplateDependencies(
+            root, unit, child, currentNamespace, childOwner, currentScope, rootSyntax);
 }
 
 bool ProjectGenericModel::templateVisible(
