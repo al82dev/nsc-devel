@@ -235,7 +235,24 @@ std::string ownershipPrefix(interop::LibraryMetadataOwnershipKind ownership)
     return {};
 }
 
-bool isPublicNativeMethod(const interop::LibraryMetadataMember &member) noexcept
+// DLL-P4 publication rule. A member that legal consumer source can name directly must have an
+// importable entry. Public members qualify everywhere; protected members qualify through a
+// consumer-owned derived class (including `base.Foo()`). Internal/private implementation details
+// remain in producer-owned dispatch tables and must not be over-exported.
+bool hasConsumerCallableAccessibility(const std::uint8_t accessibility) noexcept
+{
+    constexpr std::uint8_t kProtectedAccessibility = 1U;
+    constexpr std::uint8_t kPublicAccessibility = 3U;
+    return accessibility == kProtectedAccessibility || accessibility == kPublicAccessibility;
+}
+
+bool hasConsumerCallableAccessibility(const frontend::ClassMemberAccessibility accessibility) noexcept
+{
+    return accessibility == frontend::ClassMemberAccessibility::Protected ||
+           accessibility == frontend::ClassMemberAccessibility::Public;
+}
+
+bool isConsumerCallableNativeMethod(const interop::LibraryMetadataMember &member) noexcept
 {
     constexpr std::uint32_t kAbstract = 1U << 5U;
     constexpr std::uint32_t kExternC = 1U << 8U;
@@ -248,8 +265,7 @@ bool isPublicNativeMethod(const interop::LibraryMetadataMember &member) noexcept
     constexpr std::uint32_t kExcluded =
         kAbstract | kCompilerGenerated | kPropertyAccessor | kIndexerAccessor | kUserOperator | kUserConversion;
     constexpr std::uint8_t kMethodKind = 2U;
-    constexpr std::uint8_t kPublicAccessibility = 3U;
-    return member.kind == kMethodKind && member.accessibility == kPublicAccessibility &&
+    return member.kind == kMethodKind && hasConsumerCallableAccessibility(member.accessibility) &&
            (member.flags & kExcluded) == 0U && ((member.flags & kExternC) == 0U || (member.flags & kExportedC) != 0U) &&
            !member.mangledName.empty();
 }
@@ -298,7 +314,8 @@ bool isPublishedNativeConstructor(
 {
     constexpr std::uint8_t kConstructorKind = 3U;
     constexpr std::uint8_t kPublicAccessibility = 3U;
-    if (member.kind != kConstructorKind || member.accessibility != kPublicAccessibility || member.mangledName.empty())
+    if (member.kind != kConstructorKind || !hasConsumerCallableAccessibility(member.accessibility) ||
+        member.mangledName.empty())
     {
         return false;
     }
@@ -389,7 +406,7 @@ bool canMaterializeContractType(const interop::LibraryMetadata &metadata, const 
 
 bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
 {
-    if (!isPublicNativeMethod(member)) return false;
+    if (!isConsumerCallableNativeMethod(member)) return false;
     constexpr std::uint32_t kStatic = 1U << 0U;
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr) return false;
@@ -419,8 +436,8 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const 
 bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
 {
     constexpr std::uint8_t kConstructorKind = 3U;
-    constexpr std::uint8_t kPublicAccessibility = 3U;
-    if (member.kind != kConstructorKind || member.accessibility != kPublicAccessibility || member.mangledName.empty())
+    if (member.kind != kConstructorKind || !hasConsumerCallableAccessibility(member.accessibility) ||
+        member.mangledName.empty())
     {
         return false;
     }
@@ -449,9 +466,6 @@ bool canMaterializePrecompiledDeclaration(
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kConstructorKind = 3U;
     constexpr std::uint8_t kDestructorKind = 4U;
-    constexpr std::uint8_t kPublicAccessibility = 3U;
-    constexpr std::uint32_t kVirtual = 1U << 3U;
-    constexpr std::uint32_t kOverride = 1U << 4U;
     constexpr std::uint32_t kAbstract = 1U << 5U;
     constexpr std::uint32_t kExternC = 1U << 8U;
     constexpr std::uint32_t kExportedC = 1U << 9U;
@@ -466,7 +480,7 @@ bool canMaterializePrecompiledDeclaration(
 
     if (member.kind == kEventKind)
     {
-        return member.accessibility == kPublicAccessibility &&
+        return hasConsumerCallableAccessibility(member.accessibility) &&
                canMaterializeContractType(metadata, member.declaredTypeKey);
     }
     if (member.kind == kConstructorKind) return canMaterializeConstructor(metadata, member);
@@ -486,9 +500,11 @@ bool canMaterializePrecompiledDeclaration(
     // NativeSharp surface (and keeps its ordinary NativeSharp entry alongside the C ABI thunk).
     if ((member.flags & kExternC) != 0U && (member.flags & kExportedC) == 0U) return false;
 
-    const bool dispatchContract = (member.flags & (kVirtual | kOverride | kAbstract)) != 0U ||
-                                  declaringType->kind == interop::LibraryMetadataTypeKind::Interface;
-    if (member.accessibility != kPublicAccessibility && !dispatchContract) return false;
+    if (!hasConsumerCallableAccessibility(member.accessibility) &&
+        declaringType->kind != interop::LibraryMetadataTypeKind::Interface)
+    {
+        return false;
+    }
     if ((member.flags & kAbstract) == 0U && member.mangledName.empty()) return false;
     if (!canMaterializeContractType(metadata, member.declaredTypeKey)) return false;
     return std::ranges::all_of(member.parameters,
@@ -596,7 +612,7 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
         // questions. The verifier must account for every symbol the producer
         // exported, including struct constructors that a precompiled consumer
         // does not reconstruct as `new` declarations.
-        if (isPublicNativeMethod(member) &&
+        if (isConsumerCallableNativeMethod(member) &&
             ((member.flags & kStatic) != 0U || canMaterializeNativeMethod(metadata, member)))
         {
             symbols.push_back(member.mangledName);
@@ -3463,7 +3479,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         const frontend::NamedTypeDeclaration &type = types[function.declaringTypeOrdinal];
         if (type.projectOrdinal != rootProjectOrdinal ||
             type.accessibility != frontend::NamedTypeAccessibility::Public ||
-            member.accessibility != frontend::ClassMemberAccessibility::Public)
+            !hasConsumerCallableAccessibility(member.accessibility))
         {
             continue;
         }

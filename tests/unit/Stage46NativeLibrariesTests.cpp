@@ -934,6 +934,110 @@ namespace ImportedBaseConsumer
     }
 }
 
+void testDllP4ProtectedConsumerCallableContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "DllP4ProtectedConsumerCallable";
+    const auto products = corpusRoot / "Products";
+    const auto producer = corpusRoot / "Producer";
+    const auto consumer = corpusRoot / "Consumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(producer, "ProtectedVirtuals", "SharedLibrary", R"NS(
+namespace ProtectedVirtuals
+{
+    public class Base
+    {
+        protected int Seed;
+        protected Base(int seed) { Seed = seed; }
+        protected virtual int Value() { return Seed; }
+        protected int Plain() { return Seed + 1; }
+        public int Read() { return Value(); }
+    }
+
+    public class Derived : Base
+    {
+        protected Derived() : base(40) { }
+        protected override int Value() { return 42; }
+    }
+}
+)NS");
+    writeFile(consumer / "Main.ns", R"NS(
+using ProtectedVirtuals;
+
+namespace ProtectedVirtualConsumer
+{
+    public class Leaf : Derived
+    {
+        public Leaf() : base() { }
+        public int ReadBaseOverride() { return base.Value(); }
+        public int ReadProtectedPlain() { return Plain(); }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Leaf value = new Leaf();
+            if (value.Read() != 42 || value.ReadBaseOverride() != 42 || value.ReadProtectedPlain() != 41)
+            {
+                return 1;
+            }
+            return 42;
+        }
+    }
+}
+)NS");
+    writeFile(consumer / "ProtectedVirtualConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ProtectedVirtualConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ProtectedVirtuals.lib\" "
+              "Metadata=\"../Products/ProtectedVirtuals.nsmeta\" "
+              "Runtime=\"../Products/ProtectedVirtuals.dll\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto runtime = products / "ProtectedVirtuals.dll";
+    const ExitCode producerResult = emitLibrary(
+        "--emit-project-oop-dll", producer / "ProtectedVirtuals.nsproj", runtime, output, error, true);
+    tests.expect(producerResult == ExitCode::Success,
+                 "DLL-P4 protected-callable producer emits public classes and protected entries (" + error + ")");
+
+    output.clear();
+    error.clear();
+    const ExitCode verifyResult = producerResult == ExitCode::Success
+        ? verifyLibraryArtifacts(products / "ProtectedVirtuals.nsmeta",
+                                 products / "ProtectedVirtuals.lib",
+                                 runtime,
+                                 output,
+                                 error)
+        : ExitCode::CompilationError;
+    tests.expect(verifyResult == ExitCode::Success,
+                 "DLL-P4 verifier requires each concrete protected callable published by NSMETA (" + error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("ProtectedVirtualConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            consumer / "ProtectedVirtualConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 consumer can derive, chain protected construction, and call base/protected members at " +
+                         level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 protected direct and virtual calls execute to 42 at " + level);
+#endif
+    }
+}
+
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
 {
     // C8's optional Object root must remain usable when it arrives through NSMETA. The consumer's
@@ -2729,6 +2833,7 @@ int main()
     testPrecompiledDllRegressionCorpus(tests, root);
     testDllP4ImportedSignaturesAndEvents(tests, root);
     testDllP4ImportedBaseContract(tests, root);
+    testDllP4ProtectedConsumerCallableContract(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 
