@@ -63,6 +63,13 @@ enum LLVMDWARFEmissionKind
     LLVMDWARFEmissionLineTablesOnly = 2,
 };
 
+enum LLVMChecksumKind
+{
+    CSK_MD5,
+    CSK_SHA1,
+    CSK_SHA256
+};
+
 enum LLVMDIFlags
 {
     LLVMDIFlagZero = 0,
@@ -267,6 +274,17 @@ LLVMMetadataRef LLVMDIBuilderCreateFile(
     std::size_t filenameLength,
     const char* directory,
     std::size_t directoryLength);
+LLVMMetadataRef LLVMDIBuilderCreateFileWithChecksum(
+    LLVMDIBuilderRef builder,
+    const char* filename,
+    std::size_t filenameLength,
+    const char* directory,
+    std::size_t directoryLength,
+    LLVMChecksumKind checksumKind,
+    const char* checksum,
+    std::size_t checksumLength,
+    const char* source,
+    std::size_t sourceLength);
 LLVMMetadataRef LLVMDIBuilderCreateSubroutineType(
     LLVMDIBuilderRef builder,
     LLVMMetadataRef file,

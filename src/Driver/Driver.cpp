@@ -1400,6 +1400,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool optimizationLevelSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
+    std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
     linker::WindowsExecutableSubsystem subsystem = linker::WindowsExecutableSubsystem::Console;
     bool subsystemSeen = false;
     std::vector<std::string_view> normalizedArguments;
@@ -1446,6 +1447,35 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             }
             extraLinkLibraries.emplace_back(std::string(arguments[++argumentIndex]));
             continue;
+        }
+        static constexpr std::string_view debugPrefixMapOption = "-fdebug-prefix-map=";
+        if (argument.starts_with(debugPrefixMapOption))
+        {
+            const std::string_view mapping = argument.substr(debugPrefixMapOption.size());
+            const std::size_t separator = mapping.find('=');
+            if (separator == std::string_view::npos || separator == 0 || separator + 1 == mapping.size())
+            {
+                error << "nsc: error: malformed debug prefix map '" << argument
+                      << "'; expected -fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>\n";
+                return ExitCode::CommandLineError;
+            }
+            std::filesystem::path sourcePrefix(std::string(mapping.substr(0, separator)));
+            if (!sourcePrefix.is_absolute())
+            {
+                error << "nsc: error: debug prefix map source must be absolute: '"
+                      << mapping.substr(0, separator) << "'\n";
+                return ExitCode::CommandLineError;
+            }
+            debugPrefixMaps.push_back(llvm_backend::DebugPrefixMap{
+                std::move(sourcePrefix),
+                std::filesystem::path(std::string(mapping.substr(separator + 1)))});
+            continue;
+        }
+        if (argument.starts_with("-fdebug-prefix-map"))
+        {
+            error << "nsc: error: malformed debug prefix map '" << argument
+                  << "'; expected -fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>\n";
+            return ExitCode::CommandLineError;
         }
         if (argument.size() == 3 && argument[0] == '-' && argument[1] == 'O')
         {
@@ -1522,6 +1552,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     if (debugInformationSeen && !debugCapableInvocation)
     {
         error << "nsc: error: debug information is currently supported when emitting "
+                 "a project OOP object or executable\n";
+        return ExitCode::CommandLineError;
+    }
+    if (!debugPrefixMaps.empty() && !debugCapableInvocation)
+    {
+        error << "nsc: error: debug prefix maps are currently supported when emitting "
                  "a project OOP object or executable\n";
         return ExitCode::CommandLineError;
     }
@@ -1831,12 +1867,13 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         if (action == "--emit-project-oop-obj")
         {
             return runProjectOopCodeGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, output, error);
+                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
+                output, error);
         }
         if (action == "--emit-project-oop-exe")
         {
             return runProjectOopExecutableGeneration(
-                args[1], args[3], optimizationLevel, debugInformation,
+                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
                 subsystem, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-oop-lib")
@@ -1906,9 +1943,11 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-project-oop-llvm <file.nsproj>\n"
            << "  nsc --dump-project-oop-llvm <file.nsproj>\n"
            << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.obj> [-g0|-gline-tables-only|-g]\n"
+              "<file.obj> [-g0|-gline-tables-only|-g] "
+              "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
            << "  nsc --emit-project-oop-exe <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.exe> [-g0|-gline-tables-only|-g] "
+              "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>] "
               "[/subsystem:console|/subsystem:windows]\n"
            << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.lib>\n"
@@ -1976,6 +2015,8 @@ void Driver::printHelp(std::ostream &output)
               "compilation command.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
+           << "Debug prefix maps use the longest matching absolute source prefix; later maps "
+              "win ties and replacement paths are recorded with normalized separators.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
               "selects the static librarian.\n"
            << "Stage 37 semantics remain preserved: static members, deterministic "
@@ -2680,6 +2721,7 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     llvm_backend::DebugInformationKind debugInformation,
+    const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
     std::ostream &output,
     std::ostream &error)
 {
@@ -2715,7 +2757,7 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     std::unique_ptr<llvm_backend::LlvmModule> module =
         lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
             *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel);
+            debugInformation, optimizationLevel, debugPrefixMaps);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -2824,6 +2866,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     llvm_backend::DebugInformationKind debugInformation,
+    const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
     linker::WindowsExecutableSubsystem subsystem,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
@@ -2891,7 +2934,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::unique_ptr<llvm_backend::LlvmModule> module =
         lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
             *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel);
+            debugInformation, optimizationLevel, debugPrefixMaps);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';

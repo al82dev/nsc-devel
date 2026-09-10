@@ -16,11 +16,19 @@ endif()
 
 file(REMOVE_RECURSE "${DEBUG_OUTPUT_DIR}")
 file(MAKE_DIRECTORY "${DEBUG_OUTPUT_DIR}")
+get_filename_component(debug_source_directory "${DEBUG_FIXTURE}" DIRECTORY)
+set(debug_prefix_map "-fdebug-prefix-map=${debug_source_directory}=/_/nativesharp/debug-pdb")
+file(SHA256 "${debug_source_directory}/Main.ns" main_source_sha256)
+file(SHA256 "${debug_source_directory}/left/Shared.ns" left_source_sha256)
+file(SHA256 "${debug_source_directory}/right/Shared.ns" right_source_sha256)
+string(TOUPPER "${main_source_sha256}" main_source_sha256)
+string(TOUPPER "${left_source_sha256}" left_source_sha256)
+string(TOUPPER "${right_source_sha256}" right_source_sha256)
 
 set(line_object "${DEBUG_OUTPUT_DIR}/debug_lines.obj")
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${DEBUG_FIXTURE}"
-        -gline-tables-only -O0 -o "${line_object}"
+        -gline-tables-only "${debug_prefix_map}" -O0 -o "${line_object}"
     RESULT_VARIABLE object_result
     OUTPUT_VARIABLE object_output
     ERROR_VARIABLE object_error)
@@ -45,7 +53,7 @@ set(line_executable "${DEBUG_OUTPUT_DIR}/debug_lines.exe")
 set(line_pdb "${DEBUG_OUTPUT_DIR}/debug_lines.pdb")
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-exe "${DEBUG_FIXTURE}"
-        -gline-tables-only -O0 -o "${line_executable}"
+        -gline-tables-only "${debug_prefix_map}" -O0 -o "${line_executable}"
     RESULT_VARIABLE line_executable_result
     OUTPUT_VARIABLE line_executable_output
     ERROR_VARIABLE line_executable_error)
@@ -76,7 +84,7 @@ foreach(level IN ITEMS O0 O2)
     set(pdb "${DEBUG_OUTPUT_DIR}/debug_${stem}.pdb")
     execute_process(
         COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-exe "${DEBUG_FIXTURE}"
-            -g0 -g "-${level}" -o "${executable}"
+            -g0 -g "${debug_prefix_map}" "-${level}" -o "${executable}"
         RESULT_VARIABLE compile_result
         OUTPUT_VARIABLE compile_output
         ERROR_VARIABLE compile_error)
@@ -163,16 +171,75 @@ foreach(level IN ITEMS O0 O2)
         ERROR_VARIABLE lines_error)
     set(lines_valid TRUE)
     if(NOT lines_result EQUAL 0 OR
-       NOT lines_dump MATCHES "Main\\.ns" OR
+       NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/Main\\.ns \\(SHA-256:[ \n\r]+${main_source_sha256}\\)" OR
+       NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/left/Shared\\.ns \\(SHA-256:[ \n\r]+${left_source_sha256}\\)" OR
+       NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/right/Shared\\.ns \\(SHA-256:[ \n\r]+${right_source_sha256}\\)" OR
+       lines_dump MATCHES "NSC-DEVEL-BRANCHES" OR
        NOT lines_dump MATCHES "[ \n]45 [0-9A-F]+" OR
        NOT lines_dump MATCHES "[ \n]105 [0-9A-F]+")
         set(lines_valid FALSE)
     endif()
     if(NOT lines_valid)
         message(FATAL_ERROR
-            "${level} PDB is missing expected executable Main.ns source lines\n"
+            "${level} PDB is missing remapped multi-file SHA-256 source identity or expected lines\n"
             "${lines_dump}\n${lines_error}")
     endif()
 endforeach()
 
-message(STATUS "NativeSharp O0/O2 CodeView and PDB artifacts verified")
+# Equal source trees copied to different physical roots must produce the same COFF bytes once
+# both roots are mapped to the same published identity. This compares the producer-controlled
+# artifact directly; linker-owned PDB identity is validated semantically above.
+set(repro_source_a "${DEBUG_OUTPUT_DIR}/source-a")
+set(repro_source_b "${DEBUG_OUTPUT_DIR}/source-b")
+file(MAKE_DIRECTORY "${repro_source_a}" "${repro_source_b}")
+file(COPY "${debug_source_directory}/" DESTINATION "${repro_source_a}")
+file(COPY "${debug_source_directory}/" DESTINATION "${repro_source_b}")
+set(repro_object_a "${DEBUG_OUTPUT_DIR}/repro-a.obj")
+set(repro_object_b "${DEBUG_OUTPUT_DIR}/repro-b.obj")
+execute_process(
+    COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${repro_source_a}/DebugPdb.nsproj"
+        -g "-fdebug-prefix-map=${repro_source_a}=/_/nativesharp/repro" -O2 -o "${repro_object_a}"
+    RESULT_VARIABLE repro_a_result
+    OUTPUT_VARIABLE repro_a_output
+    ERROR_VARIABLE repro_a_error)
+execute_process(
+    COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${repro_source_b}/DebugPdb.nsproj"
+        -g "-fdebug-prefix-map=${repro_source_b}=/_/nativesharp/repro" -O2 -o "${repro_object_b}"
+    RESULT_VARIABLE repro_b_result
+    OUTPUT_VARIABLE repro_b_output
+    ERROR_VARIABLE repro_b_error)
+if(NOT repro_a_result EQUAL 0 OR NOT repro_b_result EQUAL 0)
+    message(FATAL_ERROR
+        "remapped reproducibility compilation failed\n"
+        "A stdout:\n${repro_a_output}\nA stderr:\n${repro_a_error}\n"
+        "B stdout:\n${repro_b_output}\nB stderr:\n${repro_b_error}")
+endif()
+file(SHA256 "${repro_object_a}" repro_sha256_a)
+file(SHA256 "${repro_object_b}" repro_sha256_b)
+if(NOT repro_sha256_a STREQUAL repro_sha256_b)
+    message(FATAL_ERROR
+        "equal sources under equal remapping produced different COFF objects\n"
+        "A=${repro_sha256_a}\nB=${repro_sha256_b}")
+endif()
+
+# A source-byte change that leaves program semantics untouched must still change the debug
+# artifact, allowing a consumer to reject a stale or same-basename source file.
+file(APPEND "${repro_source_b}/right/Shared.ns" "\n// source identity mutation\n")
+set(modified_object "${DEBUG_OUTPUT_DIR}/modified-source.obj")
+execute_process(
+    COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${repro_source_b}/DebugPdb.nsproj"
+        -g "-fdebug-prefix-map=${repro_source_b}=/_/nativesharp/repro" -O2 -o "${modified_object}"
+    RESULT_VARIABLE modified_result
+    OUTPUT_VARIABLE modified_output
+    ERROR_VARIABLE modified_error)
+if(NOT modified_result EQUAL 0)
+    message(FATAL_ERROR
+        "modified-source identity compilation failed\n"
+        "stdout:\n${modified_output}\nstderr:\n${modified_error}")
+endif()
+file(SHA256 "${modified_object}" modified_sha256)
+if(modified_sha256 STREQUAL repro_sha256_a)
+    message(FATAL_ERROR "a source-byte change did not change the CodeView object identity")
+endif()
+
+message(STATUS "NativeSharp O0/O2 CodeView/PDB source identity and remapping verified")

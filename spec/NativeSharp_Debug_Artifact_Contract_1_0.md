@@ -70,6 +70,17 @@ Source records shall use normalized paths and content checksums when the LLVM/Co
 supports them. A documented path-remapping mechanism shall allow reproducible artifacts without
 publishing private checkout roots.
 
+NativeSharp source records shall carry a SHA-256 checksum of the exact source bytes loaded by the
+compiler. Paths shall be encoded as UTF-8, lexically normalized, use `/` separators, and use an
+uppercase Windows drive letter when a drive remains in the published path.
+
+`-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>` remaps only the path published
+in debug information; it shall not change which file is opened. The source prefix is matched on a
+path-component boundary using Windows ASCII case-insensitive comparison. Multiple options are allowed:
+the longest matching prefix wins, and the last option wins ties. The replacement must be nonempty
+and is normalized before the unmatched suffix is appended. With no matching option, the normalized
+absolute source path is published.
+
 Given equal source bytes, compiler identity, options, target and remapping inputs, debug artifact
 generation shall be deterministic to the extent supported by the selected standard linker. Any
 linker-controlled nondeterminism shall be measured and documented rather than hidden by a private

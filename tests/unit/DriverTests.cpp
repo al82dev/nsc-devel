@@ -57,7 +57,35 @@ int main()
             "help documents Windows GUI executable emission");
         tests.expect(output.str().find("-gline-tables-only") != std::string::npos,
             "help documents standard CodeView/PDB debug profiles");
+        tests.expect(output.str().find("-fdebug-prefix-map") != std::string::npos,
+            "help documents reproducible debug source path remapping");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {
+            "--emit-project-oop-obj", "input.nsproj", "-o", "output.obj",
+            "-fdebug-prefix-map=relative=/_/src"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError,
+            "a relative debug prefix map source returns the command-line exit class");
+        tests.expect(error.str().find("source must be absolute") != std::string::npos,
+            "a relative debug prefix map identifies its reproducibility problem");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {
+            "--emit-project-oop-exe", "input.nsproj", "-o", "output.exe",
+            "-fdebug-prefix-map=A:/source="};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError,
+            "an empty debug prefix map replacement returns the command-line exit class");
+        tests.expect(error.str().find("malformed debug prefix map") != std::string::npos,
+            "an empty debug prefix map replacement explains the expected spelling");
     }
 
     {
