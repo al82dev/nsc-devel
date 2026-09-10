@@ -722,6 +722,13 @@ namespace Precompiled
     public class GenericAlgorithms
     {
         public static T Identity<T>(T value) { return value; }
+        public static int Pick<T>(T value) { return 1; }
+        public static int Pick<T>(T[] values) { return 2; }
+        public static int AddDefault<T>(T value, int extra = 2) { return extra; }
+        public static owned T Transfer<T>(owned T value) where T : class
+        {
+            return move(value);
+        }
         private static T Secret<T>(T value) { return value; }
         public static int ScoreOf<T>(borrowed T value) where T : IScore
         {
@@ -961,6 +968,14 @@ namespace Consumer
             box.Value = Precompiled.GenericAlgorithms.Identity<int>(42);
             Precompiled.Box<long> fresh;
             fresh.Value = Precompiled.GenericAlgorithms.Identity<long>((long)0);
+            int[] probes = new int[1];
+            raii Precompiled.Counter original = new Precompiled.Counter(37);
+            raii Precompiled.Counter transferred =
+                Precompiled.GenericAlgorithms.Transfer<Precompiled.Counter>(move(original));
+            if (Precompiled.GenericAlgorithms.Pick<int>(0) != 1) { return 1; }
+            if (Precompiled.GenericAlgorithms.Pick<int>(probes) != 2) { return 2; }
+            if (Precompiled.GenericAlgorithms.AddDefault<int>(0) != 2) { return 3; }
+            if (transferred.Read() != 37) { return 4; }
             return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
         }
     }
@@ -1628,6 +1643,14 @@ namespace Consumer
             box.Value = Precompiled.GenericAlgorithms.Identity<int>(42);
             Precompiled.Box<long> fresh;
             fresh.Value = Precompiled.GenericAlgorithms.Identity<long>((long)0);
+            int[] probes = new int[1];
+            raii Precompiled.Counter original = new Precompiled.Counter(37);
+            raii Precompiled.Counter transferred =
+                Precompiled.GenericAlgorithms.Transfer<Precompiled.Counter>(move(original));
+            if (Precompiled.GenericAlgorithms.Pick<int>(0) != 1) { return 1; }
+            if (Precompiled.GenericAlgorithms.Pick<int>(probes) != 2) { return 2; }
+            if (Precompiled.GenericAlgorithms.AddDefault<int>(0) != 2) { return 3; }
+            if (transferred.Read() != 37) { return 4; }
             return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
         }
     }
