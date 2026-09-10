@@ -537,9 +537,10 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
     std::string verifyError;
     tests.expect(module->verify(verifyError), "Stage 37 initializer LLVM passes verifier before optimization");
     const std::string llvm = module->text();
-    tests.expect(llvm.find("@__nsc_cctor_state_") != std::string::npos &&
-            llvm.find("define void @__nsc_cctor_") != std::string::npos,
-        "runtime static initializers use explicit per-type state and cctor functions");
+    tests.expect(llvm.find("private global i8") != std::string::npos &&
+            llvm.find("private global i32") != std::string::npos &&
+            llvm.find("define private void @__nsc_cctor_") != std::string::npos,
+        "runtime static initializers keep per-type state and cctor functions private to their module");
     // Stage 54.3 hardened this guard against concurrent first-touch races: the 0 (not
     // started) -> 1 (in progress) claim is now an atomic compare-and-swap rather than a
     // plain store (only one racing thread can ever win the claim), and the final 1/-> 2

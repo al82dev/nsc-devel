@@ -1977,6 +1977,7 @@ private:
                 return fail(error, "Stage 37 failed to declare type-initialization state");
             }
             LLVMSetInitializer(state, LLVMConstInt(i8, 0, 0));
+            LLVMSetLinkage(state, LLVMPrivateLinkage);
             staticInitStateGlobals_[typeOrdinal] = state;
 
             // Stage 54.3 "Mutex" (fix) -- see defineTypeInitializers's comment for the full
@@ -1991,6 +1992,7 @@ private:
                 return fail(error, "Stage 54.3 failed to declare type-initialization owner");
             }
             LLVMSetInitializer(owner, LLVMConstInt(i32, 0, 0));
+            LLVMSetLinkage(owner, LLVMPrivateLinkage);
             staticInitOwnerGlobals_[typeOrdinal] = owner;
 
             LLVMTypeRef functionType = LLVMFunctionType(voidType, nullptr, 0, 0);
@@ -2000,6 +2002,7 @@ private:
             {
                 return fail(error, "Stage 37 failed to declare type initializer");
             }
+            LLVMSetLinkage(function, LLVMPrivateLinkage);
             applyUwtableAttribute(function);
             LLVMMetadataRef subprogram = nullptr;
             if (typeOrdinal < nameLookup_.namedTypes().size())
@@ -3183,6 +3186,7 @@ private:
         if (global == nullptr || initializer == nullptr) return nullptr;
         LLVMSetInitializer(global, initializer);
         LLVMSetGlobalConstant(global, 1);
+        LLVMSetLinkage(global, LLVMPrivateLinkage);
         cStringGlobals_.emplace(key, global);
         return global;
     }
@@ -3254,6 +3258,7 @@ private:
             return fail(error, "C1.2 failed to declare the runtime import address cache");
         }
         LLVMSetInitializer(cache, LLVMConstNull(ptr));
+        LLVMSetLinkage(cache, LLVMPrivateLinkage);
 
         currentFunction_ = importFunction;
         blockCounter_ = 0;

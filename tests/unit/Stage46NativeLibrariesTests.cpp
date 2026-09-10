@@ -2763,6 +2763,7 @@ namespace SurfaceParity
     }
 
 }
+
 )NS");
 
     for (const bool optimize : {false, true})
@@ -2916,6 +2917,99 @@ public class Program
         if (consumerResult == ExitCode::Success)
             tests.expect(runExecutable(executable) == 42,
                          "generic-struct-only DLL contract executes to 42 at " + level);
+#endif
+    }
+}
+
+void testSynthesizedSymbolHygiene(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto hygieneRoot = root / "SynthesizedSymbolHygiene";
+    const auto first = hygieneRoot / "First";
+    const auto second = hygieneRoot / "Second";
+    writeProject(first, "FirstLibrary", "StaticLibrary", R"NS(
+namespace FirstContract
+{
+    public static class State
+    {
+        public static int Value = 20;
+        public static string Label = "First";
+        public static int Read() { return Label == "First" ? Value : 1; }
+    }
+}
+)NS");
+    writeProject(second, "SecondLibrary", "StaticLibrary", R"NS(
+namespace SecondContract
+{
+    public static class State
+    {
+        public static int Value = 22;
+        public static string Label = "Second";
+        public static int Read() { return Label == "Second" ? Value : 1; }
+    }
+}
+)NS");
+
+    for (const bool optimize : {false, true})
+    {
+        const std::string level = optimize ? "O2" : "O0";
+        const auto products = hygieneRoot / ("Products" + level);
+        std::filesystem::create_directories(products);
+        const auto firstLibrary = products / "FirstLibrary.lib";
+        const auto secondLibrary = products / "SecondLibrary.lib";
+        std::string output;
+        std::string error;
+        const ExitCode firstResult = emitLibrary("--emit-project-oop-lib",
+                                                 first / "FirstLibrary.nsproj",
+                                                 firstLibrary,
+                                                 output,
+                                                 error,
+                                                 optimize);
+        tests.expect(firstResult == ExitCode::Success,
+                     "first synthesized-symbol hygiene library emits at " + level + " (" + error + ")");
+        output.clear();
+        error.clear();
+        const ExitCode secondResult = emitLibrary("--emit-project-oop-lib",
+                                                  second / "SecondLibrary.nsproj",
+                                                  secondLibrary,
+                                                  output,
+                                                  error,
+                                                  optimize);
+        tests.expect(secondResult == ExitCode::Success,
+                     "second synthesized-symbol hygiene library emits at " + level + " (" + error + ")");
+        if (firstResult != ExitCode::Success || secondResult != ExitCode::Success) continue;
+
+        const auto consumer = hygieneRoot / ("Consumer" + level);
+        writeFile(consumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        return FirstContract.State.Read() + SecondContract.State.Read();
+    }
+}
+)NS");
+        writeFile(consumer / "Consumer.nsproj",
+                  "<Project><PropertyGroup><Name>HygieneConsumer</Name>"
+                  "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                  "<Compile Include=\"**/*.ns\"/>"
+                  "<LibraryReference Include=\"../Products" + level + "/FirstLibrary.lib\"/>"
+                  "<LibraryReference Include=\"../Products" + level + "/SecondLibrary.lib\"/>"
+                  "</ItemGroup></Project>");
+        output.clear();
+        error.clear();
+        const auto executable = consumer / "Consumer.exe";
+        const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                     consumer / "Consumer.nsproj",
+                                                     executable,
+                                                     output,
+                                                     error,
+                                                     optimize);
+        tests.expect(consumerResult == ExitCode::Success,
+                     "independent synthesized symbols link together at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (consumerResult == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "two libraries with static initialization and strings execute to 42 at " + level);
 #endif
     }
 }
@@ -4732,6 +4826,7 @@ int main()
     testPrecompiledNestedTypeContract(tests, root);
     testPrecompiledExternCImportContract(tests, root);
     testMetadataOnlyDllContract(tests, root);
+    testSynthesizedSymbolHygiene(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 
