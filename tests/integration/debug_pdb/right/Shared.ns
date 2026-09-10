@@ -1,0 +1,10 @@
+namespace DebugFixture.Right
+{
+    public static class Shared
+    {
+        public static int Increment(int value)
+        {
+            return value + 1;
+        }
+    }
+}

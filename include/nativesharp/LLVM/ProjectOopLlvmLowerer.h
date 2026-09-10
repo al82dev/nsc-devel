@@ -1,9 +1,11 @@
 #pragma once
 
 #include "nativesharp/LLVM/DebugInformationKind.h"
+#include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
 #include <memory>
+#include <span>
 #include <string>
 
 namespace nativesharp::frontend
@@ -35,7 +37,8 @@ public:
         const frontend::ProjectOopMirModel& mirModel,
         const source::SourceManager& sourceManager,
         DebugInformationKind debugInformation,
-        LlvmOptimizationLevel optimizationLevel);
+        LlvmOptimizationLevel optimizationLevel,
+        std::span<const DebugPrefixMap> debugPrefixMaps = {});
 
     const std::string& error() const noexcept;
 

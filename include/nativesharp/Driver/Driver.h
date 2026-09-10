@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
+#include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/Linker/LldLinker.h"
 
@@ -41,6 +42,7 @@ private:
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
         llvm_backend::DebugInformationKind debugInformation,
+        const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProjectOopExecutableGeneration(
@@ -48,6 +50,7 @@ private:
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
         llvm_backend::DebugInformationKind debugInformation,
+        const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
         linker::WindowsExecutableSubsystem subsystem,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
         std::ostream& output,

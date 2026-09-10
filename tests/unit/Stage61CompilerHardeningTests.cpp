@@ -154,6 +154,7 @@ int main()
     std::size_t mappedClauseCount = 0;
     while (std::getline(rows, row))
     {
+        if (!row.empty() && row.back() == '\r') row.pop_back();
         if (row.empty() || row.starts_with('#'))
         {
             continue;

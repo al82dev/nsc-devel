@@ -1,0 +1,10 @@
+namespace DebugFixture.Left
+{
+    public static class Shared
+    {
+        public static int Identity(int value)
+        {
+            return value;
+        }
+    }
+}
