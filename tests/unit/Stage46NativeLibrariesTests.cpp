@@ -3034,6 +3034,127 @@ public class Program
     }
 }
 
+void testReusableTemplateClosureAcrossLibraries(TestContext& tests,
+                                                const std::filesystem::path& root)
+{
+    const auto closureRoot = root / "ReusableTemplateClosureAcrossLibraries";
+    const auto dependency = closureRoot / "Dependency";
+    const auto facade = closureRoot / "Facade";
+    const auto consumer = closureRoot / "Consumer";
+    writeProject(dependency, "ClosureB", "StaticLibrary", R"NS(
+namespace Dependency
+{
+    public class Helpers
+    {
+        private static T Core<T>(T value) { return value; }
+        public static T Echo<T>(T value) { return Core<T>(value); }
+    }
+}
+)NS");
+    writeFile(facade / "Api.ns", R"NS(
+namespace Facade
+{
+    public class Api
+    {
+        public static T Forward<T>(T value)
+        {
+            return Dependency.Helpers.Echo<T>(value);
+        }
+    }
+}
+)NS");
+    writeFile(facade / "ClosureA.nsproj",
+              "<Project><PropertyGroup><Name>ClosureA</Name>"
+              "<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Dependency/ClosureB.lib\"/>"
+              "</ItemGroup></Project>");
+    writeFile(consumer / "Main.ns", R"NS(
+public struct ConsumerValue
+{
+    public int Number;
+}
+
+public class Program
+{
+    public static int Main()
+    {
+        ConsumerValue value;
+        value.Number = 42;
+        return Facade.Api.Forward<ConsumerValue>(value).Number;
+    }
+}
+)NS");
+    writeFile(consumer / "Consumer.nsproj",
+              "<Project><PropertyGroup><Name>ClosureConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Dependency/ClosureB.lib\"/>"
+              "<LibraryReference Include=\"../Facade/ClosureA.lib\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto dependencyLibrary = dependency / "ClosureB.lib";
+    tests.expect(emitLibrary("--emit-project-oop-lib",
+                             dependency / "ClosureB.nsproj",
+                             dependencyLibrary,
+                             output,
+                             error,
+                             false) == ExitCode::Success,
+                 "dependency library publishes a public template and its private closure (" +
+                     error + ")");
+    output.clear();
+    error.clear();
+    const auto facadeLibrary = facade / "ClosureA.lib";
+    tests.expect(emitLibrary("--emit-project-oop-lib",
+                             facade / "ClosureA.nsproj",
+                             facadeLibrary,
+                             output,
+                             error,
+                             false) == ExitCode::Success,
+                 "facade library records a reusable template dependency owned by another "
+                 "NSMETA module (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(verifyLibraryArtifacts(dependency / "ClosureB.nsmeta",
+                                        dependencyLibrary,
+                                        output,
+                                        error) == ExitCode::Success,
+                 "dependency template closure verifies before publication (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(verifyLibraryArtifacts(facade / "ClosureA.nsmeta",
+                                        facadeLibrary,
+                                        output,
+                                        error) == ExitCode::Success,
+                 "external template edge does not become a false same-module closure failure (" +
+                     error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const auto executable = consumer / (optimize ? "ConsumerO2.exe" : "ConsumerO0.exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            consumer / "Consumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     std::string("consumer materializes A -> B -> private helper with a type "
+                                 "declared only by the consumer at ") +
+                         (optimize ? "O2 (" : "O0 (") + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         std::string("cross-library reusable template closure executes to 42 at ") +
+                             (optimize ? "O2" : "O0"));
+#endif
+    }
+}
+
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
 {
     // C8's optional Object root must remain usable when it arrives through NSMETA. The consumer's
@@ -4963,6 +5084,7 @@ int main()
     testPrecompiledExternCImportContract(tests, root);
     testMetadataOnlyDllContract(tests, root);
     testSynthesizedSymbolHygiene(tests, root);
+    testReusableTemplateClosureAcrossLibraries(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 
