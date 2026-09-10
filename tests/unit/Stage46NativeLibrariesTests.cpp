@@ -942,6 +942,153 @@ namespace ImportedBaseConsumer
     }
 }
 
+void testCompileOnlyMetadataReferenceDoesNotPromiseRuntime(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "CompileOnlyMetadataReference";
+    const auto products = corpusRoot / "Products";
+    const auto typesProducer = corpusRoot / "TypesProducer";
+    const auto apiProducer = corpusRoot / "ApiProducer";
+    const auto consumer = corpusRoot / "Consumer";
+    const auto falseRuntimeConsumer = corpusRoot / "FalseRuntimeConsumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(typesProducer, "MetadataTypes", "SharedLibrary", R"NS(
+namespace MetadataTypes
+{
+    public struct Token
+    {
+        public int Value;
+    }
+
+    public class PhysicalApi
+    {
+        public static int Answer() { return 42; }
+    }
+}
+)NS");
+    writeFile(apiProducer / "Library.ns", R"NS(
+using MetadataTypes;
+
+namespace MetadataOnlyApi
+{
+    public class Api
+    {
+        public static Token Echo(Token value) { return value; }
+    }
+}
+)NS");
+    writeFile(apiProducer / "MetadataOnlyApi.nsproj",
+              "<Project><PropertyGroup><Name>MetadataOnlyApi</Name><OutputType>SharedLibrary</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/MetadataTypes.lib\" "
+              "Metadata=\"../Products/MetadataTypes.nsmeta\"/>"
+              "</ItemGroup></Project>");
+    const std::string consumerSource = R"NS(
+using MetadataTypes;
+using MetadataOnlyApi;
+
+public class Program
+{
+    public static int Main()
+    {
+        Token value;
+        value.Value = 42;
+        Token echoed = Api.Echo(value);
+        return echoed.Value;
+    }
+}
+)NS";
+    writeFile(consumer / "Main.ns", consumerSource);
+    writeFile(consumer / "Consumer.nsproj",
+              "<Project><PropertyGroup><Name>MetadataOnlyConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/MetadataTypes.lib\" "
+              "Metadata=\"../Products/MetadataTypes.nsmeta\"/>"
+              "<LibraryReference Include=\"../Products/MetadataOnlyApi.lib\" "
+              "Metadata=\"../Products/MetadataOnlyApi.nsmeta\" "
+              "Runtime=\"../Products/MetadataOnlyApi.dll\"/>"
+              "</ItemGroup></Project>");
+    writeFile(falseRuntimeConsumer / "Main.ns", consumerSource);
+    writeFile(falseRuntimeConsumer / "FalseRuntimeConsumer.nsproj",
+              "<Project><PropertyGroup><Name>FalseRuntimeConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/MetadataTypes.lib\" "
+              "Metadata=\"../Products/MetadataTypes.nsmeta\" "
+              "Runtime=\"../Products/MetadataTypes.dll\"/>"
+              "<LibraryReference Include=\"../Products/MetadataOnlyApi.lib\" "
+              "Metadata=\"../Products/MetadataOnlyApi.nsmeta\" "
+              "Runtime=\"../Products/MetadataOnlyApi.dll\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto typesDll = products / "MetadataTypes.dll";
+    const ExitCode typesResult = emitLibrary(
+        "--emit-project-oop-dll", typesProducer / "MetadataTypes.nsproj", typesDll, output, error, true);
+    tests.expect(typesResult == ExitCode::Success,
+                 "compile-only metadata fixture emits its independent DLL contract (" + error + ")");
+
+    output.clear();
+    error.clear();
+    const auto apiDll = products / "MetadataOnlyApi.dll";
+    const ExitCode apiResult = emitLibrary(
+        "--emit-project-oop-dll", apiProducer / "MetadataOnlyApi.nsproj", apiDll, output, error, true);
+    tests.expect(apiResult == ExitCode::Success,
+                 "DLL producer may use a peer contract's types without promising its runtime (" + error + ")");
+    PeExecutableVerifier apiVerifier;
+    tests.expect(apiResult == ExitCode::Success && apiVerifier.verifyDynamicLibrary(apiDll) &&
+                     !contains(apiVerifier.info().importedLibraries, "MetadataTypes.dll"),
+                 "metadata-only type use does not invent a physical DLL import");
+    output.clear();
+    error.clear();
+    tests.expect(apiResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "MetadataOnlyApi.nsmeta",
+                                            products / "MetadataOnlyApi.lib",
+                                            apiDll,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "metadata-only producer triplet verifies without a false runtime edge (" + error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("MetadataOnlyConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            consumer / "Consumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "consumer resolves the compile-only type contract at " + level + " (" + error + ")");
+        PeExecutableVerifier consumerVerifier;
+        tests.expect(result == ExitCode::Success && consumerVerifier.verify(executable) &&
+                         contains(consumerVerifier.info().importedLibraries, "MetadataOnlyApi.dll") &&
+                         !contains(consumerVerifier.info().importedLibraries, "MetadataTypes.dll"),
+                     "consumer imports only the runtime that contributes a physical symbol at " + level);
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "compile-only metadata consumer executes to 42 at " + level);
+#endif
+    }
+
+    output.clear();
+    error.clear();
+    tests.expect(emitLibrary("--emit-project-oop-exe",
+                             falseRuntimeConsumer / "FalseRuntimeConsumer.nsproj",
+                             products / "FalseRuntimeConsumer.exe",
+                             output,
+                             error,
+                             true) == ExitCode::CompilationError,
+                 "declaring a runtime with no direct or transitive PE import remains an error");
+    tests.expect(error.find("linked PE does not import declared runtime DLL 'MetadataTypes.dll'") !=
+                     std::string::npos,
+                 "false runtime promise reports the exact unreferenced DLL");
+}
+
 void testDllP4ProtectedConsumerCallableContract(TestContext& tests, const std::filesystem::path& root)
 {
     const auto corpusRoot = root / "DllP4ProtectedConsumerCallable";
@@ -3336,6 +3483,7 @@ int main()
     testPrecompiledDllRegressionCorpus(tests, root);
     testDllP4ImportedSignaturesAndEvents(tests, root);
     testDllP4ImportedBaseContract(tests, root);
+    testCompileOnlyMetadataReferenceDoesNotPromiseRuntime(tests, root);
     testDllP4ProtectedConsumerCallableContract(tests, root);
     testDllP4ProtectedVirtualAccessors(tests, root);
     testDllP4QualifiedBaseIdentity(tests, root);
