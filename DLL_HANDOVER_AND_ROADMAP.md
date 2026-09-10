@@ -85,6 +85,7 @@ catalogs.
 - `mkdown/172_1_0_1_origen_declarador_especializaciones_externas.md`
 - `mkdown/173_1_0_1_descriptores_y_api_precompilada.md`
 - `mkdown/174_1_0_1_constructores_genericos_exportados_nsmeta.md`
+- `mkdown/183_1_0_1_contratos_nsmeta_transitivos.md`
 
 ### Roadmap general / General roadmap
 
@@ -521,6 +522,11 @@ consumidor monomorfiza con el mismo modelo que una compilación local.
 - delegates de método estático, instancia y closure;
 - métodos estáticos y de instancia cuyas firmas pertenecen a otra NSMETA;
 - eventos públicos reconstruidos desde NSMETA, sin publicar su backing sintético;
+- clases base e interfaces declaradas en una NSMETA dependiente;
+- namespaces reconstruidos para cada posición nominal del contrato público: bases,
+  interfaces, campos, delegates, parámetros, retornos y constructores;
+- construcción implícita fuente-cero de clases precompiladas sin estado, incluso a
+  través de una cadena base transitiva;
 - verificación sintáctica de la API pública materializada por el consumidor;
 - throw/catch/finally atravesando DLL;
 - múltiples runtime DLLs sin colisión de identidad.

@@ -478,8 +478,15 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     // byte.
     nativesharp::interop::LibraryMetadata descriptorPrevious = previous;
     descriptorPrevious.formatMinor = 5;
+    nativesharp::interop::LibraryMetadataType oldWidget;
+    oldWidget.kind = nativesharp::interop::LibraryMetadataTypeKind::Class;
+    oldWidget.identityKey = "Previous::Widget";
+    oldWidget.fullyQualifiedName = "Previous.Widget";
+    oldWidget.referenceSize = descriptorPrevious.pointerSize;
+    oldWidget.referenceAlignment = descriptorPrevious.pointerAlignment;
+    descriptorPrevious.types.push_back(oldWidget);
     nativesharp::interop::LibraryMetadataDispatch oldDispatch;
-    oldDispatch.typeKey = "Previous::Widget";
+    oldDispatch.typeKey = "type:" + oldWidget.identityKey;
     oldDispatch.stableTypeId = 42U;
     oldDispatch.descriptorName = "__nsc_classdesc_previous_widget";
     oldDispatch.descriptorAccessorName = "__nsc_get_classdesc_previous_widget";

@@ -316,11 +316,18 @@ void ProjectConstructionModel::bindImplicitDefaultConstructors(
         (void)depth;
         if (typeOrdinal < nameLookup_->namedTypes().size() && nameLookup_->namedTypes()[typeOrdinal].isPrecompiled)
         {
-            // Its constructor chain and field initializers were already compiled into
-            // the producer's constructor entry. Re-validating an empty synthetic body
-            // would invent an implicit base() call that was never present in the
-            // published implementation.
-            continue;
+            // A fieldless precompiled class with no published constructor has the same
+            // semantic zero-work default construction as its producer: allocate, install the
+            // descriptor, and follow any fieldless implicit base chain. Keep skipping classes
+            // with instance storage because NSMETA does not transport their source initializer
+            // expressions; inventing those in the consumer would be incorrect.
+            const bool hasInstanceStorage = std::ranges::any_of(
+                memberModel_->membersOfType(typeOrdinal), [&](const std::size_t memberOrdinal) {
+                    return memberOrdinal < memberModel_->members().size() &&
+                           memberModel_->members()[memberOrdinal].kind == ClassMemberKind::Field &&
+                           !memberModel_->members()[memberOrdinal].isStatic;
+                });
+            if (hasInstanceStorage) continue;
         }
         bool hasExplicitConstructor = false;
         for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))

@@ -1532,12 +1532,38 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     }
     if (metadata.formatMinor >= 6)
     {
+        constexpr std::uint8_t kMethodKind = 2U;
+        constexpr std::uint32_t kVirtual = 1U << 3U;
+        constexpr std::uint32_t kOverride = 1U << 4U;
+        constexpr std::uint32_t kAbstract = 1U << 5U;
+        std::unordered_map<std::string, const LibraryMetadataType*> typesByKey;
+        for (const LibraryMetadataType& type : metadata.types)
+            typesByKey.emplace("type:" + type.identityKey, &type);
+        std::unordered_map<std::string, const LibraryMetadataMember*> membersByCallee;
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if (member.mangledName.empty()) continue;
+            if (!membersByCallee.emplace(member.mangledName, &member).second)
+            {
+                error = "metadata contains duplicate NativeSharp callee '" + member.mangledName + "'";
+                return false;
+            }
+        }
+
         std::unordered_set<std::string> dispatchTypes;
         for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
         {
             if (!dispatchTypes.insert(dispatch.typeKey).second)
             {
                 error = "metadata contains duplicate dispatch contract for '" + dispatch.typeKey + "'";
+                return false;
+            }
+            const auto dispatchedType = typesByKey.find(dispatch.typeKey);
+            if (dispatchedType == typesByKey.end() ||
+                dispatchedType->second->kind != LibraryMetadataTypeKind::Class)
+            {
+                error = "metadata dispatch contract refers to unknown or non-class type '" +
+                    dispatch.typeKey + "'";
                 return false;
             }
             if (dispatch.descriptorAccessorName.empty())
@@ -1553,6 +1579,25 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                         std::to_string(dispatch.slotCalleeNames.size()) + " callees";
                 return false;
             }
+            for (std::size_t slot = 0; slot < dispatch.slotSignatures.size(); ++slot)
+            {
+                if (dispatch.slotSignatures[slot].empty())
+                {
+                    error = "metadata dispatch contract for '" + dispatch.typeKey + "' has an empty signature at slot " +
+                        std::to_string(slot);
+                    return false;
+                }
+                const std::string& callee = dispatch.slotCalleeNames[slot];
+                const auto localCallee = membersByCallee.find(callee);
+                if (!callee.empty() && localCallee != membersByCallee.end() &&
+                    localCallee->second->signatureKey != dispatch.slotSignatures[slot])
+                {
+                    error = "metadata dispatch slot " + std::to_string(slot) + " for '" + dispatch.typeKey +
+                        "' names callee '" + callee + "' with signature '" +
+                        localCallee->second->signatureKey + "', expected '" + dispatch.slotSignatures[slot] + "'";
+                    return false;
+                }
+            }
             for (const LibraryMetadataDispatchInterface& interface : dispatch.interfaces)
             {
                 if (interface.interfaceSignatures.size() != interface.implementationSignatures.size() ||
@@ -1562,6 +1607,66 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                             dispatch.typeKey + "' has inconsistent slot counts";
                     return false;
                 }
+                for (std::size_t slot = 0; slot < interface.interfaceSignatures.size(); ++slot)
+                {
+                    if (interface.interfaceSignatures[slot].empty())
+                    {
+                        error = "metadata interface dispatch contract '" + interface.interfaceTypeKey + "' on '" +
+                            dispatch.typeKey + "' has an empty interface signature at slot " + std::to_string(slot);
+                        return false;
+                    }
+                    const std::string& callee = interface.calleeNames[slot];
+                    const auto localCallee = membersByCallee.find(callee);
+                    if (!callee.empty() && localCallee != membersByCallee.end() &&
+                        localCallee->second->signatureKey != interface.implementationSignatures[slot])
+                    {
+                        error = "metadata interface dispatch slot " + std::to_string(slot) + " for '" +
+                            interface.interfaceTypeKey + "' on '" + dispatch.typeKey + "' names callee '" + callee +
+                            "' with signature '" + localCallee->second->signatureKey + "', expected '" +
+                            interface.implementationSignatures[slot] + "'";
+                        return false;
+                    }
+                }
+            }
+        }
+
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if (member.kind != kMethodKind || (member.flags & (kVirtual | kOverride | kAbstract)) == 0U) continue;
+            const auto declaringType = typesByKey.find(member.declaringTypeKey);
+            if (declaringType == typesByKey.end() || declaringType->second->kind == LibraryMetadataTypeKind::Interface)
+                continue;
+            const auto dispatch = std::ranges::find_if(metadata.dispatchTables,
+                [&](const LibraryMetadataDispatch& candidate) { return candidate.typeKey == member.declaringTypeKey; });
+            if (dispatch == metadata.dispatchTables.end())
+            {
+                error = "metadata virtual member '" + member.declaringTypeKey + "." + member.signatureKey +
+                    "' has no declaring-type dispatch contract";
+                return false;
+            }
+            const auto signature = std::ranges::find(dispatch->slotSignatures, member.signatureKey);
+            if (signature == dispatch->slotSignatures.end())
+            {
+                error = "metadata virtual member '" + member.declaringTypeKey + "." + member.signatureKey +
+                    "' has no matching dispatch slot";
+                return false;
+            }
+            const std::size_t slot = static_cast<std::size_t>(signature - dispatch->slotSignatures.begin());
+            const std::string& callee = dispatch->slotCalleeNames[slot];
+            if ((member.flags & kAbstract) != 0U)
+            {
+                if (!callee.empty())
+                {
+                    error = "metadata abstract member '" + member.declaringTypeKey + "." + member.signatureKey +
+                        "' unexpectedly owns dispatch callee '" + callee + "'";
+                    return false;
+                }
+            }
+            else if (member.mangledName.empty() || callee != member.mangledName)
+            {
+                error = "metadata concrete virtual member '" + member.declaringTypeKey + "." + member.signatureKey +
+                    "' publishes callee '" + member.mangledName + "' but its dispatch slot names '" + callee + "'";
+                return false;
             }
         }
     }
