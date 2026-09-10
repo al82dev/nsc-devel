@@ -755,6 +755,185 @@ namespace PrecompiledEventConsumer
     }
 }
 
+void testDllP4ImportedBaseContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "DllP4ImportedBaseContract";
+    const auto products = corpusRoot / "Products";
+    const auto baseProducer = corpusRoot / "Base";
+    const auto derivedProducer = corpusRoot / "Derived";
+    const auto consumer = corpusRoot / "Consumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(baseProducer, "ImportedBase", "SharedLibrary", R"NS(
+namespace ImportedBase
+{
+    public interface IScore
+    {
+        public int Score();
+    }
+
+    public struct Payload
+    {
+        public int Number;
+    }
+
+    public enum Mode : byte
+    {
+        Answer = 42
+    }
+
+    public delegate void ChangedHandler(int value);
+
+    public class Base
+    {
+        public virtual int Value() { return 40; }
+    }
+}
+)NS");
+    writeProject(derivedProducer, "ImportedDerived", "SharedLibrary", R"NS(
+using ImportedBase;
+
+namespace ImportedDerived
+{
+    public interface IExtended : IScore
+    {
+        public int Extra();
+    }
+
+    public class Derived : Base, IExtended
+    {
+        public override int Value() { return 42; }
+        public int Score() { return 42; }
+        public int Extra() { return 42; }
+    }
+
+    public class ContractSurface
+    {
+        public Payload Stored;
+        public event ChangedHandler Changed;
+
+        public ContractSurface(Payload value)
+        {
+            Stored = value;
+            Changed += Ignore;
+        }
+
+        private static void Ignore(int value) { }
+        public Payload Echo(Payload value) { return value; }
+        public Mode CurrentMode() { return Mode.Answer; }
+        public void Raise(int value) { Changed(value); }
+    }
+}
+)NS");
+    writeFile(derivedProducer / "ImportedDerived.nsproj",
+              "<Project><PropertyGroup><Name>ImportedDerived</Name><OutputType>SharedLibrary</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ImportedBase.lib\" "
+              "Metadata=\"../Products/ImportedBase.nsmeta\" "
+              "Runtime=\"../Products/ImportedBase.dll\"/>"
+              "</ItemGroup></Project>");
+    writeFile(consumer / "Main.ns", R"NS(
+using ImportedBase;
+using ImportedDerived;
+
+namespace ImportedBaseConsumer
+{
+    public class Program
+    {
+        private static int observed;
+        private static void OnChanged(int value) { observed = value; }
+
+        public static int Main()
+        {
+            Derived value = new Derived();
+            Base asBase = value;
+            IScore asScore = value;
+            IExtended extended = value;
+            if (asBase.Value() != 42 || asScore.Score() != 42 || extended.Extra() != 42) { return 1; }
+
+            Payload payload;
+            payload.Number = 42;
+            ContractSurface surface = new ContractSurface(payload);
+            Payload echoed = surface.Echo(surface.Stored);
+            if (echoed.Number != 42 || surface.CurrentMode() != Mode.Answer) { return 2; }
+            surface.Changed += OnChanged;
+            surface.Raise(42);
+            return observed;
+        }
+    }
+}
+)NS");
+    writeFile(consumer / "ImportedBaseConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ImportedBaseConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ImportedBase.lib\" "
+              "Metadata=\"../Products/ImportedBase.nsmeta\" "
+              "Runtime=\"../Products/ImportedBase.dll\"/>"
+              "<LibraryReference Include=\"../Products/ImportedDerived.lib\" "
+              "Metadata=\"../Products/ImportedDerived.nsmeta\" "
+              "Runtime=\"../Products/ImportedDerived.dll\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto baseDll = products / "ImportedBase.dll";
+    const ExitCode baseResult = emitLibrary(
+        "--emit-project-oop-dll", baseProducer / "ImportedBase.nsproj", baseDll, output, error, true);
+    tests.expect(baseResult == ExitCode::Success,
+                 "DLL-P4 imported-base producer emits its DLL triplet (" + error + ")");
+    output.clear();
+    error.clear();
+    const ExitCode baseVerifyResult = baseResult == ExitCode::Success
+        ? verifyLibraryArtifacts(products / "ImportedBase.nsmeta",
+                                 products / "ImportedBase.lib",
+                                 baseDll,
+                                 output,
+                                 error)
+        : ExitCode::CompilationError;
+    tests.expect(baseVerifyResult == ExitCode::Success,
+                 "DLL-P4 imported-base producer passes artifact and public-source verification (" + error + ")");
+
+    output.clear();
+    error.clear();
+    const auto derivedDll = products / "ImportedDerived.dll";
+    const ExitCode derivedResult = emitLibrary(
+        "--emit-project-oop-dll", derivedProducer / "ImportedDerived.nsproj", derivedDll, output, error, true);
+    tests.expect(derivedResult == ExitCode::Success,
+                 "DLL-P4 derived producer accepts a base class owned by peer NSMETA (" + error + ")");
+    output.clear();
+    error.clear();
+    const ExitCode derivedVerifyResult = derivedResult == ExitCode::Success
+        ? verifyLibraryArtifacts(products / "ImportedDerived.nsmeta",
+                                 products / "ImportedDerived.lib",
+                                 derivedDll,
+                                 output,
+                                 error)
+        : ExitCode::CompilationError;
+    tests.expect(derivedVerifyResult == ExitCode::Success,
+                 "DLL-P4 verifier parses a derived public API with an external base (" + error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("ImportedBaseConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            consumer / "ImportedBaseConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 source-free imported-base consumer compiles at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 imported-base dispatch executes to 42 at " + level);
+#endif
+    }
+}
+
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
 {
     // C8's optional Object root must remain usable when it arrives through NSMETA. The consumer's
@@ -2549,6 +2728,7 @@ int main()
     testDynamicLibrary(tests, root);
     testPrecompiledDllRegressionCorpus(tests, root);
     testDllP4ImportedSignaturesAndEvents(tests, root);
+    testDllP4ImportedBaseContract(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 

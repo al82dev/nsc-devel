@@ -808,6 +808,15 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     // declaraciones, de modo que una base ubicada en otro namespace conserve su
     // identidad sin reescribirla ni depender del archivo fuente original.
     std::set<std::string> importedNamespaces;
+    const auto collectImportedNamespace = [&](const std::string &typeKey) -> bool {
+        const std::string baseKey = metadataBaseTypeKey(typeKey);
+        if (!baseKey.starts_with("type:")) return true;
+        std::string sourceType;
+        if (!sourceTypeForMetadataKey(baseKey, sourceType, error)) return false;
+        const std::size_t separator = sourceType.find_last_of('.');
+        if (separator != std::string::npos) importedNamespaces.insert(sourceType.substr(0, separator));
+        return true;
+    };
     for (const auto &[identity, group] : published)
     {
         static_cast<void>(identity);
@@ -815,6 +824,23 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         const std::size_t separator = group.type->fullyQualifiedName.find_last_of('.');
         if (separator != std::string::npos)
             importedNamespaces.insert(group.type->fullyQualifiedName.substr(0, separator));
+    }
+    for (const interop::LibraryMetadataType &type : metadata.types)
+    {
+        if (!collectImportedNamespace(type.baseTypeKey)) return false;
+        for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
+            if (!collectImportedNamespace(interfaceTypeKey)) return false;
+        for (const interop::LibraryMetadataField &field : type.fields)
+            if (!collectImportedNamespace(field.typeKey)) return false;
+        if (!collectImportedNamespace(type.delegateReturnTypeKey)) return false;
+        for (const std::string &parameterTypeKey : type.delegateParameterTypeKeys)
+            if (!collectImportedNamespace(parameterTypeKey)) return false;
+    }
+    for (const interop::LibraryMetadataMember &member : metadata.members)
+    {
+        if (!collectImportedNamespace(member.declaredTypeKey)) return false;
+        for (const interop::LibraryMetadataParameter &parameter : member.parameters)
+            if (!collectImportedNamespace(parameter.typeKey)) return false;
     }
     for (const std::string &namespaceName : importedNamespaces)
         generated << "using " << namespaceName << ";\n";
@@ -1014,8 +1040,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, type, field);
                     event != nullptr)
                 {
-                    if (!namespaceName.empty() && fieldType.starts_with(namespaceName + "."))
-                        fieldType.erase(0, namespaceName.size() + 1U);
+                    if (const std::size_t dot = fieldType.find_last_of('.'); dot != std::string::npos)
+                        fieldType = fieldType.substr(dot + 1U);
                     generated << "    " << sourceAccessibility(event->accessibility) << ' ';
                     if ((event->flags & (1U << 0U)) != 0U) generated << "static ";
                     generated << "event " << ownershipPrefix(event->declaredOwnership) << fieldType << ' '
@@ -1047,8 +1073,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (materializedEvents.contains(member)) continue;
                 std::string eventType;
                 if (!sourceTypeForMetadataKey(member->declaredTypeKey, eventType, error)) return false;
-                if (!namespaceName.empty() && eventType.starts_with(namespaceName + "."))
-                    eventType.erase(0, namespaceName.size() + 1U);
+                if (const std::size_t dot = eventType.find_last_of('.'); dot != std::string::npos)
+                    eventType = eventType.substr(dot + 1U);
                 generated << "    " << sourceAccessibility(member->accessibility) << ' ';
                 if ((member->flags & (1U << 0U)) != 0U) generated << "static ";
                 generated << "event " << ownershipPrefix(member->declaredOwnership) << eventType << ' '
@@ -1113,15 +1139,34 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
     }
     frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, true);
     std::vector<std::string> knownTypeNames;
-    knownTypeNames.reserve(metadata.types.size() * 2U);
+    const auto appendKnownType = [&](const std::string &typeKey) {
+        const std::string baseKey = metadataBaseTypeKey(typeKey);
+        if (!baseKey.starts_with("type:")) return;
+        std::string sourceType;
+        std::string typeError;
+        if (!sourceTypeForMetadataKey(baseKey, sourceType, typeError)) return;
+        knownTypeNames.push_back(sourceType);
+        const std::size_t separator = sourceType.find_last_of(".+");
+        knownTypeNames.push_back(separator == std::string::npos ? sourceType : sourceType.substr(separator + 1U));
+    };
     for (const interop::LibraryMetadataType &type : metadata.types)
     {
-        knownTypeNames.push_back(type.fullyQualifiedName);
-        const std::size_t separator = type.fullyQualifiedName.find_last_of(".+");
-        knownTypeNames.push_back(separator == std::string::npos
-                                     ? type.fullyQualifiedName
-                                     : type.fullyQualifiedName.substr(separator + 1U));
+        appendKnownType("type:" + type.identityKey);
+        appendKnownType(type.baseTypeKey);
+        for (const std::string &interfaceTypeKey : type.interfaceTypeKeys) appendKnownType(interfaceTypeKey);
+        for (const interop::LibraryMetadataField &field : type.fields) appendKnownType(field.typeKey);
+        appendKnownType(type.enumUnderlyingTypeKey);
+        appendKnownType(type.delegateReturnTypeKey);
+        for (const std::string &parameterTypeKey : type.delegateParameterTypeKeys) appendKnownType(parameterTypeKey);
     }
+    for (const interop::LibraryMetadataMember &member : metadata.members)
+    {
+        appendKnownType(member.declaringTypeKey);
+        appendKnownType(member.declaredTypeKey);
+        for (const interop::LibraryMetadataParameter &parameter : member.parameters) appendKnownType(parameter.typeKey);
+    }
+    std::sort(knownTypeNames.begin(), knownTypeNames.end());
+    knownTypeNames.erase(std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());
     if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
 
     error = "generated precompiled public API is not valid NativeSharp source";
