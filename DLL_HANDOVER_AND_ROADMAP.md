@@ -3,12 +3,11 @@
 **Fecha de corte / Snapshot date:** 2026-09-10
 **Repositorio / Repository:** `A:\NSC-DEVEL-BRANCHES\nsc-devel-dlls`
 **Rama / Branch:** `dlls`
-**HEAD de código verificado / Verified code HEAD:** `1c4ddde0`
-**Build certificado / Certified build:** `321521e87de7e204`
-**Directorio de prueba / Test directory:** `_build-union-dlls`, retirado
-después de la certificación
+**HEAD de código verificado / Verified code HEAD:** `d00c8dbe`
+**Build dirigido / Directed-test build:** `9c676953f9cf58f2`
+**Directorio de prueba / Test directory:** `_build-template-closure`, temporal
 **Instalación global / Global install:** no realizada; `C:\native-sharp` no se tocó
-**Formato actual / Current format:** NSMETA 1.10
+**Formato actual / Current format:** NSMETA 1.11
 **Contrato binario / Binary contract:** Native ABI 1.0 / Runtime ABI 1.0
 **Plataforma / Platform:** `x86_64-pc-windows-msvc`
 
@@ -89,6 +88,8 @@ catalogs.
 - `mkdown/173_1_0_1_descriptores_y_api_precompilada.md`
 - `mkdown/174_1_0_1_constructores_genericos_exportados_nsmeta.md`
 - `mkdown/183_1_0_1_contratos_nsmeta_transitivos.md`
+- `mkdown/184_1_0_1_clausura_transitiva_templates_nsmeta.md`
+- `mkdown/185_1_0_1_clases_static_precompiladas.md`
 
 ### Roadmap general / General roadmap
 
@@ -228,7 +229,7 @@ LibraryReference del consumidor
    │
    ├─ valida metadata y ABI
    ├─ reconstruye sólo API publicable
-   ├─ hidrata templates públicos
+   ├─ hidrata raíces públicas y su clausura privada de materialización
    ├─ reutiliza especializaciones publicadas
    ├─ monomorfiza especializaciones nuevas
    ├─ enlaza símbolos externos exactos
@@ -237,11 +238,12 @@ LibraryReference del consumidor
 
 El consumidor no comparte fuentes ordinarias del productor ni regenera sus
 cuerpos. Las únicas implementaciones transportadas como texto canónico son
-templates genéricos públicos materializables.
+templates genéricos materializables: raíces públicas y dependencias privadas
+alcanzables.
 
 The consumer shares no ordinary producer sources and does not regenerate their
-bodies. Public materializable generic templates are the only implementations
-transported as canonical declaration text.
+bodies. Canonical template text is limited to public reusable roots and their
+reachable private materialization closure.
 
 ## 9. Superficie implementada / Implemented surface
 
@@ -263,7 +265,7 @@ transported as canonical declaration text.
 | Delegate `extern C` | Cerrada |
 | Delegate NativeSharp, estático, instancia y closure | Cerrada |
 | Excepciones tipadas entre módulos | Cerrada |
-| Templates públicos y especializaciones importadas/nuevas | Cerrada |
+| Templates públicos, clausura privada y especializaciones importadas/nuevas | Cerrada |
 | Constraints genéricos | Cerrada |
 | Dependencias transitivas y múltiples bibliotecas | Cerrada para fixtures actuales |
 | Diagnósticos ABI por componente | Cerrada |
@@ -567,6 +569,51 @@ Evidencia local / Local evidence:
 - matriz universal O0: 70/70;
 - build local: `321521e87de7e204`;
 - instalación global: ninguna; `C:\native-sharp` no se tocó.
+
+### Clausura genérica reutilizable y clases `static` — 2026-09-10
+
+**ES.** NSMETA 1.11 conserva el grafo canónico de dependencias de cada template
+reutilizable y serializa el punto fijo privado alcanzable desde raíces públicas.
+Los helpers conservan su accesibilidad y no pueden llamarse directamente desde
+el consumidor. El verificador detecta entradas ausentes con raíz, dependencia,
+propietario y cadena transitiva. La materialización admite propietarios
+anidados, dependencias entre dos NSMETA y argumentos declarados por el
+consumidor.
+
+El productor ya no registra base ni interfaces para clases `static`. El
+consumidor también ignora esas cláusulas inválidas en NSMETA 1.10 históricos,
+sin convertir la clase en instanciable.
+
+**EN.** NSMETA 1.11 persists the canonical fixed-point dependency graph of
+reusable templates while preserving private accessibility. Cross-library edges,
+nested owners, and consumer-defined type arguments materialize without source.
+Static classes now carry no instance hierarchy, and legacy 1.10 pollution is
+ignored during public-source reconstruction.
+
+Commits / Commits:
+
+- `bf9a7f22`, `be41fe5c`, `b930f705` — modelo, clausura y propietarios anidados;
+- `9c5b54fa` — diagnósticos de cero candidatos frente a ambigüedad;
+- `b66724fa` — compatibilidad de clases `static` actuales e históricas;
+- `55b60251` — clausura reutilizable entre bibliotecas;
+- `d00c8dbe` — identidad esperada NSMETA 1.11.
+
+Evidencia dirigida / Directed evidence:
+
+- Stage 44: 77/77;
+- Stage 46: 433/433;
+- Stage 48.2: 176/176;
+- Stage 50.9: 56/56;
+- Stage 52 generic collections: 147/147;
+- Stage 62: 44/44;
+- Stage 66: 77/77;
+- Foundation O0 real, copiada a un temporal del worktree: 1,463 símbolos
+  verificados; `List<int>.Sort`, `List<Vector3>`, `List<TestComponent>` y
+  `SortedDictionary<float, Vector3>` enlazan y ejecutan 42 sólo con
+  `LibraryReference`.
+
+El baseline global se canceló por instrucción del usuario y queda reservado para
+la integración en `development`. No se instaló nada en `C:\native-sharp`.
 
 ## 15. Roadmap de continuación / Continuation roadmap
 
