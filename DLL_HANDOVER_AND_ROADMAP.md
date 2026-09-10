@@ -2,10 +2,10 @@
 
 **Fecha de corte / Snapshot date:** 2026-09-10
 **Repositorio / Repository:** `A:\NSC-DEVEL-BRANCHES\nsc-devel-dlls`
-**Rama / Branch:** `development`
-**HEAD de código verificado / Verified code HEAD:** `9cf8bf60`
-**Build certificado / Certified build:** `9b1128b666c65f28`
-**Directorio de prueba / Test directory:** `_build-clean-development`, retirado
+**Rama / Branch:** `dlls`
+**HEAD de código verificado / Verified code HEAD:** `1c4ddde0`
+**Build certificado / Certified build:** `321521e87de7e204`
+**Directorio de prueba / Test directory:** `_build-union-dlls`, retirado
 después de la certificación
 **Instalación global / Global install:** no realizada; `C:\native-sharp` no se tocó
 **Formato actual / Current format:** NSMETA 1.10
@@ -45,8 +45,8 @@ catalogs.
 ## 2. Reglas operativas / Operating rules
 
 1. Trabajar en `A:\NSC-DEVEL-BRANCHES\nsc-devel-dlls`, rama `dlls`.
-2. Al corte, `dlls`, `development` y `pdb` apuntan a `100ce3ea`; no hay
-   commits pendientes de traslado.
+2. `dlls` conserva una historia propia y contiene los contratos de código
+   reconciliados con `development`; no asumir igualdad de hashes entre ramas.
 3. El contenido actual del disco es la fuente autoritativa para compilación e
    instalación rápida; no reconstruir una revisión tomada de Git.
 4. Usar pruebas dirigidas durante iteración. Ejecutar el baseline una sola vez
@@ -465,8 +465,9 @@ lectura y nunca se modificó. Todos los huecos reales de superficie NSMETA allí
 representados quedaron cubiertos internamente. Los casos DLL que aún declaran
 `Runtime=Producer.dll` sin importar un símbolo físico son rechazados de forma
 intencional: `Runtime` es una promesa de dependencia en ejecución, no una
-referencia de compilación. El caso `union_fixed_array_layout` falla igualmente
-desde fuente y desde biblioteca, por lo que no es una divergencia NSMETA.
+referencia de compilación. El caso `union_fixed_array_layout` se cerró
+posteriormente como un defecto general del escáner de tipos entre unidades, no
+como una divergencia NSMETA.
 
 Commits del lote de paridad posterior:
 
@@ -520,10 +521,52 @@ Evidencia ejecutada exclusivamente en
 - build local: `9b1128b666c65f28`;
 - instalación global: ninguna; `C:\native-sharp` conservó su compilador previo.
 
-La matriz externa completa mantiene dos resultados deliberados ya documentados:
-rechaza un `Runtime=Producer.dll` falso cuando el consumidor usa sólo metadatos y
-el caso `union_fixed_array_layout` falla de la misma forma mediante fuente y
-biblioteca, por lo que ninguno representa pérdida de superficie NSMETA.
+La matriz externa mantiene el rechazo deliberado de un
+`Runtime=Producer.dll` falso cuando el consumidor usa sólo metadatos. El hueco
+restante de `union_fixed_array_layout` se cerró en la entrega siguiente.
+
+### Cierre de `union` entre unidades y bibliotecas — 2026-09-10
+
+**ES.** `union` es una palabra contextual de NativeSharp, no un `TokenKind`
+reservado. `collectTypeSeedsInScope` reconocía `struct`, `class`, `interface` y
+`enum`, pero omitía el identificador contextual `union`. Como consecuencia,
+`ValueOverlay payload;` se interpretaba como dos expresiones cuando el tipo se
+declaraba en otra unidad, en un `ProjectReference` o en el API reconstruido de
+una `LibraryReference`.
+
+La corrección conserva `union` como palabra contextual y lo agrega al mismo
+escáner de nombres conocidos. La regresión propiedad del compilador cubre:
+
+- otra unidad del mismo proyecto;
+- `ProjectReference`;
+- `LibraryReference` estática y DLL;
+- nombre simple, calificado y alias;
+- `union` pública anidada;
+- ejecución de consumidores con salida 42;
+- permanencia de la protección NSC-LIMIT-013 existente.
+
+**EN.** NativeSharp keeps `union` contextual. The project-wide type seed scanner
+now recognizes that contextual declaration, so uninitialized locals parse
+consistently across source units, project references, and reconstructed NSMETA
+APIs without reserving the word globally.
+
+Commits / Commits:
+
+- `a09d5045` — completa en `dlls` las interfaces de debug que ya exigía la
+  implementación integrada;
+- `1c4ddde0` — reconoce `union` entre unidades y bibliotecas y congela la
+  regresión.
+
+Evidencia local / Local evidence:
+
+- reconstrucción limpia de `nsc` y suites afectadas;
+- ProjectCompilation: 40/40;
+- Stage 46 con `lld-link`: 419/419;
+- Stage 46 con `NSLink`: 419/419;
+- auditor `union_fixed_array_layout` O0: estática y DLL verifican y ejecutan 42;
+- matriz universal O0: 70/70;
+- build local: `321521e87de7e204`;
+- instalación global: ninguna; `C:\native-sharp` no se tocó.
 
 ## 15. Roadmap de continuación / Continuation roadmap
 
