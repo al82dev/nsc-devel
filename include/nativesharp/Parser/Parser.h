@@ -86,6 +86,7 @@ private:
     struct NestedTypeModifiers final
     {
         lexer::TokenKind accessibility = lexer::TokenKind::Invalid;
+        bool isPartial = false;
         bool isNew = false;
         bool isStatic = false;
         bool isReadonly = false;

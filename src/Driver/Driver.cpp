@@ -887,8 +887,25 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
     {
         if (generic.kind != kGenericMethodKind) continue;
-        genericMethodOwners.insert(
-            generic.namespaceName.empty() ? generic.ownerName : generic.namespaceName + "." + generic.ownerName);
+        std::string ownerPrefix;
+        std::size_t begin = 0;
+        while (begin <= generic.ownerName.size())
+        {
+            const std::size_t separator = generic.ownerName.find('+', begin);
+            const std::size_t stop = separator == std::string::npos
+                ? generic.ownerName.size()
+                : separator;
+            if (stop > begin)
+            {
+                if (!ownerPrefix.empty()) ownerPrefix.push_back('+');
+                ownerPrefix.append(generic.ownerName.substr(begin, stop - begin));
+                genericMethodOwners.insert(generic.namespaceName.empty()
+                    ? ownerPrefix
+                    : generic.namespaceName + "." + ownerPrefix);
+            }
+            if (separator == std::string::npos) break;
+            begin = separator + 1U;
+        }
     }
     for (const interop::LibraryMetadataType &type : metadata.types)
     {
@@ -1678,26 +1695,56 @@ bool buildPrecompiledGenericTemplateSource(
         if (!generic.namespaceName.empty()) generated << "namespace " << generic.namespaceName << "\n{\n";
         if (generic.kind == kGenericMethodKind)
         {
-            if (generic.ownerName.empty() || generic.ownerName.find('+') != std::string::npos)
+            if (generic.ownerName.empty())
             {
                 error =
                     "metadata generic method '" + generic.canonicalKey + "' has an unsupported declaring-type identity";
                 return false;
             }
-            const std::string fullyQualifiedOwner =
-                generic.namespaceName.empty() ? generic.ownerName : generic.namespaceName + "." + generic.ownerName;
-            const auto owner = std::ranges::find_if(metadata.types,
-                [&](const auto &candidate) { return candidate.fullyQualifiedName == fullyQualifiedOwner; });
-            if (owner == metadata.types.end() || owner->kind != interop::LibraryMetadataTypeKind::Class ||
-                owner->accessibility != 3U)
+
+            std::size_t openedOwners = 0;
+            std::string ownerPrefix;
+            std::size_t begin = 0;
+            while (begin <= generic.ownerName.size())
             {
-                error = "metadata generic method '" + generic.canonicalKey + "' does not have a public class owner";
-                return false;
+                const std::size_t separator = generic.ownerName.find('+', begin);
+                const std::size_t stop = separator == std::string::npos
+                    ? generic.ownerName.size()
+                    : separator;
+                if (stop == begin)
+                {
+                    error = "metadata generic method '" + generic.canonicalKey +
+                        "' has an empty declaring-type segment";
+                    return false;
+                }
+                const std::string segment = generic.ownerName.substr(begin, stop - begin);
+                if (!ownerPrefix.empty()) ownerPrefix.push_back('+');
+                ownerPrefix += segment;
+                const std::string fullyQualifiedOwner = generic.namespaceName.empty()
+                    ? ownerPrefix
+                    : generic.namespaceName + "." + ownerPrefix;
+                const auto owner = std::ranges::find_if(metadata.types,
+                    [&](const auto &candidate) {
+                        return candidate.fullyQualifiedName == fullyQualifiedOwner;
+                    });
+                if (owner == metadata.types.end() ||
+                    owner->kind != interop::LibraryMetadataTypeKind::Class)
+                {
+                    error = "metadata generic method '" + generic.canonicalKey +
+                        "' does not have a materializable class owner '" + fullyQualifiedOwner + "'";
+                    return false;
+                }
+                generated << sourceAccessibility(owner->accessibility) << " partial ";
+                if ((owner->flags & (1U << 1U)) != 0U) generated << "abstract ";
+                if ((owner->flags & (1U << 2U)) != 0U) generated << "sealed ";
+                if ((owner->flags & (1U << 3U)) != 0U) generated << "static ";
+                generated << "class " << segment << "\n{\n";
+                ++openedOwners;
+                if (separator == std::string::npos) break;
+                begin = separator + 1U;
             }
-            generated << "public partial ";
-            if ((owner->flags & (1U << 1U)) != 0U) generated << "abstract ";
-            if ((owner->flags & (1U << 2U)) != 0U) generated << "sealed ";
-            generated << "class " << generic.ownerName << "\n{\n" << generic.sourceText << "\n}\n";
+            generated << generic.sourceText << '\n';
+            while (openedOwners-- > 0U) generated << "}\n";
         }
         else
         {

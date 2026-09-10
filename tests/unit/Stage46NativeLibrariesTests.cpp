@@ -3262,6 +3262,15 @@ namespace Precompiled
             return box.Read();
         }
     }
+
+    public class ClosureOuter
+    {
+        public static class NestedAlgorithms
+        {
+            private static T NestedLeaf<T>(T value) { return value; }
+            public static T NestedRoot<T>(T value) { return NestedLeaf<T>(value); }
+        }
+    }
 }
 )NS";
     const std::string consumerSource = R"NS(
@@ -3540,6 +3549,7 @@ namespace Consumer
             if (Precompiled.GenericAlgorithms.AddDefault<int>(0) != 2) { return 3; }
             if (transferred.Read() != 37) { return 4; }
             if (Precompiled.GenericAlgorithms.ClosureRoot<int>(42) != 42) { return 5; }
+            if (Precompiled.ClosureOuter.NestedAlgorithms.NestedRoot<int>(42) != 42) { return 6; }
             return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
         }
     }
@@ -4216,6 +4226,7 @@ namespace Consumer
             if (Precompiled.GenericAlgorithms.AddDefault<int>(0) != 2) { return 3; }
             if (transferred.Read() != 37) { return 4; }
             if (Precompiled.GenericAlgorithms.ClosureRoot<int>(42) != 42) { return 5; }
+            if (Precompiled.ClosureOuter.NestedAlgorithms.NestedRoot<int>(42) != 42) { return 6; }
             return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
         }
     }

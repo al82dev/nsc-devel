@@ -2183,6 +2183,8 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
             std::string("'") + modifierName + "' is not valid on a nested type declaration: " + reason);
     };
     const bool nestedClass = at(TokenKind::KwClass);
+    if (modifiers.isPartial && !nestedClass)
+        refuse("partial", "only nested classes can be split into materialization parts");
     if (modifiers.isStatic && !nestedClass)
         refuse("static", "only a nested class can be static");
     if (modifiers.isReadonly) refuse("readonly", "a type is not storage");
@@ -2214,7 +2216,7 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     if (at(TokenKind::KwClass))
     {
         declaration = parseClassDeclaration(
-            false, modifiers.isAbstract, modifiers.isSealed, modifiers.isStatic);
+            modifiers.isPartial, modifiers.isAbstract, modifiers.isSealed, modifiers.isStatic);
     }
     else if (at(TokenKind::KwInterface))
     {
@@ -2303,6 +2305,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
     (void)allowUnresolvedNamedTypes;
     const std::size_t beginIndex = index_;
     TokenKind accessibility = TokenKind::Invalid;
+    bool isPartial = false;
     bool isNew = false;
     bool isStatic = false;
     bool isReadonly = false;
@@ -2359,6 +2362,25 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
     while (true)
     {
         parseExplicitFieldOffset();
+        const bool partialNestedModifier = atContextualKeyword("partial") &&
+            (peek().kind() == TokenKind::KwClass || peek().kind() == TokenKind::KwPublic ||
+             peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwProtected ||
+             peek().kind() == TokenKind::KwPrivate || peek().kind() == TokenKind::KwStatic ||
+             peek().kind() == TokenKind::KwAbstract || peek().kind() == TokenKind::KwSealed);
+        if (partialNestedModifier)
+        {
+            const lexer::Token& modifier = consume();
+            if (isPartial)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate 'partial' modifier on nested type declaration");
+            }
+            isPartial = true;
+            continue;
+        }
         if ((atContextualKeyword("pack") || atContextualKeyword("align") ||
              atContextualKeyword("size")) && peek().kind() == TokenKind::LeftParen)
         {
@@ -2802,24 +2824,6 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
         return parseEventTail(accessibility, isNew, isStatic, beginIndex);
     }
 
-    // NSC-LIMIT-009. `partial` no entra en el bucle de modificadores de arriba --es contextual, y
-    // alli seria indistinguible de un tipo de campo llamado `partial`-- asi que se reconoce aqui,
-    // por lo que le sigue, y se consume para poder dar ESTE mensaje en vez de dejar que `partial`
-    // se lea como el tipo de un campo y el error salga tres tokens mas alla.
-    if (atContextualKeyword("partial") &&
-        (peek().kind() == TokenKind::KwClass || peek().kind() == TokenKind::KwStruct ||
-         peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
-         peek().kind() == TokenKind::KwDelegate))
-    {
-        const lexer::Token& modifier = consume();
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            modifier.range(),
-            "a nested type cannot be partial: the parts would have to agree on a container, and "
-            "this compiler aggregates partial types by namespace identity only");
-    }
-
     // NSC-LIMIT-009. UN TIPO ANIDADO. Va antes de la guarda de abajo porque `class`, `struct`,
     // `interface`, `enum` y `delegate` no son comienzos de tipo ni identificadores, de modo que
     // caian todos en «expected an instance field or method declaration in class body» -- que es
@@ -2829,6 +2833,7 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
         return parseNestedTypeDeclaration(
             NestedTypeModifiers{
                 accessibility,
+                isPartial,
                 isNew,
                 isStatic,
                 isReadonly,

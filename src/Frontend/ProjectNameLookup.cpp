@@ -674,17 +674,15 @@ void ProjectNameLookup::finalizePredeclarations(
         bool finalSealed = primary.part.isSealed;
         bool finalStatic = primary.part.isStatic;
         // NSC-LIMIT-009. El agregador de partes solo conoce internal/public --es lo unico que un
-        // tipo de namespace puede ser-- asi que para un ANIDADO se le deja hacer su trabajo
-        // (duplicados, `partial`) y se ignora su veredicto de accesibilidad, que convertiria
-        // `private` en `internal` sin decirlo. Un anidado nunca es partial: el parser lo rechaza,
-        // de modo que aqui siempre hay exactamente una parte y `primary` ES la declaracion.
-        if (primary.part.isNested)
+        // tipo de namespace puede ser-- asi que para un ANIDADO se conserva la accesibilidad de
+        // su primera parte. El agregador si aporta las demas propiedades: las clases an anidadas
+        // `partial` se usan al reconstruir propietarios de plantillas desde NSMETA y deben unir
+        // static/abstract/sealed igual que una clase de namespace.
+        if (aggregated && !aggregator.types().empty())
         {
-            finalAccessibility = primary.part.accessibility;
-        }
-        else if (aggregated && !aggregator.types().empty())
-        {
-            finalAccessibility = namedAccessibility(aggregator.types().front().accessibility);
+            finalAccessibility = primary.part.isNested
+                ? primary.part.accessibility
+                : namedAccessibility(aggregator.types().front().accessibility);
             finalAbstract = aggregator.types().front().isAbstract;
             finalSealed = aggregator.types().front().isSealed;
             finalStatic = aggregator.types().front().isStatic;
