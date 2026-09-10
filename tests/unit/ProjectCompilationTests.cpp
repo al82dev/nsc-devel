@@ -29,14 +29,54 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 void createValidGraph(const std::filesystem::path& root)
 {
     const std::filesystem::path core = root / "Core";
-    writeFile(core / "Core.ns", "int CoreValue() { return 10; }\n");
-    writeFile(core / "Math.ns", "int Double(int x) { return x + x; }\n");
+    writeFile(core / "Core.ns", R"NS(
+using Contracts;
+
+int CoreValue()
+{
+    ValueOverlay sameProject;
+    return 10;
+}
+)NS");
+    writeFile(core / "Math.ns", R"NS(
+namespace Contracts
+{
+    public union ValueOverlay
+    {
+        public int Number;
+        public float Floating;
+    }
+
+    public class Outer
+    {
+        public union Nested
+        {
+            public int Number;
+            public float Floating;
+        }
+    }
+}
+
+int Double(int x) { return x + x; }
+)NS");
     writeFile(
         core / "Core.nsproj",
         "<Project><PropertyGroup><Name>Core</Name><OutputType>Library</OutputType></PropertyGroup></Project>\n");
 
     const std::filesystem::path app = root / "App";
-    writeFile(app / "Feature.ns", "int Feature() { return 1; }\n");
+    writeFile(app / "Feature.ns", R"NS(
+using Contracts;
+using OverlayAlias = Contracts.ValueOverlay;
+
+int Feature()
+{
+    ValueOverlay simple;
+    Contracts.ValueOverlay qualified;
+    OverlayAlias alias;
+    Outer.Nested nested;
+    return 1;
+}
+)NS");
     writeFile(app / "Main.ns", "int Main() { return 0; }\n");
     writeFile(
         app / "App.nsproj",

@@ -3104,6 +3104,12 @@ namespace Precompiled
         public void Offset(int delta) { X += delta; }
     }
 
+    public union Overlay
+    {
+        public int Number;
+        public float Floating;
+    }
+
     public pack(1) size(5) struct Packed
     {
         public byte Tag;
@@ -3216,6 +3222,7 @@ namespace Precompiled
         public static int Blend(int left, int right = 22) { return left + right; }
         public static long Blend(long left, long right) { return left + right; }
         public static Pair Echo(Pair value) { return value; }
+        public static int ReadOverlay(Overlay value) { return value.Number; }
         public static Packet EchoPacket(Packet value) { return value; }
         public static Mode EchoMode(Mode value) { return value; }
         public static void Bump(ref int value) { value += 1; }
@@ -3411,13 +3418,16 @@ namespace Consumer
             value.Y = 9;
             Precompiled.Pair copy = Precompiled.Math.Echo(value);
             copy.Offset(1);
+            Precompiled.Overlay overlay;
+            overlay.Number = 1;
             Precompiled.Packet packet;
             packet.Header.Tag = 1;
             packet.Header.Value = 10;
-            packet.Tail = 11;
+            packet.Tail = 10;
             Precompiled.Packet packetCopy = Precompiled.Math.EchoPacket(packet);
             Precompiled.Mode mode = Precompiled.Math.EchoMode(Precompiled.Mode.Zero);
-            return copy.Sum() + packetCopy.Header.Tag + packetCopy.Header.Value +
+            return copy.Sum() + Precompiled.Math.ReadOverlay(overlay) +
+                packetCopy.Header.Tag + packetCopy.Header.Value +
                 (int)packetCopy.Tail + (int)mode;
         }
     }
@@ -4244,13 +4254,16 @@ namespace Consumer
             value.Y = 10;
             Precompiled.Pair copy = Precompiled.Math.Echo(value);
             copy.Offset(1);
+            Precompiled.Overlay overlay;
+            overlay.Number = 1;
             Precompiled.Packet packet;
             packet.Header.Tag = 1;
             packet.Header.Value = 10;
-            packet.Tail = 11;
+            packet.Tail = 10;
             Precompiled.Packet packetCopy = Precompiled.Math.EchoPacket(packet);
             Precompiled.Mode mode = Precompiled.Math.EchoMode(Precompiled.Mode.Zero);
-            return copy.Sum() + packetCopy.Header.Tag + packetCopy.Header.Value +
+            return copy.Sum() + Precompiled.Math.ReadOverlay(overlay) +
+                packetCopy.Header.Tag + packetCopy.Header.Value +
                 (int)packetCopy.Tail + (int)mode;
         }
     }

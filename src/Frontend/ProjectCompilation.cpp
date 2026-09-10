@@ -168,6 +168,8 @@ void collectTypeSeedsInScope(
         }
 
         if (tokens[index].kind() == TokenKind::KwStruct ||
+            (tokens[index].kind() == TokenKind::Identifier &&
+             tokens[index].lexeme() == "union") ||
             tokens[index].kind() == TokenKind::KwClass ||
             tokens[index].kind() == TokenKind::KwInterface ||
             tokens[index].kind() == TokenKind::KwEnum)
