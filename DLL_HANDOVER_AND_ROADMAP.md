@@ -2,13 +2,13 @@
 
 **Fecha de corte / Snapshot date:** 2026-09-10
 **Repositorio / Repository:** `A:\NSC-DEVEL-BRANCHES\nsc-devel-dlls`
-**Rama / Branch:** `dlls`
-**HEAD verificado / Verified HEAD:** `edfec0b3`
-**Build certificado / Certified build:** `build-clang-lldlink`
-**Prefijo de prueba / Test prefix:** instalación temporal dentro de
-`nsc-devel-dlls`, retirada después de la corrida
+**Rama / Branch:** `development`
+**HEAD de código verificado / Verified code HEAD:** `9cf8bf60`
+**Build certificado / Certified build:** `9b1128b666c65f28`
+**Directorio de prueba / Test directory:** `_build-clean-development`, retirado
+después de la certificación
 **Instalación global / Global install:** no realizada; `C:\native-sharp` no se tocó
-**Formato actual / Current format:** NSMETA 1.8
+**Formato actual / Current format:** NSMETA 1.10
 **Contrato binario / Binary contract:** Native ABI 1.0 / Runtime ABI 1.0
 **Plataforma / Platform:** `x86_64-pc-windows-msvc`
 
@@ -480,6 +480,50 @@ Commits del lote de paridad posterior:
 
 Esta certificación no instala ni publica bindings y no sustituye DLL-P7, DLL-P8
 o DLL-P9. Es el cierre del lote P1–P6 en la rama y carpeta `nsc-devel-dlls`.
+
+### Reconciliación con `development` y debug — 2026-09-10
+
+**ES.** La integración de los cambios de debug en `development` había dejado una
+mezcla incoherente: `Driver.cpp` usaba firmas nuevas, pero varios headers y modelos
+seguían en el contrato anterior. Una reconstrucción limpia expuso correctamente
+`LLVMPrivateLinkage`, `debugPrefixMaps`, `constantText`, `importDllName`,
+`isSyntheticImplicitConstructor`, `isImported` y `accessorName` como pérdidas.
+
+Se restauró la unión, no una sustitución de una rama por otra: permanecen los
+checksums, layouts, captures y prefix maps de PDB, junto con NSMETA 1.10,
+constructores implícitos, campos estáticos, imports `extern C`, tipos anidados,
+DLLs metadata-only y aislamiento privado de literales. También se recuperaron los
+goldens históricos 1.9/1.10 y se actualizaron sólo las aserciones cuya cardinalidad
+cambió por los constructores implícitos publicables.
+
+**EN.** The debug integration on `development` had left a mismatched source tree:
+`Driver.cpp` used the new signatures while several headers and models still
+described the older contract. A clean rebuild exposed the missing declarations.
+The repair is a true union: PDB checksums, layouts, captures, and prefix maps remain
+alongside NSMETA 1.10, implicit constructors, static fields, `extern C` imports,
+nested types, metadata-only DLLs, and private literal isolation.
+
+Commits / Commits:
+
+- `d2f647ec` — reconciliación de implementación y regresiones DLL/debug;
+- `9cf8bf60` — expectativas de pruebas para globals privados y constructores
+  implícitos publicables.
+
+Evidencia ejecutada exclusivamente en
+`A:\NSC-DEVEL-BRANCHES\nsc-devel-dlls` / Evidence executed exclusively there:
+
+- reconstrucción limpia completa: 136 ejecutables de prueba construidos;
+- repro externo `struct_constructor`, O0: `.lib` y DLL compilan, verifican y
+  ejecutan con salida 42;
+- CTest `lld-link`: 308/308, 302.17 s;
+- CTest `NSLink`: 308/308, 266.45 s;
+- build local: `9b1128b666c65f28`;
+- instalación global: ninguna; `C:\native-sharp` conservó su compilador previo.
+
+La matriz externa completa mantiene dos resultados deliberados ya documentados:
+rechaza un `Runtime=Producer.dll` falso cuando el consumidor usa sólo metadatos y
+el caso `union_fixed_array_layout` falla de la misma forma mediante fuente y
+biblioteca, por lo que ninguno representa pérdida de superficie NSMETA.
 
 ## 15. Roadmap de continuación / Continuation roadmap
 
