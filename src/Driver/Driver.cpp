@@ -3968,7 +3968,13 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     const bool hasPublicMetadataSurface = std::ranges::any_of(types, [&](const frontend::NamedTypeDeclaration &type) {
         return type.projectOrdinal == rootProjectOrdinal &&
             isPubliclyReachableNamedType(types, static_cast<std::size_t>(&type - types.data()));
-    });
+    }) || (compilation.genericModel() != nullptr &&
+           std::ranges::any_of(compilation.genericModel()->templates(), [&](const auto& generic) {
+               if (generic.projectOrdinal != rootProjectOrdinal || generic.syntax == nullptr) return false;
+               return generic.kind == frontend::GenericTemplateKind::Method
+                   ? generic.syntax->hasModifier(lexer::TokenKind::KwPublic)
+                   : generic.syntax->tokenKind() == lexer::TokenKind::KwPublic;
+           }));
     if (exportSymbols.empty() && !hasPublicMetadataSurface)
     {
         error << "nsc: error: NativeSharp DLL requires at least one publishable "

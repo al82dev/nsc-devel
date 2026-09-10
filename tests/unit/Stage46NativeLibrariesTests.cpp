@@ -2839,6 +2839,85 @@ public class Program
                          "metadata-only DLL contract executes to 42 at " + level);
 #endif
     }
+
+    const auto genericOnlyProducer = contractRoot / "GenericOnlyProducer";
+    writeProject(genericOnlyProducer, "GenericOnly", "SharedLibrary", R"NS(
+namespace SurfaceParity
+{
+    public struct OnlyBox<T>
+    {
+        public T Value;
+    }
+}
+)NS");
+    for (const bool optimize : {false, true})
+    {
+        const std::string level = optimize ? "O2" : "O0";
+        const auto productDirectory = products / ("GenericOnly" + level);
+        std::filesystem::create_directories(productDirectory);
+        const auto runtime = productDirectory / "GenericOnly.dll";
+        const auto library = productDirectory / "GenericOnly.lib";
+        std::string output;
+        std::string error;
+        const ExitCode producerResult = emitLibrary("--emit-project-oop-dll",
+                                                     genericOnlyProducer / "GenericOnly.nsproj",
+                                                     runtime,
+                                                     output,
+                                                     error,
+                                                     optimize);
+        tests.expect(producerResult == ExitCode::Success,
+                     "DLL containing only a public generic struct emits at " + level + " (" + error + ")");
+        if (producerResult != ExitCode::Success) continue;
+
+        PeExecutableVerifier peVerifier;
+        tests.expect(peVerifier.verifyDynamicLibrary(runtime) && peVerifier.info().exportedSymbols.empty(),
+                     "generic-struct-only DLL has zero fabricated exports at " + level);
+        output.clear();
+        error.clear();
+        tests.expect(verifyLibraryArtifacts(productDirectory / "GenericOnly.nsmeta",
+                                            library,
+                                            runtime,
+                                            output,
+                                            error) == ExitCode::Success,
+                     "generic-struct-only DLL contract verifies at " + level + " (" + error + ")");
+
+        const auto consumer = contractRoot / ("GenericOnlyConsumer" + level);
+        writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        OnlyBox<int> value;
+        value.Value = 42;
+        return value.Value;
+    }
+}
+)NS");
+        writeFile(consumer / "Consumer.nsproj",
+                  "<Project><PropertyGroup><Name>GenericOnlyConsumer</Name>"
+                  "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                  "<Compile Include=\"**/*.ns\"/>"
+                  "<LibraryReference Include=\"../Products/GenericOnly" + level + "/GenericOnly.lib\"/>"
+                  "</ItemGroup></Project>");
+        output.clear();
+        error.clear();
+        const auto executable = consumer / "Consumer.exe";
+        const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                     consumer / "Consumer.nsproj",
+                                                     executable,
+                                                     output,
+                                                     error,
+                                                     optimize);
+        tests.expect(consumerResult == ExitCode::Success,
+                     "generic-struct-only LibraryReference materializes at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (consumerResult == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "generic-struct-only DLL contract executes to 42 at " + level);
+#endif
+    }
 }
 
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
