@@ -5170,6 +5170,25 @@ private:
                 if (!handlerTerminated) LLVMBuildBr(builder_, handledBlocks[index]);
 
                 LLVMPositionBuilderAtEnd(builder_, handledBlocks[index]);
+                // The O0 SEH legalization pass has to run mem2reg on this whole function (see
+                // LlvmOptimizer.cpp).  A catch-local assignment can consequently disappear into
+                // a PHI and leave the machine block with only this mandatory exception-clear
+                // call.  Without an explicit source location on that surviving instruction,
+                // CodeView inherited the enclosing `try` location and the catch body had no
+                // stoppable line at all.  Attribute the handler-completion block to its first
+                // source statement (or to `catch` for an empty body).  Instructions that survive
+                // from the body keep their more precise nested locations; this is only the stable
+                // anchor that mem2reg cannot erase.
+                const frontend::ProjectOopMirNode* catchBody = catchNode->children.front().get();
+                const frontend::ProjectOopMirNode* catchAnchor = catchNode;
+                if (catchBody != nullptr &&
+                    catchBody->kind == frontend::ProjectOopMirNodeKind::Block &&
+                    !catchBody->children.empty() && catchBody->children.front() != nullptr)
+                {
+                    catchAnchor = catchBody->children.front().get();
+                }
+                ScopedDebugLocation catchCompletionLocation(
+                    builder_, debugLocation(catchAnchor));
                 buildNoUnwindCall(
                     exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
                 LLVMBuildBr(builder_, hasFinally ? normalFinallyBlock : continueBlock);

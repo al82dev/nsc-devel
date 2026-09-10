@@ -274,6 +274,10 @@ generadas sin confundirlas con fuente del usuario.
 
 ### PDB-P3 — Funclets SEH y excepciones completas
 
+**Estado del productor / Producer status:** implementado; ver
+\`mkdown/178_1_0_1_seh_pdb.md\`. Los handlers conservan líneas stoppable después
+de la legalización SEH de O0 y el gate valida la metadata física de unwind.
+
 **Objetivo / Goal:** hacer depurables try/catch/finally, cleanup y throw.
 
 - identificar filtros, catchpads, cleanuppads y continuaciones producidas;
@@ -378,7 +382,7 @@ virtual/de interfaz y obtener fuente/línea correctas después de optimizar.
 | \`NSD-20\` NSLink PDB/RSDS | Sigue bloqueado fuera de este repo |
 | \`NSD-21\` confianza de símbolos | Checksums/remapping cerrados en el productor; aceptación del consumidor diferida a PDB-P7 |
 | \`NSD-22\` breakpoints fuente | Desbloqueado para fixture lld-link |
-| \`NSD-23\` stepping fuente | Parcialmente desbloqueado; interfaces cubiertas en el productor, SEH/O2 requieren más cobertura |
+| \`NSD-23\` stepping fuente | Interfaces y SEH cubiertos en el productor; aceptación interactiva diferida a PDB-P7 |
 | \`NSD-25\` scopes/locales | Desbloqueado para la superficie del fixture |
 | \`NSD-26\` tipos | Parcialmente desbloqueado; tipos completos pendientes |
 
@@ -462,9 +466,9 @@ debugger:
 4. casos de breakpoint, stack y excepción;
 5. esta matriz de estado actualizada.
 
-PDB-P1 y PDB-P2 ya quedaron implementados del lado productor después del corte. La aceptación
-interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P3 (funclets SEH y
-excepciones completas).
+PDB-P1, PDB-P2 y PDB-P3 ya quedaron implementados del lado productor después del corte. La
+aceptación interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P4
+(tipos NativeSharp y closures completos).
 
 ## 15. Mensaje de commit de este handover / Commit message for this handover
 

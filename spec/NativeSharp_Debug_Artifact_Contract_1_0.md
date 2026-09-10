@@ -69,6 +69,13 @@ shall not gain a wrapper merely to manufacture a debug frame. Its user-authored 
 a normal procedure, and inline table lookup remains attributed to the source call site. Only a
 real ABI receiver/signature adjustment may introduce an artificial thunk between those frames.
 
+Windows SEH pads and cleanup continuations that are physical ranges inside a user procedure shall
+remain part of that logical procedure; they shall not be published as invented user procedures.
+Synthesized typed-catch filters remain artificial procedures because they own executable behavior.
+At O0, any mandatory SEH legalization that promotes locals shall retain a stoppable source anchor
+for each nonempty catch body, and catch/finally/throw locations shall not be attributed wholesale
+to the enclosing `try` statement.
+
 ## NSC-DEBUG-005 — Source identity and reproducibility
 
 Source records shall use normalized paths and content checksums when the LLVM/CodeView producer

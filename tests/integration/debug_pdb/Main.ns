@@ -12,6 +12,7 @@ namespace DebugFixture
     delegate void Changed(int value);
 
     public class DebugProblem : Exception { }
+    public class OtherProblem : Exception { }
 
     public class GeneratedState
     {
@@ -25,6 +26,19 @@ namespace DebugFixture
         ~Resource()
         {
             Value = 0;
+        }
+    }
+
+    public class EhState
+    {
+        public static int Destructions = 0;
+    }
+
+    public class UnwindResource
+    {
+        ~UnwindResource()
+        {
+            EhState.Destructions = EhState.Destructions + 1;
         }
     }
 
@@ -139,6 +153,35 @@ namespace DebugFixture
             return GeneratedState.Seed;
         }
 
+        public static int ExerciseEh()
+        {
+            EhState.Destructions = 0;
+            int value = 0;
+            try
+            {
+                raii UnwindResource guard = new UnwindResource();
+                value = MaybeThrow(true);
+            }
+            catch (DebugProblem problem)
+            {
+                value = 40;
+            }
+            finally
+            {
+                value = value + 1;
+            }
+            try
+            {
+                OtherProblem problem = new OtherProblem();
+                throw problem;
+            }
+            catch
+            {
+                value = value + 0;
+            }
+            return value + EhState.Destructions;
+        }
+
         public static export extern C int ExportedIdentity(int value)
         {
             return value;
@@ -177,14 +220,7 @@ namespace DebugFixture
             answer = SumWide(wide);
             raii Resource resource = new Resource();
             resource.Value = answer;
-            try
-            {
-                answer = MaybeThrow(false);
-            }
-            catch (DebugProblem problem)
-            {
-                answer = 0;
-            }
+            answer = ExerciseEh();
             answer = resource.Value;
             delete handler;
             delete dispatch;

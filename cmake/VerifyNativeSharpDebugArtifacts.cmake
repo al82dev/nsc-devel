@@ -137,6 +137,8 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Sum" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.MakeWide`" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.SumWide`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.ExerciseEh`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.UnwindResource\\.~UnwindResource`" OR
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`[^`]*Increment[^`]*__c_boundary`" OR
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`ExportedIdentity`" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.GeneratedState\\.cctor \\[generated\\]`" OR
@@ -181,9 +183,12 @@ foreach(level IN ITEMS O0 O2)
     if(NOT unwind_result EQUAL 0 OR
        NOT unwind_dump MATCHES "Name: \\.pdata" OR
        NOT unwind_dump MATCHES "RuntimeFunction" OR
-       NOT unwind_dump MATCHES "UnwindInfoAddress")
+       NOT unwind_dump MATCHES "UnwindInfoAddress" OR
+       NOT unwind_dump MATCHES "ExceptionHandler" OR
+       NOT unwind_dump MATCHES "TerminateHandler" OR
+       NOT unwind_dump MATCHES "Handler:")
         message(FATAL_ERROR
-            "${level} PE is missing physical Win64 .pdata/xdata unwind coverage for dispatch frames\n"
+            "${level} PE is missing physical Win64 unwind coverage for dispatch or SEH frames\n"
             "${unwind_dump}\n${unwind_error}")
     endif()
     if(level STREQUAL "O0" AND
@@ -204,8 +209,8 @@ foreach(level IN ITEMS O0 O2)
        NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/left/Shared\\.ns \\(SHA-256:[ \n\r]+${left_source_sha256}\\)" OR
        NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/right/Shared\\.ns \\(SHA-256:[ \n\r]+${right_source_sha256}\\)" OR
        lines_dump MATCHES "NSC-DEVEL-BRANCHES" OR
-       NOT lines_dump MATCHES "[ \n]95 [0-9A-F]+" OR
-       NOT lines_dump MATCHES "[ \n]191 [0-9A-F]+")
+       NOT lines_dump MATCHES "[ \n]109 [0-9A-F]+" OR
+       NOT lines_dump MATCHES "[ \n]227 [0-9A-F]+")
         set(lines_valid FALSE)
     endif()
     if(NOT lines_valid)
@@ -214,12 +219,19 @@ foreach(level IN ITEMS O0 O2)
             "${lines_dump}\n${lines_error}")
     endif()
     if(level STREQUAL "O0" AND
-       (NOT lines_dump MATCHES "[ \n]166 [0-9A-F]+" OR
+       (NOT lines_dump MATCHES "[ \n]209 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]210 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]219 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]220 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]41 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]163 [0-9A-F]+" OR
         NOT lines_dump MATCHES "[ \n]167 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]171 [0-9A-F]+" OR
         NOT lines_dump MATCHES "[ \n]176 [0-9A-F]+" OR
-        NOT lines_dump MATCHES "[ \n]177 [0-9A-F]+"))
+        NOT lines_dump MATCHES "[ \n]180 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]182 [0-9A-F]+"))
         message(FATAL_ERROR
-            "O0 PDB is missing virtual/interface or direct/indirect aggregate call lines\n"
+            "O0 PDB is missing dispatch, aggregate ABI, throw/catch/finally or unwind-destruction lines\n"
             "${lines_dump}\n${lines_error}")
     endif()
 endforeach()
