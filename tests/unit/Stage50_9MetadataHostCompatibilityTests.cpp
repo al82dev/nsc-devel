@@ -159,7 +159,7 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
     LibraryMetadata metadata;
     tests.expect(codec.read(outputPath, metadata, error),
         "NSMETA ownership contracts round-trip through the reader");
-    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 10,
+    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 11,
         "metadata reader preserves the current 1.11 format identity");
 
     const LibraryMetadataMember* plain = findMember(metadata, "Plain");
