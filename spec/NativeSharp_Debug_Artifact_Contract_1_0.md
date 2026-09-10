@@ -76,6 +76,17 @@ At O0, any mandatory SEH legalization that promotes locals shall retain a stoppa
 for each nonempty catch body, and catch/finally/throw locations shall not be attributed wholesale
 to the enclosing `try` statement.
 
+NativeSharp enums shall be emitted as enumerations with their declared underlying integer type and
+enumerators. Structs and unions shall use their authoritative physical size, alignment, field
+offsets and accessibility. Class references shall point to a named class type that describes the
+object layout, base class and instance fields; interfaces remain opaque references unless an
+authoritative object layout exists. Native arrays and strings shall expose their physical
+length-prefixed header and inline data tail. Managed delegates shall expose the four-pointer ABI-1
+cell (`Code`, `Receiver`, `ContextDestroy`, `CellFree`). Closed generic display names shall use a
+stable source-level spelling rather than the internal materialization hash. A captured value shall
+be described at its capture-cell value address when that address is materialized; an optimized-away
+capture shall not receive an invented location.
+
 ## NSC-DEBUG-005 — Source identity and reproducibility
 
 Source records shall use normalized paths and content checksums when the LLVM/CodeView producer

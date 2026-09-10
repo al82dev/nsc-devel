@@ -448,6 +448,7 @@ struct ProjectOopHirFunction final
     std::optional<std::size_t> lambdaOrdinal;
     bool hasClosureEnvironment = false;
     std::vector<std::string> captureTypeKeys;
+    std::vector<std::string> captureNames;
     std::vector<std::size_t> capturedLocalOrdinals;
     std::vector<std::size_t> capturedParameterOrdinals;
     bool capturesThisCell = false;

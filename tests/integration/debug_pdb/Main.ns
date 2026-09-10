@@ -221,7 +221,7 @@ namespace DebugFixture
             raii Resource resource = new Resource();
             resource.Value = answer;
             answer = ExerciseEh();
-            answer = resource.Value;
+            answer = TypeSurface.ExerciseTypes(resource.Value);
             delete handler;
             delete dispatch;
             return answer;

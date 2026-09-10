@@ -322,6 +322,25 @@ struct ProjectOopMirStructLayout final
     std::string typeKey;
     std::uint64_t size = 0;
     std::uint64_t alignment = 1;
+    bool isUnion = false;
+    std::uint64_t pack = 0;
+    bool hasExplicitFieldOffsets = false;
+    std::vector<ObjectFieldLayout> fields;
+};
+
+// Debug and other late consumers need the authoritative physical class layout without reaching
+// back into the mutable frontend pipeline.  This is the reference-shaped counterpart of
+// ProjectOopMirStructLayout: object size includes the descriptor header and inherited subobject;
+// fields carry their final byte offsets.
+struct ProjectOopMirClassLayout final
+{
+    std::size_t typeOrdinal = 0;
+    std::string typeKey;
+    std::uint64_t size = 0;
+    std::uint64_t alignment = 1;
+    std::uint64_t headerSize = 0;
+    std::optional<std::size_t> baseTypeOrdinal;
+    std::uint64_t baseSubobjectSize = 0;
     std::vector<ObjectFieldLayout> fields;
 };
 
@@ -458,6 +477,7 @@ struct ProjectOopMirFunction final
     std::optional<std::size_t> lambdaOrdinal;
     bool hasClosureEnvironment = false;
     std::vector<std::string> captureTypeKeys;
+    std::vector<std::string> captureNames;
     std::vector<std::size_t> capturedLocalOrdinals;
     std::vector<std::size_t> capturedParameterOrdinals;
     bool capturesThisCell = false;
@@ -489,6 +509,7 @@ public:
     std::span<const ProjectOopMirFieldInitializer> fieldInitializers() const noexcept;
     std::span<const ProjectOopMirStaticField> staticFields() const noexcept;
     std::span<const ProjectOopMirStructLayout> structLayouts() const noexcept;
+    std::span<const ProjectOopMirClassLayout> classLayouts() const noexcept;
     std::span<const ProjectOopMirDispatchTable> dispatchTables() const noexcept;
     const ProjectOopMirDispatchTable* dispatchTableForType(std::size_t typeOrdinal) const noexcept;
     const ProjectOopMirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
@@ -518,6 +539,7 @@ private:
     std::vector<ProjectOopMirFieldInitializer> fieldInitializers_;
     std::vector<ProjectOopMirStaticField> staticFields_;
     std::vector<ProjectOopMirStructLayout> structLayouts_;
+    std::vector<ProjectOopMirClassLayout> classLayouts_;
     std::vector<std::optional<std::size_t>> functionByMember_;
     std::vector<ProjectOopMirDispatchTable> dispatchTables_;
     std::vector<std::optional<std::size_t>> dispatchTableByType_;

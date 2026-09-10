@@ -295,6 +295,10 @@ y frame correctos en O0/O2.
 
 ### PDB-P4 — Tipos NativeSharp y closures completos
 
+**Estado del productor / Producer status:** implementado; ver
+\`mkdown/179_1_0_1_tipos_closures_pdb.md\`. El gate cubre enum, clase/herencia,
+struct/union, array/string, delegate, genérico cerrado y captura.
+
 **Objetivo / Goal:** pasar del fixture mínimo a valores representativos del
 lenguaje nativo.
 
@@ -384,7 +388,7 @@ virtual/de interfaz y obtener fuente/línea correctas después de optimizar.
 | \`NSD-22\` breakpoints fuente | Desbloqueado para fixture lld-link |
 | \`NSD-23\` stepping fuente | Interfaces y SEH cubiertos en el productor; aceptación interactiva diferida a PDB-P7 |
 | \`NSD-25\` scopes/locales | Desbloqueado para la superficie del fixture |
-| \`NSD-26\` tipos | Parcialmente desbloqueado; tipos completos pendientes |
+| \`NSD-26\` tipos | Tipos representativos y capturas cerrados en el productor; aceptación interactiva en PDB-P7 |
 
 ## 11. Evidencia del último punto estable / Last stable-point evidence
 
@@ -466,9 +470,9 @@ debugger:
 4. casos de breakpoint, stack y excepción;
 5. esta matriz de estado actualizada.
 
-PDB-P1, PDB-P2 y PDB-P3 ya quedaron implementados del lado productor después del corte. La
-aceptación interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P4
-(tipos NativeSharp y closures completos).
+PDB-P1 a PDB-P4 ya quedaron implementados del lado productor después del corte. La
+aceptación interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P5
+(fidelidad bajo optimización).
 
 ## 15. Mensaje de commit de este handover / Commit message for this handover
 

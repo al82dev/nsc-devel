@@ -812,6 +812,31 @@ private:
         return nullptr;
     }
 
+    std::string debugNamedDisplayName(const frontend::NamedTypeDeclaration& named) const
+    {
+        constexpr std::string_view specializationPrefix = "stage44-specialization:";
+        if (named.syntax == nullptr ||
+            !named.syntax->auxiliaryText().starts_with(specializationPrefix))
+            return named.identity.fullyQualifiedName();
+
+        std::string display =
+            named.syntax->auxiliaryText().substr(specializationPrefix.size());
+        // A specialization key starts with the project/module identity.  CodeView already scopes
+        // this compile unit to that module, so publish the NativeSharp namespace/type spelling.
+        if (const std::size_t module = display.find("::"); module != std::string::npos)
+            display.erase(0, module + 2);
+        // `Box`1<int>` is the canonical arity-bearing key.  The arity is identity machinery, not
+        // source syntax; the PDB display name is the closed spelling users wrote: `Box<int>`.
+        for (std::size_t tick = display.find('`'); tick != std::string::npos;
+             tick = display.find('`', tick))
+        {
+            std::size_t end = tick + 1;
+            while (end < display.size() && display[end] >= '0' && display[end] <= '9') ++end;
+            display.erase(tick, end - tick);
+        }
+        return display;
+    }
+
     static LLVMDIFlags debugMemberFlags(frontend::ClassMemberAccessibility accessibility) noexcept
     {
         switch (accessibility)
@@ -822,6 +847,183 @@ private:
             case frontend::ClassMemberAccessibility::Internal: return LLVMDIFlagZero;
         }
         return LLVMDIFlagZero;
+    }
+
+    LLVMMetadataRef debugClassPointee(
+        std::string_view typeKey,
+        const frontend::NamedTypeDeclaration& named,
+        const frontend::ProjectOopMirClassLayout& layout)
+    {
+        const std::string cacheKey(typeKey);
+        if (const auto cached = debugPointeeTypes_.find(cacheKey);
+            cached != debugPointeeTypes_.end())
+            return cached->second;
+
+        const std::string name = debugNamedDisplayName(named);
+        LLVMMetadataRef file = debugFile(named.range.begin());
+        const unsigned line = named.range.isValid()
+            ? sourceManager_->getPosition(named.range.begin()).line
+            : 0;
+        const std::string uniqueId = "nativesharp:class:" + named.identity.key();
+        LLVMMetadataRef temporary = LLVMDIBuilderCreateReplaceableCompositeType(
+            debugBuilder_, LLVMDWARFTagClassType, name.data(), name.size(),
+            debugCompileUnit_, file, line, 0, layout.size * 8,
+            static_cast<std::uint32_t>(layout.alignment * 8), LLVMDIFlagZero,
+            uniqueId.data(), uniqueId.size());
+        if (temporary == nullptr) return nullptr;
+        debugPointeeTypes_[cacheKey] = temporary;
+
+        LLVMMetadataRef pointer = LLVMDIBuilderCreatePointerType(
+            debugBuilder_, temporary, 64, 64, 0, name.data(), name.size());
+        if (pointer == nullptr) return nullptr;
+        debugTypes_[cacheKey] = pointer;
+
+        LLVMMetadataRef derivedFrom = nullptr;
+        if (layout.baseTypeOrdinal.has_value() &&
+            *layout.baseTypeOrdinal < nameLookup_.namedTypes().size())
+        {
+            const frontend::NamedTypeDeclaration& base =
+                nameLookup_.namedTypes()[*layout.baseTypeOrdinal];
+            const std::string baseKey = "type:" + base.identity.key();
+            (void)debugType(baseKey);
+            if (const auto found = debugPointeeTypes_.find(baseKey);
+                found != debugPointeeTypes_.end())
+                derivedFrom = found->second;
+        }
+
+        std::vector<LLVMMetadataRef> members;
+        members.reserve(layout.fields.size() + (derivedFrom != nullptr ? 1U : 0U));
+        if (derivedFrom != nullptr)
+        {
+            LLVMMetadataRef inheritance = LLVMDIBuilderCreateInheritance(
+                debugBuilder_, temporary, derivedFrom, 0, 0, LLVMDIFlagPublic);
+            if (inheritance != nullptr) members.push_back(inheritance);
+        }
+        for (const frontend::ObjectFieldLayout& field : layout.fields)
+        {
+            std::string fieldName = "field" + std::to_string(field.memberOrdinal);
+            LLVMMetadataRef fieldFile = file;
+            unsigned fieldLine = line;
+            LLVMDIFlags fieldFlags = LLVMDIFlagZero;
+            if (memberModel_ != nullptr && field.memberOrdinal < memberModel_->members().size())
+            {
+                const frontend::ClassMemberSymbol& member =
+                    memberModel_->members()[field.memberOrdinal];
+                fieldName = member.name;
+                fieldFlags = debugMemberFlags(member.accessibility);
+                if (member.range.isValid())
+                {
+                    fieldFile = debugFile(member.range.begin());
+                    fieldLine = sourceManager_->getPosition(member.range.begin()).line;
+                }
+            }
+            LLVMMetadataRef fieldType = debugType(field.typeKey);
+            if (fieldType == nullptr)
+                fieldType = LLVMDIBuilderCreateUnspecifiedType(
+                    debugBuilder_, field.typeKey.data(), field.typeKey.size());
+            LLVMMetadataRef member = LLVMDIBuilderCreateMemberType(
+                debugBuilder_, temporary, fieldName.data(), fieldName.size(), fieldFile,
+                fieldLine, field.size * 8,
+                static_cast<std::uint32_t>(field.alignment * 8), field.offset * 8,
+                fieldFlags, fieldType);
+            if (member != nullptr) members.push_back(member);
+        }
+
+        LLVMMetadataRef complete = LLVMDIBuilderCreateClassType(
+            debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+            layout.size * 8, static_cast<std::uint32_t>(layout.alignment * 8), 0,
+            LLVMDIFlagZero, derivedFrom, members.data(),
+            static_cast<unsigned>(members.size()), nullptr, nullptr,
+            uniqueId.data(), uniqueId.size());
+        if (complete == nullptr) return nullptr;
+        LLVMMetadataReplaceAllUsesWith(temporary, complete);
+        debugPointeeTypes_[cacheKey] = complete;
+        return complete;
+    }
+
+    LLVMMetadataRef debugHeaderReference(
+        std::string_view cacheKeyView,
+        std::string_view displayName,
+        std::string_view elementTypeKey)
+    {
+        const std::string cacheKey(cacheKeyView);
+        const auto cached = debugTypes_.find(cacheKey);
+        if (cached != debugTypes_.end()) return cached->second;
+
+        const std::string uniqueId = "nativesharp:header:" + cacheKey;
+        LLVMMetadataRef temporary = LLVMDIBuilderCreateReplaceableCompositeType(
+            debugBuilder_, LLVMDWARFTagStructureType, displayName.data(), displayName.size(),
+            debugCompileUnit_, nullptr, 0, 0, 64, 64, LLVMDIFlagZero,
+            uniqueId.data(), uniqueId.size());
+        if (temporary == nullptr) return nullptr;
+        LLVMMetadataRef pointer = LLVMDIBuilderCreatePointerType(
+            debugBuilder_, temporary, 64, 64, 0, displayName.data(), displayName.size());
+        if (pointer == nullptr) return nullptr;
+        debugTypes_[cacheKey] = pointer;
+        debugPointeeTypes_[cacheKey] = temporary;
+
+        LLVMMetadataRef lengthType = debugType("builtin:long");
+        LLVMMetadataRef elementType = debugType(elementTypeKey);
+        if (elementType == nullptr)
+            elementType = LLVMDIBuilderCreateUnspecifiedType(
+                debugBuilder_, elementTypeKey.data(), elementTypeKey.size());
+        LLVMMetadataRef subrange = LLVMDIBuilderGetOrCreateSubrange(debugBuilder_, 0, 0);
+        LLVMMetadataRef flexibleArray = LLVMDIBuilderCreateArrayType(
+            debugBuilder_, 0, 8, elementType, &subrange, 1);
+        LLVMMetadataRef members[] = {
+            LLVMDIBuilderCreateMemberType(
+                debugBuilder_, temporary, "Length", 6, nullptr, 0, 64, 64, 0,
+                LLVMDIFlagPublic, lengthType),
+            LLVMDIBuilderCreateMemberType(
+                debugBuilder_, temporary, "Data", 4, nullptr, 0, 0, 8, 64,
+                LLVMDIFlagPublic, flexibleArray)};
+        LLVMMetadataRef complete = LLVMDIBuilderCreateStructType(
+            debugBuilder_, debugCompileUnit_, displayName.data(), displayName.size(),
+            nullptr, 0, 64, 64, LLVMDIFlagZero, nullptr, members, 2, 0, nullptr,
+            uniqueId.data(), uniqueId.size());
+        if (complete == nullptr) return nullptr;
+        LLVMMetadataReplaceAllUsesWith(temporary, complete);
+        debugPointeeTypes_[cacheKey] = complete;
+        return pointer;
+    }
+
+    LLVMMetadataRef debugDelegateReference(
+        std::string_view typeKey,
+        const frontend::NamedTypeDeclaration& named)
+    {
+        const std::string cacheKey(typeKey);
+        const auto cached = debugTypes_.find(cacheKey);
+        if (cached != debugTypes_.end()) return cached->second;
+        const std::string name = debugNamedDisplayName(named);
+        const std::string cellName = name + ".delegate-cell";
+        const std::string uniqueId = "nativesharp:delegate:" + named.identity.key();
+        LLVMMetadataRef temporary = LLVMDIBuilderCreateReplaceableCompositeType(
+            debugBuilder_, LLVMDWARFTagStructureType, cellName.data(), cellName.size(),
+            debugCompileUnit_, debugFile(named.range.begin()), 0, 0, 256, 64,
+            LLVMDIFlagArtificial, uniqueId.data(), uniqueId.size());
+        if (temporary == nullptr) return nullptr;
+        LLVMMetadataRef pointerType = debugType("builtin:void*");
+        LLVMMetadataRef fields[] = {
+            LLVMDIBuilderCreateMemberType(debugBuilder_, temporary, "Code", 4, nullptr, 0,
+                64, 64, 0, LLVMDIFlagPublic, pointerType),
+            LLVMDIBuilderCreateMemberType(debugBuilder_, temporary, "Receiver", 8, nullptr, 0,
+                64, 64, 64, LLVMDIFlagPublic, pointerType),
+            LLVMDIBuilderCreateMemberType(debugBuilder_, temporary, "ContextDestroy", 14, nullptr, 0,
+                64, 64, 128, LLVMDIFlagPublic, pointerType),
+            LLVMDIBuilderCreateMemberType(debugBuilder_, temporary, "CellFree", 8, nullptr, 0,
+                64, 64, 192, LLVMDIFlagPublic, pointerType)};
+        LLVMMetadataRef complete = LLVMDIBuilderCreateStructType(
+            debugBuilder_, debugCompileUnit_, cellName.data(), cellName.size(), nullptr, 0,
+            256, 64, LLVMDIFlagArtificial, nullptr, fields, 4, 0, nullptr,
+            uniqueId.data(), uniqueId.size());
+        if (temporary == nullptr || complete == nullptr) return nullptr;
+        LLVMMetadataRef pointer = LLVMDIBuilderCreatePointerType(
+            debugBuilder_, complete, 64, 64, 0, name.data(), name.size());
+        if (pointer == nullptr) return nullptr;
+        LLVMMetadataReplaceAllUsesWith(temporary, complete);
+        debugTypes_[cacheKey] = pointer;
+        debugPointeeTypes_[cacheKey] = complete;
+        return pointer;
     }
 
     LLVMMetadataRef debugType(std::string_view typeKey)
@@ -877,14 +1079,36 @@ private:
         else if (const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey);
                  named != nullptr)
         {
-            const std::string name = named->identity.fullyQualifiedName();
+            const std::string name = debugNamedDisplayName(*named);
             if (const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(typeKey);
                 enumInfo != nullptr)
             {
-                type = basic(
-                    name, enumInfo->width,
+                std::vector<LLVMMetadataRef> enumerators;
+                if (memberModel_ != nullptr)
+                {
+                    for (const frontend::ClassMemberSymbol& member : memberModel_->members())
+                    {
+                        if (!member.isEnumConstant ||
+                            member.declaringTypeOrdinal !=
+                                static_cast<std::size_t>(named - nameLookup_.namedTypes().data()))
+                            continue;
+                        LLVMMetadataRef enumerator = LLVMDIBuilderCreateEnumerator(
+                            debugBuilder_, member.name.data(), member.name.size(),
+                            member.enumConstantValue, enumInfo->isSigned ? 0 : 1);
+                        if (enumerator != nullptr) enumerators.push_back(enumerator);
+                    }
+                }
+                LLVMMetadataRef underlying = basic(
+                    name + ".underlying", enumInfo->width,
                     enumInfo->isSigned ? LLVMDWARFTypeEncodingSigned
                                        : LLVMDWARFTypeEncodingUnsigned);
+                LLVMMetadataRef file = debugFile(named->range.begin());
+                const unsigned line = named->range.isValid()
+                    ? sourceManager_->getPosition(named->range.begin()).line : 0;
+                type = LLVMDIBuilderCreateEnumerationType(
+                    debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                    enumInfo->width, enumInfo->width, enumerators.data(),
+                    static_cast<unsigned>(enumerators.size()), underlying);
             }
             else if (const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
                      layout != nullptr)
@@ -936,16 +1160,37 @@ private:
                     if (member != nullptr) members.push_back(member);
                 }
 
-                LLVMMetadataRef complete = LLVMDIBuilderCreateStructType(
-                    debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
-                    layout->size * 8, static_cast<std::uint32_t>(layout->alignment * 8),
-                    LLVMDIFlagZero, nullptr, members.data(),
-                    static_cast<unsigned>(members.size()), 0, nullptr,
-                    uniqueId.data(), uniqueId.size());
+                LLVMMetadataRef complete = layout->isUnion
+                    ? LLVMDIBuilderCreateUnionType(
+                        debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                        layout->size * 8, static_cast<std::uint32_t>(layout->alignment * 8),
+                        LLVMDIFlagZero, members.data(), static_cast<unsigned>(members.size()),
+                        0, uniqueId.data(), uniqueId.size())
+                    : LLVMDIBuilderCreateStructType(
+                        debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                        layout->size * 8, static_cast<std::uint32_t>(layout->alignment * 8),
+                        LLVMDIFlagZero, nullptr, members.data(),
+                        static_cast<unsigned>(members.size()), 0, nullptr,
+                        uniqueId.data(), uniqueId.size());
                 if (complete == nullptr) return nullptr;
                 LLVMMetadataReplaceAllUsesWith(temporary, complete);
                 debugTypes_[cacheKey] = complete;
                 type = complete;
+            }
+            else if (named->kind == frontend::NamedTypeDeclarationKind::Class)
+            {
+                if (const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+                    layout != nullptr)
+                {
+                    LLVMMetadataRef pointee = debugClassPointee(typeKey, *named, *layout);
+                    const auto pointer = debugTypes_.find(cacheKey);
+                    type = pointee != nullptr && pointer != debugTypes_.end()
+                        ? pointer->second : nullptr;
+                }
+            }
+            else if (named->kind == frontend::NamedTypeDeclarationKind::Delegate)
+            {
+                type = debugDelegateReference(typeKey, *named);
             }
             else
             {
@@ -960,6 +1205,16 @@ private:
             const std::string name = typeKey == "builtin:string"
                 ? "string"
                 : std::string(typeKey);
+            if (typeKey == "builtin:string" || typeKey == "string-literal")
+                return debugHeaderReference(typeKey, name, "builtin:char");
+            if (frontend::ProjectTypeConversion::isNativeArray(typeKey))
+            {
+                const std::optional<std::string> element =
+                    frontend::ProjectTypeConversion::nativeArrayElementType(typeKey);
+                return debugHeaderReference(
+                    typeKey, name, element.has_value() ? std::string_view(*element)
+                                                      : std::string_view("builtin:void"));
+            }
             LLVMMetadataRef pointee = LLVMDIBuilderCreateUnspecifiedType(
                 debugBuilder_, name.data(), name.size());
             if (typeKey == "builtin:string" || typeKey == "string-literal" ||
@@ -3380,6 +3635,7 @@ private:
         currentDebugSubprogram_ = found->second.subprogram;
         currentDebugScope_ = currentDebugSubprogram_;
         debugDeclaredLocals_.clear();
+        debugDeclaredCaptures_.clear();
         currentDebugFileKey_ = 0;
         if (memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
             currentDebugFileKey_ = memberModel_->members()[function.memberOrdinal].fileId.value();
@@ -7462,7 +7718,42 @@ private:
         if (valueSize == 0 || valueAlignment == 0) return nullptr;
         const std::uint64_t valueOffset =
             ((8U + valueAlignment - 1U) / valueAlignment) * valueAlignment;
-        return byteOffset(cell, valueOffset, "closure.capture.value.addr");
+        LLVMValueRef address = byteOffset(cell, valueOffset, "closure.capture.value.addr");
+        const std::size_t capture = static_cast<std::size_t>(node->immediate);
+        if (debugInformation_ == DebugInformationKind::Full &&
+            currentDebugSubprogram_ != nullptr &&
+            debugDeclaredCaptures_.insert(capture).second)
+        {
+            const std::string name = capture < currentMirFunction_->captureNames.size() &&
+                    !currentMirFunction_->captureNames[capture].empty()
+                ? currentMirFunction_->captureNames[capture]
+                : "capture#" + std::to_string(capture);
+            LLVMMetadataRef type = debugType(currentMirFunction_->captureTypeKeys[capture]);
+            SourceRange range;
+            if (node->syntax != nullptr) range = node->syntax->range();
+            if (!range.isValid() && currentMirFunction_->body != nullptr &&
+                currentMirFunction_->body->syntax != nullptr)
+                range = currentMirFunction_->body->syntax->range();
+            if (type != nullptr && range.isValid())
+            {
+                LLVMMetadataRef file = debugFile(range.begin());
+                const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+                LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
+                    debugBuilder_, currentDebugSubprogram_, name.data(), name.size(), file,
+                    position.line, type, 1, LLVMDIFlagZero, 0);
+                LLVMMetadataRef expression =
+                    LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
+                LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+                    context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+                if (variable == nullptr || expression == nullptr || location == nullptr ||
+                    LLVMDIBuilderInsertDeclareRecordAtEnd(
+                        debugBuilder_, address, variable, expression, location,
+                        LLVMGetInsertBlock(builder_)) == nullptr)
+                    return failValue(error, "failed to emit debug storage for captured variable '" +
+                        name + "'");
+            }
+        }
+        return address;
     }
 
     LLVMValueRef lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -10247,6 +10538,15 @@ private:
         return nullptr;
     }
 
+    const frontend::ProjectOopMirClassLayout* classLayout(std::string_view typeKey) const noexcept
+    {
+        for (const frontend::ProjectOopMirClassLayout& layout : mirModel_.classLayouts())
+        {
+            if (layout.typeKey == typeKey) return &layout;
+        }
+        return nullptr;
+    }
+
     bool isStructValue(std::string_view typeKey) const noexcept
     {
         return structLayout(typeKey) != nullptr;
@@ -10523,7 +10823,9 @@ private:
     LLVMMetadataRef debugCompileUnit_ = nullptr;
     std::unordered_map<std::uint32_t, LLVMMetadataRef> debugFiles_;
     std::unordered_map<std::string, LLVMMetadataRef> debugTypes_;
+    std::unordered_map<std::string, LLVMMetadataRef> debugPointeeTypes_;
     std::unordered_set<std::size_t> debugDeclaredLocals_;
+    std::unordered_set<std::size_t> debugDeclaredCaptures_;
     LLVMValueRef trapFunction_ = nullptr;
     LLVMTypeRef trapFunctionType_ = nullptr;
     LLVMValueRef rttiClassTestFunction_ = nullptr;

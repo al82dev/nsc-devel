@@ -1117,7 +1117,10 @@ bool ProjectOopHirModel::build(
         function.parameterNames = lambda.parameterNames;
         function.parameterTypeKeys = lambda.parameterTypeKeys;
         for (const MethodLambdaCapture& capture : lambda.captures)
+        {
             function.captureTypeKeys.push_back(capture.typeKey);
+            function.captureNames.push_back(capture.name);
+        }
         for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel.locals().size(); ++localOrdinal)
         {
             const MethodLocalSymbol& local = methodBodyModel.locals()[localOrdinal];

@@ -665,7 +665,20 @@ bool ProjectOopMirModel::build(
     for (const StructValueLayout& layout : objectLayoutModel.structLayouts())
     {
         structLayouts_.push_back(ProjectOopMirStructLayout{
-            layout.typeOrdinal, layout.typeKey, layout.size, layout.alignment, layout.fields});
+            layout.typeOrdinal, layout.typeKey, layout.size, layout.alignment,
+            layout.isUnion, layout.pack, layout.hasExplicitFieldOffsets, layout.fields});
+    }
+    for (const ClassObjectLayout& layout : objectLayoutModel.classLayouts())
+    {
+        classLayouts_.push_back(ProjectOopMirClassLayout{
+            layout.typeOrdinal,
+            layout.typeKey,
+            layout.size,
+            layout.alignment,
+            layout.headerSize,
+            layout.baseTypeOrdinal,
+            layout.baseSubobjectSize,
+            layout.fields});
     }
     functionByMember_.resize(memberModel.members().size());
     dispatchTableByType_.resize(nameLookup.namedTypes().size());
@@ -881,6 +894,7 @@ bool ProjectOopMirModel::build(
         function.lambdaOrdinal = source.lambdaOrdinal;
         function.hasClosureEnvironment = source.hasClosureEnvironment;
         function.captureTypeKeys = source.captureTypeKeys;
+        function.captureNames = source.captureNames;
         function.capturedLocalOrdinals = source.capturedLocalOrdinals;
         function.capturedParameterOrdinals = source.capturedParameterOrdinals;
         function.capturesThisCell = source.capturesThisCell;
@@ -1035,6 +1049,11 @@ std::span<const ProjectOopMirStaticField> ProjectOopMirModel::staticFields() con
 std::span<const ProjectOopMirStructLayout> ProjectOopMirModel::structLayouts() const noexcept
 {
     return structLayouts_;
+}
+
+std::span<const ProjectOopMirClassLayout> ProjectOopMirModel::classLayouts() const noexcept
+{
+    return classLayouts_;
 }
 
 std::span<const ProjectOopMirDispatchTable> ProjectOopMirModel::dispatchTables() const noexcept

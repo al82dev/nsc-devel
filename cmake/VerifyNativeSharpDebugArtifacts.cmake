@@ -21,9 +21,11 @@ set(debug_prefix_map "-fdebug-prefix-map=${debug_source_directory}=/_/nativeshar
 file(SHA256 "${debug_source_directory}/Main.ns" main_source_sha256)
 file(SHA256 "${debug_source_directory}/left/Shared.ns" left_source_sha256)
 file(SHA256 "${debug_source_directory}/right/Shared.ns" right_source_sha256)
+file(SHA256 "${debug_source_directory}/Types.ns" types_source_sha256)
 string(TOUPPER "${main_source_sha256}" main_source_sha256)
 string(TOUPPER "${left_source_sha256}" left_source_sha256)
 string(TOUPPER "${right_source_sha256}" right_source_sha256)
+string(TOUPPER "${types_source_sha256}" types_source_sha256)
 
 set(line_object "${DEBUG_OUTPUT_DIR}/debug_lines.obj")
 execute_process(
@@ -157,6 +159,15 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "type=0x0074 \\(int\\), flags = param" OR
        NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.Pair" OR
        NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.WideValue" OR
+       NOT pdb_dump MATCHES "LF_ENUM[^\n]*DebugFixture\\.DebugMode" OR
+       NOT pdb_dump MATCHES "LF_ENUMERATE[^\n]*Answer = 42" OR
+       NOT pdb_dump MATCHES "LF_CLASS[^\n]*DebugFixture\\.DerivedRecord" OR
+       NOT pdb_dump MATCHES "LF_BCLASS" OR
+       NOT pdb_dump MATCHES "LF_UNION[^\n]*DebugFixture\\.NumberBits" OR
+       NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*`string`" OR
+       NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*`builtin:int\\[\\]`" OR
+       NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.Reader\\.delegate-cell" OR
+       NOT pdb_dump MATCHES "DebugFixture\\.Box<int>" OR
        NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Left`[^\n]*offset = 0[^\n]*attrs = public" OR
        NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Right`[^\n]*offset = 4[^\n]*attrs = public" OR
        NOT pdb_dump MATCHES "sizeof 8" OR
@@ -164,6 +175,16 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "int \\(DebugFixture\\.Pair\\)" OR
        NOT pdb_dump MATCHES "DebugFixture\\.WideValue \\(int, int" OR
        NOT pdb_dump MATCHES "int \\(DebugFixture\\.WideValue\\)" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`BaseValue`[^\n]*offset = 8" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`DerivedValue`[^\n]*offset = 16" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Whole`[^\n]*offset = 0" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Real`[^\n]*offset = 0" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Length`[^\n]*offset = 0" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Data`[^\n]*offset = 8" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Code`[^\n]*offset = 0" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Receiver`[^\n]*offset = 8" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`ContextDestroy`[^\n]*offset = 16" OR
+       NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`CellFree`[^\n]*offset = 24" OR
        NOT pdb_dump MATCHES "S_DEFRANGE")
         message(FATAL_ERROR
             "${level} PDB is missing debug summary, functions, variables, types or ranges\n"
@@ -208,6 +229,7 @@ foreach(level IN ITEMS O0 O2)
        NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/Main\\.ns \\(SHA-256:[ \n\r]+${main_source_sha256}\\)" OR
        NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/left/Shared\\.ns \\(SHA-256:[ \n\r]+${left_source_sha256}\\)" OR
        NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/right/Shared\\.ns \\(SHA-256:[ \n\r]+${right_source_sha256}\\)" OR
+       NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/Types\\.ns \\(SHA-256:[ \n\r]+${types_source_sha256}\\)" OR
        lines_dump MATCHES "NSC-DEVEL-BRANCHES" OR
        NOT lines_dump MATCHES "[ \n]109 [0-9A-F]+" OR
        NOT lines_dump MATCHES "[ \n]227 [0-9A-F]+")
@@ -233,6 +255,25 @@ foreach(level IN ITEMS O0 O2)
         message(FATAL_ERROR
             "O0 PDB is missing dispatch, aggregate ABI, throw/catch/finally or unwind-destruction lines\n"
             "${lines_dump}\n${lines_error}")
+    endif()
+    if(level STREQUAL "O0" AND
+       (NOT pdb_dump MATCHES "S_LOCAL[^\n]*`label`[\n\r ]+type=[^\n]*string" OR
+        NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`mode`" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`values`" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`derived`" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`box`" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`bits`" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`typedReader`" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`capturedTypeValue`" OR
+        NOT lines_dump MATCHES "[ \n]34 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]40 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]46 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]50 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]52 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]58 [0-9A-F]+"))
+        message(FATAL_ERROR
+            "O0 PDB is missing representative NativeSharp types, captures or type-surface lines\n"
+            "${pdb_dump}\n${pdb_error}\n${lines_dump}\n${lines_error}")
     endif()
 endforeach()
 

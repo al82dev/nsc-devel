@@ -81,6 +81,7 @@ enum LLVMDIFlags
     LLVMDIFlagThunk = 1 << 25,
 };
 
+constexpr unsigned LLVMDWARFTagClassType = 0x02;
 constexpr unsigned LLVMDWARFTagStructureType = 0x13;
 
 using LLVMDWARFTypeEncoding = unsigned;
@@ -342,6 +343,75 @@ LLVMMetadataRef LLVMDIBuilderCreatePointerType(
     unsigned addressSpace,
     const char* name,
     std::size_t nameLength);
+LLVMMetadataRef LLVMDIBuilderCreateEnumerator(
+    LLVMDIBuilderRef builder,
+    const char* name,
+    std::size_t nameLength,
+    std::int64_t value,
+    LLVMBool isUnsigned);
+LLVMMetadataRef LLVMDIBuilderCreateEnumerationType(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    LLVMMetadataRef* elements,
+    unsigned elementCount,
+    LLVMMetadataRef classType);
+LLVMMetadataRef LLVMDIBuilderCreateUnionType(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    LLVMDIFlags flags,
+    LLVMMetadataRef* elements,
+    unsigned elementCount,
+    unsigned runtimeLanguage,
+    const char* uniqueId,
+    std::size_t uniqueIdLength);
+LLVMMetadataRef LLVMDIBuilderGetOrCreateSubrange(
+    LLVMDIBuilderRef builder,
+    std::int64_t lowerBound,
+    std::int64_t count);
+LLVMMetadataRef LLVMDIBuilderCreateArrayType(
+    LLVMDIBuilderRef builder,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    LLVMMetadataRef elementType,
+    LLVMMetadataRef* subscripts,
+    unsigned subscriptCount);
+LLVMMetadataRef LLVMDIBuilderCreateClassType(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef scope,
+    const char* name,
+    std::size_t nameLength,
+    LLVMMetadataRef file,
+    unsigned line,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    std::uint64_t offsetInBits,
+    LLVMDIFlags flags,
+    LLVMMetadataRef derivedFrom,
+    LLVMMetadataRef* elements,
+    unsigned elementCount,
+    LLVMMetadataRef vtableHolder,
+    LLVMMetadataRef templateParameters,
+    const char* uniqueId,
+    std::size_t uniqueIdLength);
+LLVMMetadataRef LLVMDIBuilderCreateInheritance(
+    LLVMDIBuilderRef builder,
+    LLVMMetadataRef type,
+    LLVMMetadataRef baseType,
+    std::uint64_t baseOffset,
+    std::uint32_t virtualBasePointerOffset,
+    LLVMDIFlags flags);
 LLVMMetadataRef LLVMDIBuilderCreateStructType(
     LLVMDIBuilderRef builder,
     LLVMMetadataRef scope,
