@@ -68,6 +68,7 @@
 #include <bit>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -110,7 +111,8 @@ constexpr std::array<LayoutRow, 15> kLayoutRows = {{{"bool", BuiltinLayoutKind::
 
 std::string foldedPathKey(const std::filesystem::path &path)
 {
-    std::string key = path.lexically_normal().generic_string();
+    const std::u8string encoded = path.lexically_normal().generic_u8string();
+    std::string key(reinterpret_cast<const char *>(encoded.data()), encoded.size());
     std::transform(key.begin(), key.end(), key.begin(), [](unsigned char value) {
         return static_cast<char>(std::tolower(value));
     });
@@ -1392,6 +1394,126 @@ bool verifyLinkedRuntimeLibraries(
     }
     return true;
 }
+
+std::filesystem::path pathFromUtf8(std::string_view value)
+{
+    const std::u8string encoded(reinterpret_cast<const char8_t *>(value.data()), value.size());
+    return std::filesystem::path(encoded);
+}
+
+bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right)
+{
+    std::error_code sizeError;
+    const std::uintmax_t leftSize = std::filesystem::file_size(left, sizeError);
+    if (sizeError) return false;
+    const std::uintmax_t rightSize = std::filesystem::file_size(right, sizeError);
+    if (sizeError || leftSize != rightSize) return false;
+
+    std::ifstream leftStream(left, std::ios::binary);
+    std::ifstream rightStream(right, std::ios::binary);
+    std::array<char, 64 * 1024> leftBuffer{};
+    std::array<char, 64 * 1024> rightBuffer{};
+    while (leftStream && rightStream)
+    {
+        leftStream.read(leftBuffer.data(), static_cast<std::streamsize>(leftBuffer.size()));
+        rightStream.read(rightBuffer.data(), static_cast<std::streamsize>(rightBuffer.size()));
+        const std::streamsize count = leftStream.gcount();
+        if (count != rightStream.gcount() ||
+            !std::equal(leftBuffer.begin(), leftBuffer.begin() + count, rightBuffer.begin()))
+        {
+            return false;
+        }
+    }
+    return leftStream.eof() && rightStream.eof();
+}
+
+bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
+                           const std::filesystem::path &destination,
+                           std::vector<std::filesystem::path> &copiedFiles,
+                           std::string &error)
+{
+    // Packaging is deliberately rooted in explicit LibraryReference runtimes.  A
+    // dependency is followed only when the PE names it and a sibling DLL with that
+    // exact name exists; no PATH lookup or directory scan is performed.
+    std::vector<std::filesystem::path> closure;
+    std::unordered_map<std::string, std::filesystem::path> owners;
+    auto addRuntime = [&](const std::filesystem::path &runtime) {
+        const std::string name = foldedName(runtime.filename().string());
+        const auto owner = owners.find(name);
+        if (owner != owners.end())
+        {
+            if (foldedPathKey(owner->second) != foldedPathKey(runtime))
+            {
+                error = "runtime package contains different DLLs named '" + runtime.filename().string() + "': '" +
+                        owner->second.string() + "' and '" + runtime.string() + "'";
+                return false;
+            }
+            return true;
+        }
+        owners.emplace(name, runtime);
+        closure.push_back(runtime);
+        return true;
+    };
+
+    for (const std::filesystem::path &runtime : runtimeLibraries)
+    {
+        if (!addRuntime(runtime)) return false;
+    }
+
+    for (std::size_t index = 0; index < closure.size(); ++index)
+    {
+        linker::PeExecutableVerifier verifier;
+        if (!verifier.verifyDynamicLibrary(closure[index]))
+        {
+            error = "runtime package dependency '" + closure[index].string() + "' is not a valid AMD64 DLL: " +
+                    verifier.error();
+            return false;
+        }
+        for (const std::string &importedName : verifier.info().importedLibraries)
+        {
+            const std::filesystem::path sibling = closure[index].parent_path() / importedName;
+            std::error_code existsError;
+            if (!std::filesystem::is_regular_file(sibling, existsError)) continue;
+            if (!addRuntime(sibling)) return false;
+        }
+    }
+
+    const std::filesystem::path packageDirectory = destination.parent_path();
+    for (const std::filesystem::path &source : closure)
+    {
+        const std::filesystem::path target = packageDirectory / source.filename();
+        std::error_code equivalentError;
+        if (std::filesystem::equivalent(source, target, equivalentError) && !equivalentError) continue;
+        std::error_code existsError;
+        if (std::filesystem::exists(target, existsError))
+        {
+            if (!existsError && filesHaveEqualContents(source, target)) continue;
+            error = "runtime package destination already contains a different '" + target.filename().string() +
+                    "': '" + target.string() + "'";
+            return false;
+        }
+        std::error_code copyError;
+        std::filesystem::copy_file(source, target, std::filesystem::copy_options::none, copyError);
+        if (copyError)
+        {
+            error = "cannot package runtime '" + source.string() + "' as '" + target.string() + "': " +
+                    copyError.message();
+            return false;
+        }
+        copiedFiles.push_back(target);
+    }
+    return true;
+}
+
+void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles)
+{
+    std::error_code removeError;
+    for (auto iterator = copiedFiles.rbegin(); iterator != copiedFiles.rend(); ++iterator)
+    {
+        std::filesystem::remove(*iterator, removeError);
+        removeError.clear();
+    }
+}
 } // namespace
 
 ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
@@ -2175,7 +2297,7 @@ ExitCode Driver::runCodeGeneration(std::string_view action,
     const llvm_backend::LlvmCodeGenFileType fileType = action == "--emit-obj"
                                                            ? llvm_backend::LlvmCodeGenFileType::Object
                                                            : llvm_backend::LlvmCodeGenFileType::Assembly;
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     std::string emissionError;
     if (!targetMachine->emit(*llvmModule, destination, fileType, emissionError))
     {
@@ -2302,7 +2424,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     linker::WindowsExecutableBuilder builder;
     builder.setSubsystem(subsystem);
     std::string buildError;
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!builder.build(*module, destination, optimizationLevel, buildError))
     {
         error << "nsc: error: Windows executable generation failed: " << buildError << '\n';
@@ -2789,7 +2911,7 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
         return ExitCode::CompilationError;
     }
 
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!targetMachine->emit(*module, destination, llvm_backend::LlvmCodeGenFileType::Object, targetError))
     {
         error << "nsc: error: " << targetError << '\n';
@@ -2969,7 +3091,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!builder.build(*module, destination, optimizationLevel, entryFunction->mangledName, buildError))
     {
         error << "nsc: error: OOP Windows executable generation failed: " << buildError << '\n';
@@ -2982,6 +3104,15 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
+    std::vector<std::filesystem::path> packagedRuntimes;
+    if (!packageRuntimeClosure(runtimeLibraries, destination, packagedRuntimes, referenceError))
+    {
+        removePackagedFiles(packagedRuntimes);
+        std::error_code removeError;
+        std::filesystem::remove(destination, removeError);
+        error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
 
     output << "project OOP PE executable emission: ok\n"
            << "entry-symbol: " << entryFunction->mangledName << '\n'
@@ -2991,6 +3122,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
+           << "packaged-runtimes: " << packagedRuntimes.size() << '\n'
            << "sections: " << builder.info().sectionCount << '\n'
            << "entry-rva: " << builder.info().entryPointRva << '\n'
            << "exception-directory-rva: " << builder.info().exceptionDirectoryRva << '\n'
@@ -3072,7 +3204,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(referencedLibraries);
     std::string buildError;
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!builder.buildStatic(*module, destination, optimizationLevel, buildError))
     {
         error << "nsc: error: NativeSharp static-library generation failed: " << buildError << '\n';
@@ -3225,7 +3357,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         return ExitCode::CompilationError;
     }
 
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     std::filesystem::path importLibrary = destination;
     importLibrary.replace_extension(".lib");
     if (importLibrary == destination)
@@ -3287,11 +3419,25 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         return ExitCode::CompilationError;
     }
 
+    std::vector<std::filesystem::path> packagedRuntimes;
+    if (!packageRuntimeClosure(runtimeLibraries, destination, packagedRuntimes, referenceError))
+    {
+        removePackagedFiles(packagedRuntimes);
+        std::error_code removeError;
+        std::filesystem::remove(destination, removeError);
+        std::filesystem::remove(importLibrary, removeError);
+        std::filesystem::remove(headerDestination, removeError);
+        std::filesystem::remove(metadataDestination, removeError);
+        error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
+        return ExitCode::CompilationError;
+    }
+
     output << "project OOP DLL emission: ok\n"
            << "format: PE32+ DLL\n"
            << "machine: AMD64 (0x8664)\n"
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
+           << "packaged-runtimes: " << packagedRuntimes.size() << '\n'
            << "import-library: " << importLibrary.generic_string() << '\n'
            << "host-header: " << headerDestination.generic_string() << '\n'
            << "library-metadata: " << metadataDestination.generic_string() << '\n'
@@ -3344,7 +3490,7 @@ ExitCode Driver::runProjectHostHeaderGeneration(
 
     interop::CHeaderGenerator generator;
     std::string generationError;
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!generator.writeHeader(compilation, destination, generationError))
     {
         error << "nsc: error: Stage 48.1 C header generation failed: " << generationError << '\n';
@@ -3393,7 +3539,7 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
 
     interop::LibraryMetadataCodec codec;
     std::string metadataError;
-    const std::filesystem::path destination(outputPath);
+    const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!codec.write(compilation, destination, metadataError))
     {
         error << "nsc: error: Stage 48.2 metadata generation failed: " << metadataError << '\n';

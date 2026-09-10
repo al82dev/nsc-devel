@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -33,6 +34,33 @@ using nativesharp::linker::LldLinker;
 using nativesharp::linker::PeExecutableVerifier;
 using nativesharp::runtime::WindowsRuntimeBuilder;
 using nativesharp::tests::TestContext;
+
+std::string utf8Path(const std::filesystem::path& path)
+{
+    const std::u8string value = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(value.data()), value.size());
+}
+
+bool usesNsLinker()
+{
+    std::string value;
+#ifdef _WIN32
+    char* linker = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&linker, &length, "NSC_LLD_LINK") == 0 && linker != nullptr)
+    {
+        value.assign(linker);
+        std::free(linker);
+    }
+#else
+    if (const char* linker = std::getenv("NSC_LLD_LINK"); linker != nullptr) value.assign(linker);
+#endif
+    if (value.empty()) return false;
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value.find("nslink") != std::string::npos;
+}
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
 {
@@ -64,8 +92,8 @@ ExitCode emitLibrary(std::string_view action,
     Driver driver;
     std::ostringstream out;
     std::ostringstream err;
-    const std::string projectText = project.string();
-    const std::string outputText = outputPath.string();
+    const std::string projectText = utf8Path(project);
+    const std::string outputText = utf8Path(outputPath);
     ExitCode result = ExitCode::CommandLineError;
     if (optimize)
     {
@@ -131,7 +159,7 @@ bool contains(const std::span<const std::string> values, std::string_view expect
 int runExecutable(const std::filesystem::path& path)
 {
 #ifdef _WIN32
-    return std::system(("\"" + path.string() + "\"").c_str());
+    return _wsystem((L"\"" + path.wstring() + L"\"").c_str());
 #else
     static_cast<void>(path);
     return 0;
@@ -2014,8 +2042,8 @@ namespace Precompiled
               "<Project><PropertyGroup><Name>CompositeDllProducer</Name>"
               "<OutputType>SharedLibrary</OutputType></PropertyGroup><ItemGroup>"
               "<Compile Include=\"**/*.ns\"/>"
-              "<LibraryReference "
-              "Include=\"../../PrecompiledStatic/Producer/NativeMath.lib\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+              "Runtime=\"../Producer/NativeMath.dll\"/>"
               "</ItemGroup></Project>");
     output.clear();
     error.clear();
@@ -2027,9 +2055,11 @@ namespace Precompiled
                                                     error,
                                                     true);
     tests.expect(compositeDllResult == ExitCode::Success,
-                 "DLL producer consumes a static nominal dependency without "
+                 "DLL producer consumes a dynamic nominal dependency without "
                  "source sharing (" +
                      error + ")");
+    tests.expect(std::filesystem::exists(compositeDllProducer / "NativeMath.dll"),
+                 "DLL packaging places the explicitly imported producer runtime beside the dependent DLL");
 
     const auto compositeDllConsumer = dllRoot / "CompositeConsumer";
     writeFile(compositeDllConsumer / "Main.ns", R"NS(
@@ -2049,8 +2079,12 @@ public class Program
     {
         output.clear();
         error.clear();
-        const auto executable =
-            compositeDllProducer / (optimize ? "CompositeConsumerO2.exe" : "CompositeConsumerO0.exe");
+        const auto packageRoot = usesNsLinker()
+                                     ? root / "package_outside_checkout"
+                                     : root / std::filesystem::path(L"paquete_áé_运行");
+        const auto packageDirectory = packageRoot / (optimize ? "O2" : "O0");
+        std::filesystem::create_directories(packageDirectory);
+        const auto executable = packageDirectory / "CompositeConsumer.exe";
         const ExitCode result = emitLibrary("--emit-project-oop-exe",
                                             compositeDllConsumer / "CompositeDllConsumer.nsproj",
                                             executable,
@@ -2065,8 +2099,12 @@ public class Program
         tests.expect(result == ExitCode::Success && compositeConsumerVerifier.verify(executable) &&
                          contains(compositeConsumerVerifier.info().importedLibraries, "CompositeNative.dll") &&
                          !contains(compositeConsumerVerifier.info().importedLibraries, "NativeMath.dll"),
-                     "the final PE imports the top-level DLL, while its NativeMath "
-                     "dependency stays static");
+                     "the final PE imports only the top-level DLL while its private NativeMath dependency stays transitive");
+        tests.expect(result == ExitCode::Success &&
+                         std::filesystem::exists(packageDirectory / "CompositeNative.dll") &&
+                         std::filesystem::exists(packageDirectory / "NativeMath.dll"),
+                     std::string("runtime packaging follows the exact PE dependency closure into an out-of-checkout path at ") +
+                         (optimize ? "O2" : "O0"));
 #ifdef _WIN32
         if (result == ExitCode::Success)
         {
@@ -2091,6 +2129,55 @@ public class Other
         emitLibrary("--emit-project-oop-dll", wrongProducer / "WrongProducer.nsproj", wrongDll, output, error, true) ==
             ExitCode::Success,
         "mismatched-runtime negative fixture builds its own valid DLL");
+
+    const auto basenameProducer = dllRoot / "BasenameCollisionProducer";
+    writeProject(basenameProducer, "BasenameCollisionProducer", "SharedLibrary", R"NS(
+namespace Collision
+{
+    public class Service
+    {
+        public static export extern C int OtherAnswer() { return 42; }
+    }
+}
+)NS");
+    output.clear();
+    error.clear();
+    const auto collidingDll = basenameProducer / "NativeMath.dll";
+    tests.expect(emitLibrary("--emit-project-oop-dll",
+                             basenameProducer / "BasenameCollisionProducer.nsproj",
+                             collidingDll,
+                             output,
+                             error,
+                             true) == ExitCode::Success,
+                 "basename-collision fixture emits a second valid NativeMath.dll with a distinct module contract");
+
+    const auto basenameConsumer = dllRoot / "BasenameCollisionConsumer";
+    writeFile(basenameConsumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main() { return Precompiled.Math.Add(20, 22); }
+}
+)NS");
+    writeFile(basenameConsumer / "BasenameCollisionConsumer.nsproj",
+              "<Project><PropertyGroup><Name>BasenameCollisionConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+              "Runtime=\"../Producer/NativeMath.dll\"/>"
+              "<LibraryReference Include=\"../BasenameCollisionProducer/NativeMath.lib\" "
+              "Runtime=\"../BasenameCollisionProducer/NativeMath.dll\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    tests.expect(emitLibrary("--emit-project-oop-exe",
+                             basenameConsumer / "BasenameCollisionConsumer.nsproj",
+                             basenameConsumer / "BasenameCollisionConsumer.exe",
+                             output,
+                             error,
+                             true) == ExitCode::CompilationError,
+                 "two module contracts cannot claim distinct runtime files with the same DLL basename");
+    tests.expect(error.find("require different DLLs named 'NativeMath.dll'") != std::string::npos,
+                 "DLL basename collision is diagnosed before link and packaging");
 
     const auto wrongNativeArchiveConsumer = dllRoot / "WrongNativeArchiveConsumer";
     writeFile(wrongNativeArchiveConsumer / "Main.ns", R"NS(

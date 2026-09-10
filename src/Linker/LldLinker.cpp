@@ -83,17 +83,24 @@ bool keepLinkTemporaries()
 
 bool containsQuote(const std::filesystem::path& path)
 {
-    return path.string().find('"') != std::string::npos;
+    return path.native().find(static_cast<std::filesystem::path::value_type>('"')) !=
+           std::filesystem::path::string_type::npos;
+}
+
+std::string utf8Path(const std::filesystem::path& path)
+{
+    const std::u8string value = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(value.data()), value.size());
 }
 
 std::string responsePathArgument(std::string_view prefix, const std::filesystem::path& path)
 {
-    return std::string(prefix) + "\"" + path.string() + "\"";
+    return std::string(prefix) + "\"" + utf8Path(path) + "\"";
 }
 
 std::string responseFileArgument(const std::filesystem::path& path)
 {
-    return "\"" + path.string() + "\"";
+    return "\"" + utf8Path(path) + "\"";
 }
 
 #ifndef _WIN32
@@ -232,7 +239,7 @@ bool writeResponseFile(
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     if (!stream)
     {
-        error = "could not create lld-link response file: " + path.string();
+        error = "could not create lld-link response file: " + utf8Path(path);
         return false;
     }
     for (const std::string& argument : arguments)
@@ -241,7 +248,7 @@ bool writeResponseFile(
     }
     if (!stream)
     {
-        error = "failed while writing lld-link response file: " + path.string();
+        error = "failed while writing lld-link response file: " + utf8Path(path);
         return false;
     }
     return true;
@@ -488,10 +495,14 @@ bool LldLinker::createImportLibrary(
         return false;
     }
 
-    const std::filesystem::path definitionPath = outputPath.string() + ".def";
-    const std::filesystem::path responsePath = outputPath.string() + ".rsp";
-    const std::filesystem::path logPath = outputPath.string() + ".log";
-    const std::filesystem::path dummyPath = outputPath.string() + ".dummy.dll";
+    std::filesystem::path definitionPath = outputPath;
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    std::filesystem::path dummyPath = outputPath;
+    definitionPath += ".def";
+    responsePath += ".rsp";
+    logPath += ".log";
+    dummyPath += ".dummy.dll";
 
     std::ofstream definition(definitionPath, std::ios::binary | std::ios::trunc);
     if (!definition)
@@ -580,8 +591,10 @@ bool LldLinker::createStaticLibrary(
         return false;
     }
 
-    const std::filesystem::path responsePath = outputPath.string() + ".lib.rsp";
-    const std::filesystem::path logPath = outputPath.string() + ".lib.log";
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    responsePath += ".lib.rsp";
+    logPath += ".lib.log";
     std::vector<std::string> arguments = {
         "/machine:x64",
         responsePathArgument("/out:", outputPath)};
@@ -654,8 +667,10 @@ bool LldLinker::linkDynamicLibrary(
         }
     }
 
-    const std::filesystem::path responsePath = outputPath.string() + ".dll.rsp";
-    const std::filesystem::path logPath = outputPath.string() + ".dll.log";
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    responsePath += ".dll.rsp";
+    logPath += ".dll.log";
     std::vector<std::string> arguments = {
         "/dll",
         "/noentry",
@@ -744,8 +759,10 @@ bool LldLinker::linkExecutable(
         return false;
     }
 
-    const std::filesystem::path responsePath = outputPath.string() + ".link.rsp";
-    const std::filesystem::path logPath = outputPath.string() + ".link.log";
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    responsePath += ".link.rsp";
+    logPath += ".link.log";
     std::vector<std::string> arguments = {
         "/nodefaultlib",
         "/entry:__nativesharp_start",
