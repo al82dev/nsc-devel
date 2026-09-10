@@ -1038,6 +1038,129 @@ namespace ProtectedVirtualConsumer
     }
 }
 
+void testDllP4ProtectedVirtualAccessors(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "DllP4ProtectedVirtualAccessors";
+    const auto products = corpusRoot / "Products";
+    const auto producer = corpusRoot / "Producer";
+    const auto consumer = corpusRoot / "Consumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(producer, "ProtectedAccessors", "SharedLibrary", R"NS(
+namespace ProtectedAccessors
+{
+    public abstract class AccessBase
+    {
+        protected abstract int Value { get; set; }
+        protected abstract int this[int index] { get; set; }
+        public int ReadProperty() { return Value; }
+        public int ReadIndex(int index) { return this[index]; }
+    }
+
+    public class AccessDerived : AccessBase
+    {
+        private static int stored;
+        public AccessDerived(int seed) { stored = seed; }
+        protected override int Value
+        {
+            get { return stored; }
+            set { stored = value; }
+        }
+        protected override int this[int index]
+        {
+            get { return stored + index; }
+            set { stored = value - index; }
+        }
+    }
+
+    public class AutoSurface
+    {
+        public int Automatic { get; set; }
+        public AutoSurface(int value) { Automatic = value; }
+    }
+}
+)NS");
+    writeFile(consumer / "Main.ns", R"NS(
+using ProtectedAccessors;
+
+namespace ProtectedAccessorConsumer
+{
+    public class Leaf : AccessDerived
+    {
+        public Leaf() : base(40) { }
+        public int GetProtected() { return Value; }
+        public void SetProtected(int next) { Value = next; }
+        public int GetProtectedIndex(int index) { return this[index]; }
+        public void SetProtectedIndex(int index, int next) { this[index] = next; }
+    }
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Leaf value = new Leaf();
+            if (value.ReadProperty() != 40) { return 10; }
+            if (value.GetProtected() != 40) { return 11; }
+            if (value.ReadIndex(2) != 42) { return 12; }
+            if (value.GetProtectedIndex(2) != 42) { return 13; }
+            AutoSurface automatic = new AutoSurface(42);
+            if (automatic.Automatic != 42) { return 14; }
+            value.SetProtected(41);
+            value.SetProtectedIndex(1, 43);
+            return value.ReadProperty();
+        }
+    }
+}
+)NS");
+    writeFile(consumer / "ProtectedAccessorConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ProtectedAccessorConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ProtectedAccessors.lib\" "
+              "Metadata=\"../Products/ProtectedAccessors.nsmeta\" "
+              "Runtime=\"../Products/ProtectedAccessors.dll\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto runtime = products / "ProtectedAccessors.dll";
+    const ExitCode producerResult = emitLibrary(
+        "--emit-project-oop-dll", producer / "ProtectedAccessors.nsproj", runtime, output, error, true);
+    tests.expect(producerResult == ExitCode::Success,
+                 "DLL-P4 protected virtual property/indexer producer emits its DLL contract (" + error + ")");
+    output.clear();
+    error.clear();
+    const ExitCode verifyResult = producerResult == ExitCode::Success
+        ? verifyLibraryArtifacts(products / "ProtectedAccessors.nsmeta",
+                                 products / "ProtectedAccessors.lib",
+                                 runtime,
+                                 output,
+                                 error)
+        : ExitCode::CompilationError;
+    tests.expect(verifyResult == ExitCode::Success,
+                 "DLL-P4 verifier reconstructs protected abstract and override accessors (" + error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("ProtectedAccessorConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            consumer / "ProtectedAccessorConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 consumer binds protected property/indexer accessors at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 protected property/indexer dispatch executes to 42 at " + level);
+#endif
+    }
+}
+
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
 {
     // C8's optional Object root must remain usable when it arrives through NSMETA. The consumer's
@@ -2834,6 +2957,7 @@ int main()
     testDllP4ImportedSignaturesAndEvents(tests, root);
     testDllP4ImportedBaseContract(tests, root);
     testDllP4ProtectedConsumerCallableContract(tests, root);
+    testDllP4ProtectedVirtualAccessors(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 
