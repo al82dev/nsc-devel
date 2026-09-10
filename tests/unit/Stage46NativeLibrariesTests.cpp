@@ -531,6 +531,230 @@ public class Program
 #endif
 }
 
+void testDllP4ImportedSignaturesAndEvents(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "DllP4ImportedSignaturesAndEvents";
+    const auto products = corpusRoot / "Products";
+    const auto importedTypes = corpusRoot / "ImportedTypes";
+    const auto importedApi = corpusRoot / "ImportedApi";
+    const auto importedConsumer = corpusRoot / "ImportedConsumer";
+    const auto eventProducer = corpusRoot / "EventProducer";
+    const auto eventConsumer = corpusRoot / "EventConsumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(importedTypes, "ImportedTypes", "SharedLibrary", R"NS(
+namespace ImportedTypes
+{
+    public struct Vector
+    {
+        public float X;
+        public float Y;
+        public float Z;
+    }
+
+    public class TypesMarker
+    {
+        public static int Ready() { return 42; }
+    }
+}
+)NS");
+    writeProject(importedApi, "ImportedTypeApi", "SharedLibrary", R"NS(
+namespace ImportedTypeApi
+{
+    using ImportedTypes;
+
+    public class Vectors
+    {
+        public Vectors() { }
+        public Vector EchoInstance(Vector value) { return value; }
+        public static Vector EchoValue(Vector value) { return value; }
+        public static Vector* Echo(Vector* value)
+        {
+            if (TypesMarker.Ready() != 42) { return null; }
+            return value;
+        }
+    }
+}
+)NS");
+    writeFile(importedApi / "ImportedTypeApi.nsproj",
+              "<Project><PropertyGroup><Name>ImportedTypeApi</Name><OutputType>SharedLibrary</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ImportedTypes.lib\" "
+              "Metadata=\"../Products/ImportedTypes.nsmeta\" "
+              "Runtime=\"../Products/ImportedTypes.dll\"/>"
+              "</ItemGroup></Project>");
+    writeFile(importedConsumer / "Main.ns", R"NS(
+namespace ImportedTypeConsumer
+{
+    using ImportedTypeApi;
+    using ImportedTypes;
+
+    public class Program
+    {
+        public static int Main()
+        {
+            Vector value;
+            value.X = 42.0f;
+            value.Y = 0.0f;
+            value.Z = 0.0f;
+            raii Vectors vectors = new Vectors();
+            Vector instance = vectors.EchoInstance(value);
+            Vector direct = Vectors.EchoValue(instance);
+            return (int)direct.X;
+        }
+    }
+}
+)NS");
+    writeFile(importedConsumer / "ImportedTypeConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ImportedTypeConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ImportedTypes.lib\" "
+              "Metadata=\"../Products/ImportedTypes.nsmeta\" "
+              "Runtime=\"../Products/ImportedTypes.dll\"/>"
+              "<LibraryReference Include=\"../Products/ImportedTypeApi.lib\" "
+              "Metadata=\"../Products/ImportedTypeApi.nsmeta\" "
+              "Runtime=\"../Products/ImportedTypeApi.dll\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto typesDll = products / "ImportedTypes.dll";
+    const auto apiDll = products / "ImportedTypeApi.dll";
+    const ExitCode typesResult = emitLibrary(
+        "--emit-project-oop-dll", importedTypes / "ImportedTypes.nsproj", typesDll, output, error, true);
+    tests.expect(typesResult == ExitCode::Success,
+                 "DLL-P4 imported-type producer emits its DLL triplet (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(typesResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "ImportedTypes.nsmeta",
+                                            products / "ImportedTypes.lib",
+                                            typesDll,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "DLL-P4 imported-type producer passes physical and public-source verification (" + error + ")");
+
+    output.clear();
+    error.clear();
+    const ExitCode apiResult = emitLibrary(
+        "--emit-project-oop-dll", importedApi / "ImportedTypeApi.nsproj", apiDll, output, error, true);
+    tests.expect(apiResult == ExitCode::Success,
+                 "DLL-P4 API producer accepts public static and instance signatures from another NSMETA (" +
+                     error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(apiResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "ImportedTypeApi.nsmeta",
+                                            products / "ImportedTypeApi.lib",
+                                            apiDll,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "DLL-P4 verifier expects the imported-type instance export and materializes its API (" + error +
+                     ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("ImportedTypeConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            importedConsumer / "ImportedTypeConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 source-free imported-type consumer compiles at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 imported-type instance consumer executes to 42 at " + level);
+#endif
+    }
+
+    writeProject(eventProducer, "PrecompiledEvents", "SharedLibrary", R"NS(
+namespace PrecompiledEvents
+{
+    public delegate void ChangedHandler(int value);
+
+    public class Source
+    {
+        public event ChangedHandler Changed;
+
+        public Source() { Changed += Ignore; }
+        private static void Ignore(int value) { }
+        public void Raise(int value) { Changed(value); }
+    }
+}
+)NS");
+    writeFile(eventConsumer / "Main.ns", R"NS(
+using PrecompiledEvents;
+
+namespace PrecompiledEventConsumer
+{
+    public class Program
+    {
+        private static int observed;
+        private static void OnChanged(int value) { observed = value; }
+
+        public static int Main()
+        {
+            Source source = new Source();
+            source.Changed += OnChanged;
+            source.Raise(42);
+            return observed;
+        }
+    }
+}
+)NS");
+    writeFile(eventConsumer / "PrecompiledEventConsumer.nsproj",
+              "<Project><PropertyGroup><Name>PrecompiledEventConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/PrecompiledEvents.lib\" "
+              "Metadata=\"../Products/PrecompiledEvents.nsmeta\" "
+              "Runtime=\"../Products/PrecompiledEvents.dll\"/>"
+              "</ItemGroup></Project>");
+
+    output.clear();
+    error.clear();
+    const auto eventDll = products / "PrecompiledEvents.dll";
+    const ExitCode eventResult = emitLibrary(
+        "--emit-project-oop-dll", eventProducer / "PrecompiledEvents.nsproj", eventDll, output, error, true);
+    tests.expect(eventResult == ExitCode::Success,
+                 "DLL-P4 public-event producer emits its DLL triplet (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(eventResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "PrecompiledEvents.nsmeta",
+                                            products / "PrecompiledEvents.lib",
+                                            eventDll,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "DLL-P4 verifier parses the exact public API synthesized from event NSMETA (" + error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("PrecompiledEventConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            eventConsumer / "PrecompiledEventConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 source-free event consumer compiles at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 precompiled event consumer executes to 42 at " + level);
+#endif
+    }
+}
+
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
 {
     // C8's optional Object root must remain usable when it arrives through NSMETA. The consumer's
@@ -2324,6 +2548,7 @@ int main()
     testStaticLibrary(tests, root);
     testDynamicLibrary(tests, root);
     testPrecompiledDllRegressionCorpus(tests, root);
+    testDllP4ImportedSignaturesAndEvents(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 

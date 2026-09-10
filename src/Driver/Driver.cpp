@@ -312,7 +312,18 @@ bool canMaterializeContractType(
     const std::string base = metadataBaseTypeKey(typeKey);
     if (base.starts_with("builtin:")) return true;
     const interop::LibraryMetadataType *type = metadataTypeForKey(metadata, base);
-    if (type == nullptr || type->fullyQualifiedName.find('+') != std::string::npos ||
+    if (type == nullptr)
+    {
+        // A public signature may name a type owned by another LibraryReference. NSMETA keeps
+        // ownership honest by storing only the producer's own declarations, so absence here is
+        // not evidence that the signature cannot be reconstructed. The generated declaration
+        // spells the canonical qualified name from the type key; the combined consumer graph is
+        // then responsible for resolving that name to the other metadata module.
+        std::string ignoredSourceType;
+        std::string ignoredError;
+        return sourceTypeForMetadataKey(typeKey, ignoredSourceType, ignoredError);
+    }
+    if (type->fullyQualifiedName.find('+') != std::string::npos ||
         type->fullyQualifiedName.find('`') != std::string::npos ||
         (type->kind != interop::LibraryMetadataTypeKind::Class &&
             type->kind != interop::LibraryMetadataTypeKind::Struct &&
@@ -434,6 +445,7 @@ bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const i
 bool canMaterializePrecompiledDeclaration(
     const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
 {
+    constexpr std::uint8_t kEventKind = 1U;
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kConstructorKind = 3U;
     constexpr std::uint8_t kDestructorKind = 4U;
@@ -452,6 +464,11 @@ bool canMaterializePrecompiledDeclaration(
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr) return false;
 
+    if (member.kind == kEventKind)
+    {
+        return member.accessibility == kPublicAccessibility &&
+               canMaterializeContractType(metadata, member.declaredTypeKey);
+    }
     if (member.kind == kConstructorKind) return canMaterializeConstructor(metadata, member);
     if (member.kind == kDestructorKind)
     {
@@ -526,6 +543,23 @@ const interop::LibraryMetadataMember *metadataFieldMember(
     const std::string typeKey = "type:" + type.identityKey;
     const auto found = std::ranges::find_if(metadata.members, [&](const auto &member) {
         return member.kind == kFieldKind && member.declaringTypeKey == typeKey && member.name == name;
+    });
+    return found == metadata.members.end() ? nullptr : &*found;
+}
+
+const interop::LibraryMetadataMember *metadataEventForBacking(
+    const interop::LibraryMetadata &metadata,
+    const interop::LibraryMetadataType &type,
+    const interop::LibraryMetadataField &field)
+{
+    constexpr std::uint8_t kEventKind = 1U;
+    constexpr std::uint32_t kCompilerGenerated = 1U << 10U;
+    if ((field.flags & kCompilerGenerated) == 0U) return nullptr;
+    const std::string declaringTypeKey = "type:" + type.identityKey;
+    const auto found = std::ranges::find_if(metadata.members, [&](const auto &member) {
+        return member.kind == kEventKind && member.declaringTypeKey == declaringTypeKey &&
+               member.declaredTypeKey == field.typeKey &&
+               field.name == "__nsc_event_" + member.name + "$stage42";
     });
     return found == metadata.members.end() ? nullptr : &*found;
 }
@@ -968,6 +1002,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         }
         generated << "\n{\n";
 
+        std::set<const interop::LibraryMetadataMember *> materializedEvents;
         if (type.kind == interop::LibraryMetadataTypeKind::Struct ||
             type.kind == interop::LibraryMetadataTypeKind::Class)
         {
@@ -976,6 +1011,18 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 const interop::LibraryMetadataField &field = type.fields[fieldIndex];
                 std::string fieldType;
                 if (!sourceTypeForMetadataKey(field.typeKey, fieldType, error)) return false;
+                if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, type, field);
+                    event != nullptr)
+                {
+                    if (!namespaceName.empty() && fieldType.starts_with(namespaceName + "."))
+                        fieldType.erase(0, namespaceName.size() + 1U);
+                    generated << "    " << sourceAccessibility(event->accessibility) << ' ';
+                    if ((event->flags & (1U << 0U)) != 0U) generated << "static ";
+                    generated << "event " << ownershipPrefix(event->declaredOwnership) << fieldType << ' '
+                              << event->name << ";\n";
+                    materializedEvents.insert(event);
+                    continue;
+                }
                 const interop::LibraryMetadataMember *member = metadataFieldMember(metadata, type, field.name);
                 const std::string fieldName =
                     field.name.empty() ? "__nsc_layout_field_" + std::to_string(fieldIndex) : field.name;
@@ -992,8 +1039,22 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         for (const interop::LibraryMetadataMember *member : group.methods)
         {
             constexpr std::uint8_t kMethodKind = 2U;
+            constexpr std::uint8_t kEventKind = 1U;
             constexpr std::uint8_t kConstructorKind = 3U;
             constexpr std::uint8_t kDestructorKind = 4U;
+            if (member->kind == kEventKind)
+            {
+                if (materializedEvents.contains(member)) continue;
+                std::string eventType;
+                if (!sourceTypeForMetadataKey(member->declaredTypeKey, eventType, error)) return false;
+                if (!namespaceName.empty() && eventType.starts_with(namespaceName + "."))
+                    eventType.erase(0, namespaceName.size() + 1U);
+                generated << "    " << sourceAccessibility(member->accessibility) << ' ';
+                if ((member->flags & (1U << 0U)) != 0U) generated << "static ";
+                generated << "event " << ownershipPrefix(member->declaredOwnership) << eventType << ' '
+                          << member->name << ";\n";
+                continue;
+            }
             if (member->kind == kDestructorKind)
             {
                 generated << "    ~" << typeName << "() { }\n";
@@ -1032,6 +1093,40 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     }
     source = generated.str();
     return true;
+}
+
+bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std::string &error)
+{
+    std::string generated;
+    if (!buildPrecompiledPublicSource(metadata, generated, error)) return false;
+
+    source::SourceManager sources;
+    diagnostics::DiagnosticEngine diagnostics;
+    std::filesystem::path displayPath = metadata.moduleName;
+    displayPath += ".nsmeta.public-api.ns";
+    const FileId fileId = sources.addBuffer(displayPath, std::move(generated));
+    const source::SourceFile *file = sources.getFile(fileId);
+    if (file == nullptr)
+    {
+        error = "generated precompiled public API has no source buffer";
+        return false;
+    }
+    frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, true);
+    std::vector<std::string> knownTypeNames;
+    knownTypeNames.reserve(metadata.types.size() * 2U);
+    for (const interop::LibraryMetadataType &type : metadata.types)
+    {
+        knownTypeNames.push_back(type.fullyQualifiedName);
+        const std::size_t separator = type.fullyQualifiedName.find_last_of(".+");
+        knownTypeNames.push_back(separator == std::string::npos
+                                     ? type.fullyQualifiedName
+                                     : type.fullyQualifiedName.substr(separator + 1U));
+    }
+    if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
+
+    error = "generated precompiled public API is not valid NativeSharp source";
+    if (!diagnostics.diagnostics().empty()) error += ": " + diagnostics.diagnostics().front().message();
+    return false;
 }
 
 bool buildPrecompiledGenericTemplateSource(
@@ -1372,23 +1467,42 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
 bool verifyLinkedRuntimeLibraries(
     std::span<const std::filesystem::path> runtimeLibraries, const linker::PeExecutableInfo &image, std::string &error)
 {
+    std::unordered_set<std::string> reachable;
+    for (const std::string &imported : image.importedLibraries) reachable.insert(foldedName(imported));
+
+    // An import archive is lazy: a runtime whose types are used only in another DLL's public
+    // signature need not contribute a direct EXE import. Follow the declared runtime DLLs so a
+    // valid transitive edge (Consumer -> Api.dll -> Types.dll) is certified without weakening
+    // the Runtime identity check for libraries that do contribute symbols.
+    std::unordered_set<std::string> expanded;
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (const std::filesystem::path &runtime : runtimeLibraries)
+        {
+            const std::string runtimeName = foldedName(runtime.filename().string());
+            if (!reachable.contains(runtimeName) || !expanded.insert(runtimeName).second) continue;
+            linker::PeExecutableVerifier verifier;
+            if (!verifier.verifyDynamicLibrary(runtime))
+            {
+                error = "runtime '" + runtime.string() + "' is not a valid DLL: " + verifier.error();
+                return false;
+            }
+            for (const std::string &imported : verifier.info().importedLibraries)
+            {
+                changed = reachable.insert(foldedName(imported)).second || changed;
+            }
+        }
+    }
+
     for (const std::filesystem::path &runtime : runtimeLibraries)
     {
-        std::string expected = runtime.filename().string();
-        std::transform(expected.begin(), expected.end(), expected.begin(), [](unsigned char value) {
-            return static_cast<char>(std::tolower(value));
-        });
-        const bool found =
-            std::any_of(image.importedLibraries.begin(), image.importedLibraries.end(), [&](std::string actual) {
-                std::transform(actual.begin(), actual.end(), actual.begin(), [](unsigned char value) {
-                    return static_cast<char>(std::tolower(value));
-                });
-                return actual == expected;
-            });
-        if (!found)
+        const std::string expected = foldedName(runtime.filename().string());
+        if (!reachable.contains(expected))
         {
             error = "linked PE does not import declared runtime DLL '" + runtime.filename().string() +
-                    "'; the import .lib does not match Runtime";
+                    "' directly or transitively; the import .lib does not match Runtime";
             return false;
         }
     }
@@ -3621,6 +3735,11 @@ ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
     if (!codec.verifyCurrentCompiler(metadata, detail))
     {
         error << "nsc: error: incompatible metadata in library artifact set: " << detail << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!verifyPrecompiledPublicSource(metadata, detail))
+    {
+        error << "nsc: error: metadata public API cannot be materialized for a consumer: " << detail << '\n';
         return ExitCode::CompilationError;
     }
 

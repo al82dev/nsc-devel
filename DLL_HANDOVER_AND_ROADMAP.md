@@ -519,6 +519,9 @@ consumidor monomorfiza con el mismo modelo que una compilación local.
 - destrucción exactamente una vez;
 - owned/borrowed/move en parámetros, retornos y campos;
 - delegates de método estático, instancia y closure;
+- métodos estáticos y de instancia cuyas firmas pertenecen a otra NSMETA;
+- eventos públicos reconstruidos desde NSMETA, sin publicar su backing sintético;
+- verificación sintáctica de la API pública materializada por el consumidor;
 - throw/catch/finally atravesando DLL;
 - múltiples runtime DLLs sin colisión de identidad.
 

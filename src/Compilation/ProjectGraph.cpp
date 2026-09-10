@@ -109,13 +109,25 @@ bool ProjectGraph::addPrecompiledProjects(
     expanded.reserve(projects_.size() + uniqueDescriptors.size());
     for (const PrecompiledProjectDescriptor& descriptor : uniqueDescriptors)
     {
+        // Metadata-backed declarations are parsed as separate project nodes so their module
+        // identity remains stable. A declaration in one NSMETA can nevertheless mention a
+        // public type owned by another NSMETA in the same LibraryReference set. Give each
+        // synthetic node visibility of its peer metadata modules; ordinary accessibility rules
+        // still prevent private/internal declarations from crossing that boundary.
+        std::vector<std::filesystem::path> peerMetadata;
+        peerMetadata.reserve(uniqueDescriptors.size() - 1U);
+        const std::string ownMetadataKey = foldedPath(descriptor.metadataPath);
+        for (const PrecompiledProjectDescriptor& peer : uniqueDescriptors)
+        {
+            if (foldedPath(peer.metadataPath) != ownMetadataKey) peerMetadata.push_back(peer.metadataPath);
+        }
         ProjectSourceSet emptySources(descriptor.metadataPath.parent_path());
         expanded.emplace_back(
             descriptor.metadataPath,
             descriptor.moduleName,
             ProjectOutputKind::Library,
             std::move(emptySources),
-            std::vector<std::filesystem::path>{},
+            std::move(peerMetadata),
             std::vector<LibraryReference>{});
     }
     for (const Project& project : projects_)
