@@ -783,9 +783,14 @@ namespace ImportedBase
     }
 
     public delegate void ChangedHandler(int value);
+    public delegate void BaseChangedHandler(int value);
 
     public class Base
     {
+        public event BaseChangedHandler BaseChanged;
+        public Base() { BaseChanged += Ignore; }
+        private static void Ignore(int value) { }
+        public void RaiseBaseChanged(int value) { BaseChanged(value); }
         public virtual int Value() { return 40; }
     }
 }
@@ -850,6 +855,9 @@ namespace ImportedBaseConsumer
             IScore asScore = value;
             IExtended extended = value;
             if (asBase.Value() != 42 || asScore.Score() != 42 || extended.Extra() != 42) { return 1; }
+            value.BaseChanged += OnChanged;
+            value.RaiseBaseChanged(42);
+            if (observed != 42) { return 3; }
 
             Payload payload;
             payload.Number = 42;
@@ -1159,6 +1167,378 @@ namespace ProtectedAccessorConsumer
                          "DLL-P4 protected property/indexer dispatch executes to 42 at " + level);
 #endif
     }
+}
+
+void testDllP4QualifiedBaseIdentity(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "DllP4QualifiedBaseIdentity";
+    const auto products = corpusRoot / "Products";
+    const auto producerA = corpusRoot / "ProducerA";
+    const auto producerB = corpusRoot / "ProducerB";
+    const auto derived = corpusRoot / "Derived";
+    const auto consumer = corpusRoot / "Consumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(producerA, "ModuleA", "SharedLibrary", R"NS(
+namespace A
+{
+    public class Base { public virtual int Value() { return 20; } }
+}
+)NS");
+    writeProject(producerB, "ModuleB", "SharedLibrary", R"NS(
+namespace B
+{
+    public class Base { public virtual int Value() { return 22; } }
+}
+)NS");
+    writeFile(derived / "Library.ns", R"NS(
+using A;
+using B;
+using ABase = A.Base;
+using BBase = B.Base;
+
+namespace QualifiedDerived
+{
+    public class FromA : ABase { public override int Value() { return 20; } }
+    public class FromB : BBase { public override int Value() { return 22; } }
+}
+)NS");
+    writeFile(derived / "QualifiedDerived.nsproj",
+              "<Project><PropertyGroup><Name>QualifiedDerived</Name><OutputType>SharedLibrary</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ModuleA.lib\" Metadata=\"../Products/ModuleA.nsmeta\" "
+              "Runtime=\"../Products/ModuleA.dll\"/>"
+              "<LibraryReference Include=\"../Products/ModuleB.lib\" Metadata=\"../Products/ModuleB.nsmeta\" "
+              "Runtime=\"../Products/ModuleB.dll\"/>"
+              "</ItemGroup></Project>");
+    writeFile(consumer / "Main.ns", R"NS(
+using QualifiedDerived;
+
+public class Program
+{
+    public static int Main()
+    {
+        FromA left = new FromA();
+        FromB right = new FromB();
+        return left.Value() + right.Value();
+    }
+}
+)NS");
+    writeFile(consumer / "QualifiedConsumer.nsproj",
+              "<Project><PropertyGroup><Name>QualifiedConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/ModuleA.lib\" Metadata=\"../Products/ModuleA.nsmeta\" "
+              "Runtime=\"../Products/ModuleA.dll\"/>"
+              "<LibraryReference Include=\"../Products/ModuleB.lib\" Metadata=\"../Products/ModuleB.nsmeta\" "
+              "Runtime=\"../Products/ModuleB.dll\"/>"
+              "<LibraryReference Include=\"../Products/QualifiedDerived.lib\" "
+              "Metadata=\"../Products/QualifiedDerived.nsmeta\" Runtime=\"../Products/QualifiedDerived.dll\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    for (const auto& [name, project] : std::array<std::pair<std::string, std::filesystem::path>, 2>{
+             std::pair<std::string, std::filesystem::path>{"ModuleA", producerA / "ModuleA.nsproj"},
+             std::pair<std::string, std::filesystem::path>{"ModuleB", producerB / "ModuleB.nsproj"}})
+    {
+        output.clear();
+        error.clear();
+        tests.expect(emitLibrary("--emit-project-oop-dll", project, products / (name + ".dll"), output, error, true) ==
+                         ExitCode::Success,
+                     "DLL-P4 same-simple-name base producer " + name + " emits (" + error + ")");
+    }
+    output.clear();
+    error.clear();
+    const auto derivedRuntime = products / "QualifiedDerived.dll";
+    const ExitCode derivedResult = emitLibrary(
+        "--emit-project-oop-dll", derived / "QualifiedDerived.nsproj", derivedRuntime, output, error, true);
+    tests.expect(derivedResult == ExitCode::Success,
+                 "DLL-P4 producer preserves A.Base and B.Base as distinct qualified bases (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(derivedResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "QualifiedDerived.nsmeta",
+                                            products / "QualifiedDerived.lib",
+                                            derivedRuntime,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "DLL-P4 verifier preserves module/namespace identity for duplicate simple base names (" + error + ")");
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("QualifiedConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            consumer / "QualifiedConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 consumer resolves duplicate simple base names at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 qualified base identities execute independently at " + level);
+#endif
+    }
+}
+
+void testDllP4FoundationAndImportedCleanup(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "DllP4FoundationAndImportedCleanup";
+    const auto products = corpusRoot / "Products";
+    const auto foundation = corpusRoot / "Foundation";
+    const auto lifetime = corpusRoot / "Lifetime";
+    const auto consumer = corpusRoot / "Consumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(foundation, "Foundation", "SharedLibrary", R"NS(
+namespace NativeSharp.Core
+{
+    public class Object { }
+    public class Exception : Object { }
+}
+)NS");
+    writeFile(lifetime / "Library.ns", R"NS(
+using NativeSharp.Core;
+
+namespace ImportedLifetime
+{
+    public class Problem : Exception { public Problem() { } }
+
+    public class Lifetime
+    {
+        private static int destroyed;
+        public static void Reset() { destroyed = 0; }
+        public static void Record(int value) { destroyed += value; }
+        public static int Destroyed() { return destroyed; }
+    }
+
+    public class Base
+    {
+        public Base() { }
+        ~Base() { Lifetime.Record(1); }
+    }
+
+    public class Derived : Base
+    {
+        public Derived() : base() { }
+        ~Derived() { Lifetime.Record(20); }
+    }
+}
+)NS");
+    writeFile(lifetime / "ImportedLifetime.nsproj",
+              "<Project><PropertyGroup><Name>ImportedLifetime</Name><OutputType>SharedLibrary</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/Foundation.lib\" "
+              "Metadata=\"../Products/Foundation.nsmeta\" Runtime=\"../Products/Foundation.dll\"/>"
+              "</ItemGroup></Project>");
+    writeFile(consumer / "Main.ns", R"NS(
+using NativeSharp.Core;
+using ImportedLifetime;
+
+public class Program
+{
+    private static void Normal()
+    {
+        raii Base value = new Derived();
+    }
+
+    private static void Exceptional()
+    {
+        raii Base value = new Derived();
+        raii Problem problem = new Problem();
+        throw problem;
+    }
+
+    public static int Main()
+    {
+        Lifetime.Reset();
+        Normal();
+        try { Exceptional(); }
+        catch (Problem caught) { }
+        return Lifetime.Destroyed();
+    }
+}
+)NS");
+    writeFile(consumer / "ImportedCleanupConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ImportedCleanupConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/Foundation.lib\" "
+              "Metadata=\"../Products/Foundation.nsmeta\" Runtime=\"../Products/Foundation.dll\"/>"
+              "<LibraryReference Include=\"../Products/ImportedLifetime.lib\" "
+              "Metadata=\"../Products/ImportedLifetime.nsmeta\" Runtime=\"../Products/ImportedLifetime.dll\"/>"
+              "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto foundationDll = products / "Foundation.dll";
+    const ExitCode foundationResult = emitLibrary(
+        "--emit-project-oop-dll", foundation / "Foundation.nsproj", foundationDll, output, error, true);
+    tests.expect(foundationResult == ExitCode::Success,
+                 "DLL-P4 Foundation emits the imported Object root contract (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(foundationResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "Foundation.nsmeta",
+                                            products / "Foundation.lib",
+                                            foundationDll,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "DLL-P4 Foundation Object root passes public-source verification (" + error + ")");
+
+    output.clear();
+    error.clear();
+    const auto lifetimeDll = products / "ImportedLifetime.dll";
+    const ExitCode lifetimeResult = emitLibrary(
+        "--emit-project-oop-dll", lifetime / "ImportedLifetime.nsproj", lifetimeDll, output, error, true);
+    tests.expect(lifetimeResult == ExitCode::Success,
+                 "DLL-P4 dependent DLL implicitly inherits NativeSharp.Core.Object from Foundation (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(lifetimeResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "ImportedLifetime.nsmeta",
+                                            products / "ImportedLifetime.lib",
+                                            lifetimeDll,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "DLL-P4 verifier reconstructs the Foundation-rooted inheritance and destruction entries (" +
+                     error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("ImportedCleanupConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            consumer / "ImportedCleanupConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 consumer preserves imported-base cleanup on normal and exceptional exits at " +
+                         level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 imported-base destruction executes twice to 42 at " + level);
+#endif
+    }
+}
+
+void testDllP4PrivateStagingSurface(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "DllP4PrivateStagingSurface";
+    const auto products = corpusRoot / "Products";
+    const auto producer = corpusRoot / "Producer";
+    const auto validConsumer = corpusRoot / "ValidConsumer";
+    const auto stagingConsumer = corpusRoot / "StagingConsumer";
+    const auto nativeImportConsumer = corpusRoot / "NativeImportConsumer";
+    std::filesystem::create_directories(products);
+
+    writeProject(producer, "CleanSurface", "SharedLibrary", R"NS(
+namespace CleanSurface
+{
+    internal class __NsbNative_Helper
+    {
+        extern C from "kernel32.dll"
+        {
+            public static uint GetCurrentProcessId();
+        }
+
+        public static int Secret() { return 1; }
+    }
+
+    public class Api
+    {
+        public static int Answer() { return 42; }
+    }
+}
+)NS");
+    const std::string reference =
+        "<LibraryReference Include=\"../Products/CleanSurface.lib\" "
+        "Metadata=\"../Products/CleanSurface.nsmeta\" Runtime=\"../Products/CleanSurface.dll\"/>";
+    writeFile(validConsumer / "Main.ns", R"NS(
+using CleanSurface;
+public class Program { public static int Main() { return Api.Answer(); } }
+)NS");
+    writeFile(validConsumer / "ValidConsumer.nsproj",
+              "<Project><PropertyGroup><Name>ValidConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>" + reference +
+                  "</ItemGroup></Project>");
+    writeFile(stagingConsumer / "Main.ns", R"NS(
+using CleanSurface;
+public class Program { public static int Main() { return __NsbNative_Helper.Secret(); } }
+)NS");
+    writeFile(stagingConsumer / "StagingConsumer.nsproj",
+              "<Project><PropertyGroup><Name>StagingConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>" + reference +
+                  "</ItemGroup></Project>");
+    writeFile(nativeImportConsumer / "Main.ns", R"NS(
+using CleanSurface;
+public class Program { public static int Main() { return (int)Api.GetCurrentProcessId(); } }
+)NS");
+    writeFile(nativeImportConsumer / "NativeImportConsumer.nsproj",
+              "<Project><PropertyGroup><Name>NativeImportConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>" + reference +
+                  "</ItemGroup></Project>");
+
+    std::string output;
+    std::string error;
+    const auto runtime = products / "CleanSurface.dll";
+    const ExitCode producerResult = emitLibrary(
+        "--emit-project-oop-dll", producer / "CleanSurface.nsproj", runtime, output, error, true);
+    tests.expect(producerResult == ExitCode::Success,
+                 "DLL-P4 producer accepts private native imports and internal staging helpers (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(producerResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(products / "CleanSurface.nsmeta",
+                                            products / "CleanSurface.lib",
+                                            runtime,
+                                            output,
+                                            error) == ExitCode::Success,
+                 "DLL-P4 materialized API excludes private native imports and staging types (" + error + ")");
+
+    for (const bool optimize : {false, true})
+    {
+        output.clear();
+        error.clear();
+        const std::string level = optimize ? "O2" : "O0";
+        const auto executable = products / ("CleanSurfaceConsumer-" + level + ".exe");
+        const ExitCode result = emitLibrary("--emit-project-oop-exe",
+                                            validConsumer / "ValidConsumer.nsproj",
+                                            executable,
+                                            output,
+                                            error,
+                                            optimize);
+        tests.expect(result == ExitCode::Success,
+                     "DLL-P4 clean public surface remains consumable at " + level + " (" + error + ")");
+#ifdef _WIN32
+        if (result == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "DLL-P4 clean public surface executes to 42 at " + level);
+#endif
+    }
+
+    output.clear();
+    error.clear();
+    tests.expect(runProjectAction("--check-project-method-bodies",
+                                  stagingConsumer / "StagingConsumer.nsproj",
+                                  output,
+                                  error) == ExitCode::CompilationError,
+                 "DLL-P4 consumer cannot name an internal __NsbNative staging type");
+    output.clear();
+    error.clear();
+    tests.expect(runProjectAction("--check-project-method-bodies",
+                                  nativeImportConsumer / "NativeImportConsumer.nsproj",
+                                  output,
+                                  error) == ExitCode::CompilationError,
+                 "DLL-P4 consumer cannot call a producer-private extern C import");
 }
 
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
@@ -2958,6 +3338,9 @@ int main()
     testDllP4ImportedBaseContract(tests, root);
     testDllP4ProtectedConsumerCallableContract(tests, root);
     testDllP4ProtectedVirtualAccessors(tests, root);
+    testDllP4QualifiedBaseIdentity(tests, root);
+    testDllP4FoundationAndImportedCleanup(tests, root);
+    testDllP4PrivateStagingSurface(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 

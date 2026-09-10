@@ -405,8 +405,9 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const 
 {
     if (!isConsumerCallableNativeMethod(member)) return false;
     constexpr std::uint32_t kStatic = 1U << 0U;
+    constexpr std::uint8_t kPublicAccessibility = 3U;
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
-    if (declaringType == nullptr) return false;
+    if (declaringType == nullptr || declaringType->accessibility != kPublicAccessibility) return false;
     if ((member.flags & kStatic) == 0U && declaringType->kind != interop::LibraryMetadataTypeKind::Struct &&
         declaringType->kind != interop::LibraryMetadataTypeKind::Class)
     {
@@ -599,7 +600,6 @@ std::string_view parameterPassPrefix(interop::LibraryMetadataParameterPassKind p
 
 std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &metadata)
 {
-    constexpr std::uint32_t kStatic = 1U << 0U;
     std::vector<std::string> symbols;
     for (const interop::LibraryMetadataMember &member : metadata.members)
     {
@@ -607,8 +607,7 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
         // questions. The verifier must account for every symbol the producer
         // exported, including struct constructors that a precompiled consumer
         // does not reconstruct as `new` declarations.
-        if (isConsumerCallableNativeMethod(member) &&
-            ((member.flags & kStatic) != 0U || canMaterializeNativeMethod(metadata, member)))
+        if (isConsumerCallableNativeMethod(member) && canMaterializeNativeMethod(metadata, member))
         {
             symbols.push_back(member.mangledName);
         }
@@ -855,7 +854,39 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     }
     for (const std::string &namespaceName : importedNamespaces)
         generated << "using " << namespaceName << ";\n";
+    // Base lists in NativeSharp intentionally use a simple identifier. Give every
+    // metadata base/interface an unambiguous private alias so two dependencies may
+    // both publish (for example) `Base` without losing their module/namespace
+    // identity while reconstructing the consumer declaration.
+    std::map<std::string, std::string> baseAliases;
+    const auto collectBaseAlias = [&](const std::string &typeKey) -> bool {
+        const std::string baseKey = metadataBaseTypeKey(typeKey);
+        if (!baseKey.starts_with("type:")) return true;
+        if (baseAliases.contains(baseKey)) return true;
+        std::string sourceType;
+        if (!sourceTypeForMetadataKey(baseKey, sourceType, error)) return false;
+        const std::string alias = "__NscMetadataBase" + std::to_string(baseAliases.size());
+        baseAliases.emplace(baseKey, alias);
+        generated << "using " << alias << " = " << sourceType << ";\n";
+        return true;
+    };
+    for (const interop::LibraryMetadataType &type : metadata.types)
+    {
+        if (!collectBaseAlias(type.baseTypeKey)) return false;
+        for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
+            if (!collectBaseAlias(interfaceTypeKey)) return false;
+    }
     if (!importedNamespaces.empty()) generated << '\n';
+    const auto sourceBaseType = [&](const std::string &typeKey, std::string &sourceType) -> bool {
+        const std::string baseKey = metadataBaseTypeKey(typeKey);
+        const auto alias = baseAliases.find(baseKey);
+        if (alias != baseAliases.end())
+        {
+            sourceType = alias->second;
+            return true;
+        }
+        return sourceTypeForMetadataKey(typeKey, sourceType, error);
+    };
     const auto emitParameter = [&](const interop::LibraryMetadataParameter &parameter,
                                    const std::string &memberName,
                                    const std::size_t index) -> bool {
@@ -1159,9 +1190,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             {
                 if (index != 0) generated << ", ";
                 std::string baseInterface;
-                if (!sourceTypeForMetadataKey(type.interfaceTypeKeys[index], baseInterface, error)) return false;
-                if (const std::size_t dot = baseInterface.find_last_of('.'); dot != std::string::npos)
-                    baseInterface = baseInterface.substr(dot + 1);
+                if (!sourceBaseType(type.interfaceTypeKeys[index], baseInterface)) return false;
                 generated << baseInterface;
             }
             generated << "\n{\n";
@@ -1217,18 +1246,14 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (!type.baseTypeKey.empty())
             {
                 std::string baseType;
-                if (!sourceTypeForMetadataKey(type.baseTypeKey, baseType, error)) return false;
-                if (const std::size_t dot = baseType.find_last_of('.'); dot != std::string::npos)
-                    baseType = baseType.substr(dot + 1);
+                if (!sourceBaseType(type.baseTypeKey, baseType)) return false;
                 generated << baseType;
                 wroteBase = true;
             }
             for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
             {
                 std::string interfaceType;
-                if (!sourceTypeForMetadataKey(interfaceTypeKey, interfaceType, error)) return false;
-                if (const std::size_t dot = interfaceType.find_last_of('.'); dot != std::string::npos)
-                    interfaceType = interfaceType.substr(dot + 1);
+                if (!sourceBaseType(interfaceTypeKey, interfaceType)) return false;
                 if (wroteBase) generated << ", ";
                 generated << interfaceType;
                 wroteBase = true;
