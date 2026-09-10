@@ -1129,6 +1129,15 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage46_native_libraries_tests)
     add_test(NAME nsc.stage46.native-libraries COMMAND nsc_stage46_native_libraries_tests)
 
+    add_executable(nsc_stage46_1_dll_cross_linker_matrix_tests
+        tests/unit/Stage46_1DllCrossLinkerMatrixTests.cpp)
+    target_link_libraries(nsc_stage46_1_dll_cross_linker_matrix_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage46_1_dll_cross_linker_matrix_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_stage46_1_dll_cross_linker_matrix_tests)
+    add_test(NAME nsc.stage46-1.dll-cross-linker-matrix
+        COMMAND nsc_stage46_1_dll_cross_linker_matrix_tests)
+
     add_executable(nsc_stage47_host_c_abi_tests tests/unit/Stage47HostCAbiTests.cpp)
     target_link_libraries(nsc_stage47_host_c_abi_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage47_host_c_abi_tests PRIVATE cxx_std_20)
