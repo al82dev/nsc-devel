@@ -69,6 +69,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -76,6 +77,7 @@
 #include <ostream>
 #include <set>
 #include <sstream>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -258,9 +260,7 @@ bool isConsumerCallableNativeMethod(const interop::LibraryMetadataMember &member
     constexpr std::uint32_t kExternC = 1U << 8U;
     constexpr std::uint32_t kExportedC = 1U << 9U;
     constexpr std::uint32_t kCompilerGenerated = 1U << 10U;
-    constexpr std::uint32_t kUserOperator = 1U << 16U;
-    constexpr std::uint32_t kUserConversion = 1U << 17U;
-    constexpr std::uint32_t kExcluded = kAbstract | kCompilerGenerated | kUserOperator | kUserConversion;
+    constexpr std::uint32_t kExcluded = kAbstract | kCompilerGenerated;
     constexpr std::uint8_t kMethodKind = 2U;
     return member.kind == kMethodKind && hasConsumerCallableAccessibility(member.accessibility) &&
            (member.flags & kExcluded) == 0U && ((member.flags & kExternC) == 0U || (member.flags & kExportedC) != 0U) &&
@@ -306,6 +306,41 @@ const interop::LibraryMetadataType *metadataTypeForKey(
     return found == metadata.types.end() ? nullptr : &*found;
 }
 
+bool isPubliclyReachableNamedType(
+    std::span<const frontend::NamedTypeDeclaration> types,
+    std::size_t typeOrdinal) noexcept
+{
+    while (typeOrdinal < types.size())
+    {
+        const frontend::NamedTypeDeclaration &type = types[typeOrdinal];
+        if (type.accessibility != frontend::NamedTypeAccessibility::Public) return false;
+        if (!type.containingTypeOrdinal.has_value()) return true;
+        typeOrdinal = *type.containingTypeOrdinal;
+    }
+    return false;
+}
+
+bool isPubliclyReachableMetadataType(
+    const interop::LibraryMetadata &metadata,
+    const interop::LibraryMetadataType &type) noexcept
+{
+    constexpr std::uint8_t kPublicAccessibility = 3U;
+    const interop::LibraryMetadataType *current = &type;
+    while (current != nullptr)
+    {
+        if (current->accessibility != kPublicAccessibility) return false;
+        const std::size_t separator = current->fullyQualifiedName.find_last_of('+');
+        if (separator == std::string::npos) return true;
+        const std::string parentName = current->fullyQualifiedName.substr(0, separator);
+        const auto parent = std::ranges::find_if(metadata.types, [&](const auto &candidate) {
+            return candidate.fullyQualifiedName == parentName;
+        });
+        if (parent == metadata.types.end()) return false;
+        current = &*parent;
+    }
+    return false;
+}
+
 bool isPublishedNativeConstructor(
     const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member) noexcept
 {
@@ -317,7 +352,8 @@ bool isPublishedNativeConstructor(
         return false;
     }
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
-    return declaringType != nullptr && declaringType->accessibility == kPublicAccessibility;
+    return declaringType != nullptr && declaringType->accessibility == kPublicAccessibility &&
+        isPubliclyReachableMetadataType(metadata, *declaringType);
 }
 
 bool canMaterializeContractType(
@@ -337,8 +373,7 @@ bool canMaterializeContractType(
         std::string ignoredError;
         return sourceTypeForMetadataKey(typeKey, ignoredSourceType, ignoredError);
     }
-    if (type->fullyQualifiedName.find('+') != std::string::npos ||
-        type->fullyQualifiedName.find('`') != std::string::npos ||
+    if (type->fullyQualifiedName.find('`') != std::string::npos ||
         (type->kind != interop::LibraryMetadataTypeKind::Class &&
             type->kind != interop::LibraryMetadataTypeKind::Struct &&
             type->kind != interop::LibraryMetadataTypeKind::Enum &&
@@ -407,7 +442,8 @@ bool canMaterializeNativeMethod(const interop::LibraryMetadata &metadata, const 
     constexpr std::uint32_t kStatic = 1U << 0U;
     constexpr std::uint8_t kPublicAccessibility = 3U;
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
-    if (declaringType == nullptr || declaringType->accessibility != kPublicAccessibility) return false;
+    if (declaringType == nullptr || declaringType->accessibility != kPublicAccessibility ||
+        !isPubliclyReachableMetadataType(metadata, *declaringType)) return false;
     if ((member.flags & kStatic) == 0U && declaringType->kind != interop::LibraryMetadataTypeKind::Struct &&
         declaringType->kind != interop::LibraryMetadataTypeKind::Class)
     {
@@ -440,9 +476,20 @@ bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const i
         return false;
     }
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
-    if (declaringType == nullptr || declaringType->kind != interop::LibraryMetadataTypeKind::Class)
+    if (declaringType == nullptr ||
+        (declaringType->kind != interop::LibraryMetadataTypeKind::Class &&
+            declaringType->kind != interop::LibraryMetadataTypeKind::Struct))
     {
         return false;
+    }
+    if (declaringType->kind == interop::LibraryMetadataTypeKind::Struct)
+    {
+        // Value-type construction calls the constructor symbol directly. Unlike a
+        // class allocation it does not require a descriptor accessor, so rejecting
+        // it here silently removed a constructor that was already present in NSMETA
+        // and in the producer's physical export set.
+        return std::ranges::all_of(member.parameters,
+            [&](const auto &parameter) { return canMaterializeContractType(metadata, parameter.typeKey); });
     }
     const auto dispatch = std::ranges::find_if(
         metadata.dispatchTables, [&](const auto &candidate) { return candidate.typeKey == member.declaringTypeKey; });
@@ -460,6 +507,7 @@ bool canMaterializeConstructor(const interop::LibraryMetadata &metadata, const i
 bool canMaterializePrecompiledDeclaration(
     const interop::LibraryMetadata &metadata, const interop::LibraryMetadataMember &member)
 {
+    constexpr std::uint8_t kFieldKind = 0U;
     constexpr std::uint8_t kEventKind = 1U;
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint8_t kConstructorKind = 3U;
@@ -468,12 +516,20 @@ bool canMaterializePrecompiledDeclaration(
     constexpr std::uint32_t kExternC = 1U << 8U;
     constexpr std::uint32_t kExportedC = 1U << 9U;
     constexpr std::uint32_t kCompilerGenerated = 1U << 10U;
-    constexpr std::uint32_t kUserOperator = 1U << 16U;
-    constexpr std::uint32_t kUserConversion = 1U << 17U;
+    constexpr std::uint32_t kImportedC = 1U << 20U;
 
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr) return false;
 
+    if (member.kind == kFieldKind)
+    {
+        constexpr std::uint32_t kStatic = 1U << 0U;
+        constexpr std::uint32_t kConst = 1U << 2U;
+        const bool materializable = hasConsumerCallableAccessibility(member.accessibility) &&
+            canMaterializeContractType(metadata, member.declaredTypeKey);
+        if ((member.flags & kConst) != 0U) return materializable && member.constantKind != 0U;
+        return materializable && (member.flags & kStatic) != 0U && !member.mangledName.empty();
+    }
     if (member.kind == kEventKind)
     {
         return hasConsumerCallableAccessibility(member.accessibility) &&
@@ -484,8 +540,7 @@ bool canMaterializePrecompiledDeclaration(
     {
         return declaringType->kind == interop::LibraryMetadataTypeKind::Class && !member.mangledName.empty();
     }
-    if (member.kind != kMethodKind ||
-        (member.flags & (kCompilerGenerated | kUserOperator | kUserConversion)) != 0U)
+    if (member.kind != kMethodKind || (member.flags & kCompilerGenerated) != 0U)
     {
         return false;
     }
@@ -494,7 +549,13 @@ bool canMaterializePrecompiledDeclaration(
     // by a DLL. Reconstructing it as an ordinary precompiled NativeSharp method invents a mangled
     // symbol that neither product publishes. Only `export extern C` is part of the consumable
     // NativeSharp surface (and keeps its ordinary NativeSharp entry alongside the C ABI thunk).
-    if ((member.flags & kExternC) != 0U && (member.flags & kExportedC) == 0U) return false;
+    // An imported C declaration is different: its owning DLL is part of NSMETA 1.10 and the
+    // consumer must recreate that external import instead of looking for it in the producer.
+    if ((member.flags & kExternC) != 0U &&
+        (member.flags & (kExportedC | kImportedC)) == 0U)
+    {
+        return false;
+    }
 
     if (!hasConsumerCallableAccessibility(member.accessibility) &&
         declaringType->kind != interop::LibraryMetadataTypeKind::Interface)
@@ -586,6 +647,81 @@ std::string enumConstantSource(const interop::LibraryMetadataType &type, std::ui
     return std::to_string(bits);
 }
 
+bool metadataConstantSource(
+    const interop::LibraryMetadataMember &member, std::string &source, std::string &error)
+{
+    switch (member.constantKind)
+    {
+        case 1U: {
+            const auto signedValue = [&](const unsigned width) {
+                if (width == 64U) return std::bit_cast<std::int64_t>(member.constantBits);
+                const std::uint64_t sign = std::uint64_t{1} << (width - 1U);
+                const std::uint64_t mask = (std::uint64_t{1} << width) - 1U;
+                const std::uint64_t value = member.constantBits & mask;
+                return static_cast<std::int64_t>((value ^ sign) - sign);
+            };
+            if (member.declaredTypeKey == "builtin:sbyte") source = std::to_string(signedValue(8));
+            else if (member.declaredTypeKey == "builtin:short") source = std::to_string(signedValue(16));
+            else if (member.declaredTypeKey == "builtin:int") source = std::to_string(signedValue(32));
+            else if (member.declaredTypeKey == "builtin:long" || member.declaredTypeKey == "builtin:nint")
+                source = std::to_string(signedValue(64)) + "l";
+            else
+            {
+                source = std::to_string(member.constantBits);
+                if (member.declaredTypeKey == "builtin:uint") source += 'u';
+                else if (member.declaredTypeKey == "builtin:ulong" || member.declaredTypeKey == "builtin:nuint")
+                    source += "ul";
+            }
+            return true;
+        }
+        case 3U: source = member.constantBits == 0U ? "false" : "true"; return true;
+        case 4U: {
+            std::ostringstream stream;
+            stream << std::setprecision(std::numeric_limits<float>::max_digits10)
+                   << std::bit_cast<float>(static_cast<std::uint32_t>(member.constantBits));
+            source = stream.str();
+            if (source.find_first_of(".eE") == std::string::npos) source += ".0";
+            source += 'f';
+            return true;
+        }
+        case 5U: {
+            std::ostringstream stream;
+            stream << std::setprecision(std::numeric_limits<double>::max_digits10)
+                   << std::bit_cast<double>(member.constantBits);
+            source = stream.str();
+            if (source.find_first_of(".eE") == std::string::npos) source += ".0";
+            return true;
+        }
+        case 6U: source = escapedStringLiteral(member.constantText); return true;
+        default:
+            error = "metadata constant '" + member.name + "' has an unsupported value kind";
+            return false;
+    }
+}
+
+std::string_view metadataOperatorToken(std::string_view name) noexcept
+{
+    if (name == "op_UnaryPlus" || name == "op_Addition") return "+";
+    if (name == "op_UnaryNegation" || name == "op_Subtraction") return "-";
+    if (name == "op_Multiply") return "*";
+    if (name == "op_Division") return "/";
+    if (name == "op_Modulus") return "%";
+    if (name == "op_LogicalNot") return "!";
+    if (name == "op_OnesComplement") return "~";
+    if (name == "op_BitwiseAnd") return "&";
+    if (name == "op_BitwiseOr") return "|";
+    if (name == "op_ExclusiveOr") return "^";
+    if (name == "op_LeftShift") return "<<";
+    if (name == "op_RightShift") return ">>";
+    if (name == "op_Equality") return "==";
+    if (name == "op_Inequality") return "!=";
+    if (name == "op_LessThan") return "<";
+    if (name == "op_LessThanOrEqual") return "<=";
+    if (name == "op_GreaterThan") return ">";
+    if (name == "op_GreaterThanOrEqual") return ">=";
+    return {};
+}
+
 std::string_view parameterPassPrefix(interop::LibraryMetadataParameterPassKind passKind) noexcept
 {
     switch (passKind)
@@ -615,12 +751,21 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
         {
             symbols.push_back(member.mangledName);
         }
+        else if (member.kind == 0U && (member.flags & (1U << 0U)) != 0U &&
+                 (member.flags & (1U << 2U)) == 0U &&
+                 hasConsumerCallableAccessibility(member.accessibility) &&
+                 !member.mangledName.empty())
+        {
+            symbols.push_back(member.mangledName);
+        }
     }
     constexpr std::uint8_t kPublicAccessibility = 3U;
     for (const interop::LibraryMetadataDispatch &dispatch : metadata.dispatchTables)
     {
         const interop::LibraryMetadataType *type = metadataTypeForKey(metadata, dispatch.typeKey);
-        if (type != nullptr && type->accessibility == kPublicAccessibility && !dispatch.descriptorAccessorName.empty())
+        if (type != nullptr && type->accessibility == kPublicAccessibility &&
+            (type->flags & (1U << 3U)) == 0U &&
+            isPubliclyReachableMetadataType(metadata, *type) && !dispatch.descriptorAccessorName.empty())
         {
             symbols.push_back(dispatch.descriptorAccessorName);
         }
@@ -742,13 +887,6 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
     {
         if (generic.kind != kGenericMethodKind) continue;
-        if (generic.ownerName.find('+') != std::string::npos)
-        {
-            error = "metadata-backed generic method import does not yet support "
-                    "nested owner '" +
-                    generic.ownerName + "'";
-            return false;
-        }
         genericMethodOwners.insert(
             generic.namespaceName.empty() ? generic.ownerName : generic.namespaceName + "." + generic.ownerName);
     }
@@ -761,7 +899,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         // later looks for the argument in the wrong project. Generic template declarations live
         // in metadata.genericTemplates; every concrete type in this table can be reconstructed by
         // the kind-specific source emitter below.
-        if (type.accessibility == kPublicAccessibility)
+        if (type.accessibility == kPublicAccessibility &&
+            isPubliclyReachableMetadataType(metadata, type))
         {
             published[type.identityKey].type = &type;
             collectMaterializedContractTypes(metadata, type.baseTypeKey, contractTypeIdentities);
@@ -785,6 +924,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             error = "metadata member '" + member.name + "' refers to a declaring type that is not present";
             return false;
         }
+        if (!isPubliclyReachableMetadataType(metadata, *type)) continue;
         if (type->accessibility != kPublicAccessibility)
         {
             constexpr std::uint32_t kVirtual = 1U << 3U;
@@ -821,10 +961,20 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     const auto collectImportedNamespace = [&](const std::string &typeKey) -> bool {
         const std::string baseKey = metadataBaseTypeKey(typeKey);
         if (!baseKey.starts_with("type:")) return true;
-        std::string sourceType;
-        if (!sourceTypeForMetadataKey(baseKey, sourceType, error)) return false;
-        const std::size_t separator = sourceType.find_last_of('.');
-        if (separator != std::string::npos) importedNamespaces.insert(sourceType.substr(0, separator));
+        const std::string identity = baseKey.substr(5);
+        const std::size_t moduleSeparator = identity.find("::");
+        if (moduleSeparator == std::string::npos)
+        {
+            error = "metadata contains malformed named type key '" + baseKey + "'";
+            return false;
+        }
+        const std::string_view qualified(identity.data() + moduleSeparator + 2U,
+                                         identity.size() - moduleSeparator - 2U);
+        const std::size_t topTypeEnd = qualified.find('+');
+        const std::string_view topType = qualified.substr(0, topTypeEnd);
+        const std::size_t separator = topType.find_last_of('.');
+        if (separator != std::string::npos)
+            importedNamespaces.insert(std::string(topType.substr(0, separator)));
         return true;
     };
     for (const auto &[identity, group] : published)
@@ -950,7 +1100,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         constexpr std::uint32_t kIndexerAccessor = 1U << 13U;
         constexpr std::uint32_t kGetter = 1U << 14U;
         constexpr std::uint32_t kSetter = 1U << 15U;
-        constexpr std::uint32_t kDeclarationFlags = kStatic | kVirtual | kOverride | kAbstract | kSealed;
+        constexpr std::uint32_t kNewSlot = 1U << 19U;
+        constexpr std::uint32_t kDeclarationFlags = kStatic | kVirtual | kOverride | kAbstract | kSealed | kNewSlot;
         std::vector<AccessorContract> contracts;
         std::unordered_map<std::string, std::size_t> contractByKey;
         for (const interop::LibraryMetadataMember *member : members)
@@ -1048,6 +1199,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << "    " << sourceAccessibility(accessibility) << ' ';
             if ((shape.flags & kStatic) != 0U) generated << "static ";
             if ((shape.flags & kSealed) != 0U) generated << "sealed ";
+            if ((shape.flags & kNewSlot) != 0U) generated << "new ";
             if ((shape.flags & kOverride) != 0U) generated << "override ";
             else if ((shape.flags & kAbstract) != 0U) generated << "abstract ";
             else if ((shape.flags & kVirtual) != 0U) generated << "virtual ";
@@ -1079,24 +1231,38 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         }
         return true;
     };
+    std::map<std::string, std::vector<std::string>> nestedChildren;
     for (const auto &[identity, group] : published)
     {
-        static_cast<void>(identity);
+        const std::size_t separator = group.type->fullyQualifiedName.find_last_of('+');
+        if (separator != std::string::npos)
+            nestedChildren[group.type->fullyQualifiedName.substr(0, separator)].push_back(identity);
+    }
+    std::function<bool(const std::string&, bool)> emitPublishedType;
+    emitPublishedType = [&](const std::string &identity, const bool topLevel) -> bool {
+        const auto groupFound = published.find(identity);
+        if (groupFound == published.end() || groupFound->second.type == nullptr) return true;
+        const PublishedType &group = groupFound->second;
         const interop::LibraryMetadataType &type = *group.type;
-        if (type.fullyQualifiedName.find('+') != std::string::npos ||
-            type.fullyQualifiedName.find('`') != std::string::npos)
+        if (type.fullyQualifiedName.find('`') != std::string::npos)
         {
-            error = "metadata-backed source import does not yet support nested or "
-                    "generic "
-                    "declaring type '" +
+            error = "metadata-backed source import does not yet support generic declaring type '" +
                     type.fullyQualifiedName + "'";
             return false;
         }
-        const std::size_t separator = type.fullyQualifiedName.find_last_of('.');
+        const std::size_t topTypeEnd = type.fullyQualifiedName.find('+');
+        const std::string_view topTypeName(
+            type.fullyQualifiedName.data(),
+            topTypeEnd == std::string::npos ? type.fullyQualifiedName.size() : topTypeEnd);
+        const std::size_t separator = topTypeName.find_last_of('.');
         const std::string namespaceName =
-            separator == std::string::npos ? std::string() : type.fullyQualifiedName.substr(0, separator);
-        const std::string typeName =
-            separator == std::string::npos ? type.fullyQualifiedName : type.fullyQualifiedName.substr(separator + 1);
+            separator == std::string::npos ? std::string() : std::string(topTypeName.substr(0, separator));
+        const std::size_t nestedSeparator = type.fullyQualifiedName.find_last_of('+');
+        const std::string typeName = nestedSeparator == std::string::npos
+            ? (separator == std::string::npos
+                ? type.fullyQualifiedName
+                : type.fullyQualifiedName.substr(separator + 1U))
+            : type.fullyQualifiedName.substr(nestedSeparator + 1U);
         std::vector<const interop::LibraryMetadataMember *> orderedMethods = group.methods;
         const std::string declaringTypeKey = "type:" + type.identityKey;
         const auto dispatch = std::ranges::find_if(metadata.dispatchTables,
@@ -1128,7 +1294,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         std::stable_sort(orderedMethods.begin(), orderedMethods.end(), [&](const auto *left, const auto *right) {
             return dispatchRank(left) < dispatchRank(right);
         });
-        if (!namespaceName.empty()) generated << "namespace " << namespaceName << "\n{\n";
+        if (topLevel && !namespaceName.empty()) generated << "namespace " << namespaceName << "\n{\n";
         const std::string_view typeAccessibility =
             type.accessibility == kPublicAccessibility ? std::string_view("public") : std::string_view("internal");
         if (type.kind == interop::LibraryMetadataTypeKind::Delegate)
@@ -1148,8 +1314,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 generated << parameterType << " arg" << parameterIndex;
             }
             generated << ");\n";
-            if (!namespaceName.empty()) generated << "}\n";
-            continue;
+            if (topLevel && !namespaceName.empty()) generated << "}\n";
+            return true;
         }
         if (type.kind == interop::LibraryMetadataTypeKind::Enum)
         {
@@ -1178,8 +1344,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             if (!firstEnumerator) generated << '\n';
             generated << "}\n";
-            if (!namespaceName.empty()) generated << "}\n";
-            continue;
+            if (topLevel && !namespaceName.empty()) generated << "}\n";
+            return true;
         }
 
         if (type.kind == interop::LibraryMetadataTypeKind::Interface)
@@ -1208,8 +1374,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 generated << ");\n";
             }
             generated << "}\n";
-            if (!namespaceName.empty()) generated << "}\n";
-            continue;
+            if (topLevel && !namespaceName.empty()) generated << "}\n";
+            return true;
         }
         if (type.kind != interop::LibraryMetadataTypeKind::Struct &&
             type.kind != interop::LibraryMetadataTypeKind::Class)
@@ -1228,13 +1394,16 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             // `align` preserves a raised one, every `at` freezes its field offset,
             // and `size` makes the consumer reject a declaration it cannot reproduce.
             generated << "pack(" << type.alignment << ") align(" << type.alignment << ") size(" << type.size
-                      << ") struct ";
+                      << ") ";
+            if ((type.flags & (1U << 4U)) != 0U) generated << "borrowed ";
+            generated << ((type.flags & (1U << 5U)) != 0U ? "union " : "struct ");
         }
         else
         {
             if (genericMethodOwners.contains(type.fullyQualifiedName)) generated << "partial ";
             if ((type.flags & (1U << 1U)) != 0U) generated << "abstract ";
             if ((type.flags & (1U << 2U)) != 0U) generated << "sealed ";
+            if ((type.flags & (1U << 3U)) != 0U) generated << "static ";
             generated << "class ";
         }
         generated << typeName;
@@ -1304,11 +1473,31 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
 
         for (const interop::LibraryMetadataMember *member : orderedMethods)
         {
+            constexpr std::uint8_t kFieldKind = 0U;
             constexpr std::uint8_t kMethodKind = 2U;
             constexpr std::uint8_t kEventKind = 1U;
             constexpr std::uint8_t kConstructorKind = 3U;
             constexpr std::uint8_t kDestructorKind = 4U;
             if (materializedAccessors.contains(member)) continue;
+            if (member->kind == kFieldKind)
+            {
+                std::string fieldType;
+                if (!sourceTypeForMetadataKey(member->declaredTypeKey, fieldType, error)) return false;
+                if ((member->flags & (1U << 2U)) != 0U)
+                {
+                    std::string value;
+                    if (!metadataConstantSource(*member, value, error)) return false;
+                    generated << "    " << sourceAccessibility(member->accessibility) << " const "
+                              << fieldType << ' ' << member->name << " = " << value << ";\n";
+                }
+                else
+                {
+                    generated << "    " << sourceAccessibility(member->accessibility) << " static ";
+                    if ((member->flags & (1U << 1U)) != 0U) generated << "readonly ";
+                    generated << fieldType << ' ' << member->name << ";\n";
+                }
+                continue;
+            }
             if (member->kind == kEventKind)
             {
                 if (materializedEvents.contains(member)) continue;
@@ -1342,9 +1531,52 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             constexpr std::uint32_t kOverride = 1U << 4U;
             constexpr std::uint32_t kAbstract = 1U << 5U;
             constexpr std::uint32_t kSealed = 1U << 6U;
+            constexpr std::uint32_t kUserOperator = 1U << 16U;
+            constexpr std::uint32_t kUserConversion = 1U << 17U;
+            constexpr std::uint32_t kImplicitConversion = 1U << 18U;
+            constexpr std::uint32_t kNewSlot = 1U << 19U;
+            constexpr std::uint32_t kImportedC = 1U << 20U;
+            if ((member->flags & kImportedC) != 0U)
+            {
+                generated << "    extern C";
+                if (!member->importDllName.empty())
+                    generated << " from " << escapedStringLiteral(member->importDllName);
+                generated << "\n    {\n        " << sourceAccessibility(member->accessibility) << ' '
+                          << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
+                if (!emitParameters(*member)) return false;
+                generated << ");\n    }\n";
+                continue;
+            }
+            if ((member->flags & kUserOperator) != 0U)
+            {
+                const std::string_view token = metadataOperatorToken(member->name);
+                if (token.empty())
+                {
+                    error = "metadata-backed source import cannot spell user operator '" + member->name + "'";
+                    return false;
+                }
+                generated << "    " << sourceAccessibility(member->accessibility) << " static "
+                          << ownershipPrefix(member->declaredOwnership) << returnType << " operator " << token << '(';
+                if (!emitParameters(*member)) return false;
+                generated << ") { }\n";
+                continue;
+            }
+            if ((member->flags & kUserConversion) != 0U)
+            {
+                std::string conversionTarget = returnType;
+                if (const std::size_t dot = conversionTarget.find_last_of('.'); dot != std::string::npos)
+                    conversionTarget = conversionTarget.substr(dot + 1U);
+                generated << "    " << sourceAccessibility(member->accessibility) << " static "
+                          << ((member->flags & kImplicitConversion) != 0U ? "implicit" : "explicit")
+                          << " operator " << ownershipPrefix(member->declaredOwnership) << conversionTarget << '(';
+                if (!emitParameters(*member)) return false;
+                generated << ") { }\n";
+                continue;
+            }
             generated << "    " << sourceAccessibility(member->accessibility) << ' ';
             if ((member->flags & kStatic) != 0U) generated << "static ";
             if ((member->flags & kSealed) != 0U) generated << "sealed ";
+            if ((member->flags & kNewSlot) != 0U) generated << "new ";
             if ((member->flags & kOverride) != 0U) generated << "override ";
             else if ((member->flags & kAbstract) != 0U) generated << "abstract ";
             else if ((member->flags & kVirtual) != 0U) generated << "virtual ";
@@ -1355,8 +1587,23 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             // NativeSharp declarations.
             generated << (((member->flags & kAbstract) != 0U) ? ");\n" : ") { }\n");
         }
+        const auto children = nestedChildren.find(type.fullyQualifiedName);
+        if (children != nestedChildren.end())
+        {
+            for (const std::string &childIdentity : children->second)
+                if (!emitPublishedType(childIdentity, false)) return false;
+        }
         generated << "}\n";
-        if (!namespaceName.empty()) generated << "}\n";
+        if (topLevel && !namespaceName.empty()) generated << "}\n";
+        return true;
+    };
+    for (const auto &[identity, group] : published)
+    {
+        if (group.type != nullptr && group.type->fullyQualifiedName.find('+') == std::string::npos &&
+            !emitPublishedType(identity, true))
+        {
+            return false;
+        }
     }
     source = generated.str();
     return true;
@@ -1928,7 +2175,6 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool optimizationLevelSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
-    std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
     linker::WindowsExecutableSubsystem subsystem = linker::WindowsExecutableSubsystem::Console;
     bool subsystemSeen = false;
     std::vector<std::string_view> normalizedArguments;
@@ -1975,35 +2221,6 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             }
             extraLinkLibraries.emplace_back(std::string(arguments[++argumentIndex]));
             continue;
-        }
-        static constexpr std::string_view debugPrefixMapOption = "-fdebug-prefix-map=";
-        if (argument.starts_with(debugPrefixMapOption))
-        {
-            const std::string_view mapping = argument.substr(debugPrefixMapOption.size());
-            const std::size_t separator = mapping.find('=');
-            if (separator == std::string_view::npos || separator == 0 || separator + 1 == mapping.size())
-            {
-                error << "nsc: error: malformed debug prefix map '" << argument
-                      << "'; expected -fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>\n";
-                return ExitCode::CommandLineError;
-            }
-            std::filesystem::path sourcePrefix(std::string(mapping.substr(0, separator)));
-            if (!sourcePrefix.is_absolute())
-            {
-                error << "nsc: error: debug prefix map source must be absolute: '"
-                      << mapping.substr(0, separator) << "'\n";
-                return ExitCode::CommandLineError;
-            }
-            debugPrefixMaps.push_back(llvm_backend::DebugPrefixMap{
-                std::move(sourcePrefix),
-                std::filesystem::path(std::string(mapping.substr(separator + 1)))});
-            continue;
-        }
-        if (argument.starts_with("-fdebug-prefix-map"))
-        {
-            error << "nsc: error: malformed debug prefix map '" << argument
-                  << "'; expected -fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>\n";
-            return ExitCode::CommandLineError;
         }
         if (argument.size() == 3 && argument[0] == '-' && argument[1] == 'O')
         {
@@ -2080,12 +2297,6 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     if (debugInformationSeen && !debugCapableInvocation)
     {
         error << "nsc: error: debug information is currently supported when emitting "
-                 "a project OOP object or executable\n";
-        return ExitCode::CommandLineError;
-    }
-    if (!debugPrefixMaps.empty() && !debugCapableInvocation)
-    {
-        error << "nsc: error: debug prefix maps are currently supported when emitting "
                  "a project OOP object or executable\n";
         return ExitCode::CommandLineError;
     }
@@ -2395,13 +2606,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         if (action == "--emit-project-oop-obj")
         {
             return runProjectOopCodeGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
-                output, error);
+                args[1], args[3], optimizationLevel, debugInformation, output, error);
         }
         if (action == "--emit-project-oop-exe")
         {
             return runProjectOopExecutableGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
+                args[1], args[3], optimizationLevel, debugInformation,
                 subsystem, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-oop-lib")
@@ -2471,11 +2681,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-project-oop-llvm <file.nsproj>\n"
            << "  nsc --dump-project-oop-llvm <file.nsproj>\n"
            << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.obj> [-g0|-gline-tables-only|-g] "
-              "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
+              "<file.obj> [-g0|-gline-tables-only|-g]\n"
            << "  nsc --emit-project-oop-exe <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.exe> [-g0|-gline-tables-only|-g] "
-              "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>] "
               "[/subsystem:console|/subsystem:windows]\n"
            << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o "
               "<file.lib>\n"
@@ -2543,8 +2751,6 @@ void Driver::printHelp(std::ostream &output)
               "compilation command.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
-           << "Debug prefix maps use the longest matching absolute source prefix; later maps "
-              "win ties and replacement paths are recorded with normalized separators.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
               "selects the static librarian.\n"
            << "Stage 37 semantics remain preserved: static members, deterministic "
@@ -3249,7 +3455,6 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     llvm_backend::DebugInformationKind debugInformation,
-    const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
     std::ostream &output,
     std::ostream &error)
 {
@@ -3285,7 +3490,7 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     std::unique_ptr<llvm_backend::LlvmModule> module =
         lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
             *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel, debugPrefixMaps);
+            debugInformation, optimizationLevel);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -3394,7 +3599,6 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     llvm_backend::DebugInformationKind debugInformation,
-    const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
     linker::WindowsExecutableSubsystem subsystem,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
@@ -3462,7 +3666,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::unique_ptr<llvm_backend::LlvmModule> module =
         lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
             *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel, debugPrefixMaps);
+            debugInformation, optimizationLevel);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -3695,15 +3899,24 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     std::vector<std::string> exportSymbols;
     for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
     {
-        if (function.isLambda || function.destructor || function.memberOrdinal >= members.size() ||
-            function.declaringTypeOrdinal >= types.size())
+        if (function.isLambda || function.destructor || function.declaringTypeOrdinal >= types.size())
         {
             continue;
         }
-        const frontend::ClassMemberSymbol &member = members[function.memberOrdinal];
         const frontend::NamedTypeDeclaration &type = types[function.declaringTypeOrdinal];
+        if (function.isSyntheticImplicitConstructor)
+        {
+            if (type.projectOrdinal == rootProjectOrdinal &&
+                isPubliclyReachableNamedType(types, function.declaringTypeOrdinal))
+            {
+                exportSymbols.push_back(function.mangledName);
+            }
+            continue;
+        }
+        if (function.memberOrdinal >= members.size()) continue;
+        const frontend::ClassMemberSymbol &member = members[function.memberOrdinal];
         if (type.projectOrdinal != rootProjectOrdinal ||
-            type.accessibility != frontend::NamedTypeAccessibility::Public ||
+            !isPubliclyReachableNamedType(types, function.declaringTypeOrdinal) ||
             !hasConsumerCallableAccessibility(member.accessibility))
         {
             continue;
@@ -3716,7 +3929,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         if (member.kind != frontend::ClassMemberKind::Method ||
             (!member.isStatic && type.kind != frontend::NamedTypeDeclarationKind::Struct &&
                 type.kind != frontend::NamedTypeDeclarationKind::Class) ||
-            member.isAbstract || member.isCompilerGenerated || member.isUserOperator || member.isUserConversion ||
+            member.isAbstract || member.isCompilerGenerated ||
             (member.isExternC && !member.isExportedC))
         {
             continue;
@@ -3728,20 +3941,40 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     {
         if (table.isImported || table.typeOrdinal >= types.size()) continue;
         const frontend::NamedTypeDeclaration &type = types[table.typeOrdinal];
-        if (type.projectOrdinal == rootProjectOrdinal && type.accessibility == frontend::NamedTypeAccessibility::Public)
+        if (type.projectOrdinal == rootProjectOrdinal && !type.isStatic &&
+            isPubliclyReachableNamedType(types, table.typeOrdinal))
         {
             exportSymbols.push_back(table.descriptorAccessorName);
         }
     }
+    for (const frontend::ProjectOopMirStaticField &field : compilation.oopMirModel()->staticFields())
+    {
+        if (field.isImported || field.isConst || field.declaringTypeOrdinal >= types.size() ||
+            field.memberOrdinal >= members.size())
+        {
+            continue;
+        }
+        const frontend::NamedTypeDeclaration &type = types[field.declaringTypeOrdinal];
+        const frontend::ClassMemberSymbol &member = members[field.memberOrdinal];
+        if (type.projectOrdinal == rootProjectOrdinal &&
+            isPubliclyReachableNamedType(types, field.declaringTypeOrdinal) &&
+            hasConsumerCallableAccessibility(member.accessibility))
+        {
+            exportSymbols.push_back(field.accessorName);
+        }
+    }
     std::sort(exportSymbols.begin(), exportSymbols.end());
     exportSymbols.erase(std::unique(exportSymbols.begin(), exportSymbols.end()), exportSymbols.end());
-    if (exportSymbols.empty())
+    const bool hasPublicMetadataSurface = std::ranges::any_of(types, [&](const frontend::NamedTypeDeclaration &type) {
+        return type.projectOrdinal == rootProjectOrdinal &&
+            isPubliclyReachableNamedType(types, static_cast<std::size_t>(&type - types.data()));
+    });
+    if (exportSymbols.empty() && !hasPublicMetadataSurface)
     {
         error << "nsc: error: NativeSharp DLL requires at least one publishable "
-                 "public method in the root project\n";
+                 "public type or method in the root project\n";
         return ExitCode::CompilationError;
     }
-
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
         lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());

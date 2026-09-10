@@ -322,11 +322,13 @@ namespace Stage46.Shared
                                   [](const std::string& symbol) { return symbol.find("Hidden") != std::string::npos; }),
                  "Stage 46 does not export private static methods under plain or mangled "
                  "names");
-    tests.expect(info.exportedSymbols.size() == 5 &&
+    tests.expect(info.exportedSymbols.size() == 6 &&
                      std::ranges::any_of(info.exportedSymbols, [](const std::string& symbol)
-                                         { return symbol.starts_with("__nsc_get_classdesc_"); }),
+                                         { return symbol.starts_with("__nsc_get_classdesc_"); }) &&
+                     std::ranges::any_of(info.exportedSymbols, [](const std::string& symbol)
+                                         { return symbol.starts_with("__nsc_ctor_"); }),
                  "DLL exports each public method plus the public class "
-                 "descriptor required "
+                 "descriptor and implicit constructor required "
                  "by precompiled object construction");
     tests.expect(info.exceptionDirectoryRva != 0,
                  "NativeSharp DLL retains Win64 unwind metadata from its native "
@@ -1686,6 +1688,1157 @@ public class Program { public static int Main() { return (int)Api.GetCurrentProc
                                   output,
                                   error) == ExitCode::CompilationError,
                  "DLL-P4 consumer cannot call a producer-private extern C import");
+}
+
+void testPrecompiledStructConstructorContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledStructConstructor";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "StructConstructor",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     R"NS(
+namespace SurfaceParity
+{
+    public struct Vector3
+    {
+        public int X;
+        public int Y;
+        public int Z;
+
+        public Vector3(int x, int y, int z)
+        {
+            X = x;
+            Y = y;
+            Z = z;
+        }
+    }
+}
+)NS");
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "StructConstructor.lib";
+            const auto runtime = productDirectory / "StructConstructor.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "StructConstructor.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer preserves the public struct constructor (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            const auto metadata = productDirectory / "StructConstructor.nsmeta";
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(metadata,
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " struct-constructor artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        Vector3 value = new Vector3(10, 11, 21);
+        return value.X + value.Y + value.Z;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/StructConstructor.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>StructConstructorConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/StructConstructor.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer materializes new Vector3(x, y, z) from NSMETA (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " precompiled struct constructor executes to 42");
+#endif
+        }
+    }
+}
+
+void testPrecompiledNumericConstantContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledNumericConstants";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public class Constants
+    {
+        public const int Signed = 44;
+        public const int Negative = -4;
+        public const uint Unsigned = 2u;
+        public const bool Enabled = true;
+        public const float Left = 44.0f;
+        public const double Right = -2.0;
+        public static int Anchor() { return 0; }
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "NumericConstants",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "NumericConstants.lib";
+            const auto runtime = productDirectory / "NumericConstants.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "NumericConstants.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer records numeric constants (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "NumericConstants.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " numeric-constant artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        if (!Constants.Enabled) { return 1; }
+        int integral = Constants.Signed + Constants.Negative + (int)Constants.Unsigned;
+        int floating = (int)Constants.Left + (int)Constants.Right;
+        return integral == 42 && floating == 42 ? 42 + Constants.Anchor() : 2;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/NumericConstants.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>NumericConstantConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/NumericConstants.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer materializes numeric constants from NSMETA (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " precompiled numeric constants execute to 42");
+#endif
+        }
+    }
+}
+
+void testPrecompiledStringConstantContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledStringConstant";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public class TextContract
+    {
+        public const string Value = "NativeSharp";
+        public static int Anchor() { return 0; }
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "StringConstant",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "StringConstant.lib";
+            const auto runtime = productDirectory / "StringConstant.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "StringConstant.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer records the string constant payload (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "StringConstant.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " string-constant artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        return TextContract.Value == "NativeSharp" ? 42 + TextContract.Anchor() : 1;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/StringConstant.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>StringConstantConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/StringConstant.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer materializes the string constant from NSMETA (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " precompiled string constant executes to 42");
+#endif
+        }
+    }
+}
+
+void testPrecompiledNewVirtualSlotContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledNewVirtualSlot";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public class Base
+    {
+        public virtual int Value() { return 20; }
+    }
+
+    public class Derived : Base
+    {
+        public new virtual int Value() { return 42; }
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "NewVirtualSlot",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "NewVirtualSlot.lib";
+            const auto runtime = productDirectory / "NewVirtualSlot.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "NewVirtualSlot.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer records the independent virtual slot (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "NewVirtualSlot.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " new-virtual artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        raii Derived derived = new Derived();
+        borrowed Base baseValue = derived;
+        return derived.Value() + baseValue.Value() - 20;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/NewVirtualSlot.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>NewVirtualSlotConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/NewVirtualSlot.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer preserves new virtual dispatch from NSMETA (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " precompiled new virtual slot executes to 42");
+#endif
+        }
+    }
+}
+
+void testPrecompiledTypeSemanticFlags(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledTypeSemanticFlags";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public borrowed struct Slice
+    {
+        public int* Start;
+        public int Count;
+    }
+
+    public class Views
+    {
+        public static Slice FromPointer(int* source, int count)
+        {
+            Slice result;
+            result.Start = source;
+            result.Count = count;
+            return result;
+        }
+    }
+
+    public static class Utilities
+    {
+        public static int Answer() { return 42; }
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "TypeSemanticFlags",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "TypeSemanticFlags.lib";
+            const auto runtime = productDirectory / "TypeSemanticFlags.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "TypeSemanticFlags.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer records borrowed/static type semantics (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "TypeSemanticFlags.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " semantic-type artifacts verify as one contract (" + error + ")");
+
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/TypeSemanticFlags.dll\""
+                : std::string();
+            const auto writeConsumerProject = [&](const std::filesystem::path& directory,
+                                                  const std::string& name) {
+                writeFile(directory / "Consumer.nsproj",
+                          "<Project><PropertyGroup><Name>" + name + "</Name>"
+                          "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                          "<Compile Include=\"**/*.ns\"/>"
+                          "<LibraryReference Include=\"../Products/" + productName +
+                              "/TypeSemanticFlags.lib\"" + runtimeAttribute + "/>"
+                          "</ItemGroup></Project>");
+            };
+
+            const auto borrowedConsumer = contractRoot / ("BorrowedConsumer" + productName);
+            writeFile(borrowedConsumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static Slice Leak()
+    {
+        int[] values = new int[1];
+        return Views.FromPointer(&values[0], 1);
+    }
+    public static int Main() { return 42; }
+}
+)NS");
+            writeConsumerProject(borrowedConsumer, "BorrowedEscapeConsumer");
+            output.clear();
+            error.clear();
+            tests.expect(emitLibrary("--emit-project-oop-exe",
+                                     borrowedConsumer / "Consumer.nsproj",
+                                     borrowedConsumer / "Consumer.exe",
+                                     output,
+                                     error,
+                                     optimize) == ExitCode::CompilationError,
+                         productName + " consumer rejects escape of an imported borrowed struct");
+
+            const auto staticConsumer = contractRoot / ("StaticConsumer" + productName);
+            writeFile(staticConsumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        Utilities invalid = new Utilities();
+        return Utilities.Answer();
+    }
+}
+)NS");
+            writeConsumerProject(staticConsumer, "StaticInstantiationConsumer");
+            output.clear();
+            error.clear();
+            tests.expect(emitLibrary("--emit-project-oop-exe",
+                                     staticConsumer / "Consumer.nsproj",
+                                     staticConsumer / "Consumer.exe",
+                                     output,
+                                     error,
+                                     optimize) == ExitCode::CompilationError,
+                         productName + " consumer rejects construction of an imported static class");
+        }
+    }
+}
+
+void testPrecompiledOperatorsAndConversions(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledOperatorsAndConversions";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public struct Source
+    {
+        public int Number;
+        public static Source Create(int number)
+        {
+            Source result;
+            result.Number = number;
+            return result;
+        }
+        public static Source operator +(Source left, Source right)
+        {
+            return Create(left.Number + right.Number);
+        }
+    }
+
+    public struct Target
+    {
+        public int Number;
+        public static implicit operator Target(Source value)
+        {
+            Target result;
+            result.Number = value.Number;
+            return result;
+        }
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "OperatorsAndConversions",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "OperatorsAndConversions.lib";
+            const auto runtime = productDirectory / "OperatorsAndConversions.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "OperatorsAndConversions.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer publishes operators and conversions (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "OperatorsAndConversions.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " operator artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        Source left = Source.Create(20);
+        Source right = Source.Create(22);
+        Source sum = left + right;
+        Target converted = sum;
+        return converted.Number;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/OperatorsAndConversions.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>OperatorConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/OperatorsAndConversions.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer materializes operator and conversion syntax (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " precompiled operator and conversion execute to 42");
+#endif
+        }
+    }
+}
+
+void testPrecompiledMutableStaticFieldContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledMutableStaticField";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public class State
+    {
+        public static int Value = 40;
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "MutableStaticField",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "MutableStaticField.lib";
+            const auto runtime = productDirectory / "MutableStaticField.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "MutableStaticField.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer publishes mutable static storage accessor (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "MutableStaticField.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " mutable static field artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        int initial = State.Value;
+        State.Value = initial + 2;
+        return State.Value;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/MutableStaticField.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>MutableStaticFieldConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/MutableStaticField.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer reads and writes producer-owned static storage (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " mutable static field preserves one producer-owned value");
+#endif
+        }
+    }
+}
+
+void testPrecompiledImplicitClassConstructionContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledImplicitClassConstruction";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public class Initialized
+    {
+        public int Value = 42;
+    }
+
+    public class ZeroInitialized
+    {
+        public int Value;
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "ImplicitClassConstruction",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "ImplicitClassConstruction.lib";
+            const auto runtime = productDirectory / "ImplicitClassConstruction.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "ImplicitClassConstruction.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer publishes implicit class constructors (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "ImplicitClassConstruction.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " implicit class artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        Initialized initialized = new Initialized();
+        ZeroInitialized zero = new ZeroInitialized();
+        int result = initialized.Value + zero.Value;
+        delete initialized;
+        delete zero;
+        return result;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/ImplicitClassConstruction.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>ImplicitClassConstructionConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/ImplicitClassConstruction.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer materializes both implicit construction shapes (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " implicit constructors preserve initialized and zeroed fields");
+#endif
+        }
+    }
+}
+
+void testPrecompiledNestedTypeContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledNestedType";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public class Outer
+    {
+        public struct Inner
+        {
+            public int Number;
+        }
+
+        public static Inner Create()
+        {
+            Inner result;
+            result.Number = 42;
+            return result;
+        }
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer, "NestedType", dynamic ? "SharedLibrary" : "StaticLibrary", producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "NestedType.lib";
+            const auto runtime = productDirectory / "NestedType.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "NestedType.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer preserves the nested nominal identity (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "NestedType.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " nested-type artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        Outer.Inner value = Outer.Create();
+        return value.Number;
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/NestedType.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>NestedTypeConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/NestedType.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer resolves Outer.Inner without flattening it (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " nested type contract executes to 42");
+#endif
+        }
+    }
+}
+
+void testPrecompiledExternCImportContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledExternCImport";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    const std::string producerSource = R"NS(
+namespace SurfaceParity
+{
+    public class Kernel
+    {
+        extern C from "kernel32.dll"
+        {
+            public uint GetCurrentThreadId();
+        }
+    }
+
+    public class ProducerAnchor
+    {
+        public static int Touch() { return 0; }
+    }
+}
+)NS";
+
+    for (const bool dynamic : {false, true})
+    {
+        writeProject(producer,
+                     "ExternCImport",
+                     dynamic ? "SharedLibrary" : "StaticLibrary",
+                     producerSource);
+        for (const bool optimize : {false, true})
+        {
+            const std::string productName = std::string(dynamic ? "Dll" : "Static") +
+                (optimize ? "O2" : "O0");
+            const auto productDirectory = products / productName;
+            std::filesystem::create_directories(productDirectory);
+            const auto library = productDirectory / "ExternCImport.lib";
+            const auto runtime = productDirectory / "ExternCImport.dll";
+            std::string output;
+            std::string error;
+            const ExitCode producerResult = emitLibrary(dynamic ? "--emit-project-oop-dll" : "--emit-project-oop-lib",
+                                                         producer / "ExternCImport.nsproj",
+                                                         dynamic ? runtime : library,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(producerResult == ExitCode::Success,
+                         productName + " producer records the external DLL import (" + error + ")");
+            if (producerResult != ExitCode::Success) continue;
+
+            output.clear();
+            error.clear();
+            tests.expect(verifyLibraryArtifacts(productDirectory / "ExternCImport.nsmeta",
+                                                library,
+                                                dynamic ? runtime : std::filesystem::path(),
+                                                output,
+                                                error) == ExitCode::Success,
+                         productName + " extern-C artifacts verify as one contract (" + error + ")");
+
+            const auto consumer = contractRoot / ("Consumer" + productName);
+            writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Program
+{
+    public static int Main()
+    {
+        return Kernel.GetCurrentThreadId() == 0u ? 1 : 42 + ProducerAnchor.Touch();
+    }
+}
+)NS");
+            const std::string runtimeAttribute = dynamic
+                ? " Runtime=\"../Products/" + productName + "/ExternCImport.dll\""
+                : std::string();
+            writeFile(consumer / "Consumer.nsproj",
+                      "<Project><PropertyGroup><Name>ExternCImportConsumer</Name>"
+                      "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                      "<Compile Include=\"**/*.ns\"/>"
+                      "<LibraryReference Include=\"../Products/" + productName +
+                          "/ExternCImport.lib\"" + runtimeAttribute + "/>"
+                      "</ItemGroup></Project>");
+            output.clear();
+            error.clear();
+            const auto executable = consumer / "Consumer.exe";
+            const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                         consumer / "Consumer.nsproj",
+                                                         executable,
+                                                         output,
+                                                         error,
+                                                         optimize);
+            tests.expect(consumerResult == ExitCode::Success,
+                         productName + " consumer rebuilds extern C from kernel32.dll (" + error + ")");
+#ifdef _WIN32
+            if (consumerResult == ExitCode::Success)
+                tests.expect(runExecutable(executable) == 42,
+                             productName + " precompiled extern C import executes to 42");
+#endif
+        }
+    }
+}
+
+void testMetadataOnlyDllContract(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "MetadataOnlyDll";
+    const auto producer = contractRoot / "Producer";
+    const auto products = contractRoot / "Products";
+    writeProject(producer, "MetadataOnly", "SharedLibrary", R"NS(
+namespace SurfaceParity
+{
+    public enum Mode
+    {
+        Zero = 0
+    }
+
+    public struct Box<T>
+    {
+        public T Value;
+    }
+
+    public interface IValue
+    {
+        int Read();
+    }
+
+    public static class Algorithms
+    {
+        public static int Invoke<T>(T value) where T : class, IValue
+        {
+            return value.Read();
+        }
+    }
+
+}
+)NS");
+
+    for (const bool optimize : {false, true})
+    {
+        const std::string level = optimize ? "O2" : "O0";
+        const auto productDirectory = products / level;
+        std::filesystem::create_directories(productDirectory);
+        const auto library = productDirectory / "MetadataOnly.lib";
+        const auto runtime = productDirectory / "MetadataOnly.dll";
+        std::string output;
+        std::string error;
+        const ExitCode producerResult = emitLibrary("--emit-project-oop-dll",
+                                                     producer / "MetadataOnly.nsproj",
+                                                     runtime,
+                                                     output,
+                                                     error,
+                                                     optimize);
+        tests.expect(producerResult == ExitCode::Success,
+                     "metadata-only DLL emits without inventing a public export at " + level + " (" + error + ")");
+        if (producerResult != ExitCode::Success) continue;
+
+        PeExecutableVerifier peVerifier;
+        tests.expect(peVerifier.verifyDynamicLibrary(runtime) && peVerifier.info().exportedSymbols.empty(),
+                     "metadata-only DLL has a valid PE image and zero fabricated exports at " + level);
+        output.clear();
+        error.clear();
+        tests.expect(verifyLibraryArtifacts(productDirectory / "MetadataOnly.nsmeta",
+                                            library,
+                                            runtime,
+                                            output,
+                                            error) == ExitCode::Success,
+                     "metadata-only DLL, COFF companion, and NSMETA verify together at " + level + " (" + error + ")");
+
+        const auto consumer = contractRoot / ("Consumer" + level);
+        writeFile(consumer / "Main.ns", R"NS(
+using SurfaceParity;
+
+public class Item : IValue
+{
+    public int Read() { return 42; }
+}
+
+public class Program
+{
+    public static int Main()
+    {
+        Box<int> value;
+        value.Value = Algorithms.Invoke<Item>(new Item());
+        return value.Value + (int)Mode.Zero;
+    }
+}
+)NS");
+        writeFile(consumer / "Consumer.nsproj",
+                  "<Project><PropertyGroup><Name>MetadataOnlyConsumer</Name>"
+                  "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+                  "<Compile Include=\"**/*.ns\"/>"
+                  "<LibraryReference Include=\"../Products/" + level + "/MetadataOnly.lib\"/>"
+                  "</ItemGroup></Project>");
+        output.clear();
+        error.clear();
+        const auto executable = consumer / "Consumer.exe";
+        const ExitCode consumerResult = emitLibrary("--emit-project-oop-exe",
+                                                     consumer / "Consumer.nsproj",
+                                                     executable,
+                                                     output,
+                                                     error,
+                                                     optimize);
+        tests.expect(consumerResult == ExitCode::Success,
+                     "metadata-only LibraryReference materializes enum, generic struct, and generic method at " +
+                         level + " (" + error + ")");
+#ifdef _WIN32
+        if (consumerResult == ExitCode::Success)
+            tests.expect(runExecutable(executable) == 42,
+                         "metadata-only DLL contract executes to 42 at " + level);
+#endif
+    }
 }
 
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
@@ -3489,6 +4642,17 @@ int main()
     testDllP4QualifiedBaseIdentity(tests, root);
     testDllP4FoundationAndImportedCleanup(tests, root);
     testDllP4PrivateStagingSurface(tests, root);
+    testPrecompiledStructConstructorContract(tests, root);
+    testPrecompiledNumericConstantContract(tests, root);
+    testPrecompiledStringConstantContract(tests, root);
+    testPrecompiledNewVirtualSlotContract(tests, root);
+    testPrecompiledTypeSemanticFlags(tests, root);
+    testPrecompiledOperatorsAndConversions(tests, root);
+    testPrecompiledMutableStaticFieldContract(tests, root);
+    testPrecompiledImplicitClassConstructionContract(tests, root);
+    testPrecompiledNestedTypeContract(tests, root);
+    testPrecompiledExternCImportContract(tests, root);
+    testMetadataOnlyDllContract(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 
