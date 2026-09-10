@@ -178,9 +178,10 @@ struct LibraryMetadataGenericTemplate final
     std::string ownerName;
     std::string name;
     std::vector<std::string> parameters;
-    // NSMETA 1.7: declaration slice as authored by the producer. This is deliberately a public
-    // template implementation, not a snapshot of producer internals: the consumer parses it in
-    // its own compilation and the existing monomorphizer remains the only specialization engine.
+    // NSMETA 1.7: declaration slice as authored by the producer. Public entries are reusable API;
+    // non-public entries are materialization-only dependencies and retain their original access.
+    // The consumer parses both in the producer's synthetic project, while only public roots are
+    // nameable from the consumer project.
     std::string sourceText;
 };
 

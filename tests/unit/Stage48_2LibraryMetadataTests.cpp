@@ -698,7 +698,8 @@ namespace GenericMeta
     public struct Box<T> { public T Value; }
     public class Algorithms
     {
-        public static T Identity<T>(T value) { return value; }
+        private static T IdentityCore<T>(T value) { return value; }
+        public static T Identity<T>(T value) { return IdentityCore<T>(value); }
         public static int Run()
         {
             Box<int> box;
@@ -716,16 +717,17 @@ namespace GenericMeta
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(metadataPath, metadata, error), "generic metadata reads successfully");
-    tests.expect(metadata.genericTemplates.size() == 2, "generic class/struct and generic method template identities "
-                                                        "are persisted");
+    tests.expect(metadata.genericTemplates.size() == 3,
+                 "public generic roots and their private materialization dependency are persisted");
     tests.expect(std::ranges::all_of(metadata.genericTemplates, [](const auto& item) {
-        return item.accessibility == 3U && !item.sourceText.empty();
-    }),
-        "public generic templates carry a materializable declaration "
-        "slice in NSMETA 1.7");
-    tests.expect(metadata.genericSpecializations.size() == 2,
-                 "concrete Box<int> and Identity<int> specialization identities "
-                 "are persisted");
+        return item.accessibility <= 3U && !item.sourceText.empty();
+    }), "generic templates carry a valid materializable declaration slice");
+    tests.expect(std::ranges::any_of(metadata.genericTemplates, [](const auto& item) {
+        return item.name == "IdentityCore" && item.accessibility == 0U;
+    }), "private generic helper retains private accessibility in NSMETA");
+    tests.expect(metadata.genericSpecializations.size() == 3,
+                 "concrete Box<int>, Identity<int>, and private IdentityCore<int> "
+                 "specialization identities are persisted");
     tests.expect(std::ranges::any_of(metadata.genericSpecializations, [](const auto& item) {
         return item.specializationKey.find("Box`1<int>") != std::string::npos;
     }), "generic type specialization key survives metadata");

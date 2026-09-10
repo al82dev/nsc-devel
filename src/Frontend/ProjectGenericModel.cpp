@@ -71,6 +71,29 @@ bool isGenericMethodTemplateNode(const ast::AstNode* node) noexcept
         !node->genericParameters().empty();
 }
 
+GenericTemplateAccessibility genericTemplateAccessibility(
+    const ast::AstNode* node,
+    bool isMethod) noexcept
+{
+    if (node == nullptr)
+        return isMethod ? GenericTemplateAccessibility::Private
+                        : GenericTemplateAccessibility::Internal;
+    switch (node->tokenKind())
+    {
+        case lexer::TokenKind::KwPublic:
+            return GenericTemplateAccessibility::Public;
+        case lexer::TokenKind::KwProtected:
+            return GenericTemplateAccessibility::Protected;
+        case lexer::TokenKind::KwPrivate:
+            return GenericTemplateAccessibility::Private;
+        case lexer::TokenKind::KwInternal:
+        case lexer::TokenKind::Invalid:
+        default:
+            return isMethod ? GenericTemplateAccessibility::Private
+                            : GenericTemplateAccessibility::Internal;
+    }
+}
+
 std::string qualifiedName(std::string_view ns, std::string_view name)
 {
     if (ns.empty()) return std::string(name);
@@ -392,6 +415,7 @@ void ProjectGenericModel::collectTemplates(
         }
         GenericTemplateRecord record;
         record.kind = genericTypeTemplateKind(node);
+        record.accessibility = genericTemplateAccessibility(node, false);
         record.syntax = node;
         record.projectOrdinal = unit.projectOrdinal();
         record.sourceOrdinal = unit.sourceOrdinal();
@@ -423,6 +447,7 @@ void ProjectGenericModel::collectTemplates(
         }
         GenericTemplateRecord record;
         record.kind = GenericTemplateKind::Method;
+        record.accessibility = genericTemplateAccessibility(node, true);
         record.syntax = node;
         record.projectOrdinal = unit.projectOrdinal();
         record.sourceOrdinal = unit.sourceOrdinal();
@@ -784,7 +809,8 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     const std::string qualified = qualifiedName(namespaceName, writtenName);
     for (TemplateState& state : templateStates_)
     {
-        if (state.record.kind == GenericTemplateKind::Method || !projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) continue;
+        if (state.record.kind == GenericTemplateKind::Method ||
+            !templateVisible(unit.projectOrdinal(), state.record)) continue;
         if (arity != std::numeric_limits<std::size_t>::max() && state.record.parameters.size() != arity) continue;
         const std::string candidate =
             qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
@@ -833,7 +859,7 @@ std::vector<ProjectGenericModel::TemplateState*> ProjectGenericModel::templatesN
     const auto aplicable = [&](const TemplateState& state)
     {
         if (state.record.kind != GenericTemplateKind::Method) return false;
-        if (!projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) return false;
+        if (!templateVisible(unit.projectOrdinal(), state.record)) return false;
         if (state.record.name != methodName) return false;
         if (arity != sinFiltro && state.record.parameters.size() != arity) return false;
         if (argumentCount != sinFiltro && valueParameterCount(state.syntax) != argumentCount)
@@ -930,7 +956,7 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveMethodTemplate(
     const auto coincideSinDueno = [&](const TemplateState& state, bool exigirArgumentos)
     {
         if (state.record.kind != GenericTemplateKind::Method) return false;
-        if (!projectVisible(unit.projectOrdinal(), state.record.projectOrdinal)) return false;
+        if (!templateVisible(unit.projectOrdinal(), state.record)) return false;
         if (arity != sinFiltro && state.record.parameters.size() != arity) return false;
         if (state.record.name != methodName) return false;
         if (exigirArgumentos && argumentCount != sinFiltro &&
@@ -1586,6 +1612,17 @@ bool ProjectGenericModel::projectVisible(std::size_t from, std::size_t target) c
     if (from >= visibleProjects_.size()) return false;
     return std::find(visibleProjects_[from].begin(), visibleProjects_[from].end(), target) !=
         visibleProjects_[from].end();
+}
+
+bool ProjectGenericModel::templateVisible(
+    std::size_t from,
+    const GenericTemplateRecord& target) const noexcept
+{
+    // A materialization-only declaration remains usable while walking a clone owned by its
+    // producer project. A different project may discover only the producer's public roots.
+    return from == target.projectOrdinal ||
+        (target.accessibility == GenericTemplateAccessibility::Public &&
+         projectVisible(from, target.projectOrdinal));
 }
 
 }

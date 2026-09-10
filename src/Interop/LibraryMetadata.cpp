@@ -670,15 +670,10 @@ bool buildMetadataModel(
     for (const frontend::GenericTemplateRecord& generic : compilation.genericModel()->templates())
     {
         if (generic.projectOrdinal != *rootOrdinal) continue;
-        constexpr std::uint8_t kPublicAccessibility = 3U;
-        const bool isPublic = generic.syntax != nullptr &&
-            (generic.kind == frontend::GenericTemplateKind::Method
-                ? generic.syntax->hasModifier(lexer::TokenKind::KwPublic)
-                : generic.syntax->tokenKind() == lexer::TokenKind::KwPublic);
-        if (!isPublic) continue;
+        if (generic.syntax == nullptr) continue;
         LibraryMetadataGenericTemplate record;
         record.kind = static_cast<std::uint8_t>(generic.kind);
-        record.accessibility = kPublicAccessibility;
+        record.accessibility = static_cast<std::uint8_t>(generic.accessibility);
         record.canonicalKey = generic.canonicalKey;
         record.moduleName = generic.moduleName;
         record.namespaceName = generic.namespaceName;
@@ -1739,10 +1734,10 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                     : "metadata contains duplicate generic template '" + generic.canonicalKey + "'";
                 return false;
             }
-            if (generic.accessibility != kPublicAccessibility || generic.sourceText.empty())
+            if (generic.accessibility > kPublicAccessibility || generic.sourceText.empty())
             {
                 error = "metadata generic template '" + generic.canonicalKey +
-                    "' does not provide a public materializable declaration";
+                    "' does not provide a valid materializable declaration";
                 return false;
             }
         }

@@ -3239,6 +3239,9 @@ namespace Precompiled
 
     public class GenericAlgorithms
     {
+        private static T ClosureLeaf<T>(T value) { return value; }
+        private static T ClosureMiddle<T>(T value) { return ClosureLeaf<T>(value); }
+        public static T ClosureRoot<T>(T value) { return ClosureMiddle<T>(value); }
         public static T Identity<T>(T value) { return value; }
         public static int Pick<T>(T value) { return 1; }
         public static int Pick<T>(T[] values) { return 2; }
@@ -3511,11 +3514,10 @@ public class Program
     error.clear();
     tests.expect(runProjectAction("--check-project-generics", privateGenericConsumer / "PrivateGenericConsumer.nsproj",
                                   output, error) == ExitCode::CompilationError,
-                 "consumer cannot instantiate a private generic method omitted from "
-                 "NSMETA");
+                 "consumer cannot instantiate a private materialization-only generic method");
     tests.expect(error.find("does not name a unique visible") != std::string::npos,
-                 "unpublished generic method fails during generic selection, "
-                 "before name lookup or link");
+                  "private generic method fails during generic selection, "
+                  "before name lookup or link");
 
     const auto genericStaticConsumer = staticRoot / "GenericConsumer";
     writeFile(genericStaticConsumer / "Main.ns", R"NS(
@@ -3537,6 +3539,7 @@ namespace Consumer
             if (Precompiled.GenericAlgorithms.Pick<int>(probes) != 2) { return 2; }
             if (Precompiled.GenericAlgorithms.AddDefault<int>(0) != 2) { return 3; }
             if (transferred.Read() != 37) { return 4; }
+            if (Precompiled.GenericAlgorithms.ClosureRoot<int>(42) != 42) { return 5; }
             return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
         }
     }
@@ -4212,6 +4215,7 @@ namespace Consumer
             if (Precompiled.GenericAlgorithms.Pick<int>(probes) != 2) { return 2; }
             if (Precompiled.GenericAlgorithms.AddDefault<int>(0) != 2) { return 3; }
             if (transferred.Read() != 37) { return 4; }
+            if (Precompiled.GenericAlgorithms.ClosureRoot<int>(42) != 42) { return 5; }
             return box.Read() + (int)fresh.Read() + Precompiled.Math.Add(0, 0);
         }
     }

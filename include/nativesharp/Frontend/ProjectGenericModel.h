@@ -29,9 +29,18 @@ enum class GenericTemplateKind
     Method
 };
 
+enum class GenericTemplateAccessibility
+{
+    Private,
+    Protected,
+    Internal,
+    Public
+};
+
 struct GenericTemplateRecord final
 {
     GenericTemplateKind kind = GenericTemplateKind::Class;
+    GenericTemplateAccessibility accessibility = GenericTemplateAccessibility::Internal;
     const ast::AstNode* syntax = nullptr;
     std::size_t projectOrdinal = 0;
     std::size_t sourceOrdinal = 0;
@@ -286,6 +295,7 @@ private:
     static ast::AstNode* methodCalleeSyntax(ast::AstNode* call);
     void buildVisibility(const compilation::ProjectGraph& graph);
     bool projectVisible(std::size_t from, std::size_t target) const noexcept;
+    bool templateVisible(std::size_t from, const GenericTemplateRecord& target) const noexcept;
 
     std::vector<TemplateState> templateStates_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
