@@ -1,10 +1,13 @@
 # Handover y roadmap de DLLs NativeSharp / NativeSharp DLL handover and roadmap
 
-**Fecha de corte / Snapshot date:** 2026-09-09
+**Fecha de corte / Snapshot date:** 2026-09-10
 **Repositorio / Repository:** `A:\NSC-DEVEL-BRANCHES\nsc-devel-dlls`
 **Rama / Branch:** `dlls`
-**HEAD verificado / Verified HEAD:** `100ce3ea9289cf40496986e2125df11e5afeb007`
-**Build instalado / Installed build:** `b86d060dc8b87183`
+**HEAD verificado / Verified HEAD:** `edfec0b3`
+**Build certificado / Certified build:** `build-clang-lldlink`
+**Prefijo de prueba / Test prefix:** instalación temporal dentro de
+`nsc-devel-dlls`, retirada después de la corrida
+**Instalación global / Global install:** no realizada; `C:\native-sharp` no se tocó
 **Formato actual / Current format:** NSMETA 1.8
 **Contrato binario / Binary contract:** Native ABI 1.0 / Runtime ABI 1.0
 **Plataforma / Platform:** `x86_64-pc-windows-msvc`
@@ -265,7 +268,7 @@ transported as canonical declaration text.
 | Dependencias transitivas y múltiples bibliotecas | Cerrada para fixtures actuales |
 | Diagnósticos ABI por componente | Cerrada |
 | Verificación conjunta `.nsmeta` + `.lib` + DLL | Cerrada |
-| Matriz completa N−1/N y cuatro combinaciones de linker | Pendiente de certificación final |
+| Matriz completa N−1/N y cuatro combinaciones de linker | Cerrada para P1–P6 |
 | PDB para DLL y biblioteca | Pendiente |
 
 ## 10. Las cuatro correcciones recientes / The four recent fixes
@@ -428,6 +431,55 @@ de los gates propiedad de NSC.
 
 El baseline fue ejecutado desde `A:\nsc-devel`, pero esa rama y `dlls` apuntaban
 al mismo commit `100ce3ea` al crear este handover.
+
+### Certificación local de paridad de superficie — 2026-09-10
+
+El lote posterior cerró la reconstrucción NSMETA → modelo público para:
+
+- constructores de struct, incluidos constructores implícitos;
+- constantes numéricas, booleanas, de enum, flotantes y string;
+- campos estáticos mutables;
+- operadores y conversiones;
+- `extern C` contractual sin filtrar imports privados;
+- `new virtual`, flags `borrowed/static` y tipos anidados;
+- DLLs metadata-only, métodos genéricos y productos formados sólo por templates;
+- aislamiento por biblioteca de cctors, estado sintetizado e imports runtime;
+- verificación PDB de cctors privados presentes como procedimiento local o inlinee.
+
+Esto reemplaza la limitación histórica de `809e77be`: el consumidor ya
+materializa y usa `new` sobre structs precompilados cuando el constructor forma
+parte del contrato.
+
+Evidencia dirigida del HEAD `edfec0b3`:
+
+- Stage 46 native libraries: 419/419 con lld-link y 419/419 con NSLink;
+- Project OOP lowering (Stage 37): 60/60;
+- CTest completo: 308/308 con lld-link y 308/308 con NSLink;
+- fixtures del compilador instalado localmente: 148/148 por linker, O0/O2;
+- bug triage: 18/18 por linker, O0/O2;
+- reporte local: `_nscbuilder/history/20260910-122235-25fe846e/report.md`;
+- resultado global de esa corrida: `PASSED`, 0 fallos, 860.70 s.
+
+La matriz externa `precompiled_surface_parity` se usó sólo como evidencia de
+lectura y nunca se modificó. Todos los huecos reales de superficie NSMETA allí
+representados quedaron cubiertos internamente. Los casos DLL que aún declaran
+`Runtime=Producer.dll` sin importar un símbolo físico son rechazados de forma
+intencional: `Runtime` es una promesa de dependencia en ejecución, no una
+referencia de compilación. El caso `union_fixed_array_layout` falla igualmente
+desde fuente y desde biblioteca, por lo que no es una divergencia NSMETA.
+
+Commits del lote de paridad posterior:
+
+- `c6c6c27d` constructores de struct;
+- `88156189`, `189f2c07` constantes;
+- `58c0089c`, `bb952170` semántica y dispatch de tipos;
+- `7a3354f0`, `2e759795` operadores, conversiones y `extern C`;
+- `0a3c2113`, `548efd7e`, `79bf2ba7`, `4211692e` metadata-only, campos y tipos;
+- `578350de`, `53935252` contratos genéricos metadata-only;
+- `40284b96`, `edfec0b3` aislamiento de helpers y PDB de cctors privados.
+
+Esta certificación no instala ni publica bindings y no sustituye DLL-P7, DLL-P8
+o DLL-P9. Es el cierre del lote P1–P6 en la rama y carpeta `nsc-devel-dlls`.
 
 ## 15. Roadmap de continuación / Continuation roadmap
 
