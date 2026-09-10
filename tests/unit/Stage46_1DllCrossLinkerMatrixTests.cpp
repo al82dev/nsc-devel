@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Linker/CoffArchiveVerifier.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
 
@@ -15,11 +16,14 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
 using nativesharp::ExitCode;
 using nativesharp::driver::Driver;
+using nativesharp::interop::LibraryMetadata;
+using nativesharp::interop::LibraryMetadataCodec;
 using nativesharp::linker::CoffArchiveVerifier;
 using nativesharp::linker::PeExecutableVerifier;
 using nativesharp::tests::TestContext;
@@ -88,6 +92,14 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
     stream << text;
 }
 
+std::vector<std::uint8_t> readBytes(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary);
+    return std::vector<std::uint8_t>(
+        std::istreambuf_iterator<char>(stream),
+        std::istreambuf_iterator<char>());
+}
+
 ExitCode runDriver(
     std::span<const std::string_view> arguments,
     std::string& output,
@@ -150,6 +162,49 @@ struct LinkerChoice final
     std::string_view name;
     std::filesystem::path executable;
 };
+
+struct ProductContract final
+{
+    std::vector<std::string> exports;
+    std::vector<std::string> importSymbols;
+    std::array<std::uint8_t, 32> fingerprint{};
+    std::vector<std::uint8_t> metadataBytes;
+    std::vector<std::uint8_t> importLibraryBytes;
+};
+
+bool readProductContract(
+    const std::filesystem::path& products,
+    ProductContract& contract,
+    std::string& error)
+{
+    PeExecutableVerifier pe;
+    if (!pe.verifyDynamicLibrary(products / "MatrixProducer.dll"))
+    {
+        error = pe.error();
+        return false;
+    }
+    CoffArchiveVerifier archive;
+    if (!archive.verify(products / "MatrixProducer.lib"))
+    {
+        error = archive.error();
+        return false;
+    }
+    LibraryMetadata metadata;
+    LibraryMetadataCodec codec;
+    if (!codec.read(products / "MatrixProducer.nsmeta", metadata, error)) return false;
+    contract.exports = pe.info().exportedSymbols;
+    contract.importSymbols = archive.info().symbolNames;
+    std::erase_if(contract.importSymbols, [&](const std::string& symbol) {
+        return std::ranges::none_of(contract.exports, [&](const std::string& exported) {
+            return symbol == exported || symbol == "__imp_" + exported;
+        });
+    });
+    std::sort(contract.importSymbols.begin(), contract.importSymbols.end());
+    contract.fingerprint = metadata.abiFingerprint;
+    contract.metadataBytes = readBytes(products / "MatrixProducer.nsmeta");
+    contract.importLibraryBytes = readBytes(products / "MatrixProducer.lib");
+    return true;
+}
 }
 
 int main()
@@ -283,6 +338,45 @@ public class Program
                 }
             }
         }
+    }
+
+    const std::array<std::string_view, 4> deterministicCases = {
+        "lld-O0__lld-O0", "lld-O2__lld-O0", "nslink-O0__lld-O0", "nslink-O2__lld-O0"
+    };
+    std::array<ProductContract, 4> contracts;
+    bool contractsLoaded = true;
+    for (std::size_t index = 0; index < deterministicCases.size(); ++index)
+    {
+        std::string error;
+        const bool loaded = readProductContract(
+            root / deterministicCases[index] / "Products", contracts[index], error);
+        tests.expect(loaded,
+                     std::string(deterministicCases[index]) +
+                         ": determinism probe reads DLL, import library and NSMETA (" + error + ")");
+        contractsLoaded = contractsLoaded && loaded;
+    }
+    if (contractsLoaded)
+    {
+        tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
+                         return contract.exports == contracts.front().exports;
+                     }),
+                     "DLL-P4 export list is identical across producer O0/O2 and lld-link/NSLink");
+        tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
+                         return contract.fingerprint == contracts.front().fingerprint;
+                     }),
+                     "DLL-P4 NSMETA ABI fingerprint is identical across producer O0/O2 and both linkers");
+        tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
+                         return contract.metadataBytes == contracts.front().metadataBytes;
+                     }),
+                     "DLL-P4 NSMETA is byte-identical across producer O0/O2 and both linkers");
+        tests.expect(std::ranges::all_of(contracts, [&](const ProductContract& contract) {
+                         return contract.importSymbols == contracts.front().importSymbols;
+                     }),
+                     "DLL-P4 published import-library entries are identical across O0/O2 and both writers");
+        tests.expect(contracts[0].importLibraryBytes == contracts[1].importLibraryBytes,
+                     "lld-link import library is byte-identical between O0 and O2");
+        tests.expect(contracts[2].importLibraryBytes == contracts[3].importLibraryBytes,
+                     "NSLink import library is byte-identical between O0 and O2");
     }
 
     return tests.resultKeeping(root);
