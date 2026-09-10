@@ -457,7 +457,7 @@ compilador.
 **Commit sugerido / Suggested commit:**
 `Consolida las regresiones de DLLs precompiladas / Consolidate precompiled DLL regressions`
 
-### DLL-P1 — Matriz cruzada de productor y consumidor por linker
+### DLL-P1 — Matriz cruzada de productor y consumidor por linker — CERRADO / CLOSED
 
 El roadmap exige cuatro combinaciones dinámicas:
 
@@ -476,7 +476,7 @@ pertenencia contractual y ejecuta 42.
 **Commit sugerido / Suggested commit:**
 `Certifica la matriz cruzada de DLLs y linkers / Certify the cross-linker DLL matrix`
 
-### DLL-P2 — Compatibilidad NSMETA N−1/N
+### DLL-P2 — Compatibilidad NSMETA N−1/N — CERRADO / CLOSED
 
 - N lee N;
 - N lee cada minor histórico soportado;
@@ -492,7 +492,7 @@ artefactos archivados.
 **Commit sugerido / Suggested commit:**
 `Certifica compatibilidad cruzada de NSMETA / Certify cross-version NSMETA compatibility`
 
-### DLL-P3 — Genéricos precompilados completos
+### DLL-P3 — Genéricos precompilados completos — CERRADO / CLOSED
 
 - templates de tipo y método;
 - especialización publicada frente a nueva;
@@ -510,7 +510,7 @@ consumidor monomorfiza con el mismo modelo que una compilación local.
 **Commit sugerido / Suggested commit:**
 `Endurece genéricos entre DLLs NativeSharp / Harden generics across NativeSharp DLLs`
 
-### DLL-P4 — Objetos, dispatch y lifetime entre módulos
+### DLL-P4 — Objetos, dispatch y lifetime entre módulos — CERRADO / CLOSED
 
 - cadenas de herencia mixtas local/precompilada;
 - descriptor accessor con carreras de inicialización;
@@ -528,7 +528,7 @@ y bajo ambos linkers.
 **Commit sugerido / Suggested commit:**
 `Amplía objetos y lifetime entre DLLs / Expand objects and lifetime across DLLs`
 
-### DLL-P5 — Dependencias dinámicas y empaquetado
+### DLL-P5 — Dependencias dinámicas y empaquetado — CERRADO / CLOSED
 
 - una DLL conserva sus imports Win32/nativos privados;
 - el consumidor no redeclara ni enlaza dependencias privadas del productor;
@@ -544,7 +544,7 @@ runtime sigue fuera del roadmap salvo un caso medido nuevo.
 **Commit sugerido / Suggested commit:**
 `Formaliza dependencias y empaquetado de DLLs / Formalize DLL dependencies and packaging`
 
-### DLL-P6 — Verificación física y robustez negativa
+### DLL-P6 — Verificación física y robustez negativa — CERRADO / CLOSED
 
 - archive truncado, índice corrupto y miembro ilegible;
 - PE que no es DLL o tiene máquina incorrecta;
