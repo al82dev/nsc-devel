@@ -488,6 +488,13 @@ LLVMDbgRecordRef LLVMDIBuilderInsertDeclareRecordAtEnd(
     LLVMMetadataRef expression,
     LLVMMetadataRef location,
     LLVMBasicBlockRef block);
+LLVMDbgRecordRef LLVMDIBuilderInsertDbgValueRecordAtEnd(
+    LLVMDIBuilderRef builder,
+    LLVMValueRef value,
+    LLVMMetadataRef variable,
+    LLVMMetadataRef expression,
+    LLVMMetadataRef location,
+    LLVMBasicBlockRef block);
 void LLVMMetadataReplaceAllUsesWith(
     LLVMMetadataRef temporaryTarget,
     LLVMMetadataRef replacement);

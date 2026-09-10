@@ -3635,7 +3635,7 @@ private:
         currentDebugSubprogram_ = found->second.subprogram;
         currentDebugScope_ = currentDebugSubprogram_;
         debugDeclaredLocals_.clear();
-        debugDeclaredCaptures_.clear();
+        debugCaptureVariables_.clear();
         currentDebugFileKey_ = 0;
         if (memberModel_ != nullptr && function.memberOrdinal < memberModel_->members().size())
             currentDebugFileKey_ = memberModel_->members()[function.memberOrdinal].fileId.value();
@@ -7722,7 +7722,7 @@ private:
         const std::size_t capture = static_cast<std::size_t>(node->immediate);
         if (debugInformation_ == DebugInformationKind::Full &&
             currentDebugSubprogram_ != nullptr &&
-            debugDeclaredCaptures_.insert(capture).second)
+            !debugCaptureVariables_.contains(capture))
         {
             const std::string name = capture < currentMirFunction_->captureNames.size() &&
                     !currentMirFunction_->captureNames[capture].empty()
@@ -7751,6 +7751,7 @@ private:
                         LLVMGetInsertBlock(builder_)) == nullptr)
                     return failValue(error, "failed to emit debug storage for captured variable '" +
                         name + "'");
+                debugCaptureVariables_.emplace(capture, variable);
             }
         }
         return address;
@@ -7764,7 +7765,19 @@ private:
         LLVMTypeRef type = llvmType(currentMirFunction_->captureTypeKeys[capture], error);
         if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             return failValue(error, "E11 closure capture has invalid LLVM type");
-        return LLVMBuildLoad2(builder_, type, address, "closure.capture.load");
+        LLVMValueRef value = LLVMBuildLoad2(builder_, type, address, "closure.capture.load");
+        const auto debugVariable = debugCaptureVariables_.find(capture);
+        if (debugVariable != debugCaptureVariables_.end())
+        {
+            LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
+            LLVMMetadataRef location = LLVMGetCurrentDebugLocation2(builder_);
+            if (expression == nullptr || location == nullptr ||
+                LLVMDIBuilderInsertDbgValueRecordAtEnd(
+                    debugBuilder_, value, debugVariable->second, expression, location,
+                    LLVMGetInsertBlock(builder_)) == nullptr)
+                return failValue(error, "failed to emit the loaded value of a captured variable");
+        }
+        return value;
     }
 
     LLVMValueRef lowerCaptureCellReference(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -10825,7 +10838,7 @@ private:
     std::unordered_map<std::string, LLVMMetadataRef> debugTypes_;
     std::unordered_map<std::string, LLVMMetadataRef> debugPointeeTypes_;
     std::unordered_set<std::size_t> debugDeclaredLocals_;
-    std::unordered_set<std::size_t> debugDeclaredCaptures_;
+    std::unordered_map<std::size_t, LLVMMetadataRef> debugCaptureVariables_;
     LLVMValueRef trapFunction_ = nullptr;
     LLVMTypeRef trapFunctionType_ = nullptr;
     LLVMValueRef rttiClassTestFunction_ = nullptr;

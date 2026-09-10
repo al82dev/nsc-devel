@@ -275,6 +275,25 @@ foreach(level IN ITEMS O0 O2)
             "O0 PDB is missing representative NativeSharp types, captures or type-surface lines\n"
             "${pdb_dump}\n${pdb_error}\n${lines_dump}\n${lines_error}")
     endif()
+    if(level STREQUAL "O2")
+        string(REGEX MATCHALL "S_DEFRANGE_SUBFIELD_REGISTER" o2_fragment_ranges "${pdb_dump}")
+        list(LENGTH o2_fragment_ranges o2_fragment_range_count)
+    endif()
+    if(level STREQUAL "O2" AND
+       (NOT pdb_dump MATCHES "S_CONSTANT[^\n]*`answer`[\n\r ]+type[^\n]*value = 42" OR
+        NOT pdb_dump MATCHES "S_CONSTANT[^\n]*`mode`[\n\r ]+type[^\n]*value = 42" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`label`[\n\r ]+type[^\n]*flags = optimized away" OR
+        NOT pdb_dump MATCHES "S_LOCAL[^\n]*`capturedTypeValue`[\n\r ]+type[^\n]*flags = none[\n\r ]+[^\n]*S_DEFRANGE_REGISTER" OR
+        pdb_dump MATCHES "S_LOCAL[^\n]*`capturedTypeValue`[\n\r ]+type[^\n]*flags = optimized away" OR
+        NOT pdb_dump MATCHES "S_DEFRANGE_REGISTER[^\n]*[\n\r ]+register[^\n]*[\n\r ]+gaps = ..[0-9]+,[0-9]+.." OR
+        NOT pdb_dump MATCHES "S_DEFRANGE_REGISTER_REL" OR
+        o2_fragment_range_count LESS 2 OR
+        NOT pdb_dump MATCHES "S_INLINESITE[^\n]*[\n\r ]+inlinee[^\n]*DebugFixture\.Program\.MaybeThrow" OR
+        NOT pdb_dump MATCHES "S_INLINESITE[^\n]*[\n\r ]+inlinee[^\n]*DebugFixture\.Program\.Main\.lambda"))
+        message(FATAL_ERROR
+            "O2 PDB does not honestly cover constants, optimized-away values, register/stack/fragmented ranges, gaps or inline frames\n"
+            "${pdb_dump}\n${pdb_error}")
+    endif()
 endforeach()
 
 # Equal source trees copied to different physical roots must produce the same COFF bytes once

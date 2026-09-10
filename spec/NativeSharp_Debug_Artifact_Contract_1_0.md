@@ -87,6 +87,14 @@ stable source-level spelling rather than the internal materialization hash. A ca
 be described at its capture-cell value address when that address is materialized; an optimized-away
 capture shall not receive an invented location.
 
+Under optimization, a value that is materialized shall use the location or constant reported by
+the backend for only its valid machine-code ranges. Multiple register or stack ranges, range gaps,
+and aggregate fragments are valid and shall be retained. A value eliminated by optimization shall
+remain identifiable as optimized away without a fabricated range. Inline sites and their nested
+variables shall remain attached to the source call site. Loading a captured value shall update its
+location to the loaded SSA value so an inlined or standalone closure does not incorrectly report a
+used capture as optimized away.
+
 ## NSC-DEBUG-005 — Source identity and reproducibility
 
 Source records shall use normalized paths and content checksums when the LLVM/CodeView producer

@@ -323,6 +323,10 @@ locales y tipos sin offsets o lifetimes falsos.
 
 ### PDB-P5 — Fidelidad bajo optimización
 
+**Estado del productor / Producer status:** implementado; ver
+`mkdown/180_1_0_1_fidelidad_pdb_optimizado.md`. El gate O2 distingue constantes,
+valores eliminados, registros, stack, fragmentos, huecos e inline sites.
+
 **Objetivo / Goal:** diagnóstico de producción honesto.
 
 - valores en registro, stack, constante, fragmentados u optimizados fuera;
@@ -470,9 +474,9 @@ debugger:
 4. casos de breakpoint, stack y excepción;
 5. esta matriz de estado actualizada.
 
-PDB-P1 a PDB-P4 ya quedaron implementados del lado productor después del corte. La
-aceptación interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P5
-(fidelidad bajo optimización).
+PDB-P1 a PDB-P5 ya quedaron implementados del lado productor después del corte. La
+aceptación interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P6
+(paridad y contrato de linker).
 
 ## 15. Mensaje de commit de este handover / Commit message for this handover
 
