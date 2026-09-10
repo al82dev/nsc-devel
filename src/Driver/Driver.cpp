@@ -708,8 +708,14 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     }
     for (const interop::LibraryMetadataType &type : metadata.types)
     {
-        if (type.accessibility == kPublicAccessibility && (type.kind == interop::LibraryMetadataTypeKind::Class ||
-                                                              type.kind == interop::LibraryMetadataTypeKind::Interface))
+        // A public nominal type is API even when no exported method happens to mention it. This
+        // matters when a consumer supplies a standalone struct or enum from one metadata module
+        // as the type argument of a public template from another module: omitting the declaration
+        // makes the generic pass fall back to the consumer as its origin and the cloned template
+        // later looks for the argument in the wrong project. Generic template declarations live
+        // in metadata.genericTemplates; every concrete type in this table can be reconstructed by
+        // the kind-specific source emitter below.
+        if (type.accessibility == kPublicAccessibility)
         {
             published[type.identityKey].type = &type;
             collectMaterializedContractTypes(metadata, type.baseTypeKey, contractTypeIdentities);

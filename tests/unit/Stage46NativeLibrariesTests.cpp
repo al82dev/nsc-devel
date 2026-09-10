@@ -95,6 +95,27 @@ runProjectAction(std::string_view action, const std::filesystem::path& project, 
     return result;
 }
 
+ExitCode verifyLibraryArtifacts(const std::filesystem::path& metadata,
+                                const std::filesystem::path& library,
+                                const std::filesystem::path& runtime,
+                                std::string& output,
+                                std::string& error)
+{
+    Driver driver;
+    std::ostringstream out;
+    std::ostringstream err;
+    const std::string metadataText = metadata.string();
+    const std::string libraryText = library.string();
+    const std::string runtimeText = runtime.string();
+    const std::array<std::string_view, 4> args = {
+        "--verify-library-artifacts", metadataText, libraryText, runtimeText
+    };
+    const ExitCode result = driver.run(args, out, err);
+    output = out.str();
+    error = err.str();
+    return result;
+}
+
 bool contains(const std::span<const std::string> values, std::string_view expected)
 {
     for (const std::string& value : values)
@@ -309,6 +330,177 @@ namespace Stage46.Shared
     }
     tests.expect(importVerifier.verify(unoptimizedImportLibrary),
                  "O0 DLL generation also creates a valid matching import library");
+}
+
+void testPrecompiledDllRegressionCorpus(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto corpusRoot = root / "PrecompiledDllRegressionCorpus";
+    const auto genericProducer = corpusRoot / "GenericProducer";
+    const auto typeProducer = corpusRoot / "TypeProducer";
+    const auto products = corpusRoot / "Products";
+    const auto consumer = corpusRoot / "Consumer";
+    std::filesystem::create_directories(products);
+
+    // DLL-P0 keeps the four external failures independent of any binding repository. The
+    // producer combines an interface-only closed-generic implementation, a concrete generic
+    // struct constructor, and a private native dependency that must not enter the imported API.
+    writeProject(genericProducer, "DllP0Generics", "SharedLibrary", R"NS(
+namespace DllP0
+{
+    public interface IValue
+    {
+        public int Get();
+    }
+
+    public class Box<T> : IValue
+    {
+        private T Stored;
+        public Box(T value) { Stored = value; }
+        public int Get() { return 42; }
+    }
+
+    public struct ValueBox<T>
+    {
+        private T Stored;
+        public ValueBox(T value) { Stored = value; }
+        public T Read() { return Stored; }
+    }
+
+    public struct Catalog<T>
+    {
+        public T Value;
+    }
+
+    public class NativeSupport
+    {
+        extern C
+        {
+            public void Copy(void* destination, void* source, long count);
+        }
+    }
+
+    public class Api
+    {
+        private static int Read(IValue value) { return value.Get(); }
+
+        public static int Run()
+        {
+            Box<int> box = new Box<int>(42);
+            ValueBox<int> answer = new ValueBox<int>(Read(box));
+            return answer.Read();
+        }
+    }
+}
+)NS");
+
+    // These supported metadata declaration shapes complement the source-project reduction: the
+    // consumer is the first project to specialize Catalog<T>, while T is declared by a different
+    // producer. The Stage 52 regression retains the nested and transitive source cases.
+    writeProject(typeProducer, "DllP0Types", "SharedLibrary", R"NS(
+namespace DllP0.Types
+{
+    public interface IAsset { public int Kind(); }
+
+    public class Texture
+    {
+        public Texture() { }
+    }
+
+    public struct Song
+    {
+        public int Id;
+    }
+
+    public class Shader : IAsset
+    {
+        public Shader() { }
+        public int Kind() { return 2; }
+    }
+
+    public class Api
+    {
+        public static int Zero() { return 0; }
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    const auto genericDll = products / "DllP0Generics.dll";
+    const auto genericLibrary = products / "DllP0Generics.lib";
+    const auto genericMetadata = products / "DllP0Generics.nsmeta";
+    const ExitCode genericResult = emitLibrary(
+        "--emit-project-oop-dll",
+        genericProducer / "DllP0Generics.nsproj",
+        genericDll,
+        output,
+        error,
+        true);
+    tests.expect(genericResult == ExitCode::Success,
+                 "DLL-P0 generic producer emits DLL, import library, and NSMETA (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(genericResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(genericMetadata, genericLibrary, genericDll, output, error) ==
+                         ExitCode::Success,
+                 "DLL-P0 generic producer passes joint DLL/import-library/NSMETA verification (" +
+                     error + ")");
+
+    const auto typeDll = products / "DllP0Types.dll";
+    const auto typeLibrary = products / "DllP0Types.lib";
+    const auto typeMetadata = products / "DllP0Types.nsmeta";
+    output.clear();
+    error.clear();
+    const ExitCode typeResult = emitLibrary(
+        "--emit-project-oop-dll",
+        typeProducer / "DllP0Types.nsproj",
+        typeDll,
+        output,
+        error,
+        true);
+    tests.expect(typeResult == ExitCode::Success,
+                 "DLL-P0 external-type producer emits DLL, import library, and NSMETA (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(typeResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(typeMetadata, typeLibrary, typeDll, output, error) == ExitCode::Success,
+                 "DLL-P0 external-type producer passes joint artifact verification (" + error + ")");
+
+    writeFile(consumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        DllP0.Catalog<DllP0.Types.Texture> textures;
+        DllP0.Catalog<DllP0.Types.Song> songs;
+        DllP0.Catalog<DllP0.Types.IAsset> assets;
+        DllP0.Catalog<DllP0.Types.Shader> shaders;
+        return DllP0.Api.Run() + DllP0.Types.Api.Zero();
+    }
+}
+)NS");
+    writeFile(consumer / "DllP0Consumer.nsproj",
+              "<Project><PropertyGroup><Name>DllP0Consumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Products/DllP0Generics.lib\" "
+              "Runtime=\"../Products/DllP0Generics.dll\"/>"
+              "<LibraryReference Include=\"../Products/DllP0Types.lib\" "
+              "Runtime=\"../Products/DllP0Types.dll\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    const auto executable = products / "DllP0Consumer.exe";
+    const ExitCode consumerResult = emitLibrary(
+        "--emit-project-oop-exe", consumer / "DllP0Consumer.nsproj", executable, output, error, true);
+    tests.expect(consumerResult == ExitCode::Success,
+                 "DLL-P0 source-free consumer compiles against both verified metadata products (" + error + ")");
+#ifdef _WIN32
+    if (consumerResult == ExitCode::Success)
+    {
+        tests.expect(runExecutable(executable) == 42,
+                     "DLL-P0 source-free consumer executes the interface-only generic body to 42");
+    }
+#endif
 }
 
 void testPrecompiledLibraryReferences(TestContext& tests, const std::filesystem::path& root)
@@ -1967,6 +2159,7 @@ int main()
     testRuntimeSupportMode(tests);
     testStaticLibrary(tests, root);
     testDynamicLibrary(tests, root);
+    testPrecompiledDllRegressionCorpus(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
 
