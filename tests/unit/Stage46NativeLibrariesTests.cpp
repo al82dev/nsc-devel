@@ -1883,6 +1883,14 @@ public class Program
     writeFile(opaqueDllConsumer / "Main.ns", R"NS(
 namespace Consumer
 {
+    using Precompiled;
+
+    public sealed class LocalCounter : CounterBase, IScore
+    {
+        public LocalCounter(int value) : base(value) { }
+        public override int Score() { return Value + 2; }
+    }
+
     public class Program
     {
         public static int Main()
@@ -1899,6 +1907,12 @@ namespace Consumer
             {
                 return 4;
             }
+            raii LocalCounter local = new LocalCounter(40);
+            borrowed Precompiled.CounterBase localBase = local;
+            borrowed Precompiled.IScore localInterface = local;
+            if (local.Score() != 42) { return 6; }
+            if (localBase.Score() != 42) { return 7; }
+            if (localInterface.Score() != 42) { return 8; }
             Precompiled.Lifetime.Reset();
             {
                 raii Precompiled.Tracked tracked = new Precompiled.Tracked();
