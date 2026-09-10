@@ -380,7 +380,15 @@ class H
 
     expectGenericReject("UnknownGenericMethod", R"NS(
 class H { public static int F() { return Missing<int>(1); } }
-)NS", "does not name a unique visible Stage 44 generic method template");
+)NS", "has no visible Stage 44 generic method template");
+
+    expectGenericReject("AmbiguousGenericMethod", R"NS(
+namespace A { public class C { public static T F<T>(T value) { return value; } } }
+namespace B { public class C { public static T F<T>(T value) { return value; } } }
+using A;
+using B;
+class H { public static int Run() { return C.F<int>(1); } }
+)NS", "is ambiguous between 2 visible Stage 44 generic method templates");
 
     expectGenericReject("PartialGeneric", R"NS(
 partial class Box<T> { public T Value; }

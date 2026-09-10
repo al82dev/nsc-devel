@@ -3524,7 +3524,7 @@ public class Program
     tests.expect(runProjectAction("--check-project-generics", privateGenericConsumer / "PrivateGenericConsumer.nsproj",
                                   output, error) == ExitCode::CompilationError,
                  "consumer cannot instantiate a private materialization-only generic method");
-    tests.expect(error.find("does not name a unique visible") != std::string::npos,
+    tests.expect(error.find("has no visible Stage 44 generic method template") != std::string::npos,
                   "private generic method fails during generic selection, "
                   "before name lookup or link");
 

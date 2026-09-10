@@ -753,6 +753,9 @@ bool ProjectGenericModel::processGenericCall(
     site.aliases = &scope.aliases;
     site.importedNamespaces = scope.importedNamespaces;
 
+    const std::vector<TemplateState*> namedAtWinningRung = templatesNamedBy(
+        unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
+        argumentCount);
     std::vector<TemplateState*> shared = collectMethodTemplates(
         unit, site, requestedOwner, methodName, call->typeSyntaxes().size(),
         argumentCount);
@@ -794,11 +797,17 @@ bool ProjectGenericModel::processGenericCall(
             std::numeric_limits<std::size_t>::max(), argumentCount);
     if (state == nullptr)
     {
+        const bool ambiguous = namedAtWinningRung.size() > 1U;
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCall,
             diagnostics::DiagnosticSeverity::Error,
             call->range(),
-            "generic call '" + methodName + "<...>' does not name a unique visible Stage 44 generic method template");
+            ambiguous
+                ? "generic call '" + methodName + "<...>' is ambiguous between " +
+                    std::to_string(namedAtWinningRung.size()) +
+                    " visible Stage 44 generic method templates"
+                : "generic call '" + methodName +
+                    "<...>' has no visible Stage 44 generic method template");
         return false;
     }
     if (call->typeSyntaxes().size() != state->record.parameters.size())
