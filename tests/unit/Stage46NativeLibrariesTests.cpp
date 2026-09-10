@@ -827,6 +827,46 @@ namespace Consumer
     }
 #endif
 
+    const auto duplicateModuleProducer = staticRoot / "DuplicateModuleProducer";
+    writeProject(duplicateModuleProducer, "StaticProducer", "StaticLibrary", R"NS(
+namespace DuplicateContract
+{
+    public class Service { public static int Answer() { return 42; } }
+}
+)NS");
+    output.clear();
+    error.clear();
+    tests.expect(emitLibrary("--emit-project-oop-lib",
+                             duplicateModuleProducer / "StaticProducer.nsproj",
+                             duplicateModuleProducer / "DuplicateModule.lib",
+                             output,
+                             error,
+                             true) == ExitCode::Success,
+                 "P6 duplicate-module fixture emits a valid archive with an independently signed contract");
+    const auto duplicateModuleConsumer = staticRoot / "DuplicateModuleConsumer";
+    writeFile(duplicateModuleConsumer / "Main.ns", consumerSource);
+    writeFile(duplicateModuleConsumer / "DuplicateModuleConsumer.nsproj",
+              "<Project><PropertyGroup><Name>DuplicateModuleConsumer</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
+              "<LibraryReference Include=\"../DuplicateModuleProducer/DuplicateModule.lib\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    const auto duplicateModuleExecutable = duplicateModuleConsumer / "DuplicateModuleConsumer.exe";
+    tests.expect(emitLibrary("--emit-project-oop-exe",
+                             duplicateModuleConsumer / "DuplicateModuleConsumer.nsproj",
+                             duplicateModuleExecutable,
+                             output,
+                             error,
+                             true) == ExitCode::CompilationError,
+                 "P6 rejects two precompiled products with the same canonical module identity");
+    tests.expect(error.find("duplicate module name 'StaticProducer'") != std::string::npos,
+                 "P6 duplicate-module diagnostic names the conflicting canonical identity");
+    tests.expect(!std::filesystem::exists(duplicateModuleExecutable),
+                 "P6 duplicate-module rejection leaves no partial executable");
+
     const auto automaticStaticConsumer = staticRoot / "AutomaticConsumer";
     writeFile(automaticStaticConsumer / "Main.ns", R"NS(
 namespace Consumer

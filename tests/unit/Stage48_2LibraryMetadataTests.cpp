@@ -65,6 +65,26 @@ void writeBytes(const std::filesystem::path& path, const std::vector<std::uint8_
     stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
 
+std::uint16_t readU16(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+{
+    return static_cast<std::uint16_t>(bytes[offset]) |
+           static_cast<std::uint16_t>(static_cast<std::uint16_t>(bytes[offset + 1]) << 8U);
+}
+
+std::uint32_t readU32(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+{
+    return static_cast<std::uint32_t>(bytes[offset]) |
+           (static_cast<std::uint32_t>(bytes[offset + 1]) << 8U) |
+           (static_cast<std::uint32_t>(bytes[offset + 2]) << 16U) |
+           (static_cast<std::uint32_t>(bytes[offset + 3]) << 24U);
+}
+
+void writeU16(std::vector<std::uint8_t>& bytes, std::size_t offset, std::uint16_t value)
+{
+    bytes[offset] = static_cast<std::uint8_t>(value & 0xffU);
+    bytes[offset + 1] = static_cast<std::uint8_t>((value >> 8U) & 0xffU);
+}
+
 void writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
@@ -602,6 +622,62 @@ public class Math { public static int Internal(int value) { return value; } }
                      error.find("missing") != std::string::npos && error.find("unexpected") != std::string::npos,
                  "E6 reports both sides of a DLL/metadata export mismatch instead of a "
                  "generic contract failure");
+
+    std::vector<std::uint8_t> truncatedArchive = readBytes(shared / "SharedMeta.lib");
+    truncatedArchive.resize(20);
+    const auto truncatedArchivePath = shared / "Truncated.lib";
+    writeBytes(truncatedArchivePath, truncatedArchive);
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(shared / "SharedMeta.nsmeta", truncatedArchivePath, shared / "SharedMeta.dll",
+                                 output, error) == ExitCode::CompilationError &&
+                     error.find("COFF archive") != std::string::npos && error.find("truncated") != std::string::npos,
+                 "P6 rejects a physically truncated import archive before inspecting the DLL");
+
+    std::vector<std::uint8_t> corruptIndex = readBytes(shared / "SharedMeta.lib");
+    if (corruptIndex.size() >= 72)
+    {
+        corruptIndex[68] = 0xffU;
+        corruptIndex[69] = 0xffU;
+        corruptIndex[70] = 0xffU;
+        corruptIndex[71] = 0xffU;
+    }
+    const auto corruptIndexPath = shared / "CorruptIndex.lib";
+    writeBytes(corruptIndexPath, corruptIndex);
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(shared / "SharedMeta.nsmeta", corruptIndexPath, shared / "SharedMeta.dll",
+                                 output, error) == ExitCode::CompilationError &&
+                     error.find("COFF archive") != std::string::npos &&
+                     error.find("symbol-offset table") != std::string::npos,
+                 "P6 rejects an archive whose linker-member index claims unreadable symbol offsets");
+
+    const std::vector<std::uint8_t> validDll = readBytes(shared / "SharedMeta.dll");
+    const std::size_t peOffset = static_cast<std::size_t>(readU32(validDll, 0x3c));
+
+    std::vector<std::uint8_t> executableImage = validDll;
+    const std::size_t characteristicsOffset = peOffset + 4U + 18U;
+    writeU16(executableImage, characteristicsOffset,
+             static_cast<std::uint16_t>(readU16(executableImage, characteristicsOffset) & ~0x2000U));
+    const auto notDllPath = shared / "NotADll.dll";
+    writeBytes(notDllPath, executableImage);
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(shared / "SharedMeta.nsmeta", shared / "SharedMeta.lib", notDllPath,
+                                 output, error) == ExitCode::CompilationError &&
+                     error.find("not marked as a DLL") != std::string::npos,
+                 "P6 rejects a valid PE image whose physical characteristics do not identify a DLL");
+
+    std::vector<std::uint8_t> wrongMachine = validDll;
+    writeU16(wrongMachine, peOffset + 4U, 0x014cU);
+    const auto wrongMachinePath = shared / "WrongMachine.dll";
+    writeBytes(wrongMachinePath, wrongMachine);
+    output.clear();
+    error.clear();
+    tests.expect(verifyArtifacts(shared / "SharedMeta.nsmeta", shared / "SharedMeta.lib", wrongMachinePath,
+                                 output, error) == ExitCode::CompilationError &&
+                     error.find("machine is not AMD64") != std::string::npos,
+                 "P6 rejects a runtime DLL that advertises the wrong COFF machine before export comparison");
 }
 
 void testGenericCompilerMetadata(TestContext& tests, const std::filesystem::path& root)
@@ -848,6 +924,21 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                      error.find("slot signatures") != std::string::npos && error.find("callees") != std::string::npos,
                  "E5 rejects structurally inconsistent virtual-dispatch tables "
                  "with both slot counts");
+    const auto inconsistentPath = directory / "checksum-valid-inconsistent.nsmeta";
+    error.clear();
+    tests.expect(!incompatible.dispatchTables.empty() && codec.writeModel(incompatible, inconsistentPath, error),
+                 "P6 writes a checksum-valid negative NSMETA fixture with inconsistent parallel tables (" +
+                     error + ")");
+    LibraryMetadata inconsistentDecoded;
+    error.clear();
+    const bool inconsistentRead = codec.read(inconsistentPath, inconsistentDecoded, error);
+    tests.expect(inconsistentRead,
+                 "P6 checksum-valid inconsistent NSMETA passes byte-integrity and ABI fingerprint checks (" +
+                     error + ")");
+    error.clear();
+    tests.expect(inconsistentRead && !codec.verifyCurrentCompiler(inconsistentDecoded, error) &&
+                     error.find("slot signatures") != std::string::npos && error.find("callees") != std::string::npos,
+                 "P6 rejects the decoded model for structural incoherence after checksum validation");
 
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
