@@ -924,9 +924,79 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                      error.find("slot signatures") != std::string::npos && error.find("callees") != std::string::npos,
                  "E5 rejects structurally inconsistent virtual-dispatch tables "
                  "with both slot counts");
+    const LibraryMetadata inconsistentParallelTables = incompatible;
+
+    incompatible = metadata;
+    bool clearedSlotSignature = false;
+    for (auto& dispatch : incompatible.dispatchTables)
+    {
+        if (dispatch.slotSignatures.empty()) continue;
+        dispatch.slotSignatures.front().clear();
+        clearedSlotSignature = true;
+        break;
+    }
+    error.clear();
+    tests.expect(clearedSlotSignature && !codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("empty signature") != std::string::npos && error.find("slot") != std::string::npos,
+                 "DLL-P4 rejects a dispatch slot that cannot identify its semantic member");
+
+    incompatible = metadata;
+    const auto overrideMember = std::ranges::find_if(incompatible.members, [](const auto& member) {
+        constexpr std::uint32_t kOverride = 1U << 4U;
+        return (member.flags & kOverride) != 0U && !member.mangledName.empty();
+    });
+    if (overrideMember != incompatible.members.end()) overrideMember->mangledName += "_wrong";
+    error.clear();
+    tests.expect(overrideMember != incompatible.members.end() && !codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("concrete virtual member") != std::string::npos &&
+                     error.find("dispatch slot") != std::string::npos,
+                 "DLL-P4 rejects a concrete override whose NSMETA member and dispatch callee disagree");
+
+    incompatible = metadata;
+    const auto virtualMember = std::ranges::find_if(incompatible.members, [](const auto& member) {
+        constexpr std::uint32_t kVirtual = 1U << 3U;
+        constexpr std::uint32_t kOverride = 1U << 4U;
+        return (member.flags & kVirtual) != 0U && (member.flags & kOverride) == 0U && !member.mangledName.empty();
+    });
+    if (virtualMember != incompatible.members.end())
+    {
+        constexpr std::uint32_t kAbstract = 1U << 5U;
+        virtualMember->flags |= kAbstract;
+        virtualMember->mangledName.clear();
+    }
+    error.clear();
+    tests.expect(virtualMember != incompatible.members.end() && !codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("abstract member") != std::string::npos &&
+                     error.find("unexpectedly owns dispatch callee") != std::string::npos,
+                 "DLL-P4 rejects an abstract slot that incorrectly claims a physical callee");
+
+    incompatible = metadata;
+    bool changedInterfaceImplementation = false;
+    for (auto& dispatch : incompatible.dispatchTables)
+    {
+        for (auto& interface : dispatch.interfaces)
+        {
+            for (std::size_t slot = 0; slot < interface.implementationSignatures.size(); ++slot)
+            {
+                if (interface.calleeNames[slot].empty()) continue;
+                interface.implementationSignatures[slot] = "wrong-interface-implementation";
+                changedInterfaceImplementation = true;
+                break;
+            }
+            if (changedInterfaceImplementation) break;
+        }
+        if (changedInterfaceImplementation) break;
+    }
+    error.clear();
+    tests.expect(changedInterfaceImplementation && !codec.verifyCurrentCompiler(incompatible, error) &&
+                     error.find("interface dispatch slot") != std::string::npos &&
+                     error.find("expected 'wrong-interface-implementation'") != std::string::npos,
+                 "DLL-P4 rejects an interface-table callee paired with the wrong implementation signature");
+
     const auto inconsistentPath = directory / "checksum-valid-inconsistent.nsmeta";
     error.clear();
-    tests.expect(!incompatible.dispatchTables.empty() && codec.writeModel(incompatible, inconsistentPath, error),
+    tests.expect(!inconsistentParallelTables.dispatchTables.empty() &&
+                     codec.writeModel(inconsistentParallelTables, inconsistentPath, error),
                  "P6 writes a checksum-valid negative NSMETA fixture with inconsistent parallel tables (" +
                      error + ")");
     LibraryMetadata inconsistentDecoded;
