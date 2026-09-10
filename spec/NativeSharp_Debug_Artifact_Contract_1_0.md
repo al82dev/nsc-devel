@@ -33,6 +33,9 @@ absolute path.
 
 COFF objects shall retain standard CodeView sections needed by the linker. NativeSharp shall not
 require a proprietary `.nsdbg` sidecar or a private debugger protocol to recover source mappings.
+For the full profile, the object shall carry both `.debug$S` and `.debug$T`; `.debug$S` shall retain
+the `SECREL` and `SECTION` relocations needed to map procedures and ranges after final layout. The
+object is the producer/linker handoff and shall be independently inspectable before PDB writing.
 
 ## NSC-DEBUG-003 — Minimum usable profile
 
@@ -123,7 +126,7 @@ Debug support is conforming only when automated evidence verifies all applicable
 
 1. LLVM IR contains valid compile-unit, file, subprogram and location metadata;
 2. emitted COFF contains CodeView debug sections;
-3. `lld-link` produces a PDB and matching RSDS record;
+3. every certified linker produces a PDB and matching RSDS record;
 4. `llvm-pdbutil` reports the expected module, procedure, source file and line information;
 5. O0 and O2 fixtures preserve executable behavior while retaining their declared debug profile.
 

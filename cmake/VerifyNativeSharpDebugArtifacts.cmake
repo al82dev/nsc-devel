@@ -82,6 +82,38 @@ endif()
 
 foreach(level IN ITEMS O0 O2)
     string(TOLOWER "${level}" stem)
+    set(object "${DEBUG_OUTPUT_DIR}/debug_${stem}.obj")
+    execute_process(
+        COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${DEBUG_FIXTURE}"
+            -g0 -g "${debug_prefix_map}" "-${level}" -o "${object}"
+        RESULT_VARIABLE object_compile_result
+        OUTPUT_VARIABLE object_compile_output
+        ERROR_VARIABLE object_compile_error)
+    if(NOT object_compile_result EQUAL 0 OR NOT EXISTS "${object}")
+        message(FATAL_ERROR
+            "${level} full-debug object compilation failed (${object_compile_result})\n"
+            "stdout:\n${object_compile_output}\nstderr:\n${object_compile_error}")
+    endif()
+    execute_process(
+        COMMAND "${LLVM_READOBJ}" --sections --relocations --codeview "${object}"
+        RESULT_VARIABLE object_inspection_result
+        OUTPUT_VARIABLE object_dump
+        ERROR_VARIABLE object_inspection_error)
+    if(NOT object_inspection_result EQUAL 0 OR
+       NOT object_dump MATCHES "Name: \\.debug\\\$S" OR
+       NOT object_dump MATCHES "Name: \\.debug\\\$T" OR
+       NOT object_dump MATCHES "Section \\([0-9]+\\) \\.debug\\\$S" OR
+       NOT object_dump MATCHES "IMAGE_REL_AMD64_SECREL" OR
+       NOT object_dump MATCHES "IMAGE_REL_AMD64_SECTION" OR
+       NOT object_dump MATCHES "Compile3Sym" OR
+       NOT object_dump MATCHES "GlobalProcIdSym" OR
+       NOT object_dump MATCHES "FileChecksum" OR
+       NOT object_dump MATCHES "DefRange")
+        message(FATAL_ERROR
+            "${level} COFF object is not a self-contained CodeView input for a PDB linker\n"
+            "${object_inspection_error}")
+    endif()
+
     set(executable "${DEBUG_OUTPUT_DIR}/debug_${stem}.exe")
     set(pdb "${DEBUG_OUTPUT_DIR}/debug_${stem}.pdb")
     execute_process(

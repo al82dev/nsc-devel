@@ -346,6 +346,10 @@ stepping no promete equivalencia artificial con O0.
 
 ### PDB-P6 — Paridad de linker
 
+**Estado del productor / Producer status:** handoff de objetos cerrado; ver
+\`mkdown/181_1_0_1_handoff_codeview_linker.md\`. La paridad final permanece
+bloqueada fuera de este repo por NSL-30: NSLink 0.1.0 aún no acepta \`/pdb:\`.
+
 **Objetivo / Goal:** cerrar la diferencia entre lld-link y NSLink.
 
 El trabajo principal pertenece a \`A:\nslink-devel\` (\`NSD-20\` / \`NSL-30\`):
@@ -387,7 +391,7 @@ virtual/de interfaz y obtener fuente/línea correctas después de optimizar.
 | \`NSD-17\` contrato de artefactos | Parcialmente satisfecho por el spec; faltan versión compartida, checksums, remapping y negativos |
 | \`NSD-18\` NSASM | No pertenece a este repo |
 | \`NSD-19\` metadata NSC | Ya no está bloqueado; slice mínimo y varias extensiones están integrados |
-| \`NSD-20\` NSLink PDB/RSDS | Sigue bloqueado fuera de este repo |
+| \`NSD-20\` NSLink PDB/RSDS | Handoff CodeView de NSC cerrado; escritor PDB sigue bloqueado fuera de este repo por NSL-30 |
 | \`NSD-21\` confianza de símbolos | Checksums/remapping cerrados en el productor; aceptación del consumidor diferida a PDB-P7 |
 | \`NSD-22\` breakpoints fuente | Desbloqueado para fixture lld-link |
 | \`NSD-23\` stepping fuente | Interfaces y SEH cubiertos en el productor; aceptación interactiva diferida a PDB-P7 |
@@ -474,9 +478,9 @@ debugger:
 4. casos de breakpoint, stack y excepción;
 5. esta matriz de estado actualizada.
 
-PDB-P1 a PDB-P5 ya quedaron implementados del lado productor después del corte. La
-aceptación interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P6
-(paridad y contrato de linker).
+PDB-P1 a PDB-P6 ya quedaron implementados del lado productor después del corte. La
+aceptación interactiva PDB-P0 y el baseline se concentran en PDB-P7; la paridad
+NSLink/PDB seguirá marcada como externa mientras NSL-30 no exista.
 
 ## 15. Mensaje de commit de este handover / Commit message for this handover
 
