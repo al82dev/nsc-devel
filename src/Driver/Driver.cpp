@@ -1424,7 +1424,11 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             generated << "class ";
         }
         generated << typeName;
+        // A static class has no instance hierarchy. Some NSMETA 1.10 producers recorded the
+        // implicit Object edge anyway; ignore that legacy pollution instead of generating the
+        // invalid `static class Utility : Object` source that the parser correctly rejects.
         if (type.kind == interop::LibraryMetadataTypeKind::Class &&
+            (type.flags & (1U << 3U)) == 0U &&
             (!type.baseTypeKey.empty() || !type.interfaceTypeKeys.empty()))
         {
             generated << " : ";

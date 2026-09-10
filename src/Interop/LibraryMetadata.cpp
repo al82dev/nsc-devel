@@ -421,24 +421,33 @@ bool buildMetadataModel(
         const std::string canonicalTypeKey = typeKeyForOrdinal(types, typeOrdinal);
         record.stableTypeId = stableTypeId(canonicalTypeKey);
 
-        if (const frontend::ClassInheritanceInfo* inheritance = compilation.inheritanceModel()->classInfo(typeOrdinal))
+        if (!type.isStatic)
         {
-            record.baseTypeKey = inheritance->baseTypeKey;
-        }
-        if (type.kind == frontend::NamedTypeDeclarationKind::Class)
-        {
-            for (const std::size_t interfaceOrdinal : compilation.interfaceModel()->interfacesOfClass(typeOrdinal))
+            if (const frontend::ClassInheritanceInfo* inheritance =
+                    compilation.inheritanceModel()->classInfo(typeOrdinal))
             {
-                record.interfaceTypeKeys.push_back(typeKeyForOrdinal(types, interfaceOrdinal));
+                record.baseTypeKey = inheritance->baseTypeKey;
             }
-        }
-        else if (type.kind == frontend::NamedTypeDeclarationKind::Interface)
-        {
-            if (const frontend::InterfaceTypeInfo* interfaceInfo = compilation.interfaceModel()->interfaceInfo(typeOrdinal))
+            if (type.kind == frontend::NamedTypeDeclarationKind::Class)
             {
-                for (const std::size_t interfaceOrdinal : interfaceInfo->directBaseInterfaceOrdinals)
+                for (const std::size_t interfaceOrdinal :
+                     compilation.interfaceModel()->interfacesOfClass(typeOrdinal))
                 {
-                    record.interfaceTypeKeys.push_back(typeKeyForOrdinal(types, interfaceOrdinal));
+                    record.interfaceTypeKeys.push_back(
+                        typeKeyForOrdinal(types, interfaceOrdinal));
+                }
+            }
+            else if (type.kind == frontend::NamedTypeDeclarationKind::Interface)
+            {
+                if (const frontend::InterfaceTypeInfo* interfaceInfo =
+                        compilation.interfaceModel()->interfaceInfo(typeOrdinal))
+                {
+                    for (const std::size_t interfaceOrdinal :
+                         interfaceInfo->directBaseInterfaceOrdinals)
+                    {
+                        record.interfaceTypeKeys.push_back(
+                            typeKeyForOrdinal(types, interfaceOrdinal));
+                    }
                 }
             }
         }

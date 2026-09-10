@@ -144,6 +144,25 @@ ExitCode verifyLibraryArtifacts(const std::filesystem::path& metadata,
     return result;
 }
 
+ExitCode verifyLibraryArtifacts(const std::filesystem::path& metadata,
+                                const std::filesystem::path& library,
+                                std::string& output,
+                                std::string& error)
+{
+    Driver driver;
+    std::ostringstream out;
+    std::ostringstream err;
+    const std::string metadataText = metadata.string();
+    const std::string libraryText = library.string();
+    const std::array<std::string_view, 3> args = {
+        "--verify-library-artifacts", metadataText, libraryText
+    };
+    const ExitCode result = driver.run(args, out, err);
+    output = out.str();
+    error = err.str();
+    return result;
+}
+
 bool contains(const std::span<const std::string> values, std::string_view expected)
 {
     for (const std::string& value : values)
@@ -282,6 +301,7 @@ namespace Stage46.Shared
         public static export extern C int Multiply(int left, int right) { return left * right; }
         private static int Hidden(int value) { return value + 1; }
     }
+
 }
 )NS");
 
@@ -3231,6 +3251,11 @@ namespace Precompiled
         private static int Hidden(int value) { return value + 1; }
     }
 
+    public static class Utility
+    {
+        public static int Answer() { return 42; }
+    }
+
     public struct Box<T>
     {
         public T Value;
@@ -3793,6 +3818,89 @@ namespace Consumer
     error.clear();
     tests.expect(metadataCodec.read(staticProducer / "NativeMath.nsmeta", nominalMetadata, error),
                  "nominal ABI negative fixture reads the producer metadata");
+
+    const auto utilityType = std::ranges::find_if(nominalMetadata.types, [](const auto& type) {
+        return type.fullyQualifiedName == "Precompiled.Utility";
+    });
+    tests.expect(utilityType != nominalMetadata.types.end() &&
+                     (utilityType->flags & (1U << 3U)) != 0U &&
+                     utilityType->baseTypeKey.empty() && utilityType->interfaceTypeKeys.empty(),
+                 "a new producer serializes a static class without an instance hierarchy");
+    output.clear();
+    error.clear();
+    tests.expect(verifyLibraryArtifacts(staticProducer / "NativeMath.nsmeta",
+                                        staticLibrary,
+                                        output,
+                                        error) == ExitCode::Success,
+                 "a static class in current NSMETA materializes during artifact verification (" +
+                     error + ")");
+
+    const auto legacyStaticRoot = staticRoot / "LegacyStaticHierarchy";
+    LibraryMetadata legacyStaticMetadata = nominalMetadata;
+    legacyStaticMetadata.formatMinor = 10;
+    const auto legacyUtilityType = std::ranges::find_if(
+        legacyStaticMetadata.types,
+        [](const auto& type) { return type.fullyQualifiedName == "Precompiled.Utility"; });
+    const auto legacyBaseType = std::ranges::find_if(
+        legacyStaticMetadata.types,
+        [](const auto& type) { return type.fullyQualifiedName == "Precompiled.Counter"; });
+    const auto legacyInterfaceType = std::ranges::find_if(
+        legacyStaticMetadata.types,
+        [](const auto& type) { return type.fullyQualifiedName == "Precompiled.IScore"; });
+    if (legacyUtilityType != legacyStaticMetadata.types.end() &&
+        legacyBaseType != legacyStaticMetadata.types.end() &&
+        legacyInterfaceType != legacyStaticMetadata.types.end())
+    {
+        legacyUtilityType->baseTypeKey = legacyBaseType->identityKey;
+        legacyUtilityType->interfaceTypeKeys = {legacyInterfaceType->identityKey};
+    }
+    error.clear();
+    const auto legacyStaticMetadataPath = legacyStaticRoot / "NativeMath.nsmeta";
+    tests.expect(legacyUtilityType != legacyStaticMetadata.types.end() &&
+                     legacyBaseType != legacyStaticMetadata.types.end() &&
+                     legacyInterfaceType != legacyStaticMetadata.types.end() &&
+                     metadataCodec.writeModel(legacyStaticMetadata, legacyStaticMetadataPath, error),
+                 "legacy NSMETA 1.10 fixture records the historical bogus static hierarchy (" +
+                     error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(verifyLibraryArtifacts(legacyStaticMetadataPath,
+                                        staticLibrary,
+                                        output,
+                                        error) == ExitCode::Success,
+                 "artifact verification ignores base classes and interfaces attached to a static "
+                 "class by a legacy NSMETA 1.10 producer (" + error + ")");
+    writeFile(legacyStaticRoot / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main() { return Precompiled.Utility.Answer(); }
+}
+)NS");
+    writeFile(legacyStaticRoot / "LegacyStaticHierarchy.nsproj",
+              "<Project><PropertyGroup><Name>LegacyStaticHierarchy</Name>"
+              "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+              "Metadata=\"NativeMath.nsmeta\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    const auto legacyStaticExecutable = legacyStaticRoot / "LegacyStaticHierarchy.exe";
+    const ExitCode legacyStaticResult = emitLibrary("--emit-project-oop-exe",
+                                                    legacyStaticRoot / "LegacyStaticHierarchy.nsproj",
+                                                    legacyStaticExecutable,
+                                                    output,
+                                                    error,
+                                                    false);
+    tests.expect(legacyStaticResult == ExitCode::Success,
+                 "a consumer materializes and calls a static class from polluted NSMETA 1.10 (" +
+                     error + ")");
+#ifdef _WIN32
+    if (legacyStaticResult == ExitCode::Success)
+        tests.expect(runExecutable(legacyStaticExecutable) == 42,
+                     "the legacy static-class consumer executes to 42");
+#endif
+
     const auto packetType = std::ranges::find_if(
         nominalMetadata.types, [](const auto& type) { return type.fullyQualifiedName == "Precompiled.Packet"; });
     if (packetType != nominalMetadata.types.end()) packetType->size = 12;
