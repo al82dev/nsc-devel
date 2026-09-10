@@ -55,7 +55,7 @@ locals, NativeSharp types, variable locations and location ranges. It shall desc
 move or disappear under optimization without inventing stale locations.
 
 The profile shall cover ordinary methods, constructors, lambdas, callbacks, C exception-boundary
-wrappers, static initializers, destruction helpers, interface thunks and Windows SEH funclets.
+wrappers, static initializers, destruction helpers, virtual/interface dispatch paths and Windows SEH funclets.
 Generated procedures shall remain distinguishable from user-authored procedures.
 
 Internal synthesized procedures that own executable behavior, including static initialization,
@@ -63,6 +63,11 @@ destruction entries, typed-catch filters and closure-context destruction, shall 
 artificial but shall not be classified as thunks. ABI adaptation boundaries, including C exports
 and callback exception guards, shall be marked both artificial and thunk. This distinction must
 survive in the standard CodeView/PDB procedure record kind.
+
+An interface or virtual method table that already stores the concrete implementation entry point
+shall not gain a wrapper merely to manufacture a debug frame. Its user-authored implementation is
+a normal procedure, and inline table lookup remains attributed to the source call site. Only a
+real ABI receiver/signature adjustment may introduce an artificial thunk between those frames.
 
 ## NSC-DEBUG-005 — Source identity and reproducibility
 

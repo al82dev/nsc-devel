@@ -129,8 +129,14 @@ foreach(level IN ITEMS O0 O2)
     if(NOT pdb_result EQUAL 0 OR
        NOT pdb_dump MATCHES "Has Debug Info: true" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Pair\\.Total" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.DispatchSource\\.ReadValue`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.HandlerHost\\.OnChanged`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.HandlerHost\\.Read`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.OnStaticChanged`" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Compute" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Sum" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.MakeWide`" OR
+       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.SumWide`" OR
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`[^`]*Increment[^`]*__c_boundary`" OR
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`ExportedIdentity`" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.GeneratedState\\.cctor \\[generated\\]`" OR
@@ -148,14 +154,37 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "S_BLOCK32" OR
        NOT pdb_dump MATCHES "type=0x0074 \\(int\\), flags = param" OR
        NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.Pair" OR
+       NOT pdb_dump MATCHES "LF_STRUCTURE[^\n]*DebugFixture\\.WideValue" OR
        NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Left`[^\n]*offset = 0[^\n]*attrs = public" OR
        NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Right`[^\n]*offset = 4[^\n]*attrs = public" OR
        NOT pdb_dump MATCHES "sizeof 8" OR
+       NOT pdb_dump MATCHES "sizeof 12" OR
        NOT pdb_dump MATCHES "int \\(DebugFixture\\.Pair\\)" OR
+       NOT pdb_dump MATCHES "DebugFixture\\.WideValue \\(int, int" OR
+       NOT pdb_dump MATCHES "int \\(DebugFixture\\.WideValue\\)" OR
        NOT pdb_dump MATCHES "S_DEFRANGE")
         message(FATAL_ERROR
             "${level} PDB is missing debug summary, functions, variables, types or ranges\n"
             "${pdb_dump}\n${pdb_error}")
+    endif()
+    if(pdb_dump MATCHES "S_THUNK32[^\n]*`DebugFixture\\.(DispatchSource\\.ReadValue|HandlerHost\\.(OnChanged|Read)|Program\\.OnStaticChanged)`")
+        message(FATAL_ERROR
+            "${level} PDB misclassified logical interface/virtual/handler methods as ABI thunks\n"
+            "${pdb_dump}\n${pdb_error}")
+    endif()
+
+    execute_process(
+        COMMAND "${LLVM_READOBJ}" --sections --unwind "${executable}"
+        RESULT_VARIABLE unwind_result
+        OUTPUT_VARIABLE unwind_dump
+        ERROR_VARIABLE unwind_error)
+    if(NOT unwind_result EQUAL 0 OR
+       NOT unwind_dump MATCHES "Name: \\.pdata" OR
+       NOT unwind_dump MATCHES "RuntimeFunction" OR
+       NOT unwind_dump MATCHES "UnwindInfoAddress")
+        message(FATAL_ERROR
+            "${level} PE is missing physical Win64 .pdata/xdata unwind coverage for dispatch frames\n"
+            "${unwind_dump}\n${unwind_error}")
     endif()
     if(level STREQUAL "O0" AND
        (NOT pdb_dump MATCHES "S_BLOCK32[^\n]*``[\n\r ]+parent = [0-9]+, end = [0-9]+[\n\r ]+code size = [0-9]+, addr = [^\n]+[\n\r ]+[^\n]*S_LOCAL[^\n]*`scoped`"))
@@ -175,13 +204,22 @@ foreach(level IN ITEMS O0 O2)
        NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/left/Shared\\.ns \\(SHA-256:[ \n\r]+${left_source_sha256}\\)" OR
        NOT lines_dump MATCHES "/_/nativesharp/debug-pdb/right/Shared\\.ns \\(SHA-256:[ \n\r]+${right_source_sha256}\\)" OR
        lines_dump MATCHES "NSC-DEVEL-BRANCHES" OR
-       NOT lines_dump MATCHES "[ \n]45 [0-9A-F]+" OR
-       NOT lines_dump MATCHES "[ \n]105 [0-9A-F]+")
+       NOT lines_dump MATCHES "[ \n]95 [0-9A-F]+" OR
+       NOT lines_dump MATCHES "[ \n]191 [0-9A-F]+")
         set(lines_valid FALSE)
     endif()
     if(NOT lines_valid)
         message(FATAL_ERROR
             "${level} PDB is missing remapped multi-file SHA-256 source identity or expected lines\n"
+            "${lines_dump}\n${lines_error}")
+    endif()
+    if(level STREQUAL "O0" AND
+       (NOT lines_dump MATCHES "[ \n]166 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]167 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]176 [0-9A-F]+" OR
+        NOT lines_dump MATCHES "[ \n]177 [0-9A-F]+"))
+        message(FATAL_ERROR
+            "O0 PDB is missing virtual/interface or direct/indirect aggregate call lines\n"
             "${lines_dump}\n${lines_error}")
     endif()
 endforeach()

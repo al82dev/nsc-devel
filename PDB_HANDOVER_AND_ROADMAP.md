@@ -138,6 +138,9 @@ semántico sobre el que se certificó el lote actual.
 | Receptor \`this\` | Cerrada para el fixture actual | local sobre el hogar ABI |
 | Scopes léxicos | Cerrada para el fixture actual | \`S_BLOCK32\` |
 | Callback guard y export C | Cerrada | \`S_THUNK32\` |
+| Dispatch virtual/de interfaz | Cerrada en el productor | implementación lógica como \`S_GPROC32\`; búsqueda inline sin frame falso |
+| Handlers estáticos/de instancia | Cerrada en el productor | procedimientos lógicos y ubicaciones O0/O2 |
+| Struct ABI directo/indirecto | Cerrada en el productor | firmas fuente para 8/12 bytes y unwind físico |
 | Inicializador estático | Cerrada | \`S_GPROC32 ...cctor [generated]\` |
 | Entrada de destrucción | Cerrada | \`S_GPROC32 ...destruction-entry [generated]\` |
 | Filtro de catch tipado | Cerrada | \`S_GPROC32 ...catch-filter [generated]\` |
@@ -206,6 +209,9 @@ otros repositorios con el compilador.
 
 ### PDB-P0 — Aceptación real del slice existente / Real acceptance of the existing slice
 
+**Estado de ejecución / Execution status:** diferido a PDB-P7; las entregas P1-P6 usan gates
+dirigidos del productor y no ejecutan una certificación interactiva o baseline global intermedio.
+
 **Objetivo / Goal:** entregar al debugger un fixture actual y comprobar que puede
 consumirlo sin suposiciones privadas.
 
@@ -245,6 +251,10 @@ fuente remapeada sin conocer \`A:\` ni el checkout original.
 \`Agrega identidad reproducible de fuentes PDB / Add reproducible PDB source identity\`
 
 ### PDB-P2 — Interfaces, dispatch y thunks restantes
+
+**Estado del productor / Producer status:** implementado después del corte de este handover; ver
+\`mkdown/177_1_0_1_dispatch_interfaces_pdb.md\`. El dispatch apunta directamente al método lógico,
+sin fabricar un thunk de depuración; las fronteras C reales conservan \`S_THUNK32\`.
 
 **Objetivo / Goal:** describir el camino real de una llamada de interfaz.
 
@@ -366,9 +376,9 @@ virtual/de interfaz y obtener fuente/línea correctas después de optimizar.
 | \`NSD-18\` NSASM | No pertenece a este repo |
 | \`NSD-19\` metadata NSC | Ya no está bloqueado; slice mínimo y varias extensiones están integrados |
 | \`NSD-20\` NSLink PDB/RSDS | Sigue bloqueado fuera de este repo |
-| \`NSD-21\` confianza de símbolos | Desbloqueado para comenzar con PDB lld-link; checksums/remapping pendientes |
+| \`NSD-21\` confianza de símbolos | Checksums/remapping cerrados en el productor; aceptación del consumidor diferida a PDB-P7 |
 | \`NSD-22\` breakpoints fuente | Desbloqueado para fixture lld-link |
-| \`NSD-23\` stepping fuente | Parcialmente desbloqueado; SEH/interfaces/O2 requieren más cobertura |
+| \`NSD-23\` stepping fuente | Parcialmente desbloqueado; interfaces cubiertas en el productor, SEH/O2 requieren más cobertura |
 | \`NSD-25\` scopes/locales | Desbloqueado para la superficie del fixture |
 | \`NSD-26\` tipos | Parcialmente desbloqueado; tipos completos pendientes |
 
@@ -452,9 +462,9 @@ debugger:
 4. casos de breakpoint, stack y excepción;
 5. esta matriz de estado actualizada.
 
-PDB-P1 ya quedó implementado del lado productor después del corte. Tras la aceptación PDB-P0,
-corresponde clasificar cualquier brecha encontrada; si no aparece un bloqueo más urgente, el
-siguiente slice del productor es PDB-P2 (interfaces, dispatch y thunks restantes).
+PDB-P1 y PDB-P2 ya quedaron implementados del lado productor después del corte. La aceptación
+interactiva PDB-P0 se difiere a PDB-P7; el siguiente slice del productor es PDB-P3 (funclets SEH y
+excepciones completas).
 
 ## 15. Mensaje de commit de este handover / Commit message for this handover
 

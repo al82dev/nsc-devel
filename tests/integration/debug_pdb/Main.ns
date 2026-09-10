@@ -9,6 +9,7 @@ namespace DebugFixture
 
     extern C delegate int Transform(int value);
     delegate int Reader();
+    delegate void Changed(int value);
 
     public class DebugProblem : Exception { }
 
@@ -27,6 +28,46 @@ namespace DebugFixture
         }
     }
 
+    public interface IValueSource
+    {
+        int ReadValue();
+    }
+
+    public abstract class ValueSource
+    {
+        public abstract int ReadValue();
+    }
+
+    public class DispatchSource : ValueSource, IValueSource
+    {
+        public int Value;
+
+        public DispatchSource(int value)
+        {
+            Value = value;
+        }
+
+        public override int ReadValue()
+        {
+            return Value;
+        }
+    }
+
+    public class HandlerHost
+    {
+        public int Last;
+
+        public void OnChanged(int value)
+        {
+            Last = value;
+        }
+
+        public int Read()
+        {
+            return Last;
+        }
+    }
+
     public struct Pair
     {
         public int Left;
@@ -38,8 +79,17 @@ namespace DebugFixture
         }
     }
 
+    public struct WideValue
+    {
+        public int First;
+        public int Second;
+        public int Third;
+    }
+
     public static class Program
     {
+        public static event Changed StaticChanged;
+
         public static int Compute(int left, int right)
         {
             int total = left + right;
@@ -51,6 +101,20 @@ namespace DebugFixture
             return pair.Left + pair.Right;
         }
 
+        public static WideValue MakeWide(int first, int second, int third)
+        {
+            WideValue value;
+            value.First = first;
+            value.Second = second;
+            value.Third = third;
+            return value;
+        }
+
+        public static int SumWide(WideValue value)
+        {
+            return value.First + value.Second + value.Third;
+        }
+
         public static int Increment(int value)
         {
             return value + 1;
@@ -59,6 +123,11 @@ namespace DebugFixture
         public static int Read(Reader reader)
         {
             return reader();
+        }
+
+        public static void OnStaticChanged(int value)
+        {
+            GeneratedState.Seed = value;
         }
 
         public static int MaybeThrow(bool fail)
@@ -91,6 +160,21 @@ namespace DebugFixture
             int captured = answer;
             raii Reader reader = () => captured;
             answer = Read(reader);
+            DispatchSource dispatch = new DispatchSource(answer);
+            ValueSource virtualView = dispatch;
+            IValueSource interfaceView = dispatch;
+            answer = virtualView.ReadValue();
+            answer = interfaceView.ReadValue();
+            HandlerHost handler = new HandlerHost();
+            StaticChanged += OnStaticChanged;
+            StaticChanged += handler.OnChanged;
+            StaticChanged(answer);
+            StaticChanged -= handler.OnChanged;
+            StaticChanged -= OnStaticChanged;
+            Reader instanceReader = handler.Read;
+            answer = Read(instanceReader);
+            WideValue wide = MakeWide(answer, 0, 0);
+            answer = SumWide(wide);
             raii Resource resource = new Resource();
             resource.Value = answer;
             try
@@ -102,6 +186,8 @@ namespace DebugFixture
                 answer = 0;
             }
             answer = resource.Value;
+            delete handler;
+            delete dispatch;
             return answer;
         }
     }
