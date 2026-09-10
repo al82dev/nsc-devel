@@ -352,6 +352,11 @@ struct ProjectOopMirStaticField final
     std::string typeKey;
     bool isReadonly = false;
     bool isConst = false;
+    bool isImported = false;
+    // Mutable static storage remains owned by the producer. Consumers call the stable accessor
+    // carried in NSMETA instead of defining a second global with a compilation-local ordinal.
+    std::string storageSymbol;
+    std::string accessorName;
     bool hasConstantInitializer = false;
     std::uint64_t constantIntegerValue = 0;
     double constantFloatingValue = 0.0;
@@ -469,6 +474,7 @@ struct ProjectOopMirFunction final
     bool isExportedC = false;
     bool isImportedC = false;
     bool isImportedNative = false;
+    bool isSyntheticImplicitConstructor = false;
     std::string importDllName;
     // C1.2 "import identity" -- see ProjectOopHirFunction for the full note.
     bool importRequiresRuntimeBinding = false;

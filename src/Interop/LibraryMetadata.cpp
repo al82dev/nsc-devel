@@ -323,6 +323,11 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
     if (type.isPartial) flags |= 1U << 0U;
     if (type.isAbstract) flags |= 1U << 1U;
     if (type.isSealed) flags |= 1U << 2U;
+    if (type.isStatic) flags |= 1U << 3U;
+    if (type.syntax != nullptr && type.syntax->auxiliaryText().find("borrowedview") != std::string::npos)
+        flags |= 1U << 4U;
+    if (type.syntax != nullptr && type.syntax->auxiliaryText().find("union") != std::string::npos)
+        flags |= 1U << 5U;
     return flags;
 }
 
@@ -348,6 +353,8 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.isUserOperator) flags |= 1U << 16U;
     if (member.isUserConversion) flags |= 1U << 17U;
     if (member.isImplicitUserConversion) flags |= 1U << 18U;
+    if (member.isNewSlot) flags |= 1U << 19U;
+    if (member.isImportedC) flags |= 1U << 20U;
     return flags;
 }
 
@@ -576,9 +583,15 @@ bool buildMetadataModel(
         record.declaredTypeKey = member.declaredTypeKey;
         record.declaredOwnership = metadataOwnership(member.declaredOwnership);
         record.cAbiName = member.cAbiName;
+        record.importDllName = member.importDllName;
         if (const frontend::ProjectOopMirFunction* function = compilation.oopMirModel()->functionForMember(ordinal))
         {
             record.mangledName = function->mangledName;
+        }
+        const auto staticField = staticFields.find(ordinal);
+        if (staticField != staticFields.end() && !staticField->second->isConst)
+        {
+            record.mangledName = staticField->second->accessorName;
         }
         for (const frontend::MethodParameterSymbol& parameter : member.parameters)
         {
@@ -595,7 +608,6 @@ bool buildMetadataModel(
             }
             record.parameters.push_back(std::move(parameterRecord));
         }
-        const auto staticField = staticFields.find(ordinal);
         if (staticField != staticFields.end() && staticField->second->isConst && staticField->second->hasConstantInitializer)
         {
             const frontend::ProjectOopMirStaticField& field = *staticField->second;
@@ -614,12 +626,43 @@ bool buildMetadataModel(
                 record.constantKind = 5;
                 record.constantBits = std::bit_cast<std::uint64_t>(field.constantFloatingValue);
             }
+            else if (field.typeKey == "builtin:string")
+            {
+                record.constantKind = 6;
+                record.constantText = field.constantStringValue;
+            }
             else
             {
                 record.constantKind = 1;
                 record.constantBits = field.constantIntegerValue;
             }
         }
+        metadata.members.push_back(std::move(record));
+    }
+
+    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+    {
+        if (!function.isSyntheticImplicitConstructor ||
+            !rootTypes.contains(function.declaringTypeOrdinal) ||
+            function.declaringTypeOrdinal >= types.size())
+        {
+            continue;
+        }
+        const frontend::NamedTypeDeclaration& type = types[function.declaringTypeOrdinal];
+        if (type.accessibility != frontend::NamedTypeAccessibility::Public) continue;
+        const std::string fullyQualifiedName = type.identity.fullyQualifiedName();
+        const std::size_t separator = fullyQualifiedName.find_last_of(".+");
+        const std::string typeName = separator == std::string::npos
+            ? fullyQualifiedName
+            : fullyQualifiedName.substr(separator + 1U);
+        LibraryMetadataMember record;
+        record.kind = static_cast<std::uint8_t>(frontend::ClassMemberKind::Constructor);
+        record.accessibility = static_cast<std::uint8_t>(frontend::ClassMemberAccessibility::Public);
+        record.declaringTypeKey = "type:" + type.identity.key();
+        record.name = typeName;
+        record.signatureKey = typeName + "()";
+        record.declaredTypeKey = "builtin:void";
+        record.mangledName = function.mangledName;
         metadata.members.push_back(std::move(record));
     }
 
@@ -848,6 +891,8 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         }
         writer.u8(member.constantKind);
         writer.u64(member.constantBits);
+        if (metadata.formatMinor >= 9) writer.text(member.constantText);
+        if (metadata.formatMinor >= 10) writer.text(member.importDllName);
     }
 
     writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
@@ -1047,7 +1092,9 @@ bool decodePayload(
             }
             member.parameters.push_back(std::move(parameter));
         }
-        if (!reader.u8(member.constantKind) || !reader.u64(member.constantBits))
+        if (!reader.u8(member.constantKind) || !reader.u64(member.constantBits) ||
+            (metadata.formatMinor >= 9 && !reader.text(member.constantText)) ||
+            (metadata.formatMinor >= 10 && !reader.text(member.importDllName)))
         {
             error = "truncated metadata constant record";
             return false;
@@ -1536,6 +1583,7 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         constexpr std::uint32_t kVirtual = 1U << 3U;
         constexpr std::uint32_t kOverride = 1U << 4U;
         constexpr std::uint32_t kAbstract = 1U << 5U;
+        constexpr std::uint32_t kNewSlot = 1U << 19U;
         std::unordered_map<std::string, const LibraryMetadataType*> typesByKey;
         for (const LibraryMetadataType& type : metadata.types)
             typesByKey.emplace("type:" + type.identityKey, &type);
@@ -1644,7 +1692,15 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                     "' has no declaring-type dispatch contract";
                 return false;
             }
-            const auto signature = std::ranges::find(dispatch->slotSignatures, member.signatureKey);
+            const auto signature = std::ranges::find_if(
+                dispatch->slotSignatures, [&](const std::string& candidate) {
+                    if (candidate != member.signatureKey) return false;
+                    if ((member.flags & kNewSlot) == 0U) return true;
+                    const std::size_t slot = static_cast<std::size_t>(
+                        &candidate - dispatch->slotSignatures.data());
+                    return slot < dispatch->slotCalleeNames.size() &&
+                        dispatch->slotCalleeNames[slot] == member.mangledName;
+                });
             if (signature == dispatch->slotSignatures.end())
             {
                 error = "metadata virtual member '" + member.declaringTypeKey + "." + member.signatureKey +

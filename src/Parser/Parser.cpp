@@ -2223,7 +2223,8 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     else if (at(TokenKind::KwStruct) || atContextualKeyword("union"))
     {
         declaration = parseStructDeclaration(
-            at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union, false);
+            at(TokenKind::KwStruct) ? StructLayoutForm::Struct : StructLayoutForm::Union,
+            modifiers.isBorrowedView && at(TokenKind::KwStruct));
     }
     else if (at(TokenKind::KwEnum))
     {
@@ -2264,6 +2265,32 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     {
         declaration->addModifier(TokenKind::KwNew);
     }
+    if (modifiers.layoutPack.has_value() || modifiers.layoutAlign.has_value() ||
+        modifiers.layoutSize.has_value())
+    {
+        if (declaration->kind() != ast::AstNodeKind::StructDeclaration)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                declaration->range(),
+                "pack/align/size layout modifiers apply only to nested struct and union declarations");
+        }
+        else
+        {
+            std::string layout = declaration->auxiliaryText();
+            const auto appendLayout = [&](std::string_view name, const std::optional<std::uint64_t> value)
+            {
+                if (!value.has_value()) return;
+                layout += (layout.empty() ? "" : ",");
+                layout += std::string(name) + "=" + std::to_string(*value);
+            };
+            appendLayout("pack", modifiers.layoutPack);
+            appendLayout("align", modifiers.layoutAlign);
+            appendLayout("size", modifiers.layoutSize);
+            declaration->setAuxiliaryText(std::move(layout));
+        }
+    }
     if (beginIndex < tokens_.size())
     {
         declaration->setRange(join(tokens_[beginIndex].range(), declaration->range()));
@@ -2286,6 +2313,10 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
     bool isSealed = false;
     bool isExported = false;
     bool isExternC = false;
+    bool isBorrowedView = false;
+    std::optional<std::uint64_t> nestedLayoutPack;
+    std::optional<std::uint64_t> nestedLayoutAlign;
+    std::optional<std::uint64_t> nestedLayoutSize;
     // C2.2 "union and explicit layout": `at(N)` gives a field its own byte offset inside the
     // aggregate -- the NativeSharp spelling of C's hand-laid-out records and of C#'s
     // [FieldOffset(N)]. Contextual, like `pack`/`align`, so `at` stays usable as an ordinary
@@ -2328,6 +2359,57 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
     while (true)
     {
         parseExplicitFieldOffset();
+        if ((atContextualKeyword("pack") || atContextualKeyword("align") ||
+             atContextualKeyword("size")) && peek().kind() == TokenKind::LeftParen)
+        {
+            const bool isPack = atContextualKeyword("pack");
+            const bool isAlign = atContextualKeyword("align");
+            const lexer::Token& keyword = consume();
+            consume();
+            std::optional<std::uint64_t> value;
+            if (at(TokenKind::IntegerLiteral) &&
+                std::holds_alternative<std::uint64_t>(current().value()))
+            {
+                value = std::get<std::uint64_t>(current().value());
+                consume();
+            }
+            else
+            {
+                expect(TokenKind::IntegerLiteral, isPack ? "pack value" : isAlign ? "alignment value" : "size value");
+            }
+            expect(TokenKind::RightParen, "')'");
+            if (value.has_value() && ((isPack || isAlign)
+                    ? (*value == 0 || (*value & (*value - 1)) != 0)
+                    : (*value == 0)))
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    keyword.range(),
+                    isPack ? "pack requires a power-of-two byte value"
+                           : isAlign ? "align requires a power-of-two byte value"
+                                     : "size requires a positive byte count");
+                value.reset();
+            }
+            if (isPack) nestedLayoutPack = value;
+            else if (isAlign) nestedLayoutAlign = value;
+            else nestedLayoutSize = value;
+            continue;
+        }
+        if (at(TokenKind::KwBorrowed) && peek().kind() == TokenKind::KwStruct)
+        {
+            const lexer::Token& modifier = consume();
+            if (isBorrowedView)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate borrowed modifier on nested type");
+            }
+            isBorrowedView = true;
+            continue;
+        }
         if (!(at(TokenKind::KwPublic) || at(TokenKind::KwInternal) ||
               at(TokenKind::KwProtected) || at(TokenKind::KwPrivate) ||
               at(TokenKind::KwNew) || at(TokenKind::KwStatic) ||
@@ -2757,7 +2839,11 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 isSealed,
                 isExported,
                 isExternC,
-                explicitFieldOffset.has_value()},
+                explicitFieldOffset.has_value(),
+                isBorrowedView,
+                nestedLayoutPack,
+                nestedLayoutAlign,
+                nestedLayoutSize},
             beginIndex);
     }
 

@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -802,7 +803,7 @@ bool ProjectOopHirModel::build(
         }
         if ((member.kind == ClassMemberKind::Method ||
              member.kind == ClassMemberKind::Constructor) &&
-            member.isPrecompiled)
+            member.isPrecompiled && !member.isImportedC)
         {
             // The declaration came from .nsmeta and participates in the ordinary NativeSharp
             // overload set, but its implementation is already in the referenced .lib/DLL. The
@@ -1286,6 +1287,72 @@ bool ProjectOopHirModel::build(
         }
         fieldInitializers_.push_back(ProjectOopHirFieldInitializer{
             memberOrdinal, field.declaringTypeOrdinal, field.isStatic, field.isConst, std::move(value)});
+    }
+
+    // A source class with no written constructor still owns executable construction semantics:
+    // base chaining, zero initialization (performed by the allocator path), and its instance
+    // field initializers. Publish those semantics through the same void(this) ABI as a written
+    // constructor so a metadata consumer never has to recreate producer source expressions.
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
+        if (type.kind != NamedTypeDeclarationKind::Class || type.isPrecompiled || type.isStatic)
+            continue;
+        const bool hasExplicitConstructor = std::ranges::any_of(
+            memberModel.membersOfType(typeOrdinal), [&](const std::size_t ordinal) {
+                return ordinal < memberModel.members().size() &&
+                    memberModel.members()[ordinal].kind == ClassMemberKind::Constructor;
+            });
+        if (hasExplicitConstructor) continue;
+
+        const ImplicitDefaultConstructorBinding* binding =
+            constructionModel.implicitDefaultConstructorBindingForType(typeOrdinal);
+        if (binding == nullptr ||
+            binding->resolution == ImplicitDefaultConstructorResolutionKind::Invalid ||
+            binding->resolution == ImplicitDefaultConstructorResolutionKind::NoViableBaseConstructor ||
+            binding->resolution == ImplicitDefaultConstructorResolutionKind::InaccessibleBaseConstructor)
+        {
+            continue;
+        }
+
+        ProjectOopHirFunction function;
+        function.memberOrdinal = std::numeric_limits<std::size_t>::max();
+        function.declaringTypeOrdinal = typeOrdinal;
+        function.constructor = true;
+        function.isSyntheticImplicitConstructor = true;
+        const std::string fullyQualifiedName = type.identity.fullyQualifiedName();
+        const std::size_t separator = fullyQualifiedName.find_last_of(".+");
+        const std::string typeName = separator == std::string::npos
+            ? fullyQualifiedName
+            : fullyQualifiedName.substr(separator + 1U);
+        function.mangledName = "__nsc_ctor_" +
+            compilation::symbolFragmentForIdentityKey(type.identity.key()) + "__" + sanitize(typeName);
+        function.returnTypeKey = "builtin:void";
+        function.body = makeNode(ProjectOopHirNodeKind::Block, type.syntax, "builtin:void");
+
+        if (binding->entryConstructorMemberOrdinal.has_value() && binding->baseTypeOrdinal.has_value())
+        {
+            auto baseCall = makeNode(ProjectOopHirNodeKind::ConstructorInitializerCall, type.syntax, "builtin:void");
+            baseCall->memberOrdinal = binding->entryConstructorMemberOrdinal;
+            baseCall->baseReceiver = true;
+            baseCall->children.push_back(makeNode(
+                ProjectOopHirNodeKind::ThisValue,
+                type.syntax,
+                inheritanceModel.typeKeyForOrdinal(*binding->baseTypeOrdinal)));
+            function.body->children.push_back(std::move(baseCall));
+        }
+        if (binding->baseTypeOrdinal.has_value())
+        {
+            for (const std::size_t initializerType : implicitInitializerTypes(
+                     *binding->baseTypeOrdinal, binding->entryConstructorMemberOrdinal))
+            {
+                appendInstanceFieldInitializers(initializerType, function.body->children, error);
+                if (!error.empty()) return false;
+            }
+        }
+        appendInstanceFieldInitializers(typeOrdinal, function.body->children, error);
+        if (!error.empty()) return false;
+        functions_.push_back(std::move(function));
     }
 
     built_ = true;

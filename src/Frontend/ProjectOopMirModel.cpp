@@ -887,6 +887,7 @@ bool ProjectOopMirModel::build(
         function.isExportedC = source.isExportedC;
         function.isImportedC = source.isImportedC;
         function.isImportedNative = source.isImportedNative;
+        function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
         function.importDllName = source.importDllName;
         function.importRequiresRuntimeBinding = source.importRequiresRuntimeBinding;
         function.cAbiName = source.cAbiName;
@@ -930,7 +931,7 @@ bool ProjectOopMirModel::build(
             error += "\n  while lowering '" + source.mangledName + "'";
             return false;
         }
-        if (!function.isLambda)
+        if (!function.isLambda && !function.isSyntheticImplicitConstructor)
             functionByMember_[function.memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));
     }
@@ -965,7 +966,20 @@ bool ProjectOopMirModel::build(
                 field.name,
                 field.declaredTypeKey,
                 field.isReadonly,
-                field.isConst};
+                field.isConst,
+                field.isPrecompiled,
+                {},
+                {}};
+            if (field.declaringTypeOrdinal >= nameLookup.namedTypes().size())
+            {
+                error = "Stage 37 static field has an invalid declaring type ordinal";
+                return false;
+            }
+            const std::string typeFragment = compilation::symbolFragmentForIdentityKey(
+                nameLookup.namedTypes()[field.declaringTypeOrdinal].identity.key());
+            const std::string fieldFragment = compilation::symbolFragmentForIdentityKey(field.name);
+            staticField.storageSymbol = "__nsc_static_" + typeFragment + "__" + fieldFragment;
+            staticField.accessorName = "__nsc_get_static_" + typeFragment + "__" + fieldFragment;
             staticField.isEnumConstant = field.isEnumConstant;
             if (field.isConst)
             {

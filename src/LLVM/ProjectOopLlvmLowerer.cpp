@@ -243,19 +243,6 @@ LLVMRealPredicate floatingPredicate(lexer::TokenKind kind)
     }
 }
 
-std::string sanitizeSymbol(std::string value)
-{
-    for (char& character : value)
-    {
-        const unsigned char byte = static_cast<unsigned char>(character);
-        if (std::isalnum(byte) == 0 && character != '_')
-        {
-            character = '_';
-        }
-    }
-    return value;
-}
-
 std::string portablePath(const std::filesystem::path& path)
 {
     const std::u8string encoded = path.lexically_normal().generic_u8string();
@@ -364,7 +351,8 @@ public:
         if (!declareRuntime(error) || !declareStaticFields(error) || !declareFunctions(error) ||
             !declareTypeInitializers(error) || !declareDestructionEntries(error) ||
             !emitDispatchMetadata(error) || !defineRttiHelpers(error) || !defineTypedCatchFilters(error) ||
-            !defineTypeInitializers(error) || !defineCallbackGuardThunks(error) ||
+            !defineTypeInitializers(error) || !defineStaticFieldAccessors(error) ||
+            !defineCallbackGuardThunks(error) ||
             !defineFunctions(error) || !defineCAbiWrappers(error) || !defineDestructionEntries(error))
         {
             dispose();
@@ -659,8 +647,24 @@ private:
 
     LLVMMetadataRef createDebugSubprogram(const frontend::ProjectOopMirFunction& function)
     {
-        if (debugBuilder_ == nullptr || function.isImportedC || function.isImportedNative ||
-            memberModel_ == nullptr || function.memberOrdinal >= memberModel_->members().size())
+        if (debugBuilder_ == nullptr || function.isImportedC || function.isImportedNative)
+            return nullptr;
+        if (function.isSyntheticImplicitConstructor)
+        {
+            if (function.declaringTypeOrdinal >= nameLookup_.namedTypes().size()) return nullptr;
+            const frontend::NamedTypeDeclaration& type =
+                nameLookup_.namedTypes()[function.declaringTypeOrdinal];
+            const std::vector<std::string> noParameters;
+            return createSynthesizedDebugSubprogram(
+                type.range,
+                type.identity.fullyQualifiedName() + ".implicit-ctor",
+                function.mangledName,
+                "builtin:void",
+                noParameters,
+                false,
+                false);
+        }
+        if (memberModel_ == nullptr || function.memberOrdinal >= memberModel_->members().size())
             return nullptr;
         const frontend::ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
         SourceRange range = member.range;
@@ -1899,13 +1903,24 @@ private:
                 if (error.empty()) error = "Stage 37 static field has invalid LLVM type";
                 return false;
             }
-            const std::string symbol = "__nsc_static_" + std::to_string(field.declaringTypeOrdinal) + "_" +
-                sanitizeSymbol(field.name) + "_" + std::to_string(field.memberOrdinal);
-            LLVMValueRef global = LLVMAddGlobal(module_, type, symbol.c_str());
-            if (global == nullptr)
+            staticFieldInfo_[field.memberOrdinal] = &field;
+            if (!field.isConst)
             {
-                return fail(error, "Stage 37 failed to declare static field global " + symbol);
+                LLVMTypeRef accessorType = LLVMFunctionType(
+                    LLVMPointerTypeInContext(context_, 0), nullptr, 0, 0);
+                LLVMValueRef accessor = LLVMAddFunction(module_, field.accessorName.c_str(), accessorType);
+                if (accessor == nullptr)
+                    return fail(error, "Stage 37 failed to declare static field accessor " + field.accessorName);
+                applyUwtableAttribute(accessor);
+                staticFieldAccessorFunctions_[field.memberOrdinal] =
+                    FunctionInfo{accessor, accessorType, nullptr};
+                if (field.isImported) continue;
             }
+
+            LLVMValueRef global = LLVMAddGlobal(module_, type, field.storageSymbol.c_str());
+            if (global == nullptr)
+                return fail(error, "Stage 37 failed to declare static field global " + field.storageSymbol);
+            LLVMSetLinkage(global, LLVMPrivateLinkage);
 
             LLVMValueRef initializer = LLVMConstNull(type);
             if (field.isConst)
@@ -1949,8 +1964,53 @@ private:
             }
             LLVMSetInitializer(global, initializer);
             staticFieldGlobals_[field.memberOrdinal] = global;
-            staticFieldInfo_[field.memberOrdinal] = &field;
         }
+        return true;
+    }
+
+    bool defineStaticFieldAccessors(std::string& error)
+    {
+        for (const frontend::ProjectOopMirStaticField& field : mirModel_.staticFields())
+        {
+            if (field.isConst || field.isImported) continue;
+            const auto accessorFound = staticFieldAccessorFunctions_.find(field.memberOrdinal);
+            const auto globalFound = staticFieldGlobals_.find(field.memberOrdinal);
+            if (accessorFound == staticFieldAccessorFunctions_.end() ||
+                globalFound == staticFieldGlobals_.end())
+            {
+                return fail(error, "Stage 37 lost mutable static field storage or accessor");
+            }
+
+            currentFunction_ = accessorFound->second.function;
+            currentMirFunction_ = nullptr;
+            thisValue_ = nullptr;
+            closureEnvironment_ = nullptr;
+            constructionThisOverride_ = nullptr;
+            parameterStorage_.clear();
+            localStorage_.clear();
+            activeCatchExceptions_.clear();
+            loopStack_.clear();
+            exceptionDispatchBlocks_.clear();
+            cleanupRegions_.clear();
+            cleanupChainCache_.clear();
+            activeCleanupRegions_.clear();
+            exceptionHandlerStack_.clear();
+            funcletStack_.clear();
+            returnStorage_ = nullptr;
+            sretStorage_ = nullptr;
+            blockCounter_ = 0;
+            currentDebugSubprogram_ = nullptr;
+            currentDebugScope_ = nullptr;
+            debugDeclaredLocals_.clear();
+            currentDebugFileKey_ = 0;
+
+            LLVMBasicBlockRef entry = appendBlock("static.accessor.entry");
+            LLVMPositionBuilderAtEnd(builder_, entry);
+            if (!ensureTypeInitialized(field.declaringTypeOrdinal, error)) return false;
+            LLVMBuildRet(builder_, globalFound->second);
+        }
+        currentFunction_ = nullptr;
+        currentMirFunction_ = nullptr;
         return true;
     }
 
@@ -8677,6 +8737,12 @@ private:
             return failValue(error, "Stage 41 failed to materialize native string literal");
         LLVMSetInitializer(global, initializer);
         LLVMSetGlobalConstant(global, 1);
+        // A literal belongs to this LLVM module, not to the NativeSharp public
+        // symbol contract. Positional external names such as __nsc_str_0 collide
+        // as soon as an executable links a static library that also contains a
+        // literal. Private linkage lets each COFF object retain its own interned
+        // bytes without publishing a process-wide definition.
+        LLVMSetLinkage(global, LLVMPrivateLinkage);
         stringGlobals_.emplace(value, global);
         return global;
     }
@@ -9592,12 +9658,24 @@ private:
         }
         const auto globalFound = staticFieldGlobals_.find(*node->memberOrdinal);
         const auto infoFound = staticFieldInfo_.find(*node->memberOrdinal);
-        if (globalFound == staticFieldGlobals_.end() || infoFound == staticFieldInfo_.end() ||
-            infoFound->second == nullptr)
+        if (infoFound == staticFieldInfo_.end() || infoFound->second == nullptr)
         {
-            return failValue(error, "Stage 37 static field has no declared LLVM global");
+            return failValue(error, "Stage 37 static field has no declared MIR information");
         }
         const frontend::ProjectOopMirStaticField& field = *infoFound->second;
+        if (field.isImported && !field.isConst)
+        {
+            const auto accessorFound = staticFieldAccessorFunctions_.find(*node->memberOrdinal);
+            if (accessorFound == staticFieldAccessorFunctions_.end())
+                return failValue(error, "Stage 37 imported static field has no declared accessor");
+            LLVMValueRef address = buildPotentiallyThrowingCall(
+                accessorFound->second.functionType, accessorFound->second.function,
+                nullptr, 0, "static.address", error);
+            if (address == nullptr && !error.empty()) return nullptr;
+            return address;
+        }
+        if (globalFound == staticFieldGlobals_.end())
+            return failValue(error, "Stage 37 static field has no declared LLVM global");
         if (!field.isConst && !ensureTypeInitialized(field.declaringTypeOrdinal, error))
         {
             return nullptr;
@@ -11059,6 +11137,7 @@ private:
     std::unordered_map<std::size_t, LLVMValueRef> vtableGlobals_;
     std::unordered_map<std::size_t, LLVMValueRef> staticFieldGlobals_;
     std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*> staticFieldInfo_;
+    std::unordered_map<std::size_t, FunctionInfo> staticFieldAccessorFunctions_;
     std::unordered_map<std::size_t, LLVMValueRef> staticInitStateGlobals_;
     // Stage 54.3 "Mutex" (fix) -- see defineTypeInitializers's own comment for the full guard
     // design this owner-thread-id global enables (distinguishing a genuine cross-thread race from

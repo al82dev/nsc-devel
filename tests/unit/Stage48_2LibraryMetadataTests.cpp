@@ -229,6 +229,8 @@ namespace Meta
     public class Api
     {
         public const int Answer = 42;
+        public const string Label = "NativeSharp";
+        extern C from "kernel32.dll" { public uint GetCurrentThreadId(); }
         public static export extern C int Add(int left, int right) { return left + right; }
         public static export extern C Pair Echo(Pair value) { return value; }
         public static export extern C int Invoke(Transform callback, int value) { return callback(value); }
@@ -264,7 +266,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
                  "explicit metadata generation creates parent directories and "
                  "keeps stderr empty");
-    tests.expect(output.find("format: NSMETA 1.8") != std::string::npos &&
+    tests.expect(output.find("format: NSMETA 1.10") != std::string::npos &&
             output.find("abi-fingerprint:") != std::string::npos,
         "explicit metadata emission reports format and ABI fingerprint");
 
@@ -355,6 +357,13 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "Answer" && member.constantKind == 1 && member.constantBits == 42;
     }), "compile-time integral const values survive precompiled metadata");
+    tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
+        return member.name == "Label" && member.constantKind == 6 && member.constantText == "NativeSharp";
+    }), "NSMETA 1.9 preserves the UTF-8 payload of a compile-time string constant");
+    tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
+        return member.name == "GetCurrentThreadId" && member.importDllName == "kernel32.dll" &&
+            (member.flags & (1U << 20U)) != 0U;
+    }), "NSMETA 1.10 preserves the owning DLL of a public imported C declaration");
     tests.expect(std::ranges::any_of(metadata.members, [](const auto& member) {
         return member.name == "Add" && !member.mangledName.empty() && member.cAbiName == "Add";
     }),
@@ -807,7 +816,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     writeBytes(futureMinorPath, futureMinor);
     error.clear();
     tests.expect(!codec.read(futureMinorPath, ignored, error) &&
-                     error.find("unsupported NativeSharp metadata format 1.9") != std::string::npos,
+                     error.find("unsupported NativeSharp metadata format 1.11") != std::string::npos,
                  "a future NSMETA minor is rejected before payload decoding");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
@@ -1013,7 +1022,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
             output.find("NativeSharp library metadata: valid") != std::string::npos &&
-                     output.find("format: NSMETA 1.8") != std::string::npos &&
+                     output.find("format: NSMETA 1.10") != std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
                      output.find("runtime-abi: 1.0") != std::string::npos &&
                      output.find("object-abi: 1") != std::string::npos &&

@@ -208,8 +208,8 @@ void testStableExports(TestContext& tests, const std::filesystem::path& root)
         tests.expect(contains(info.exportedSymbols, symbol),
             std::string("stable C ABI export table contains exact symbol '") + std::string(symbol) + "'");
     }
-    tests.expect(info.exportedSymbols.size() == 24,
-        "DLL contains ten stable C wrappers plus methods, constructor and public type descriptors");
+    tests.expect(info.exportedSymbols.size() == 25,
+        "DLL contains ten stable C wrappers plus methods, explicit and implicit constructors, and public type descriptors");
     tests.expect(std::any_of(info.exportedSymbols.begin(), info.exportedSymbols.end(),
             [](const std::string& symbol) { return symbol.find("InternalOnly") != std::string::npos; }) &&
             std::none_of(info.exportedSymbols.begin(), info.exportedSymbols.end(),
@@ -239,7 +239,7 @@ void testStableExports(TestContext& tests, const std::filesystem::path& root)
         "Stage 47 stable C ABI DLL also closes at O0");
     tests.expect(verifier.verifyDynamicLibrary(dllO0) &&
             contains(verifier.info().exportedSymbols, "Invoke") &&
-            verifier.info().exportedSymbols.size() == 24,
+            verifier.info().exportedSymbols.size() == 25,
         "O0 and O2 preserve the combined C and NativeSharp export surface");
 }
 
@@ -260,7 +260,8 @@ void testLlvmThunks(TestContext& tests, const std::filesystem::path& root)
     tests.expect(llvm.find("cabi.callback.0.cell") == std::string::npos &&
             llvm.find("cabi.callback.result") != std::string::npos,
         "extern C callback remains a raw native function pointer and is invoked directly");
-    tests.expect(llvm.find("@__nsc_static_0_StoredCallback") != std::string::npos &&
+    tests.expect(llvm.find("__nsc_static_") != std::string::npos &&
+            llvm.find("StoredCallback") != std::string::npos &&
             llvm.find("define void @SetCallback(ptr") != std::string::npos &&
             llvm.find("define i32 @CallCallback(i32") != std::string::npos,
         "extern C callbacks can persist in NativeSharp storage without a temporary delegate-cell lifetime");
@@ -367,8 +368,8 @@ class Api { public static int Internal(int x) { return x; } }
             false,
             output,
             error) == ExitCode::CompilationError,
-        "Stage 47 SharedLibrary requires an explicit stable C ABI export surface");
-    tests.expect(error.find("requires at least one publishable public method") != std::string::npos,
+        "Stage 47 SharedLibrary rejects a project with no public metadata or binary surface");
+    tests.expect(error.find("requires at least one publishable public type or method") != std::string::npos,
         "DLL-without-public-surface diagnostic names the NativeSharp library contract");
 
     const std::filesystem::path nativeOnly = root / "NativeOnly";
@@ -391,7 +392,7 @@ public class Api
         "a NativeSharp DLL can publish a native API without inventing a C export");
     PeExecutableVerifier nativeOnlyVerifier;
     tests.expect(nativeOnlyVerifier.verifyDynamicLibrary(nativeOnlyDll) &&
-            nativeOnlyVerifier.info().exportedSymbols.size() == 2 &&
+            nativeOnlyVerifier.info().exportedSymbols.size() == 3 &&
             std::any_of(nativeOnlyVerifier.info().exportedSymbols.begin(),
                 nativeOnlyVerifier.info().exportedSymbols.end(),
                 [](const std::string& symbol) { return symbol.find("Double") != std::string::npos; }) &&

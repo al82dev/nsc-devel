@@ -485,8 +485,8 @@ int main()
         const std::vector<std::string_view> arguments = {"--check-project-oop-hir", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--check-project-oop-hir builds Stage 30 semantic OOP HIR");
-        tests.expect(output.str().find("project OOP HIR check: ok (4 callables)") != std::string::npos,
-            "Stage 30 HIR check reports explicit callable cardinality");
+        tests.expect(output.str().find("project OOP HIR check: ok (6 callables)") != std::string::npos,
+            "Stage 30 HIR check reports written callables plus publicable implicit constructors");
         tests.expect(error.str().empty(), "valid Stage 30 HIR check keeps stderr empty");
     }
 
@@ -497,7 +497,7 @@ int main()
         const std::vector<std::string_view> arguments = {"--dump-project-oop-hir", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--dump-project-oop-hir exposes Stage 30 OOP HIR");
-        tests.expect(output.str().find("project.oop.hir functions=4") != std::string::npos &&
+        tests.expect(output.str().find("project.oop.hir functions=6") != std::string::npos &&
                 output.str().find("object-construction") != std::string::npos &&
                 output.str().find("abi=this:first") != std::string::npos,
             "Stage 30 HIR dump exposes construction and implicit-this ABI intent");
@@ -511,8 +511,8 @@ int main()
         const std::vector<std::string_view> arguments = {"--check-project-oop-mir", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--check-project-oop-mir resolves Stage 30 physical OOP operations");
-        tests.expect(output.str().find("project OOP MIR check: ok (4 callables)") != std::string::npos,
-            "Stage 30 MIR check reports lowered callable cardinality");
+        tests.expect(output.str().find("project OOP MIR check: ok (6 callables)") != std::string::npos,
+            "Stage 30 MIR check reports written callables plus publicable implicit constructors");
         tests.expect(error.str().empty(), "valid Stage 30 MIR check keeps stderr empty");
     }
 
@@ -523,7 +523,7 @@ int main()
         const std::vector<std::string_view> arguments = {"--dump-project-oop-mir", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--dump-project-oop-mir exposes Stage 30 physical lowering decisions");
-        tests.expect(output.str().find("project.oop.mir functions=4") != std::string::npos &&
+        tests.expect(output.str().find("project.oop.mir functions=6") != std::string::npos &&
                 output.str().find("offset=12 align=4") != std::string::npos &&
                 output.str().find("zero=true failure=null") != std::string::npos,
             "Stage 30 MIR dump exposes field offset and allocation contract");
@@ -537,8 +537,8 @@ int main()
         const std::vector<std::string_view> arguments = {"--verify-project-oop-llvm", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--verify-project-oop-llvm runs the LLVM verifier on Stage 30 output");
-        tests.expect(output.str().find("project OOP LLVM verification: ok (4 lowered callables)") != std::string::npos,
-            "Stage 30 LLVM verification reports lowered callable cardinality");
+        tests.expect(output.str().find("project OOP LLVM verification: ok (6 lowered callables)") != std::string::npos,
+            "Stage 30 LLVM verification reports written callables plus publicable implicit constructors");
         tests.expect(error.str().empty(), "valid Stage 30 LLVM verification keeps stderr empty");
     }
 

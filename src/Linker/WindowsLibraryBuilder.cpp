@@ -268,12 +268,6 @@ bool WindowsLibraryBuilder::buildDynamic(
     {
         return false;
     }
-    if (exportSymbols.empty())
-    {
-        error = "NativeSharp DLL requires at least one publishable public method";
-        return false;
-    }
-
     std::string targetError;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
         llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);

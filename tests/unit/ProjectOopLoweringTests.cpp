@@ -191,15 +191,15 @@ void testNarrowSignedEnumNameLowering(TestContext& tests, const std::filesystem:
     const std::string optimized = module->text();
     const std::string chosen = stringGlobalHolding(optimized, "MenosTres");
     const std::string fallback = stringGlobalHolding(optimized, "Prueba+ConSigno");
-    tests.expect(!chosen.empty() && !fallback.empty() && chosen != fallback,
-        "both the enumerator name and the type-name fallback survive as distinct string globals");
-    if (chosen.empty() || fallback.empty()) return;
+    tests.expect(!chosen.empty() && (fallback.empty() || chosen != fallback),
+        "the enumerator name survives and cannot alias the private type-name fallback");
+    if (chosen.empty()) return;
 
     const std::string optimizedBody = functionBody(optimized, "Prueba__Nombre");
     tests.expect(optimizedBody.find("ret ptr " + chosen) != std::string::npos,
         "after O2 the constant receiver folds to the enumerator name");
-    tests.expect(optimizedBody.find("ret ptr " + fallback) == std::string::npos,
-        "and not to the type-name fallback, which is what the -O2 defect returned");
+    tests.expect(fallback.empty() || optimizedBody.find("ret ptr " + fallback) == std::string::npos,
+        "and not to the type-name fallback, which may now be removed as a private unused literal");
 }
 
 void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& root)
@@ -232,8 +232,8 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
 
     const ProjectOopHirModel& hir = *compilation.oopHirModel();
     const ProjectOopMirModel& mir = *compilation.oopMirModel();
-    tests.expect(hir.functions().size() == 7 && mir.functions().size() == 7,
-        "seven explicit instance callables lower through both OOP IR layers");
+    tests.expect(hir.functions().size() == 9 && mir.functions().size() == 9,
+        "seven written callables plus two publicable implicit constructors lower through both OOP IR layers");
     tests.expect(hir.functions()[0].mangledName.starts_with("__nsc_ctor_") &&
             hir.functions()[0].parameterTypeKeys.size() == 1,
         "constructor HIR has deterministic mangling and excludes implicit this from source parameter list");
@@ -384,8 +384,8 @@ void testDeallocationContract(TestContext& tests, const std::filesystem::path& r
 
     const auto& hir = *compilation.oopHirModel();
     const auto& mir = *compilation.oopMirModel();
-    tests.expect(hir.functions().size() == 1 && mir.functions().size() == 1,
-        "deallocation fixture produces one instance callable");
+    tests.expect(hir.functions().size() == 2 && mir.functions().size() == 2,
+        "deallocation fixture produces its written method plus the publicable implicit constructor");
     tests.expect(countMirKind(mir.functions().front().body.get(), ProjectOopMirNodeKind::Deallocate) == 2,
         "delete reference and delete null both become explicit OOP MIR deallocations");
 

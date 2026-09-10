@@ -97,6 +97,10 @@ private:
         bool isExported = false;
         bool isExternC = false;
         bool hasExplicitFieldOffset = false;
+        bool isBorrowedView = false;
+        std::optional<std::uint64_t> layoutPack;
+        std::optional<std::uint64_t> layoutAlign;
+        std::optional<std::uint64_t> layoutSize;
     };
     // NSC-LIMIT-009. Cierto cuando el token actual abre una declaracion de tipo anidada.
     bool atNestedTypeDeclaration() const noexcept;

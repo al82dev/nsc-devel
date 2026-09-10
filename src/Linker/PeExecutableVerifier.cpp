@@ -234,11 +234,11 @@ bool PeExecutableVerifier::verifyImage(
             error_ = "PE image is not marked as a DLL";
             return false;
         }
-        if (info_.exportDirectoryRva == 0 || info_.exportDirectorySize == 0)
-        {
-            error_ = "PE DLL has no export directory";
-            return false;
-        }
+        // A metadata-only NativeSharp product is still a valid PE DLL even when
+        // its contract consists exclusively of enums or generic declarations.
+        // Its absent export directory means exactly zero physical exports; the
+        // caller compares that fact with NSMETA instead of requiring a fabricated
+        // entry point here.
     }
     else
     {

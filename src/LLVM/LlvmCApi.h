@@ -201,13 +201,14 @@ enum LLVMVerifierFailureAction
     LLVMReturnStatusAction = 2
 };
 
-// Exact values from llvm-c/Core.h. NativeSharp only needs external (the default) and internal
-// today; spelling the numeric value explicitly avoids recreating unrelated linkage modes merely
-// to keep the upstream ordinal of LLVMInternalLinkage.
+// Exact values from llvm-c/Core.h. NativeSharp only needs external (the default), internal and
+// private today; spelling the numeric values explicitly avoids recreating unrelated linkage modes
+// merely to keep their upstream ordinals.
 enum LLVMLinkage
 {
     LLVMExternalLinkage = 0,
-    LLVMInternalLinkage = 8
+    LLVMInternalLinkage = 8,
+    LLVMPrivateLinkage = 9
 };
 
 LLVMContextRef LLVMContextCreate();

@@ -20,6 +20,10 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 10 (2026-09-10): una declaracion publica `extern C from` conserva la DLL que posee el
+// simbolo para que el consumidor reconstruya el import real sin atribuirselo al productor.
+// MINOR 9 (2026-09-10): las constantes string conservan sus bytes para que el consumidor pueda
+// materializar su valor en vez de perder el miembro publico.
 // MINOR 8 (2026-09-07): el fichero publica el contrato ABI versionado y la representacion de
 // delegates ordinarios. A partir de aqui NSMETA distingue su propia version de la version del ABI
 // que describe; subir el formato no cambia por si solo los binarios de usuario.
@@ -32,7 +36,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 8;
+inline constexpr std::uint16_t kMetadataFormatMinor = 10;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una
@@ -157,6 +161,11 @@ struct LibraryMetadataMember final
     std::vector<LibraryMetadataParameter> parameters;
     std::uint8_t constantKind = 0;
     std::uint64_t constantBits = 0;
+    // NSMETA 1.9. Payload UTF-8 de una constante string; vacio para los demas kinds.
+    std::string constantText;
+    // NSMETA 1.10. DLL de origen para `extern C from`; vacia para imports estaticos y miembros
+    // NativeSharp ordinarios. El bit ImportedC de flags distingue los dos ultimos casos.
+    std::string importDllName;
 };
 
 struct LibraryMetadataGenericTemplate final

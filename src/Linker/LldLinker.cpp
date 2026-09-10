@@ -647,11 +647,6 @@ bool LldLinker::linkDynamicLibrary(
     {
         return false;
     }
-    if (exportSymbols.empty())
-    {
-        error = "DLL linking requires at least one exported symbol";
-        return false;
-    }
     if (outputPath.empty() || importLibraryPath.empty() ||
         containsQuote(outputPath) || containsQuote(importLibraryPath))
     {
@@ -679,8 +674,9 @@ bool LldLinker::linkDynamicLibrary(
         "/dynamicbase",
         "/nxcompat",
         "/highentropyva",
-        responsePathArgument("/out:", outputPath),
-        responsePathArgument("/implib:", importLibraryPath)};
+        responsePathArgument("/out:", outputPath)};
+    if (!exportSymbols.empty())
+        arguments.push_back(responsePathArgument("/implib:", importLibraryPath));
     for (const std::string& symbol : exportSymbols)
     {
         arguments.push_back("/export:" + symbol);
@@ -713,12 +709,30 @@ bool LldLinker::linkDynamicLibrary(
         std::filesystem::remove(importLibraryPath, cleanupError);
         return false;
     }
-    if (!std::filesystem::is_regular_file(outputPath) ||
-        !std::filesystem::is_regular_file(importLibraryPath))
+    if (!std::filesystem::is_regular_file(outputPath))
     {
-        error = "lld-link reported success but did not create both DLL and import library";
+        error = "lld-link reported success but did not create the requested DLL";
         std::filesystem::remove(outputPath, cleanupError);
         std::filesystem::remove(importLibraryPath, cleanupError);
+        return false;
+    }
+    if (exportSymbols.empty())
+    {
+        // With no exported PE symbols there is no import library for lld-link to
+        // synthesize. LibraryReference still needs a validated COFF companion for
+        // the NSMETA-only product, so archive one producer object without inventing
+        // an import thunk or a callable export.
+        const std::span<const std::filesystem::path> companionObject = objectFiles.first(1);
+        if (!createStaticLibrary(companionObject, importLibraryPath, error))
+        {
+            std::filesystem::remove(outputPath, cleanupError);
+            return false;
+        }
+    }
+    else if (!std::filesystem::is_regular_file(importLibraryPath))
+    {
+        error = "lld-link reported success but did not create the requested import library";
+        std::filesystem::remove(outputPath, cleanupError);
         return false;
     }
     return true;
