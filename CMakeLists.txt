@@ -1153,6 +1153,7 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage48_2_library_metadata_tests tests/unit/Stage48_2LibraryMetadataTests.cpp)
     target_link_libraries(nsc_stage48_2_library_metadata_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage48_2_library_metadata_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage48_2_library_metadata_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_stage48_2_library_metadata_tests)
     add_test(NAME nsc.stage48_2.library-metadata COMMAND nsc_stage48_2_library_metadata_tests)
 

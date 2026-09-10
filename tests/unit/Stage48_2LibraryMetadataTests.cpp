@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <span>
@@ -27,6 +28,21 @@ using nativesharp::interop::LibraryMetadataParameterPassKind;
 using nativesharp::interop::LibraryMetadataType;
 using nativesharp::interop::LibraryMetadataTypeKind;
 using nativesharp::tests::TestContext;
+
+bool environmentFlag(const char* name)
+{
+#ifdef _WIN32
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) return false;
+    const bool enabled = std::string_view(value) == "1";
+    std::free(value);
+    return enabled;
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr && std::string_view(value) == "1";
+#endif
+}
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
 {
@@ -647,6 +663,49 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     LibraryMetadata metadata;
     tests.expect(codec.read(validPath, metadata, error), "valid integrity fixture passes payload and ABI checks");
 
+    // DLL-P2: exercise every historically readable minor as an actual on-disk NSMETA file.
+    // writeModel encodes only the fields promised by that minor, so the current reader must not
+    // infer later capabilities while it still accepts the common contract.
+    for (std::uint16_t minor = 0; minor <= nativesharp::interop::kMetadataFormatMinor; ++minor)
+    {
+        LibraryMetadata historical = metadata;
+        historical.formatMinor = minor;
+        const auto historicalPath = directory / ("historical-1." + std::to_string(minor) + ".nsmeta");
+        error.clear();
+        const bool wrote = codec.writeModel(historical, historicalPath, error);
+        tests.expect(wrote,
+                     "NSMETA 1." + std::to_string(minor) + " historical file writes (" + error + ")");
+        LibraryMetadata decoded;
+        error.clear();
+        const bool read = wrote && codec.read(historicalPath, decoded, error);
+        tests.expect(read && decoded.formatMajor == 1 && decoded.formatMinor == minor,
+                     "current reader accepts actual NSMETA 1." + std::to_string(minor) +
+                         " bytes without changing their version (" + error + ")");
+        error.clear();
+        tests.expect(read && codec.verifyCurrentCompiler(decoded, error),
+                     "current compiler accepts the common ABI represented by NSMETA 1." +
+                         std::to_string(minor) + " (" + error + ")");
+
+        const auto goldenPath = std::filesystem::path(NSC_SOURCE_DIR) / "tests" / "fixtures" /
+            "nsmeta" / ("historical-1." + std::to_string(minor) + ".nsmeta");
+        if (environmentFlag("NSC_P2_REFRESH_GOLDENS"))
+        {
+            std::filesystem::create_directories(goldenPath.parent_path());
+            std::filesystem::copy_file(
+                historicalPath, goldenPath, std::filesystem::copy_options::overwrite_existing);
+        }
+        LibraryMetadata golden;
+        error.clear();
+        const bool goldenRead = codec.read(goldenPath, golden, error);
+        tests.expect(goldenRead && golden.formatMajor == 1 && golden.formatMinor == minor,
+                     "archived NSMETA 1." + std::to_string(minor) +
+                         " golden remains readable (" + error + ")");
+        error.clear();
+        tests.expect(goldenRead && codec.verifyCurrentCompiler(golden, error),
+                     "archived NSMETA 1." + std::to_string(minor) +
+                         " golden remains compatible (" + error + ")");
+    }
+
     std::vector<std::uint8_t> corrupted = readBytes(validPath);
     corrupted.back() ^= 0x5aU;
     const auto corruptedPath = directory / "corrupted.nsmeta";
@@ -664,6 +723,16 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     error.clear();
     tests.expect(!codec.read(versionPath, ignored, error) && error.find("unsupported") != std::string::npos,
         "unsupported metadata major version is rejected explicitly");
+
+    std::vector<std::uint8_t> futureMinor = readBytes(validPath);
+    futureMinor[10] = static_cast<std::uint8_t>(nativesharp::interop::kMetadataFormatMinor + 1U);
+    futureMinor[11] = 0;
+    const auto futureMinorPath = directory / "future-minor.nsmeta";
+    writeBytes(futureMinorPath, futureMinor);
+    error.clear();
+    tests.expect(!codec.read(futureMinorPath, ignored, error) &&
+                     error.find("unsupported NativeSharp metadata format 1.9") != std::string::npos,
+                 "a future NSMETA minor is rejected before payload decoding");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
     badMagic[0] = 'X';
