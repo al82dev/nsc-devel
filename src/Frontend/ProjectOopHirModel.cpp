@@ -758,10 +758,11 @@ bool ProjectOopHirModel::build(
         {
             continue;
         }
-        // NSC-LIMIT-018. Signatures of a closed generic type are eager; ordinary template
-        // method bodies are instantiated by ProjectMethodBodyModel only after a real call or
-        // delegate conversion selects them. A body with no bindings is intentionally absent,
-        // not malformed.
+        // NSC-LIMIT-018. Signatures of a closed generic type are eager. For executables, ordinary
+        // template method bodies are analyzed only after a real call or delegate conversion
+        // selects them. Library products additionally demand their complete public/protected
+        // closed surface because an external consumer is itself the call site. In both cases this
+        // exact query prevents HIR from lowering a body for which semantic bindings do not exist.
         constexpr std::string_view kDeferredSpecializationPrefix = "stage44-specialization:";
         const ast::AstNode* declaringSyntaxForDemand =
             member.declaringTypeOrdinal < nameLookup.namedTypes().size()

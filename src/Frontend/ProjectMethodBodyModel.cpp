@@ -417,7 +417,8 @@ bool ProjectMethodBodyModel::build(
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel,
     diagnostics::DiagnosticEngine& diagnostics,
-    const ProjectGenericConstraintModel* genericConstraintModel)
+    const ProjectGenericConstraintModel* genericConstraintModel,
+    std::optional<std::size_t> publicSurfaceProjectOrdinal)
 {
     genericConstraintModel_ = genericConstraintModel;
     if (built_)
@@ -442,10 +443,11 @@ bool ProjectMethodBodyModel::build(
     interfaceModel_ = &interfaceModel;
 
     // NSC-LIMIT-018. A closed generic type materializes all of its member SIGNATURES so normal
-    // lookup and overload resolution can see the complete API. Its ordinary method BODIES are
-    // template bodies, however, and must be instantiated only when selected by a real call.
-    // Constructors/destructors are lifetime machinery and virtual methods can be referenced by
-    // a vtable without a syntactic call, so those remain eager.
+    // lookup and overload resolution can see the complete API. Its ordinary method BODIES remain
+    // deferred for executables until a real call selects them. A library has external callers,
+    // however, so its public/protected closed surface is seeded explicitly below. Constructors/
+    // destructors are lifetime machinery and virtual methods can be referenced by a vtable
+    // without a syntactic call, so those remain eager for every product.
     const auto isDeferredGenericMethod = [&](std::size_t ordinal) -> bool
     {
         if (ordinal >= memberModel.members().size()) return false;
@@ -466,6 +468,41 @@ bool ProjectMethodBodyModel::build(
     };
 
     std::unordered_set<std::size_t> demandedGenericMethods;
+    // A library publishes the complete callable surface of every public closed generic type it
+    // owns. Demand those bodies even when the producer never calls them itself: a consumer can.
+    // Executables pass no public-surface ordinal and retain the ordinary reachability-only policy.
+    // Private/internal helpers are discovered transitively from these roots by the call/delegate
+    // closure below, exactly as they are for roots demanded by source code.
+    const auto declaringTypeIsPubliclyReachable = [&](std::size_t typeOrdinal) {
+        if (!publicSurfaceProjectOrdinal.has_value()) return false;
+        while (typeOrdinal < nameLookup.namedTypes().size())
+        {
+            const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
+            if (type.projectOrdinal != *publicSurfaceProjectOrdinal ||
+                type.accessibility != NamedTypeAccessibility::Public)
+            {
+                return false;
+            }
+            if (!type.containingTypeOrdinal.has_value()) return true;
+            typeOrdinal = *type.containingTypeOrdinal;
+        }
+        return false;
+    };
+    if (publicSurfaceProjectOrdinal.has_value())
+    {
+        for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+        {
+            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            const bool callableAccessibility =
+                member.accessibility == ClassMemberAccessibility::Public ||
+                member.accessibility == ClassMemberAccessibility::Protected;
+            if (callableAccessibility && isDeferredGenericMethod(memberOrdinal) &&
+                declaringTypeIsPubliclyReachable(member.declaringTypeOrdinal))
+            {
+                demandedGenericMethods.insert(memberOrdinal);
+            }
+        }
+    }
     // A concrete interface table is an executable reference just like a direct call or delegate
     // conversion. A method cloned from `Box<T>` is otherwise deferred, and an invocation through
     // `IValue` selects the interface contract member rather than the concrete `Box<int>.Get`

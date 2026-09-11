@@ -1098,7 +1098,8 @@ public:
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel,
         diagnostics::DiagnosticEngine& diagnostics,
-        const ProjectGenericConstraintModel* genericConstraintModel = nullptr);
+        const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
+        std::optional<std::size_t> publicSurfaceProjectOrdinal = std::nullopt);
 
     std::span<const MethodScope> scopes() const noexcept;
     std::span<const MethodLocalSymbol> locals() const noexcept;
@@ -1127,9 +1128,9 @@ public:
     std::span<const MethodDelegateBinding> delegateBindings() const noexcept;
     std::span<const MethodEventBinding> eventBindings() const noexcept;
     std::span<const MethodCallBinding> calls() const noexcept;
-    // NSC-LIMIT-018. A generic specialization exposes all member signatures, but only bodies
-    // reached from real source code are instantiated. HIR uses this exact set so a deferred,
-    // unbound body can never be lowered accidentally.
+    // NSC-LIMIT-018. A generic specialization exposes all member signatures. Executables analyze
+    // bodies reached from real source; libraries additionally analyze every public/protected body
+    // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 

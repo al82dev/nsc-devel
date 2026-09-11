@@ -515,9 +515,15 @@ bool ProjectCompilation::compileProjectMethodBodies(
     buildGenericConstraintModel();
 
     methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
+    std::optional<std::size_t> publicSurfaceProjectOrdinal;
+    if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr &&
+        projectGraph_->rootProject()->outputKind() != compilation::ProjectOutputKind::Executable)
+    {
+        publicSurfaceProjectOrdinal = projectGraph_->projects().size() - 1U;
+    }
     return methodBodyModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, diagnostics_,
-        genericConstraintModel_.get());
+        genericConstraintModel_.get(), publicSurfaceProjectOrdinal);
 }
 
 bool ProjectCompilation::compileProjectInterfaces(

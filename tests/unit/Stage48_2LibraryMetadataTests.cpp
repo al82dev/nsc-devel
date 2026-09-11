@@ -996,6 +996,113 @@ class Program
                      error + ")");
 }
 
+void testLibraryMaterializesCompletePublicClosedGenericSurface(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    const auto producer = root / "ClosedGenericCallableProducer";
+    writeProject(producer, "ClosedGenericCallableProducer", "StaticLibrary", R"NS(
+public interface IPhysicsObject
+{
+    int Id();
+}
+
+public class ReferenceList<T>
+{
+    public ReferenceList()
+    {
+    }
+
+    public void RemoveAt(int index)
+    {
+        Helper(index);
+    }
+
+    public int Count
+    {
+        get { return 0; }
+    }
+
+    public static int Kind()
+    {
+        return 7;
+    }
+
+    protected void Shift(int index)
+    {
+    }
+
+    private void Helper(int index)
+    {
+    }
+}
+
+public class PhysicsLists
+{
+    public ReferenceList<IPhysicsObject> Items;
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-lib", producer / "ClosedGenericCallableProducer.nsproj",
+                             producer / "ClosedGenericCallableProducer.lib", output, error) == ExitCode::Success,
+                 "library materializes uncalled methods of a public closed generic surface (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(producer / "ClosedGenericCallableProducer.nsmeta", metadata, error);
+    tests.expect(read, "closed generic callable metadata can be decoded (" + error + ")");
+    if (!read) return;
+    const auto specializedType = std::ranges::find_if(metadata.types, [](const LibraryMetadataType& type) {
+        return type.fullyQualifiedName.find("ReferenceList__g1__IPhysicsObject__h") != std::string::npos;
+    });
+    tests.expect(specializedType != metadata.types.end(),
+                 "the producer publishes the closed ReferenceList<IPhysicsObject> nominal type");
+    if (specializedType == metadata.types.end()) return;
+
+    const std::string declaringTypeKey = "type:" + specializedType->identityKey;
+    const std::array<std::string_view, 4> publicSurfaceNames = {
+        "RemoveAt", "get_Count", "Kind", "Shift"};
+    for (const std::string_view name : publicSurfaceNames)
+    {
+        const auto member = std::ranges::find_if(metadata.members, [&](const LibraryMetadataMember& candidate) {
+            return candidate.declaringTypeKey == declaringTypeKey && candidate.name == name;
+        });
+        tests.expect(member != metadata.members.end() && !member->mangledName.empty(),
+                     "closed generic public/protected callable '" + std::string(name) +
+                         "' has a physical identity without producer-side use");
+    }
+
+    const auto consumer = root / "ClosedGenericCallableConsumer";
+    writeFile(consumer / "ClosedGenericCallableConsumer.nsproj",
+        "<Project><PropertyGroup><Name>ClosedGenericCallableConsumer</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" +
+        (producer / "ClosedGenericCallableProducer.lib").generic_string() + "\" Metadata=\"" +
+        (producer / "ClosedGenericCallableProducer.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Program.ns", R"NS(
+class Program
+{
+    public static int Main()
+    {
+        raii ReferenceList<IPhysicsObject> items = new ReferenceList<IPhysicsObject>();
+        items.RemoveAt(0);
+        return items.Count == 0 && ReferenceList<IPhysicsObject>.Kind() == 7 ? 0 : 1;
+    }
+}
+)NS");
+
+    const std::string consumerProject = (consumer / "ClosedGenericCallableConsumer.nsproj").string();
+    const std::string executable = (consumer / "ClosedGenericCallableConsumer.exe").string();
+    const std::array<std::string_view, 5> args = {
+        "-O0", "--emit-project-oop-exe", consumerProject, "-o", executable};
+    output.clear(); error.clear();
+    tests.expect(runDriver(args, output, error) == ExitCode::Success,
+                 "consumer links uncalled producer methods from the closed generic public API (" + error + ")");
+}
+
 void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "Integrity";
@@ -1547,6 +1654,7 @@ int main()
     testGenericCompilerMetadata(tests, root);
     testPrecompiledClosedGenericSurface(tests, root);
     testPrecompiledCallableKeepsNominalParameterIdentity(tests, root);
+    testLibraryMaterializesCompletePublicClosedGenericSurface(tests, root);
     testIntegrityAndCompatibility(tests, root);
     testScopeAndFailureBehavior(tests, root);
     testInterfaceContractsUseDeclaringTypeKind(tests, root);

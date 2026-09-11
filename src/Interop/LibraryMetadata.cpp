@@ -685,6 +685,7 @@ bool buildMetadataModel(
         return left < right;
     });
 
+    std::vector<std::string> missingPhysicalCallables;
     for (const std::size_t ordinal : memberOrdinals)
     {
         const frontend::ClassMemberSymbol& member = members[ordinal];
@@ -719,9 +720,8 @@ bool buildMetadataModel(
             (!member.isExternC || member.isExportedC);
         if (nativeCallable && record.mangledName.empty())
         {
-            error = "public callable '" + record.declaringTypeKey + "." + record.signatureKey +
-                "' has no physical identity; refusing to emit unusable NSMETA";
-            return false;
+            missingPhysicalCallables.push_back(
+                record.declaringTypeKey + "." + record.signatureKey);
         }
         for (const frontend::MethodParameterSymbol& parameter : member.parameters)
         {
@@ -768,6 +768,16 @@ bool buildMetadataModel(
             }
         }
         metadata.members.push_back(std::move(record));
+    }
+
+    if (!missingPhysicalCallables.empty())
+    {
+        error = "public callables have no physical identity; refusing to emit unusable NSMETA";
+        for (const std::string& callable : missingPhysicalCallables)
+        {
+            error += "\n  " + callable;
+        }
+        return false;
     }
 
     for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
