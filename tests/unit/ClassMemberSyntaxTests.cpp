@@ -323,6 +323,24 @@ int main()
             "a struct keeps its two nested types");
     }
 
+    // Una clase anidada participa del mismo modelo de agregacion que una clase de namespace.
+    // El parser debe conservar `partial`; la validez de varias partes se decide despues, cuando
+    // ProjectNameLookup entrega el grupo a PartialTypeAggregator.
+    {
+        Fixture fixture;
+        parse(fixture, "class Outer { public partial class Item { int a; } }\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "a nested class accepts the partial modifier");
+        const ast::AstNode* outer = fixture.root != nullptr && !fixture.root->children().empty()
+            ? fixture.root->children()[0]
+            : nullptr;
+        const ast::AstNode* item = outer != nullptr && !outer->children().empty()
+            ? outer->children()[0]
+            : nullptr;
+        tests.expect(item != nullptr && item->kind() == AstNodeKind::ClassDeclaration && item->flag(),
+            "a nested partial class preserves its aggregation marker in the AST");
+    }
+
     // Los modificadores que no significan nada en estas formas de tipo anidado.
     for (const char* source : {
              "class Outer { static struct Item { int a; } }\n",
@@ -330,7 +348,6 @@ int main()
              "class Outer { const struct Item { int a; } }\n",
              "class Outer { virtual class Item { int a; } }\n",
              "class Outer { override class Item { int a; } }\n",
-             "class Outer { partial class Item { int a; } }\n",
              "class Outer { abstract struct Item { int a; } }\n",
              "class Outer { public struct Item<T> { int a; } }\n"})
     {
