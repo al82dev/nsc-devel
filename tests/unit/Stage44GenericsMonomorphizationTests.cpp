@@ -190,6 +190,10 @@ namespace Demo
     tests.expect(llvm.find("Identity__g1__int") != std::string::npos, "LLVM contains concrete Identity<int>");
     tests.expect(llvm.find("Identity__g1__long") != std::string::npos, "LLVM contains concrete Identity<long>");
     tests.expect(llvm.find("<T>") == std::string::npos, "LLVM receives no source-level generic parameter syntax");
+    tests.expect(llvm.find("comdat any") != std::string::npos,
+        "generic ODR definitions retain per-symbol COMDAT selection");
+    tests.expect(llvm.find("__nsc_generic_odr_") == std::string::npos,
+        "generic ODR definitions use their physical symbol as the COFF leader instead of a detached byte global");
 
     std::string targetError;
     auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(

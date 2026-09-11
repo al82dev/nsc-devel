@@ -1905,31 +1905,13 @@ private:
         const char* physicalNameData = LLVMGetValueName2(value, &physicalNameLength);
         if (physicalNameData == nullptr || physicalNameLength == 0) return;
         const std::string physicalName(physicalNameData, physicalNameLength);
-        const auto found = genericSymbolComdats_.find(physicalName);
-        LLVMComdatRef comdat =
-            found == genericSymbolComdats_.end() ? nullptr : found->second;
-        if (comdat == nullptr)
-        {
-            const auto bytes = std::span<const std::uint8_t>(
-                reinterpret_cast<const std::uint8_t*>(physicalName.data()),
-                physicalName.size());
-            const std::string name = "__nsc_generic_odr_" +
-                basic::sha256Hex(basic::sha256(bytes)).substr(0U, 16U);
-            comdat = LLVMGetOrInsertComdat(module_, name.c_str());
-            LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
-            // Each physical symbol owns an independent COFF group. Producer and consumer are
-            // allowed to materialize different subsets of one specialization, so grouping by
-            // specialization would let lld choose a partial group and discard still-referenced
-            // members. A neutral byte remains the real associative COMDAT leader for this one
-            // symbol only.
-            LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
-            LLVMValueRef leader = LLVMAddGlobal(module_, i8, name.c_str());
-            LLVMSetInitializer(leader, LLVMConstInt(i8, 0, 0));
-            LLVMSetGlobalConstant(leader, 1);
-            LLVMSetLinkage(leader, LLVMWeakODRLinkage);
-            LLVMSetComdat(leader, comdat);
-            genericSymbolComdats_.emplace(physicalName, comdat);
-        }
+        // COFF requires the section-selection key to identify a real definition in the selected
+        // section. Using a detached byte global as the key made function unwind sections form a
+        // two-level association (.xdata -> function -> artificial leader); NSLink then rejected
+        // the auxiliary .xdata section because it had no usable section-definition key.
+        // The physical function/global is already unique and is the standard COFF COMDAT leader.
+        LLVMComdatRef comdat = LLVMGetOrInsertComdat(module_, physicalName.c_str());
+        LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
         LLVMSetComdat(value, comdat);
     }
 
@@ -11221,7 +11203,6 @@ private:
     // a same-thread self-referencing static field initializer recursing into its own cctor).
     std::unordered_map<std::size_t, LLVMValueRef> staticInitOwnerGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> staticInitFunctions_;
-    std::unordered_map<std::string, LLVMComdatRef> genericSymbolComdats_;
     std::unordered_map<std::string, FunctionInfo> functions_;
     std::unordered_map<std::string, LLVMValueRef> stringGlobals_;
     // C8 "type root": one name constant per class, keyed by its global's name.
