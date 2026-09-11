@@ -2195,10 +2195,17 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
 
     if (compilation.oopMirModel() == nullptr) return true;
     std::unordered_set<std::string> referencedCallees;
+    std::unordered_set<std::size_t> referencedStaticFields;
     const auto collectReferencedCallees =
         [&](const frontend::ProjectOopMirNode *node, auto &&self) -> void {
         if (node == nullptr) return;
         if (!node->calleeName.empty()) referencedCallees.insert(node->calleeName);
+        if ((node->kind == frontend::ProjectOopMirNodeKind::StaticFieldLoad ||
+             node->kind == frontend::ProjectOopMirNodeKind::StaticFieldAddress) &&
+            node->memberOrdinal.has_value())
+        {
+            referencedStaticFields.insert(*node->memberOrdinal);
+        }
         for (const auto &child : node->children) self(child.get(), self);
     };
     for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
@@ -2282,6 +2289,22 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
         // A reconstructed `extern C from "kernel32.dll"` import never enters metadata.exports
         // and therefore does not select the otherwise valid but unused NativeSharp DLL.
         selectRuntimeForModule(contract->moduleName);
+    }
+    for (const frontend::ProjectOopMirStaticField &field : compilation.oopMirModel()->staticFields())
+    {
+        if (!field.isImported || field.isConst ||
+            !referencedStaticFields.contains(field.memberOrdinal))
+        {
+            continue;
+        }
+        const auto owner = publishedNativeMethods.find(field.accessorName);
+        if (owner == publishedNativeMethods.end())
+        {
+            error = "metadata-backed NativeSharp static field resolved to unpublished accessor '" +
+                field.accessorName + "'";
+            return false;
+        }
+        selectRuntimeForModule(owner->second);
     }
     return true;
 }
