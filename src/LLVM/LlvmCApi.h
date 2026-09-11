@@ -638,6 +638,7 @@ LLVMValueRef LLVMAddFunction(LLVMModuleRef module, const char* name, LLVMTypeRef
 void LLVMSetLinkage(LLVMValueRef global, LLVMLinkage linkage);
 LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);
 void LLVMSetValueName2(LLVMValueRef value, const char* name, std::size_t nameLength);
+const char* LLVMGetValueName2(LLVMValueRef value, std::size_t* nameLength);
 void LLVMSetPersonalityFn(LLVMValueRef function, LLVMValueRef personality);
 
 // Function-attribute API (llvm-c/Core.h) -- used to mark every emitted function `uwtable`, the

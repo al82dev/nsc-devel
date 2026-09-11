@@ -1899,30 +1899,36 @@ private:
         // weak_odr, rather than linkonce_odr, is required because a public specialization may be
         // listed in a DLL export table even after all of its local calls were inlined at O2.  The
         // optimizer may discard an unreferenced linkonce definition; weak_odr keeps the external
-        // definition while the shared COMDAT still selects one copy at final link.
+        // definition while its symbol-specific COMDAT selects one copy at final link.
         LLVMSetLinkage(value, LLVMWeakODRLinkage);
-        const auto found = genericComdats_.find(specializationKey);
-        LLVMComdatRef comdat = found == genericComdats_.end() ? nullptr : found->second;
+        std::size_t physicalNameLength = 0;
+        const char* physicalNameData = LLVMGetValueName2(value, &physicalNameLength);
+        if (physicalNameData == nullptr || physicalNameLength == 0) return;
+        const std::string physicalName(physicalNameData, physicalNameLength);
+        const auto found = genericSymbolComdats_.find(physicalName);
+        LLVMComdatRef comdat =
+            found == genericSymbolComdats_.end() ? nullptr : found->second;
         if (comdat == nullptr)
         {
             const auto bytes = std::span<const std::uint8_t>(
-                reinterpret_cast<const std::uint8_t*>(specializationKey.data()),
-                specializationKey.size());
+                reinterpret_cast<const std::uint8_t*>(physicalName.data()),
+                physicalName.size());
             const std::string name = "__nsc_generic_odr_" +
                 basic::sha256Hex(basic::sha256(bytes)).substr(0U, 16U);
             comdat = LLVMGetOrInsertComdat(module_, name.c_str());
             LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
-            // COFF represents the remaining members as associative COMDAT sections, which must
-            // name a real leader symbol.  A one-byte linkonce global is the neutral leader: it
-            // carries no runtime state and makes the whole specialization group selectable as a
-            // unit in every producer/consumer object.
+            // Each physical symbol owns an independent COFF group. Producer and consumer are
+            // allowed to materialize different subsets of one specialization, so grouping by
+            // specialization would let lld choose a partial group and discard still-referenced
+            // members. A neutral byte remains the real associative COMDAT leader for this one
+            // symbol only.
             LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
             LLVMValueRef leader = LLVMAddGlobal(module_, i8, name.c_str());
             LLVMSetInitializer(leader, LLVMConstInt(i8, 0, 0));
             LLVMSetGlobalConstant(leader, 1);
             LLVMSetLinkage(leader, LLVMWeakODRLinkage);
             LLVMSetComdat(leader, comdat);
-            genericComdats_.emplace(specializationKey, comdat);
+            genericSymbolComdats_.emplace(physicalName, comdat);
         }
         LLVMSetComdat(value, comdat);
     }
@@ -11192,7 +11198,7 @@ private:
     // a same-thread self-referencing static field initializer recursing into its own cctor).
     std::unordered_map<std::size_t, LLVMValueRef> staticInitOwnerGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> staticInitFunctions_;
-    std::unordered_map<std::string, LLVMComdatRef> genericComdats_;
+    std::unordered_map<std::string, LLVMComdatRef> genericSymbolComdats_;
     std::unordered_map<std::string, FunctionInfo> functions_;
     std::unordered_map<std::string, LLVMValueRef> stringGlobals_;
     // C8 "type root": one name constant per class, keyed by its global's name.
