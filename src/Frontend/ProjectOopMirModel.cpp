@@ -777,6 +777,11 @@ bool ProjectOopMirModel::build(
         {
             for (const std::size_t destructorMember : destruction->destructorMemberOrdinals)
             {
+                if (destructorMember < memberModel.members().size() &&
+                    memberModel.members()[destructorMember].isPrecompiled)
+                {
+                    continue;
+                }
                 const ProjectOopHirFunction* destructorBody = hirModel.functionForMember(destructorMember);
                 if (destructorBody == nullptr || !destructorBody->destructor)
                 {
@@ -868,6 +873,16 @@ bool ProjectOopMirModel::build(
             }
             for (const std::size_t chainTypeOrdinal : chain)
             {
+                // The precompiled producer owns the complete remainder of this base chain,
+                // including private destructor bodies and private owned-field layout. Calling its
+                // descriptor's destruction entry is the only complete operation available to a
+                // consumer, and it is terminal because that entry also releases the allocation.
+                if (chainTypeOrdinal < nameLookup.namedTypes().size() &&
+                    nameLookup.namedTypes()[chainTypeOrdinal].isPrecompiled)
+                {
+                    built.delegatedBaseDestructionTypeOrdinal = chainTypeOrdinal;
+                    break;
+                }
                 // This class's destructor body first: it runs while every one of its own owned
                 // fields is still alive, and the null-guarded releases right after it skip
                 // anything it already discharged by hand.

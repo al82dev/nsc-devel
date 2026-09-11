@@ -811,6 +811,7 @@ namespace ImportedBase
     {
         public event BaseChangedHandler BaseChanged;
         public Base() { BaseChanged += Ignore; }
+        ~Base() { }
         private static void Ignore(int value) { }
         public void RaiseBaseChanged(int value) { BaseChanged(value); }
         public virtual int Value() { return 40; }
@@ -829,6 +830,7 @@ namespace ImportedDerived
 
     public class Derived : Base, IExtended
     {
+        ~Derived() { }
         public override int Value() { return 42; }
         public int Score() { return 42; }
         public int Extra() { return 42; }

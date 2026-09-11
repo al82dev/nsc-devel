@@ -395,6 +395,11 @@ struct ProjectOopMirDispatchTable final
     std::string destructionEntryName;
     std::vector<std::size_t> destructorMemberOrdinals;
     std::vector<std::string> destructorCalleeNames;
+    // A local class may derive from a class whose destructor bodies and owned-field layout live
+    // exclusively in a precompiled producer. After completing every local destruction step, the
+    // local entry delegates the remaining base chain through that type's runtime descriptor.
+    // The delegated entry also releases the allocation, so the local entry must not free it again.
+    std::optional<std::size_t> delegatedBaseDestructionTypeOrdinal;
     // Bloque 1 item 1 (owning field storage) -- instance fields declared `owned` whose type really
     // owns a separate allocation, INCLUDING the ones inherited from base types, in the order they
     // must be destroyed. The destruction entry walks this list after running the declared

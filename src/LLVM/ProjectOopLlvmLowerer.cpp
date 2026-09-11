@@ -3729,9 +3729,32 @@ private:
                 LLVMPositionBuilderAtEnd(builder_, doneBlock);
             }
 
-            LLVMValueRef freeArguments[] = {object};
-            buildNoUnwindCall(
-                deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
+            if (table.delegatedBaseDestructionTypeOrdinal.has_value())
+            {
+                const auto baseAccessor = descriptorAccessorFunctions_.find(
+                    *table.delegatedBaseDestructionTypeOrdinal);
+                if (baseAccessor == descriptorAccessorFunctions_.end())
+                {
+                    return fail(error,
+                        "Stage 35 local destruction cannot resolve its precompiled base descriptor accessor");
+                }
+                LLVMValueRef baseDescriptor = LLVMBuildCall2(
+                    builder_, baseAccessor->second.functionType, baseAccessor->second.function,
+                    nullptr, 0, "destruction.base.descriptor");
+                LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+                    builder_, descriptorType_, baseDescriptor, 5, "destruction.base.entry.addr");
+                LLVMValueRef baseDestructionEntry = LLVMBuildLoad2(
+                    builder_, ptr, entryAddress, "destruction.base.entry");
+                LLVMValueRef baseArguments[] = {object};
+                buildNoUnwindCall(
+                    destructionEntryFunctionType_, baseDestructionEntry, baseArguments, 1, "");
+            }
+            else
+            {
+                LLVMValueRef freeArguments[] = {object};
+                buildNoUnwindCall(
+                    deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
+            }
             LLVMBuildRetVoid(builder_);
         }
         currentDebugSubprogram_ = nullptr;
