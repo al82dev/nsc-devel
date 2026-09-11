@@ -1917,6 +1917,19 @@ bool configurePrecompiledModules(
                 std::move(publicSource),
                 std::move(templateSource),
                 [&]() {
+                    std::vector<frontend::PrecompiledMemberIdentity> result;
+                    result.reserve(metadata.members.size());
+                    for (const interop::LibraryMetadataMember &member : metadata.members)
+                    {
+                        result.push_back({static_cast<frontend::ClassMemberKind>(member.kind),
+                            member.declaringTypeKey,
+                            member.name,
+                            member.signatureKey,
+                            member.mangledName});
+                    }
+                    return result;
+                }(),
+                [&]() {
                     std::vector<frontend::PrecompiledGenericSpecialization> result;
                     result.reserve(metadata.genericSpecializations.size());
                     for (const interop::LibraryMetadataGenericSpecialization &specialization :

@@ -101,6 +101,11 @@ struct ClassMemberSymbol final
     // A metadata API part may be precompiled while a transported generic-template part is local
     // and must therefore be analyzed/lowered in the consumer.
     bool isPrecompiled = false;
+    // Exact physical identity published by the producer's NSMETA.  A precompiled callable is
+    // resolved semantically against the synthetic declaration, but its external symbol must
+    // never be regenerated from that declaration: source materialization can use a different
+    // spelling for an otherwise identical closed generic type.
+    std::string precompiledMangledName;
     std::string name;
     const ast::TypeSyntax* declaredTypeSyntax = nullptr;
     std::string declaredTypeKey;
@@ -192,6 +197,15 @@ struct ClassMemberSymbol final
     std::optional<std::uint64_t> explicitFieldOffset;
 };
 
+struct PrecompiledMemberIdentity final
+{
+    ClassMemberKind kind = ClassMemberKind::Field;
+    std::string declaringTypeKey;
+    std::string name;
+    std::string signatureKey;
+    std::string mangledName;
+};
+
 enum class MemberBodyBindingKind
 {
     ThisReference,
@@ -215,6 +229,10 @@ public:
         const ProjectNameLookup& nameLookup,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool bindPrecompiledPhysicalNames(
+        std::span<const PrecompiledMemberIdentity> identities,
+        std::span<const std::pair<std::string, std::string>> typeKeyAliases,
+        std::string& error);
 
     std::span<const ClassMemberSymbol> members() const noexcept;
     std::span<const MemberBodyBinding> bodyBindings() const noexcept;

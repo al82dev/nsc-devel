@@ -34,6 +34,7 @@ struct PrecompiledSyntaxModule final
     std::string moduleName;
     std::string sourceText;
     std::string templateSourceText;
+    std::vector<PrecompiledMemberIdentity> members;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;
 };
 

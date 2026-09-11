@@ -802,6 +802,11 @@ namespace ClosedGenericProducerApi
         {
             Values = new Bucket<ProducerValue>();
         }
+
+        public static int CountValues(Bucket<ProducerValue> values)
+        {
+            return values.Count();
+        }
     }
 }
 )NS");
@@ -857,7 +862,7 @@ class Program
     public static int Main()
     {
         raii ProducerBox box = new ProducerBox();
-        return box.Values.Count() == 0 ? 0 : 1;
+        return ProducerBox.CountValues(box.Values) == 0 && box.Values.Count() == 0 ? 0 : 1;
     }
 }
 )NS");

@@ -508,6 +508,84 @@ bool ProjectMemberModel::build(
     return !diagnostics.hasErrors();
 }
 
+bool ProjectMemberModel::bindPrecompiledPhysicalNames(
+    std::span<const PrecompiledMemberIdentity> identities,
+    std::span<const std::pair<std::string, std::string>> typeKeyAliases,
+    std::string& error)
+{
+    error.clear();
+    if (!built_ || nameLookup_ == nullptr)
+    {
+        error = "precompiled physical names require a completed member model";
+        return false;
+    }
+
+    // Replace the consumer-local generated name of a closed specialization with the producer's
+    // published name only while comparing semantic signatures.  The replacement is deliberately
+    // longest-first so a nested closed type cannot be partially consumed by an outer alias.
+    std::vector<std::pair<std::string, std::string>> aliases(
+        typeKeyAliases.begin(), typeKeyAliases.end());
+    std::ranges::sort(aliases, [](const auto& left, const auto& right) {
+        return left.first.size() > right.first.size();
+    });
+    const auto canonicalize = [&](std::string value) {
+        for (const auto& [localTypeKey, publishedTypeKey] : aliases)
+        {
+            if (localTypeKey.empty() || localTypeKey == publishedTypeKey) continue;
+            std::size_t cursor = 0;
+            while ((cursor = value.find(localTypeKey, cursor)) != std::string::npos)
+            {
+                value.replace(cursor, localTypeKey.size(), publishedTypeKey);
+                cursor += publishedTypeKey.size();
+            }
+        }
+        return value;
+    };
+
+    for (ClassMemberSymbol& member : members_)
+    {
+        if (!member.isPrecompiled || member.isImportedC || member.isAbstract ||
+            (member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor))
+        {
+            continue;
+        }
+        if (member.declaringTypeOrdinal >= nameLookup_->namedTypes().size())
+        {
+            error = "precompiled member '" + member.signatureKey + "' has an invalid declaring type";
+            return false;
+        }
+
+        const std::string declaringTypeKey = canonicalize(
+            "type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key());
+        const std::string signatureKey = canonicalize(member.signatureKey);
+        const PrecompiledMemberIdentity* match = nullptr;
+        for (const PrecompiledMemberIdentity& identity : identities)
+        {
+            if (identity.mangledName.empty() || identity.kind != member.kind ||
+                identity.declaringTypeKey != declaringTypeKey || identity.name != member.name ||
+                identity.signatureKey != signatureKey)
+            {
+                continue;
+            }
+            if (match != nullptr)
+            {
+                error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
+                    "' has more than one published physical identity";
+                return false;
+            }
+            match = &identity;
+        }
+        if (match == nullptr)
+        {
+            error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
+                "' has no physical identity in NSMETA";
+            return false;
+        }
+        member.precompiledMangledName = match->mangledName;
+    }
+    return true;
+}
+
 std::span<const ClassMemberSymbol> ProjectMemberModel::members() const noexcept
 {
     return members_;

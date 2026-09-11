@@ -807,8 +807,10 @@ bool ProjectOopHirModel::build(
         {
             // The declaration came from .nsmeta and participates in the ordinary NativeSharp
             // overload set, but its implementation is already in the referenced .lib/DLL. The
-            // canonical producer module stored on the synthetic type makes mangleCallable yield
-            // the exact external symbol emitted by the producer.
+            // The semantic signature came from synthetic source, but the physical identity was
+            // produced once by the library producer and transported through NSMETA.  Recomputing
+            // it here is incorrect when a closed generic argument acquired a qualified spelling
+            // during source reconstruction.
             ProjectOopHirFunction imported;
             imported.memberOrdinal = memberOrdinal;
             imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
@@ -816,8 +818,13 @@ bool ProjectOopHirModel::build(
             imported.destructor = false;
             imported.isStatic = member.isStatic;
             imported.isImportedNative = true;
-            imported.mangledName = mangleCallable(
-                nameLookup.namedTypes()[member.declaringTypeOrdinal], member);
+            if (member.precompiledMangledName.empty())
+            {
+                error = "precompiled callable '" + member.signatureKey +
+                    "' has no physical symbol bound from NSMETA";
+                return false;
+            }
+            imported.mangledName = member.precompiledMangledName;
             imported.returnTypeKey = imported.constructor ? "builtin:void" : member.declaredTypeKey;
             imported.returnOwnership = imported.constructor
                 ? sema::OwnershipKind::None
