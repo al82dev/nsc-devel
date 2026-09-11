@@ -573,7 +573,7 @@ namespace GenericDll
     error.clear();
     tests.expect(emitProduct("--emit-project-oop-dll", genericShared / "GenericShared.nsproj",
                              genericShared / "GenericShared.dll", output, error) == ExitCode::Success,
-                 "a DLL with an exported concrete generic struct constructor is emitted");
+                 "a DLL with an exported concrete generic struct constructor is emitted (" + error + ")");
     LibraryMetadataCodec genericCodec;
     LibraryMetadata genericMetadata;
     error.clear();
@@ -856,13 +856,16 @@ namespace ClosedGenericProducerApi
         "\" /></ItemGroup></Project>");
     writeFile(consumer / "Consumer.ns", R"NS(
 using ClosedGenericProducerApi;
+using ClosedGenericContracts;
 
 class Program
 {
     public static int Main()
     {
         raii ProducerBox box = new ProducerBox();
-        return ProducerBox.CountValues(box.Values) == 0 && box.Values.Count() == 0 ? 0 : 1;
+        raii Bucket<ProducerValue> local = new Bucket<ProducerValue>();
+        return ProducerBox.CountValues(box.Values) == 0 && box.Values.Count() == 0 &&
+            local.Count() == 0 ? 0 : 1;
     }
 }
 )NS");

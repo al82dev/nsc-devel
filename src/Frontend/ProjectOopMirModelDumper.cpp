@@ -147,7 +147,10 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " descriptor=" << table.descriptorName
                << " vtable=" << (table.vtableName.empty() ? "<none>" : table.vtableName)
                << " type-id=" << table.stableTypeId
-               << " destroy=" << table.destructionEntryName << '\n';
+               << " destroy=" << table.destructionEntryName;
+        if (!table.genericSpecializationKey.empty())
+            output << " generic-specialization=" << table.genericSpecializationKey;
+        output << '\n';
         for (std::size_t slot = 0; slot < table.slotMemberOrdinals.size(); ++slot)
         {
             output << "  slot[" << slot << "] member=#" << table.slotMemberOrdinals[slot] << " callee=";

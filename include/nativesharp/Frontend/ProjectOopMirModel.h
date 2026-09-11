@@ -353,6 +353,7 @@ struct ProjectOopMirStaticField final
     bool isReadonly = false;
     bool isConst = false;
     bool isImported = false;
+    std::string genericSpecializationKey;
     // Mutable static storage remains owned by the producer. Consumers call the stable accessor
     // carried in NSMETA instead of defining a second global with a compilation-local ordinal.
     std::string storageSymbol;
@@ -375,6 +376,7 @@ struct ProjectOopMirDispatchTable final
     // Imported tables describe producer-owned runtime data. They participate in semantic slot
     // selection, but the consumer must neither define nor initialize their globals locally.
     bool isImported = false;
+    std::string genericSpecializationKey;
     std::size_t typeOrdinal = 0;
     std::optional<std::size_t> baseTypeOrdinal;
     std::string typeKey;

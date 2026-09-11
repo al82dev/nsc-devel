@@ -1893,6 +1893,40 @@ private:
         return true;
     }
 
+    void applyGenericOdrDefinition(LLVMValueRef value, const std::string& specializationKey)
+    {
+        if (value == nullptr || specializationKey.empty()) return;
+        // weak_odr, rather than linkonce_odr, is required because a public specialization may be
+        // listed in a DLL export table even after all of its local calls were inlined at O2.  The
+        // optimizer may discard an unreferenced linkonce definition; weak_odr keeps the external
+        // definition while the shared COMDAT still selects one copy at final link.
+        LLVMSetLinkage(value, LLVMWeakODRLinkage);
+        const auto found = genericComdats_.find(specializationKey);
+        LLVMComdatRef comdat = found == genericComdats_.end() ? nullptr : found->second;
+        if (comdat == nullptr)
+        {
+            const auto bytes = std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(specializationKey.data()),
+                specializationKey.size());
+            const std::string name = "__nsc_generic_odr_" +
+                basic::sha256Hex(basic::sha256(bytes)).substr(0U, 16U);
+            comdat = LLVMGetOrInsertComdat(module_, name.c_str());
+            LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
+            // COFF represents the remaining members as associative COMDAT sections, which must
+            // name a real leader symbol.  A one-byte linkonce global is the neutral leader: it
+            // carries no runtime state and makes the whole specialization group selectable as a
+            // unit in every producer/consumer object.
+            LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+            LLVMValueRef leader = LLVMAddGlobal(module_, i8, name.c_str());
+            LLVMSetInitializer(leader, LLVMConstInt(i8, 0, 0));
+            LLVMSetGlobalConstant(leader, 1);
+            LLVMSetLinkage(leader, LLVMWeakODRLinkage);
+            LLVMSetComdat(leader, comdat);
+            genericComdats_.emplace(specializationKey, comdat);
+        }
+        LLVMSetComdat(value, comdat);
+    }
+
     bool declareStaticFields(std::string& error)
     {
         for (const frontend::ProjectOopMirStaticField& field : mirModel_.staticFields())
@@ -1911,6 +1945,7 @@ private:
                 LLVMValueRef accessor = LLVMAddFunction(module_, field.accessorName.c_str(), accessorType);
                 if (accessor == nullptr)
                     return fail(error, "Stage 37 failed to declare static field accessor " + field.accessorName);
+                applyGenericOdrDefinition(accessor, field.genericSpecializationKey);
                 applyUwtableAttribute(accessor);
                 staticFieldAccessorFunctions_[field.memberOrdinal] =
                     FunctionInfo{accessor, accessorType, nullptr};
@@ -1920,7 +1955,10 @@ private:
             LLVMValueRef global = LLVMAddGlobal(module_, type, field.storageSymbol.c_str());
             if (global == nullptr)
                 return fail(error, "Stage 37 failed to declare static field global " + field.storageSymbol);
-            LLVMSetLinkage(global, LLVMPrivateLinkage);
+            if (field.genericSpecializationKey.empty())
+                LLVMSetLinkage(global, LLVMPrivateLinkage);
+            else
+                applyGenericOdrDefinition(global, field.genericSpecializationKey);
 
             LLVMValueRef initializer = LLVMConstNull(type);
             if (field.isConst)
@@ -2310,6 +2348,8 @@ private:
                 error = "Stage 34 failed to declare LLVM function " + function.mangledName;
                 return false;
             }
+            if (!function.isImportedC && !function.isImportedNative)
+                applyGenericOdrDefinition(llvmFunction, function.genericSpecializationKey);
             applyUwtableAttribute(llvmFunction);
             if (sretReturn)
             {
@@ -2357,6 +2397,7 @@ private:
                 return fail(error, "Stage 35 failed to declare destruction entry " +
                     table.destructionEntryName);
             }
+            applyGenericOdrDefinition(function, table.genericSpecializationKey);
             LLVMMetadataRef subprogram = nullptr;
             if (table.typeOrdinal < nameLookup_.namedTypes().size())
             {
@@ -2488,6 +2529,7 @@ private:
                     ptr, entries.data(), static_cast<std::uint64_t>(entries.size()));
                 LLVMSetInitializer(vtableGlobal, initializer);
                 LLVMSetGlobalConstant(vtableGlobal, 1);
+                applyGenericOdrDefinition(vtableGlobal, table.genericSpecializationKey);
                 vtableGlobals_[table.typeOrdinal] = vtableGlobal;
             }
 
@@ -2523,6 +2565,7 @@ private:
                     ptr, methods.data(), static_cast<std::uint64_t>(methods.size()));
                 LLVMSetInitializer(methodTable, methodInitializer);
                 LLVMSetGlobalConstant(methodTable, 1);
+                applyGenericOdrDefinition(methodTable, table.genericSpecializationKey);
 
                 LLVMValueRef entryFields[] = {
                     LLVMConstInt(i64, interfaceTable.stableInterfaceTypeId, 0),
@@ -2547,6 +2590,7 @@ private:
                     static_cast<std::uint64_t>(interfaceMapEntries.size()));
                 LLVMSetInitializer(entriesGlobal, entriesInitializer);
                 LLVMSetGlobalConstant(entriesGlobal, 1);
+                applyGenericOdrDefinition(entriesGlobal, table.genericSpecializationKey);
 
                 LLVMValueRef mapGlobal = LLVMAddGlobal(
                     module_, interfaceMapType_, table.interfaceMapName.c_str());
@@ -2560,6 +2604,7 @@ private:
                 };
                 LLVMSetInitializer(mapGlobal, LLVMConstNamedStruct(interfaceMapType_, mapFields, 2));
                 LLVMSetGlobalConstant(mapGlobal, 1);
+                applyGenericOdrDefinition(mapGlobal, table.genericSpecializationKey);
                 interfaceMapGlobals_[table.typeOrdinal] = mapGlobal;
             }
 
@@ -2570,6 +2615,7 @@ private:
                 return fail(error, "Macro A failed to declare class descriptor " + table.descriptorName);
             }
             descriptorGlobals_[table.typeOrdinal] = descriptor;
+            applyGenericOdrDefinition(descriptor, table.genericSpecializationKey);
 
             if (table.descriptorAccessorName.empty())
             {
@@ -2584,6 +2630,7 @@ private:
             }
             descriptorAccessorFunctions_[table.typeOrdinal] =
                 FunctionInfo{accessor, descriptorAccessorFunctionType_};
+            applyGenericOdrDefinition(accessor, table.genericSpecializationKey);
         }
 
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
@@ -2635,6 +2682,7 @@ private:
             {
                 return fail(error, "C8 descriptor cannot materialize its type name constant");
             }
+            applyGenericOdrDefinition(typeName, table.genericSpecializationKey);
 
             LLVMValueRef values[] = {
                 baseDescriptor,
@@ -11144,6 +11192,7 @@ private:
     // a same-thread self-referencing static field initializer recursing into its own cctor).
     std::unordered_map<std::size_t, LLVMValueRef> staticInitOwnerGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> staticInitFunctions_;
+    std::unordered_map<std::string, LLVMComdatRef> genericComdats_;
     std::unordered_map<std::string, FunctionInfo> functions_;
     std::unordered_map<std::string, LLVMValueRef> stringGlobals_;
     // C8 "type root": one name constant per class, keyed by its global's name.

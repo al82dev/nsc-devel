@@ -22,6 +22,7 @@ struct LLVMOpaqueOperandBundle;
 struct LLVMOpaqueMetadata;
 struct LLVMOpaqueDIBuilder;
 struct LLVMOpaqueDbgRecord;
+struct LLVMComdat;
 
 using LLVMContextRef = LLVMOpaqueContext*;
 using LLVMModuleRef = LLVMOpaqueModule*;
@@ -38,6 +39,7 @@ using LLVMOperandBundleRef = LLVMOpaqueOperandBundle*;
 using LLVMMetadataRef = LLVMOpaqueMetadata*;
 using LLVMDIBuilderRef = LLVMOpaqueDIBuilder*;
 using LLVMDbgRecordRef = LLVMOpaqueDbgRecord*;
+using LLVMComdatRef = LLVMComdat*;
 using LLVMBool = int;
 
 enum LLVMModuleFlagBehavior
@@ -207,9 +209,29 @@ enum LLVMVerifierFailureAction
 enum LLVMLinkage
 {
     LLVMExternalLinkage = 0,
+    LLVMAvailableExternallyLinkage = 1,
+    LLVMLinkOnceAnyLinkage = 2,
+    LLVMLinkOnceODRLinkage = 3,
+    LLVMLinkOnceODRAutoHideLinkage = 4,
+    LLVMWeakAnyLinkage = 5,
+    LLVMWeakODRLinkage = 6,
+    LLVMAppendingLinkage = 7,
     LLVMInternalLinkage = 8,
     LLVMPrivateLinkage = 9
 };
+
+enum LLVMComdatSelectionKind
+{
+    LLVMAnyComdatSelectionKind = 0,
+    LLVMExactMatchComdatSelectionKind = 1,
+    LLVMLargestComdatSelectionKind = 2,
+    LLVMNoDeduplicateComdatSelectionKind = 3,
+    LLVMSameSizeComdatSelectionKind = 4
+};
+
+LLVMComdatRef LLVMGetOrInsertComdat(LLVMModuleRef module, const char* name);
+void LLVMSetComdat(LLVMValueRef value, LLVMComdatRef comdat);
+void LLVMSetComdatSelectionKind(LLVMComdatRef comdat, LLVMComdatSelectionKind kind);
 
 LLVMContextRef LLVMContextCreate();
 void LLVMContextDispose(LLVMContextRef context);

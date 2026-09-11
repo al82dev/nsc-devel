@@ -37,6 +37,41 @@ std::uint64_t stableTypeId(std::string_view value) noexcept
     return hash;
 }
 
+std::string genericSpecializationKeyForType(
+    const ProjectNameLookup& nameLookup,
+    std::size_t typeOrdinal)
+{
+    if (typeOrdinal >= nameLookup.namedTypes().size()) return {};
+    constexpr std::string_view kSpecializationPrefix = "stage44-specialization:";
+    const NamedTypeDeclaration& type = nameLookup.namedTypes()[typeOrdinal];
+    const auto keyForSyntax = [&](const ast::AstNode* syntax) -> std::string {
+        return syntax != nullptr && syntax->auxiliaryText().starts_with(kSpecializationPrefix)
+            ? syntax->auxiliaryText().substr(kSpecializationPrefix.size())
+            : std::string{};
+    };
+    if (std::string key = keyForSyntax(type.syntax); !key.empty()) return key;
+    for (const NamedTypeDeclarationPart& part : type.parts)
+    {
+        if (std::string key = keyForSyntax(part.syntax); !key.empty()) return key;
+    }
+    // Name aggregation can select the open template as the declaration's primary syntax even
+    // though this ordinal names the generated closed type.  The generated name is itself a
+    // stable compiler contract: __g<arity>__<arguments>__h<16 hex>.  Treat it as reusable when
+    // the AST marker is no longer reachable from the aggregate declaration.
+    const std::string& name = type.identity.fullyQualifiedName();
+    const std::size_t generic = name.rfind("__g");
+    const std::size_t hash = name.rfind("__h");
+    if (generic != std::string::npos && hash != std::string::npos && hash > generic + 3U &&
+        hash + 3U + 16U == name.size())
+    {
+        bool validHash = true;
+        for (const char character : std::string_view(name).substr(hash + 3U))
+            validHash = validHash && std::isxdigit(static_cast<unsigned char>(character));
+        if (validHash) return "type:" + type.identity.key();
+    }
+    return {};
+}
+
 const ProjectOopMirStaticField* knownStaticField(
     std::size_t memberOrdinal,
     const std::vector<ProjectOopMirStaticField>& knownFields) noexcept
@@ -692,6 +727,7 @@ bool ProjectOopMirModel::build(
         }
         ProjectOopMirDispatchTable table;
         table.isImported = nameLookup.namedTypes()[sourceTable.typeOrdinal].isPrecompiled;
+        table.genericSpecializationKey = genericSpecializationKeyForType(nameLookup, sourceTable.typeOrdinal);
         table.typeOrdinal = sourceTable.typeOrdinal;
         table.baseTypeOrdinal = sourceTable.baseTypeOrdinal;
         table.typeKey = "type:" + nameLookup.namedTypes()[sourceTable.typeOrdinal].identity.key();
@@ -968,6 +1004,7 @@ bool ProjectOopMirModel::build(
                 field.isReadonly,
                 field.isConst,
                 field.isPrecompiled,
+                genericSpecializationKeyForType(nameLookup, field.declaringTypeOrdinal),
                 {},
                 {}};
             if (field.declaringTypeOrdinal >= nameLookup.namedTypes().size())
