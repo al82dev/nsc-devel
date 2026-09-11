@@ -173,11 +173,11 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.SumWide`" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.ExerciseEh`" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.UnwindResource\\.~UnwindResource`" OR
-       NOT pdb_dump MATCHES "S_THUNK32[^\n]*`[^`]*Increment[^`]*__c_boundary`" OR
+       NOT pdb_dump MATCHES "S_THUNK32[^`]*`[^`]*Increment[^`]*__c_boundary`" OR
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`ExportedIdentity`" OR
        NOT pdb_dump MATCHES "((S_GPROC32|S_LPROC32)[^\n]*`DebugFixture\\.GeneratedState\\.cctor \\[generated\\]`|S_INLINEES[^\n]*[\n\r ]+inlinee:[^\n]*DebugFixture\\.GeneratedState\\.ccto)" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Resource\\.destruction-entry \\[generated\\]`" OR
-       NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.DebugProblem\\.catch-filter \\[generated\\]`" OR
+       NOT pdb_dump MATCHES "S_LPROC32[^\n]*`DebugFixture\\.DebugProblem\\.catch-filter \\[generated\\]`" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.Main\\.lambda#0 \\[generated: closure context destroy\\]`" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Main" OR
        NOT pdb_dump MATCHES "Main\\.ns" OR
