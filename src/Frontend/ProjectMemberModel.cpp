@@ -1372,6 +1372,13 @@ bool ProjectMemberModel::collectTypeMembers(
                     symbol.signatureKey += symbol.parameters[parameterIndex].typeKey;
                 }
                 symbol.signatureKey.push_back(')');
+                // Unlike an ordinary method, a conversion operator is identified by its
+                // source AND target types. Multiple conversions may therefore share
+                // `op_Implicit(Source)` while producing distinct target types.
+                if (symbol.isUserConversion)
+                {
+                    symbol.signatureKey += "->" + symbol.declaredTypeKey;
+                }
 
                 // Bloque 1 item 9, setter half. The setter's implicit `value` parameter is
                 // built from the property's own TypeSyntax, so it already carries the `owned`
@@ -1603,7 +1610,7 @@ bool ProjectMemberModel::collectTypeMembers(
                             diagnostics,
                             "duplicate " + category + " signature '" + symbol.signatureKey +
                                 "' in type '" + type.identity.fullyQualifiedName() +
-                                (symbol.kind == ClassMemberKind::Method
+                                (symbol.kind == ClassMemberKind::Method && !symbol.isUserConversion
                                     ? "'; return type is not part of overload identity"
                                     : "'"));
                         duplicate = true;

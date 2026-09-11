@@ -425,6 +425,13 @@ std::string typeSuffix(const ClassMemberSymbol& member)
         // convertian en una sola funcion LLVM.
         result += "__" + compilation::symbolFragmentForIdentityKey(parameter.typeKey);
     }
+    // Conversion overload identity includes the target type. Without this suffix,
+    // `implicit operator A(Source)` and `implicit operator B(Source)` become the same
+    // LLVM/COFF symbol even though the language resolves them by the requested target.
+    if (member.isUserConversion)
+    {
+        result += "__to__" + compilation::symbolFragmentForIdentityKey(member.declaredTypeKey);
+    }
     return result;
 }
 

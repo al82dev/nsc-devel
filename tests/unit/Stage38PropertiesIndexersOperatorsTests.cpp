@@ -399,6 +399,22 @@ class Pair
         "class C { public static implicit operator int(float v) { return 1; } }", "source or target");
     expectInvalid(tests, root, "ConversionSameType",
         "class C { public static implicit operator C(C v) { return v; } }", "different source and target");
+    expectValid(tests, root, "ConversionTargetsDefineIdentity", R"NS(
+class Source
+{
+    public static implicit operator int(Source value) { return 20; }
+    public static implicit operator long(Source value) { return (long)22; }
+}
+class Consumer
+{
+    public static int Read(Source value)
+    {
+        int left = value;
+        long right = value;
+        return left + (int)right;
+    }
+}
+)NS");
     expectInvalid(tests, root, "PropertyFieldCollision",
         "class C { int Value; public int Value { get { return 1; } } }", "duplicate");
     expectInvalid(tests, root, "PrivateSetter",
