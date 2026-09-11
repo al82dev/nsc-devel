@@ -1631,8 +1631,6 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, type, field);
                     event != nullptr)
                 {
-                    if (const std::size_t dot = fieldType.find_last_of('.'); dot != std::string::npos)
-                        fieldType = fieldType.substr(dot + 1U);
                     generated << "    " << sourceAccessibility(event->accessibility) << ' ';
                     if ((event->flags & (1U << 0U)) != 0U) generated << "static ";
                     generated << "event " << ownershipPrefix(event->declaredOwnership) << fieldType << ' '
@@ -1691,8 +1689,6 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (materializedEvents.contains(member)) continue;
                 std::string eventType;
                 if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, eventType, error)) return false;
-                if (const std::size_t dot = eventType.find_last_of('.'); dot != std::string::npos)
-                    eventType = eventType.substr(dot + 1U);
                 generated << "    " << sourceAccessibility(member->accessibility) << ' ';
                 if ((member->flags & (1U << 0U)) != 0U) generated << "static ";
                 generated << "event " << ownershipPrefix(member->declaredOwnership) << eventType << ' '
@@ -1751,12 +1747,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             if ((member->flags & kUserConversion) != 0U)
             {
-                std::string conversionTarget = returnType;
-                if (const std::size_t dot = conversionTarget.find_last_of('.'); dot != std::string::npos)
-                    conversionTarget = conversionTarget.substr(dot + 1U);
                 generated << "    " << sourceAccessibility(member->accessibility) << " static "
                           << ((member->flags & kImplicitConversion) != 0U ? "implicit" : "explicit")
-                          << " operator " << ownershipPrefix(member->declaredOwnership) << conversionTarget << '(';
+                          << " operator " << ownershipPrefix(member->declaredOwnership) << returnType << '(';
                 if (!emitParameters(*member)) return false;
                 generated << ") { }\n";
                 continue;

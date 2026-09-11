@@ -1061,12 +1061,39 @@ public class ExternalFacade
     public static EventHandler<EventArgs5> H5(EventHandler<EventArgs5> value) { return value; }
     public static EventHandler<EventArgs6> H6(EventHandler<EventArgs6> value) { return value; }
 }
+
+public class ExternalEvents
+{
+    public event EventHandler<EventArgs0> Changed0;
+    public event EventHandler<EventArgs1> Changed1;
+    public event EventHandler<EventArgs2> Changed2;
+    public event EventHandler<EventArgs3> Changed3;
+    public event EventHandler<EventArgs4> Changed4;
+    public event EventHandler<EventArgs5> Changed5;
+    public event EventHandler<EventArgs6> Changed6;
+}
+
+public struct ExternalConversions
+{
+    public Mat4 M0;
+    public Quat M1;
+    public Vec2 M2;
+    public Vec3 M3;
+    public Vec4 M4;
+
+    public static implicit operator Mat4(ExternalConversions value) { return value.M0; }
+    public static implicit operator Quat(ExternalConversions value) { return value.M1; }
+    public static implicit operator Vec2(ExternalConversions value) { return value.M2; }
+    public static implicit operator Vec3(ExternalConversions value) { return value.M3; }
+    public static implicit operator Vec4(ExternalConversions value) { return value.M4; }
+}
 )NS");
 
     output.clear(); error.clear();
     tests.expect(emitProduct("--emit-project-oop-lib", facade / "ExternalTypeFacade.nsproj",
                              facade / "ExternalTypeFacade.lib", output, error) == ExitCode::Success,
-                 "facade emits public signatures containing provider-owned nominal types (" + error + ")");
+                 "facade emits methods, events, and conversions containing provider-owned nominal types (" +
+                     error + ")");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
@@ -1114,8 +1141,8 @@ class Program
     const std::array<std::string_view, 2> hirArgs = {"--check-project-oop-hir", consumerProject};
     output.clear(); error.clear();
     tests.expect(runDriver(hirArgs, output, error) == ExitCode::Success,
-                 "combined LibraryReference set resolves every external type before API materialization (" +
-                     error + ")");
+                  "combined LibraryReference set reconstructs qualified external event and conversion types (" +
+                      error + ")");
 
     const auto incomplete = root / "ExternalTypeConsumerMissingProvider";
     writeFile(incomplete / "ExternalTypeConsumerMissingProvider.nsproj",
