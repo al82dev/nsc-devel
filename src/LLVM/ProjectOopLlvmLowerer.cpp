@@ -2950,6 +2950,10 @@ private:
             {
                 return fail(error, "Stage 45.11 failed to declare typed catch filter " + name);
             }
+            // A typed filter is referenced only by this module's own Win64 EH tables. It is not a
+            // runtime ABI entry and must not compete with the identical implementation detail
+            // emitted by another precompiled producer or consumer for the same caught type.
+            LLVMSetLinkage(function, LLVMInternalLinkage);
             LLVMMetadataRef subprogram = nullptr;
             SourceRange debugRange;
             if (typeOrdinal < nameLookup_.namedTypes().size())

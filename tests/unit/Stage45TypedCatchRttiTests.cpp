@@ -228,13 +228,14 @@ class Runner
     const std::string text = module->text();
     const std::string derivedFilter = "__nativesharp_eh_filter_type_" + std::to_string(derivedId);
     const std::string baseFilter = "__nativesharp_eh_filter_type_" + std::to_string(baseId);
-    tests.expect(text.find("define i32 @" + derivedFilter) != std::string::npos,
-        "LLVM defines a constant SEH filter function for DerivedProblem");
-    tests.expect(text.find("define i32 @" + baseFilter) != std::string::npos,
-        "LLVM defines a constant SEH filter function for BaseProblem");
+    tests.expect(text.find("define internal i32 @" + derivedFilter) != std::string::npos,
+        "LLVM defines a module-local constant SEH filter function for DerivedProblem");
+    tests.expect(text.find("define internal i32 @" + baseFilter) != std::string::npos,
+        "LLVM defines a module-local constant SEH filter function for BaseProblem");
     std::size_t filterDefinitionCount = 0;
     std::size_t filterOffset = 0;
-    while ((filterOffset = text.find("define i32 @__nativesharp_eh_filter_type_", filterOffset)) != std::string::npos)
+    while ((filterOffset = text.find(
+                "define internal i32 @__nativesharp_eh_filter_type_", filterOffset)) != std::string::npos)
     {
         ++filterDefinitionCount;
         ++filterOffset;
