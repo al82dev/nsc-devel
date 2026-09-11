@@ -1101,16 +1101,26 @@ public class Program
 
     output.clear();
     error.clear();
-    tests.expect(emitLibrary("--emit-project-oop-exe",
-                             falseRuntimeConsumer / "FalseRuntimeConsumer.nsproj",
-                             products / "FalseRuntimeConsumer.exe",
-                             output,
-                             error,
-                             true) == ExitCode::CompilationError,
-                 "declaring a runtime with no direct or transitive PE import remains an error");
-    tests.expect(error.find("linked PE does not import declared runtime DLL 'MetadataTypes.dll'") !=
-                     std::string::npos,
-                 "false runtime promise reports the exact unreferenced DLL");
+    const auto falseRuntimeExecutable = products / "FalseRuntimeConsumer.exe";
+    const ExitCode falseRuntimeResult = emitLibrary("--emit-project-oop-exe",
+                                                     falseRuntimeConsumer / "FalseRuntimeConsumer.nsproj",
+                                                     falseRuntimeExecutable,
+                                                     output,
+                                                     error,
+                                                     true);
+    tests.expect(falseRuntimeResult == ExitCode::Success,
+                 "an unused Runtime declaration does not invent a physical dependency (" + error + ")");
+    PeExecutableVerifier falseRuntimeVerifier;
+    tests.expect(falseRuntimeResult == ExitCode::Success &&
+                     falseRuntimeVerifier.verify(falseRuntimeExecutable) &&
+                     contains(falseRuntimeVerifier.info().importedLibraries, "MetadataOnlyApi.dll") &&
+                     !contains(falseRuntimeVerifier.info().importedLibraries, "MetadataTypes.dll"),
+                 "the linked PE imports only runtimes that contribute physical symbols");
+#ifdef _WIN32
+    if (falseRuntimeResult == ExitCode::Success)
+        tests.expect(runExecutable(falseRuntimeExecutable) == 42,
+                     "consumer with an unused Runtime declaration executes to 42");
+#endif
 }
 
 void testDllP4ProtectedConsumerCallableContract(TestContext& tests, const std::filesystem::path& root)
