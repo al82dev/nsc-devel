@@ -1216,6 +1216,65 @@ void testScopeAndFailureBehavior(TestContext& tests, const std::filesystem::path
     tests.expect(!std::filesystem::exists(invalidMetadata),
         "semantic failure cannot leave a stale or partial .nsmeta artifact");
 }
+
+void testInterfaceContractsUseDeclaringTypeKind(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "InterfaceContracts";
+    writeProject(directory, "InterfaceContracts", "StaticLibrary", R"NS(
+namespace Contracts
+{
+    public interface IIndexed
+    {
+        int Read(int value);
+        int Value { get; set; }
+        int this[int index] { get; }
+    }
+}
+)NS");
+
+    const auto project = directory / "InterfaceContracts.nsproj";
+    const auto library = directory / "InterfaceContracts.lib";
+    const auto metadataPath = directory / "InterfaceContracts.nsmeta";
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-lib", project, library, output, error) == ExitCode::Success,
+                 "interface contract producer emits a static library (" + error + ")");
+    output.clear(); error.clear();
+    tests.expect(emitMetadata(project, metadataPath, output, error) == ExitCode::Success,
+                 "interface contract producer emits NSMETA (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(metadataPath, metadata, error);
+    tests.expect(read, "interface contract NSMETA can be decoded (" + error + ")");
+    const LibraryMetadataType* interfaceType = findType(metadata, "::Contracts.IIndexed");
+    tests.expect(interfaceType != nullptr && interfaceType->kind == LibraryMetadataTypeKind::Interface,
+                 "interface declaring kind is preserved independently of member flags");
+    if (!read || interfaceType == nullptr) return;
+
+    constexpr std::uint32_t kVirtual = 1U << 3U;
+    constexpr std::uint32_t kAbstract = 1U << 5U;
+    const std::string declaringTypeKey = "type:" + interfaceType->identityKey;
+    std::size_t rewrittenMembers = 0;
+    for (LibraryMetadataMember& member : metadata.members)
+    {
+        if (member.declaringTypeKey != declaringTypeKey) continue;
+        member.flags = (member.flags & ~kAbstract) | kVirtual;
+        ++rewrittenMembers;
+    }
+    tests.expect(rewrittenMembers == 4,
+                 "method, property getter, and indexer accessors are present in the fixture");
+
+    const auto rewrittenMetadata = directory / "InterfaceContractsWithoutAbstract.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(metadata, rewrittenMetadata, error),
+                 "checksum-valid interface metadata without abstract member flags is written (" + error + ")");
+    output.clear(); error.clear();
+    tests.expect(verifyArtifacts(rewrittenMetadata, library, {}, output, error) == ExitCode::Success,
+                 "public interface methods, properties, and indexers materialize from declaring type kind (" +
+                     error + ")");
+}
 }
 
 int main()
@@ -1235,6 +1294,7 @@ int main()
     testPrecompiledClosedGenericSurface(tests, root);
     testIntegrityAndCompatibility(tests, root);
     testScopeAndFailureBehavior(tests, root);
+    testInterfaceContractsUseDeclaringTypeKind(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

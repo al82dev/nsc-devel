@@ -1333,12 +1333,18 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 declaredOwnership = contract.setter->parameters.back().ownership;
             }
             generated << "    " << sourceAccessibility(accessibility) << ' ';
-            if ((shape.flags & kStatic) != 0U) generated << "static ";
-            if ((shape.flags & kSealed) != 0U) generated << "sealed ";
-            if ((shape.flags & kNewSlot) != 0U) generated << "new ";
-            if ((shape.flags & kOverride) != 0U) generated << "override ";
-            else if ((shape.flags & kAbstract) != 0U) generated << "abstract ";
-            else if ((shape.flags & kVirtual) != 0U) generated << "virtual ";
+            // Interface membership is the semantic contract. Older and third-party NSMETA may
+            // preserve virtual-style dispatch flags without kAbstract; none of those class
+            // implementation modifiers is valid in Stage 38 interface source.
+            if (!interfaceContext)
+            {
+                if ((shape.flags & kStatic) != 0U) generated << "static ";
+                if ((shape.flags & kSealed) != 0U) generated << "sealed ";
+                if ((shape.flags & kNewSlot) != 0U) generated << "new ";
+                if ((shape.flags & kOverride) != 0U) generated << "override ";
+                else if ((shape.flags & kAbstract) != 0U) generated << "abstract ";
+                else if ((shape.flags & kVirtual) != 0U) generated << "virtual ";
+            }
             generated << ownershipPrefix(declaredOwnership) << declaredType << ' ';
             if (contract.isIndexer)
             {
