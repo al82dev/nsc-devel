@@ -1221,13 +1221,26 @@ void testInterfaceContractsUseDeclaringTypeKind(TestContext& tests, const std::f
 {
     const auto directory = root / "InterfaceContracts";
     writeProject(directory, "InterfaceContracts", "StaticLibrary", R"NS(
-namespace Contracts
+namespace Contracts.Types
 {
-    public interface IIndexed
+    public class Payload
     {
-        int Read(int value);
-        int Value { get; set; }
-        int this[int index] { get; }
+    }
+}
+
+namespace Contracts.Api
+{
+    public interface IBase
+    {
+        Contracts.Types.Payload BaseValue();
+    }
+
+    public interface IIndexed
+        : Contracts.Api.IBase
+    {
+        Contracts.Types.Payload Read(Contracts.Types.Payload value);
+        Contracts.Types.Payload Value { get; set; }
+        Contracts.Types.Payload this[int index] { get; }
     }
 }
 )NS");
@@ -1248,7 +1261,7 @@ namespace Contracts
     error.clear();
     const bool read = codec.read(metadataPath, metadata, error);
     tests.expect(read, "interface contract NSMETA can be decoded (" + error + ")");
-    const LibraryMetadataType* interfaceType = findType(metadata, "::Contracts.IIndexed");
+    const LibraryMetadataType* interfaceType = findType(metadata, "::Contracts.Api.IIndexed");
     tests.expect(interfaceType != nullptr && interfaceType->kind == LibraryMetadataTypeKind::Interface,
                  "interface declaring kind is preserved independently of member flags");
     if (!read || interfaceType == nullptr) return;

@@ -1804,7 +1804,13 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
     if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
 
     error = "generated precompiled public API is not valid NativeSharp source";
-    if (!diagnostics.diagnostics().empty()) error += ": " + diagnostics.diagnostics().front().message();
+    if (!diagnostics.diagnostics().empty())
+    {
+        std::ostringstream rendered;
+        diagnostics::DiagnosticRenderer renderer(sources);
+        renderer.renderAll(diagnostics, rendered);
+        error += ":\n" + rendered.str();
+    }
     return false;
 }
 
@@ -4562,12 +4568,6 @@ ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
         error << "nsc: error: incompatible metadata in library artifact set: " << detail << '\n';
         return ExitCode::CompilationError;
     }
-    if (!verifyPrecompiledPublicSource(metadata, detail))
-    {
-        error << "nsc: error: metadata public API cannot be materialized for a consumer: " << detail << '\n';
-        return ExitCode::CompilationError;
-    }
-
     linker::CoffArchiveVerifier archiveVerifier;
     if (!archiveVerifier.verify(libraryFile))
     {
@@ -4614,6 +4614,18 @@ ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
             return ExitCode::CompilationError;
         }
         runtimeExportCount = actualExports.size();
+    }
+
+    // Artifact integrity is independent from source reconstruction. Validate COFF and the
+    // optional runtime first so a syntax failure in generated public API does not hide a broken
+    // archive/export set (or falsely suggest that those layers were never examined).
+    if (!verifyPrecompiledPublicSource(metadata, detail))
+    {
+        error << "nsc: error: metadata public API cannot be materialized for a consumer: "
+              << detail << "\nphysical archive"
+              << (runtimePath.empty() ? "" : " and runtime")
+              << " validated before source materialization\n";
+        return ExitCode::CompilationError;
     }
 
     output << "NativeSharp library artifacts: valid\n"

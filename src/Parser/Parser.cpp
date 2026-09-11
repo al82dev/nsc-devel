@@ -1712,7 +1712,7 @@ ast::AstNode* Parser::parseDelegateDeclaration()
     const std::size_t beginIndex = index_;
     consume(); // delegate
 
-    if (!canStartType(current()))
+    if (!canStartTypeAt(index_))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedType,
@@ -1934,7 +1934,7 @@ ast::AstNode* Parser::parseClassDeclaration(
         bool first = true;
         do
         {
-            if (!canStartType(current()))
+            if (!canStartTypeAt(index_))
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedType,
@@ -2030,7 +2030,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial)
     {
         do
         {
-            if (!canStartType(current()))
+            if (!canStartTypeAt(index_))
             {
                 diagnostics_.report(
                     diagnostics::DiagnosticId::ExpectedType,
@@ -2110,7 +2110,7 @@ ast::AstNode* Parser::parseInterfaceMember()
         }
     }
 
-    if (!canStartType(current()))
+    if (!canStartTypeAt(index_))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3054,7 +3054,7 @@ ast::AstNode* Parser::parseEventTail(
     std::size_t beginIndex)
 {
     const SourceRange eventRange = consume().range(); // event
-    if (!canStartType(current()))
+    if (!canStartTypeAt(index_))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedType,
@@ -3695,7 +3695,7 @@ ast::AstNode* Parser::parseConversionOperatorTail(
 {
     const SourceRange conversionRange = consume().range(); // implicit/explicit
     expect(TokenKind::KwOperator, "'operator'");
-    if (!canStartType(current()))
+    if (!canStartTypeAt(index_))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -5181,7 +5181,7 @@ ast::AstNode* Parser::parseCatchClause()
 
     if (consumeIf(TokenKind::LeftParen))
     {
-        if (canStartType(current()))
+        if (canStartTypeAt(index_))
         {
             clause->setTypeSyntax(parseType());
         }
@@ -5245,7 +5245,7 @@ ast::AstNode* Parser::parseUsingStatement()
     expect(TokenKind::LeftParen, "'(' after using");
 
     ast::TypeSyntax* resourceType = nullptr;
-    if (canStartType(current()))
+    if (canStartTypeAt(index_))
     {
         resourceType = parseType();
     }

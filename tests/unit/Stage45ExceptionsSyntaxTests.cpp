@@ -209,6 +209,43 @@ int Main()
     tests.expect(dumpText.find("UsingStatement \"resource\" type=Disposable") != std::string::npos,
         "AST dumper exposes UsingStatement metadata");
 
+    ParsedSyntax qualifiedContracts;
+    parse(
+        qualifiedContracts,
+        R"NS(
+public delegate Contracts.Types.Payload Factory(Contracts.Types.Payload value);
+
+public interface IService : Contracts.Types.IBase
+{
+    Contracts.Types.Payload Current { get; }
+    Contracts.Types.Payload Get(Contracts.Types.Payload value);
+    Contracts.Types.Payload this[int index] { get; }
+}
+
+public class Service : Contracts.Types.Base, Contracts.Types.IBase
+{
+    public event Contracts.Types.Factory Changed;
+    public static implicit operator Contracts.Types.Payload(Service value) { return null; }
+
+    public void Audit()
+    {
+        try { }
+        catch (Contracts.Types.Failure failure) { }
+        using (Contracts.Types.Resource resource = null) { }
+    }
+}
+)NS",
+        {"Contracts.Types.Payload",
+         "Contracts.Types.IBase",
+         "Contracts.Types.Base",
+         "Contracts.Types.Factory",
+         "Contracts.Types.Failure",
+         "Contracts.Types.Resource",
+         "Service"});
+    tests.expect(!qualifiedContracts.diagnostics.hasErrors(),
+        "qualified types parse in delegates, class/interface bases, interface contracts, events, "
+        "conversions, catch, and using declarations");
+
     ParsedSyntax malformedCatch;
     parse(
         malformedCatch,
