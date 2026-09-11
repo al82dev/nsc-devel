@@ -1340,6 +1340,41 @@ namespace HiddenSurface
     tests.expect(verifyArtifacts(rewrittenMetadata, library, {}, output, error) == ExitCode::Success,
                  "artifact verification does not require public members of an internal container (" + error + ")");
 }
+
+void testPublicInterfaceSignaturesMatchDllExports(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "PublicInterfaceDllSurface";
+    writeProject(directory, "PublicInterfaceDllSurface", "SharedLibrary", R"NS(
+namespace PublicInterfaceSurface
+{
+    public interface IService
+    {
+        int Read();
+    }
+
+    public class Api
+    {
+        public static IService Echo(IService value)
+        {
+            return value;
+        }
+    }
+}
+)NS");
+
+    const auto project = directory / "PublicInterfaceDllSurface.nsproj";
+    const auto library = directory / "PublicInterfaceDllSurface.lib";
+    const auto runtime = directory / "PublicInterfaceDllSurface.dll";
+    const auto metadata = directory / "PublicInterfaceDllSurface.nsmeta";
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-dll", project, runtime, output, error) == ExitCode::Success,
+                 "DLL with a public interface in parameter and return positions is emitted (" + error + ")");
+    output.clear(); error.clear();
+    tests.expect(verifyArtifacts(metadata, library, runtime, output, error) == ExitCode::Success,
+                 "NSMETA publication and the DLL export table agree for public interface signatures (" +
+                     error + ")");
+}
 }
 
 int main()
@@ -1361,6 +1396,7 @@ int main()
     testScopeAndFailureBehavior(tests, root);
     testInterfaceContractsUseDeclaringTypeKind(tests, root);
     testPublicFieldInsideInternalTypeIsNotRequired(tests, root);
+    testPublicInterfaceSignaturesMatchDllExports(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

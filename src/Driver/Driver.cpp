@@ -494,6 +494,7 @@ bool canMaterializeContractType(
     }
     if (type->fullyQualifiedName.find('`') != std::string::npos ||
         (type->kind != interop::LibraryMetadataTypeKind::Class &&
+            type->kind != interop::LibraryMetadataTypeKind::Interface &&
             type->kind != interop::LibraryMetadataTypeKind::Struct &&
             type->kind != interop::LibraryMetadataTypeKind::Enum &&
             type->kind != interop::LibraryMetadataTypeKind::Delegate))
@@ -522,13 +523,21 @@ bool canMaterializeContractType(
         visiting.erase(type->identityKey);
         return valid;
     }
-    if (type->kind == interop::LibraryMetadataTypeKind::Class)
+    if (type->kind == interop::LibraryMetadataTypeKind::Class ||
+        type->kind == interop::LibraryMetadataTypeKind::Interface)
     {
-        // A precompiled class is deliberately opaque. Its value in a signature is
-        // the native reference carrier, not an object copied by value, so the
-        // consumer only needs to prove that producer and target agree on that
-        // carrier. Arrays remain outside this contract; one trailing pointer is
+        // Precompiled classes and interfaces are opaque native references in a
+        // signature, not values copied by layout. Interfaces additionally have
+        // to be publicly reachable because admitting a hidden contract here would
+        // make the physical DLL surface broader than the reconstructible NSMETA
+        // surface. Arrays remain outside this contract; one trailing pointer is
         // accepted because ref/out/in parameters use it internally.
+        constexpr std::uint8_t kPublicAccessibility = 3U;
+        if (type->kind == interop::LibraryMetadataTypeKind::Interface &&
+            (type->accessibility != kPublicAccessibility || !isPubliclyReachableMetadataType(metadata, *type)))
+        {
+            return false;
+        }
         if (typeKey.find('[') != std::string::npos || type->referenceSize != metadata.pointerSize ||
             type->referenceAlignment != metadata.pointerAlignment)
         {
