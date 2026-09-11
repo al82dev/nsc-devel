@@ -1963,6 +1963,8 @@ bool configurePrecompiledModules(
     return compilation.setPrecompiledModules(std::move(modules), error);
 }
 
+bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);
+
 bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compilation,
     std::vector<std::filesystem::path> &libraries,
     std::vector<std::filesystem::path> &runtimeLibraries,
@@ -2111,7 +2113,8 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
                 }
                 const auto runtimeOwner = runtimeNames.find(runtimeName);
                 if (runtimeOwner != runtimeNames.end() &&
-                    foldedPathKey(runtimeOwner->second) != foldedPathKey(reference.runtimePath))
+                    foldedPathKey(runtimeOwner->second) != foldedPathKey(reference.runtimePath) &&
+                    !filesHaveEqualContents(runtimeOwner->second, reference.runtimePath))
                 {
                     error = "two precompiled library references require different DLLs "
                             "named '" +
@@ -2319,7 +2322,8 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
         const auto owner = owners.find(name);
         if (owner != owners.end())
         {
-            if (foldedPathKey(owner->second) != foldedPathKey(runtime))
+            if (foldedPathKey(owner->second) != foldedPathKey(runtime) &&
+                !filesHaveEqualContents(owner->second, runtime))
             {
                 error = "runtime package contains different DLLs named '" + runtime.filename().string() + "': '" +
                         owner->second.string() + "' and '" + runtime.string() + "'";
