@@ -3593,6 +3593,25 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
         return ExitCode::CompilationError;
     }
 
+    // HIR is the first consumer-facing checkpoint at which every referenced
+    // precompiled public contract has been materialized.  Validate the same
+    // NSMETA/archive/runtime triplets used by emission here, without linking.
+    // With no MIR the helper deliberately stops after artifact validation;
+    // reachability-driven runtime packaging remains an emission concern.
+    if (oopHirAction)
+    {
+        std::vector<std::filesystem::path> referencedLibraries;
+        std::vector<std::filesystem::path> referencedRuntimes;
+        std::string referenceError;
+        if (!appendValidatedLibraryReferences(
+                projectCompilation, referencedLibraries, referencedRuntimes, referenceError))
+        {
+            error << "nsc: error: precompiled library contract validation failed: "
+                  << referenceError << '\n';
+            return ExitCode::CompilationError;
+        }
+    }
+
     if (action == "--check-project-syntax")
     {
         output << "project syntax check: ok (" << projectCompilation.units().size() << " syntax unit"
