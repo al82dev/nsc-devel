@@ -527,19 +527,21 @@ bool canMaterializeContractType(
         type->kind == interop::LibraryMetadataTypeKind::Interface)
     {
         // Precompiled classes and interfaces are opaque native references in a
-        // signature, not values copied by layout. Interfaces additionally have
-        // to be publicly reachable because admitting a hidden contract here would
+        // signature, not values copied by layout. The same is true when the
+        // reference is wrapped in a NativeSharp array: source reconstruction
+        // preserves the [] suffix while ABI validation remains anchored to the
+        // publicly reachable element contract. Interfaces additionally have to
+        // be publicly reachable because admitting a hidden contract here would
         // make the physical DLL surface broader than the reconstructible NSMETA
-        // surface. Arrays remain outside this contract; one trailing pointer is
-        // accepted because ref/out/in parameters use it internally.
+        // surface. A trailing pointer is accepted because ref/out/in parameters
+        // use it internally.
         constexpr std::uint8_t kPublicAccessibility = 3U;
         if (type->kind == interop::LibraryMetadataTypeKind::Interface &&
             (type->accessibility != kPublicAccessibility || !isPubliclyReachableMetadataType(metadata, *type)))
         {
             return false;
         }
-        if (typeKey.find('[') != std::string::npos || type->referenceSize != metadata.pointerSize ||
-            type->referenceAlignment != metadata.pointerAlignment)
+        if (type->referenceSize != metadata.pointerSize || type->referenceAlignment != metadata.pointerAlignment)
         {
             return false;
         }

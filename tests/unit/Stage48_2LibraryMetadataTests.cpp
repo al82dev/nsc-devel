@@ -1375,6 +1375,57 @@ namespace PublicInterfaceSurface
                  "NSMETA publication and the DLL export table agree for public interface signatures (" +
                      error + ")");
 }
+
+void testPublicReferenceArraysMatchDllExports(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "PublicReferenceArrayDllSurface";
+    writeProject(directory, "PublicReferenceArrayDllSurface", "SharedLibrary", R"NS(
+namespace PublicReferenceArraySurface
+{
+    public interface IService
+    {
+        int Read();
+    }
+
+    public class Item
+    {
+    }
+
+    public class Api
+    {
+        private IService[] services;
+        private Item[] items;
+
+        public IService[] Services { get { return services; } }
+        public Item[] Items { get { return items; } }
+
+        public static IService[] EchoServices(IService[] values)
+        {
+            return values;
+        }
+
+        public static Item[] EchoItems(Item[] values)
+        {
+            return values;
+        }
+    }
+}
+)NS");
+
+    const auto project = directory / "PublicReferenceArrayDllSurface.nsproj";
+    const auto library = directory / "PublicReferenceArrayDllSurface.lib";
+    const auto runtime = directory / "PublicReferenceArrayDllSurface.dll";
+    const auto metadata = directory / "PublicReferenceArrayDllSurface.nsmeta";
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-dll", project, runtime, output, error) == ExitCode::Success,
+                 "DLL with public class and interface arrays in methods and properties is emitted (" +
+                     error + ")");
+    output.clear(); error.clear();
+    tests.expect(verifyArtifacts(metadata, library, runtime, output, error) == ExitCode::Success,
+                 "NSMETA publication and DLL exports agree for arrays of public reference types (" +
+                     error + ")");
+}
 }
 
 int main()
@@ -1397,6 +1448,7 @@ int main()
     testInterfaceContractsUseDeclaringTypeKind(tests, root);
     testPublicFieldInsideInternalTypeIsNotRequired(tests, root);
     testPublicInterfaceSignaturesMatchDllExports(tests, root);
+    testPublicReferenceArraysMatchDllExports(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();
