@@ -218,24 +218,13 @@ bool WindowsLibraryBuilder::buildStatic(
     {
         return false;
     }
-    // A static archive owns object code, not the final process import table. Embedding the
-    // generated KERNEL32/KERNELBASE/SHELL32/UCRT import archives worked accidentally with
-    // lld-link's lazy archive selection, but produced duplicate definitions in NSLink and also
-    // made composition A -> B vendor the same system imports repeatedly. The executable/DLL
-    // link is the one place that materializes process imports.
+    // A static archive owns this project's object code, not a flattened copy of every
+    // LibraryReference archive. NSMETA preserves the dependency closure and the final EXE/DLL
+    // link supplies each referenced library exactly once. Vendoring `extraLinkLibraries_` here
+    // duplicated both NativeSharp definitions and DLL import members: Saru.NativeSharp.lib, for
+    // example, carried NativeSharp.Foundation's __imp_/public symbols and NSLink then received the
+    // same Foundation import library again from the metadata closure.
     std::vector<std::filesystem::path> archiveInputs = {programObject, runtimeObject};
-    archiveInputs.reserve(archiveInputs.size() + extraLinkLibraries_.size());
-    for (const std::filesystem::path& dependency : extraLinkLibraries_)
-    {
-        CoffArchiveVerifier dependencyVerifier;
-        if (!dependencyVerifier.verify(dependency))
-        {
-            error = "static-library dependency '" + dependency.string() +
-                "' is not a valid COFF archive: " + dependencyVerifier.error();
-            return false;
-        }
-        archiveInputs.push_back(dependency);
-    }
     if (!linker->createStaticLibrary(archiveInputs, outputPath, error))
     {
         return false;

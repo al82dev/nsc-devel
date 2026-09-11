@@ -5051,6 +5051,78 @@ class Program
     tests.expect(error.find("requires root OutputType SharedLibrary") != std::string::npos,
                  "wrong DLL project kind reports a precise Stage 46 diagnostic");
 }
+
+void testStaticLibraryKeepsReferencesExternal(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "StaticLibraryExternalReferences";
+    const auto dependency = contractRoot / "Dependency";
+    const auto producer = contractRoot / "Producer";
+    writeProject(dependency, "ExternalDependency", "StaticLibrary", R"NS(
+namespace External
+{
+    public class ValueSource
+    {
+        public static int Value() { return 42; }
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    const auto dependencyLibrary = dependency / "ExternalDependency.lib";
+    tests.expect(emitLibrary("--emit-project-oop-lib",
+                             dependency / "ExternalDependency.nsproj",
+                             dependencyLibrary,
+                             output,
+                             error,
+                             false) == ExitCode::Success,
+                 "dependency archive for external-reference ownership is emitted (" + error + ")");
+
+    writeFile(producer / "Producer.ns", R"NS(
+using External;
+
+namespace Surface
+{
+    public class Api
+    {
+        public static int Read() { return ValueSource.Value(); }
+    }
+}
+)NS");
+    writeFile(producer / "Producer.nsproj",
+              "<Project><PropertyGroup><Name>ExternalReferenceProducer</Name>"
+              "<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Dependency/ExternalDependency.lib\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    const auto producerLibrary = producer / "ExternalReferenceProducer.lib";
+    tests.expect(emitLibrary("--emit-project-oop-lib",
+                             producer / "Producer.nsproj",
+                             producerLibrary,
+                             output,
+                             error,
+                             false) == ExitCode::Success,
+                 "producer archive keeps its LibraryReference as an external dependency (" + error + ")");
+
+    CoffArchiveVerifier verifier;
+    const bool archiveValid = verifier.verify(producerLibrary);
+    tests.expect(archiveValid,
+                 "producer archive without vendored references remains valid COFF");
+    if (!archiveValid) return;
+    const auto& symbols = verifier.info().symbolNames;
+    const bool ownsProducerMethod = std::ranges::any_of(symbols, [](const std::string& symbol) {
+        return symbol.find("ExternalReferenceProducer$3A$3ASurface$2EApi__Read") != std::string::npos;
+    });
+    const bool vendorsDependencyMethod = std::ranges::any_of(symbols, [](const std::string& symbol) {
+        return symbol.find("ExternalDependency$3A$3AExternal$2EValueSource__Value") != std::string::npos;
+    });
+    tests.expect(ownsProducerMethod,
+                 "producer archive retains the root project's own public implementation");
+    tests.expect(!vendorsDependencyMethod,
+                 "producer archive does not flatten a LibraryReference implementation into itself");
+}
 } // namespace
 
 int main()
@@ -5089,6 +5161,7 @@ int main()
     testReusableTemplateClosureAcrossLibraries(tests, root);
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
+    testStaticLibraryKeepsReferencesExternal(tests, root);
 
     return tests.resultKeeping(root);
 }
