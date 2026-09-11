@@ -756,6 +756,135 @@ namespace GenericMeta
     }), "generic method specialization key survives metadata");
 }
 
+void testPrecompiledClosedGenericSurface(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto genericOwner = root / "ClosedGenericOwner";
+    writeProject(genericOwner, "ClosedGenericOwner", "StaticLibrary", R"NS(
+namespace ClosedGenericContracts
+{
+    public class Bucket<T>
+    {
+        private T value;
+        public Bucket() { }
+        public int Count() { return 0; }
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-lib", genericOwner / "ClosedGenericOwner.nsproj",
+                             genericOwner / "ClosedGenericOwner.lib", output, error) == ExitCode::Success,
+                 "closed-generic owner emits its reusable template library (" + error + ")");
+
+    const auto producer = root / "ClosedGenericProducer";
+    writeFile(producer / "ClosedGenericProducer.nsproj",
+        "<Project><PropertyGroup><Name>ClosedGenericProducer</Name><OutputType>StaticLibrary</OutputType>"
+        "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" + (genericOwner / "ClosedGenericOwner.lib").generic_string() +
+        "\" Metadata=\"" + (genericOwner / "ClosedGenericOwner.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(producer / "Producer.ns", R"NS(
+using ClosedGenericContracts;
+
+namespace ClosedGenericProducerApi
+{
+    public struct ProducerValue
+    {
+        public int Value;
+    }
+
+    public class ProducerBox
+    {
+        public owned Bucket<ProducerValue> Values;
+
+        public ProducerBox()
+        {
+            Values = new Bucket<ProducerValue>();
+        }
+    }
+}
+)NS");
+
+    output.clear();
+    error.clear();
+    tests.expect(emitProduct("--emit-project-oop-lib", producer / "ClosedGenericProducer.nsproj",
+                             producer / "ClosedGenericProducer.lib", output, error) == ExitCode::Success,
+                 "producer emits a library whose public field closes an external template (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata producerMetadata;
+    error.clear();
+    tests.expect(codec.read(producer / "ClosedGenericProducer.nsmeta", producerMetadata, error),
+                 "producer closed-generic metadata reads successfully (" + error + ")");
+    const auto publishedBucket = std::ranges::find_if(
+        producerMetadata.genericSpecializations,
+        [](const auto& specialization) {
+            return specialization.templateKey.find("ClosedGenericContracts.Bucket`1") != std::string::npos;
+        });
+    tests.expect(publishedBucket != producerMetadata.genericSpecializations.end(),
+                 "NSMETA publishes the external closed specialization named by the producer API");
+    tests.expect(publishedBucket != producerMetadata.genericSpecializations.end() &&
+                     std::ranges::any_of(publishedBucket->typeArguments, [](const std::string& argument) {
+                         return argument.find("type:ClosedGenericProducer::ClosedGenericProducerApi.ProducerValue") == 0U;
+                     }),
+                 "the specialization records the producer-owned argument by canonical module identity");
+
+    LibraryMetadata incomplete = producerMetadata;
+    std::erase_if(incomplete.genericSpecializations, [](const auto& specialization) {
+        return specialization.templateKey.find("ClosedGenericContracts.Bucket`1") != std::string::npos;
+    });
+    error.clear();
+    tests.expect(!codec.verifyCurrentCompiler(incomplete, error) &&
+                     error.find("refers to closed generic type") != std::string::npos &&
+                     error.find("no generic specialization declares") != std::string::npos,
+                 "metadata verifier rejects a referenced closed type whose declaration record is missing");
+
+    const auto consumer = root / "ClosedGenericConsumer";
+    writeFile(consumer / "ClosedGenericConsumer.nsproj",
+        "<Project><PropertyGroup><Name>ClosedGenericConsumer</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" + (genericOwner / "ClosedGenericOwner.lib").generic_string() +
+        "\" Metadata=\"" + (genericOwner / "ClosedGenericOwner.nsmeta").generic_string() + "\" />"
+        "<LibraryReference Include=\"" + (producer / "ClosedGenericProducer.lib").generic_string() +
+        "\" Metadata=\"" + (producer / "ClosedGenericProducer.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Consumer.ns", R"NS(
+using ClosedGenericProducerApi;
+
+class Program
+{
+    public static int Main()
+    {
+        raii ProducerBox box = new ProducerBox();
+        return box.Values.Count() == 0 ? 0 : 1;
+    }
+}
+)NS");
+
+    const std::string consumerProject = (consumer / "ClosedGenericConsumer.nsproj").string();
+    const std::array<std::string_view, 2> hirArgs = {"--check-project-oop-hir", consumerProject};
+    output.clear();
+    error.clear();
+    tests.expect(runDriver(hirArgs, output, error) == ExitCode::Success,
+                 "source-free consumer materializes the producer's closed generic API (" + error + ")");
+
+    const std::string executable = (consumer / "ClosedGenericConsumer.exe").string();
+    const std::array<std::string_view, 5> executableArgs = {
+        "-O0", "--emit-project-oop-exe", consumerProject, "-o", executable};
+    output.clear();
+    error.clear();
+    const bool emitted = runDriver(executableArgs, output, error) == ExitCode::Success;
+    tests.expect(emitted && std::filesystem::is_regular_file(executable),
+                 "source-free consumer emits an O0 executable through both precompiled libraries (" + error + ")");
+    if (emitted)
+    {
+        const std::string command = "\"" + executable + "\"";
+        tests.expect(std::system(command.c_str()) == 0,
+                     "closed-generic precompiled consumer executes with exit code zero");
+    }
+}
+
 void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "Integrity";
@@ -1095,6 +1224,7 @@ int main()
     testDefaultValueContractSensitivity(tests, root);
     testAutomaticProducts(tests, root);
     testGenericCompilerMetadata(tests, root);
+    testPrecompiledClosedGenericSurface(tests, root);
     testIntegrityAndCompatibility(tests, root);
     testScopeAndFailureBehavior(tests, root);
 

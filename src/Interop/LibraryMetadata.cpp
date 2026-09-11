@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -190,6 +191,96 @@ std::string typeKeyForOrdinal(
 {
     if (ordinal >= types.size()) return {};
     return "type:" + types[ordinal].identity.key();
+}
+
+std::string metadataBaseTypeKey(std::string typeKey)
+{
+    while (!typeKey.empty())
+    {
+        if (typeKey.ends_with("[]"))
+        {
+            typeKey.resize(typeKey.size() - 2U);
+            continue;
+        }
+        if (typeKey.ends_with('*'))
+        {
+            typeKey.pop_back();
+            continue;
+        }
+        if (typeKey.ends_with(']'))
+        {
+            const std::size_t open = typeKey.find_last_of('[');
+            if (open != std::string::npos)
+            {
+                typeKey.resize(open);
+                continue;
+            }
+        }
+        break;
+    }
+    return typeKey;
+}
+
+std::optional<std::string> specializedTypeKey(
+    std::uint8_t kind,
+    std::string_view templateKey,
+    std::string_view specializedName)
+{
+    if (kind == static_cast<std::uint8_t>(frontend::GenericTemplateKind::Method) ||
+        templateKey.empty() || specializedName.empty())
+    {
+        return std::nullopt;
+    }
+    const std::size_t moduleSeparator = templateKey.find("::");
+    if (moduleSeparator == std::string_view::npos) return std::nullopt;
+    const std::size_t terminal = templateKey.find_last_of(".+");
+    const std::size_t terminalBegin = terminal == std::string_view::npos || terminal < moduleSeparator + 2U
+        ? moduleSeparator + 2U
+        : terminal + 1U;
+    const std::size_t arity = templateKey.find('`', terminalBegin);
+    if (arity == std::string_view::npos) return std::nullopt;
+    return "type:" + std::string(templateKey.substr(0, terminalBegin)) + std::string(specializedName);
+}
+
+std::optional<std::string> specializedTypeKey(
+    const frontend::GenericSpecializationRecord& specialization)
+{
+    return specializedTypeKey(
+        static_cast<std::uint8_t>(specialization.kind),
+        specialization.templateKey,
+        specialization.specializedName);
+}
+
+std::optional<std::string> specializedTypeKey(
+    const LibraryMetadataGenericSpecialization& specialization)
+{
+    return specializedTypeKey(
+        specialization.kind,
+        specialization.templateKey,
+        specialization.specializedName);
+}
+
+bool looksLikeCompilerSpecializedType(std::string_view typeKey)
+{
+    if (!typeKey.starts_with("type:")) return false;
+    const std::size_t terminal = typeKey.find_last_of(".+");
+    const std::string_view name = typeKey.substr(terminal == std::string_view::npos ? 5U : terminal + 1U);
+    const std::size_t generic = name.find("__g");
+    const std::size_t hash = name.rfind("__h");
+    if (generic == std::string_view::npos || hash == std::string_view::npos || hash <= generic + 3U ||
+        hash + 3U + 16U != name.size())
+    {
+        return false;
+    }
+    std::size_t cursor = generic + 3U;
+    if (cursor >= hash || !std::isdigit(static_cast<unsigned char>(name[cursor]))) return false;
+    while (cursor < hash && std::isdigit(static_cast<unsigned char>(name[cursor]))) ++cursor;
+    if (cursor + 2U > hash || name.substr(cursor, 2U) != "__") return false;
+    for (const char character : name.substr(hash + 3U))
+    {
+        if (!std::isxdigit(static_cast<unsigned char>(character))) return false;
+    }
+    return true;
 }
 
 std::optional<std::size_t> rootProjectOrdinal(const frontend::ProjectCompilation& compilation)
@@ -758,9 +849,62 @@ bool buildMetadataModel(
     std::sort(metadata.genericTemplates.begin(), metadata.genericTemplates.end(), [](const auto& left, const auto& right) {
         return left.canonicalKey < right.canonicalKey;
     });
+
+    // A closed type instantiated from another module is still part of this producer's contract
+    // when one of the producer's declarations names it.  The old filter below kept only
+    // specializations whose OPEN template belonged to the root project.  Consequently a field
+    // such as List<ProducerValue> carried the generated nominal type key in `types`/`members`, but
+    // NSMETA omitted the record that tells a consumer how to recreate that nominal declaration.
+    std::unordered_set<std::string> referencedTypeKeys;
+    const auto rememberType = [&](const std::string& typeKey) {
+        const std::string base = metadataBaseTypeKey(typeKey);
+        if (base.starts_with("type:")) referencedTypeKeys.insert(base);
+    };
+    for (const LibraryMetadataType& type : metadata.types)
+    {
+        rememberType(type.baseTypeKey);
+        for (const std::string& interfaceTypeKey : type.interfaceTypeKeys) rememberType(interfaceTypeKey);
+        for (const LibraryMetadataField& field : type.fields) rememberType(field.typeKey);
+        rememberType(type.delegateReturnTypeKey);
+        for (const std::string& parameterTypeKey : type.delegateParameterTypeKeys) rememberType(parameterTypeKey);
+    }
+    for (const LibraryMetadataMember& member : metadata.members)
+    {
+        rememberType(member.declaredTypeKey);
+        for (const LibraryMetadataParameter& parameter : member.parameters) rememberType(parameter.typeKey);
+    }
+
+    std::unordered_set<std::string> requiredSpecializationKeys;
     for (const frontend::GenericSpecializationRecord& specialization : compilation.genericModel()->specializations())
     {
-        if (!rootTemplateKeys.contains(specialization.templateKey)) continue;
+        const std::optional<std::string> typeKey = specializedTypeKey(specialization);
+        if (typeKey.has_value() && referencedTypeKeys.contains(*typeKey))
+            requiredSpecializationKeys.insert(specialization.specializationKey);
+    }
+    // A closed generic can itself be a type argument.  Preserve that dependency transitively so
+    // the consumer never receives an outer demand whose inner identity cannot be materialized.
+    bool addedDependency = true;
+    while (addedDependency)
+    {
+        addedDependency = false;
+        for (const frontend::GenericSpecializationRecord& specialization : compilation.genericModel()->specializations())
+        {
+            if (!requiredSpecializationKeys.contains(specialization.specializationKey)) continue;
+            for (const std::string& argument : specialization.typeArguments)
+            {
+                if (!argument.starts_with("generic:")) continue;
+                const std::string dependencyKey = argument.substr(8U);
+                if (requiredSpecializationKeys.insert(dependencyKey).second) addedDependency = true;
+            }
+        }
+    }
+    for (const frontend::GenericSpecializationRecord& specialization : compilation.genericModel()->specializations())
+    {
+        if (!rootTemplateKeys.contains(specialization.templateKey) &&
+            !requiredSpecializationKeys.contains(specialization.specializationKey))
+        {
+            continue;
+        }
         LibraryMetadataGenericSpecialization record;
         record.kind = static_cast<std::uint8_t>(specialization.kind);
         record.templateKey = specialization.templateKey;
@@ -1890,16 +2034,72 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         }
     }
     std::unordered_set<std::string> specializationKeys;
+    std::unordered_set<std::string> specializedTypeKeys;
     for (const LibraryMetadataGenericSpecialization& specialization : metadata.genericSpecializations)
     {
-        if (specialization.specializationKey.empty() ||
+        if (specialization.templateKey.empty() || specialization.specializationKey.empty() ||
+            specialization.specializedName.empty() || specialization.typeArguments.empty() ||
             !specializationKeys.insert(specialization.specializationKey).second)
         {
-            error = specialization.specializationKey.empty()
-                ? "metadata contains a generic specialization with an empty canonical key"
+            error = specialization.templateKey.empty() || specialization.specializationKey.empty() ||
+                    specialization.specializedName.empty() || specialization.typeArguments.empty()
+                ? "metadata contains an incomplete generic specialization declaration"
                 : "metadata contains duplicate generic specialization '" +
                     specialization.specializationKey + "'";
             return false;
+        }
+        if (const std::optional<std::string> typeKey = specializedTypeKey(specialization);
+            typeKey.has_value() && !specializedTypeKeys.insert(*typeKey).second)
+        {
+            error = "metadata contains duplicate closed generic type declaration '" + *typeKey + "'";
+            return false;
+        }
+    }
+
+    if (metadata.formatMinor >= 7)
+    {
+        std::unordered_set<std::string> declaredTypeKeys;
+        for (const LibraryMetadataType& type : metadata.types)
+            declaredTypeKeys.insert("type:" + type.identityKey);
+
+        const auto verifyTypeReference = [&](const std::string& writtenTypeKey,
+                                             std::string_view owner) -> bool {
+            const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
+            if (!looksLikeCompilerSpecializedType(typeKey) || declaredTypeKeys.contains(typeKey) ||
+                specializedTypeKeys.contains(typeKey))
+            {
+                return true;
+            }
+            error = "metadata " + std::string(owner) + " refers to closed generic type '" + typeKey +
+                "' but no generic specialization declares how to materialize it";
+            return false;
+        };
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            const std::string owner = "type '" + type.identityKey + "'";
+            if (!verifyTypeReference(type.baseTypeKey, owner)) return false;
+            for (const std::string& interfaceTypeKey : type.interfaceTypeKeys)
+                if (!verifyTypeReference(interfaceTypeKey, owner)) return false;
+            for (const LibraryMetadataField& field : type.fields)
+                if (!verifyTypeReference(field.typeKey, owner + " field '" + field.name + "'")) return false;
+            if (!verifyTypeReference(type.delegateReturnTypeKey, owner)) return false;
+            for (const std::string& parameterTypeKey : type.delegateParameterTypeKeys)
+                if (!verifyTypeReference(parameterTypeKey, owner)) return false;
+        }
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            const std::string owner = "member '" + member.declaringTypeKey + "." + member.signatureKey + "'";
+            if (!verifyTypeReference(member.declaredTypeKey, owner)) return false;
+            for (const LibraryMetadataParameter& parameter : member.parameters)
+                if (!verifyTypeReference(parameter.typeKey, owner + " parameter '" + parameter.name + "'"))
+                    return false;
+        }
+        for (const LibraryMetadataExport& exportRecord : metadata.exports)
+        {
+            const std::string owner = "export '" + exportRecord.cAbiName + "'";
+            if (!verifyTypeReference(exportRecord.returnTypeKey, owner)) return false;
+            for (const std::string& parameterTypeKey : exportRecord.parameterTypeKeys)
+                if (!verifyTypeReference(parameterTypeKey, owner)) return false;
         }
     }
     std::unordered_set<std::string> exportNames;

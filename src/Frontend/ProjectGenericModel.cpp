@@ -339,6 +339,7 @@ bool ProjectGenericModel::build(
     // must never make an unavailable generic appear usable.
     for (const PrecompiledGenericSpecialization& imported : precompiledSpecializations)
     {
+        if (!imported.hasConcreteDeclaration) continue;
         const auto templateState = std::ranges::find_if(templateStates_, [&](const auto& state) {
             return state.record.canonicalKey == imported.templateKey;
         });
@@ -1060,7 +1061,7 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
         state.record.canonicalKey,
         key,
         specializedName,
-        spellings,
+        identities,
         ordinal,
         state.ordinal,
         nullptr,
@@ -1168,7 +1169,7 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
         state.record.canonicalKey,
         key,
         specializedName,
-        spellings,
+        identities,
         ordinal,
         state.ordinal,
         nullptr,

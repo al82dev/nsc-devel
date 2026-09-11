@@ -110,6 +110,11 @@ struct PrecompiledGenericSpecialization final
     std::string specializationKey;
     std::string specializedName;
     std::vector<std::string> typeArguments;
+    // True when the importing module's ordinary public-API source already declares the concrete
+    // generated name.  A cross-module specialization used only through a published signature has
+    // no such declaration: it must be materialized from its open template instead of merely
+    // seeding the cache with a name that name lookup can never resolve.
+    bool hasConcreteDeclaration = false;
 };
 
 class ProjectGenericModel final

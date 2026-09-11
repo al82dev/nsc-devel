@@ -306,6 +306,125 @@ const interop::LibraryMetadataType *metadataTypeForKey(
     return found == metadata.types.end() ? nullptr : &*found;
 }
 
+std::optional<std::string> metadataSpecializedTypeKey(
+    const interop::LibraryMetadataGenericSpecialization &specialization)
+{
+    constexpr std::uint8_t kGenericMethodKind = 3U;
+    if (specialization.kind == kGenericMethodKind || specialization.templateKey.empty() ||
+        specialization.specializedName.empty())
+    {
+        return std::nullopt;
+    }
+    const std::size_t moduleSeparator = specialization.templateKey.find("::");
+    if (moduleSeparator == std::string::npos) return std::nullopt;
+    const std::size_t terminal = specialization.templateKey.find_last_of(".+");
+    const std::size_t terminalBegin = terminal == std::string::npos || terminal < moduleSeparator + 2U
+        ? moduleSeparator + 2U
+        : terminal + 1U;
+    if (specialization.templateKey.find('`', terminalBegin) == std::string::npos) return std::nullopt;
+    return "type:" + specialization.templateKey.substr(0, terminalBegin) + specialization.specializedName;
+}
+
+bool sourceTypeForGenericSpecialization(
+    const interop::LibraryMetadata &metadata,
+    const interop::LibraryMetadataGenericSpecialization &specialization,
+    std::string &sourceType,
+    std::string &error);
+
+bool sourceTypeForMetadataKey(
+    const interop::LibraryMetadata &metadata,
+    const std::string &typeKey,
+    std::string &sourceType,
+    std::string &error)
+{
+    const std::string baseTypeKey = metadataBaseTypeKey(typeKey);
+    if (metadataTypeForKey(metadata, baseTypeKey) == nullptr)
+    {
+        const auto specialization = std::ranges::find_if(
+            metadata.genericSpecializations,
+            [&](const auto &candidate) {
+                const std::optional<std::string> candidateTypeKey = metadataSpecializedTypeKey(candidate);
+                return candidateTypeKey.has_value() && *candidateTypeKey == baseTypeKey;
+            });
+        if (specialization != metadata.genericSpecializations.end())
+        {
+            if (!sourceTypeForGenericSpecialization(metadata, *specialization, sourceType, error)) return false;
+            sourceType += typeKey.substr(baseTypeKey.size());
+            return true;
+        }
+    }
+    return sourceTypeForMetadataKey(typeKey, sourceType, error);
+}
+
+bool sourceTypeForGenericSpecialization(
+    const interop::LibraryMetadata &metadata,
+    const interop::LibraryMetadataGenericSpecialization &specialization,
+    std::string &sourceType,
+    std::string &error)
+{
+    constexpr std::uint8_t kGenericMethodKind = 3U;
+    if (specialization.kind == kGenericMethodKind)
+    {
+        error = "metadata method specialization cannot be used as a type";
+        return false;
+    }
+    const std::size_t moduleSeparator = specialization.templateKey.find("::");
+    if (moduleSeparator == std::string::npos)
+    {
+        error = "metadata contains malformed generic template key '" + specialization.templateKey + "'";
+        return false;
+    }
+    const std::size_t terminal = specialization.templateKey.find_last_of(".+");
+    const std::size_t terminalBegin = terminal == std::string::npos || terminal < moduleSeparator + 2U
+        ? moduleSeparator + 2U
+        : terminal + 1U;
+    const std::size_t arity = specialization.templateKey.find('`', terminalBegin);
+    if (arity == std::string::npos || specialization.typeArguments.empty())
+    {
+        error = "metadata contains an incomplete closed generic specialization '" +
+            specialization.specializationKey + "'";
+        return false;
+    }
+
+    sourceType = specialization.templateKey.substr(moduleSeparator + 2U, arity - (moduleSeparator + 2U));
+    std::replace(sourceType.begin(), sourceType.end(), '+', '.');
+    sourceType.push_back('<');
+    for (std::size_t index = 0; index < specialization.typeArguments.size(); ++index)
+    {
+        if (index != 0U) sourceType += ", ";
+        const std::string &argument = specialization.typeArguments[index];
+        std::string argumentType;
+        if (argument.starts_with("generic:"))
+        {
+            const std::string_view requested(argument.data() + 8U, argument.size() - 8U);
+            const auto nested = std::ranges::find_if(
+                metadata.genericSpecializations,
+                [&](const auto &candidate) { return requested == candidate.specializationKey; });
+            if (nested == metadata.genericSpecializations.end() ||
+                !sourceTypeForGenericSpecialization(metadata, *nested, argumentType, error))
+            {
+                if (nested == metadata.genericSpecializations.end())
+                    error = "metadata generic specialization '" + specialization.specializationKey +
+                        "' refers to missing nested specialization '" + std::string(requested) + "'";
+                return false;
+            }
+        }
+        else if (argument.starts_with("type:") || argument.starts_with("builtin:"))
+        {
+            if (!sourceTypeForMetadataKey(metadata, argument, argumentType, error)) return false;
+        }
+        else
+        {
+            // NSMETA 1.7-1.11 stored readable spellings.  Builtins remain valid as written; the
+            // producer-side fix now stores canonical named identities for cross-module demands.
+            argumentType = argument;
+        }
+        sourceType += argumentType;
+    }
+    sourceType.push_back('>');
+    return true;
+}
+
 bool isPubliclyReachableNamedType(
     std::span<const frontend::NamedTypeDeclaration> types,
     std::size_t typeOrdinal) noexcept
@@ -371,7 +490,7 @@ bool canMaterializeContractType(
         // then responsible for resolving that name to the other metadata module.
         std::string ignoredSourceType;
         std::string ignoredError;
-        return sourceTypeForMetadataKey(typeKey, ignoredSourceType, ignoredError);
+        return sourceTypeForMetadataKey(metadata, typeKey, ignoredSourceType, ignoredError);
     }
     if (type->fullyQualifiedName.find('`') != std::string::npos ||
         (type->kind != interop::LibraryMetadataTypeKind::Class &&
@@ -1031,7 +1150,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         if (!baseKey.starts_with("type:")) return true;
         if (baseAliases.contains(baseKey)) return true;
         std::string sourceType;
-        if (!sourceTypeForMetadataKey(baseKey, sourceType, error)) return false;
+        if (!sourceTypeForMetadataKey(metadata, baseKey, sourceType, error)) return false;
         const std::string alias = "__NscMetadataBase" + std::to_string(baseAliases.size());
         baseAliases.emplace(baseKey, alias);
         generated << "using " << alias << " = " << sourceType << ";\n";
@@ -1052,7 +1171,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             sourceType = alias->second;
             return true;
         }
-        return sourceTypeForMetadataKey(typeKey, sourceType, error);
+        return sourceTypeForMetadataKey(metadata, typeKey, sourceType, error);
     };
     const auto emitParameter = [&](const interop::LibraryMetadataParameter &parameter,
                                    const std::string &memberName,
@@ -1070,7 +1189,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 }
                 sourceTypeKey.pop_back();
             }
-            if (!sourceTypeForMetadataKey(sourceTypeKey, parameterType, error)) return false;
+            if (!sourceTypeForMetadataKey(metadata, sourceTypeKey, parameterType, error)) return false;
             generated << parameterPassPrefix(parameter.passKind) << ownershipPrefix(parameter.ownership)
                       << parameterType << ' '
                       << (parameter.name.empty() ? "arg" + std::to_string(index) : parameter.name);
@@ -1206,7 +1325,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 else accessibility = 0U;
             }
             std::string declaredType;
-            if (!sourceTypeForMetadataKey(shape.declaredTypeKey, declaredType, error)) return false;
+            if (!sourceTypeForMetadataKey(metadata, shape.declaredTypeKey, declaredType, error)) return false;
             interop::LibraryMetadataOwnershipKind declaredOwnership = shape.declaredOwnership;
             if (contract.setter != nullptr &&
                 contract.setter->parameters.back().ownership != interop::LibraryMetadataOwnershipKind::None)
@@ -1317,7 +1436,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         if (type.kind == interop::LibraryMetadataTypeKind::Delegate)
         {
             std::string returnType;
-            if (!sourceTypeForMetadataKey(type.delegateReturnTypeKey, returnType, error)) return false;
+            if (!sourceTypeForMetadataKey(metadata, type.delegateReturnTypeKey, returnType, error)) return false;
             generated << typeAccessibility << ' ';
             if ((type.delegateFlags & 1U) != 0U) generated << "extern C ";
             generated << "delegate " << returnType << ' ' << typeName << '(';
@@ -1326,7 +1445,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             {
                 if (parameterIndex != 0) generated << ", ";
                 std::string parameterType;
-                if (!sourceTypeForMetadataKey(type.delegateParameterTypeKeys[parameterIndex], parameterType, error))
+                if (!sourceTypeForMetadataKey(metadata, type.delegateParameterTypeKeys[parameterIndex], parameterType, error))
                     return false;
                 generated << parameterType << " arg" << parameterIndex;
             }
@@ -1337,7 +1456,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         if (type.kind == interop::LibraryMetadataTypeKind::Enum)
         {
             std::string underlyingType;
-            if (!sourceTypeForMetadataKey(
+            if (!sourceTypeForMetadataKey(metadata,
                     type.enumUnderlyingTypeKey.empty() ? "builtin:int" : type.enumUnderlyingTypeKey,
                     underlyingType,
                     error))
@@ -1384,7 +1503,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             {
                 if (member->kind != kMethodKind || materializedAccessors.contains(member)) continue;
                 std::string returnType;
-                if (!sourceTypeForMetadataKey(member->declaredTypeKey, returnType, error)) return false;
+                if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, returnType, error)) return false;
                 generated << "    public " << ownershipPrefix(member->declaredOwnership) << returnType << ' '
                           << member->name << '(';
                 if (!emitParameters(*member)) return false;
@@ -1460,7 +1579,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             {
                 const interop::LibraryMetadataField &field = type.fields[fieldIndex];
                 std::string fieldType;
-                if (!sourceTypeForMetadataKey(field.typeKey, fieldType, error)) return false;
+                if (!sourceTypeForMetadataKey(metadata, field.typeKey, fieldType, error)) return false;
                 if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, type, field);
                     event != nullptr)
                 {
@@ -1503,7 +1622,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (member->kind == kFieldKind)
             {
                 std::string fieldType;
-                if (!sourceTypeForMetadataKey(member->declaredTypeKey, fieldType, error)) return false;
+                if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, fieldType, error)) return false;
                 if ((member->flags & (1U << 2U)) != 0U)
                 {
                     std::string value;
@@ -1523,7 +1642,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             {
                 if (materializedEvents.contains(member)) continue;
                 std::string eventType;
-                if (!sourceTypeForMetadataKey(member->declaredTypeKey, eventType, error)) return false;
+                if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, eventType, error)) return false;
                 if (const std::size_t dot = eventType.find_last_of('.'); dot != std::string::npos)
                     eventType = eventType.substr(dot + 1U);
                 generated << "    " << sourceAccessibility(member->accessibility) << ' ';
@@ -1546,7 +1665,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             if (member->kind != kMethodKind) continue;
             std::string returnType;
-            if (!sourceTypeForMetadataKey(member->declaredTypeKey, returnType, error)) return false;
+            if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, returnType, error)) return false;
             constexpr std::uint32_t kStatic = 1U << 0U;
             constexpr std::uint32_t kVirtual = 1U << 3U;
             constexpr std::uint32_t kOverride = 1U << 4U;
@@ -1653,7 +1772,7 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
         if (!baseKey.starts_with("type:")) return;
         std::string sourceType;
         std::string typeError;
-        if (!sourceTypeForMetadataKey(baseKey, sourceType, typeError)) return;
+        if (!sourceTypeForMetadataKey(metadata, baseKey, sourceType, typeError)) return;
         knownTypeNames.push_back(sourceType);
         const std::size_t separator = sourceType.find_last_of(".+");
         knownTypeNames.push_back(separator == std::string::npos ? sourceType : sourceType.substr(separator + 1U));
@@ -1801,13 +1920,28 @@ bool configurePrecompiledModules(
                     std::vector<frontend::PrecompiledGenericSpecialization> result;
                     result.reserve(metadata.genericSpecializations.size());
                     for (const interop::LibraryMetadataGenericSpecialization &specialization :
-                        metadata.genericSpecializations)
+                         metadata.genericSpecializations)
                     {
+                        bool hasConcreteDeclaration = false;
+                        constexpr std::uint8_t kGenericMethodKind = 3U;
+                        if (specialization.kind == kGenericMethodKind)
+                        {
+                            hasConcreteDeclaration = std::ranges::any_of(
+                                metadata.members,
+                                [&](const auto &member) { return member.name == specialization.specializedName; });
+                        }
+                        else if (const std::optional<std::string> typeKey =
+                                     metadataSpecializedTypeKey(specialization);
+                                 typeKey.has_value())
+                        {
+                            hasConcreteDeclaration = metadataTypeForKey(metadata, *typeKey) != nullptr;
+                        }
                         result.push_back({static_cast<frontend::GenericTemplateKind>(specialization.kind),
                             specialization.templateKey,
                             specialization.specializationKey,
                             specialization.specializedName,
-                            specialization.typeArguments});
+                            specialization.typeArguments,
+                            hasConcreteDeclaration});
                     }
                     return result;
                 }()});
