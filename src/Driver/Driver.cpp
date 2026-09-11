@@ -129,6 +129,13 @@ struct PrecompiledExportContract final
     std::vector<std::string> parameterTypeKeys;
 };
 
+struct LoadedPrecompiledMetadata final
+{
+    std::filesystem::path ownerProjectFile;
+    std::filesystem::path metadataPath;
+    interop::LibraryMetadata metadata;
+};
+
 std::string foldedName(std::string value)
 {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
@@ -323,6 +330,65 @@ std::optional<std::string> metadataSpecializedTypeKey(
         : terminal + 1U;
     if (specialization.templateKey.find('`', terminalBegin) == std::string::npos) return std::nullopt;
     return "type:" + specialization.templateKey.substr(0, terminalBegin) + specialization.specializedName;
+}
+
+std::optional<std::string> metadataTypeModule(const std::string &writtenTypeKey)
+{
+    const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
+    if (!typeKey.starts_with("type:")) return std::nullopt;
+    const std::size_t separator = typeKey.find("::", 5U);
+    if (separator == std::string::npos || separator == 5U) return std::nullopt;
+    return typeKey.substr(5U, separator - 5U);
+}
+
+bool metadataProvidesType(
+    const interop::LibraryMetadata &metadata, const std::string &writtenTypeKey)
+{
+    const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
+    if (metadataTypeForKey(metadata, typeKey) != nullptr) return true;
+    return std::ranges::any_of(metadata.genericSpecializations, [&](const auto &specialization) {
+        const std::optional<std::string> candidate = metadataSpecializedTypeKey(specialization);
+        return candidate.has_value() && *candidate == typeKey;
+    });
+}
+
+bool validatePrecompiledExternalTypeClosure(
+    std::span<const LoadedPrecompiledMetadata> loaded, std::string &error)
+{
+    std::unordered_map<std::string, const interop::LibraryMetadata *> modules;
+    for (const LoadedPrecompiledMetadata &entry : loaded)
+        modules.emplace(entry.metadata.moduleName, &entry.metadata);
+
+    std::set<std::string> failures;
+    for (const LoadedPrecompiledMetadata &entry : loaded)
+    {
+        for (const std::string &typeKey : entry.metadata.externalTypeKeys)
+        {
+            const std::optional<std::string> owner = metadataTypeModule(typeKey);
+            if (!owner.has_value())
+            {
+                failures.insert("module '" + entry.metadata.moduleName +
+                    "' records malformed external type '" + typeKey + "'");
+                continue;
+            }
+            const auto provider = modules.find(*owner);
+            if (provider == modules.end())
+            {
+                failures.insert("module '" + entry.metadata.moduleName + "' requires external type '" +
+                    typeKey + "', but LibraryReference module '" + *owner + "' is not present");
+                continue;
+            }
+            if (!metadataProvidesType(*provider->second, typeKey))
+            {
+                failures.insert("module '" + entry.metadata.moduleName + "' requires external type '" +
+                    typeKey + "', but provider module '" + *owner + "' does not declare it");
+            }
+        }
+    }
+    if (failures.empty()) return true;
+    error = "precompiled LibraryReference type closure is incomplete";
+    for (const std::string &failure : failures) error += "\n  " + failure;
+    return false;
 }
 
 bool sourceTypeForGenericSpecialization(
@@ -1875,7 +1941,7 @@ bool configurePrecompiledModules(
     if (!graph.has_value()) return false;
 
     interop::LibraryMetadataCodec codec;
-    std::vector<frontend::PrecompiledSyntaxModule> modules;
+    std::vector<LoadedPrecompiledMetadata> loaded;
     for (const compilation::Project &project : graph->projects())
     {
         for (const compilation::LibraryReference &reference : project.libraryReferences())
@@ -1887,6 +1953,16 @@ bool configurePrecompiledModules(
                     "cannot import precompiled metadata '" + reference.metadataPath.generic_string() + "': " + error;
                 return false;
             }
+            loaded.push_back({project.projectFile(), reference.metadataPath, std::move(metadata)});
+        }
+    }
+    if (!validatePrecompiledExternalTypeClosure(loaded, error)) return false;
+
+    std::vector<frontend::PrecompiledSyntaxModule> modules;
+    modules.reserve(loaded.size());
+    for (LoadedPrecompiledMetadata &entry : loaded)
+    {
+            interop::LibraryMetadata &metadata = entry.metadata;
             std::string publicSource;
             if (!buildPrecompiledPublicSource(metadata, publicSource, error))
             {
@@ -1899,8 +1975,8 @@ bool configurePrecompiledModules(
                 error = "cannot materialize public templates for module '" + metadata.moduleName + "': " + error;
                 return false;
             }
-            modules.push_back({project.projectFile(),
-                reference.metadataPath,
+            modules.push_back({entry.ownerProjectFile,
+                entry.metadataPath,
                 metadata.moduleName,
                 std::move(publicSource),
                 std::move(templateSource),
@@ -1946,7 +2022,6 @@ bool configurePrecompiledModules(
                     }
                     return result;
                 }()});
-        }
     }
     return compilation.setPrecompiledModules(std::move(modules), error);
 }

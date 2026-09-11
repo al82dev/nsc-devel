@@ -996,6 +996,145 @@ class Program
                      error + ")");
 }
 
+void testPrecompiledExternalTypeClosure(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto provider = root / "ExternalTypeProvider";
+    writeProject(provider, "ExternalTypeProvider", "StaticLibrary", R"NS(
+namespace ExternalContracts
+{
+    public struct Mat4 { public float Value; }
+    public struct Quat { public float Value; }
+    public struct Vec2 { public float Value; }
+    public struct Vec3 { public float Value; }
+    public struct Vec4 { public float Value; }
+
+    public struct EventArgs0 { public int Value; }
+    public struct EventArgs1 { public int Value; }
+    public struct EventArgs2 { public int Value; }
+    public struct EventArgs3 { public int Value; }
+    public struct EventArgs4 { public int Value; }
+    public struct EventArgs5 { public int Value; }
+    public struct EventArgs6 { public int Value; }
+    public delegate void EventHandler<T>(T args);
+
+    public class PublishedHandlers
+    {
+        public EventHandler<EventArgs0> H0;
+        public EventHandler<EventArgs1> H1;
+        public EventHandler<EventArgs2> H2;
+        public EventHandler<EventArgs3> H3;
+        public EventHandler<EventArgs4> H4;
+        public EventHandler<EventArgs5> H5;
+        public EventHandler<EventArgs6> H6;
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-lib", provider / "ExternalTypeProvider.nsproj",
+                             provider / "ExternalTypeProvider.lib", output, error) == ExitCode::Success,
+                 "external type provider emits math types and seven closed delegate types (" + error + ")");
+
+    const auto facade = root / "ExternalTypeFacade";
+    writeFile(facade / "ExternalTypeFacade.nsproj",
+        "<Project><PropertyGroup><Name>ExternalTypeFacade</Name><OutputType>StaticLibrary</OutputType>"
+        "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" + (provider / "ExternalTypeProvider.lib").generic_string() +
+        "\" Metadata=\"" + (provider / "ExternalTypeProvider.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(facade / "Facade.ns", R"NS(
+using ExternalContracts;
+
+public class ExternalFacade
+{
+    public static Mat4 M0(Mat4 value) { return value; }
+    public static Quat M1(Quat value) { return value; }
+    public static Vec2 M2(Vec2 value) { return value; }
+    public static Vec3 M3(Vec3 value) { return value; }
+    public static Vec4 M4(Vec4 value) { return value; }
+    public static EventHandler<EventArgs0> H0(EventHandler<EventArgs0> value) { return value; }
+    public static EventHandler<EventArgs1> H1(EventHandler<EventArgs1> value) { return value; }
+    public static EventHandler<EventArgs2> H2(EventHandler<EventArgs2> value) { return value; }
+    public static EventHandler<EventArgs3> H3(EventHandler<EventArgs3> value) { return value; }
+    public static EventHandler<EventArgs4> H4(EventHandler<EventArgs4> value) { return value; }
+    public static EventHandler<EventArgs5> H5(EventHandler<EventArgs5> value) { return value; }
+    public static EventHandler<EventArgs6> H6(EventHandler<EventArgs6> value) { return value; }
+}
+)NS");
+
+    output.clear(); error.clear();
+    tests.expect(emitProduct("--emit-project-oop-lib", facade / "ExternalTypeFacade.nsproj",
+                             facade / "ExternalTypeFacade.lib", output, error) == ExitCode::Success,
+                 "facade emits public signatures containing provider-owned nominal types (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(facade / "ExternalTypeFacade.nsmeta", metadata, error);
+    tests.expect(read, "external facade NSMETA can be decoded (" + error + ")");
+    if (!read) return;
+    const auto eventHandlerDependencies = std::ranges::count_if(
+        metadata.externalTypeKeys, [](const std::string& typeKey) {
+        return typeKey.find("ExternalTypeProvider::ExternalContracts.EventHandler__g1__") != std::string::npos;
+    });
+    const auto mathDependencies = std::ranges::count_if(
+        metadata.externalTypeKeys, [](const std::string& typeKey) {
+        return typeKey == "type:ExternalTypeProvider::ExternalContracts.Mat4" ||
+               typeKey == "type:ExternalTypeProvider::ExternalContracts.Quat" ||
+               typeKey == "type:ExternalTypeProvider::ExternalContracts.Vec2" ||
+               typeKey == "type:ExternalTypeProvider::ExternalContracts.Vec3" ||
+               typeKey == "type:ExternalTypeProvider::ExternalContracts.Vec4";
+    });
+    tests.expect(eventHandlerDependencies == 7,
+        "all seven provider-owned EventHandler<T> specializations remain external nominal dependencies");
+    tests.expect(mathDependencies == 5,
+                 "Mat4, Quat, Vec2, Vec3, and Vec4 remain provider-owned nominal dependencies");
+    tests.expect(std::ranges::none_of(metadata.genericSpecializations, [](const auto& specialization) {
+        return specialization.templateKey.find("ExternalTypeProvider::ExternalContracts.EventHandler`1") !=
+            std::string::npos;
+    }), "facade does not republish closed delegate specializations already materialized by its provider");
+
+    const auto consumer = root / "ExternalTypeConsumer";
+    writeFile(consumer / "ExternalTypeConsumer.nsproj",
+        "<Project><PropertyGroup><Name>ExternalTypeConsumer</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" + (provider / "ExternalTypeProvider.lib").generic_string() +
+        "\" Metadata=\"" + (provider / "ExternalTypeProvider.nsmeta").generic_string() + "\" />"
+        "<LibraryReference Include=\"" + (facade / "ExternalTypeFacade.lib").generic_string() +
+        "\" Metadata=\"" + (facade / "ExternalTypeFacade.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Program.ns", R"NS(
+class Program
+{
+    public static int Main() { return 0; }
+}
+)NS");
+    const std::string consumerProject = (consumer / "ExternalTypeConsumer.nsproj").string();
+    const std::array<std::string_view, 2> hirArgs = {"--check-project-oop-hir", consumerProject};
+    output.clear(); error.clear();
+    tests.expect(runDriver(hirArgs, output, error) == ExitCode::Success,
+                 "combined LibraryReference set resolves every external type before API materialization (" +
+                     error + ")");
+
+    const auto incomplete = root / "ExternalTypeConsumerMissingProvider";
+    writeFile(incomplete / "ExternalTypeConsumerMissingProvider.nsproj",
+        "<Project><PropertyGroup><Name>ExternalTypeConsumerMissingProvider</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" + (facade / "ExternalTypeFacade.lib").generic_string() +
+        "\" Metadata=\"" + (facade / "ExternalTypeFacade.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(incomplete / "Program.ns", "class Program { public static int Main() { return 0; } }");
+    const std::string incompleteProject = (incomplete / "ExternalTypeConsumerMissingProvider.nsproj").string();
+    const std::array<std::string_view, 2> incompleteArgs = {"--check-project-oop-hir", incompleteProject};
+    output.clear(); error.clear();
+    tests.expect(runDriver(incompleteArgs, output, error) == ExitCode::CompilationError &&
+                     error.find("precompiled LibraryReference type closure is incomplete") != std::string::npos &&
+                     error.find("ExternalContracts.Mat4") != std::string::npos &&
+                     error.find("EventHandler__g1__") != std::string::npos,
+                 "missing provider is rejected once with the accumulated external type closure");
+}
+
 void testLibraryMaterializesCompletePublicClosedGenericSurface(
     TestContext& tests, const std::filesystem::path& root)
 {
@@ -1185,7 +1324,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     writeBytes(futureMinorPath, futureMinor);
     error.clear();
     tests.expect(!codec.read(futureMinorPath, ignored, error) &&
-                     error.find("unsupported NativeSharp metadata format 1.12") != std::string::npos,
+                     error.find("unsupported NativeSharp metadata format 1.13") != std::string::npos,
                  "a future NSMETA minor is rejected before payload decoding");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
@@ -1654,6 +1793,7 @@ int main()
     testGenericCompilerMetadata(tests, root);
     testPrecompiledClosedGenericSurface(tests, root);
     testPrecompiledCallableKeepsNominalParameterIdentity(tests, root);
+    testPrecompiledExternalTypeClosure(tests, root);
     testLibraryMaterializesCompletePublicClosedGenericSurface(tests, root);
     testIntegrityAndCompatibility(tests, root);
     testScopeAndFailureBehavior(tests, root);

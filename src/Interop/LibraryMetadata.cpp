@@ -221,6 +221,15 @@ std::string metadataBaseTypeKey(std::string typeKey)
     return typeKey;
 }
 
+std::optional<std::string> metadataTypeModule(std::string_view writtenTypeKey)
+{
+    const std::string typeKey = metadataBaseTypeKey(std::string(writtenTypeKey));
+    if (!typeKey.starts_with("type:")) return std::nullopt;
+    const std::size_t separator = typeKey.find("::", 5U);
+    if (separator == std::string::npos || separator == 5U) return std::nullopt;
+    return typeKey.substr(5U, separator - 5U);
+}
+
 std::optional<std::string> specializedTypeKey(
     std::uint8_t kind,
     std::string_view templateKey,
@@ -937,11 +946,24 @@ bool buildMetadataModel(
             }
         }
     }
+    std::unordered_set<std::string> externalTypeKeys;
+    std::unordered_set<std::string> emittedSpecializedTypeKeys;
     for (const frontend::GenericSpecializationRecord& specialization : compilation.genericModel()->specializations())
     {
         if (!rootTemplateKeys.contains(specialization.templateKey) &&
             !requiredSpecializationKeys.contains(specialization.specializationKey))
         {
+            continue;
+        }
+        const std::optional<std::string> typeKey = specializedTypeKey(specialization);
+        // A cache seed with no specialized syntax is code already supplied by a
+        // LibraryReference.  Referencing it does not transfer ownership to this
+        // producer.  Record the exact provider-owned nominal key instead of
+        // duplicating its specialization declaration in this NSMETA.
+        if (!rootTemplateKeys.contains(specialization.templateKey) &&
+            specialization.specializedSyntax == nullptr && typeKey.has_value())
+        {
+            externalTypeKeys.insert(*typeKey);
             continue;
         }
         LibraryMetadataGenericSpecialization record;
@@ -951,11 +973,34 @@ bool buildMetadataModel(
         record.specializedName = specialization.specializedName;
         record.typeArguments = specialization.typeArguments;
         metadata.genericSpecializations.push_back(std::move(record));
+        if (typeKey.has_value()) emittedSpecializedTypeKeys.insert(*typeKey);
     }
     std::sort(metadata.genericSpecializations.begin(), metadata.genericSpecializations.end(), [](const auto& left, const auto& right) {
         return left.specializationKey < right.specializationKey;
     });
 
+    std::unordered_set<std::string> declaredTypeKeys;
+    for (const LibraryMetadataType& type : metadata.types)
+        declaredTypeKeys.insert("type:" + type.identityKey);
+    for (const std::string& typeKey : referencedTypeKeys)
+    {
+        if (declaredTypeKeys.contains(typeKey) || emittedSpecializedTypeKeys.contains(typeKey)) continue;
+        const std::optional<std::string> module = metadataTypeModule(typeKey);
+        if (module.has_value() && *module != metadata.moduleName) externalTypeKeys.insert(typeKey);
+    }
+    // Type arguments are part of a specialization's public identity even when
+    // no ordinary field or callable names them directly.
+    for (const LibraryMetadataGenericSpecialization& specialization : metadata.genericSpecializations)
+    {
+        for (const std::string& argument : specialization.typeArguments)
+        {
+            if (!argument.starts_with("type:")) continue;
+            const std::string typeKey = metadataBaseTypeKey(argument);
+            if (declaredTypeKeys.contains(typeKey) || emittedSpecializedTypeKeys.contains(typeKey)) continue;
+            const std::optional<std::string> module = metadataTypeModule(typeKey);
+            if (module.has_value() && *module != metadata.moduleName) externalTypeKeys.insert(typeKey);
+        }
+    }
     for (const frontend::ProjectOopMirDispatchTable& table : compilation.oopMirModel()->dispatchTables())
     {
         if (!rootTypes.contains(table.typeOrdinal)) continue;
@@ -1016,6 +1061,27 @@ bool buildMetadataModel(
     std::sort(metadata.exports.begin(), metadata.exports.end(), [](const auto& left, const auto& right) {
         return left.cAbiName < right.cAbiName;
     });
+    const auto rememberExternalType = [&](const std::string& writtenTypeKey) {
+        const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
+        if (declaredTypeKeys.contains(typeKey) || emittedSpecializedTypeKeys.contains(typeKey)) return;
+        const std::optional<std::string> module = metadataTypeModule(typeKey);
+        if (module.has_value() && *module != metadata.moduleName) externalTypeKeys.insert(typeKey);
+    };
+    for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+    {
+        rememberExternalType(dispatch.typeKey);
+        for (const LibraryMetadataDispatchInterface& interface : dispatch.interfaces)
+            rememberExternalType(interface.interfaceTypeKey);
+    }
+    for (const LibraryMetadataExport& exportRecord : metadata.exports)
+    {
+        rememberExternalType(exportRecord.declaringTypeKey);
+        rememberExternalType(exportRecord.returnTypeKey);
+        for (const std::string& parameterTypeKey : exportRecord.parameterTypeKeys)
+            rememberExternalType(parameterTypeKey);
+    }
+    metadata.externalTypeKeys.assign(externalTypeKeys.begin(), externalTypeKeys.end());
+    std::sort(metadata.externalTypeKeys.begin(), metadata.externalTypeKeys.end());
     return true;
 }
 
@@ -1168,6 +1234,7 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writer.text(specialization.specializedName);
         writeStringVector(writer, specialization.typeArguments);
     }
+    if (metadata.formatMinor >= 12) writeStringVector(writer, metadata.externalTypeKeys);
 
     writer.u32(static_cast<std::uint32_t>(metadata.dispatchTables.size()));
     for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
@@ -1386,6 +1453,12 @@ bool decodePayload(
             return false;
         }
         metadata.genericSpecializations.push_back(std::move(specialization));
+    }
+
+    if (metadata.formatMinor >= 12 && !readStringVector(reader, metadata.externalTypeKeys))
+    {
+        error = "truncated external-type dependency metadata";
+        return false;
     }
 
     if (!readCount(reader, count)) { error = "invalid dispatch-table count"; return false; }
@@ -2095,20 +2168,67 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         }
     }
 
+    std::unordered_set<std::string> declaredTypeKeys;
+    for (const LibraryMetadataType& type : metadata.types)
+        declaredTypeKeys.insert("type:" + type.identityKey);
+
+    std::unordered_set<std::string> externalTypeKeys;
+    if (metadata.formatMinor >= 12)
+    {
+        for (const std::string& typeKey : metadata.externalTypeKeys)
+        {
+            const std::string base = metadataBaseTypeKey(typeKey);
+            const std::optional<std::string> module = metadataTypeModule(base);
+            if (base != typeKey || !module.has_value() || *module == metadata.moduleName ||
+                !externalTypeKeys.insert(typeKey).second)
+            {
+                error = base != typeKey || !module.has_value()
+                    ? "metadata contains malformed external type dependency '" + typeKey + "'"
+                    : *module == metadata.moduleName
+                        ? "metadata marks its own type '" + typeKey + "' as an external dependency"
+                        : "metadata contains duplicate external type dependency '" + typeKey + "'";
+                return false;
+            }
+            if (declaredTypeKeys.contains(typeKey) || specializedTypeKeys.contains(typeKey))
+            {
+                error = "metadata both declares and imports type '" + typeKey + "'";
+                return false;
+            }
+        }
+    }
+
     if (metadata.formatMinor >= 7)
     {
-        std::unordered_set<std::string> declaredTypeKeys;
-        for (const LibraryMetadataType& type : metadata.types)
-            declaredTypeKeys.insert("type:" + type.identityKey);
-
         const auto verifyTypeReference = [&](const std::string& writtenTypeKey,
                                              std::string_view owner) -> bool {
             const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
-            if (!looksLikeCompilerSpecializedType(typeKey) || declaredTypeKeys.contains(typeKey) ||
-                specializedTypeKeys.contains(typeKey))
+            if (!typeKey.starts_with("type:") || declaredTypeKeys.contains(typeKey) ||
+                specializedTypeKeys.contains(typeKey) || externalTypeKeys.contains(typeKey))
             {
                 return true;
             }
+            if (metadata.formatMinor >= 12)
+            {
+                const std::optional<std::string> module = metadataTypeModule(typeKey);
+                if (looksLikeCompilerSpecializedType(typeKey))
+                {
+                    error = "metadata " + std::string(owner) + " refers to closed generic type '" + typeKey +
+                        "' but no generic specialization declares how to materialize it and no external "
+                        "type dependency assigns it to a provider";
+                }
+                else if (module.has_value() && *module != metadata.moduleName)
+                {
+                    error = "metadata " + std::string(owner) + " refers to external type '" + typeKey +
+                        "' but does not record that LibraryReference dependency";
+                }
+                else
+                {
+                    error = "metadata " + std::string(owner) + " refers to local type '" + typeKey +
+                        "' but declares neither the type nor its closed specialization";
+                }
+                return false;
+            }
+            if (!looksLikeCompilerSpecializedType(typeKey)) return true;
             error = "metadata " + std::string(owner) + " refers to closed generic type '" + typeKey +
                 "' but no generic specialization declares how to materialize it";
             return false;
@@ -2132,6 +2252,14 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             for (const LibraryMetadataParameter& parameter : member.parameters)
                 if (!verifyTypeReference(parameter.typeKey, owner + " parameter '" + parameter.name + "'"))
                     return false;
+        }
+        for (const LibraryMetadataGenericSpecialization& specialization : metadata.genericSpecializations)
+        {
+            const std::string owner = "generic specialization '" + specialization.specializationKey + "'";
+            for (const std::string& argument : specialization.typeArguments)
+            {
+                if (argument.starts_with("type:") && !verifyTypeReference(argument, owner)) return false;
+            }
         }
         for (const LibraryMetadataExport& exportRecord : metadata.exports)
         {

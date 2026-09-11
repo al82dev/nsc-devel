@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 12 (2026-09-11): el modulo enumera identidades nominales propiedad de otras
+// LibraryReference para validar la clausura completa antes de reconstruir su API.
 // MINOR 11 (2026-09-10): las plantillas reutilizables conservan su grafo de dependencias y la
 // clausura privada transitiva necesaria para materializarlas sin ampliar la API publica.
 // MINOR 10 (2026-09-10): una declaracion publica `extern C from` conserva la DLL que posee el
@@ -38,7 +40,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 11;
+inline constexpr std::uint16_t kMetadataFormatMinor = 12;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una
@@ -260,6 +262,12 @@ struct LibraryMetadata final
     std::vector<LibraryMetadataMember> members;
     std::vector<LibraryMetadataGenericTemplate> genericTemplates;
     std::vector<LibraryMetadataGenericSpecialization> genericSpecializations;
+    // NSMETA 1.12: exact nominal types used by this module but owned by another
+    // LibraryReference.  A consumer validates these keys against the complete
+    // metadata set before parsing any reconstructed API.  Closed generic types
+    // already materialized by their provider belong here too; they must not be
+    // republished as if this module owned their specialization.
+    std::vector<std::string> externalTypeKeys;
     std::vector<LibraryMetadataDispatch> dispatchTables;
     std::vector<LibraryMetadataExport> exports;
 };
