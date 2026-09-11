@@ -1288,6 +1288,58 @@ namespace Contracts.Api
                  "public interface methods, properties, and indexers materialize from declaring type kind (" +
                      error + ")");
 }
+
+void testPublicFieldInsideInternalTypeIsNotRequired(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "InternalTypePublicField";
+    writeProject(directory, "InternalTypePublicField", "StaticLibrary", R"NS(
+namespace HiddenSurface
+{
+    internal class VertexSkinData
+    {
+        public static int Rigid;
+    }
+}
+)NS");
+
+    const auto project = directory / "InternalTypePublicField.nsproj";
+    const auto library = directory / "InternalTypePublicField.lib";
+    const auto metadataPath = directory / "InternalTypePublicField.nsmeta";
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-lib", project, library, output, error) == ExitCode::Success,
+                 "internal producer emits its static library (" + error + ")");
+    output.clear(); error.clear();
+    tests.expect(emitMetadata(project, metadataPath, output, error) == ExitCode::Success,
+                 "internal producer emits NSMETA (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(metadataPath, metadata, error);
+    tests.expect(read, "internal producer NSMETA can be decoded (" + error + ")");
+    const LibraryMetadataType* hiddenType = findType(metadata, "::HiddenSurface.VertexSkinData");
+    tests.expect(hiddenType != nullptr && hiddenType->accessibility == 2U,
+                 "the field container remains internal in NSMETA");
+    if (!read || hiddenType == nullptr) return;
+
+    const std::string declaringTypeKey = "type:" + hiddenType->identityKey;
+    auto field = std::ranges::find_if(metadata.members, [&](const LibraryMetadataMember& member) {
+        return member.declaringTypeKey == declaringTypeKey && member.name == "Rigid";
+    });
+    tests.expect(field != metadata.members.end() && field->accessibility == 3U,
+                 "the fixture preserves a public field inside the internal type");
+    if (field == metadata.members.end()) return;
+    field->mangledName = "__intentionally_absent_internal_field_symbol";
+
+    const auto rewrittenMetadata = directory / "InternalTypePublicFieldRewritten.nsmeta";
+    error.clear();
+    tests.expect(codec.writeModel(metadata, rewrittenMetadata, error),
+                 "checksum-valid metadata with an absent internal field symbol is written (" + error + ")");
+    output.clear(); error.clear();
+    tests.expect(verifyArtifacts(rewrittenMetadata, library, {}, output, error) == ExitCode::Success,
+                 "artifact verification does not require public members of an internal container (" + error + ")");
+}
 }
 
 int main()
@@ -1308,6 +1360,7 @@ int main()
     testIntegrityAndCompatibility(tests, root);
     testScopeAndFailureBehavior(tests, root);
     testInterfaceContractsUseDeclaringTypeKind(tests, root);
+    testPublicFieldInsideInternalTypeIsNotRequired(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

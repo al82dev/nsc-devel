@@ -875,7 +875,17 @@ std::vector<std::string> publishedNativeSymbols(const interop::LibraryMetadata &
                  hasConsumerCallableAccessibility(member.accessibility) &&
                  !member.mangledName.empty())
         {
-            symbols.push_back(member.mangledName);
+            constexpr std::uint8_t kPublicAccessibility = 3U;
+            const interop::LibraryMetadataType *declaringType =
+                metadataTypeForKey(metadata, member.declaringTypeKey);
+            // A member cannot be more visible than its declaring type. Public fields inside an
+            // internal or privately nested type remain producer implementation details and must
+            // not become required archive/DLL symbols for consumers.
+            if (declaringType != nullptr && declaringType->accessibility == kPublicAccessibility &&
+                isPubliclyReachableMetadataType(metadata, *declaringType))
+            {
+                symbols.push_back(member.mangledName);
+            }
         }
     }
     constexpr std::uint8_t kPublicAccessibility = 3U;
