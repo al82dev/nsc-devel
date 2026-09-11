@@ -1893,13 +1893,13 @@ private:
         return true;
     }
 
-    void applyGenericOdrDefinition(LLVMValueRef value, const std::string& specializationKey)
+    void applyOdrDefinition(LLVMValueRef value)
     {
-        if (value == nullptr || specializationKey.empty()) return;
-        // weak_odr, rather than linkonce_odr, is required because a public specialization may be
-        // listed in a DLL export table even after all of its local calls were inlined at O2.  The
-        // optimizer may discard an unreferenced linkonce definition; weak_odr keeps the external
-        // definition while its symbol-specific COMDAT selects one copy at final link.
+        if (value == nullptr) return;
+        // weak_odr, rather than linkonce_odr, is required because a public ODR entity may be listed
+        // in a DLL export table even after all of its local calls were inlined at O2. The optimizer
+        // may discard an unreferenced linkonce definition; weak_odr keeps the external definition
+        // while its symbol-specific COMDAT selects one copy at final link.
         LLVMSetLinkage(value, LLVMWeakODRLinkage);
         std::size_t physicalNameLength = 0;
         const char* physicalNameData = LLVMGetValueName2(value, &physicalNameLength);
@@ -1913,6 +1913,12 @@ private:
         LLVMComdatRef comdat = LLVMGetOrInsertComdat(module_, physicalName.c_str());
         LLVMSetComdatSelectionKind(comdat, LLVMAnyComdatSelectionKind);
         LLVMSetComdat(value, comdat);
+    }
+
+    void applyGenericOdrDefinition(LLVMValueRef value, const std::string& specializationKey)
+    {
+        if (specializationKey.empty()) return;
+        applyOdrDefinition(value);
     }
 
     bool declareStaticFields(std::string& error)
@@ -2337,7 +2343,23 @@ private:
                 return false;
             }
             if (!function.isImportedC && !function.isImportedNative)
-                applyGenericOdrDefinition(llvmFunction, function.genericSpecializationKey);
+            {
+                if (!function.genericSpecializationKey.empty())
+                {
+                    applyGenericOdrDefinition(llvmFunction, function.genericSpecializationKey);
+                }
+                else if (function.isSyntheticImplicitConstructor)
+                {
+                    // An implicit constructor is a compiler-owned ODR definition. The same nominal
+                    // type can legitimately reach a final native link through a source dependency
+                    // and through a static precompiled producer. Both compilations derive the same
+                    // physical symbol and semantics from the type declaration; leaving both copies
+                    // strong made the ubiquitous NativeSharp.Core.Object() root collide first.
+                    // Written constructors remain strong and therefore still diagnose real duplicate
+                    // user implementations.
+                    applyOdrDefinition(llvmFunction);
+                }
+            }
             applyUwtableAttribute(llvmFunction);
             if (sretReturn)
             {

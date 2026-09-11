@@ -320,6 +320,16 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
     // ausencia eso seria un verde falso. Ver TypeIdentity.h e `irTextSymbolReference`.
     tests.expect(llvm.find("call void @\"__nsc_ctor_") != std::string::npos,
         "explicit object construction lowers selected constructor call after allocation");
+    tests.expect(
+        llvm.find("define weak_odr void @\"__nsc_ctor_Stage30Test$3A$3ADemo$2EEmpty__Empty") !=
+            std::string::npos &&
+        llvm.find("define weak_odr void @\"__nsc_ctor_Stage30Test$3A$3ADemo$2EFactory__Factory") !=
+            std::string::npos,
+        "compiler-synthesized implicit constructors are per-symbol ODR definitions");
+    tests.expect(
+        llvm.find("define weak_odr void @\"__nsc_ctor_Stage30Test$3A$3ADemo$2ECounter__Counter") ==
+            std::string::npos,
+        "written constructors remain strong definitions rather than hiding user ODR conflicts");
     tests.expect(llvm.find("call i32 @\"__nsc_method_") != std::string::npos,
         "instance method calls lower to direct internal-ABI calls with implicit this");
     tests.expect(llvm.find("while.cond") != std::string::npos && llvm.find("while.body") != std::string::npos,
