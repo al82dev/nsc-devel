@@ -24,6 +24,7 @@ using nativesharp::driver::Driver;
 using nativesharp::interop::LibraryMetadata;
 using nativesharp::interop::LibraryMetadataCodec;
 using nativesharp::interop::LibraryMetadataDefaultValueKind;
+using nativesharp::interop::LibraryMetadataMember;
 using nativesharp::interop::LibraryMetadataParameterPassKind;
 using nativesharp::interop::LibraryMetadataType;
 using nativesharp::interop::LibraryMetadataTypeKind;
@@ -769,6 +770,7 @@ namespace ClosedGenericContracts
         public int Count() { return 0; }
     }
 }
+
 )NS");
 
     std::string output;
@@ -891,6 +893,107 @@ class Program
         tests.expect(std::system(command.c_str()) == 0,
                      "closed-generic precompiled consumer executes with exit code zero");
     }
+}
+
+void testPrecompiledCallableKeepsNominalParameterIdentity(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    const auto dependency = root / "NominalExternalKeys";
+    writeProject(dependency, "NominalExternalKeys", "StaticLibrary", R"NS(
+namespace NativeSharp.Glfw
+{
+    public enum Keys
+    {
+        External = 1
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-lib", dependency / "NominalExternalKeys.nsproj",
+                             dependency / "NominalExternalKeys.lib", output, error) == ExitCode::Success,
+                 "external Keys dependency emits a precompiled library (" + error + ")");
+
+    const auto producer = root / "NominalProducer";
+    writeFile(producer / "NominalProducer.nsproj",
+        "<Project><PropertyGroup><Name>NominalProducer</Name><OutputType>StaticLibrary</OutputType>"
+        "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" + (dependency / "NominalExternalKeys.lib").generic_string() +
+        "\" Metadata=\"" + (dependency / "NominalExternalKeys.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(producer / "Api.ns", R"NS(
+public enum Keys
+{
+    Own = 7
+}
+
+public class InputKeyEventArgs
+{
+    public Keys Key { get; }
+
+    public InputKeyEventArgs(Keys key)
+    {
+        Key = key;
+    }
+}
+
+public class GlfwKeyBridge
+{
+    public static NativeSharp.Glfw.Keys Echo(NativeSharp.Glfw.Keys key)
+    {
+        return key;
+    }
+}
+)NS");
+
+    output.clear(); error.clear();
+    tests.expect(emitProduct("--emit-project-oop-lib", producer / "NominalProducer.nsproj",
+                             producer / "NominalProducer.lib", output, error) == ExitCode::Success,
+                 "producer emits local and external Keys identities together (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(producer / "NominalProducer.nsmeta", metadata, error);
+    tests.expect(read, "nominal producer NSMETA can be decoded (" + error + ")");
+    if (!read) return;
+    const auto constructor = std::ranges::find_if(metadata.members, [](const LibraryMetadataMember& member) {
+        return member.declaringTypeKey == "type:NominalProducer::InputKeyEventArgs" &&
+               member.signatureKey == "InputKeyEventArgs(type:NominalProducer::Keys)";
+    });
+    tests.expect(constructor != metadata.members.end() && !constructor->mangledName.empty(),
+                 "public constructor publishes the producer-local enum identity and a physical symbol");
+
+    const auto consumer = root / "NominalConsumer";
+    writeFile(consumer / "NominalConsumer.nsproj",
+        "<Project><PropertyGroup><Name>NominalConsumer</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+        "<LibraryReference Include=\"" + (dependency / "NominalExternalKeys.lib").generic_string() +
+        "\" Metadata=\"" + (dependency / "NominalExternalKeys.nsmeta").generic_string() + "\" />"
+        "<LibraryReference Include=\"" + (producer / "NominalProducer.lib").generic_string() +
+        "\" Metadata=\"" + (producer / "NominalProducer.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Program.ns", R"NS(
+class Program
+{
+    public static int Main()
+    {
+        raii InputKeyEventArgs value = new InputKeyEventArgs(Keys.Own);
+        NativeSharp.Glfw.Keys external = GlfwKeyBridge.Echo(NativeSharp.Glfw.Keys.External);
+        return value.Key == Keys.Own && external == NativeSharp.Glfw.Keys.External ? 0 : 1;
+    }
+}
+)NS");
+
+    const std::string consumerProject = (consumer / "NominalConsumer.nsproj").string();
+    const std::string executable = (consumer / "NominalConsumer.exe").string();
+    const std::array<std::string_view, 5> args = {
+        "-O0", "--emit-project-oop-exe", consumerProject, "-o", executable};
+    output.clear(); error.clear();
+    tests.expect(runDriver(args, output, error) == ExitCode::Success,
+                 "consumer binds the constructor to producer-local Keys instead of the imported enum (" +
+                     error + ")");
 }
 
 void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::path& root)
@@ -1443,6 +1546,7 @@ int main()
     testAutomaticProducts(tests, root);
     testGenericCompilerMetadata(tests, root);
     testPrecompiledClosedGenericSurface(tests, root);
+    testPrecompiledCallableKeepsNominalParameterIdentity(tests, root);
     testIntegrityAndCompatibility(tests, root);
     testScopeAndFailureBehavior(tests, root);
     testInterfaceContractsUseDeclaringTypeKind(tests, root);

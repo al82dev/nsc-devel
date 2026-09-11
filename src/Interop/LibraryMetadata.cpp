@@ -651,6 +651,20 @@ bool buildMetadataModel(
     }
 
     std::unordered_set<std::size_t> rootTypes(rootTypeOrdinals.begin(), rootTypeOrdinals.end());
+    const auto isPubliclyReachableRootType = [&](std::size_t typeOrdinal) {
+        while (typeOrdinal < types.size())
+        {
+            const frontend::NamedTypeDeclaration& type = types[typeOrdinal];
+            if (!rootTypes.contains(typeOrdinal) ||
+                type.accessibility != frontend::NamedTypeAccessibility::Public)
+            {
+                return false;
+            }
+            if (!type.containingTypeOrdinal.has_value()) return true;
+            typeOrdinal = *type.containingTypeOrdinal;
+        }
+        return false;
+    };
     std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*> staticFields;
     for (const frontend::ProjectOopMirStaticField& field : compilation.oopMirModel()->staticFields())
     {
@@ -693,6 +707,21 @@ bool buildMetadataModel(
         if (staticField != staticFields.end() && !staticField->second->isConst)
         {
             record.mangledName = staticField->second->accessorName;
+        }
+        const bool callableAccessibility =
+            member.accessibility == frontend::ClassMemberAccessibility::Public ||
+            member.accessibility == frontend::ClassMemberAccessibility::Protected;
+        const bool nativeCallable =
+            (member.kind == frontend::ClassMemberKind::Method ||
+             member.kind == frontend::ClassMemberKind::Constructor) &&
+            callableAccessibility && isPubliclyReachableRootType(member.declaringTypeOrdinal) &&
+            !member.isAbstract && !member.isCompilerGenerated && !member.isImportedC &&
+            (!member.isExternC || member.isExportedC);
+        if (nativeCallable && record.mangledName.empty())
+        {
+            error = "public callable '" + record.declaringTypeKey + "." + record.signatureKey +
+                "' has no physical identity; refusing to emit unusable NSMETA";
+            return false;
         }
         for (const frontend::MethodParameterSymbol& parameter : member.parameters)
         {

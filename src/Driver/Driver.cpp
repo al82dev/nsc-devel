@@ -1110,57 +1110,12 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
     }
 
     std::ostringstream generated;
-    // El parser de listas de bases acepta nombres simples. Publicamos los
-    // namespaces de todas las piezas del contrato antes de emitir las
-    // declaraciones, de modo que una base ubicada en otro namespace conserve su
-    // identidad sin reescribirla ni depender del archivo fuente original.
-    std::set<std::string> importedNamespaces;
-    const auto collectImportedNamespace = [&](const std::string &typeKey) -> bool {
-        const std::string baseKey = metadataBaseTypeKey(typeKey);
-        if (!baseKey.starts_with("type:")) return true;
-        const std::string identity = baseKey.substr(5);
-        const std::size_t moduleSeparator = identity.find("::");
-        if (moduleSeparator == std::string::npos)
-        {
-            error = "metadata contains malformed named type key '" + baseKey + "'";
-            return false;
-        }
-        const std::string_view qualified(identity.data() + moduleSeparator + 2U,
-                                         identity.size() - moduleSeparator - 2U);
-        const std::size_t topTypeEnd = qualified.find('+');
-        const std::string_view topType = qualified.substr(0, topTypeEnd);
-        const std::size_t separator = topType.find_last_of('.');
-        if (separator != std::string::npos)
-            importedNamespaces.insert(std::string(topType.substr(0, separator)));
-        return true;
-    };
-    for (const auto &[identity, group] : published)
-    {
-        static_cast<void>(identity);
-        if (group.type == nullptr) continue;
-        const std::size_t separator = group.type->fullyQualifiedName.find_last_of('.');
-        if (separator != std::string::npos)
-            importedNamespaces.insert(group.type->fullyQualifiedName.substr(0, separator));
-    }
-    for (const interop::LibraryMetadataType &type : metadata.types)
-    {
-        if (!collectImportedNamespace(type.baseTypeKey)) return false;
-        for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
-            if (!collectImportedNamespace(interfaceTypeKey)) return false;
-        for (const interop::LibraryMetadataField &field : type.fields)
-            if (!collectImportedNamespace(field.typeKey)) return false;
-        if (!collectImportedNamespace(type.delegateReturnTypeKey)) return false;
-        for (const std::string &parameterTypeKey : type.delegateParameterTypeKeys)
-            if (!collectImportedNamespace(parameterTypeKey)) return false;
-    }
-    for (const interop::LibraryMetadataMember &member : metadata.members)
-    {
-        if (!collectImportedNamespace(member.declaredTypeKey)) return false;
-        for (const interop::LibraryMetadataParameter &parameter : member.parameters)
-            if (!collectImportedNamespace(parameter.typeKey)) return false;
-    }
-    for (const std::string &namespaceName : importedNamespaces)
-        generated << "using " << namespaceName << ";\n";
+    // Every named type spelling below already comes from its canonical NSMETA key and therefore
+    // carries the complete namespace. Do not synthesize namespace imports here. In NativeSharp a
+    // `using` name deliberately has precedence over a type in the producer's global namespace;
+    // importing `NativeSharp.Glfw` would consequently rebind the producer's own global `Keys` to
+    // `NativeSharp.Glfw.Keys` and change the callable signature before physical-name binding.
+    // Base lists keep their private aliases below because that grammar requires a simple name.
     // Base lists in NativeSharp intentionally use a simple identifier. Give every
     // metadata base/interface an unambiguous private alias so two dependencies may
     // both publish (for example) `Base` without losing their module/namespace
@@ -1183,7 +1138,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         for (const std::string &interfaceTypeKey : type.interfaceTypeKeys)
             if (!collectBaseAlias(interfaceTypeKey)) return false;
     }
-    if (!importedNamespaces.empty()) generated << '\n';
+    if (!baseAliases.empty()) generated << '\n';
     const auto sourceBaseType = [&](const std::string &typeKey, std::string &sourceType) -> bool {
         const std::string baseKey = metadataBaseTypeKey(typeKey);
         const auto alias = baseAliases.find(baseKey);
