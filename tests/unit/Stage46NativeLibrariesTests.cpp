@@ -4294,13 +4294,12 @@ namespace Precompiled
                                                  error,
                                                  true);
     tests.expect(compositeResult == ExitCode::Success,
-                 "static producer consolidates its validated static LibraryReference (" + error + ")");
+                 "static producer records its validated external LibraryReference (" + error + ")");
     CoffArchiveVerifier compositeVerifier;
     tests.expect(compositeResult == ExitCode::Success && compositeVerifier.verify(compositeLibrary) &&
                      contains(compositeVerifier.info().symbolNames, "Answer") &&
-                     contains(compositeVerifier.info().symbolNames, "Add"),
-                 "consolidated static archive indexes both its own API and "
-                 "dependency symbols");
+                     !contains(compositeVerifier.info().symbolNames, "Add"),
+                 "static archive indexes its own API without vending dependency symbols");
 
     const auto compositeConsumer = staticRoot / "CompositeConsumer";
     writeFile(compositeConsumer / "Main.ns", R"NS(
@@ -4317,6 +4316,7 @@ namespace Consumer
               "Name><OutputType>Exe</OutputType>"
               "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
               "<LibraryReference Include=\"../CompositeProducer/Composite.lib\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\"/>"
               "</ItemGroup></Project>");
     output.clear();
     error.clear();
@@ -4328,14 +4328,13 @@ namespace Consumer
                                                          error,
                                                          true);
     tests.expect(compositeConsumerResult == ExitCode::Success,
-                 "metadata consumer links the consolidated static product "
-                 "without referencing its dependency (" +
+                 "metadata consumer links the static product with its explicit dependency (" +
                      error + ")");
 #ifdef _WIN32
     if (compositeConsumerResult == ExitCode::Success)
     {
         tests.expect(runExecutable(compositeExecutable) == 42,
-                     "consolidated A-to-B nominal dependency executes from A alone");
+                     "explicit A-to-B static dependency closure executes to 42");
     }
 #endif
 
