@@ -2,6 +2,7 @@
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/ToolchainContract.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
 
@@ -71,6 +72,9 @@ int main()
 
     TestContext tests;
     const std::string contract = driver::currentToolchainContract();
+    const std::string metadataFormat =
+        std::to_string(interop::kMetadataFormatMajor) + "." +
+        std::to_string(interop::kMetadataFormatMinor);
     tests.expect(contract.starts_with("NSTOOLCHAIN 1\n"), "contract has a versioned magic header");
     tests.expect(contract.ends_with('\n'), "contract has one canonical final newline");
     tests.expect(contract.find("compiler_release=0.9.0\n") != std::string::npos,
@@ -81,7 +85,8 @@ int main()
     tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") != std::string::npos,
         "contract identifies the supported target");
     tests.expect(contract.find("llvm=23.x\n") != std::string::npos, "contract identifies the qualified LLVM line");
-    tests.expect(contract.find("nsmeta=1.11\n") != std::string::npos, "contract identifies the library metadata format");
+    tests.expect(contract.find("nsmeta=" + metadataFormat + "\n") != std::string::npos,
+        "contract identifies the library metadata format");
     tests.expect(contract.find("native_abi=1.0\n") != std::string::npos &&
                      contract.find("runtime_abi=1.0\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");

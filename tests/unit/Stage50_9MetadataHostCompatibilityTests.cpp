@@ -152,15 +152,19 @@ void testOwnershipRoundTrip(TestContext& tests, const std::filesystem::path& roo
     tests.expect(
         emitMetadata(directory / "OwnershipMetadata.nsproj", outputPath, output, error) == ExitCode::Success,
         "Stage 50.9 emits ownership-aware library metadata");
-    tests.expect(error.empty() && output.find("format: NSMETA 1.11") != std::string::npos,
-        "the metadata command advertises the current NSMETA 1.11 schema");
+    const std::string metadataFormat =
+        std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
+        std::to_string(nativesharp::interop::kMetadataFormatMinor);
+    tests.expect(error.empty() && output.find("format: NSMETA " + metadataFormat) != std::string::npos,
+        "the metadata command advertises the current NSMETA schema");
 
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(outputPath, metadata, error),
         "NSMETA ownership contracts round-trip through the reader");
-    tests.expect(metadata.formatMajor == 1 && metadata.formatMinor == 11,
-        "metadata reader preserves the current 1.11 format identity");
+    tests.expect(metadata.formatMajor == nativesharp::interop::kMetadataFormatMajor &&
+                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor,
+        "metadata reader preserves the current format identity");
 
     const LibraryMetadataMember* plain = findMember(metadata, "Plain");
     const LibraryMetadataMember* take = findMember(metadata, "Take");

@@ -4,6 +4,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include "../support/TestContext.h"
 
@@ -246,13 +247,16 @@ int main()
         "full preflight prevents partial deletion before a late failure");
 
     const std::string policy = driver::currentCompatibilityPolicy();
+    const std::string metadataFormat =
+        std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
+        std::to_string(nativesharp::interop::kMetadataFormatMinor);
     tests.expect(
         policy.starts_with("NSCOMPAT 1\n") && policy.ends_with('\n'), "compatibility policy has canonical framing");
     tests.expect(policy.find("compiler_release=0.9.0\n") != std::string::npos &&
                      policy.find("language_release=0.1.0\n") != std::string::npos,
         "policy separates compiler and language releases");
-    tests.expect(policy.find("nsmeta_read=1.0-1.11\n") != std::string::npos &&
-                     policy.find("nsmeta_write=1.11\n") != std::string::npos,
+    tests.expect(policy.find("nsmeta_read=1.0-" + metadataFormat + "\n") != std::string::npos &&
+                     policy.find("nsmeta_write=" + metadataFormat + "\n") != std::string::npos,
         "policy publishes metadata read and write ranges independently");
     tests.expect(
         policy.find("native_abi=1.0\n") != std::string::npos && policy.find("runtime_abi=1.0\n") != std::string::npos,
