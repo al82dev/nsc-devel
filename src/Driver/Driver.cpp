@@ -1982,6 +1982,7 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
     }
     std::unordered_set<std::string> validatedReferences;
     std::unordered_map<std::string, std::filesystem::path> runtimeNames;
+    std::unordered_map<std::string, std::filesystem::path> runtimeByModule;
     std::unordered_map<std::string, std::filesystem::path> moduleOwners;
     std::unordered_map<std::string, std::vector<PrecompiledExportContract>> publishedExports;
     std::unordered_map<std::string, std::string> publishedNativeMethods;
@@ -2120,8 +2121,8 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
                 if (runtimeOwner == runtimeNames.end())
                 {
                     runtimeNames.emplace(runtimeName, reference.runtimePath);
-                    runtimeLibraries.push_back(reference.runtimePath);
                 }
+                runtimeByModule.emplace(metadata.moduleName, reference.runtimePath);
             }
 
             validatedReferences.insert(libraryKey);
@@ -2134,20 +2135,47 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
     }
 
     if (compilation.oopMirModel() == nullptr) return true;
+    std::unordered_set<std::string> referencedCallees;
+    const auto collectReferencedCallees =
+        [&](const frontend::ProjectOopMirNode *node, auto &&self) -> void {
+        if (node == nullptr) return;
+        if (!node->calleeName.empty()) referencedCallees.insert(node->calleeName);
+        for (const auto &child : node->children) self(child.get(), self);
+    };
+    for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
+    {
+        collectReferencedCallees(function.body.get(), collectReferencedCallees);
+    }
+    for (const frontend::ProjectOopMirFieldInitializer &initializer :
+         compilation.oopMirModel()->fieldInitializers())
+    {
+        collectReferencedCallees(initializer.value.get(), collectReferencedCallees);
+    }
+    std::unordered_set<std::string> selectedRuntimePaths;
+    const auto selectRuntimeForModule = [&](const std::string &moduleName) {
+        const auto runtime = runtimeByModule.find(moduleName);
+        if (runtime == runtimeByModule.end()) return;
+        const std::string key = foldedPathKey(runtime->second);
+        if (selectedRuntimePaths.insert(key).second) runtimeLibraries.push_back(runtime->second);
+    };
     for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
     {
         if (function.isImportedNative)
         {
-            if (!publishedNativeMethods.contains(function.mangledName))
+            if (!referencedCallees.contains(function.mangledName)) continue;
+            const auto owner = publishedNativeMethods.find(function.mangledName);
+            if (owner == publishedNativeMethods.end())
             {
                 error = "metadata-backed NativeSharp call resolved to unpublished "
                         "symbol '" +
                         function.mangledName + "'";
                 return false;
             }
+            selectRuntimeForModule(owner->second);
             continue;
         }
         if (!function.isImportedC) continue;
+        if (!referencedCallees.contains(function.mangledName)) continue;
         const auto found = publishedExports.find(function.cAbiName);
         if (found == publishedExports.end()) continue;
 
@@ -2191,6 +2219,10 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
                     "' does not match the metadata signature published by module '" + contract->moduleName + "'";
             return false;
         }
+        // A C export implemented by the NativeSharp producer reaches that producer's runtime.
+        // A reconstructed `extern C from "kernel32.dll"` import never enters metadata.exports
+        // and therefore does not select the otherwise valid but unused NativeSharp DLL.
+        selectRuntimeForModule(contract->moduleName);
     }
     return true;
 }
