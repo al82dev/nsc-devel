@@ -1181,15 +1181,33 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.stage46-1.dll-cross-linker-matrix
         COMMAND nsc_stage46_1_dll_cross_linker_matrix_tests)
 
+    # Host-contract tests launch the GNU-style Clang drivers, not the clang-cl driver used to
+    # build nsc itself. Resolve them at configure time so the hermetic baseline can clear PATH
+    # without turning ABI tests into environment-dependent command-name lookups.
+    find_program(NSC_TEST_CLANG_EXECUTABLE
+        NAMES clang clang.exe
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
+    find_program(NSC_TEST_CLANGXX_EXECUTABLE
+        NAMES clang++ clang++.exe
+        HINTS "${LLVM_TOOLS_BINARY_DIR}" "C:/clang-llvm/bin"
+        REQUIRED)
+
     add_executable(nsc_stage47_host_c_abi_tests tests/unit/Stage47HostCAbiTests.cpp)
     target_link_libraries(nsc_stage47_host_c_abi_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage47_host_c_abi_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage47_host_c_abi_tests PRIVATE
+        NSC_TEST_CLANG_EXECUTABLE="${NSC_TEST_CLANG_EXECUTABLE}"
+        NSC_TEST_CLANGXX_EXECUTABLE="${NSC_TEST_CLANGXX_EXECUTABLE}")
     nsc_enable_warnings(nsc_stage47_host_c_abi_tests)
     add_test(NAME nsc.stage47.host-c-abi COMMAND nsc_stage47_host_c_abi_tests)
 
     add_executable(nsc_stage48_1_c_header_tests tests/unit/Stage48_1CHeaderGeneratorTests.cpp)
     target_link_libraries(nsc_stage48_1_c_header_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage48_1_c_header_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage48_1_c_header_tests PRIVATE
+        NSC_TEST_CLANG_EXECUTABLE="${NSC_TEST_CLANG_EXECUTABLE}"
+        NSC_TEST_CLANGXX_EXECUTABLE="${NSC_TEST_CLANGXX_EXECUTABLE}")
     nsc_enable_warnings(nsc_stage48_1_c_header_tests)
     add_test(NAME nsc.stage48_1.c-header COMMAND nsc_stage48_1_c_header_tests)
 
@@ -1203,12 +1221,16 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage48_3_c_host_tests tests/unit/Stage48_3CHostIntegrationTests.cpp)
     target_link_libraries(nsc_stage48_3_c_host_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage48_3_c_host_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage48_3_c_host_tests PRIVATE
+        NSC_TEST_CLANG_EXECUTABLE="${NSC_TEST_CLANG_EXECUTABLE}")
     nsc_enable_warnings(nsc_stage48_3_c_host_tests)
     add_test(NAME nsc.stage48_3.c-host COMMAND nsc_stage48_3_c_host_tests)
 
     add_executable(nsc_stage48_4_cpp_host_tests tests/unit/Stage48_4CppHostIntegrationTests.cpp)
     target_link_libraries(nsc_stage48_4_cpp_host_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage48_4_cpp_host_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_stage48_4_cpp_host_tests PRIVATE
+        NSC_TEST_CLANGXX_EXECUTABLE="${NSC_TEST_CLANGXX_EXECUTABLE}")
     nsc_enable_warnings(nsc_stage48_4_cpp_host_tests)
     add_test(NAME nsc.stage48_4.cpp-host COMMAND nsc_stage48_4_cpp_host_tests)
 
@@ -1222,7 +1244,9 @@ if(NSC_BUILD_TESTS)
     add_executable(nsc_stage48_6_cppcli_host_tests tests/unit/Stage48_6CppCliHostClosureTests.cpp)
     target_link_libraries(nsc_stage48_6_cppcli_host_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage48_6_cppcli_host_tests PRIVATE cxx_std_20)
-    target_compile_definitions(nsc_stage48_6_cppcli_host_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_definitions(nsc_stage48_6_cppcli_host_tests PRIVATE
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_TEST_CLANGXX_EXECUTABLE="${NSC_TEST_CLANGXX_EXECUTABLE}")
     nsc_enable_warnings(nsc_stage48_6_cppcli_host_tests)
     add_test(NAME nsc.stage48_6.cppcli-stage48-closure COMMAND nsc_stage48_6_cppcli_host_tests)
 

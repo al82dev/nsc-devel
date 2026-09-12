@@ -16,6 +16,10 @@
 #include <string_view>
 #include <vector>
 
+#ifndef NSC_TEST_CLANG_EXECUTABLE
+#error "CMake must provide the configured Clang C host compiler"
+#endif
+
 namespace
 {
 using nativesharp::ExitCode;
@@ -315,7 +319,8 @@ std::string clangCCommand(
     const std::filesystem::path& source,
     const std::filesystem::path& object)
 {
-    return "clang --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec "
+    return quote(NSC_TEST_CLANG_EXECUTABLE) +
+        " --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec "
         "-ffreestanding -fno-stack-protector -std=c11 -Wall -Wextra -Werror -Wpedantic -c -I" +
         quote(includeDirectory) + " " + quote(source) + " -o " + quote(object);
 }

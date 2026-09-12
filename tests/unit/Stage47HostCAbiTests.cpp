@@ -17,6 +17,10 @@
 #include <string_view>
 #include <vector>
 
+#if !defined(NSC_TEST_CLANG_EXECUTABLE) || !defined(NSC_TEST_CLANGXX_EXECUTABLE)
+#error "CMake must provide the configured Clang host compilers"
+#endif
+
 namespace
 {
 using nativesharp::ExitCode;
@@ -557,12 +561,14 @@ extern "C" __declspec(dllexport) int CppHostProbe(void)
 )CPP");
 
     tests.expect(runCommand(
-            "clang --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -c " +
+            quote(NSC_TEST_CLANG_EXECUTABLE) +
+                " --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -c " +
                 quote(directory / "host.c") + " -o " + quote(directory / "host_c.obj"),
             directory / "clang_c.log"),
         "Clang compiles a freestanding Windows C host against the Stage 47 declarations");
     tests.expect(runCommand(
-            "clang++ --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -fno-exceptions -fno-rtti -c " +
+            quote(NSC_TEST_CLANGXX_EXECUTABLE) +
+                " --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -fno-exceptions -fno-rtti -c " +
                 quote(directory / "host.cpp") + " -o " + quote(directory / "host_cpp.obj"),
             directory / "clang_cpp.log"),
         "Clang compiles a freestanding Windows C++ host using extern C declarations");
@@ -610,12 +616,14 @@ extern "C" __declspec(dllexport) int CppHostProbe(void)
     writeFile(directory / "host_static.cpp", cppStatic);
 
     tests.expect(runCommand(
-            "clang --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -c " +
+            quote(NSC_TEST_CLANG_EXECUTABLE) +
+                " --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -c " +
                 quote(directory / "host_static.c") + " -o " + quote(directory / "host_static_c.obj"),
             directory / "clang_static_c.log"),
         "Clang compiles a C host for direct static NativeSharp linkage");
     tests.expect(runCommand(
-            "clang++ --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -fno-exceptions -fno-rtti -c " +
+            quote(NSC_TEST_CLANGXX_EXECUTABLE) +
+                " --target=x86_64-pc-windows-msvc -ffreestanding -fno-stack-protector -fno-exceptions -fno-rtti -c " +
                 quote(directory / "host_static.cpp") + " -o " + quote(directory / "host_static_cpp.obj"),
             directory / "clang_static_cpp.log"),
         "Clang compiles a C++ host for direct static NativeSharp linkage");

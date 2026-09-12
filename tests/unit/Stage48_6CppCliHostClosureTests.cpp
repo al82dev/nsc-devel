@@ -20,6 +20,9 @@
 #ifndef NSC_SOURCE_DIR
 #error "NSC_SOURCE_DIR must be defined for Stage 48.6 integration tests"
 #endif
+#ifndef NSC_TEST_CLANGXX_EXECUTABLE
+#error "CMake must provide the configured Clang C++ host compiler"
+#endif
 
 namespace
 {
@@ -65,6 +68,8 @@ bool runCommand(std::string command, const std::filesystem::path& logPath)
     return std::system(command.c_str()) == 0;
 }
 
+// The optional end-to-end C++/CLI host still depends on external MSBuild/.NET installations.
+// Clang is deliberately excluded from this lookup: its configured absolute path is mandatory.
 bool commandAvailable(std::string_view command)
 {
 #ifdef _WIN32
@@ -301,12 +306,6 @@ void testManagedConsumerAndScript(TestContext& tests)
 
 void testNativeHeaderCompilerProbe(TestContext& tests, const std::filesystem::path& root)
 {
-    if (!commandAvailable("clang++"))
-    {
-        tests.expect(true, "clang++ is unavailable; C++ header probe remains covered by Stage 48.4 regression");
-        return;
-    }
-
     const std::filesystem::path outputDirectory = root / "HeaderProbe";
     std::filesystem::create_directories(outputDirectory);
     const std::filesystem::path dll = outputDirectory / "Stage48_6HostApi.dll";
@@ -328,7 +327,8 @@ void testNativeHeaderCompilerProbe(TestContext& tests, const std::filesystem::pa
                << "int32_t Probe(NS_Counter* counter) { return NS486_Counter_Get(counter) + NS486_Add(20, 22); }\n";
     }
     const std::string command =
-        "clang++ --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec -std=c++20 "
+        quote(NSC_TEST_CLANGXX_EXECUTABLE) +
+        " --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec -std=c++20 "
         "-Wall -Wextra -Werror -Wpedantic -ffreestanding -fno-exceptions -fno-rtti -c -I" +
         quote(outputDirectory) + " " + quote(source) + " -o " + quote(object);
     tests.expect(runCommand(command, outputDirectory / "probe.log"),

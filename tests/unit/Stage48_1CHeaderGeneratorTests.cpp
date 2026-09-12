@@ -15,6 +15,10 @@
 #include <string>
 #include <string_view>
 
+#if !defined(NSC_TEST_CLANG_EXECUTABLE) || !defined(NSC_TEST_CLANGXX_EXECUTABLE)
+#error "CMake must provide the configured Clang host compilers"
+#endif
+
 namespace
 {
 using nativesharp::ExitCode;
@@ -404,12 +408,14 @@ extern "C" __declspec(dllexport) int Stage48_1CppHostProbe(void)
 )CPP");
 
     tests.expect(runCommand(
-            "clang --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec -std=c11 -c -I" +
+            quote(NSC_TEST_CLANG_EXECUTABLE) +
+                " --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec -std=c11 -c -I" +
                 quote(directory) + " " + quote(directory / "host.c") + " -o " + quote(directory / "host_c.obj"),
             directory / "clang_c.log"),
         "Clang compiles a Windows C11 host using only the generated header");
     tests.expect(runCommand(
-            "clang++ --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec -std=c++20 -fno-exceptions -fno-rtti -c -I" +
+            quote(NSC_TEST_CLANGXX_EXECUTABLE) +
+                " --target=x86_64-pc-windows-msvc -fms-extensions -fdeclspec -std=c++20 -fno-exceptions -fno-rtti -c -I" +
                 quote(directory) + " " + quote(directory / "host.cpp") + " -o " + quote(directory / "host_cpp.obj"),
             directory / "clang_cpp.log"),
         "Clang compiles a Windows C++20 host using only the generated header");
