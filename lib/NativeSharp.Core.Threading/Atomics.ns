@@ -63,7 +63,8 @@ namespace NativeSharp.Core.Threading
     //
     // == Como se implementa de verdad (ver WindowsRuntimeBuilder.cpp para el detalle completo) ==
     //
-    // Cada uno de los diez metodos baja a una instruccion atomica REAL de hardware x86-64 (`lock
+    // Cada operacion de sincronizacion baja a una operacion atomica REAL de hardware x86-64 (`load
+    // atomic`/`store atomic` o instrucciones `lock
     // xadd`/`lock xchg`/`lock cmpxchg`, emitidas via LLVMBuildAtomicRMW/LLVMBuildAtomicCmpXchg) --
     // NO una llamada a kernel32.dll. El plan original para esta capa envolvia las funciones reales
     // InterlockedIncrement/InterlockedExchangeAdd/InterlockedExchange/InterlockedCompareExchange
@@ -100,7 +101,19 @@ namespace NativeSharp.Core.Threading
             get { return value_; }
         }
 
-        // Las cinco "core operations" de Stage 54.2 -- reconocidas por el compilador por clase +
+        // Atomic publication operations. Like the existing read-modify-write methods, both use
+        // the 1.0.1 memory-order contract: sequential consistency. Value remains the explicitly
+        // non-synchronizing snapshot property for source compatibility.
+        public int Load()
+        {
+            return 0;
+        }
+
+        public void Store(int value)
+        {
+        }
+
+        // Las siete "core operations" -- reconocidas por el compilador por clase +
         // nombre + firma EXACTOS (ver MethodCoreOperationKind::InterlockedIncrementInt32/.../
         // InterlockedCompareExchangeInt32 en ProjectMethodBodyModel.h), el mismo mecanismo que
         // cada operacion nucleo desde Stage 51. Los cuerpos de abajo son placeholders -- nunca se
@@ -147,6 +160,15 @@ namespace NativeSharp.Core.Threading
         public long Value
         {
             get { return value_; }
+        }
+
+        public long Load()
+        {
+            return 0;
+        }
+
+        public void Store(long value)
+        {
         }
 
         public long Increment()

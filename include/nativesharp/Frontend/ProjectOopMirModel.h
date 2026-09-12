@@ -160,11 +160,15 @@ enum class ProjectOopMirNodeKind
     CoreThreadDetach,
     // Stage 54.2 "Atomics" -- see ProjectOopHirNodeKind::CoreInterlockedIncrementInt32/.../
     // CoreInterlockedCompareExchangeInt64 above.
+    CoreAtomicLoadInt32,
+    CoreAtomicStoreInt32,
     CoreInterlockedIncrementInt32,
     CoreInterlockedDecrementInt32,
     CoreInterlockedAddInt32,
     CoreInterlockedExchangeInt32,
     CoreInterlockedCompareExchangeInt32,
+    CoreAtomicLoadInt64,
+    CoreAtomicStoreInt64,
     CoreInterlockedIncrementInt64,
     CoreInterlockedDecrementInt64,
     CoreInterlockedAddInt64,

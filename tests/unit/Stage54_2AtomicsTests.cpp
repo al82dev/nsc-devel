@@ -164,6 +164,8 @@ namespace NativeSharp.Core.Threading
     {
         private int value_;
         public AtomicInt32(int initialValue) { value_ = initialValue; }
+        public int Load() { return 0; }
+        public void Store(int value) { }
         public int Increment() { return 0; }
         public int Decrement() { return 0; }
         public int Add(int value) { return 0; }
@@ -175,6 +177,8 @@ namespace NativeSharp.Core.Threading
     {
         private long value_;
         public AtomicInt64(long initialValue) { value_ = initialValue; }
+        public long Load() { return 0; }
+        public void Store(long value) { }
         public long Increment() { return 0; }
         public long Decrement() { return 0; }
         public long Add(long value) { return 0; }
@@ -190,7 +194,9 @@ class Program
 {
     public static int Run32(AtomicInt32 a, int value, int comparand)
     {
-        int r = a.Increment();
+        int r = a.Load();
+        a.Store(value);
+        r = a.Increment();
         r = a.Decrement();
         r = a.Add(value);
         r = a.Exchange(value);
@@ -200,7 +206,9 @@ class Program
 
     public static long Run64(AtomicInt64 a, long value, long comparand)
     {
-        long r = a.Increment();
+        long r = a.Load();
+        a.Store(value);
+        r = a.Increment();
         r = a.Decrement();
         r = a.Add(value);
         r = a.Exchange(value);
@@ -224,12 +232,16 @@ class Program
     tests.expect(module->verify(verifyError), "Atomic core-operation fixture LLVM verifies clean");
 
     const std::string llvm = module->text();
-    const std::array<std::string_view, 10> expectedCalls = {
+    const std::array<std::string_view, 14> expectedCalls = {
+        "call i32 @__nativesharp_atomic_load_int32",
+        "call void @__nativesharp_atomic_store_int32",
         "call i32 @__nativesharp_interlocked_increment_int32",
         "call i32 @__nativesharp_interlocked_decrement_int32",
         "call i32 @__nativesharp_interlocked_add_int32",
         "call i32 @__nativesharp_interlocked_exchange_int32",
         "call i32 @__nativesharp_interlocked_compare_exchange_int32",
+        "call i64 @__nativesharp_atomic_load_int64",
+        "call void @__nativesharp_atomic_store_int64",
         "call i64 @__nativesharp_interlocked_increment_int64",
         "call i64 @__nativesharp_interlocked_decrement_int64",
         "call i64 @__nativesharp_interlocked_add_int64",
@@ -279,6 +291,14 @@ void testRuntimeHooksEmitRealAtomicInstructions(TestContext& tests)
         "runtime module emits a real `atomicrmw xchg` instruction (Exchange)");
     tests.expect(llvm.find("cmpxchg") != std::string::npos,
         "runtime module emits a real `cmpxchg` instruction (CompareExchange)");
+    tests.expect(
+        llvm.find("load atomic i32") != std::string::npos &&
+            llvm.find("load atomic i64") != std::string::npos,
+        "runtime module emits real atomic loads for both supported widths");
+    tests.expect(
+        llvm.find("store atomic i32") != std::string::npos &&
+            llvm.find("store atomic i64") != std::string::npos,
+        "runtime module emits real atomic stores for both supported widths");
     tests.expect(llvm.find("seq_cst") != std::string::npos,
         "Stage 54.2 atomics use sequentially-consistent ordering throughout");
     // Negative check: none of the ten runtime hooks should be calling into kernel32.dll's

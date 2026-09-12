@@ -104,6 +104,10 @@ constexpr const char* kThreadDetachFunctionName = "__nativesharp_thread_detach";
 // Increment/Decrement/Add, the old value for Exchange/CompareExchange, matching C#'s documented
 // System.Threading.Interlocked contract) -- none of these need the "dummy i1 result" pattern,
 // same as ThreadCreate above.
+constexpr const char* kAtomicLoadInt32FunctionName = "__nativesharp_atomic_load_int32";
+constexpr const char* kAtomicStoreInt32FunctionName = "__nativesharp_atomic_store_int32";
+constexpr const char* kAtomicLoadInt64FunctionName = "__nativesharp_atomic_load_int64";
+constexpr const char* kAtomicStoreInt64FunctionName = "__nativesharp_atomic_store_int64";
 constexpr const char* kInterlockedIncrementInt32FunctionName = "__nativesharp_interlocked_increment_int32";
 constexpr const char* kInterlockedDecrementInt32FunctionName = "__nativesharp_interlocked_decrement_int32";
 constexpr const char* kInterlockedAddInt32FunctionName = "__nativesharp_interlocked_add_int32";
@@ -1622,6 +1626,9 @@ private:
         // regardless of whether the comparison matched, Win32's result used directly). None of
         // these ten need the "dummy i1" pattern -- every one returns a real, meaningful value.
         LLVMTypeRef interlockedLocationOnlyInt32Params[] = {ptr};
+        atomicLoadInt32FunctionType_ = LLVMFunctionType(i32, interlockedLocationOnlyInt32Params, 1, 0);
+        atomicLoadInt32Function_ = LLVMAddFunction(
+            module_, kAtomicLoadInt32FunctionName, atomicLoadInt32FunctionType_);
         interlockedIncrementInt32FunctionType_ = LLVMFunctionType(i32, interlockedLocationOnlyInt32Params, 1, 0);
         interlockedIncrementInt32Function_ = LLVMAddFunction(
             module_, kInterlockedIncrementInt32FunctionName, interlockedIncrementInt32FunctionType_);
@@ -1629,6 +1636,9 @@ private:
         interlockedDecrementInt32Function_ = LLVMAddFunction(
             module_, kInterlockedDecrementInt32FunctionName, interlockedDecrementInt32FunctionType_);
         LLVMTypeRef interlockedLocationOnlyInt64Params[] = {ptr};
+        atomicLoadInt64FunctionType_ = LLVMFunctionType(i64, interlockedLocationOnlyInt64Params, 1, 0);
+        atomicLoadInt64Function_ = LLVMAddFunction(
+            module_, kAtomicLoadInt64FunctionName, atomicLoadInt64FunctionType_);
         interlockedIncrementInt64FunctionType_ = LLVMFunctionType(i64, interlockedLocationOnlyInt64Params, 1, 0);
         interlockedIncrementInt64Function_ = LLVMAddFunction(
             module_, kInterlockedIncrementInt64FunctionName, interlockedIncrementInt64FunctionType_);
@@ -1636,6 +1646,10 @@ private:
         interlockedDecrementInt64Function_ = LLVMAddFunction(
             module_, kInterlockedDecrementInt64FunctionName, interlockedDecrementInt64FunctionType_);
         LLVMTypeRef interlockedLocationValueInt32Params[] = {ptr, i32};
+        atomicStoreInt32FunctionType_ = LLVMFunctionType(
+            LLVMVoidTypeInContext(context_), interlockedLocationValueInt32Params, 2, 0);
+        atomicStoreInt32Function_ = LLVMAddFunction(
+            module_, kAtomicStoreInt32FunctionName, atomicStoreInt32FunctionType_);
         interlockedAddInt32FunctionType_ = LLVMFunctionType(i32, interlockedLocationValueInt32Params, 2, 0);
         interlockedAddInt32Function_ = LLVMAddFunction(
             module_, kInterlockedAddInt32FunctionName, interlockedAddInt32FunctionType_);
@@ -1643,6 +1657,10 @@ private:
         interlockedExchangeInt32Function_ = LLVMAddFunction(
             module_, kInterlockedExchangeInt32FunctionName, interlockedExchangeInt32FunctionType_);
         LLVMTypeRef interlockedLocationValueInt64Params[] = {ptr, i64};
+        atomicStoreInt64FunctionType_ = LLVMFunctionType(
+            LLVMVoidTypeInContext(context_), interlockedLocationValueInt64Params, 2, 0);
+        atomicStoreInt64Function_ = LLVMAddFunction(
+            module_, kAtomicStoreInt64FunctionName, atomicStoreInt64FunctionType_);
         interlockedAddInt64FunctionType_ = LLVMFunctionType(i64, interlockedLocationValueInt64Params, 2, 0);
         interlockedAddInt64Function_ = LLVMAddFunction(
             module_, kInterlockedAddInt64FunctionName, interlockedAddInt64FunctionType_);
@@ -1866,6 +1884,8 @@ private:
             directoryGetDirectoryCountFunction_ == nullptr || directoryGetDirectoriesFunction_ == nullptr ||
             threadCreateFunction_ == nullptr || threadJoinFunction_ == nullptr ||
             threadDetachFunction_ == nullptr ||
+            atomicLoadInt32Function_ == nullptr || atomicStoreInt32Function_ == nullptr ||
+            atomicLoadInt64Function_ == nullptr || atomicStoreInt64Function_ == nullptr ||
             interlockedIncrementInt32Function_ == nullptr || interlockedDecrementInt32Function_ == nullptr ||
             interlockedAddInt32Function_ == nullptr || interlockedExchangeInt32Function_ == nullptr ||
             interlockedCompareExchangeInt32Function_ == nullptr ||
@@ -6767,6 +6787,50 @@ private:
             // builtin:long* location -- and return a real i32/i64 result (the new value). No
             // dummy-i1 wrapping: unlike ThreadJoin/ThreadDetach above, these genuinely return a
             // meaningful value at the NativeSharp level too.
+            case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt32:
+            {
+                if (node->children.size() != 1 || atomicLoadInt32Function_ == nullptr)
+                    return failValue(error, "atomic Load(int*) requires one pointer argument and runtime hook");
+                LLVMValueRef location = lowerExpression(node->children.front().get(), error);
+                if (location == nullptr) return nullptr;
+                LLVMValueRef args[] = {location};
+                return buildNoUnwindCall(
+                    atomicLoadInt32FunctionType_, atomicLoadInt32Function_, args, 1, "atomic.load.i32");
+            }
+            case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
+            {
+                if (node->children.size() != 2 || atomicStoreInt32Function_ == nullptr)
+                    return failValue(error, "atomic Store(int*, int) requires two arguments and runtime hook");
+                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                if (location == nullptr) return nullptr;
+                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMValueRef args[] = {location, value};
+                buildNoUnwindCall(atomicStoreInt32FunctionType_, atomicStoreInt32Function_, args, 2, "");
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt64:
+            {
+                if (node->children.size() != 1 || atomicLoadInt64Function_ == nullptr)
+                    return failValue(error, "atomic Load(long*) requires one pointer argument and runtime hook");
+                LLVMValueRef location = lowerExpression(node->children.front().get(), error);
+                if (location == nullptr) return nullptr;
+                LLVMValueRef args[] = {location};
+                return buildNoUnwindCall(
+                    atomicLoadInt64FunctionType_, atomicLoadInt64Function_, args, 1, "atomic.load.i64");
+            }
+            case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt64:
+            {
+                if (node->children.size() != 2 || atomicStoreInt64Function_ == nullptr)
+                    return failValue(error, "atomic Store(long*, long) requires two arguments and runtime hook");
+                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                if (location == nullptr) return nullptr;
+                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMValueRef args[] = {location, value};
+                buildNoUnwindCall(atomicStoreInt64FunctionType_, atomicStoreInt64Function_, args, 2, "");
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
             case frontend::ProjectOopMirNodeKind::CoreInterlockedIncrementInt32:
             {
                 if (node->children.size() != 1 || interlockedIncrementInt32Function_ == nullptr)
@@ -11082,6 +11146,14 @@ private:
     LLVMTypeRef threadJoinFunctionType_ = nullptr;
     LLVMValueRef threadDetachFunction_ = nullptr;
     LLVMTypeRef threadDetachFunctionType_ = nullptr;
+    LLVMValueRef atomicLoadInt32Function_ = nullptr;
+    LLVMTypeRef atomicLoadInt32FunctionType_ = nullptr;
+    LLVMValueRef atomicStoreInt32Function_ = nullptr;
+    LLVMTypeRef atomicStoreInt32FunctionType_ = nullptr;
+    LLVMValueRef atomicLoadInt64Function_ = nullptr;
+    LLVMTypeRef atomicLoadInt64FunctionType_ = nullptr;
+    LLVMValueRef atomicStoreInt64Function_ = nullptr;
+    LLVMTypeRef atomicStoreInt64FunctionType_ = nullptr;
     LLVMValueRef interlockedIncrementInt32Function_ = nullptr;
     LLVMTypeRef interlockedIncrementInt32FunctionType_ = nullptr;
     LLVMValueRef interlockedDecrementInt32Function_ = nullptr;

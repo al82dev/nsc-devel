@@ -698,11 +698,15 @@ enum class MethodCoreOperationKind
     // (post-operacion); Exchange/CompareExchange devuelven el valor ORIGINAL (pre-operacion) --
     // ver Atomics.ns y WindowsRuntimeBuilder.cpp para el detalle completo (instrucciones
     // atomicas reales de LLVM, no llamadas a kernel32.dll -- el SEGUNDO pivot de esta ronda).
+    AtomicLoadInt32,
+    AtomicStoreInt32,
     InterlockedIncrementInt32,
     InterlockedDecrementInt32,
     InterlockedAddInt32,
     InterlockedExchangeInt32,
     InterlockedCompareExchangeInt32,
+    AtomicLoadInt64,
+    AtomicStoreInt64,
     InterlockedIncrementInt64,
     InterlockedDecrementInt64,
     InterlockedAddInt64,

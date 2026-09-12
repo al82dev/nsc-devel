@@ -233,11 +233,15 @@ enum class ProjectOopHirNodeKind
     // atomic location) is never written by the caller, only synthesized by the compiler as a
     // FieldAddress node over the receiver's own `value_` field. See the dedicated block in
     // ProjectOopHirModel.cpp (right before the ConsoleWriteLine block) for the full mechanism.
+    CoreAtomicLoadInt32,
+    CoreAtomicStoreInt32,
     CoreInterlockedIncrementInt32,
     CoreInterlockedDecrementInt32,
     CoreInterlockedAddInt32,
     CoreInterlockedExchangeInt32,
     CoreInterlockedCompareExchangeInt32,
+    CoreAtomicLoadInt64,
+    CoreAtomicStoreInt64,
     CoreInterlockedIncrementInt64,
     CoreInterlockedDecrementInt64,
     CoreInterlockedAddInt64,

@@ -398,10 +398,12 @@ la existencia de esa carrera como permiso para transformar otras rutas en result
 
 ### NS-MEM-002 — Operaciones atómicas
 
-Las operaciones públicas de `AtomicInt32` y `AtomicInt64` son atómicas y secuencialmente
-consistentes. Incremento, decremento y suma devuelven el valor nuevo; intercambio y
-comparación-intercambio devuelven el valor anterior. La implementación debe emitir operaciones
-LLVM `seq_cst`; una llamada ordinaria con nombre parecido no satisface esta cláusula.
+Las operaciones públicas `Load`, `Store`, `Increment`, `Decrement`, `Add`, `Exchange` y
+`CompareExchange` de `AtomicInt32` y `AtomicInt64` son atómicas y secuencialmente consistentes.
+Incremento, decremento y suma devuelven el valor nuevo; intercambio y comparación-intercambio
+devuelven el valor anterior. La implementación debe emitir operaciones LLVM `seq_cst`; una llamada
+ordinaria con nombre parecido no satisface esta cláusula. La propiedad `Value` es una observación
+ordinaria sin publicación y no sustituye a `Load` en un protocolo entre hilos.
 
 No existe selección pública de ordenamiento por operación en 1.0. Tampoco existen fences públicos.
 

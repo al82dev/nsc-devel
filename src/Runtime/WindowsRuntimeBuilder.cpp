@@ -4443,10 +4443,11 @@ bool buildMoveFile(
     return true;
 }
 
-// Stage 54.2 "Atomics". All five builder families below are parameterized by `bitWidth` (32 or
+// Stage 54.2/Entrega 226 "Atomics". All seven builder families below are parameterized by `bitWidth` (32 or
 // 64) to share code between the Int32/Int64 variants, the same `wantDirectories`-style shared-
 // helper discipline Stage 53.6's buildDirectoryEntryMatchesKind already established above. Every
-// one of the ten runtime functions built from these five families uses LLVMBuildAtomicRMW/
+// every runtime function built from these families uses LLVM atomic load/store/RMW/CAS operations
+// directly. The original ten RMW functions use LLVMBuildAtomicRMW/
 // LLVMBuildAtomicCmpXchg directly -- REAL hardware atomic instructions (`lock xadd`/`lock xchg`/
 // `lock cmpxchg` on x86-64), NOT a call into any Win32 DLL function.
 //
@@ -4484,6 +4485,58 @@ bool buildMoveFile(
 // ordering (Acquire/Release/Monotonic), because C#'s System.Threading.Interlocked family is
 // itself documented as providing full sequential consistency, and this compiler has no mechanism
 // yet for a NativeSharp author to request anything weaker.
+bool buildAtomicLoad(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    const char* functionName,
+    unsigned bitWidth)
+{
+    LLVMTypeRef valueType = bitWidth == 64
+        ? LLVMInt64TypeInContext(context)
+        : LLVMInt32TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(valueType, {pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, functionName, type);
+    if (function == nullptr) return false;
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef value = LLVMBuildLoad2(
+        builder, valueType, LLVMGetParam(function, 0), "atomic.load.value");
+    LLVMSetOrdering(value, LLVMAtomicOrderingSequentiallyConsistent);
+    LLVMSetAlignment(value, bitWidth / 8U);
+    LLVMBuildRet(builder, value);
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+bool buildAtomicStore(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    const char* functionName,
+    unsigned bitWidth)
+{
+    LLVMTypeRef valueType = bitWidth == 64
+        ? LLVMInt64TypeInContext(context)
+        : LLVMInt32TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(LLVMVoidTypeInContext(context), {pointerType, valueType});
+    LLVMValueRef function = LLVMAddFunction(module, functionName, type);
+    if (function == nullptr) return false;
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef store = LLVMBuildStore(
+        builder, LLVMGetParam(function, 1), LLVMGetParam(function, 0));
+    LLVMSetOrdering(store, LLVMAtomicOrderingSequentiallyConsistent);
+    LLVMSetAlignment(store, bitWidth / 8U);
+    LLVMBuildRetVoid(builder);
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
 bool buildInterlockedIncrementOrDecrement(
     LLVMContextRef context,
     LLVMModuleRef module,
@@ -5707,6 +5760,10 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         // buildInterlockedIncrementOrDecrement/buildInterlockedAdd/buildInterlockedExchange/
         // buildInterlockedCompareExchange's own header comment above for why: they emit real
         // atomic IR instructions directly, with no kernel32.dll dependency at all.
+        buildAtomicLoad(context, module, "__nativesharp_atomic_load_int32", 32) &&
+        buildAtomicStore(context, module, "__nativesharp_atomic_store_int32", 32) &&
+        buildAtomicLoad(context, module, "__nativesharp_atomic_load_int64", 64) &&
+        buildAtomicStore(context, module, "__nativesharp_atomic_store_int64", 64) &&
         buildInterlockedIncrementOrDecrement(
             context, module, "__nativesharp_interlocked_increment_int32", 32, true) &&
         buildInterlockedIncrementOrDecrement(

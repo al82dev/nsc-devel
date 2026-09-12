@@ -591,11 +591,15 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreThreadCreate: return "core-thread-create";
         case ProjectOopMirNodeKind::CoreThreadJoin: return "core-thread-join";
         case ProjectOopMirNodeKind::CoreThreadDetach: return "core-thread-detach";
+        case ProjectOopMirNodeKind::CoreAtomicLoadInt32: return "core-atomic-load-int32";
+        case ProjectOopMirNodeKind::CoreAtomicStoreInt32: return "core-atomic-store-int32";
         case ProjectOopMirNodeKind::CoreInterlockedIncrementInt32: return "core-interlocked-increment-int32";
         case ProjectOopMirNodeKind::CoreInterlockedDecrementInt32: return "core-interlocked-decrement-int32";
         case ProjectOopMirNodeKind::CoreInterlockedAddInt32: return "core-interlocked-add-int32";
         case ProjectOopMirNodeKind::CoreInterlockedExchangeInt32: return "core-interlocked-exchange-int32";
         case ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt32: return "core-interlocked-compare-exchange-int32";
+        case ProjectOopMirNodeKind::CoreAtomicLoadInt64: return "core-atomic-load-int64";
+        case ProjectOopMirNodeKind::CoreAtomicStoreInt64: return "core-atomic-store-int64";
         case ProjectOopMirNodeKind::CoreInterlockedIncrementInt64: return "core-interlocked-increment-int64";
         case ProjectOopMirNodeKind::CoreInterlockedDecrementInt64: return "core-interlocked-decrement-int64";
         case ProjectOopMirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
@@ -1482,6 +1486,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::CoreThreadDetach:
             result->kind = ProjectOopMirNodeKind::CoreThreadDetach;
             break;
+        case ProjectOopHirNodeKind::CoreAtomicLoadInt32:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicLoadInt32;
+            break;
+        case ProjectOopHirNodeKind::CoreAtomicStoreInt32:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicStoreInt32;
+            break;
         case ProjectOopHirNodeKind::CoreInterlockedIncrementInt32:
             result->kind = ProjectOopMirNodeKind::CoreInterlockedIncrementInt32;
             break;
@@ -1496,6 +1506,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt32:
             result->kind = ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt32;
+            break;
+        case ProjectOopHirNodeKind::CoreAtomicLoadInt64:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicLoadInt64;
+            break;
+        case ProjectOopHirNodeKind::CoreAtomicStoreInt64:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicStoreInt64;
             break;
         case ProjectOopHirNodeKind::CoreInterlockedIncrementInt64:
             result->kind = ProjectOopMirNodeKind::CoreInterlockedIncrementInt64;

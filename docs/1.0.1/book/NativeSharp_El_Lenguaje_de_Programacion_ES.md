@@ -23672,6 +23672,8 @@ tipo.
 - `public class AtomicInt32`
 - `public AtomicInt32(int initialValue)`
 - `public int Value`
+- `public int Load()`
+- `public void Store(int value)`
 - `public int Increment()`
 - `public int Decrement()`
 - `public int Add(int value)`
@@ -23680,6 +23682,8 @@ tipo.
 - `public class AtomicInt64`
 - `public AtomicInt64(long initialValue)`
 - `public long Value`
+- `public long Load()`
+- `public void Store(long value)`
 - `public long Increment()`
 - `public long Decrement()`
 - `public long Add(long value)`

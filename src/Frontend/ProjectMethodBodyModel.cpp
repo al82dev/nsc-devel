@@ -8535,7 +8535,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt32";
                 const std::string valueTypeKey = isInt32 ? "builtin:int" : "builtin:long";
                 std::optional<MethodCoreOperationKind> atomicKind;
-                if (selectedMember.name == "Increment" && selectedMember.parameters.empty() &&
+                if (selectedMember.name == "Load" && selectedMember.parameters.empty() &&
+                    selectedMember.declaredTypeKey == valueTypeKey)
+                {
+                    atomicKind = isInt32
+                        ? MethodCoreOperationKind::AtomicLoadInt32
+                        : MethodCoreOperationKind::AtomicLoadInt64;
+                }
+                else if (selectedMember.name == "Store" &&
+                    selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == valueTypeKey &&
+                    selectedMember.declaredTypeKey == "builtin:void")
+                {
+                    atomicKind = isInt32
+                        ? MethodCoreOperationKind::AtomicStoreInt32
+                        : MethodCoreOperationKind::AtomicStoreInt64;
+                }
+                else if (selectedMember.name == "Increment" && selectedMember.parameters.empty() &&
                     selectedMember.declaredTypeKey == valueTypeKey)
                 {
                     atomicKind = isInt32
@@ -12877,11 +12893,15 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::ThreadCreate: return "thread-create";
         case MethodCoreOperationKind::ThreadJoin: return "thread-join";
         case MethodCoreOperationKind::ThreadDetach: return "thread-detach";
+        case MethodCoreOperationKind::AtomicLoadInt32: return "atomic-load-int32";
+        case MethodCoreOperationKind::AtomicStoreInt32: return "atomic-store-int32";
         case MethodCoreOperationKind::InterlockedIncrementInt32: return "interlocked-increment-int32";
         case MethodCoreOperationKind::InterlockedDecrementInt32: return "interlocked-decrement-int32";
         case MethodCoreOperationKind::InterlockedAddInt32: return "interlocked-add-int32";
         case MethodCoreOperationKind::InterlockedExchangeInt32: return "interlocked-exchange-int32";
         case MethodCoreOperationKind::InterlockedCompareExchangeInt32: return "interlocked-compare-exchange-int32";
+        case MethodCoreOperationKind::AtomicLoadInt64: return "atomic-load-int64";
+        case MethodCoreOperationKind::AtomicStoreInt64: return "atomic-store-int64";
         case MethodCoreOperationKind::InterlockedIncrementInt64: return "interlocked-increment-int64";
         case MethodCoreOperationKind::InterlockedDecrementInt64: return "interlocked-decrement-int64";
         case MethodCoreOperationKind::InterlockedAddInt64: return "interlocked-add-int64";

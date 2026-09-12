@@ -341,11 +341,15 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::EnvironmentProcessorCount:
     case MethodCoreOperationKind::EnvironmentExit:
     case MethodCoreOperationKind::EnvironmentGetCommandLineArgCount:
+    case MethodCoreOperationKind::AtomicLoadInt32:
+    case MethodCoreOperationKind::AtomicStoreInt32:
     case MethodCoreOperationKind::InterlockedIncrementInt32:
     case MethodCoreOperationKind::InterlockedDecrementInt32:
     case MethodCoreOperationKind::InterlockedAddInt32:
     case MethodCoreOperationKind::InterlockedExchangeInt32:
     case MethodCoreOperationKind::InterlockedCompareExchangeInt32:
+    case MethodCoreOperationKind::AtomicLoadInt64:
+    case MethodCoreOperationKind::AtomicStoreInt64:
     case MethodCoreOperationKind::InterlockedIncrementInt64:
     case MethodCoreOperationKind::InterlockedDecrementInt64:
     case MethodCoreOperationKind::InterlockedAddInt64:
@@ -553,11 +557,15 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreThreadCreate: return "core-thread-create";
         case ProjectOopHirNodeKind::CoreThreadJoin: return "core-thread-join";
         case ProjectOopHirNodeKind::CoreThreadDetach: return "core-thread-detach";
+        case ProjectOopHirNodeKind::CoreAtomicLoadInt32: return "core-atomic-load-int32";
+        case ProjectOopHirNodeKind::CoreAtomicStoreInt32: return "core-atomic-store-int32";
         case ProjectOopHirNodeKind::CoreInterlockedIncrementInt32: return "core-interlocked-increment-int32";
         case ProjectOopHirNodeKind::CoreInterlockedDecrementInt32: return "core-interlocked-decrement-int32";
         case ProjectOopHirNodeKind::CoreInterlockedAddInt32: return "core-interlocked-add-int32";
         case ProjectOopHirNodeKind::CoreInterlockedExchangeInt32: return "core-interlocked-exchange-int32";
         case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt32: return "core-interlocked-compare-exchange-int32";
+        case ProjectOopHirNodeKind::CoreAtomicLoadInt64: return "core-atomic-load-int64";
+        case ProjectOopHirNodeKind::CoreAtomicStoreInt64: return "core-atomic-store-int64";
         case ProjectOopHirNodeKind::CoreInterlockedIncrementInt64: return "core-interlocked-increment-int64";
         case ProjectOopHirNodeKind::CoreInterlockedDecrementInt64: return "core-interlocked-decrement-int64";
         case ProjectOopHirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
@@ -3430,11 +3438,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             // support for the `&` operator at all, so no NativeSharp source expression could ever
             // produce this operand even if the API wanted the caller to write it).
             if (core != nullptr &&
-                (core->kind == MethodCoreOperationKind::InterlockedIncrementInt32 ||
+                (core->kind == MethodCoreOperationKind::AtomicLoadInt32 ||
+                 core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
+                 core->kind == MethodCoreOperationKind::InterlockedIncrementInt32 ||
                  core->kind == MethodCoreOperationKind::InterlockedDecrementInt32 ||
                  core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
                  core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
                  core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32 ||
+                 core->kind == MethodCoreOperationKind::AtomicLoadInt64 ||
+                 core->kind == MethodCoreOperationKind::AtomicStoreInt64 ||
                  core->kind == MethodCoreOperationKind::InterlockedIncrementInt64 ||
                  core->kind == MethodCoreOperationKind::InterlockedDecrementInt64 ||
                  core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
@@ -3470,7 +3482,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 location->children.push_back(std::move(receiver));
 
                 std::size_t expectedExplicitArguments = 0U;
-                if (core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
+                if (core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
+                    core->kind == MethodCoreOperationKind::AtomicStoreInt64 ||
+                    core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
                     core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
                     core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
                     core->kind == MethodCoreOperationKind::InterlockedExchangeInt64)
@@ -3488,12 +3502,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     return nullptr;
                 }
 
-                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt32;
-                if (core->kind == MethodCoreOperationKind::InterlockedIncrementInt32) kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt32;
+                ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreAtomicLoadInt32;
+                if (core->kind == MethodCoreOperationKind::AtomicLoadInt32) kind = ProjectOopHirNodeKind::CoreAtomicLoadInt32;
+                else if (core->kind == MethodCoreOperationKind::AtomicStoreInt32) kind = ProjectOopHirNodeKind::CoreAtomicStoreInt32;
+                else if (core->kind == MethodCoreOperationKind::InterlockedIncrementInt32) kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt32;
                 else if (core->kind == MethodCoreOperationKind::InterlockedDecrementInt32) kind = ProjectOopHirNodeKind::CoreInterlockedDecrementInt32;
                 else if (core->kind == MethodCoreOperationKind::InterlockedAddInt32) kind = ProjectOopHirNodeKind::CoreInterlockedAddInt32;
                 else if (core->kind == MethodCoreOperationKind::InterlockedExchangeInt32) kind = ProjectOopHirNodeKind::CoreInterlockedExchangeInt32;
                 else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt32;
+                else if (core->kind == MethodCoreOperationKind::AtomicLoadInt64) kind = ProjectOopHirNodeKind::CoreAtomicLoadInt64;
+                else if (core->kind == MethodCoreOperationKind::AtomicStoreInt64) kind = ProjectOopHirNodeKind::CoreAtomicStoreInt64;
                 else if (core->kind == MethodCoreOperationKind::InterlockedIncrementInt64) kind = ProjectOopHirNodeKind::CoreInterlockedIncrementInt64;
                 else if (core->kind == MethodCoreOperationKind::InterlockedDecrementInt64) kind = ProjectOopHirNodeKind::CoreInterlockedDecrementInt64;
                 else if (core->kind == MethodCoreOperationKind::InterlockedAddInt64) kind = ProjectOopHirNodeKind::CoreInterlockedAddInt64;
