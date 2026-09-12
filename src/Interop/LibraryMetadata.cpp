@@ -46,6 +46,10 @@ constexpr std::uint32_t kWindowsX64Target = 1;
 constexpr std::uint32_t kPointerSize = 8;
 constexpr std::uint32_t kPointerAlignment = 8;
 constexpr std::string_view kTargetTriple = "x86_64-pc-windows-msvc";
+// The compatibility window is explicit rather than inferred from SemVer arithmetic: 0.9.0 is
+// the frozen producer that shipped the historical NSMETA 1.0-1.11 goldens. Its file and ABI
+// contracts remain readable by 1.0.1 even though the product release number crossed major zero.
+constexpr std::string_view kPreviousMetadataProducerRelease = "0.9.0";
 constexpr std::size_t kHeaderSize = 100;
 constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
@@ -2359,11 +2363,14 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     // frontera de compatibilidad. Sin separar ambas preguntas, cada build
     // incremental rechazaria las bibliotecas del build inmediatamente anterior
     // aunque compartieran lenguaje, formato y ABI.
-    if (compilerReleasePart(metadata.producerVersion) != kCompilerReleaseVersion)
+    const std::string_view producerRelease = compilerReleasePart(metadata.producerVersion);
+    if (producerRelease != kCompilerReleaseVersion &&
+        producerRelease != kPreviousMetadataProducerRelease)
     {
         error = "metadata producer version '" + metadata.producerVersion +
-            "' is not compatible with compiler release '" +
-            std::string(kCompilerReleaseVersion) + "'";
+            "' is outside the supported producer window ['" +
+            std::string(kPreviousMetadataProducerRelease) + "', '" +
+            std::string(kCompilerReleaseVersion) + "']";
         return false;
     }
     return true;

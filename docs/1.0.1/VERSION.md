@@ -58,6 +58,11 @@ La versión del formato NSMETA, los ABIs y los formatos de manifiesto tienen num
 Cambiar de `nsc 0.9.0` a `1.0.1-dev` no autoriza a modificar esos números si su contrato físico no
 cambió.
 
+Para NSMETA, la ventana productora vigente es explícitamente N−1/N: `1.0.1` lee artefactos
+producidos por `0.9.0` o `1.0.1`, incluidos sus sufijos `-dev` y `+build`. Versiones anteriores no se
+admiten por parecido numérico; deben pasar por una migración deliberada. El formato, fingerprint y
+cada versión ABI se verifican además de esta identidad de productor.
+
 ## Archivos que gobiernan la identidad
 
 - `CMakeLists.txt`: versión del proyecto y base visible `1.0.1-dev`.
@@ -76,3 +81,8 @@ The compatible product line is `1.0.1`, while development binaries identify them
 Build metadata distinguishes exact binaries without changing SemVer precedence. Language, compiler,
 NSMETA, native ABI, and runtime ABI versions are separate contracts and must not be advanced merely
 because another one changes.
+
+For NSMETA, the active producer window is explicitly N-1/N: compiler 1.0.1 reads artifacts produced
+by 0.9.0 or 1.0.1, including their `-dev` and `+build` suffixes. Older versions are not admitted by
+numeric resemblance; they require a deliberate migration. Format, fingerprint, and every ABI
+version are verified in addition to this producer identity.
