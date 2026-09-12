@@ -238,16 +238,14 @@ void testPackagedGuidance(TestContext& tests, const std::filesystem::path& sourc
 int main()
 {
     TestContext tests;
-    // Stage 51.x note: this checkpoint test's version assertion was hardcoded to "dev50"/"stage 50"
-    // and went stale the moment the tree moved on to Stage 51 -- it was never re-checked against a
-    // moving version string. Relaxed to what the whole rest of Stage 50.10 actually verifies: the
-    // ownership examples/documentation behavior, independent of which exact stage/version string is
-    // current. (testPackagedGuidance's README assertion below is a separate, pre-existing gap: this
-    // tree's examples/project_stage50/ has no README.md at all -- not authored here, not fabricated
-    // here either.)
+    // Pin the stable language contract, not the generated build identity. This intentionally turns
+    // red when the user-selected language line moves and remains stable across per-build suffixes.
+    // (testPackagedGuidance's README assertion below is a separate, pre-existing gap: this tree's
+    // examples/project_stage50/ has no README.md at all -- not authored here, not fabricated here
+    // either.)
     tests.expect(
-        nativesharp::kLanguageVersion == "0.1" && !nativesharp::kCompilerVersion.empty(),
-        "NativeSharp stays on language version 0.1 (compiler stage/version string moves independently)");
+        nativesharp::kLanguageVersion == "1.0.1" && !nativesharp::kCompilerVersion.empty(),
+        "NativeSharp stays on language version 1.0.1 (compiler build identity moves independently)");
 
     const std::filesystem::path sourceRoot = std::filesystem::path(NSC_SOURCE_DIR);
     testPositiveExample(tests, sourceRoot);

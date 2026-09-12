@@ -369,7 +369,7 @@ void testConsolidatedStage48Surface(TestContext& tests)
     // release string -- a prefix match that is really an equality in disguise. Requiring it to be
     // strictly longer is what makes the check mean "derives from" rather than "equals". The shape
     // of the suffix itself is nsc.version's business and is not duplicated here.
-    tests.expect(nativesharp::kLanguageVersion == "0.1"
+    tests.expect(nativesharp::kLanguageVersion == "1.0.1"
             && nativesharp::kCompilerVersion.starts_with(nativesharp::kCompilerReleaseVersion)
             && nativesharp::kCompilerVersion.size() > nativesharp::kCompilerReleaseVersion.size()
             && !nativesharp::kCompilerStage.empty(),
