@@ -177,7 +177,6 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "S_THUNK32[^\n]*`ExportedIdentity`" OR
        NOT pdb_dump MATCHES "((S_GPROC32|S_LPROC32)[^\n]*`DebugFixture\\.GeneratedState\\.cctor \\[generated\\]`|S_INLINEES[^\n]*[\n\r ]+inlinee:[^\n]*DebugFixture\\.GeneratedState\\.ccto)" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Resource\\.destruction-entry \\[generated\\]`" OR
-       NOT pdb_dump MATCHES "S_LPROC32[^\n]*`DebugFixture\\.DebugProblem\\.catch-filter \\[generated\\]`" OR
        NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugFixture\\.Program\\.Main\\.lambda#0 \\[generated: closure context destroy\\]`" OR
        NOT pdb_dump MATCHES "DebugFixture\\.Program\\.Main" OR
        NOT pdb_dump MATCHES "Main\\.ns" OR
@@ -220,6 +219,15 @@ foreach(level IN ITEMS O0 O2)
        NOT pdb_dump MATCHES "S_DEFRANGE")
         message(FATAL_ERROR
             "${level} PDB is missing debug summary, functions, variables, types or ranges\n"
+            "${pdb_dump}\n${pdb_error}")
+    endif()
+    # The catch-filter helper is a concrete callable at O0 and must remain visible there. At O2
+    # LLVM is allowed to fold the filter into the funclet and omit the local procedure record; the
+    # surrounding EH function, unwind tables, source lines, blocks, and ranges remain mandatory.
+    if(level STREQUAL "O0" AND
+       NOT pdb_dump MATCHES "S_LPROC32[^\n]*`DebugFixture\\.DebugProblem\\.catch-filter \\[generated\\]`")
+        message(FATAL_ERROR
+            "O0 PDB is missing the generated catch-filter procedure\n"
             "${pdb_dump}\n${pdb_error}")
     endif()
     if(pdb_dump MATCHES "S_THUNK32[^\n]*`DebugFixture\\.(DispatchSource\\.ReadValue|HandlerHost\\.(OnChanged|Read)|Program\\.OnStaticChanged)`")
