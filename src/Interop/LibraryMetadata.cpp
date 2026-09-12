@@ -500,11 +500,97 @@ bool buildMetadataModel(
 
     const auto types = compilation.nameLookup()->namedTypes();
     const auto members = compilation.memberModel()->members();
-    std::vector<std::size_t> rootTypeOrdinals;
+    std::unordered_set<std::size_t> rootProjectTypes;
     for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
     {
-        if (types[ordinal].projectOrdinal == *rootOrdinal) rootTypeOrdinals.push_back(ordinal);
+        if (types[ordinal].projectOrdinal == *rootOrdinal) rootProjectTypes.insert(ordinal);
     }
+    const auto isPubliclyReachableRootType = [&](std::size_t typeOrdinal) {
+        while (typeOrdinal < types.size())
+        {
+            const frontend::NamedTypeDeclaration& type = types[typeOrdinal];
+            if (!rootProjectTypes.contains(typeOrdinal) ||
+                type.accessibility != frontend::NamedTypeAccessibility::Public)
+            {
+                return false;
+            }
+            if (!type.containingTypeOrdinal.has_value()) return true;
+            typeOrdinal = *type.containingTypeOrdinal;
+        }
+        return false;
+    };
+    std::unordered_map<std::string, std::size_t> rootTypeByKey;
+    for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+    {
+        if (rootProjectTypes.contains(ordinal))
+            rootTypeByKey.emplace(typeKeyForOrdinal(types, ordinal), ordinal);
+    }
+    std::unordered_set<std::size_t> publishedRootTypes;
+    for (const std::size_t ordinal : rootProjectTypes)
+        if (isPubliclyReachableRootType(ordinal)) publishedRootTypes.insert(ordinal);
+
+    // Public signatures can expose a root-module helper whose declaration has no source-level
+    // public modifier (the canonical example is an `extern C delegate`). Such a type is part of
+    // the contract because a public record already names it, while an unrelated internal type is
+    // not. Compute that closure before serializing records instead of publishing every root type.
+    const auto includeTypeKey = [&](std::string typeKey) {
+        typeKey = metadataBaseTypeKey(std::move(typeKey));
+        const auto found = rootTypeByKey.find(typeKey);
+        return found != rootTypeByKey.end() && publishedRootTypes.insert(found->second).second;
+    };
+    bool addedPublishedType = true;
+    while (addedPublishedType)
+    {
+        addedPublishedType = false;
+        const std::vector<std::size_t> current(
+            publishedRootTypes.begin(), publishedRootTypes.end());
+        for (const std::size_t typeOrdinal : current)
+        {
+            if (const frontend::ClassInheritanceInfo* inheritance =
+                    compilation.inheritanceModel()->classInfo(typeOrdinal))
+                addedPublishedType = includeTypeKey(inheritance->baseTypeKey) || addedPublishedType;
+            if (typeOrdinal < types.size() &&
+                types[typeOrdinal].kind == frontend::NamedTypeDeclarationKind::Class)
+            {
+                for (const std::size_t interfaceOrdinal :
+                     compilation.interfaceModel()->interfacesOfClass(typeOrdinal))
+                    if (rootProjectTypes.contains(interfaceOrdinal))
+                        addedPublishedType = publishedRootTypes.insert(interfaceOrdinal).second ||
+                            addedPublishedType;
+            }
+            else if (const frontend::InterfaceTypeInfo* interfaceInfo =
+                         compilation.interfaceModel()->interfaceInfo(typeOrdinal))
+            {
+                for (const std::size_t interfaceOrdinal :
+                     interfaceInfo->directBaseInterfaceOrdinals)
+                    if (rootProjectTypes.contains(interfaceOrdinal))
+                        addedPublishedType = publishedRootTypes.insert(interfaceOrdinal).second ||
+                            addedPublishedType;
+            }
+            const frontend::StructValueLayout* structLayout =
+                compilation.objectLayoutModel()->structLayoutForType(typeOrdinal);
+            const frontend::ClassObjectLayout* classLayout =
+                compilation.objectLayoutModel()->layoutForType(typeOrdinal);
+            const auto includeLayout = [&](std::span<const frontend::ObjectFieldLayout> fields) {
+                for (const frontend::ObjectFieldLayout& field : fields)
+                    addedPublishedType = includeTypeKey(field.typeKey) || addedPublishedType;
+            };
+            if (structLayout != nullptr) includeLayout(structLayout->fields);
+            if (classLayout != nullptr) includeLayout(classLayout->fields);
+            for (const frontend::ClassMemberSymbol& member : members)
+            {
+                if (member.declaringTypeOrdinal != typeOrdinal ||
+                    (member.accessibility != frontend::ClassMemberAccessibility::Public &&
+                     member.accessibility != frontend::ClassMemberAccessibility::Protected))
+                    continue;
+                addedPublishedType = includeTypeKey(member.declaredTypeKey) || addedPublishedType;
+                for (const frontend::MethodParameterSymbol& parameter : member.parameters)
+                    addedPublishedType = includeTypeKey(parameter.typeKey) || addedPublishedType;
+            }
+        }
+    }
+    std::vector<std::size_t> rootTypeOrdinals(
+        publishedRootTypes.begin(), publishedRootTypes.end());
     std::sort(rootTypeOrdinals.begin(), rootTypeOrdinals.end(), [&](std::size_t left, std::size_t right) {
         return types[left].identity.key() < types[right].identity.key();
     });
@@ -660,20 +746,6 @@ bool buildMetadataModel(
     }
 
     std::unordered_set<std::size_t> rootTypes(rootTypeOrdinals.begin(), rootTypeOrdinals.end());
-    const auto isPubliclyReachableRootType = [&](std::size_t typeOrdinal) {
-        while (typeOrdinal < types.size())
-        {
-            const frontend::NamedTypeDeclaration& type = types[typeOrdinal];
-            if (!rootTypes.contains(typeOrdinal) ||
-                type.accessibility != frontend::NamedTypeAccessibility::Public)
-            {
-                return false;
-            }
-            if (!type.containingTypeOrdinal.has_value()) return true;
-            typeOrdinal = *type.containingTypeOrdinal;
-        }
-        return false;
-    };
     std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*> staticFields;
     for (const frontend::ProjectOopMirStaticField& field : compilation.oopMirModel()->staticFields())
     {
@@ -682,7 +754,8 @@ bool buildMetadataModel(
     std::vector<std::size_t> memberOrdinals;
     for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
     {
-        if (rootTypes.contains(members[ordinal].declaringTypeOrdinal)) memberOrdinals.push_back(ordinal);
+        if (isPubliclyReachableRootType(members[ordinal].declaringTypeOrdinal))
+            memberOrdinals.push_back(ordinal);
     }
     std::sort(memberOrdinals.begin(), memberOrdinals.end(), [&](std::size_t left, std::size_t right) {
         const frontend::ClassMemberSymbol& a = members[left];
@@ -1003,7 +1076,7 @@ bool buildMetadataModel(
     }
     for (const frontend::ProjectOopMirDispatchTable& table : compilation.oopMirModel()->dispatchTables())
     {
-        if (!rootTypes.contains(table.typeOrdinal)) continue;
+        if (!isPubliclyReachableRootType(table.typeOrdinal)) continue;
         LibraryMetadataDispatch record;
         record.typeKey = table.typeKey;
         record.stableTypeId = table.stableTypeId;
@@ -1044,7 +1117,8 @@ bool buildMetadataModel(
 
     for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
     {
-        if (function.isLambda || !function.isExportedC || !rootTypes.contains(function.declaringTypeOrdinal) ||
+        if (function.isLambda || !function.isExportedC ||
+            !isPubliclyReachableRootType(function.declaringTypeOrdinal) ||
             function.memberOrdinal >= members.size())
         {
             continue;
