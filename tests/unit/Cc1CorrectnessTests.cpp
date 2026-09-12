@@ -4027,6 +4027,10 @@ namespace cc1promoir
         // numero de la comprobacion que fallo.
         public const long NegativeWide = (-1) + 1L;
         public const long NegativeSum = (0 - 5) + 10L;
+        public const int DivisionWrap = (-2147483647 - 1) / -1;
+        public const int RemainderWrap = (-2147483647 - 1) % -1;
+        public const long DivisionWrap64 = (-9223372036854775807L - 1L) / -1L;
+        public const long RemainderWrap64 = (-9223372036854775807L - 1L) % -1L;
     }
 
     class P
@@ -4085,6 +4089,18 @@ namespace cc1promoir
             foldedTo("NegativeSum", "constant i64 5"),
             "127: `(0 - 5) + 10L` folds to 5 -- a negative magnitude plus a wider literal\n" +
                 text);
+        tests.expect(
+            foldedTo("DivisionWrap", "constant i32 -2147483648"),
+            "227: const int MinValue / -1 follows runtime wrap semantics\n" + text);
+        tests.expect(
+            foldedTo("RemainderWrap", "constant i32 0"),
+            "227: const int MinValue % -1 is zero\n" + text);
+        tests.expect(
+            foldedTo("DivisionWrap64", "constant i64 -9223372036854775808"),
+            "227: const long MinValue / -1 follows runtime wrap semantics\n" + text);
+        tests.expect(
+            foldedTo("RemainderWrap64", "constant i64 0"),
+            "227: const long MinValue % -1 is zero\n" + text);
     }
 
     return tests.result();

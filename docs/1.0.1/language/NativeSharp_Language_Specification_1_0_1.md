@@ -248,6 +248,12 @@ IR no debe añadir `nsw` ni `nuw` a una operación cuya semántica pública perm
 Las promociones se deciden antes de operar. Dos operandos estrechos promovidos a `int` desbordan,
 si lo hacen, en el ancho de `int`, no en el ancho original.
 
+La misma regla gobierna evaluación constante, inicializadores `const`, miembros enum, etiquetas de
+`switch` y ejecución. En particular, `MinValue / -1` produce `MinValue` y `MinValue % -1` produce
+cero también durante compilación; una etapa no puede rechazar una expresión que otra materializa.
+Las dependencias acíclicas entre constantes no tienen un límite semántico de longitud. Los ciclos se
+rechazan por identidad de miembro, no mediante un corte que también descarte cadenas válidas.
+
 ### NS-NUM-002 — Conversiones enteras explícitas
 
 Un cast entero explícito normaliza el valor al ancho de destino: conserva los N bits bajos y los

@@ -27,6 +27,8 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -70,6 +72,47 @@ public:
     }
 };
 
+class ChainResolver final : public ProjectConstantMemberResolver
+{
+public:
+    std::vector<std::pair<const AstNode*, std::size_t>> bindings;
+    std::vector<const AstNode*> initializers;
+
+    std::optional<std::size_t> resolveConstantMember(
+        const AstNode* syntax, std::optional<std::size_t>) const override
+    {
+        for (const auto& binding : bindings)
+        {
+            if (binding.first == syntax) return binding.second;
+        }
+        return std::nullopt;
+    }
+
+    bool describeConstantMember(
+        std::size_t ordinal,
+        bool& isEnum,
+        std::int64_t& enumValue,
+        std::string& enumUnderlyingTypeKey,
+        const AstNode*& initializer,
+        std::string& declaredTypeKey,
+        std::optional<std::size_t>& declaringTypeOrdinal) const override
+    {
+        if (ordinal >= initializers.size()) return false;
+        isEnum = false;
+        enumValue = 0;
+        enumUnderlyingTypeKey.clear();
+        initializer = initializers[ordinal];
+        declaredTypeKey = "builtin:int";
+        declaringTypeOrdinal = 0;
+        return initializer != nullptr;
+    }
+
+    std::string resolveTypeKey(const nativesharp::ast::TypeSyntax*) const override
+    {
+        return {};
+    }
+};
+
 AstNode* literal(AstArena& arena, std::uint64_t value, std::string suffix = {})
 {
     AstNode* node = arena.make<AstNode>(AstNodeKind::IntegerLiteralExpression, SourceRange());
@@ -92,6 +135,13 @@ AstNode* unary(AstArena& arena, TokenKind operation, AstNode* operand)
     AstNode* node = arena.make<AstNode>(AstNodeKind::UnaryExpression, SourceRange());
     node->setTokenKind(operation);
     node->setFirst(operand);
+    return node;
+}
+
+AstNode* identifier(AstArena& arena, std::string name)
+{
+    AstNode* node = arena.make<AstNode>(AstNodeKind::IdentifierExpression, SourceRange());
+    node->setText(std::move(name));
     return node;
 }
 }
@@ -128,6 +178,42 @@ int main()
             maximumUnsigned.has_value() && maximumUnsigned->typeKey == "builtin:ulong" &&
                 maximumUnsigned->bits == std::numeric_limits<std::uint64_t>::max(),
             "an unsuffixed positive literal above long.MaxValue is typed as ulong");
+    }
+
+    // Dependency length is not expression depth. The old depth=32 guard rejected this valid
+    // chain even though it is acyclic; ordinal tracking now rejects only an actual cycle.
+    {
+        ChainResolver chain;
+        constexpr std::size_t count = 80;
+        chain.initializers.resize(count);
+        for (std::size_t index = 0; index + 1 < count; ++index)
+        {
+            AstNode* reference = identifier(arena, "C" + std::to_string(index + 1));
+            chain.bindings.emplace_back(reference, index + 1);
+            chain.initializers[index] = reference;
+        }
+        chain.initializers[count - 1] = literal(arena, 42);
+        AstNode* root = identifier(arena, "C0");
+        chain.bindings.emplace_back(root, 0);
+        const auto folded = ProjectIntegerEvaluator(&chain).evaluate(root);
+        tests.expect(
+            folded.has_value() && folded->typeKey == "builtin:int" && folded->bits == 42,
+            "an acyclic chain longer than 32 constants folds without an arbitrary dependency cutoff");
+    }
+    {
+        ChainResolver cycle;
+        cycle.initializers.resize(2);
+        AstNode* toSecond = identifier(arena, "B");
+        AstNode* toFirst = identifier(arena, "A");
+        cycle.bindings.emplace_back(toSecond, 1);
+        cycle.bindings.emplace_back(toFirst, 0);
+        cycle.initializers[0] = toSecond;
+        cycle.initializers[1] = toFirst;
+        AstNode* root = identifier(arena, "A");
+        cycle.bindings.emplace_back(root, 0);
+        tests.expect(
+            !ProjectIntegerEvaluator(&cycle).evaluate(root).has_value(),
+            "a transitive constant cycle is rejected by member identity");
     }
 
     // -------------------------------------------------------------------------------------

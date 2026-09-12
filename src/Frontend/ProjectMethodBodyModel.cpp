@@ -11623,10 +11623,18 @@ bool ProjectMethodBodyModel::isCompileTimeConstantExpression(
                             const std::int64_t minimum = width == 64
                                 ? std::numeric_limits<std::int64_t>::min()
                                 : -(std::int64_t{1} << (width - 1U));
-                            if (signedLeft == minimum && signedRight == -1) return std::nullopt;
-                            value = static_cast<std::uint64_t>(operation == TokenKind::Slash
-                                ? signedLeft / signedRight
-                                : signedLeft % signedRight);
+                            if (signedLeft == minimum && signedRight == -1)
+                            {
+                                value = operation == TokenKind::Slash
+                                    ? static_cast<std::uint64_t>(minimum)
+                                    : 0U;
+                            }
+                            else
+                            {
+                                value = static_cast<std::uint64_t>(operation == TokenKind::Slash
+                                    ? signedLeft / signedRight
+                                    : signedLeft % signedRight);
+                            }
                         }
                         else
                         {

@@ -6,6 +6,7 @@
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 
@@ -15,10 +16,10 @@ namespace
 {
 using lexer::TokenKind;
 
-// Profundidad maxima de expansion. Un campo `const` puede definirse en terminos de otro, y nada
-// impide sintacticamente un ciclo (`A = B; B = A;`). El limite corta el ciclo sin necesitar que el
-// modelo de miembros demuestre que no existe.
-constexpr std::size_t kMaximumDepth = 32;
+// Expression nesting remains bounded independently from the constant dependency graph. Member
+// cycles are detected by ordinal below, so a valid chain of more than 32 constants is no longer
+// rejected merely because it is long.
+constexpr std::size_t kMaximumExpressionDepth = 1024;
 
 // LA TABLA VIVE EN include/nativesharp/Frontend/BuiltinIntegerTypes.h, y desde el 2026-09-03 hay
 // UNA SOLA. Estaba escrita aqui y otra vez en ProjectTypeConversion.cpp, con un comentario que
@@ -113,15 +114,17 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluate(
     const ast::AstNode* expression,
     std::optional<std::size_t> declaringTypeOrdinal) const
 {
-    return evaluateNode(expression, 0, declaringTypeOrdinal);
+    std::vector<std::size_t> activeMembers;
+    return evaluateNode(expression, 0, declaringTypeOrdinal, activeMembers);
 }
 
 std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateNode(
     const ast::AstNode* expression,
     std::size_t depth,
-    std::optional<std::size_t> declaringTypeOrdinal) const
+    std::optional<std::size_t> declaringTypeOrdinal,
+    std::vector<std::size_t>& activeMembers) const
 {
-    if (expression == nullptr || depth > kMaximumDepth) return std::nullopt;
+    if (expression == nullptr || depth > kMaximumExpressionDepth) return std::nullopt;
 
     switch (expression->kind())
     {
@@ -147,7 +150,7 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateNode(
             // el evaluador anterior simplemente devolvia el operando intacto -- de ahi C-001. Aqui
             // el operando se re-normaliza al tipo destino, que es lo mismo que hara el backend.
             const std::optional<ProjectIntegerValue> operand =
-                evaluateNode(expression->first(), depth + 1, declaringTypeOrdinal);
+                evaluateNode(expression->first(), depth + 1, declaringTypeOrdinal, activeMembers);
             if (!operand.has_value()) return std::nullopt;
             if (resolver_ == nullptr || expression->typeSyntax() == nullptr) return std::nullopt;
             const std::string targetKey = resolver_->resolveTypeKey(expression->typeSyntax());
@@ -160,14 +163,14 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateNode(
         }
 
         case ast::AstNodeKind::UnaryExpression:
-            return evaluateUnary(expression, depth, declaringTypeOrdinal);
+            return evaluateUnary(expression, depth, declaringTypeOrdinal, activeMembers);
 
         case ast::AstNodeKind::BinaryExpression:
-            return evaluateBinary(expression, depth, declaringTypeOrdinal);
+            return evaluateBinary(expression, depth, declaringTypeOrdinal, activeMembers);
 
         case ast::AstNodeKind::IdentifierExpression:
         case ast::AstNodeKind::MemberExpression:
-            return evaluateMember(expression, depth, declaringTypeOrdinal);
+            return evaluateMember(expression, depth, declaringTypeOrdinal, activeMembers);
 
         default:
             return std::nullopt;
@@ -177,10 +180,11 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateNode(
 std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateUnary(
     const ast::AstNode* expression,
     std::size_t depth,
-    std::optional<std::size_t> declaringTypeOrdinal) const
+    std::optional<std::size_t> declaringTypeOrdinal,
+    std::vector<std::size_t>& activeMembers) const
 {
     const std::optional<ProjectIntegerValue> operand =
-        evaluateNode(expression->first(), depth + 1, declaringTypeOrdinal);
+        evaluateNode(expression->first(), depth + 1, declaringTypeOrdinal, activeMembers);
     if (!operand.has_value()) return std::nullopt;
 
     ProjectIntegerValue value;
@@ -224,13 +228,14 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateUnary(
 std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateBinary(
     const ast::AstNode* expression,
     std::size_t depth,
-    std::optional<std::size_t> declaringTypeOrdinal) const
+    std::optional<std::size_t> declaringTypeOrdinal,
+    std::vector<std::size_t>& activeMembers) const
 {
     const std::optional<ProjectIntegerValue> left =
-        evaluateNode(expression->first(), depth + 1, declaringTypeOrdinal);
+        evaluateNode(expression->first(), depth + 1, declaringTypeOrdinal, activeMembers);
     if (!left.has_value()) return std::nullopt;
     const std::optional<ProjectIntegerValue> right =
-        evaluateNode(expression->second(), depth + 1, declaringTypeOrdinal);
+        evaluateNode(expression->second(), depth + 1, declaringTypeOrdinal, activeMembers);
     if (!right.has_value()) return std::nullopt;
 
     const TokenKind operation = expression->tokenKind();
@@ -362,8 +367,9 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateBinary(
 
 std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateMember(
     const ast::AstNode* expression,
-    std::size_t depth,
-    std::optional<std::size_t> declaringTypeOrdinal) const
+    std::size_t,
+    std::optional<std::size_t> declaringTypeOrdinal,
+    std::vector<std::size_t>& activeMembers) const
 {
     // Dos formas llegan aqui y las dos importan: `Color.Red`, y `WM_DESTROY` -- que es lo que es
     // todo identificador de mensaje de Win32.
@@ -405,8 +411,16 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateMember(
         return value;
     }
 
+    if (std::find(activeMembers.begin(), activeMembers.end(), *ordinal) != activeMembers.end())
+    {
+        return std::nullopt;
+    }
+    activeMembers.push_back(*ordinal);
+    // The initializer starts a new expression tree. Its syntax depth is independent from how
+    // many named constants led to it; `activeMembers` is what guards dependency cycles.
     const std::optional<ProjectIntegerValue> expanded =
-        evaluateNode(initializer, depth + 1, memberDeclaringType);
+        evaluateNode(initializer, 0, memberDeclaringType, activeMembers);
+    activeMembers.pop_back();
     if (!expanded.has_value()) return std::nullopt;
     if (!isIntegerType(declaredTypeKey)) return expanded;
 

@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -103,8 +104,9 @@ public:
     }
 
     // Evalua una expresion constante entera. Devuelve nullopt cuando no es constante, cuando la
-    // operacion no esta definida (division por cero, minimo-con-signo / -1, shift fuera de rango)
-    // o cuando el evaluador no cubre esa forma. NUNCA ejecuta una operacion de C++ con
+    // operacion no esta definida (division por cero, shift fuera de rango)
+    // o cuando el evaluador no cubre esa forma. MinValue / -1 wraps by the language contract.
+    // NUNCA ejecuta una operacion de C++ con
     // comportamiento indefinido: un texto de entrada no puede llevar al compilador ahi.
     std::optional<ProjectIntegerValue> evaluate(
         const ast::AstNode* expression,
@@ -114,22 +116,26 @@ private:
     std::optional<ProjectIntegerValue> evaluateNode(
         const ast::AstNode* expression,
         std::size_t depth,
-        std::optional<std::size_t> declaringTypeOrdinal) const;
+        std::optional<std::size_t> declaringTypeOrdinal,
+        std::vector<std::size_t>& activeMembers) const;
 
     std::optional<ProjectIntegerValue> evaluateUnary(
         const ast::AstNode* expression,
         std::size_t depth,
-        std::optional<std::size_t> declaringTypeOrdinal) const;
+        std::optional<std::size_t> declaringTypeOrdinal,
+        std::vector<std::size_t>& activeMembers) const;
 
     std::optional<ProjectIntegerValue> evaluateBinary(
         const ast::AstNode* expression,
         std::size_t depth,
-        std::optional<std::size_t> declaringTypeOrdinal) const;
+        std::optional<std::size_t> declaringTypeOrdinal,
+        std::vector<std::size_t>& activeMembers) const;
 
     std::optional<ProjectIntegerValue> evaluateMember(
         const ast::AstNode* expression,
         std::size_t depth,
-        std::optional<std::size_t> declaringTypeOrdinal) const;
+        std::optional<std::size_t> declaringTypeOrdinal,
+        std::vector<std::size_t>& activeMembers) const;
 
     const ProjectConstantMemberResolver* resolver_ = nullptr;
 };
