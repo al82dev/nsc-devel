@@ -6,6 +6,7 @@
 #include "nativesharp/Linker/CoffArchiveVerifier.h"
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
+#include "nativesharp/Linker/PdbVerifier.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 
@@ -32,6 +33,7 @@ using nativesharp::interop::LibraryMetadataCodec;
 using nativesharp::linker::CoffArchiveVerifier;
 using nativesharp::linker::LldLinker;
 using nativesharp::linker::PeExecutableVerifier;
+using nativesharp::linker::PdbVerifier;
 using nativesharp::runtime::WindowsRuntimeBuilder;
 using nativesharp::tests::TestContext;
 
@@ -155,6 +157,29 @@ ExitCode verifyLibraryArtifacts(const std::filesystem::path& metadata,
     const std::string runtimeText = runtime.string();
     const std::array<std::string_view, 4> args = {
         "--verify-library-artifacts", metadataText, libraryText, runtimeText
+    };
+    const ExitCode result = driver.run(args, out, err);
+    output = out.str();
+    error = err.str();
+    return result;
+}
+
+ExitCode verifyDebugLibraryArtifacts(const std::filesystem::path& metadata,
+                                     const std::filesystem::path& library,
+                                     const std::filesystem::path& runtime,
+                                     const std::filesystem::path& pdb,
+                                     std::string& output,
+                                     std::string& error)
+{
+    Driver driver;
+    std::ostringstream out;
+    std::ostringstream err;
+    const std::string metadataText = metadata.string();
+    const std::string libraryText = library.string();
+    const std::string runtimeText = runtime.string();
+    const std::string pdbText = pdb.string();
+    const std::array<std::string_view, 5> args = {
+        "--verify-library-artifacts", metadataText, libraryText, runtimeText, pdbText
     };
     const ExitCode result = driver.run(args, out, err);
     output = out.str();
@@ -422,6 +447,30 @@ namespace Stage46.Shared
                      output.find("debug-information: full") != std::string::npos &&
                      output.find(debugPdb.generic_string()) != std::string::npos,
                  "debug DLL generation creates and reports its matching PDB");
+    if (std::filesystem::is_regular_file(debugPdb))
+    {
+        PdbVerifier pdbVerifier;
+        tests.expect(pdbVerifier.verify(debugPdb) && pdbVerifier.info().age != 0 &&
+                         pdbVerifier.info().hasModuleRecords && pdbVerifier.info().hasPublicSymbols &&
+                         pdbVerifier.info().hasSourceFiles && pdbVerifier.info().hasSourceChecksums,
+                     "PDB verifier recognizes standard identity, modules, publics, sources, and checksums");
+
+        output.clear();
+        error.clear();
+        tests.expect(verifyDebugLibraryArtifacts(directory / "NativeMathDebug.nsmeta",
+                         directory / "NativeMathDebug.lib", debugDll, debugPdb, output, error) ==
+                         ExitCode::Success,
+                     "library artifact verification accepts a matching DLL/PDB identity pair");
+        tests.expect(output.find("pdb-source-checksums: present") != std::string::npos &&
+                         output.find("rsds-pdb-name: NativeMathDebug.pdb") != std::string::npos,
+                     "artifact verification reports the complete debug surface and portable RSDS name");
+    }
+
+    const std::filesystem::path invalidPdb = directory / "Invalid.pdb";
+    writeFile(invalidPdb, "not a Microsoft PDB");
+    PdbVerifier invalidVerifier;
+    tests.expect(!invalidVerifier.verify(invalidPdb) && !invalidVerifier.error().empty(),
+                 "PDB verifier rejects a corrupt artifact with a deterministic diagnostic");
 }
 
 void testPrecompiledDllRegressionCorpus(TestContext& tests, const std::filesystem::path& root)

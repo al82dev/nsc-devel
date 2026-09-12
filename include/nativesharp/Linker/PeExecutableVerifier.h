@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -27,6 +28,12 @@ struct PeExecutableInfo final
     std::uint32_t exceptionDirectoryRva = 0;
     std::uint32_t exceptionDirectorySize = 0;
     std::uint32_t clrDirectoryRva = 0;
+    std::uint32_t debugDirectoryRva = 0;
+    std::uint32_t debugDirectorySize = 0;
+    bool hasCodeViewRsds = false;
+    std::array<std::uint8_t, 16> codeViewGuid{};
+    std::uint32_t codeViewAge = 0;
+    std::string codeViewPdbFileName;
     std::vector<std::string> exportedSymbols;
     std::vector<std::string> importedLibraries;
     std::vector<PeImportedSymbol> importedSymbols;

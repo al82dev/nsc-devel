@@ -24,8 +24,11 @@ constexpr std::size_t kPe32PlusDataDirectoryOffset = 112;
 constexpr std::size_t kExportDirectoryIndex = 0;
 constexpr std::size_t kImportDirectoryIndex = 1;
 constexpr std::size_t kExceptionDirectoryIndex = 3;
+constexpr std::size_t kDebugDirectoryIndex = 6;
 constexpr std::size_t kClrDirectoryIndex = 14;
 constexpr std::size_t kImportDescriptorSize = 20;
+constexpr std::size_t kDebugDirectoryEntrySize = 28;
+constexpr std::uint32_t kImageDebugTypeCodeView = 2;
 
 std::uint16_t readU16(const std::vector<unsigned char>& bytes, std::size_t offset)
 {
@@ -218,6 +221,12 @@ bool PeExecutableVerifier::verifyImage(
     info_.exceptionDirectorySize = readU32(
         bytes,
         optionalOffset + kPe32PlusDataDirectoryOffset + (kExceptionDirectoryIndex * 8) + 4);
+    info_.debugDirectoryRva = readU32(
+        bytes,
+        optionalOffset + kPe32PlusDataDirectoryOffset + (kDebugDirectoryIndex * 8));
+    info_.debugDirectorySize = readU32(
+        bytes,
+        optionalOffset + kPe32PlusDataDirectoryOffset + (kDebugDirectoryIndex * 8) + 4);
     info_.clrDirectoryRva = readU32(
         bytes,
         optionalOffset + kPe32PlusDataDirectoryOffset + (kClrDirectoryIndex * 8));
@@ -335,6 +344,56 @@ bool PeExecutableVerifier::verifyImage(
                 }
                 info_.exportedSymbols.push_back(*symbolName);
             }
+        }
+    }
+
+    if (info_.debugDirectoryRva != 0 || info_.debugDirectorySize != 0)
+    {
+        if (info_.debugDirectoryRva == 0 || info_.debugDirectorySize == 0 ||
+            info_.debugDirectorySize % kDebugDirectoryEntrySize != 0)
+        {
+            error_ = "PE debug directory has an invalid RVA/size pair";
+            return false;
+        }
+        const std::optional<std::size_t> debugOffset =
+            rvaToOffset(info_.debugDirectoryRva, sections, bytes.size());
+        if (!debugOffset.has_value() || !rangeFits(*debugOffset, info_.debugDirectorySize, bytes.size()))
+        {
+            error_ = "PE debug directory RVA does not map to file data";
+            return false;
+        }
+        const std::size_t entryCount = info_.debugDirectorySize / kDebugDirectoryEntrySize;
+        for (std::size_t index = 0; index < entryCount; ++index)
+        {
+            const std::size_t entryOffset = *debugOffset + (index * kDebugDirectoryEntrySize);
+            if (readU32(bytes, entryOffset + 12) != kImageDebugTypeCodeView) continue;
+            const std::uint32_t dataSize = readU32(bytes, entryOffset + 16);
+            const std::uint32_t dataOffset = readU32(bytes, entryOffset + 24);
+            if (dataSize < 25 || !rangeFits(dataOffset, dataSize, bytes.size()))
+            {
+                error_ = "PE CodeView debug record is truncated";
+                return false;
+            }
+            if (bytes[dataOffset] != 'R' || bytes[dataOffset + 1] != 'S' ||
+                bytes[dataOffset + 2] != 'D' || bytes[dataOffset + 3] != 'S')
+            {
+                continue;
+            }
+            if (info_.hasCodeViewRsds)
+            {
+                error_ = "PE contains more than one RSDS CodeView record";
+                return false;
+            }
+            info_.hasCodeViewRsds = true;
+            std::copy_n(bytes.begin() + dataOffset + 4, info_.codeViewGuid.size(), info_.codeViewGuid.begin());
+            info_.codeViewAge = readU32(bytes, dataOffset + 20);
+            const std::optional<std::string> pdbName = readCString(bytes, dataOffset + 24);
+            if (!pdbName.has_value() || pdbName->empty() || pdbName->size() + 25 > dataSize)
+            {
+                error_ = "PE RSDS record has an invalid PDB file name";
+                return false;
+            }
+            info_.codeViewPdbFileName = *pdbName;
         }
     }
 

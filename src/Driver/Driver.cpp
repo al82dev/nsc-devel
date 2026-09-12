@@ -48,6 +48,7 @@
 #include "nativesharp/Linker/CoffArchiveVerifier.h"
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
+#include "nativesharp/Linker/PdbVerifier.h"
 #include "nativesharp/Linker/WindowsExecutableBuilder.h"
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
 #include "nativesharp/MIR/MirDumper.h"
@@ -2835,7 +2836,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     if (args.size() == 3 && args[0] == "--verify-library-artifacts")
     {
-        return verifyLibraryArtifacts(args[1], args[2], {}, output, error);
+        return verifyLibraryArtifacts(args[1], args[2], {}, {}, output, error);
     }
 
     if (args.size() == 3 && args[0] == "--verify-installation-manifest")
@@ -2889,7 +2890,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     if (args.size() == 4 && args[0] == "--verify-library-artifacts")
     {
-        return verifyLibraryArtifacts(args[1], args[2], args[3], output, error);
+        return verifyLibraryArtifacts(args[1], args[2], args[3], {}, output, error);
+    }
+
+    if (args.size() == 5 && args[0] == "--verify-library-artifacts")
+    {
+        return verifyLibraryArtifacts(args[1], args[2], args[3], args[4], output, error);
     }
 
     if (args.size() == 4 && args[0] == "--write-installation-manifest")
@@ -3051,7 +3057,7 @@ void Driver::printHelp(std::ostream &output)
               "<file.nsmeta>\n"
            << "  nsc --verify-library-metadata <file.nsmeta>\n"
            << "  nsc --verify-library-artifacts <file.nsmeta> <file.lib> "
-              "[file.dll]\n"
+              "[file.dll [file.pdb]]\n"
            << "  nsc --write-toolchain-contract <file.contract>\n"
            << "  nsc --verify-toolchain-contract <file.contract>\n"
            << "  nsc --print-compatibility-policy\n"
@@ -4653,12 +4659,14 @@ ExitCode Driver::verifyLibraryMetadata(std::string_view inputPath, std::ostream 
 ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
     std::string_view libraryPath,
     std::string_view runtimePath,
+    std::string_view pdbPath,
     std::ostream &output,
     std::ostream &error)
 {
     const std::filesystem::path metadataFile(metadataPath);
     const std::filesystem::path libraryFile(libraryPath);
     const std::filesystem::path runtimeFile(runtimePath);
+    const std::filesystem::path pdbFile(pdbPath);
 
     interop::LibraryMetadataCodec codec;
     interop::LibraryMetadata metadata;
@@ -4692,6 +4700,7 @@ ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
     }
 
     std::size_t runtimeExportCount = 0;
+    linker::PeExecutableInfo runtimeInfo;
     if (!runtimePath.empty())
     {
         linker::PeExecutableVerifier runtimeVerifier;
@@ -4719,6 +4728,50 @@ ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
             return ExitCode::CompilationError;
         }
         runtimeExportCount = actualExports.size();
+        runtimeInfo = runtimeVerifier.info();
+    }
+
+    std::optional<linker::PdbInfo> debugInfo;
+    if (!pdbPath.empty())
+    {
+        if (runtimePath.empty())
+        {
+            error << "nsc: error: a PDB artifact requires its PE DLL artifact\n";
+            return ExitCode::CommandLineError;
+        }
+        if (!runtimeInfo.hasCodeViewRsds)
+        {
+            error << "nsc: error: runtime DLL has no RSDS CodeView record for PDB verification\n";
+            return ExitCode::CompilationError;
+        }
+        linker::PdbVerifier pdbVerifier;
+        if (!pdbVerifier.verify(pdbFile))
+        {
+            error << "nsc: error: PDB artifact '" << pdbFile.generic_string()
+                  << "' is not a valid Microsoft PDB: " << pdbVerifier.error() << '\n';
+            return ExitCode::CompilationError;
+        }
+        const linker::PdbInfo &pdb = pdbVerifier.info();
+        if (pdb.guid != runtimeInfo.codeViewGuid || pdb.age != runtimeInfo.codeViewAge)
+        {
+            error << "nsc: error: PDB identity does not match the runtime DLL RSDS record\n";
+            return ExitCode::CompilationError;
+        }
+        if (std::filesystem::path(runtimeInfo.codeViewPdbFileName).filename() != pdbFile.filename() ||
+            std::filesystem::path(runtimeInfo.codeViewPdbFileName).has_parent_path())
+        {
+            error << "nsc: error: runtime DLL RSDS PDB name is not the portable matching basename: '"
+                  << runtimeInfo.codeViewPdbFileName << "'\n";
+            return ExitCode::CompilationError;
+        }
+        if (!pdb.hasModuleRecords || !pdb.hasPublicSymbols || !pdb.hasSourceFiles || !pdb.hasSourceChecksums)
+        {
+            error << "nsc: error: PDB debug surface is incomplete; modules=" << pdb.hasModuleRecords
+                  << ", publics=" << pdb.hasPublicSymbols << ", sources=" << pdb.hasSourceFiles
+                  << ", checksums=" << pdb.hasSourceChecksums << '\n';
+            return ExitCode::CompilationError;
+        }
+        debugInfo = pdb;
     }
 
     // Artifact integrity is independent from source reconstruction. Validate COFF and the
@@ -4749,6 +4802,17 @@ ExitCode Driver::verifyLibraryArtifacts(std::string_view metadataPath,
         output << "product-kind: DLL plus import archive\n"
                << "runtime: " << runtimeFile.generic_string() << '\n'
                << "runtime-exports: " << runtimeExportCount << '\n';
+    }
+    if (debugInfo.has_value())
+    {
+        output << "pdb: " << pdbFile.generic_string() << '\n'
+               << "pdb-age: " << debugInfo->age << '\n'
+               << "pdb-streams: " << debugInfo->streamCount << '\n'
+               << "pdb-modules: present\n"
+               << "pdb-public-symbols: present\n"
+               << "pdb-sources: present\n"
+               << "pdb-source-checksums: present\n"
+               << "rsds-pdb-name: " << runtimeInfo.codeViewPdbFileName << '\n';
     }
     output << "abi-fingerprint: " << interop::LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint) << '\n';
     printMetadataAbiContract(metadata, output);

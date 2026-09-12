@@ -351,6 +351,7 @@ add_library(nsc_linker STATIC
     src/Linker/LldLinker.cpp
     src/Linker/CoffArchiveVerifier.cpp
     src/Linker/PeExecutableVerifier.cpp
+    src/Linker/PdbVerifier.cpp
     src/Linker/WindowsExecutableBuilder.cpp
     src/Linker/WindowsLibraryBuilder.cpp
     src/Linker/WindowsRuntimeImports.cpp)

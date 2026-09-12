@@ -87,7 +87,8 @@ private:
         std::ostream& output,
         std::ostream& error);
     static ExitCode verifyLibraryArtifacts(std::string_view metadataPath, std::string_view libraryPath,
-                                           std::string_view runtimePath, std::ostream& output, std::ostream& error);
+                                           std::string_view runtimePath, std::string_view pdbPath,
+                                           std::ostream& output, std::ostream& error);
     static ExitCode printCodeGeneration(
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
         std::ostream& output,
