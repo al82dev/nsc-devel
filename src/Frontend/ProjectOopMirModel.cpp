@@ -303,11 +303,23 @@ std::optional<std::uint64_t> integerConstantValue(
                     const std::int64_t minimum = width == 64
                         ? std::numeric_limits<std::int64_t>::min()
                         : -(std::int64_t{1} << (width - 1U));
-                    if (lhs == minimum && rhs == -1) return std::nullopt;
-                    const std::int64_t computed = node->operation == lexer::TokenKind::Slash
-                        ? lhs / rhs
-                        : lhs % rhs;
-                    result = static_cast<std::uint64_t>(computed);
+                    // NativeSharp signed arithmetic wraps. C++ cannot evaluate MinValue / -1
+                    // directly because that expression is undefined in the compiler host, so
+                    // materialize the language result without executing the host operation. This
+                    // mirrors ProjectIntegerEvaluator and both LLVM lowering paths.
+                    if (lhs == minimum && rhs == -1)
+                    {
+                        result = node->operation == lexer::TokenKind::Slash
+                            ? static_cast<std::uint64_t>(minimum)
+                            : std::uint64_t{0};
+                    }
+                    else
+                    {
+                        const std::int64_t computed = node->operation == lexer::TokenKind::Slash
+                            ? lhs / rhs
+                            : lhs % rhs;
+                        result = static_cast<std::uint64_t>(computed);
+                    }
                 }
                 else
                 {
