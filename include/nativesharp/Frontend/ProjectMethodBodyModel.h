@@ -216,6 +216,11 @@ struct MethodExpressionTypeBinding final
     bool ownershipFreshOwner = false;
     std::optional<std::size_t> ownershipSourceLocalOrdinal;
     std::optional<std::size_t> ownershipSourceParameterOrdinal;
+    // The assignment expression targets storage that owns and must replace its current value.
+    // Semantic analysis is the single authority for this decision; HIR must not reconstruct it
+    // from the final syntax shape because an owned field and an element of an owned backing array
+    // reach the same address-based store through different AST nodes.
+    bool ownsStorageDestination = false;
 };
 
 enum class MethodRuntimeTypeOperationKind
@@ -1197,6 +1202,7 @@ private:
         bool ownershipFreshOwner = false;
         std::optional<std::size_t> ownershipSourceLocalOrdinal;
         std::optional<std::size_t> ownershipSourceParameterOrdinal;
+        bool ownsStorageDestination = false;
         std::optional<std::size_t> borrowedLocalOrdinal;
         const ast::AstNode* receiverSyntax = nullptr;
         std::string receiverTypeKey;

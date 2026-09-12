@@ -1769,6 +1769,84 @@ void testMoveOutOfPropertyIsRejected(TestContext& tests, const std::filesystem::
         "move(...) member source must be an assignable owned field");
 }
 
+// --- Entrega 225: una regla para toda ranura poseida -----------------------------------------
+//
+// El arreglo nativo conserva su modelo explicito: `delete[]` libera el buffer y no recorre sus
+// elementos. Lo que cambia aqui es mas pequeno y necesario: cuando ESE buffer se alcanza mediante
+// un binding `owned`/`raii`, una escritura en un elemento referencia es una sustitucion de una
+// ranura poseida. Debe aceptar solamente una transferencia y liberar el valor desplazado. Sin esa
+// regla, `items[0] = move(next)` perdia el owner anterior aunque ambos movimientos fueran validos.
+
+void testOwnedArrayElementReplacementReleasesDisplacedValue(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "OwnedArrayElementReplacement";
+    writeProject(directory, "OwnedArrayElementReplacement");
+    writeFile(directory / "Main.ns", std::string(kPrelude) + R"NS(
+    class Holder
+    {
+        private owned Resource[] items;
+
+        public Holder()
+        {
+            items = new Resource[1];
+            items[0] = null;
+        }
+
+        public void Put(owned Resource value) { items[0] = move(value); }
+        public void Clear() { items[0] = null; }
+    }
+
+    class Program
+    {
+        public static int Scope()
+        {
+            raii Holder holder = new Holder();
+            raii Resource first = new Resource(1);
+            raii Resource second = new Resource(2);
+            holder.Put(move(first));
+            holder.Put(move(second));
+            holder.Clear();
+            return Resource.Destructions();
+        }
+
+        public static int Main() { return Scope(); }
+    }
+)NS");
+
+    // La entrega se itera en O0. El baseline acumulativo decide despues si se abre una matriz mas
+    // amplia; esta prueba no consume una segunda compilacion O2 por cada ejecucion de la suite.
+    compileAndRun(
+        tests, directory, "-O0", "owned-array element replacement [-O0]", 2);
+}
+
+void testPlainAliasIntoOwnedArrayElementIsRejected(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string source = std::string(kPrelude) + R"NS(
+    class Holder
+    {
+        private owned Resource[] items;
+
+        public Holder()
+        {
+            items = new Resource[1];
+            items[0] = null;
+        }
+
+        public void StoreAlias(Resource value) { items[0] = value; }
+    }
+
+    class Program { public static int Main() { return 0; } }
+)NS";
+    reject(
+        tests,
+        root,
+        "PlainAliasIntoOwnedArrayElementRejected",
+        source,
+        "assignment to an element of an owned array requires an ownership-transfer expression");
+}
+
 // --- SHR-005: el residuo, y era el ARREGLO FIJO -----------------------------------------------
 //
 // EL HUECO, medido. `arrayElementMoveTarget` y la comprobacion de fuente de `move(...)` decidian
@@ -1952,6 +2030,9 @@ int main()
     testDeleteOfOwnedFieldIsRejected(tests, root);
     testStringLiteralIntoOwnedStringFieldIsRejected(tests, root);
     testMoveOutOfPropertyIsRejected(tests, root);
+
+    testOwnedArrayElementReplacementReleasesDisplacedValue(tests, root);
+    testPlainAliasIntoOwnedArrayElementIsRejected(tests, root);
 
     // SHR-005 -- el residuo, y era el arreglo fijo.
     testMoveIntoAndOutOfAFixedArraySlot(tests, root);

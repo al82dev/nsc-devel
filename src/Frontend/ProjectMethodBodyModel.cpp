@@ -10208,21 +10208,45 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // check (see the MoveExpression case in analyzeExpression) independently verifies the
     // source; this only widens which assignment TARGETS are allowed to receive it.
     bool arrayElementMoveTarget = false;
+    bool ownedArrayElementOwnsStorage = false;
     if (!raiiTargetLocal.has_value() && expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
         left.valid && left.assignable)
     {
-        const std::string receiverTypeKey = expression->first()->first() != nullptr
-            ? analyzeExpression(
-                  expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics)
-                  .typeKey
-            : "<error>";
+        ExpressionResult receiver;
+        if (expression->first()->first() != nullptr)
+        {
+            receiver = analyzeExpression(
+                expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        }
+        const std::string& receiverTypeKey = receiver.typeKey;
         // SHR-005: y el ARREGLO FIJO, por la misma razon y con la misma forma. La fuente
         // `move(buf[i])` se admite unas mil lineas mas arriba con esta misma condicion doble; si
         // solo se admitiera de un lado, `dst[i] = move(src[j])` compilaria en una direccion y no
         // en la otra. La admision de destino es simetrica a la de fuente a proposito.
         arrayElementMoveTarget = ProjectTypeConversion::isNativeArray(receiverTypeKey) ||
             ProjectMemberModel::fixedArrayElementTypeKey(receiverTypeKey).has_value();
+
+        // A native array is raw storage, but an array reached through an `owned`/`raii` binding is
+        // also the container's owning element store. Moving into one of its reference-like slots
+        // therefore has the same replacement contract as writing an `owned` field: the RHS must
+        // transfer ownership and the displaced value must be released before the new value is
+        // installed. Value elements remain ordinary value stores.
+        bool receiverOwnsStorage = receiver.ownership == sema::OwnershipKind::Owned;
+        if (!receiverOwnsStorage && receiver.assignmentMemberOrdinal.has_value() &&
+            memberModel_ != nullptr &&
+            *receiver.assignmentMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& receiverMember =
+                memberModel_->members()[*receiver.assignmentMemberOrdinal];
+            receiverOwnsStorage = receiverMember.kind == ClassMemberKind::Field &&
+                !receiverMember.isStatic &&
+                receiverMember.declaredOwnership == sema::OwnershipKind::Owned;
+        }
+        const bool elementOwnsSeparateStorage =
+            isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
+        ownedArrayElementOwnsStorage =
+            arrayElementMoveTarget && receiverOwnsStorage && elementOwnsSeparateStorage;
     }
 
     // Bloque 1 item 1 (owning field storage): a field declared `owned` is a legitimate move(...)
@@ -10608,7 +10632,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // HIR/lowering (see the Assignment case in ProjectOopHirModel): it fires for every one of
     // these forms, not just the move-spelled one -- that asymmetry was a measured leak (0
     // destructions for `= null`, 1 of 2 for `= new`).
-    if (ownedFieldOwnsStorage)
+    const bool ownsStorageDestination =
+        ownedFieldOwnsStorage || ownedArrayElementOwnsStorage;
+    if (ownsStorageDestination)
     {
         const bool freshObject = expression->second() != nullptr &&
             expression->second()->kind() == ast::AstNodeKind::ObjectCreationExpression;
@@ -10622,9 +10648,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->second()->range(),
-                "assignment to owned field '" + ownedFieldName +
-                    "' requires an ownership-transfer expression such as move(owner), new T(...), "
-                    "null, or an owned-returning call");
+                ownedFieldOwnsStorage
+                    ? "assignment to owned field '" + ownedFieldName +
+                          "' requires an ownership-transfer expression such as move(owner), new T(...), "
+                          "null, or an owned-returning call"
+                    : "assignment to an element of an owned array requires an ownership-transfer "
+                          "expression such as move(owner), new T(...), null, or an owned-returning call");
             return {};
         }
     }
@@ -10923,6 +10952,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             movedRaiiLocals_.erase(*raiiTargetLocal);
             maybeMovedRaiiLocals_.erase(*raiiTargetLocal);
         }
+        left.ownsStorageDestination = ownsStorageDestination;
         left.assignable = false;
         return left;
     }
@@ -12588,6 +12618,7 @@ void ProjectMethodBodyModel::recordExpressionType(
     binding.ownershipFreshOwner = result.ownershipFreshOwner;
     binding.ownershipSourceLocalOrdinal = result.ownershipSourceLocalOrdinal;
     binding.ownershipSourceParameterOrdinal = result.ownershipSourceParameterOrdinal;
+    binding.ownsStorageDestination = result.ownsStorageDestination;
     expressionTypes_.push_back(std::move(binding));
 }
 

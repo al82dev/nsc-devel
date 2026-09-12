@@ -3124,51 +3124,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     node->localOrdinal = *targetBinding->localOrdinal;
                 }
             }
-            // Bloque 1 item 1 (owning field storage) -- the same obligation, for a field that owns.
-            // A write into a field that ALREADY owns something has to release the displaced value
-            // first, or the overwrite silently leaks it. That is not a new rule invented here: it is
-            // exactly what the `raii` local case above has always done, verified by execution in
-            // Stage50_11OwnershipExecutionTests (MoveAssignmentOverLiveOwner).
-            //
-            // Marked WITHOUT a localOrdinal, which is how the backend tells the two apart: a local
-            // destroy resolves through that local's cleanup region, while a field destroy works
-            // straight off the store address (see the Store case in ProjectOopLlvmLowerer).
-            //
-            // HISTORY -- this flag used to ALSO require the RHS to be textually a MoveExpression,
-            // and that was a measured leak, flagged by the Bloque 1 audit: on a live owned field,
-            // `h.slot = null` reported 0 destructions, `h.slot = new Res(2)` reported 1 where 2 is
-            // correct, and `h.slot = ownedReturningCall()` likewise leaked the displaced value.
-            // Ownership is a property of the STORAGE, not of the syntax that produced the
-            // right-hand side -- semantic analysis separately guarantees every RHS reaching an
-            // owning field is an ownership-transfer expression (move / new / null / an
-            // owned-returning call: the same set owned returns and owned-local initialization
-            // accept), so the release fires on every store, not just the move-spelled ones. The
-            // property/indexer path never had this hole, precisely because its generated setter
-            // body always spells the store as `backing = move(value)`; the direct field store was
-            // the one that let the RHS's accidental shape leak into the lowering decision.
-            //
-            // Type-agnostic on purpose: a generic `owned T` field closed over a value type flags
-            // here too, and the backend's requiresOwnedDestruction(node->typeKey) gate makes the
-            // release a no-op there -- the same division of labor every other owner cleanup uses.
-            if (!node->booleanValue && expression->first() != nullptr &&
-                expression->second() != nullptr &&
-                memberModel_ != nullptr)
+            // Owning replacement is a semantic property of the destination, not an AST pattern.
+            // Fields and elements of owned arrays both lower to an address-based store; the
+            // semantic binding records which stores own their current value so this layer can
+            // request the existing release-before-store path without rediscovering declarations.
+            if (!node->booleanValue)
             {
-                const MethodNameBinding* fieldBinding = nameBinding(expression->first());
-                const bool bindsAField = fieldBinding != nullptr &&
-                    (fieldBinding->kind == MethodNameBindingKind::ImplicitField ||
-                     fieldBinding->kind == MethodNameBindingKind::ExplicitThisField ||
-                     fieldBinding->kind == MethodNameBindingKind::ExplicitObjectField ||
-                     fieldBinding->kind == MethodNameBindingKind::ExplicitBaseField);
-                if (bindsAField && fieldBinding->candidateMemberOrdinals.size() == 1 &&
-                    fieldBinding->candidateMemberOrdinals.front() < memberModel_->members().size())
-                {
-                    const ClassMemberSymbol& targetMember =
-                        memberModel_->members()[fieldBinding->candidateMemberOrdinals.front()];
-                    node->booleanValue = targetMember.kind == ClassMemberKind::Field &&
-                        !targetMember.isStatic &&
-                        targetMember.declaredOwnership == sema::OwnershipKind::Owned;
-                }
+                const MethodExpressionTypeBinding* assignmentType = expressionType(expression);
+                node->booleanValue = assignmentType != nullptr &&
+                    assignmentType->ownsStorageDestination;
             }
             if (node->operation != lexer::TokenKind::Equal)
             {
