@@ -145,8 +145,8 @@ The supported Windows installation shall contain the compiler executable, its ca
 contract, the manifest of every distributed Core project and the normative language and compiler
 specifications.
 `nsc --verify-installation <prefix>` shall validate that complete minimum layout and the contents
-of the installed toolchain contract. It shall name the first missing or incompatible component and
-return the compilation-error class.
+of the installed toolchain contract, compatibility policy and 2.0 migration baseline. It shall
+name the first missing or incompatible component and return the compilation-error class.
 
 The CMake install workflow shall run this command through the newly installed executable after all
 package files have been copied. An incomplete installation must not be reported as successful.
@@ -233,3 +233,17 @@ older requirement only inside the same major line and when its minor/patch is no
 A supported behavior may be removed only after a diagnostic deprecation period of at least one
 minor release. A safety correction or miscompilation fix may reject formerly accepted input, but
 the compatibility notes shall identify that exception explicitly.
+
+## NSC-COMPAT-003 — Verifiable 1.x to 2.0 migration baseline
+
+Every distributable build shall generate and install `NativeSharp2Migration.baseline` in canonical
+`NSMIGRATION 1` format. It shall freeze the current compiler/language source line, NSMETA, native
+and runtime ABI, runtime symbol set, MIR schema, mangling, object, delegate and exception ABI, and
+the package policy formats relevant to a future major migration. It shall not claim that 2.0 is
+implemented or promoted.
+
+The baseline shall also require a breaking-change ledger, migration notes and an N−1/N
+producer-consumer matrix. `--print-migration-baseline`, `--write-migration-baseline` and
+`--verify-migration-baseline` shall share one ordered field authority. Missing, reordered,
+additional or incompatible fields are compilation failures. Any future 2.0 proposal must classify
+each difference from this artifact as preserved, migrated, or intentionally broken before release.

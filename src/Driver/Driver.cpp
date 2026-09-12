@@ -3,6 +3,7 @@
 #include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
+#include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include <algorithm>
@@ -2765,6 +2766,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentCompatibilityPolicy();
             return ExitCode::Success;
         }
+        if (argument == "--print-migration-baseline")
+        {
+            output << currentMigrationBaseline();
+            return ExitCode::Success;
+        }
         if (argument == "--print-linker")
         {
             return printLinker(output, error);
@@ -2843,6 +2849,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << explanation << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-migration-baseline")
+        {
+            std::string baselineError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeMigrationBaseline(destination, baselineError))
+            {
+                error << "nsc: error: " << baselineError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "migration baseline written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-migration-baseline")
+        {
+            std::string baselineError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyMigrationBaseline(source, baselineError))
+            {
+                error << "nsc: error: " << baselineError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "migration baseline verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--verify-installation")
@@ -3141,6 +3171,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --write-compatibility-policy <file.policy>\n"
            << "  nsc --verify-compatibility-policy <file.policy>\n"
            << "  nsc --check-compiler-compatibility <major.minor.patch>\n"
+           << "  nsc --print-migration-baseline\n"
+           << "  nsc --write-migration-baseline <file.baseline>\n"
+           << "  nsc --verify-migration-baseline <file.baseline>\n"
            << "  nsc --verify-installation <prefix>\n"
            << "  nsc --write-installation-manifest <prefix> <file-list> <manifest>\n"
            << "  nsc --verify-installation-manifest <prefix> <manifest>\n"

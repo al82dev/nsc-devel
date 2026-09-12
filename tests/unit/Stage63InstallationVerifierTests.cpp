@@ -3,6 +3,7 @@
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
+#include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include "../support/TestContext.h"
@@ -16,7 +17,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 18> kRequiredFiles = {
+constexpr std::array<std::string_view, 19> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -36,6 +37,7 @@ constexpr std::array<std::string_view, 18> kRequiredFiles = {
     "share/nativesharp/docs/1.0.1/compiler/NativeSharp_Compiler_Contract_1_0_1.md",
     "share/nativesharp/docs/1.0.1/debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md",
     "share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
+    "share/nativesharp/toolchain/NativeSharp2Migration.baseline",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -70,6 +72,10 @@ bool populateInstallation(const std::filesystem::path &prefix) {
          nativesharp::driver::writeCompatibilityPolicy(
              prefix /
                  "share/nativesharp/toolchain/NativeSharpCompatibility.policy",
+             error) &&
+         nativesharp::driver::writeMigrationBaseline(
+             prefix /
+                 "share/nativesharp/toolchain/NativeSharp2Migration.baseline",
              error);
 }
 } // namespace
@@ -151,6 +157,17 @@ int main() {
                "installation composes compatibility-policy diagnostics");
   tests.expect(writeFile(policy, currentPolicy),
                "current compatibility policy fixture is restored");
+
+  const std::filesystem::path migration =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.baseline";
+  tests.expect(writeFile(migration, "NSMIGRATION 9\n"),
+               "incompatible migration baseline fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed migration baseline is invalid") !=
+                       std::string::npos,
+               "installation composes migration-baseline diagnostics");
+  tests.expect(driver::writeMigrationBaseline(migration, error),
+               "current migration baseline fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"

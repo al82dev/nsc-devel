@@ -262,7 +262,8 @@ int main()
         policy.find("native_abi=1.0\n") != std::string::npos && policy.find("runtime_abi=1.0\n") != std::string::npos,
         "binary compatibility versions are explicit");
     tests.expect(policy.find("reproducibility_report=1\n") != std::string::npos &&
-                     policy.find("update_plan=1\n") != std::string::npos,
+                     policy.find("update_plan=1\n") != std::string::npos &&
+                     policy.find("migration_baseline=1\n") != std::string::npos,
         "E9 lifecycle formats are frozen by E10 policy");
 
     const std::filesystem::path policyPath = evidence / "NativeSharpCompatibility.policy";

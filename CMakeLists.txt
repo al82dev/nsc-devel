@@ -368,6 +368,7 @@ add_library(nsc_driver STATIC
     src/Driver/Driver.cpp
     src/Driver/InstallationManifest.cpp
     src/Driver/InstallationVerifier.cpp
+    src/Driver/MigrationBaseline.cpp
     src/Driver/PackageLifecycle.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
@@ -401,12 +402,16 @@ set(NSC_TOOLCHAIN_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpToolchain.contract")
 set(NSC_COMPATIBILITY_POLICY
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpCompatibility.policy")
+set(NSC_MIGRATION_BASELINE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Migration.baseline")
 add_custom_command(TARGET nsc POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
     COMMAND $<TARGET_FILE:nsc> --write-toolchain-contract "${NSC_TOOLCHAIN_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-compatibility-policy "${NSC_COMPATIBILITY_POLICY}"
+    COMMAND $<TARGET_FILE:nsc> --write-migration-baseline "${NSC_MIGRATION_BASELINE}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
+               "${NSC_MIGRATION_BASELINE}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
     VERBATIM)
 
@@ -433,6 +438,7 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
+    "share/nativesharp/toolchain/NativeSharp2Migration.baseline"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
@@ -493,6 +499,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/
     DESTINATION share/nativesharp/docs)
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
+install(FILES "${NSC_MIGRATION_BASELINE}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
 if(WIN32)
     # La verificacion corre al FINAL: no basta que CMake haya intentado copiar los archivos. El
@@ -1034,6 +1041,20 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.stage66.e9-e10-release-contract
         COMMAND nsc_stage66_e9_e10_release_contract_tests)
+
+    # Delivery 234 -- a canonical 1.x contract snapshot makes every future 2.0
+    # break explicit and machine-checkable before implementation or promotion.
+    add_executable(
+        nsc_stage69_migration_baseline_tests
+        tests/unit/Stage69MigrationBaselineTests.cpp)
+    target_link_libraries(
+        nsc_stage69_migration_baseline_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage69_migration_baseline_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_stage69_migration_baseline_tests)
+    add_test(
+        NAME nsc.stage69.migration-baseline
+        COMMAND nsc_stage69_migration_baseline_tests)
 
     # ---------------------------------------------------------------------------------------
     # Milestone CC1 -- Compiler Correctness & Semantic Consolidation.

@@ -316,6 +316,16 @@ exista al menos un cambio necesario que no pueda entregarse honestamente dentro 
 
 ### 9.3 Libro mayor de rupturas / Breaking-change ledger
 
+La distribución 1.0.1-dev materializa el punto de comparación en
+`share/nativesharp/toolchain/NativeSharp2Migration.baseline` (`NSMIGRATION 1`). El artefacto no
+abre 2.0: congela las versiones vigentes de metadata, MIR y ABI que toda propuesta deberá
+clasificar. `nsc --verify-migration-baseline` permite comprobar que una copia corresponde
+exactamente al compilador que la evalúa.
+
+The 1.0.1-dev distribution materializes the comparison point as
+`share/nativesharp/toolchain/NativeSharp2Migration.baseline` (`NSMIGRATION 1`). It does not open
+2.0; it freezes the current metadata, MIR, and ABI identities that every proposal must classify.
+
 Antes de escribir código 2.0 se crea un registro por propuesta con:
 
 1. contrato 1.x afectado;

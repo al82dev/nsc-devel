@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/InstallationManifest.h"
+#include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -45,6 +46,7 @@ std::vector<Field> fields()
         {"installation_manifest", std::to_string(kInstallationManifestFormatVersion)},
         {"reproducibility_report", std::to_string(kReproducibilityReportFormatVersion)},
         {"update_plan", std::to_string(kInstallationUpdatePlanFormatVersion)},
+        {"migration_baseline", std::to_string(kMigrationBaselineFormatVersion)},
     };
 }
 

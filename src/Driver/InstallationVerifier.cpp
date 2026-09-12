@@ -1,6 +1,7 @@
 #include "nativesharp/Driver/InstallationVerifier.h"
 
 #include "nativesharp/Driver/CompatibilityPolicy.h"
+#include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include <array>
@@ -110,6 +111,14 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   std::string policyError;
   if (!verifyCompatibilityPolicy(policyPath, policyError)) {
     error = "installed compatibility policy is invalid: " + policyError;
+    return false;
+  }
+
+  const std::filesystem::path migrationPath =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.baseline";
+  std::string migrationError;
+  if (!verifyMigrationBaseline(migrationPath, migrationError)) {
+    error = "installed migration baseline is invalid: " + migrationError;
     return false;
   }
 
