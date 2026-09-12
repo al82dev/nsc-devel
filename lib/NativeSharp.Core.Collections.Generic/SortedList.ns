@@ -265,8 +265,8 @@ namespace NativeSharp.Core.Collections.Generic
             int i = count;
             while (i > index)
             {
-                keys[i] = keys[i - 1];
-                values[i] = values[i - 1];
+                keys[i] = move(keys[i - 1]);
+                values[i] = move(values[i - 1]);
                 i = i - 1;
             }
             // move(key)/move(value): see List.ns's Add() for the full explanation -- InsertAt's
@@ -327,8 +327,8 @@ namespace NativeSharp.Core.Collections.Generic
             int i = index;
             while (i < count - 1)
             {
-                keys[i] = keys[i + 1];
-                values[i] = values[i + 1];
+                keys[i] = move(keys[i + 1]);
+                values[i] = move(values[i + 1]);
                 i = i + 1;
             }
             count = count - 1;

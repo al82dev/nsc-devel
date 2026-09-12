@@ -54,6 +54,17 @@ namespace Stage52Collections
             raii Payload bob = new Payload();
             bob.Value = 25;
             people.Add(move(bob));
+            people.Reverse();
+            raii Payload carol = new Payload();
+            carol.Value = 20;
+            people.Insert(1, move(carol));
+            people.RemoveAt(1);
+
+            Payload[] transferred = new Payload[1];
+            transferred[0] = new Payload();
+            transferred[0].Value = 40;
+            people.AddRange(transferred);
+            delete[] transferred;
 
             Predicate<int> positive = IsPositive;
             bool anyPositive = numbers.Exists(positive);

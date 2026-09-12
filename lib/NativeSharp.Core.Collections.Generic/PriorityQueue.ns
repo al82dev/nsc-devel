@@ -74,17 +74,22 @@ namespace NativeSharp.Core.Collections.Generic
             return priorities[i] < priorities[j];
         }
 
-        // A pure relocation of two same-array-index pairs -- see List.ns's own Swap() for why
-        // this is safe even though it uses the same plain-assignment-into-an-owned-slot mechanism
-        // that would be unsafe for outside callers.
+        // A pure relocation of two same-array-index pairs. A one-element raw array supplies the
+        // generic owner slot that a local cannot express uniformly for both value and reference
+        // T; every live reference changes slots through move(), and the temporary is empty before
+        // its backing block is released.
         private void SwapAt(int i, int j)
         {
-            const TElement tempElement = elements[i];
-            elements[i] = elements[j];
-            elements[j] = tempElement;
-            const TPriority tempPriority = priorities[i];
-            priorities[i] = priorities[j];
-            priorities[j] = tempPriority;
+            const TElement[] tempElement = new TElement[1];
+            tempElement[0] = move(elements[i]);
+            elements[i] = move(elements[j]);
+            elements[j] = move(tempElement[0]);
+            delete[] tempElement;
+            const TPriority[] tempPriority = new TPriority[1];
+            tempPriority[0] = move(priorities[i]);
+            priorities[i] = move(priorities[j]);
+            priorities[j] = move(tempPriority[0]);
+            delete[] tempPriority;
         }
 
         public int EnsureCapacity(int capacity)

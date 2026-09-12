@@ -18,11 +18,10 @@ namespace NativeSharp.Core.Collections.Generic
     //     setters have an implicit, unqualified `value` parameter that cannot be declared
     //     `owned`, and -- this was checked directly against the compiler while designing this
     //     package -- assigning a plain (non-owned) reference into an `owned T[]` slot is
-    //     currently accepted with no ownership-transfer check at all. That is safe for the
-    //     *internal*, same-array relocations this file performs (Sort's swaps, Insert/RemoveAt's
-    //     shifts: the pointer bit pattern only ever moves between slots of the SAME array, so the
-    //     "each live pointer has exactly one owning slot" invariant holds before and after), but
-    //     it would NOT be safe for a public `this[int index] { set; }` fed by outside code (the
+    //     rejected by the compiler. Internal relocation uses explicit move() between slots, so
+    //     the "each live pointer has exactly one owning slot" invariant also holds during each
+    //     operation, not only before and after it. A public setter would still be unsafe because
+    //     its implicit value parameter cannot state that the caller transfers ownership (the
     //     caller could keep its own reference alive after handing it in, producing a second,
     //     untracked owner of the same object -- a double-free waiting to happen). So the write
     //     path is the explicit `SetAt(int index, owned T value)` method instead, which forces a
@@ -160,7 +159,6 @@ namespace NativeSharp.Core.Collections.Generic
         // `this[index] { set; }`.
         public void SetAt(int index, owned T value)
         {
-            delete items[index];
             items[index] = move(value);
         }
 
@@ -170,7 +168,7 @@ namespace NativeSharp.Core.Collections.Generic
             int i = count;
             while (i > index)
             {
-                items[i] = items[i - 1];
+                items[i] = move(items[i - 1]);
                 i = i - 1;
             }
             items[index] = move(value);
@@ -183,7 +181,7 @@ namespace NativeSharp.Core.Collections.Generic
             int i = index;
             while (i < count - 1)
             {
-                items[i] = items[i + 1];
+                items[i] = move(items[i + 1]);
                 i = i + 1;
             }
             count = count - 1;
@@ -191,24 +189,18 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors List<T>.AddRange, adapted to NativeSharp's ownership model: NativeSharp has no
         // IEnumerable<T> and (verified directly against the compiler while writing this method)
-        // no way for calling code to construct a movable `owned T[]` value at all -- `raii`
-        // locals only accept a class/interface/string type, never an array type, so there is no
-        // legal call site that could hand this method a genuinely owned array. `values` is
-        // therefore a plain (non-owned, not deleted here) `T[]`, and each element is copied in
-        // with plain assignment into `items` -- exactly the same "plain reference into an owned
-        // slot" gap the class comment already documents for Sort/Insert/RemoveAt's internal
-        // same-array moves, here extended to an external caller. For a value-typed T this is
-        // completely safe (owned is a no-op for value types). For a reference-typed T this is the
-        // known, deliberately-not-yet-hardened gap tracked as future ownership-validation work
-        // (see the Stage 52 closure notes) -- callers should treat AddRange like ToArray()'s
-        // mirror image: the source array's elements end up aliased into this list.
+        // no way for calling code to construct a movable `owned T[]` value. The array block
+        // itself therefore remains borrowed and is never deleted here, while each element is
+        // explicitly moved into the list. For reference T the corresponding source slot becomes
+        // null; for value T this is an ordinary copy. This native consume-elements contract keeps
+        // one owner without pretending that the whole array allocation changed ownership.
         public void AddRange(T[] values)
         {
             EnsureCapacity(count + values.Length);
             int i = 0;
             while (i < values.Length)
             {
-                items[count] = values[i];
+                items[count] = move(values[i]);
                 count = count + 1;
                 i = i + 1;
             }
@@ -222,13 +214,13 @@ namespace NativeSharp.Core.Collections.Generic
             int shiftFrom = count - 1;
             while (shiftFrom >= index)
             {
-                items[shiftFrom + values.Length] = items[shiftFrom];
+                items[shiftFrom + values.Length] = move(items[shiftFrom]);
                 shiftFrom = shiftFrom - 1;
             }
             int i = 0;
             while (i < values.Length)
             {
-                items[index + i] = values[i];
+                items[index + i] = move(values[i]);
                 i = i + 1;
             }
             count = count + values.Length;
@@ -248,7 +240,7 @@ namespace NativeSharp.Core.Collections.Generic
             int src = index + rangeCount;
             while (src < count)
             {
-                items[dest] = items[src];
+                items[dest] = move(items[src]);
                 dest = dest + 1;
                 src = src + 1;
             }
@@ -358,12 +350,11 @@ namespace NativeSharp.Core.Collections.Generic
 
         private void Swap(int a, int b)
         {
-            // A pure relocation of two pointer-sized bit patterns within the SAME owned array --
-            // see the class comment for why this is safe even though it uses the same
-            // plain-assignment-into-an-owned-slot mechanism that is unsafe for outside callers.
-            const T temp = items[a];
-            items[a] = items[b];
-            items[b] = temp;
+            const T[] temp = new T[1];
+            temp[0] = move(items[a]);
+            items[a] = move(items[b]);
+            items[b] = move(temp[0]);
+            delete[] temp;
         }
 
         // Sorts in place using T's own `<` (works for every numeric/orderable primitive, and for
