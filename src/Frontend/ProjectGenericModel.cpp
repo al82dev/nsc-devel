@@ -27,6 +27,7 @@ bool isGenericTypeTemplateNode(const ast::AstNode* node) noexcept
     if (node == nullptr || node->genericParameters().empty()) return false;
     return node->kind() == ast::AstNodeKind::ClassDeclaration ||
         node->kind() == ast::AstNodeKind::StructDeclaration ||
+        node->kind() == ast::AstNodeKind::InterfaceDeclaration ||
         node->kind() == ast::AstNodeKind::DelegateDeclaration;
 }
 
@@ -42,6 +43,7 @@ bool isNamedTypeDeclaration(ast::AstNodeKind kind) noexcept
 GenericTemplateKind genericTypeTemplateKind(const ast::AstNode* node) noexcept
 {
     if (node->kind() == ast::AstNodeKind::ClassDeclaration) return GenericTemplateKind::Class;
+    if (node->kind() == ast::AstNodeKind::InterfaceDeclaration) return GenericTemplateKind::Interface;
     if (node->kind() == ast::AstNodeKind::DelegateDeclaration) return GenericTemplateKind::Delegate;
     return GenericTemplateKind::Struct;
 }
@@ -216,6 +218,7 @@ const char* genericTemplateKindName(GenericTemplateKind kind) noexcept
         case GenericTemplateKind::Struct: return "struct";
         case GenericTemplateKind::Delegate: return "delegate";
         case GenericTemplateKind::Method: return "method";
+        case GenericTemplateKind::Interface: return "interface";
     }
     return "generic";
 }

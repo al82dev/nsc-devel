@@ -5315,6 +5315,90 @@ namespace Surface
     tests.expect(!vendorsDependencyMethod,
                  "producer archive does not flatten a LibraryReference implementation into itself");
 }
+
+void testPrecompiledGenericInterfaceHierarchy(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto contractRoot = root / "PrecompiledGenericInterfaceHierarchy";
+    const auto producer = contractRoot / "Producer";
+    const auto consumer = contractRoot / "Consumer";
+    writeProject(producer, "GenericInterfaceProducer", "StaticLibrary", R"NS(
+namespace GenericContracts
+{
+    public interface IValue<T>
+    {
+        public T Get();
+    }
+
+    public interface ITaggedValue<T> : IValue<T>
+    {
+        public int Tag();
+    }
+
+    public class Box<T> : ITaggedValue<T>
+    {
+        private T stored;
+        public Box(T value) { stored = value; }
+        public T Get() { return stored; }
+        public int Tag() { return 2; }
+        public static Box<T> Create(T value) { return new Box<T>(value); }
+    }
+
+    public class Reader<T> where T : IValue<int>
+    {
+        public static int Read(T value) { return value.Get(); }
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    const auto library = producer / "GenericInterfaceProducer.lib";
+    const ExitCode producerResult = emitLibrary(
+        "--emit-project-oop-lib", producer / "GenericInterfaceProducer.nsproj",
+        library, output, error, false);
+    tests.expect(producerResult == ExitCode::Success,
+        "O0 producer emits a generic interface hierarchy and constrained generic class (" + error + ")");
+    output.clear();
+    error.clear();
+    tests.expect(producerResult == ExitCode::Success &&
+                     verifyLibraryArtifacts(producer / "GenericInterfaceProducer.nsmeta",
+                         library, output, error) == ExitCode::Success,
+        "generic interface templates, inheritance, constraints, and physical identities verify in NSMETA (" +
+            error + ")");
+
+    writeFile(consumer / "Main.ns", R"NS(
+using GenericContracts;
+
+public class Program
+{
+    public static int Main()
+    {
+        Box<int> box = Box<int>.Create(40);
+        ITaggedValue<int> tagged = box;
+        return Reader<Box<int>>.Read(box) + tagged.Tag();
+    }
+}
+)NS");
+    writeFile(consumer / "GenericInterfaceConsumer.nsproj",
+        "<Project><PropertyGroup><Name>GenericInterfaceConsumer</Name><OutputType>Exe</OutputType>"
+        "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+        "<LibraryReference Include=\"../Producer/GenericInterfaceProducer.lib\"/>"
+        "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    const auto executable = consumer / "GenericInterfaceConsumer.exe";
+    const ExitCode consumerResult = emitLibrary(
+        "--emit-project-oop-exe", consumer / "GenericInterfaceConsumer.nsproj",
+        executable, output, error, false);
+    tests.expect(consumerResult == ExitCode::Success,
+        "O0 source-free consumer closes public generic interfaces and their constraints from NSMETA (" +
+            error + ")");
+#ifdef _WIN32
+    if (consumerResult == ExitCode::Success)
+        tests.expect(runExecutable(executable) == 42,
+            "precompiled generic interface inheritance and dispatch execute to 42");
+#endif
+}
 } // namespace
 
 int main()
@@ -5354,6 +5438,7 @@ int main()
     testPrecompiledLibraryReferences(tests, root);
     testOutputKindGuards(tests, root);
     testStaticLibraryKeepsReferencesExternal(tests, root);
+    testPrecompiledGenericInterfaceHierarchy(tests, root);
 
     return tests.resultKeeping(root);
 }

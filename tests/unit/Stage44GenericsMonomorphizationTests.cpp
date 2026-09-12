@@ -217,6 +217,62 @@ namespace Demo
 void testAdvancedMonomorphization(TestContext& tests, const std::filesystem::path& root)
 {
     {
+        const auto directory = root / "GenericInterfaceHierarchy";
+        writeProject(directory, "GenericInterfaceHierarchy");
+        writeFile(directory / "Main.ns", R"NS(
+public interface IValue<T>
+{
+    public T Get();
+}
+
+public interface ITaggedValue<T> : IValue<T>
+{
+    public int Tag();
+}
+
+public class Box<T> : ITaggedValue<T>
+{
+    private T stored;
+    public Box(T value) { stored = value; }
+    public T Get() { return stored; }
+    public int Tag() { return 2; }
+    public static Box<T> Create(T value) { return new Box<T>(value); }
+}
+
+public class Reader<T> where T : IValue<int>
+{
+    public static int Read(T value) { return value.Get(); }
+}
+
+public class Program
+{
+    public static int Main()
+    {
+        Box<int> box = Box<int>.Create(40);
+        ITaggedValue<int> tagged = box;
+        return Reader<Box<int>>.Read(box) + tagged.Tag();
+    }
+}
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectOopMir(
+            directory / "GenericInterfaceHierarchy.nsproj", error);
+        tests.expect(ok && error.empty(),
+            "generic interface inheritance, constraints, closed static members, and dispatch reach OOP MIR");
+        if (ok && compilation.genericModel() != nullptr)
+        {
+            const auto interfaces = std::ranges::count_if(
+                compilation.genericModel()->specializations(), [](const auto& specialization)
+                {
+                    return specialization.kind == GenericTemplateKind::Interface;
+                });
+            tests.expect(interfaces == 2,
+                "IValue<int> and ITaggedValue<int> are each represented by one closed interface specialization");
+        }
+    }
+
+    {
         const auto directory = root / "GenericInterfaceImplementation";
         writeProject(directory, "GenericInterfaceImplementation");
         writeFile(directory / "Main.ns", R"NS(
