@@ -4943,6 +4943,43 @@ namespace Precompiled
     tests.expect(std::filesystem::exists(compositeDllProducer / "NativeMath.dll"),
                  "DLL packaging places the explicitly imported producer runtime beside the dependent DLL");
 
+    const auto compositeSiblingProducer = dllRoot / "CompositeSiblingProducer";
+    writeFile(compositeSiblingProducer / "Main.ns", R"NS(
+namespace Precompiled
+{
+    public class CompositeSibling
+    {
+        public static int Zero()
+        {
+            Box<long> value;
+            value.Value = GenericAlgorithms.Identity<long>((long)0);
+            return (int)value.Read() + Math.Add(0, 0);
+        }
+    }
+}
+)NS");
+    writeFile(compositeSiblingProducer / "CompositeSiblingProducer.nsproj",
+              "<Project><PropertyGroup><Name>CompositeSiblingProducer</Name>"
+              "<OutputType>SharedLibrary</OutputType></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../Producer/NativeMath.lib\" "
+              "Runtime=\"../Producer/NativeMath.dll\"/>"
+              "</ItemGroup></Project>");
+    output.clear();
+    error.clear();
+    const auto compositeSiblingDll = compositeSiblingProducer / "CompositeSibling.dll";
+    const ExitCode compositeSiblingResult = emitLibrary("--emit-project-oop-dll",
+                                                         compositeSiblingProducer / "CompositeSiblingProducer.nsproj",
+                                                         compositeSiblingDll,
+                                                         output,
+                                                         error,
+                                                         true);
+    tests.expect(compositeSiblingResult == ExitCode::Success,
+                 "a second DLL composes the same dynamic generic dependency without auxiliary symbol collisions (" +
+                     error + ")");
+    tests.expect(std::filesystem::exists(compositeSiblingProducer / "NativeMath.dll"),
+                 "the sibling DLL package carries an identical copy of the shared transitive runtime");
+
     const auto compositeDllConsumer = dllRoot / "CompositeConsumer";
     writeFile(compositeDllConsumer / "Main.ns", R"NS(
 public class Program
@@ -4996,6 +5033,61 @@ public class Program
         }
 #endif
     }
+
+    const auto diamondConsumer = dllRoot / "DiamondConsumer";
+    writeFile(diamondConsumer / "Main.ns", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        return Precompiled.CompositeDll.Answer() + Precompiled.CompositeSibling.Zero();
+    }
+}
+)NS");
+    writeFile(diamondConsumer / "DiamondConsumer.nsproj",
+              "<Project><PropertyGroup><Name>DiamondConsumer</Name><OutputType>Exe</OutputType>"
+              "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\"/>"
+              "<LibraryReference Include=\"../CompositeProducer/CompositeNative.lib\" "
+              "Runtime=\"../CompositeProducer/CompositeNative.dll\"/>"
+              "<LibraryReference Include=\"../CompositeSiblingProducer/CompositeSibling.lib\" "
+              "Runtime=\"../CompositeSiblingProducer/CompositeSibling.dll\"/>"
+              "</ItemGroup></Project>");
+    const auto diamondPackage = root / "diamond_package_o0";
+    std::filesystem::create_directories(diamondPackage);
+    const auto diamondExecutable = diamondPackage / "DiamondConsumer.exe";
+    output.clear();
+    error.clear();
+    const ExitCode diamondResult = emitLibrary("--emit-project-oop-exe",
+                                               diamondConsumer / "DiamondConsumer.nsproj",
+                                               diamondExecutable,
+                                               output,
+                                               error,
+                                               false);
+    PeExecutableVerifier diamondVerifier;
+    tests.expect(diamondResult == ExitCode::Success && diamondVerifier.verify(diamondExecutable) &&
+                     contains(diamondVerifier.info().importedLibraries, "CompositeNative.dll") &&
+                     contains(diamondVerifier.info().importedLibraries, "CompositeSibling.dll") &&
+                     !contains(diamondVerifier.info().importedLibraries, "NativeMath.dll"),
+                 "O0 diamond consumer imports both top-level DLLs while the shared dependency remains transitive (" +
+                     error + ")");
+    std::size_t nativeMathCopies = 0;
+    if (std::filesystem::is_directory(diamondPackage))
+    {
+        for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(diamondPackage))
+        {
+            if (entry.path().filename() == "NativeMath.dll") ++nativeMathCopies;
+        }
+    }
+    tests.expect(diamondResult == ExitCode::Success &&
+                     std::filesystem::exists(diamondPackage / "CompositeNative.dll") &&
+                     std::filesystem::exists(diamondPackage / "CompositeSibling.dll") &&
+                     nativeMathCopies == 1,
+                 "O0 diamond packaging deduplicates byte-identical runtime DLLs reached through different paths");
+#ifdef _WIN32
+    if (diamondResult == ExitCode::Success)
+        tests.expect(runExecutable(diamondExecutable) == 42,
+                     "O0 diamond DLL composition with shared generics, RTTI and runtime executes to 42");
+#endif
 
     const auto wrongProducer = dllRoot / "WrongProducer";
     writeProject(wrongProducer, "WrongProducer", "SharedLibrary", R"NS(
