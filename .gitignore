@@ -8,5 +8,9 @@
 /_logs_nslink_solo
 /_evidencia
 /_nscbuilder
+/build-test-lldlinker
 /build-test-nslink
+/build-tests
 /_pdb_local
+__pycache__/
+*.py[cod]

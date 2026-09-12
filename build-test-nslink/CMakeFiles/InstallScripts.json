@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"A:/nsc-devel/build-test-nslink/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
