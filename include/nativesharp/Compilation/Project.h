@@ -16,7 +16,7 @@ enum class ProjectOutputKind
     SharedLibrary
 };
 
-// NativeSharp 0.9: a precompiled library is a three-part contract. `libraryPath` is either a
+// NativeSharp 1.0.1: a precompiled library is a three-part contract. `libraryPath` is either a
 // static COFF archive or the import library of `runtimePath`; metadata is mandatory because a
 // bare .lib cannot describe NativeSharp types, ownership, defaults, or ABI identity.
 struct LibraryReference final

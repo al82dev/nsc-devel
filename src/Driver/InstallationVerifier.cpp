@@ -40,6 +40,20 @@ constexpr std::array<RequiredFile, 5> kRequiredSpecifications = {{
      "compiler conformance map"},
 }};
 
+constexpr std::array<RequiredFile, 7> kRequiredCurrentDocumentation = {{
+    {"share/nativesharp/docs/README.md", "documentation version index"},
+    {"share/nativesharp/docs/1.0.1/README.md", "1.0.1 documentation index"},
+    {"share/nativesharp/docs/1.0.1/VERSION.md", "1.0.1 version contract"},
+    {"share/nativesharp/docs/1.0.1/language/NativeSharp_Language_Specification_1_0_1.md",
+     "1.0.1 language specification"},
+    {"share/nativesharp/docs/1.0.1/compiler/NativeSharp_Compiler_Contract_1_0_1.md",
+     "1.0.1 compiler contract"},
+    {"share/nativesharp/docs/1.0.1/debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md",
+     "1.0.1 debug artifact contract"},
+    {"share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
+     "1.0.1 programming reference"},
+}};
+
 bool requireRegularFile(const std::filesystem::path &prefix,
                         const RequiredFile &required, std::string &error) {
   const std::filesystem::path path =
@@ -105,6 +119,11 @@ bool verifyInstallation(const std::filesystem::path &prefix,
     }
   }
   for (const RequiredFile &required : kRequiredSpecifications) {
+    if (!requireRegularFile(prefix, required, error)) {
+      return false;
+    }
+  }
+  for (const RequiredFile &required : kRequiredCurrentDocumentation) {
     if (!requireRegularFile(prefix, required, error)) {
       return false;
     }

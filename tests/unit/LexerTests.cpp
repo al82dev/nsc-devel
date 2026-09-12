@@ -198,7 +198,7 @@ int main()
             matches = tokens[index].kind() == expected[index];
         }
         tests.expect(!diagnostics.hasErrors() && matches,
-            "complete NativeSharp 0.1 punctuation/operator set maps to exact token kinds");
+            "complete NativeSharp 1.0.1 punctuation/operator set maps to exact token kinds");
     }
 
     return tests.result();

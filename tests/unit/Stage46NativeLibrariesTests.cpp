@@ -3455,7 +3455,7 @@ namespace Consumer
         emitLibrary(
             "--emit-project-oop-lib", staticProducer / "StaticProducer.nsproj", staticLibrary, output, error, true) ==
             ExitCode::Success,
-        "0.9 precompiled static-library producer emits .lib and metadata");
+        "1.0.1 precompiled static-library producer emits .lib and metadata");
     CoffArchiveVerifier precompiledArchiveVerifier;
     tests.expect(precompiledArchiveVerifier.verify(staticLibrary) &&
                      contains(precompiledArchiveVerifier.info().symbolNames, "Add"),
@@ -4411,7 +4411,7 @@ namespace Consumer
     const auto dll = dllProducer / "NativeMath.dll";
     tests.expect(emitLibrary("--emit-project-oop-dll", dllProducer / "DllProducer.nsproj", dll, output, error, true) ==
                      ExitCode::Success,
-                 "0.9 precompiled DLL producer emits DLL, import .lib, and metadata");
+                 "1.0.1 precompiled DLL producer emits DLL, import .lib, and metadata");
     writeFile(dllConsumer / "Main.ns", consumerSource);
     writeFile(dllConsumer / "DllConsumer.nsproj",
               "<Project><PropertyGroup><Name>DllConsumer</Name><OutputType>Exe</"

@@ -77,9 +77,9 @@ int main()
         std::to_string(interop::kMetadataFormatMinor);
     tests.expect(contract.starts_with("NSTOOLCHAIN 1\n"), "contract has a versioned magic header");
     tests.expect(contract.ends_with('\n'), "contract has one canonical final newline");
-    tests.expect(contract.find("compiler_release=0.9.0\n") != std::string::npos,
+    tests.expect(contract.find("compiler_release=1.0.1\n") != std::string::npos,
         "contract identifies the compatible compiler release");
-    tests.expect(contract.find("language=0.1\n") != std::string::npos, "contract identifies the language line");
+    tests.expect(contract.find("language=1.0.1\n") != std::string::npos, "contract identifies the language line");
     tests.expect(contract.find("stage=" + std::string(kCompilerStage) + "\n") != std::string::npos,
         "contract identifies the current compiler stage");
     tests.expect(contract.find("target=x86_64-pc-windows-msvc\n") != std::string::npos,
@@ -159,7 +159,7 @@ int main()
         "future contract format is rejected with its header named");
     tests.expect(verifyFails(malformed, contract + "future_field=1\n", "unknown toolchain contract field", error),
         "unknown fields are rejected instead of silently ignored");
-    tests.expect(verifyFails(malformed, contract + "language=0.1\n", "duplicate toolchain contract field", error),
+    tests.expect(verifyFails(malformed, contract + "language=1.0.1\n", "duplicate toolchain contract field", error),
         "duplicate fields are rejected");
     tests.expect(verifyFails(malformed,
                      withoutLine(contract, "runtime_abi=1.0"),
@@ -173,14 +173,14 @@ int main()
         "incompatible field values name found and expected contracts");
     tests.expect(verifyFails(malformed,
                      replacing(contract,
-                         "language=0.1\nstage=" + std::string(kCompilerStage),
-                         "stage=" + std::string(kCompilerStage) + "\nlanguage=0.1"),
+                         "language=1.0.1\nstage=" + std::string(kCompilerStage),
+                         "stage=" + std::string(kCompilerStage) + "\nlanguage=1.0.1"),
                      "out of canonical order",
                      error),
         "otherwise valid fields still require deterministic canonical order");
     tests.expect(
         verifyFails(
-            malformed, replacing(contract, "language=0.1", "language"), "malformed toolchain contract line", error),
+            malformed, replacing(contract, "language=1.0.1", "language"), "malformed toolchain contract line", error),
         "malformed key-value lines identify their line");
 
     driver::Driver compiler;

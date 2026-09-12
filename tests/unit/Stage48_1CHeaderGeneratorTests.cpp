@@ -229,7 +229,7 @@ void testAutomaticDllHeader(TestContext& tests, const std::filesystem::path& roo
     tests.expect(header.find("#include <stddef.h>") != std::string::npos &&
             header.find("#include <stdint.h>") != std::string::npos,
         "generated header is self-contained for standard fixed-width ABI types");
-    tests.expect(header.find("#error \"This NativeSharp 0.1 host contract targets Windows x64 only.\"") != std::string::npos,
+    tests.expect(header.find("#error \"This NativeSharp 1.0.1 host contract targets Windows x64 only.\"") != std::string::npos,
         "generated header states the Stage 48.1 Windows x64 platform contract");
     tests.expect(header.find("extern \"C\"") != std::string::npos,
         "generated header is directly consumable by C++ without name mangling");

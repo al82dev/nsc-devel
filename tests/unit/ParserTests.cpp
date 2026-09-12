@@ -170,7 +170,7 @@ int Main()
     const bool ternaryOk = ternary.compileBuffer(
         "no_ternary.ns",
         "int Main() { return true ? 1 : 0; }");
-    tests.expect(!ternaryOk, "ternary conditional syntax is not part of NativeSharp 0.1");
+    tests.expect(!ternaryOk, "invalid ternary conditional syntax is rejected by NativeSharp 1.0.1");
 
     frontend::FrontendCompilation singleStatementLoop;
     const bool loopOk = singleStatementLoop.compileBuffer(

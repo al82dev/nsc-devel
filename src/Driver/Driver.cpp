@@ -3143,8 +3143,10 @@ void Driver::printHelp(std::ostream &output)
            << "Stage 57 completes the language surface: the conditional operator, "
               "do-while and "
            << "switch/case. "
-           << "The 1.0 E5/E6 library gates add component-level ABI diagnostics and "
-              "standalone metadata/archive/DLL artifact verification.\n";
+           << "The 1.0 library gates add component-level ABI diagnostics and "
+              "standalone metadata/archive/DLL artifact verification. "
+           << "This executable belongs to the NativeSharp 1.0.1 development line; "
+              "the installed current documentation is under share/nativesharp/docs/1.0.1.\n";
 }
 
 ExitCode Driver::printCodeGeneration(

@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     NativeSharp
-    VERSION 0.9.0
-    DESCRIPTION "NativeSharp stage 67 -- E11 shared lexical closures"
+    VERSION 1.0.1
+    DESCRIPTION "NativeSharp 1.0.1 development compiler"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -30,6 +30,7 @@ endif()
 # Version.cpp incluye el header generado: asi no existe una carrera con los muchos tests que
 # incluyen Version.h y tampoco se obliga a recompilar todo el frontend por cambiar un string.
 set(NSC_COMPILER_RELEASE_VERSION "${PROJECT_VERSION}")
+set(NSC_COMPILER_VERSION_BASE "${NSC_COMPILER_RELEASE_VERSION}-dev")
 set(NSC_GENERATED_BASIC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/Basic")
 set(NSC_GENERATED_BUILD_ID_HEADER "${NSC_GENERATED_BASIC_DIR}/BuildId.h")
 set(NSC_BUILD_ID_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBuildIdentity.cmake")
@@ -43,7 +44,7 @@ execute_process(
     COMMAND "${CMAKE_COMMAND}"
         "-DNSC_OUTPUT=${NSC_GENERATED_BUILD_ID_HEADER}"
         "-DNSC_TEMPLATE=${NSC_BUILD_ID_TEMPLATE}"
-        "-DNSC_VERSION_BASE=${NSC_COMPILER_RELEASE_VERSION}"
+        "-DNSC_VERSION_BASE=${NSC_COMPILER_VERSION_BASE}"
         ${NSC_BUILD_ID_OVERRIDE_ARGUMENT}
         -P "${NSC_BUILD_ID_GENERATOR}"
     RESULT_VARIABLE NSC_INITIAL_BUILD_ID_RESULT)
@@ -55,7 +56,7 @@ add_custom_target(nsc_build_identity
     COMMAND "${CMAKE_COMMAND}"
         "-DNSC_OUTPUT=${NSC_GENERATED_BUILD_ID_HEADER}"
         "-DNSC_TEMPLATE=${NSC_BUILD_ID_TEMPLATE}"
-        "-DNSC_VERSION_BASE=${NSC_COMPILER_RELEASE_VERSION}"
+        "-DNSC_VERSION_BASE=${NSC_COMPILER_VERSION_BASE}"
         ${NSC_BUILD_ID_OVERRIDE_ARGUMENT}
         -P "${NSC_BUILD_ID_GENERATOR}"
     BYPRODUCTS "${NSC_GENERATED_BUILD_ID_HEADER}"
@@ -63,7 +64,9 @@ add_custom_target(nsc_build_identity
     VERBATIM)
 
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
-message(STATUS "NativeSharp compiler release: ${NSC_COMPILER_RELEASE_VERSION}; build id generado al construir")
+message(STATUS
+    "NativeSharp compiler line: ${NSC_COMPILER_RELEASE_VERSION}; "
+    "development identity: ${NSC_COMPILER_VERSION_BASE}+build.<timestamp>.<id>")
 
 # Organizacion explicita de la salida del build, dentro de ${CMAKE_BINARY_DIR} (el directorio
 # que le pasas a "cmake -B"), no en otro lado y no por accidente de donde CMake decida ponerla
@@ -286,7 +289,7 @@ if(LLVM_FOUND)
     # kind of contract break a version gate exists to prevent.
     if(LLVM_PACKAGE_VERSION VERSION_LESS 23 OR LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 24)
         message(FATAL_ERROR
-            "NativeSharp 0.9 supports LLVM 23.x; the API floor is LLVM 20 because "
+            "NativeSharp 1.0.1 supports LLVM 23.x; the API floor is LLVM 20 because "
             "LLVMRunPassesOnFunction is required for -O0 SEH legalization, but only the LLVM 23 "
             "line is qualified for the 1.0 release contract; "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
@@ -408,7 +411,7 @@ add_custom_command(TARGET nsc POST_BUILD
 # E9 / Stage 64. Esta lista describe el payload esperado por la version que se esta construyendo.
 # No se obtiene enumerando el prefijo despues de instalar: hacerlo asi legitimaria como actuales
 # los residuos de una version anterior. Las rutas se ordenan y normalizan al configurar; CMake
-# vuelve a configurarse si cambia el arbol publico de lib/ o spec/.
+# vuelve a configurarse si cambia el arbol publico de lib/, spec/ o docs/1.0.1.
 file(GLOB_RECURSE NSC_INSTALLATION_LIBRARY_FILES
     CONFIGURE_DEPENDS
     LIST_DIRECTORIES false
@@ -419,6 +422,11 @@ file(GLOB_RECURSE NSC_INSTALLATION_SPECIFICATION_FILES
     LIST_DIRECTORIES false
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/spec"
     "${CMAKE_CURRENT_SOURCE_DIR}/spec/*")
+file(GLOB_RECURSE NSC_INSTALLATION_DOCUMENTATION_FILES
+    CONFIGURE_DEPENDS
+    LIST_DIRECTORIES false
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/docs"
+    "${CMAKE_CURRENT_SOURCE_DIR}/docs/*")
 set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
@@ -429,6 +437,9 @@ foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
 endforeach()
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_SPECIFICATION_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "share/nativesharp/spec/${_nsc_install_file}")
+endforeach()
+foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_DOCUMENTATION_FILES)
+    list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "share/nativesharp/docs/${_nsc_install_file}")
 endforeach()
 list(SORT NSC_INSTALLATION_EXPECTED_PATHS)
 set(NSC_INSTALLATION_FILE_LIST
@@ -443,7 +454,7 @@ endforeach()
 # C:\native-sharp), junto con el arbol lib/ ENTERO -- las bibliotecas .ns
 # (NativeSharp.Core/NativeSharp.Core.Threading/NativeSharp.Core.Collections.Generic/
 # NativeSharp.Core.IO/NativeSharp.Core.Diagnostics) que la distribucion oficial todavia consume
-# via ProjectReference. Desde 0.9, nsc tambien produce y consume bibliotecas precompiladas mediante
+# via ProjectReference. Desde 1.0, nsc tambien produce y consume bibliotecas precompiladas mediante
 # LibraryReference (.lib + .nsmeta y, para SharedLibrary, .dll); este install conserva Core como
 # fuente hasta que su empaquetado oficial migre a esos productos -- ver
 # claude/05_metodo_de_trabajo_y_archivo_historico.md, "Convencion: el zip incremental siempre
@@ -476,6 +487,8 @@ endif()
 install(TARGETS nsc RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib/ DESTINATION lib)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/spec/ DESTINATION share/nativesharp/spec)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/
+    DESTINATION share/nativesharp/docs)
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
@@ -1664,7 +1677,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 0.9.0[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 0.1.*stage ${NSC_EXPECTED_COMPILER_STAGE}.*build [0-9a-f][0-9a-f]+")
+            "nsc 1.0.1-dev[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 1.0.1.*stage ${NSC_EXPECTED_COMPILER_STAGE}.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

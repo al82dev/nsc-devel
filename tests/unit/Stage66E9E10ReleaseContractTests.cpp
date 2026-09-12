@@ -252,8 +252,8 @@ int main()
         std::to_string(nativesharp::interop::kMetadataFormatMinor);
     tests.expect(
         policy.starts_with("NSCOMPAT 1\n") && policy.ends_with('\n'), "compatibility policy has canonical framing");
-    tests.expect(policy.find("compiler_release=0.9.0\n") != std::string::npos &&
-                     policy.find("language_release=0.1.0\n") != std::string::npos,
+    tests.expect(policy.find("compiler_release=1.0.1\n") != std::string::npos &&
+                     policy.find("language_release=1.0.1\n") != std::string::npos,
         "policy separates compiler and language releases");
     tests.expect(policy.find("nsmeta_read=1.0-" + metadataFormat + "\n") != std::string::npos &&
                      policy.find("nsmeta_write=" + metadataFormat + "\n") != std::string::npos,
@@ -278,15 +278,19 @@ int main()
         "policy rejects unknown trailing fields");
 
     std::string explanation;
-    tests.expect(driver::checkCompilerCompatibility("0.9.0", explanation, error) &&
+    tests.expect(driver::checkCompilerCompatibility("1.0.1", explanation, error) &&
                      explanation.find("satisfies") != std::string::npos,
         "current compiler release satisfies its exact requirement");
-    tests.expect(!driver::checkCompilerCompatibility("0.9.1", explanation, error) && error.empty() &&
+    tests.expect(driver::checkCompilerCompatibility("1.0.0", explanation, error) && error.empty(),
+        "a stable compiler satisfies an earlier patch requirement in the same major line");
+    tests.expect(!driver::checkCompilerCompatibility("1.0.2", explanation, error) && error.empty() &&
                      explanation.find("does not satisfy") != std::string::npos,
         "newer patch requirement is incompatible");
-    tests.expect(!driver::checkCompilerCompatibility("0.8.9", explanation, error) && error.empty(),
-        "pre-1.0 minor lines are not silently compatible");
-    tests.expect(!driver::checkCompilerCompatibility("0.9", explanation, error) &&
+    tests.expect(!driver::checkCompilerCompatibility("1.1.0", explanation, error) && error.empty(),
+        "a future minor requirement in the same major line is incompatible");
+    tests.expect(!driver::checkCompilerCompatibility("2.0.0", explanation, error) && error.empty(),
+        "a different stable major line is not silently compatible");
+    tests.expect(!driver::checkCompilerCompatibility("1.0", explanation, error) &&
                      error.find("canonical major.minor.patch") != std::string::npos,
         "non-canonical version requirement is rejected");
 
@@ -302,9 +306,9 @@ int main()
     output.clear();
     driverError.str({});
     driverError.clear();
-    const std::vector<std::string_view> compatibleRequirement = {"--check-compiler-compatibility", "0.9.0"};
+    const std::vector<std::string_view> compatibleRequirement = {"--check-compiler-compatibility", "1.0.1"};
     tests.expect(compiler.run(compatibleRequirement, output, driverError) == ExitCode::Success &&
-                     output.str().find("satisfies 0.9.0") != std::string::npos && driverError.str().empty(),
+                     output.str().find("satisfies 1.0.1") != std::string::npos && driverError.str().empty(),
         "public compatibility command returns an executable positive decision");
 
     tests.expect(

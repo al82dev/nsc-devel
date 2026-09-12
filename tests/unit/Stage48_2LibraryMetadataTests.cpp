@@ -282,7 +282,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(metadata.producerVersion == nativesharp::kCompilerVersion && metadata.moduleName == "MetaLib",
         "metadata persists exact producer and module identity");
     tests.expect(metadata.targetTriple == "x86_64-pc-windows-msvc" && metadata.pointerSize == 8 && metadata.pointerAlignment == 8,
-        "metadata freezes the NativeSharp 0.1 Windows x64 target contract");
+        "metadata freezes the NativeSharp 1.0.1 Windows x64 target contract");
     tests.expect(metadata.types.size() == 10, "all root-module named types are persisted as compiler metadata");
     tests.expect(metadata.exports.size() == 3, "three explicit Stage47 C ABI exports are persisted");
     tests.expect(LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint).size() == 64,
@@ -1390,6 +1390,11 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     tests.expect(codec.verifyCurrentCompiler(incompatible, error),
                  "SemVer build metadata identifies the producer without breaking "
                  "release compatibility");
+    incompatible.producerVersion = std::string(nativesharp::kCompilerReleaseVersion) +
+        "-dev+build.20000101T000000Z.0000000000000000";
+    error.clear();
+    tests.expect(codec.verifyCurrentCompiler(incompatible, error),
+                 "the development prerelease channel preserves the 1.0.1 compatibility line");
     incompatible = metadata;
     incompatible.pointerSize = 4;
     error.clear();

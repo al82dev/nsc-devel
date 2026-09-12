@@ -104,7 +104,15 @@ ABI_GATES_ROOT = ABI_ROOT / "gates"
 ABI_ARCHIVES_ROOT = ABI_ROOT / "archives"
 # El manifiesto de fuentes del Gate 0. El plan 123 fija que se incluye y que se excluye; se escribe
 # aqui una sola vez para que la respuesta no dependa de quien lance la accion.
-ABI_SOURCE_DIRECTORIES: tuple[str, ...] = ("src", "include", "lib", "tests", "examples")
+ABI_SOURCE_DIRECTORIES: tuple[str, ...] = (
+    "src",
+    "include",
+    "lib",
+    "tests",
+    "examples",
+    "spec",
+    "docs",
+)
 ABI_SOURCE_FILES: tuple[str, ...] = ("CMakeLists.txt", "nscbuilder.py")
 ABI_SOURCE_EXCLUDED_NAMES: frozenset[str] = frozenset(
     {".git", "_abi", "_nscbuilder", "__pycache__", ".vs", ".vscode", ".cache"}

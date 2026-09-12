@@ -53,8 +53,8 @@ constexpr std::uint32_t kMaximumStringSize = 16U * 1024U * 1024U;
 
 std::string_view compilerReleasePart(std::string_view version) noexcept
 {
-    const std::size_t buildMetadata = version.find('+');
-    return version.substr(0, buildMetadata);
+    const std::size_t channelOrBuildMetadata = version.find_first_of("-+");
+    return version.substr(0, channelOrBuildMetadata);
 }
 
 class ByteWriter final
@@ -1670,7 +1670,7 @@ bool LibraryMetadataCodec::writeModel(
     // en silencio hace que la prueba diga "el objetivo sobrevivio" cuando lo que
     // sobrevivio es la constante.
     //
-    // NativeSharp 0.1 solo tiene un objetivo, asi que lo unico correcto es
+    // NativeSharp 1.0.1 solo tiene un objetivo, asi que lo unico correcto es
     // rechazar cualquier otro con su numero delante, y no producir un fichero que
     // el lector rechazaria despues.
     if (metadata.targetId != kWindowsX64Target || metadata.pointerSize != kPointerSize ||
@@ -1679,7 +1679,7 @@ bool LibraryMetadataCodec::writeModel(
         error = "cannot write NativeSharp metadata for target " + std::to_string(metadata.targetId) +
             " with pointer " + std::to_string(metadata.pointerSize) + "/" +
             std::to_string(metadata.pointerAlignment) +
-            "; NativeSharp 0.1 targets Windows x64 only";
+            "; NativeSharp 1.0.1 targets Windows x64 only";
         return false;
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;
@@ -2281,7 +2281,7 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
         }
     }
     // El productor conserva la identidad exacta del ejecutable para poder
-    // rastrear el artefacto, pero `+build...` es metadata SemVer y NO una
+    // rastrear el artefacto, pero el canal `-dev` y `+build...` NO son una
     // frontera de compatibilidad. Sin separar ambas preguntas, cada build
     // incremental rechazaria las bibliotecas del build inmediatamente anterior
     // aunque compartieran lenguaje, formato y ABI.

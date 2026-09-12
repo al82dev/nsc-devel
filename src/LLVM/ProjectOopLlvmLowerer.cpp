@@ -2783,7 +2783,7 @@ private:
         {
             return fail(error, "Stage 39 failed to declare RTTI helper functions");
         }
-        // NativeSharp 0.9 / composable libraries. These helpers inspect an object's public
+        // NativeSharp 1.0.1 / composable libraries. These helpers inspect an object's public
         // descriptor shape but are implementation details of the module that emits the test.
         // External linkage made every independently compiled .lib define the same two strong
         // COFF symbols; the first real producer/consumer link therefore failed before main.

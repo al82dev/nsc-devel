@@ -526,7 +526,7 @@ void SemanticAnalyzer::analyzeFunction(ast::AstNode* node, bool externC)
         report(
             node->range(),
             diagnostics::DiagnosticId::InvalidType,
-            "extern C functions cannot have a body in NativeSharp 0.1");
+            "extern C functions cannot have a body in NativeSharp 1.0.1");
         return;
     }
 
@@ -548,7 +548,7 @@ void SemanticAnalyzer::analyzeFunction(ast::AstNode* node, bool externC)
             report(
                 node->range(),
                 diagnostics::DiagnosticId::InvalidMainSignature,
-                "NativeSharp 0.1 Main must have signature int Main() and NativeSharp linkage");
+                "NativeSharp 1.0.1 Main must have signature int Main() and NativeSharp linkage");
         }
     }
 
@@ -961,7 +961,7 @@ ExpressionInfo SemanticAnalyzer::analyzeIdentifier(ast::AstNode* node, bool allo
             report(
                 node->range(),
                 diagnostics::DiagnosticId::InvalidOperand,
-                "function name can only be used as the designator of a call in NativeSharp 0.1");
+                "function name can only be used as the designator of a call in NativeSharp 1.0.1");
             info.type = types_.builtin(TypeKind::Error);
         }
         return record(node, info);
@@ -1963,7 +1963,7 @@ Type* SemanticAnalyzer::resolveType(ast::TypeSyntax* syntax)
             report(
                 modifier.range,
                 diagnostics::DiagnosticId::InvalidArrayCount,
-                "fixed array element type must be complete, non-void and non-array in NativeSharp 0.1");
+                "fixed array element type must be complete, non-void and non-array in NativeSharp 1.0.1");
             type = types_.builtin(TypeKind::Error);
             continue;
         }
@@ -2090,7 +2090,7 @@ bool SemanticAnalyzer::validateExternCSignature(
         report(
             functionNode->range(),
             diagnostics::DiagnosticId::InvalidExternCSignature,
-            "extern C return type '" + returnType->displayName() + "' is not ABI-compatible in NativeSharp 0.1");
+            "extern C return type '" + returnType->displayName() + "' is not ABI-compatible in NativeSharp 1.0.1");
         valid = false;
     }
 
@@ -2108,7 +2108,7 @@ bool SemanticAnalyzer::validateExternCSignature(
                 range,
                 diagnostics::DiagnosticId::InvalidExternCSignature,
                 "extern C parameter type '" + parameterType->displayName() +
-                    "' is not ABI-compatible in NativeSharp 0.1");
+                    "' is not ABI-compatible in NativeSharp 1.0.1");
             valid = false;
         }
     }

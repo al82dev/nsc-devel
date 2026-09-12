@@ -7,8 +7,8 @@ namespace nativesharp
 // La version del lenguaje y la compatibilidad del compilador son estables. La version visible
 // agrega metadata SemVer unica de cada build; sus dos valores se definen en Version.cpp, el unico
 // consumidor del header generado por CMake.
-inline constexpr std::string_view kLanguageVersion = "0.1";
-inline constexpr std::string_view kCompilerReleaseVersion = "0.9.0";
+inline constexpr std::string_view kLanguageVersion = "1.0.1";
+inline constexpr std::string_view kCompilerReleaseVersion = "1.0.1";
 inline constexpr std::string_view kCompilerStage = "67";
 extern const std::string_view kCompilerVersion;
 extern const std::string_view kCompilerBuildId;

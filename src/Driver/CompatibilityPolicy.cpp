@@ -32,7 +32,7 @@ std::vector<Field> fields()
     using namespace interop;
     return {
         {"compiler_release", std::string(kCompilerReleaseVersion)},
-        {"language_release", std::string(kLanguageVersion) + ".0"},
+        {"language_release", std::string(kLanguageVersion)},
         {"compiler_compatibility", "same-minor-before-1;same-major-after-1"},
         {"language_compatibility", "same-minor-before-1;same-major-after-1"},
         {"deprecation", "diagnostic-before-removal;one-minor-minimum"},

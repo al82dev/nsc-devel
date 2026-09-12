@@ -373,7 +373,7 @@ void testConsolidatedStage48Surface(TestContext& tests)
             && nativesharp::kCompilerVersion.starts_with(nativesharp::kCompilerReleaseVersion)
             && nativesharp::kCompilerVersion.size() > nativesharp::kCompilerReleaseVersion.size()
             && !nativesharp::kCompilerStage.empty(),
-        "compiler identity remains on the user-selected NativeSharp 0.1 language line after the Stage 48 host-SDK closure");
+        "compiler identity remains on the user-selected NativeSharp 1.0.1 language line after the Stage 48 host-SDK closure");
 }
 
 void testCppCliBuildWhenAvailable(TestContext& tests, const std::filesystem::path& root)

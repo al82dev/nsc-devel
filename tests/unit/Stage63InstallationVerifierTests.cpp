@@ -16,7 +16,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 11> kRequiredFiles = {
+constexpr std::array<std::string_view, 18> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -29,6 +29,13 @@ constexpr std::array<std::string_view, 11> kRequiredFiles = {
     "share/nativesharp/spec/NativeSharp_1_0_conformance.map",
     "share/nativesharp/spec/NativeSharp_Compiler_Contract_1_0.md",
     "share/nativesharp/spec/NativeSharp_Compiler_1_0_conformance.map",
+    "share/nativesharp/docs/README.md",
+    "share/nativesharp/docs/1.0.1/README.md",
+    "share/nativesharp/docs/1.0.1/VERSION.md",
+    "share/nativesharp/docs/1.0.1/language/NativeSharp_Language_Specification_1_0_1.md",
+    "share/nativesharp/docs/1.0.1/compiler/NativeSharp_Compiler_Contract_1_0_1.md",
+    "share/nativesharp/docs/1.0.1/debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md",
+    "share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -164,6 +171,16 @@ int main() {
       "missing normative document names the exact specification component");
   tests.expect(writeFile(compilerContract),
                "specification fixture is restored");
+
+  const std::filesystem::path currentDocumentation =
+      prefix / "share/nativesharp/docs/1.0.1/README.md";
+  std::filesystem::remove(currentDocumentation, filesystemError);
+  tests.expect(
+      !driver::verifyInstallation(prefix, error) &&
+          error.find("missing 1.0.1 documentation index") != std::string::npos,
+      "missing current documentation names the versioned package component");
+  tests.expect(writeFile(currentDocumentation),
+               "current documentation fixture is restored");
   tests.expect(driver::verifyInstallation(prefix, error),
                "restored package returns to a valid state");
 
