@@ -1,0 +1,87 @@
+namespace DebugExtreme
+{
+    public delegate int Transform(int value);
+
+    public interface ICounter
+    {
+        int Read();
+    }
+
+    public struct Pair
+    {
+        public int Left;
+        public int Right;
+
+        public int Sum()
+        {
+            return this.Left + this.Right;
+        }
+    }
+
+    public class Box<T>
+    {
+        public T Value;
+
+        public Box(T value)
+        {
+            Value = value;
+        }
+
+        public T Read()
+        {
+            return Value;
+        }
+    }
+
+    public class Counter : ICounter
+    {
+        private int Value;
+
+        public Counter(int value)
+        {
+            Value = value;
+        }
+
+        public int Read()
+        {
+            return Value;
+        }
+
+        ~Counter()
+        {
+            Value = 0;
+        }
+    }
+
+    public static class ProducerApi
+    {
+        public static int Increment(int value)
+        {
+            return value + 1;
+        }
+
+        public static int Invoke(Transform transform, int value)
+        {
+            int transformed = transform(value);
+            return transformed;
+        }
+
+        public static Pair MakePair(int left, int right)
+        {
+            Pair pair;
+            pair.Left = left;
+            pair.Right = right;
+            return pair;
+        }
+
+        public static int ReadInterface(ICounter counter)
+        {
+            return counter.Read();
+        }
+
+        public static int ReadBox(Box<int> box)
+        {
+            return box.Read();
+        }
+    }
+}

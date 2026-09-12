@@ -1657,6 +1657,18 @@ if(NSC_BUILD_TESTS)
             "-DDEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-artifact-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpDebugArtifacts.cmake")
 
+    add_test(
+        NAME nsc.debug.extreme-o0
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
+            "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
+            "-DDEBUG_EXTREME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_pdb_extreme"
+            "-DDEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpExtremeDebugO0.cmake")
+
     # CC1-000: este regex comprueba la identidad visible del compilador instalado. El stage exacto
     # se extrae de Version.h para conservar una sola fuente de verdad sin aceptar una instalacion
     # atrasada. nsc.version.identity comprueba por separado las constantes enlazadas en este build.
