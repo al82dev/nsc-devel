@@ -402,8 +402,8 @@ namespace MoveArrayElement
 }
 
 // ---------------------------------------------------------------------------------------
-// Regression guard: move() must still reject a source that is not a direct native array element
-// (e.g. a custom indexer call on a non-array type) -- fix 4 only widens move()'s accepted source
+// Regression guard: move() must still reject a source that is not a direct native/fixed-array or
+// raw-pointer element (e.g. a custom indexer call) -- the widening only accepts addressable raw
 // shapes, it does not turn move() into an "extract ownership from anything" escape hatch.
 // ---------------------------------------------------------------------------------------
 
@@ -461,7 +461,7 @@ namespace MoveRejectsIndexer
     for (const nativesharp::diagnostics::Diagnostic& diagnostic : compilation.diagnostics().diagnostics())
     {
         if (diagnostic.message().find(
-                "move(...) array-element source must be a direct native array or fixed array element access") !=
+                "move(...) array-element source must be a direct native array, fixed array, or raw pointer element access") !=
             std::string::npos)
         {
             foundExpectedMessage = true;

@@ -22,6 +22,8 @@ namespace nativesharp::frontend
 {
 namespace
 {
+constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+
 bool isGenericTypeTemplateNode(const ast::AstNode* node) noexcept
 {
     if (node == nullptr || node->genericParameters().empty()) return false;
@@ -1380,13 +1382,37 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     std::string_view originalContainingTypeName)
 {
     if (source == nullptr) return nullptr;
-    ast::AstNode* result = arena.make<ast::AstNode>(source->kind(), source->range());
+    const bool layoutQueryOfSubstitutedParameter =
+        (source->kind() == ast::AstNodeKind::SizeofExpression ||
+         source->kind() == ast::AstNodeKind::AlignofExpression) &&
+        source->first() != nullptr &&
+        source->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        substitutions.contains(source->first()->text());
+    ast::AstNodeKind clonedKind = source->kind();
+    if (layoutQueryOfSubstitutedParameter)
+    {
+        clonedKind = source->kind() == ast::AstNodeKind::SizeofExpression
+            ? ast::AstNodeKind::SizeofTypeExpression
+            : ast::AstNodeKind::AlignofTypeExpression;
+    }
+    ast::AstNode* result = arena.make<ast::AstNode>(clonedKind, source->range());
     result->setText(source->text());
     result->setAuxiliaryText(source->auxiliaryText());
     result->setTokenKind(source->tokenKind());
     result->setFlag(source->flag());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
+    // A scalar `new T` inside a generic template allocates one raw storage slot whose element
+    // type is T.  After monomorphization the cloned TypeSyntax names the concrete argument; for a
+    // class argument that made method-body analysis mistake the original raw allocation for the
+    // distinct source form `new ConcreteClass`, which must use constructor syntax.  Preserve the
+    // source-level intent on the expression before substituting its type.
+    if (source->kind() == ast::AstNodeKind::NewExpression && !source->flag() &&
+        source->typeSyntax() != nullptr && source->typeSyntax()->typeArguments().empty() &&
+        substitutions.contains(source->typeSyntax()->baseName()))
+    {
+        result->setAuxiliaryText(std::string(kGenericRawNewAuxiliary));
+    }
     for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
     for (const std::string& parameter : source->genericParameters()) result->addGenericParameter(parameter);
     // NSC-LIMIT-007. Las clausulas se clonan con la sustitucion aplicada a sus tipos, igual que
@@ -1423,10 +1449,25 @@ ast::AstNode* ProjectGenericModel::cloneNode(
         result->setText(std::string(rewrittenContainingTypeName));
     }
 
-    result->setTypeSyntax(cloneType(arena, source->typeSyntax(), substitutions));
+    if (layoutQueryOfSubstitutedParameter)
+    {
+        ast::TypeSyntax* measuredType = cloneType(
+            arena, substitutions.at(source->first()->text()), substitutions);
+        preserveOrAttachInstantiationOrigin(measuredType);
+        result->setTypeSyntax(measuredType);
+    }
+    else
+    {
+        result->setTypeSyntax(cloneType(arena, source->typeSyntax(), substitutions));
+    }
     for (const ast::TypeSyntax* syntax : source->typeSyntaxes())
         result->addTypeSyntax(cloneType(arena, syntax, substitutions));
-    result->setFirst(cloneNode(arena, source->first(), substitutions, rewrittenContainingTypeName, originalContainingTypeName));
+    if (!layoutQueryOfSubstitutedParameter)
+    {
+        result->setFirst(cloneNode(
+            arena, source->first(), substitutions,
+            rewrittenContainingTypeName, originalContainingTypeName));
+    }
     result->setSecond(cloneNode(arena, source->second(), substitutions, rewrittenContainingTypeName, originalContainingTypeName));
     result->setThird(cloneNode(arena, source->third(), substitutions, rewrittenContainingTypeName, originalContainingTypeName));
     for (const ast::AstNode* child : source->children())

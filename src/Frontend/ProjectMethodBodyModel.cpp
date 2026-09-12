@@ -24,6 +24,11 @@
 
 namespace nativesharp::frontend
 {
+namespace
+{
+constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+}
+
 // NSC-LIMIT-010. LA REGLA DE COMPATIBILIDAD DE PROPIEDAD, ESCRITA UNA SOLA VEZ.
 //
 // Estaba solo dentro de `analyzeCall`, y `ProjectConstructionModel::bindConstruction` elegia
@@ -4449,7 +4454,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         : "<error>";
                     acceptableElementSource =
                         ProjectTypeConversion::isNativeArray(elementBaseTypeKey) ||
-                        ProjectMemberModel::fixedArrayElementTypeKey(elementBaseTypeKey).has_value();
+                        ProjectMemberModel::fixedArrayElementTypeKey(elementBaseTypeKey).has_value() ||
+                        ProjectTypeConversion::isPointer(elementBaseTypeKey);
                 }
                 if (!acceptableElementSource)
                 {
@@ -4457,7 +4463,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "move(...) array-element source must be a direct native array or fixed array element access");
+                        "move(...) array-element source must be a direct native array, fixed array, or raw pointer element access");
                     break;
                 }
                 MethodMoveBinding move;
@@ -5499,8 +5505,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
 
                 const NamedTypeDeclaration* declared = nameLookup_->resolvedDeclaration(expression->typeSyntax());
+                const bool genericRawNew = expression->auxiliaryText() == kGenericRawNewAuxiliary;
                 const bool classNew = expression->kind() == ast::AstNodeKind::NewExpression &&
-                    declared != nullptr && declared->kind == NamedTypeDeclarationKind::Class;
+                    !genericRawNew && declared != nullptr &&
+                    declared->kind == NamedTypeDeclarationKind::Class;
                 if (classNew)
                 {
                     diagnostics.report(
@@ -10266,7 +10274,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         // solo se admitiera de un lado, `dst[i] = move(src[j])` compilaria en una direccion y no
         // en la otra. La admision de destino es simetrica a la de fuente a proposito.
         arrayElementMoveTarget = ProjectTypeConversion::isNativeArray(receiverTypeKey) ||
-            ProjectMemberModel::fixedArrayElementTypeKey(receiverTypeKey).has_value();
+            ProjectMemberModel::fixedArrayElementTypeKey(receiverTypeKey).has_value() ||
+            ProjectTypeConversion::isPointer(receiverTypeKey);
 
         // A native array is raw storage, but an array reached through an `owned`/`raii` binding is
         // also the container's owning element store. Moving into one of its reference-like slots
