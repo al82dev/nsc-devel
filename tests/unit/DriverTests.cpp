@@ -564,6 +564,29 @@ int main()
     {
         std::ostringstream output;
         std::ostringstream error;
+        const auto bundlePath = oopProjectDirectory / "compiler.nsdiag";
+        const std::string project = oopProjectPath.string();
+        const std::string bundle = bundlePath.string();
+        const std::vector<std::string_view> arguments = {
+            "--write-diagnostic-bundle", project, bundle};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::Success,
+            "diagnostic bundle captures a successful O0 verification");
+        std::ifstream stream(bundlePath, std::ios::binary);
+        const std::string contents((std::istreambuf_iterator<char>(stream)), {});
+        tests.expect(contents.starts_with("NSDIAG 1\n") &&
+                contents.find("action=\"--verify-project-oop-llvm -O0\"") != std::string::npos &&
+                contents.find("input=\"project:") != std::string::npos &&
+                contents.find("input=\"source:") != std::string::npos,
+            "diagnostic bundle records versioned action and content-addressed inputs");
+        tests.expect(contents.find(oopProjectDirectory.string()) == std::string::npos,
+            "diagnostic bundle identity does not depend on the absolute source root");
+        tests.expect(error.str().empty(), "successful diagnostic bundle keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
         const std::string path = oopProjectPath.string();
         const std::filesystem::path objectPath = oopProjectDirectory / "stage30_driver.obj";
         const std::string object = objectPath.string();

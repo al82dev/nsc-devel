@@ -364,6 +364,7 @@ nsc_enable_warnings(nsc_linker)
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
     src/Driver/CompatibilityPolicy.cpp
+    src/Driver/DiagnosticBundle.cpp
     src/Driver/Driver.cpp
     src/Driver/InstallationManifest.cpp
     src/Driver/InstallationVerifier.cpp

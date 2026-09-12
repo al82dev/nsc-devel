@@ -1,5 +1,6 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
+#include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
@@ -2893,6 +2894,24 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         return verifyLibraryArtifacts(args[1], args[2], args[3], {}, output, error);
     }
 
+    if (args.size() == 3 && args[0] == "--write-diagnostic-bundle")
+    {
+        std::ostringstream capturedOutput;
+        std::ostringstream capturedError;
+        const ExitCode result = runProject(
+            "--verify-project-oop-llvm", args[1], capturedOutput, capturedError);
+        std::string bundleError;
+        if (!writeDiagnosticBundle(std::filesystem::path(std::string(args[1])),
+                std::filesystem::path(std::string(args[2])), result,
+                capturedOutput.str(), capturedError.str(), bundleError))
+        {
+            error << "nsc: error: " << bundleError << '\n';
+            return ExitCode::CompilationError;
+        }
+        output << "diagnostic bundle written: " << args[2] << '\n';
+        return result;
+    }
+
     if (args.size() == 5 && args[0] == "--verify-library-artifacts")
     {
         return verifyLibraryArtifacts(args[1], args[2], args[3], args[4], output, error);
@@ -3058,6 +3077,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-library-metadata <file.nsmeta>\n"
            << "  nsc --verify-library-artifacts <file.nsmeta> <file.lib> "
               "[file.dll [file.pdb]]\n"
+           << "  nsc --write-diagnostic-bundle <file.nsproj> <file.nsdiag>\n"
            << "  nsc --write-toolchain-contract <file.contract>\n"
            << "  nsc --verify-toolchain-contract <file.contract>\n"
            << "  nsc --print-compatibility-policy\n"
