@@ -111,6 +111,15 @@ ABI_SOURCE_EXCLUDED_NAMES: frozenset[str] = frozenset(
 )
 ABI_SOURCE_EXCLUDED_SUFFIXES: tuple[str, ...] = (".obj", ".pdb", ".ilk", ".exp", ".tmp", ".log")
 TEST_WORK_ROOT = ROOT / "_nscbuilder" / "work" / "tests"
+CLEANUP_BUILD_NAMES: tuple[str, ...] = (
+    "build-clang",
+    "build-clang-lldlink",
+    "build-clang-nslink",
+    "build-msvc",
+    "build-test-lldlinker",
+    "build-test-nslink",
+    "build-tests",
+)
 CASE_TIMEOUT_SECONDS = 300
 
 INTEROP_CASES: tuple[tuple[str, str, int | None], ...] = (
@@ -309,6 +318,38 @@ def utc_stamp() -> str:
 def safe_name(text: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("._")
     return cleaned or "item"
+
+
+def cleanup_targets(configured_builds: Iterable[Path]) -> tuple[list[Path], list[Path]]:
+    """Devuelve artefactos borrables y rutas rechazadas, siempre dentro del repositorio.
+
+    Los builds configurados por el usuario sólo son aceptables como hijos directos de ``ROOT``
+    cuyo nombre comienza con ``build-``. También se permite exactamente el área temporal que usa
+    el runner. Resolver primero la ruta impide que un enlace o junction escape del repositorio.
+    """
+    root = ROOT.resolve()
+    test_work = TEST_WORK_ROOT.resolve()
+    candidates = [
+        *(Path(path) for path in configured_builds),
+        *(ROOT / name for name in CLEANUP_BUILD_NAMES),
+        TEST_WORK_ROOT,
+    ]
+    accepted: list[Path] = []
+    rejected: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        key = str(resolved).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        is_build_tree = resolved.parent == root and resolved.name.casefold().startswith("build-")
+        if resolved != test_work and not is_build_tree:
+            rejected.append(resolved)
+            continue
+        if resolved.exists():
+            accepted.append(resolved)
+    return accepted, rejected
 
 
 def command_text(command: Iterable[str]) -> str:
@@ -2441,6 +2482,67 @@ class PipelineWorker(QObject):
             )
 
 
+class CleanupWorker(QObject):
+    output = Signal(str, str, str, str)
+    progress = Signal(int, int)
+    finished = Signal(dict)
+
+    def __init__(self, targets: list[Path]) -> None:
+        super().__init__()
+        self.targets = targets
+        self.cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
+
+    def _emit(self, text: str, level: str = "info") -> None:
+        stamped = f"[{datetime.now().strftime('%H:%M:%S')}] {text}"
+        self.output.emit(stamped, level, "Compilador", "General")
+
+    @Slot()
+    def run(self) -> None:
+        started = time.monotonic()
+        removed = 0
+        failures: list[str] = []
+        total = len(self.targets)
+        self.progress.emit(0, total)
+        self._emit("Limpieza de artefactos iniciada.", "command")
+        for index, target in enumerate(self.targets, start=1):
+            if self.cancel_event.is_set():
+                break
+            try:
+                self._emit(f"Eliminando {target}")
+                if target.is_dir():
+                    shutil.rmtree(target)
+                elif target.exists():
+                    target.unlink()
+                removed += 1
+                self._emit(f"Eliminado: {target}", "success")
+            except OSError as exc:
+                detail = f"{target}: {exc}"
+                failures.append(detail)
+                self._emit(f"No se pudo eliminar {detail}", "error")
+            self.progress.emit(index, total)
+        elapsed = time.monotonic() - started
+        if self.cancel_event.is_set():
+            status = "cancelled"
+            self._emit("Limpieza cancelada.", "warn")
+        elif failures:
+            status = "failed"
+            self._emit(f"Limpieza terminada con {len(failures)} error(es).", "error")
+        else:
+            status = "passed"
+            self._emit(f"Limpieza completada: {removed} árbol(es) eliminado(s).", "success")
+        self.finished.emit(
+            {
+                "status": status,
+                "seconds": elapsed,
+                "removed": removed,
+                "failures": failures,
+            }
+        )
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -2457,7 +2559,7 @@ class MainWindow(QMainWindow):
         # querrian recalcular la categoria.
         self._selection_guard = False
         self.thread: QThread | None = None
-        self.worker: PipelineWorker | None = None
+        self.worker: PipelineWorker | CleanupWorker | None = None
         self.inventory_process: QProcess | None = None
         self.inventory_bytes = bytearray()
         self.current_run_dir: Path | None = None
@@ -2688,9 +2790,15 @@ class MainWindow(QMainWindow):
         self.open_button.clicked.connect(self.open_results)
         self.clear_button = QPushButton("Limpiar consola")
         self.clear_button.clicked.connect(self.clear_current_console)
+        self.cleanup_button = QPushButton("Limpiar")
+        self.cleanup_button.setToolTip(
+            "Borra árboles de compilación y temporales; conserva fuentes, historial y baselines"
+        )
+        self.cleanup_button.clicked.connect(self.start_cleanup)
         self.status_label = QLabel("Listo")
         controls.addWidget(self.cancel_button)
         controls.addWidget(self.open_button)
+        controls.addWidget(self.cleanup_button)
         controls.addWidget(self.clear_button)
         controls.addWidget(self.status_label, 1)
         right_layout.addLayout(controls)
@@ -3966,6 +4074,7 @@ class MainWindow(QMainWindow):
         self.tests_start_button.setEnabled(False)
         self.abi_baseline_button.setEnabled(False)
         self.abi_archive_button.setEnabled(False)
+        self.cleanup_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText("Ejecutando...")
 
@@ -3979,6 +4088,75 @@ class MainWindow(QMainWindow):
         worker.failure_found.connect(self.on_failure_found)
         worker.progress.connect(self.on_progress)
         worker.finished.connect(self.on_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        self.thread = thread
+        self.worker = worker
+        thread.start()
+
+    @Slot()
+    def start_cleanup(self) -> None:
+        if self.worker is not None:
+            return
+        if self.inventory_process is not None:
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "Espera a que termine la lectura del inventario CTest antes de limpiar.",
+            )
+            return
+        configured = [
+            Path(self.build_path.text().strip()),
+            Path(self.test_build_lld_path.text().strip()),
+            Path(self.test_build_nslink_path.text().strip()),
+        ]
+        targets, rejected = cleanup_targets(configured)
+        if rejected:
+            paths = "\n".join(str(path) for path in rejected)
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                f"La limpieza sólo admite árboles build-* dentro de {ROOT}. "
+                f"Corrige estas rutas antes de continuar:\n\n{paths}",
+            )
+            return
+        if not targets:
+            QMessageBox.information(self, APP_NAME, "No hay artefactos de compilación que limpiar.")
+            return
+        paths = "\n".join(f"• {path}" for path in targets)
+        answer = QMessageBox.question(
+            self,
+            APP_NAME,
+            "Se eliminarán permanentemente estos árboles de compilación:\n\n"
+            f"{paths}\n\n"
+            "Se conservarán _abi, _nscbuilder\\history, las fuentes y C:\\native-sharp.\n\n"
+            "¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._save_settings()
+        self.active_result_channels = ["Compilador"]
+        self.output_channel_tabs.setCurrentIndex(self.channel_outer_indices["Compilador"])
+        self.compiler_start_button.setEnabled(False)
+        self.tests_start_button.setEnabled(False)
+        self.abi_baseline_button.setEnabled(False)
+        self.abi_archive_button.setEnabled(False)
+        self.cleanup_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+        self.status_label.setText("Limpiando artefactos...")
+
+        thread = QThread(self)
+        worker = CleanupWorker(targets)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.output.connect(self.append_output)
+        worker.progress.connect(self.on_progress)
+        worker.finished.connect(self.on_cleanup_finished)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(self._thread_finished)
@@ -4148,6 +4326,7 @@ class MainWindow(QMainWindow):
         self.tests_start_button.setEnabled(True)
         self.abi_baseline_button.setEnabled(True)
         self.abi_archive_button.setEnabled(True)
+        self.cleanup_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.open_button.setEnabled(True)
         self.status_label.setText(
@@ -4155,6 +4334,35 @@ class MainWindow(QMainWindow):
         )
         if summary.get("operation") == "tests":
             QTimer.singleShot(0, self.refresh_ctests)
+
+    @Slot(dict)
+    def on_cleanup_finished(self, summary: dict) -> None:
+        self.compiler_start_button.setEnabled(True)
+        self.tests_start_button.setEnabled(True)
+        self.abi_baseline_button.setEnabled(True)
+        self.abi_archive_button.setEnabled(True)
+        self.cleanup_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        status = str(summary["status"])
+        removed = int(summary["removed"])
+        seconds = float(summary["seconds"])
+        if status == "passed":
+            self.status_label.setText(
+                f"Limpieza completada — {removed} árbol(es) — {seconds:.2f} s"
+            )
+        elif status == "cancelled":
+            self.status_label.setText(f"Limpieza cancelada — {removed} árbol(es) eliminados")
+        else:
+            failures = list(summary.get("failures", []))
+            self.status_label.setText(
+                f"Limpieza incompleta — {len(failures)} error(es) — {seconds:.2f} s"
+            )
+            QMessageBox.warning(
+                self,
+                APP_NAME,
+                "No se pudieron eliminar algunos artefactos:\n\n" + "\n".join(failures),
+            )
+        self.ctest_targets.clear()
 
     @Slot()
     def _thread_finished(self) -> None:
