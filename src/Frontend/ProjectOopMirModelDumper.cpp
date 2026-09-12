@@ -84,7 +84,8 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
 std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
 {
     std::ostringstream output;
-    output << "project.oop.mir functions=" << model.functions().size() << '\n';
+    output << "project.oop.mir functions=" << model.functions().size()
+           << " schema=" << kProjectOopMirSchemaMajor << '.' << kProjectOopMirSchemaMinor << '\n';
     output << "struct-values=" << model.structLayouts().size() << '\n';
     for (const ProjectOopMirStructLayout& layout : model.structLayouts())
     {

@@ -5,7 +5,9 @@
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
+#include "nativesharp/Runtime/RuntimeAbiContract.h"
 #include "nativesharp/Target/TargetInfo.h"
 
 #include <array>
@@ -37,6 +39,11 @@ std::vector<Field> expectedFields() {
        std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
       {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." +
                           std::to_string(kRuntimeAbiMinor)},
+      {"runtime_symbol_set",
+       std::to_string(runtime::kRuntimeSymbolSetVersion)},
+      {"mir_schema",
+       std::to_string(frontend::kProjectOopMirSchemaMajor) + "." +
+           std::to_string(frontend::kProjectOopMirSchemaMinor)},
       {"mangling_abi", std::to_string(kManglingAbiVersion)},
       {"object_abi", std::to_string(kObjectAbiVersion)},
       {"delegate_abi", std::to_string(kDelegateAbiVersion)},

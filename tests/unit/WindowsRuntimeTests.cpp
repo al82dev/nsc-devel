@@ -2,6 +2,7 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
+#include "nativesharp/Runtime/RuntimeAbiContract.h"
 
 #include "../support/TestContext.h"
 
@@ -32,6 +33,15 @@ int main()
         tests.expect(verificationError.empty(), "runtime LLVM verification keeps its diagnostic empty");
 
         const std::string text = module->text();
+        bool hasCompleteRuntimeAbi = true;
+        for (const nativesharp::runtime::RuntimeAbiSymbol& symbol :
+             nativesharp::runtime::kRuntimeAbiSymbols)
+        {
+            hasCompleteRuntimeAbi = hasCompleteRuntimeAbi &&
+                text.find("@" + std::string(symbol.name)) != std::string::npos;
+        }
+        tests.expect(hasCompleteRuntimeAbi,
+            "runtime module contains every symbol in runtime symbol set 1");
         tests.expect(text.find("define ptr @__nativesharp_alloc(i64") != std::string::npos,
             "runtime defines the NativeSharp allocation ABI");
         tests.expect(text.find("define void @__nativesharp_free(ptr") != std::string::npos,

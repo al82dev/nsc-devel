@@ -75,7 +75,7 @@ int main()
     const std::string metadataFormat =
         std::to_string(interop::kMetadataFormatMajor) + "." +
         std::to_string(interop::kMetadataFormatMinor);
-    tests.expect(contract.starts_with("NSTOOLCHAIN 1\n"), "contract has a versioned magic header");
+    tests.expect(contract.starts_with("NSTOOLCHAIN 2\n"), "contract has a versioned magic header");
     tests.expect(contract.ends_with('\n'), "contract has one canonical final newline");
     tests.expect(contract.find("compiler_release=1.0.1\n") != std::string::npos,
         "contract identifies the compatible compiler release");
@@ -90,6 +90,9 @@ int main()
     tests.expect(contract.find("native_abi=1.0\n") != std::string::npos &&
                      contract.find("runtime_abi=1.0\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");
+    tests.expect(contract.find("runtime_symbol_set=1\n") != std::string::npos &&
+                     contract.find("mir_schema=1.0\n") != std::string::npos,
+        "contract freezes the runtime symbol set and MIR schema");
     tests.expect(contract.find("mangling_abi=1\n") != std::string::npos &&
                      contract.find("object_abi=1\n") != std::string::npos &&
                      contract.find("delegate_abi=1\n") != std::string::npos &&
@@ -120,7 +123,7 @@ int main()
             ++lineCount;
         }
     }
-    tests.expect(lineCount == 22, "canonical contract has one header and twenty-one ordered fields");
+    tests.expect(lineCount == 24, "canonical contract has one header and twenty-three ordered fields");
 
     const std::filesystem::path evidence = nativesharp::tests::evidenceRoot("nativesharp_stage62_toolchain_contract");
     std::error_code filesystemError;
@@ -153,7 +156,7 @@ int main()
 
     const std::filesystem::path malformed = evidence / "malformed.contract";
     tests.expect(verifyFails(malformed,
-                     replacing(contract, "NSTOOLCHAIN 1", "NSTOOLCHAIN 9"),
+                     replacing(contract, "NSTOOLCHAIN 2", "NSTOOLCHAIN 9"),
                      "unsupported toolchain contract header",
                      error),
         "future contract format is rejected with its header named");
@@ -166,6 +169,11 @@ int main()
                      "missing toolchain contract field 'runtime_abi'",
                      error),
         "missing compatibility fields are diagnosed precisely");
+    tests.expect(verifyFails(malformed,
+                     withoutLine(contract, "mir_schema=1.0"),
+                     "missing toolchain contract field 'mir_schema'",
+                     error),
+        "missing MIR schema identity is diagnosed precisely");
     tests.expect(verifyFails(malformed,
                      replacing(contract, "llvm=23.x", "llvm=24.x"),
                      "incompatible toolchain contract field 'llvm'",

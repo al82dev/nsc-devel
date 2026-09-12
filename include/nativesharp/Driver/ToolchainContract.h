@@ -4,7 +4,7 @@
 #include <string>
 
 namespace nativesharp::driver {
-inline constexpr unsigned kToolchainContractFormatVersion = 1;
+inline constexpr unsigned kToolchainContractFormatVersion = 2;
 
 // Returns the canonical, deterministic description of the toolchain accepted by
 // this compiler. Deliberately excludes the per-build id: compatibility and

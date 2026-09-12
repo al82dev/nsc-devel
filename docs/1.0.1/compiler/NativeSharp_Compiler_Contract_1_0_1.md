@@ -103,14 +103,28 @@ inside a non-transactional call; the next safe boundary observes it.
 changes language semantics, optimization or artifact identity. The diagnostic limit and hostile
 input ceilings remain independent resource controls.
 
+## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
+
+The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR
+semantics from the compiler release alone: an incompatible major requires rejection, while an
+additive minor requires explicit support. Node ownership, cleanup, exceptional control flow and
+ABI annotations belong to that schema.
+
+The native runtime ABI and the complete runtime symbol set are independently versioned. Changing a
+signature, calling convention, layout or behavior requires a runtime ABI change; adding, removing
+or renaming a required runtime symbol requires a runtime-symbol-set change. The canonical symbol
+inventory is `RuntimeAbiContract.h`, and the runtime-module test shall prove that every listed
+symbol is actually materialized.
+
 ## NSC-PKG-001 — Deterministic toolchain contract
 
 Every distributable build of `nsc` shall generate and install a canonical
 `NativeSharpToolchain.contract` from the identities compiled into that executable. The artifact
-shall use the versioned `NSTOOLCHAIN 1` text format, LF line endings, a fixed field order and one
+shall use the versioned `NSTOOLCHAIN 2` text format, LF line endings, a fixed field order and one
 final newline. It shall identify the compatible compiler and language lines, compiler stage,
 target, supported LLVM line, NSMETA format, every public binary ABI, managed delegate cell size,
-supported linkers, certified optimization configurations and artifact kinds.
+the runtime symbol set, MIR schema, supported linkers, certified optimization configurations and
+artifact kinds.
 
 The per-build identifier and build timestamp shall not appear in this contract. They identify one
 compiler binary but do not change compatibility; including them would make two otherwise
