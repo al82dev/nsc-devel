@@ -10501,8 +10501,8 @@ private:
         {
             return failValue(error, "Stage 35 deallocation MIR requires one operand");
         }
-        LLVMValueRef pointer = lowerExpression(node->children.front().get(), error);
-        if (pointer == nullptr)
+        LLVMValueRef loweredOperand = lowerExpression(node->children.front().get(), error);
+        if (loweredOperand == nullptr)
         {
             return nullptr;
         }
@@ -10515,6 +10515,18 @@ private:
         if (node->valueTypeNoOpDeletion)
         {
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        }
+
+        LLVMValueRef pointer = loweredOperand;
+        if (node->booleanValue)
+        {
+            LLVMTypeRef storedType = llvmType(node->elementTypeKey, error);
+            if (storedType == nullptr) return nullptr;
+            pointer = LLVMBuildLoad2(
+                builder_, storedType, loweredOperand, "delete.element.load");
+            // Clear before calling user destruction.  If a destructor transfers control through
+            // EH, every cleanup path already observes an empty owner slot.
+            LLVMBuildStore(builder_, LLVMConstNull(storedType), loweredOperand);
         }
 
         if (node->children.front() != nullptr && isDelegateReference(node->children.front()->typeKey))

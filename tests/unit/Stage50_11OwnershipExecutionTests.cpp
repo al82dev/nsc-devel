@@ -1955,6 +1955,40 @@ void testRelocationBetweenTwoFixedArraySlots(TestContext& tests, const std::file
     run(tests, root, "RelocationBetweenTwoFixedArraySlots", source, 2);
 }
 
+void testDeleteOfOwnedArrayElementClearsSlotBeforeReplacement(
+    TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string source = std::string(kPrelude) + R"NS(
+    class Holder
+    {
+        private owned Resource[] items;
+        public Holder() { items = new Resource[1]; }
+        public void Replace()
+        {
+            items[0] = new Resource(1);
+            delete items[0];
+            items[0] = new Resource(2);
+            items[0] = null;
+        }
+        ~Holder() { delete[] items; }
+    }
+    class Program
+    {
+        public static int Main()
+        {
+            raii Holder holder = new Holder();
+            holder.Replace();
+            return Resource.Destructions();
+        }
+    }
+)NS";
+    const auto directory = root / "DeleteOwnedArrayElementClearsSlot";
+    writeProject(directory, "DeleteOwnedArrayElementClearsSlot");
+    writeFile(directory / "Main.ns", source);
+    compileAndRun(
+        tests, directory, "-O0", "DeleteOwnedArrayElementClearsSlot [-O0]", 2);
+}
+
 }
 
 int main()
@@ -2038,6 +2072,7 @@ int main()
     testMoveIntoAndOutOfAFixedArraySlot(tests, root);
     testSecondMoveOutOfAFixedArraySlotYieldsNull(tests, root);
     testRelocationBetweenTwoFixedArraySlots(tests, root);
+    testDeleteOfOwnedArrayElementClearsSlotBeforeReplacement(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

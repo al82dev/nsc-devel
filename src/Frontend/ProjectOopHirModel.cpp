@@ -4480,7 +4480,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             // (unknown/void expression, etc.) is caught earlier by expressionType() returning a
             // real value type here -- there is no way to reach this branch with something that
             // isn't a fully-typed value expression.
-            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+            const MethodCoreBinding* elementBinding = coreBinding(expression->first());
+            const bool directElement = elementBinding != nullptr &&
+                (elementBinding->kind == MethodCoreOperationKind::ArrayElement ||
+                 elementBinding->kind == MethodCoreOperationKind::RawElement);
+            const bool clearsElementSlot = directElement &&
+                (isReferenceType(operandType->typeKey) || nativeString);
+            auto operand = lowerExpression(
+                expression->first(), memberOrdinal, clearsElementSlot, error);
             if (operand == nullptr)
             {
                 return nullptr;
@@ -4488,6 +4495,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");
             node->dynamicDestruction = isReferenceType(operandType->typeKey) && !nativeString;
             node->valueTypeNoOpDeletion = !deletable;
+            // Deleting a directly addressable reference element is an ownership operation on the
+            // slot, not merely on a copied pointer.  Carry its address and type so LLVM can load
+            // and clear it before destruction.  This prevents a later release-before-store from
+            // observing a dangling owner and destroying the same allocation twice.
+            node->booleanValue = clearsElementSlot;
+            node->elementTypeKey = operandType->typeKey;
             node->children.push_back(std::move(operand));
             return node;
         }
