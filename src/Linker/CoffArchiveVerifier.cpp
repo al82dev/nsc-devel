@@ -15,6 +15,8 @@ namespace
 {
 constexpr std::string_view kArchiveMagic = "!<arch>\n";
 constexpr std::size_t kMemberHeaderSize = 60;
+constexpr std::uint64_t kMaximumInspectedLinkerMember = 256ULL * 1024ULL * 1024ULL;
+constexpr std::uint32_t kMaximumArchiveSymbols = 16U * 1024U * 1024U;
 
 bool parseDecimalField(std::string_view text, std::uint64_t& value)
 {
@@ -60,6 +62,11 @@ bool readFirstLinkerMember(
         return false;
     }
     const std::uint32_t symbolCount = readBigEndian32(bytes.data());
+    if (symbolCount > kMaximumArchiveSymbols)
+    {
+        error = "COFF archive linker member exceeds the symbol-count safety limit";
+        return false;
+    }
     const std::uint64_t namesOffset64 =
         4ULL + (static_cast<std::uint64_t>(symbolCount) * 4ULL);
     if (namesOffset64 > bytes.size())
@@ -164,9 +171,10 @@ bool CoffArchiveVerifier::verify(const std::filesystem::path& path)
         if (nameEnd != std::string_view::npos) memberName = memberName.substr(0, nameEnd);
         if (!readLinkerSymbols && memberName == "/")
         {
-            if (memberSize > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
+            if (memberSize > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
+                memberSize > kMaximumInspectedLinkerMember)
             {
-                error_ = "COFF archive linker member is too large to inspect";
+                error_ = "COFF archive linker member exceeds the 256 MiB inspection limit";
                 return false;
             }
             std::vector<char> bytes(static_cast<std::size_t>(memberSize));

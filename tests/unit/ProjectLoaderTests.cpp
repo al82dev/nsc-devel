@@ -72,6 +72,13 @@ void testSimpleXml(TestContext& tests)
         "mismatched XML close has deterministic diagnostic");
     tests.expect(!parser.parse("<Project A=\"1\" A=\"2\"/>", root, error), "duplicate XML attribute is rejected");
     tests.expect(!parser.parse("<Project>&unknown;</Project>", root, error), "unknown XML entity is rejected");
+
+    std::string hostile;
+    for (std::size_t depth = 0; depth < 129U; ++depth) hostile += "<N>";
+    for (std::size_t depth = 0; depth < 129U; ++depth) hostile += "</N>";
+    tests.expect(!parser.parse(hostile, root, error), "hostile XML nesting is rejected before stack exhaustion");
+    tests.expect(error.find("128-element safety limit") != std::string::npos,
+        "hostile XML nesting reports its explicit resource limit");
 }
 
 void testDefaultProject(TestContext& tests, const std::filesystem::path& root)

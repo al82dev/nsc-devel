@@ -21,7 +21,7 @@ public:
     bool parse(std::string_view source, SimpleXmlElement& root, std::string& error);
 
 private:
-    bool parseElement(SimpleXmlElement& element);
+    bool parseElement(SimpleXmlElement& element, std::size_t depth);
     bool parseName(std::string& name);
     bool parseAttributeValue(std::string& value);
     bool parseText(std::string& text);

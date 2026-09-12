@@ -26,7 +26,7 @@ bool SimpleXmlParser::parse(std::string_view source, SimpleXmlElement& root, std
     {
         return fail("XML document is empty");
     }
-    if (!parseElement(root))
+    if (!parseElement(root, 1U))
     {
         return false;
     }
@@ -41,8 +41,11 @@ bool SimpleXmlParser::parse(std::string_view source, SimpleXmlElement& root, std
     return true;
 }
 
-bool SimpleXmlParser::parseElement(SimpleXmlElement& element)
+bool SimpleXmlParser::parseElement(SimpleXmlElement& element, std::size_t depth)
 {
+    constexpr std::size_t kMaximumXmlDepth = 128U;
+    if (depth > kMaximumXmlDepth)
+        return fail("XML nesting exceeds the 128-element safety limit");
     if (!consume('<'))
     {
         return fail("expected '<' to begin an element");
@@ -144,7 +147,7 @@ bool SimpleXmlParser::parseElement(SimpleXmlElement& element)
         if (startsWith("<"))
         {
             SimpleXmlElement child;
-            if (!parseElement(child))
+            if (!parseElement(child, depth + 1U))
             {
                 return false;
             }

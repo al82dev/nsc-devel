@@ -463,10 +463,19 @@ std::optional<Project> ProjectLoader::load(
         error = "cannot open project file '" + canonicalProject.string() + "'";
         return std::nullopt;
     }
-    const std::string source{
-        std::istreambuf_iterator<char>(stream),
-        std::istreambuf_iterator<char>()};
-    if (!stream.good() && !stream.eof())
+    constexpr std::uintmax_t kMaximumProjectBytes = 4U * 1024U * 1024U;
+    const std::uintmax_t projectBytes = std::filesystem::file_size(canonicalProject, filesystemError);
+    if (filesystemError || projectBytes > kMaximumProjectBytes)
+    {
+        error = filesystemError
+            ? "cannot determine project file size for '" + canonicalProject.string() + "'"
+            : "project file exceeds the 4 MiB safety limit";
+        return std::nullopt;
+    }
+    std::string source(static_cast<std::size_t>(projectBytes), '\0');
+    stream.read(source.data(), static_cast<std::streamsize>(source.size()));
+    if ((!stream && !source.empty()) || stream.gcount() != static_cast<std::streamsize>(source.size()) ||
+        stream.peek() != std::char_traits<char>::eof())
     {
         error = "cannot read project file '" + canonicalProject.string() + "'";
         return std::nullopt;

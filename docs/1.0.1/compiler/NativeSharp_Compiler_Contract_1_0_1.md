@@ -72,6 +72,17 @@ The release suite shall include malformed lexical, syntactic, semantic, project 
 inputs. A negative case passes only when it is rejected through the expected exit class and useful
 diagnostic; a crash, hang or invalid LLVM module is a failure.
 
+## NSC-INPUT-001 — Bounded hostile-input readers
+
+Readers shall validate sizes, counts, offsets and nesting before allocating or indexing. NativeSharp
+1.0.1 limits one source to 64 MiB, one project file to 4 MiB, project XML nesting to 128 elements,
+one PDB to 1 GiB, a COFF first linker member to 256 MiB and its symbol count to 16,777,216. NSMETA
+retains its 128 MiB payload limit. Crossing a limit is an input/compilation failure naming the
+format and limit, never an allocation attempt, assertion, hang or internal compiler failure.
+
+File readers must also reject truncation or growth observed between sizing and the complete read;
+they shall not silently compile a prefix of a concurrently changed input.
+
 ## NSC-PKG-001 — Deterministic toolchain contract
 
 Every distributable build of `nsc` shall generate and install a canonical

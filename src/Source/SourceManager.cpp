@@ -17,11 +17,21 @@ std::optional<FileId> SourceManager::loadFile(
         return std::nullopt;
     }
 
-    std::string buffer{
-        std::istreambuf_iterator<char>(stream),
-        std::istreambuf_iterator<char>()};
+    constexpr std::uintmax_t kMaximumSourceBytes = 64U * 1024U * 1024U;
+    std::error_code sizeError;
+    const std::uintmax_t sourceBytes = std::filesystem::file_size(path, sizeError);
+    if (sizeError || sourceBytes > kMaximumSourceBytes)
+    {
+        errorMessage = sizeError
+            ? "cannot determine source file size for '" + path.string() + "'"
+            : "source file exceeds the 64 MiB safety limit";
+        return std::nullopt;
+    }
+    std::string buffer(static_cast<std::size_t>(sourceBytes), '\0');
+    stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
 
-    if (!stream.good() && !stream.eof())
+    if ((!stream && !buffer.empty()) || stream.gcount() != static_cast<std::streamsize>(buffer.size()) ||
+        stream.peek() != std::char_traits<char>::eof())
     {
         errorMessage = "cannot read source file '" + path.string() + "'";
         return std::nullopt;

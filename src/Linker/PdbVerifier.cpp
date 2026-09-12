@@ -15,6 +15,7 @@ constexpr char kMsfMagic[] = "Microsoft C/C++ MSF 7.00\r\n\x1a" "DS\0\0\0";
 constexpr std::size_t kSuperBlockSize = 56;
 constexpr std::uint32_t kAbsentStream = 0xffffffffU;
 constexpr std::uint32_t kFileChecksumSubsection = 0xf4U;
+constexpr std::uint64_t kMaximumPdbBytes = 1024ULL * 1024ULL * 1024ULL;
 
 std::uint16_t readU16(const std::vector<std::uint8_t>& bytes, std::size_t offset)
 {
@@ -65,9 +66,10 @@ bool PdbVerifier::verify(const std::filesystem::path& path)
     }
     const std::streamoff length = input.tellg();
     if (length < static_cast<std::streamoff>(kSuperBlockSize) ||
-        static_cast<std::uint64_t>(length) > std::numeric_limits<std::size_t>::max())
+        static_cast<std::uint64_t>(length) > std::numeric_limits<std::size_t>::max() ||
+        static_cast<std::uint64_t>(length) > kMaximumPdbBytes)
     {
-        error_ = "PDB has an invalid MSF file size";
+        error_ = "PDB has an invalid or unsupported MSF file size (maximum 1 GiB)";
         return false;
     }
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(length));
