@@ -662,8 +662,9 @@ public class Math { public static int Internal(int value) { return value; } }
     tests.expect(verifyArtifacts(shared / "SharedMeta.nsmeta", corruptIndexPath, shared / "SharedMeta.dll",
                                  output, error) == ExitCode::CompilationError &&
                      error.find("COFF archive") != std::string::npos &&
-                     error.find("symbol-offset table") != std::string::npos,
-                 "P6 rejects an archive whose linker-member index claims unreadable symbol offsets");
+                     (error.find("symbol-offset table") != std::string::npos ||
+                      error.find("symbol-count safety limit") != std::string::npos),
+                 "P6 rejects an archive whose linker-member index claims an unsafe or unreadable symbol table");
 
     const std::vector<std::uint8_t> validDll = readBytes(shared / "SharedMeta.dll");
     const std::size_t peOffset = static_cast<std::size_t>(readU32(validDll, 0x3c));
