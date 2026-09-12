@@ -12,6 +12,17 @@
 
 namespace nativesharp::frontend
 {
+void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
+{
+    cancellationCheck_ = std::move(check);
+}
+
+bool ProjectCompilation::cancellationRequested(std::string& loadError, std::string_view nextPhase) const
+{
+    if (!cancellationCheck_ || !cancellationCheck_()) return false;
+    loadError = "compilation cancelled before phase '" + std::string(nextPhase) + "'";
+    return true;
+}
 namespace
 {
 using lexer::Token;
@@ -379,6 +390,7 @@ bool ProjectCompilation::compileProjectNames(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "names")) return false;
 
     nameLookup_ = std::make_unique<ProjectNameLookup>();
     return nameLookup_->build(*projectGraph_, units_, diagnostics_);
@@ -392,6 +404,7 @@ bool ProjectCompilation::compileProjectGenerics(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "generics")) return false;
 
     genericModel_ = std::make_unique<ProjectGenericModel>();
     std::vector<PrecompiledGenericSpecialization> precompiledSpecializations;
@@ -414,6 +427,7 @@ bool ProjectCompilation::compileProjectMembers(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "members")) return false;
 
     memberModel_ = std::make_unique<ProjectMemberModel>();
     if (!memberModel_->build(*nameLookup_, units_, diagnostics_)) return false;
@@ -462,6 +476,7 @@ bool ProjectCompilation::compileProjectInheritance(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "inheritance")) return false;
 
     inheritanceModel_ = std::make_unique<ProjectInheritanceModel>();
     return inheritanceModel_->build(*nameLookup_, diagnostics_);
@@ -493,6 +508,7 @@ bool ProjectCompilation::compileProjectGenericConstraints(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "generic-constraints")) return false;
     return buildGenericConstraintModel();
 }
 
@@ -512,6 +528,7 @@ bool ProjectCompilation::compileProjectMethodBodies(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "method-bodies")) return false;
     buildGenericConstraintModel();
 
     methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
@@ -534,6 +551,7 @@ bool ProjectCompilation::compileProjectInterfaces(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "interfaces")) return false;
 
     interfaceModel_ = std::make_unique<ProjectInterfaceModel>();
     return interfaceModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
@@ -547,6 +565,7 @@ bool ProjectCompilation::compileProjectVirtualDispatch(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "virtual-dispatch")) return false;
 
     virtualDispatchModel_ = std::make_unique<ProjectVirtualDispatchModel>();
     return virtualDispatchModel_->build(
@@ -561,6 +580,7 @@ bool ProjectCompilation::compileProjectDestruction(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "destruction")) return false;
 
     destructionModel_ = std::make_unique<ProjectDestructionModel>();
     return destructionModel_->build(
@@ -575,6 +595,7 @@ bool ProjectCompilation::compileProjectConstructions(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "construction")) return false;
 
     constructionModel_ = std::make_unique<ProjectConstructionModel>();
     return constructionModel_->build(
@@ -589,6 +610,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "layout")) return false;
 
     objectLayoutModel_ = std::make_unique<ProjectObjectLayoutModel>();
     return objectLayoutModel_->build(
@@ -603,6 +625,7 @@ bool ProjectCompilation::compileProjectOopHir(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "oop-hir")) return false;
 
     oopHirModel_ = std::make_unique<ProjectOopHirModel>();
     if (oopHirModel_->build(
@@ -645,6 +668,7 @@ bool ProjectCompilation::compileProjectOopMir(
     {
         return false;
     }
+    if (cancellationRequested(loadError, "oop-mir")) return false;
 
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
     return oopMirModel_->build(
@@ -675,6 +699,7 @@ bool ProjectCompilation::compileSyntaxCore(
     }
 
     projectGraph_ = std::move(*graph);
+    if (cancellationRequested(loadError, "syntax")) return false;
     std::vector<compilation::PrecompiledProjectDescriptor> precompiledDescriptors;
     precompiledDescriptors.reserve(precompiledModules_.size());
     for (const PrecompiledSyntaxModule& module : precompiledModules_)

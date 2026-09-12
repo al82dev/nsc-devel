@@ -91,6 +91,18 @@ Filesystem enumeration, XML declaration order and metadata discovery order must 
 ordinals, module visibility, emitted symbol order or diagnostics. Duplicate edges are removed only
 after their canonical identity is established. The root source project remains the final graph node.
 
+## NSC-EXEC-001 — Resource budget, cancellation and timing
+
+`--timeout-ms=N` accepts 1 through 86,400,000 and requests cooperative cancellation. Project
+compilation observes the deadline between syntax, generics, names, members, inheritance, interfaces,
+constraints, bodies, dispatch, destruction, construction, layout, HIR and MIR. Cancellation reports
+the next phase by name and returns a compilation failure. It does not interrupt LLVM or a linker
+inside a non-transactional call; the next safe boundary observes it.
+
+`--time` appends `timing total_ms=N` using a monotonic clock on every exit path. Neither option
+changes language semantics, optimization or artifact identity. The diagnostic limit and hostile
+input ceilings remain independent resource controls.
+
 ## NSC-PKG-001 — Deterministic toolchain contract
 
 Every distributable build of `nsc` shall generate and install a canonical

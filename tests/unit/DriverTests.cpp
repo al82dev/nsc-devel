@@ -65,6 +65,25 @@ int main()
     {
         std::ostringstream output;
         std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--version", "--time"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::Success && output.str().find("timing total_ms=") != std::string::npos,
+            "--time reports total wall time without changing command success");
+        tests.expect(error.str().empty(), "timed version query keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--version", "--timeout-ms=0"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError && error.str().find("between 1 and") != std::string::npos,
+            "invalid cancellation budget is rejected deterministically");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
         const std::vector<std::string_view> arguments = {
             "--emit-project-oop-obj", "input.nsproj", "-o", "output.obj",
             "-fdebug-prefix-map=relative=/_/src"};

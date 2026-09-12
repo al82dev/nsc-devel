@@ -68,6 +68,7 @@
 
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -90,6 +91,29 @@ namespace nativesharp::driver
 namespace
 {
 using target::BuiltinLayoutKind;
+
+struct DriverExecutionScope final
+{
+    explicit DriverExecutionScope(std::ostream& destination)
+        : output(destination), started(std::chrono::steady_clock::now()) {}
+    ~DriverExecutionScope()
+    {
+        if (!reportTiming) return;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count();
+        output << "timing total_ms=" << elapsed << '\n';
+    }
+    bool expired() const noexcept
+    {
+        return deadline.has_value() && std::chrono::steady_clock::now() >= *deadline;
+    }
+    std::ostream& output;
+    std::chrono::steady_clock::time_point started;
+    std::optional<std::chrono::steady_clock::time_point> deadline;
+    bool reportTiming = false;
+};
+
+thread_local DriverExecutionScope* activeExecutionScope = nullptr;
 
 struct LayoutRow
 {
@@ -2480,6 +2504,14 @@ void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles)
 
 ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
 {
+    DriverExecutionScope executionScope(output);
+    DriverExecutionScope* previousScope = activeExecutionScope;
+    activeExecutionScope = &executionScope;
+    struct RestoreScope final
+    {
+        DriverExecutionScope* previous;
+        ~RestoreScope() { activeExecutionScope = previous; }
+    } restoreScope{previousScope};
     if (arguments.empty())
     {
         printHelp(output);
@@ -2504,6 +2536,31 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     {
         const std::string_view argument = arguments[argumentIndex];
         const std::string foldedArgument = foldedName(std::string(argument));
+        if (argument == "--time")
+        {
+            executionScope.reportTiming = true;
+            continue;
+        }
+        static constexpr std::string_view timeoutPrefix = "--timeout-ms=";
+        if (argument.starts_with(timeoutPrefix))
+        {
+            const std::string_view value = argument.substr(timeoutPrefix.size());
+            std::uint64_t milliseconds = 0;
+            if (value.empty() || value.size() > 8U ||
+                !std::ranges::all_of(value, [](unsigned char ch) { return std::isdigit(ch) != 0; }))
+            {
+                error << "nsc: error: malformed timeout; expected --timeout-ms=1..86400000\n";
+                return ExitCode::CommandLineError;
+            }
+            for (char ch : value) milliseconds = milliseconds * 10U + static_cast<unsigned>(ch - '0');
+            if (milliseconds == 0 || milliseconds > 86400000U)
+            {
+                error << "nsc: error: timeout must be between 1 and 86400000 milliseconds\n";
+                return ExitCode::CommandLineError;
+            }
+            executionScope.deadline = executionScope.started + std::chrono::milliseconds(milliseconds);
+            continue;
+        }
         if (foldedArgument.starts_with("/subsystem:"))
         {
             if (subsystemSeen)
@@ -3132,6 +3189,8 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --version\n\n"
            << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
               "compilation command.\n"
+           << "--time reports total wall time; --timeout-ms=N requests cooperative cancellation "
+              "at safe project phase boundaries.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
@@ -3523,6 +3582,9 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     }
 
     frontend::ProjectCompilation projectCompilation;
+    projectCompilation.setCancellationCheck([] {
+        return activeExecutionScope != nullptr && activeExecutionScope->expired();
+    });
     std::string loadError;
     if (!configurePrecompiledModules(std::filesystem::path(path), projectCompilation, loadError))
     {

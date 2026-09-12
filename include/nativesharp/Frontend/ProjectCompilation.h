@@ -19,10 +19,12 @@
 #include "nativesharp/Source/SourceManager.h"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -41,6 +43,7 @@ struct PrecompiledSyntaxModule final
 class ProjectCompilation final
 {
 public:
+    void setCancellationCheck(std::function<bool()> check);
     bool setPrecompiledModules(
         std::vector<PrecompiledSyntaxModule> modules,
         std::string& error);
@@ -92,6 +95,7 @@ public:
     const ProjectOopMirModel* oopMirModel() const noexcept;
 
 private:
+    bool cancellationRequested(std::string& loadError, std::string_view nextPhase) const;
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
 
     std::optional<compilation::ProjectGraph> projectGraph_;
@@ -115,5 +119,6 @@ private:
     std::unique_ptr<ProjectObjectLayoutModel> objectLayoutModel_;
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
+    std::function<bool()> cancellationCheck_;
 };
 }
