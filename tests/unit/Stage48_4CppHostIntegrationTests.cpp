@@ -125,6 +125,11 @@ namespace NativeSharp.Stage48_4
         public int Value;
     }
 
+    public struct FixedBlock
+    {
+        public int[4] Values;
+    }
+
     public class Counter
     {
         public int Value;
@@ -145,6 +150,18 @@ namespace NativeSharp.Stage48_4
         public static export extern C Pair NS484_EchoPair(Pair value) { return value; }
         public static export extern C HostMode NS484_EchoMode(HostMode value) { return value; }
         public static export extern C LayoutProbe NS484_EchoLayout(LayoutProbe value) { return value; }
+        public static export extern C FixedBlock NS484_EchoFixed(FixedBlock value) { return value; }
+        public static export extern C void NS484_WriteAnswer(int* output) { output[0] = 42; }
+        public static export extern C void NS484_WritePair(Pair* output, int left, int right)
+        {
+            output[0].Left = left;
+            output[0].Right = right;
+        }
+        public static export extern C int NS484_Utf8Checksum(byte* data, int count)
+        {
+            if (count != 3) { return 0; }
+            return data[0] + data[1] + data[2];
+        }
         public static export extern C int NS484_Invoke(IntCallback callback, int value) { return callback(value); }
         public static export extern C void NS484_SetCallback(IntCallback callback) { StoredCallback = callback; }
         public static export extern C int NS484_CallCallback(int value) { return StoredCallback(value); }
@@ -209,6 +226,9 @@ int main()
     int32_t values[4] = {1, 2, 3, 4};
     NS_Pair pair{20, 22};
     NS_LayoutProbe layout{1, 42};
+    NS_FixedBlock fixed{{10, 11, 12, 9}};
+    uint8_t utf8[3]{78, 83, 67};
+    int32_t output = 0;
     int marker = 7;
 
     if (NS484_Add(20, 22) != 42) return 1;
@@ -220,6 +240,13 @@ int main()
     if (NS484_EchoMode(static_cast<NS_HostMode>(2)) != static_cast<NS_HostMode>(2)) return 6;
     layout = NS484_EchoLayout(layout);
     if (layout.Tag != 1 || layout.Value != 42) return 7;
+    fixed = NS484_EchoFixed(fixed);
+    if (fixed.Values[0] + fixed.Values[1] + fixed.Values[2] + fixed.Values[3] != 42) return 12;
+    NS484_WriteAnswer(&output);
+    if (output != 42) return 13;
+    NS484_WritePair(&pair, 21, 21);
+    if (pair.Left + pair.Right != 42) return 14;
+    if (NS484_Utf8Checksum(utf8, 3) != 228) return 15;
     if (NS484_Invoke(Twice, 21) != 42) return 8;
     NS484_SetCallback(Twice);
     if (NS484_CallCallback(21) != 42) return 9;
@@ -350,6 +377,11 @@ void testGeneratedCppContract(TestContext& tests, const std::filesystem::path& r
     tests.expect(header.find("NS_API int32_t NS_CALL NS484_Add") != std::string::npos &&
             header.find("NS_API NS_Counter* NS_CALL NS484_Counter_Create") != std::string::npos,
         "C++ host sees the exact Stage47 C ABI function surface");
+    tests.expect(header.find("int32_t Values[4]") != std::string::npos &&
+            header.find("NS_API void NS_CALL NS484_WriteAnswer(int32_t* output)") != std::string::npos &&
+            header.find("NS_API int32_t NS_CALL NS484_Utf8Checksum(uint8_t* data, int32_t count)") !=
+                std::string::npos,
+        "C++ consumption preserves fixed arrays, output pointers, and UTF-8 pointer/count buffers");
     tests.expect(header.find("class NS_Counter") == std::string::npos &&
             header.find("virtual ") == std::string::npos,
         "generated C++ consumption contract exposes no NativeSharp or C++ vtable surface");
@@ -399,11 +431,12 @@ void testSharedLibraryCppHost(TestContext& tests, const std::filesystem::path& r
     tests.expect(contains(info.importedLibraries, "Stage48_4HostApi.dll"),
         "shared C++ host imports the NativeSharp DLL by product name");
 
-    const std::array<std::string_view, 14> expectedSymbols = {
+    const std::array<std::string_view, 18> expectedSymbols = {
         "NS484_Add", "NS484_EchoIntPointer", "NS484_InvokeBuffer", "NS484_EchoPointer",
         "NS484_EchoPair", "NS484_EchoMode", "NS484_EchoLayout", "NS484_Invoke",
         "NS484_SetCallback", "NS484_CallCallback", "NS484_Counter_Create", "NS484_Counter_Get",
-        "NS484_Counter_Add", "NS484_Counter_Destroy"};
+        "NS484_Counter_Add", "NS484_Counter_Destroy", "NS484_EchoFixed", "NS484_WriteAnswer",
+        "NS484_WritePair", "NS484_Utf8Checksum"};
     for (const std::string_view symbol : expectedSymbols)
     {
         tests.expect(importsSymbol(info, "Stage48_4HostApi.dll", symbol),

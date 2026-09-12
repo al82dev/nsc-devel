@@ -125,6 +125,11 @@ namespace NativeSharp.Stage48_3
         public int Value;
     }
 
+    public struct FixedBlock
+    {
+        public int[4] Values;
+    }
+
     public class Counter
     {
         public int Value;
@@ -145,6 +150,18 @@ namespace NativeSharp.Stage48_3
         public static export extern C Pair NS48_EchoPair(Pair value) { return value; }
         public static export extern C HostMode NS48_EchoMode(HostMode value) { return value; }
         public static export extern C LayoutProbe NS48_EchoLayout(LayoutProbe value) { return value; }
+        public static export extern C FixedBlock NS48_EchoFixed(FixedBlock value) { return value; }
+        public static export extern C void NS48_WriteAnswer(int* output) { output[0] = 42; }
+        public static export extern C void NS48_WritePair(Pair* output, int left, int right)
+        {
+            output[0].Left = left;
+            output[0].Right = right;
+        }
+        public static export extern C int NS48_Utf8Checksum(byte* data, int count)
+        {
+            if (count != 3) { return 0; }
+            return data[0] + data[1] + data[2];
+        }
         public static export extern C int NS48_Invoke(IntCallback callback, int value) { return callback(value); }
         public static export extern C void NS48_SetCallback(IntCallback callback) { StoredCallback = callback; }
         public static export extern C int NS48_CallCallback(int value) { return StoredCallback(value); }
@@ -186,6 +203,9 @@ int main(void)
     int32_t values[4] = {1, 2, 3, 4};
     NS_Pair pair = {20, 22};
     NS_LayoutProbe layout = {1, 42};
+    NS_FixedBlock fixed = {{10, 11, 12, 9}};
+    uint8_t utf8[3] = {78, 83, 67};
+    int32_t output = 0;
     NS_Counter* counter;
     int marker = 7;
 
@@ -198,6 +218,13 @@ int main(void)
     if (NS48_EchoMode((NS_HostMode)2) != (NS_HostMode)2) return 6;
     layout = NS48_EchoLayout(layout);
     if (layout.Tag != 1 || layout.Value != 42) return 7;
+    fixed = NS48_EchoFixed(fixed);
+    if (fixed.Values[0] + fixed.Values[1] + fixed.Values[2] + fixed.Values[3] != 42) return 12;
+    NS48_WriteAnswer(&output);
+    if (output != 42) return 13;
+    NS48_WritePair(&pair, 21, 21);
+    if (pair.Left + pair.Right != 42) return 14;
+    if (NS48_Utf8Checksum(utf8, 3) != 228) return 15;
     if (NS48_Invoke(Twice, 21) != 42) return 8;
     NS48_SetCallback(Twice);
     if (NS48_CallCallback(21) != 42) return 9;
@@ -327,6 +354,11 @@ void testGeneratedContract(TestContext& tests, const std::filesystem::path& root
     tests.expect(header.find("NS_STATIC_ASSERT(sizeof(NS_LayoutProbe) == 8") != std::string::npos &&
             header.find("offsetof(NS_LayoutProbe, Value) == 4") != std::string::npos,
         "C host header carries executable layout guards for ABI-visible POD structs");
+    tests.expect(header.find("int32_t Values[4]") != std::string::npos &&
+            header.find("NS_API void NS_CALL NS48_WriteAnswer(int32_t* output)") != std::string::npos &&
+            header.find("NS_API int32_t NS_CALL NS48_Utf8Checksum(uint8_t* data, int32_t count)") !=
+                std::string::npos,
+        "generated C contract expresses fixed arrays, output pointers, and UTF-8 pointer/count buffers");
     tests.expect(header.find("No hidden marshaling, retention or GC occurs at this boundary") != std::string::npos,
         "generated C contract states the zero-hidden-marshaling boundary rule");
 }
@@ -375,11 +407,12 @@ void testSharedLibraryCHost(TestContext& tests, const std::filesystem::path& roo
     tests.expect(contains(info.importedLibraries, "Stage48_3HostApi.dll"),
         "shared C host imports the NativeSharp DLL by product name");
 
-    const std::array<std::string_view, 14> expectedSymbols = {
+    const std::array<std::string_view, 18> expectedSymbols = {
         "NS48_Add", "NS48_EchoIntPointer", "NS48_InvokeBuffer", "NS48_EchoPointer",
         "NS48_EchoPair", "NS48_EchoMode", "NS48_EchoLayout", "NS48_Invoke",
         "NS48_SetCallback", "NS48_CallCallback", "NS48_Counter_Create", "NS48_Counter_Get",
-        "NS48_Counter_Add", "NS48_Counter_Destroy"};
+        "NS48_Counter_Add", "NS48_Counter_Destroy", "NS48_EchoFixed", "NS48_WriteAnswer",
+        "NS48_WritePair", "NS48_Utf8Checksum"};
     for (const std::string_view symbol : expectedSymbols)
     {
         tests.expect(importsSymbol(info, "Stage48_3HostApi.dll", symbol),
