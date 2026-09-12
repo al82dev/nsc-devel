@@ -153,6 +153,14 @@ miembro de struct se resuelve estáticamente.
 Una implementación de interface debe aportar una firma compatible. El orden de fuentes o módulos
 no puede cambiar las ranuras de un contrato ya publicado.
 
+Las interfaces pueden declarar parámetros de tipo y cláusulas `where`. Una interfaz cerrada se
+monomorfiza con identidad nominal, puede heredar otras interfaces cerradas y puede usarse como
+constraint o como superficie de dispatch sin sustitución tardía en LLVM.
+
+Interfaces may declare type parameters and `where` clauses. A closed interface is monomorphized
+with nominal identity, may inherit other closed interfaces, and may be used as a constraint or a
+dispatch surface without late LLVM substitution.
+
 ### NS-ARRAY-001 — Arrays nativos
 
 Un array dinámico contiene elementos contiguos y su almacenamiento se crea explícitamente con

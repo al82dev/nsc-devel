@@ -51,14 +51,15 @@ sources.
 ## Causa del hueco / Gap cause
 
 `ProjectGenericModel::isGenericTypeTemplateNode` reconocía clases, structs y delegates, pero no
-`InterfaceDeclaration`. El parser conservaba los parámetros de tipo, aunque la declaración nunca
-obtenía un `GenericTemplateRecord`; posteriormente `IValue<int>` no podía resolverse como plantilla
-visible. Era una omisión de clasificación, no una ausencia de infraestructura de interfaces.
+`InterfaceDeclaration`. La primera implementación también asumió incorrectamente que el parser ya
+conservaba los parámetros de tipo; el baseline final demostró que `parseInterfaceDeclaration` no
+llamaba a `parseGenericParameterList`. La reparación posterior cerró ambas entradas antes de volver
+a certificar el contrato.
 
 `ProjectGenericModel::isGenericTypeTemplateNode` recognized classes, structs, and delegates, but
-not `InterfaceDeclaration`. The parser preserved type parameters, yet the declaration never gained
-a `GenericTemplateRecord`, so `IValue<int>` could not resolve as a visible template. This was a
-classification omission rather than missing interface infrastructure.
+not `InterfaceDeclaration`. The first implementation also incorrectly assumed the parser already
+preserved type parameters; the final baseline showed that `parseInterfaceDeclaration` did not call
+`parseGenericParameterList`. The follow-up repair closed both entry points before recertification.
 
 ## Implementación / Implementation
 

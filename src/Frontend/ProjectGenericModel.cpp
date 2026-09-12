@@ -571,6 +571,19 @@ void ProjectGenericModel::processNode(
     }
 
     const bool templateNode = isGenericTypeTemplateNode(node) || isGenericMethodTemplateNode(node);
+    // Constraint types are declaration dependencies, not executable template-body syntax. Closed
+    // constraints such as `where T : IValue<int>` must be materialized even while the remaining
+    // body is deferred until a concrete specialization exists.
+    for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+    {
+        for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+            processTypeSyntax(
+                unit, const_cast<ast::TypeSyntax*>(constraint), currentNamespace, currentScope,
+                diagnostics);
+        processTypeSyntax(
+            unit, const_cast<ast::TypeSyntax*>(clause.substitutedArgument), currentNamespace,
+            currentScope, diagnostics);
+    }
     if (templateNode || insideTemplate) return;
 
     if (node->typeSyntax() != nullptr)
@@ -589,7 +602,6 @@ void ProjectGenericModel::processNode(
             processTypeSyntax(unit, syntax, currentNamespace, currentScope, diagnostics);
         }
     }
-
     const auto processChild = [&](ast::AstNode* child)
     {
         processNode(unit, child, currentNamespace, ownerName, currentScope, false, diagnostics);
@@ -685,6 +697,15 @@ bool ProjectGenericModel::processTypeSyntax(
         std::string canonical = "generic:" + iterator->specializationKey;
         appendTypeModifiers(canonical, syntax);
         resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+        // The generated declaration belongs beside its template, not beside the source site that
+        // requested the closed type. Preserve that declaration origin before the readable
+        // `Box<int>` spelling is replaced with `Box__g1__...`. A later substitution (for example
+        // `Reader<T> where T : IValue<int>` instantiated as `Reader<Box<int>>`) can then clone the
+        // already-closed argument without retrying its physical name in the consumer module.
+        resolvedTypeOriginBySyntax_[syntax] = DeclaredTypeOrigin{
+            state->record.projectOrdinal, state->record.namespaceName};
+        syntax->setOriginProjectOrdinal(state->record.projectOrdinal);
+        syntax->setOriginNamespace(state->record.namespaceName);
         break;
     }
     // Preserve an explicitly written qualifier. Replacing `Lib.Box<int>` with only the generated
@@ -1849,6 +1870,13 @@ void ProjectGenericModel::collectTemplateDependencies(
     collectTypeDependency(root, unit, node->typeSyntax(), currentNamespace, currentScope);
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
         collectTypeDependency(root, unit, syntax, currentNamespace, currentScope);
+    for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+    {
+        for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+            collectTypeDependency(root, unit, constraint, currentNamespace, currentScope);
+        collectTypeDependency(
+            root, unit, clause.substitutedArgument, currentNamespace, currentScope);
+    }
     collectCallDependency(
         root, unit, node, currentNamespace, ownerName, currentScope);
 

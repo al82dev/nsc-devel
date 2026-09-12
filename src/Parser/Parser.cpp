@@ -2025,6 +2025,7 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial)
         ast::AstNodeKind::InterfaceDeclaration, name.range());
     node->setText(std::string(name.lexeme()));
     node->setFlag(isPartial);
+    parseGenericParameterList(node);
 
     if (consumeIf(TokenKind::Colon))
     {
@@ -2049,6 +2050,9 @@ ast::AstNode* Parser::parseInterfaceDeclaration(bool isPartial)
         while (consumeIf(TokenKind::Comma));
     }
 
+    // Generic interfaces share declaration-site constraints with every other generic type.
+    // The monomorphizer cannot recover clauses that were never represented in the AST.
+    parseGenericConstraintClauses(node);
 
     if (!expect(TokenKind::LeftBrace, "'{'") )
     {
@@ -2110,7 +2114,10 @@ ast::AstNode* Parser::parseInterfaceMember()
         }
     }
 
-    if (!canStartTypeAt(index_))
+    // A generic parameter is intentionally not a globally known type name. As in class members,
+    // accept an identifier-shaped type here and let name lookup decide whether it names this
+    // interface's parameter or is genuinely unknown.
+    if (!canStartType(current()) && !at(TokenKind::Identifier))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -4748,12 +4755,10 @@ ast::AstNode* Parser::parseForStatement()
 // DESIGN (documented in detail in 52_x_nativesharp_foreach.md; summarized here for anyone
 // reading the parser code directly):
 //
-// NativeSharp has no `IEnumerable<T>`/`IEnumerator<T>` -- interfaces in this compiler cannot
-// carry type parameters at all (parseInterfaceDeclaration never calls parseGenericParameterList
-// the way parseClassDeclaration does), and even if they could, a *non*-generic IEnumerator would
-// need `object Current { get; }` to stay uniform across element types, which NativeSharp cannot
-// express either (no universal `object` base type -- see Comparer.ns's class comment for the
-// same constraint blocking `Comparer<T>.Default`). So `foreach` here is implemented exactly the
+// NativeSharp deliberately does not require an `IEnumerable<T>`/`IEnumerator<T>` protocol for
+// iteration. Generic interfaces are supported, but a universal enumeration contract would also
+// need a universal object/value story that this native language does not promise. So `foreach`
+// here is implemented exactly the
 // way the real C# LANGUAGE SPECIFICATION actually defines it (not the common misconception):
 // a compile-time, structural ("duck-typed") pattern -- an accessible zero-argument
 // `GetEnumerator()` method returning something with `bool MoveNext()` and a zero-argument

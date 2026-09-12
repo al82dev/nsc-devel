@@ -19,7 +19,8 @@ class-declaration = "class", identifier, [ type-parameters ], [ base-list ],
                     { constraint-clause }, type-body ;
 struct-declaration = ( "struct" | "union" ), identifier,
                      [ type-parameters ], { constraint-clause }, type-body ;
-interface-declaration = "interface", identifier, [ base-list ], interface-body ;
+interface-declaration = "interface", identifier, [ type-parameters ], [ base-list ],
+                        { constraint-clause }, interface-body ;
 enum-declaration = "enum", identifier, [ ":", integral-type ],
                    "{", [ enum-member, { ",", enum-member }, [ "," ] ], "}" ;
 enum-member = identifier, [ "=", expression ] ;
