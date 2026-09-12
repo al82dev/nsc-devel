@@ -91,6 +91,10 @@ bool ProjectGraph::addPrecompiledProjects(
         descriptorByPath.emplace(metadataKey, uniqueDescriptors.size());
         uniqueDescriptors.push_back(descriptor);
     }
+    std::ranges::sort(uniqueDescriptors, [](const auto& left, const auto& right) {
+        if (left.moduleName != right.moduleName) return left.moduleName < right.moduleName;
+        return foldedPath(left.metadataPath) < foldedPath(right.metadataPath);
+    });
 
     std::unordered_map<std::string, std::vector<std::filesystem::path>> metadataByOwner;
     for (const PrecompiledProjectDescriptor& descriptor : descriptors)
@@ -103,6 +107,13 @@ bool ProjectGraph::addPrecompiledProjects(
                 return foldedPath(path) == metadataKey;
             });
         if (!duplicate) dependencies.push_back(descriptor.metadataPath);
+    }
+    for (auto& [owner, dependencies] : metadataByOwner)
+    {
+        (void)owner;
+        std::ranges::sort(dependencies, {}, [](const std::filesystem::path& path) {
+            return foldedPath(path);
+        });
     }
 
     std::vector<Project> expanded;
@@ -121,6 +132,9 @@ bool ProjectGraph::addPrecompiledProjects(
         {
             if (foldedPath(peer.metadataPath) != ownMetadataKey) peerMetadata.push_back(peer.metadataPath);
         }
+        std::ranges::sort(peerMetadata, {}, [](const std::filesystem::path& path) {
+            return foldedPath(path);
+        });
         ProjectSourceSet emptySources(descriptor.metadataPath.parent_path());
         expanded.emplace_back(
             descriptor.metadataPath,
@@ -139,6 +153,12 @@ bool ProjectGraph::addPrecompiledProjects(
         {
             references.insert(references.end(), extra->second.begin(), extra->second.end());
         }
+        std::ranges::sort(references, {}, [](const std::filesystem::path& path) {
+            return foldedPath(path);
+        });
+        references.erase(std::unique(references.begin(), references.end(), [](const auto& left, const auto& right) {
+            return foldedPath(left) == foldedPath(right);
+        }), references.end());
         expanded.emplace_back(
             project.projectFile(),
             project.moduleName(),

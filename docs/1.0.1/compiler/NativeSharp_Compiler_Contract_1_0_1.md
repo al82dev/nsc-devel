@@ -83,6 +83,14 @@ format and limit, never an allocation attempt, assertion, hang or internal compi
 File readers must also reject truncation or growth observed between sizing and the complete read;
 they shall not silently compile a prefix of a concurrently changed input.
 
+## NSC-GRAPH-001 — Deterministic compilation graph
+
+Source files, project references, library references, metadata-backed synthetic modules, peer
+metadata visibility and merged dependency edges shall use canonical case-folded path/module order.
+Filesystem enumeration, XML declaration order and metadata discovery order must not change project
+ordinals, module visibility, emitted symbol order or diagnostics. Duplicate edges are removed only
+after their canonical identity is established. The root source project remains the final graph node.
+
 ## NSC-PKG-001 — Deterministic toolchain contract
 
 Every distributable build of `nsc` shall generate and install a canonical

@@ -8,11 +8,13 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
 using nativesharp::compilation::ProjectGraphDumper;
 using nativesharp::compilation::ProjectGraphLoader;
+using nativesharp::compilation::PrecompiledProjectDescriptor;
 using nativesharp::tests::TestContext;
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
@@ -171,6 +173,36 @@ void testMissingTransitiveReference(TestContext& tests, const std::filesystem::p
         error.find("referenced project does not exist") != std::string::npos,
         "missing transitive project preserves ProjectLoader diagnostic");
 }
+
+void testPrecompiledOrderIsCanonical(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto app = root / "CanonicalPrecompiled";
+    writeProject(app, "App.nsproj", "App");
+    writeFile(app / "A.nsmeta", "a");
+    writeFile(app / "Z.nsmeta", "z");
+    ProjectGraphLoader loader;
+    std::string error;
+    auto first = loader.load(app / "App.nsproj", error);
+    auto second = loader.load(app / "App.nsproj", error);
+    tests.expect(first.has_value() && second.has_value(), "canonical precompiled fixture loads twice");
+    if (!first.has_value() || !second.has_value()) return;
+
+    const std::vector<PrecompiledProjectDescriptor> forward = {
+        {app / "App.nsproj", app / "Z.nsmeta", "Zulu"},
+        {app / "App.nsproj", app / "A.nsmeta", "Alpha"}};
+    const std::vector<PrecompiledProjectDescriptor> reverse = {forward[1], forward[0]};
+    tests.expect(first->addPrecompiledProjects(forward, error), "forward metadata descriptors expand");
+    tests.expect(second->addPrecompiledProjects(reverse, error), "reverse metadata descriptors expand");
+    std::ostringstream firstDump;
+    std::ostringstream secondDump;
+    ProjectGraphDumper{}.dump(*first, firstDump);
+    ProjectGraphDumper{}.dump(*second, secondDump);
+    tests.expect(firstDump.str() == secondDump.str(),
+        "descriptor discovery order cannot change the physical compilation graph");
+    tests.expect(first->projects()[0].moduleName() == "Alpha" &&
+            first->projects()[1].moduleName() == "Zulu",
+        "precompiled modules use canonical module order");
+}
 }
 
 int main()
@@ -186,6 +218,7 @@ int main()
     testCycleDiagnostic(tests, root);
     testDuplicateModuleDiagnostic(tests, root);
     testMissingTransitiveReference(tests, root);
+    testPrecompiledOrderIsCanonical(tests, root);
 
     std::filesystem::remove_all(root, errorCode);
     return tests.result();
