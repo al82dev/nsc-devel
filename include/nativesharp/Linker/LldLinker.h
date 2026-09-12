@@ -42,6 +42,7 @@ public:
         std::span<const std::string> exportSymbols,
         const std::filesystem::path& outputPath,
         const std::filesystem::path& importLibraryPath,
+        const std::filesystem::path& pdbPath,
         std::string& error) const;
 
     bool linkExecutable(

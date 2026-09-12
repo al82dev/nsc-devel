@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/Linker/CoffArchiveVerifier.h"
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
@@ -31,6 +32,7 @@ public:
         const std::filesystem::path& outputPath,
         const std::filesystem::path& importLibraryPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        llvm_backend::DebugInformationKind debugInformation,
         std::string& error);
 
     const CoffArchiveInfo& archiveInfo() const noexcept;

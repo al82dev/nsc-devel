@@ -109,6 +109,24 @@ ExitCode emitLibrary(std::string_view action,
     return result;
 }
 
+ExitCode emitDebugLibrary(std::string_view action,
+                          const std::filesystem::path& project,
+                          const std::filesystem::path& outputPath,
+                          std::string& output,
+                          std::string& error)
+{
+    Driver driver;
+    std::ostringstream out;
+    std::ostringstream err;
+    const std::string projectText = utf8Path(project);
+    const std::string outputText = utf8Path(outputPath);
+    const std::array<std::string_view, 5> args = { "-g", action, projectText, "-o", outputText };
+    const ExitCode result = driver.run(args, out, err);
+    output = out.str();
+    error = err.str();
+    return result;
+}
+
 ExitCode
 runProjectAction(std::string_view action, const std::filesystem::path& project, std::string& output, std::string& error)
 {
@@ -287,6 +305,17 @@ namespace Stage46.Static
         "Stage 46 static-library pipeline also closes at O0");
     tests.expect(verifier.verify(unoptimizedLibrary),
                  "O0 static-library output remains a structurally valid COFF archive");
+
+    const std::filesystem::path debugLibrary = directory / "NativeMathDebug.lib";
+    output.clear();
+    error.clear();
+    tests.expect(emitDebugLibrary("--emit-project-oop-lib", directory / "StaticLibrary.nsproj",
+                     debugLibrary, output, error) == ExitCode::Success,
+                 "static-library emission accepts -g and retains CodeView in archive members");
+    tests.expect(verifier.verify(debugLibrary) &&
+                     output.find("debug-information: full") != std::string::npos &&
+                     output.find("CodeView in COFF archive members") != std::string::npos,
+                 "debug static-library output reports and preserves its linker handoff");
 }
 
 void testDynamicLibrary(TestContext& tests, const std::filesystem::path& root)
@@ -380,6 +409,19 @@ namespace Stage46.Shared
     }
     tests.expect(importVerifier.verify(unoptimizedImportLibrary),
                  "O0 DLL generation also creates a valid matching import library");
+
+    const std::filesystem::path debugDll = directory / "NativeMathDebug.dll";
+    const std::filesystem::path debugPdb = directory / "NativeMathDebug.pdb";
+    output.clear();
+    error.clear();
+    tests.expect(emitDebugLibrary("--emit-project-oop-dll", directory / "DynamicLibrary.nsproj",
+                     debugDll, output, error) == ExitCode::Success,
+                 "DLL emission accepts -g and requests a standard program database");
+    tests.expect(std::filesystem::is_regular_file(debugPdb) &&
+                     std::filesystem::file_size(debugPdb) > 0 &&
+                     output.find("debug-information: full") != std::string::npos &&
+                     output.find(debugPdb.generic_string()) != std::string::npos,
+                 "debug DLL generation creates and reports its matching PDB");
 }
 
 void testPrecompiledDllRegressionCorpus(TestContext& tests, const std::filesystem::path& root)

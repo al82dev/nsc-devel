@@ -2631,7 +2631,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         (args.size() == 4 && args[2] == "-o" &&
             (args[0] == "--emit-exe" || args[0] == "--emit-project-oop-exe"));
     const bool debugCapableInvocation = args.size() == 4 && args[2] == "-o" &&
-        (args[0] == "--emit-project-oop-obj" || args[0] == "--emit-project-oop-exe");
+        (args[0] == "--emit-project-oop-obj" || args[0] == "--emit-project-oop-exe" ||
+         args[0] == "--emit-project-oop-lib" || args[0] == "--emit-project-oop-dll");
     if (subsystemSeen && !executableInvocation)
     {
         error << "nsc: error: /subsystem is only valid when emitting an executable\n";
@@ -2640,13 +2641,13 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     if (debugInformationSeen && !debugCapableInvocation)
     {
         error << "nsc: error: debug information is currently supported when emitting "
-                 "a project OOP object or executable\n";
+                 "a project OOP object, executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
     }
     if (!debugPrefixMaps.empty() && !debugCapableInvocation)
     {
         error << "nsc: error: debug prefix maps are currently supported when emitting "
-                 "a project OOP object or executable\n";
+                 "a project OOP object, executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
     }
 
@@ -2966,12 +2967,14 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (action == "--emit-project-oop-lib")
         {
-            return runProjectOopStaticLibraryGeneration(args[1], args[3], optimizationLevel, output, error);
+            return runProjectOopStaticLibraryGeneration(
+                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps, output, error);
         }
         if (action == "--emit-project-oop-dll")
         {
             return runProjectOopDynamicLibraryGeneration(
-                args[1], args[3], optimizationLevel, extraLinkLibraries, output, error);
+                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
+                extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-host-header")
         {
@@ -3038,9 +3041,11 @@ void Driver::printHelp(std::ostream &output)
               "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>] "
               "[/subsystem:console|/subsystem:windows]\n"
            << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.lib>\n"
+              "<file.lib> [-g0|-gline-tables-only|-g] "
+              "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
            << "  nsc --emit-project-oop-dll <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.dll>\n"
+              "<file.dll> [-g0|-gline-tables-only|-g] "
+              "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
            << "  nsc --emit-project-host-header <file.nsproj> -o <file.h>\n"
            << "  nsc --emit-project-library-metadata <file.nsproj> -o "
               "<file.nsmeta>\n"
@@ -4118,6 +4123,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
 ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
+    const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
     std::ostream &output,
     std::ostream &error)
 {
@@ -4166,7 +4173,9 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+            *compilation.oopMirModel(), compilation.sourceManager(),
+            debugInformation, optimizationLevel, debugPrefixMaps);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -4219,6 +4228,12 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
            << "format: COFF archive (.lib)\n"
            << "machine-members: AMD64 COFF\n"
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
+           << "debug-companion: "
+           << (debugInformation == llvm_backend::DebugInformationKind::None
+                   ? "none"
+                   : "CodeView in COFF archive members")
+           << '\n'
            << "library-references: " << referencedLibraries.size() << '\n'
            << "archive-members: " << builder.archiveInfo().memberCount << '\n'
            << "host-header: " << headerDestination.generic_string() << '\n'
@@ -4229,6 +4244,8 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
 ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPath,
     std::string_view outputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
+    const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
     std::ostream &error)
@@ -4358,7 +4375,9 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     }
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+            *compilation.oopMirModel(), compilation.sourceManager(),
+            debugInformation, optimizationLevel, debugPrefixMaps);
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -4378,6 +4397,12 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     {
         importLibrary += ".import.lib";
     }
+    std::filesystem::path pdbDestination;
+    if (debugInformation != llvm_backend::DebugInformationKind::None)
+    {
+        pdbDestination = destination;
+        pdbDestination.replace_extension(".pdb");
+    }
 
     std::vector<std::filesystem::path> linkLibraries = extraLinkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
@@ -4392,7 +4417,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
-    if (!builder.buildDynamic(*module, exportSymbols, destination, importLibrary, optimizationLevel, buildError))
+    if (!builder.buildDynamic(*module, exportSymbols, destination, importLibrary,
+            optimizationLevel, debugInformation, buildError))
     {
         error << "nsc: error: NativeSharp DLL generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
@@ -4402,6 +4428,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
         std::filesystem::remove(importLibrary, removeError);
+        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
@@ -4415,6 +4442,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
         std::filesystem::remove(importLibrary, removeError);
+        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: Stage 48.1 DLL C header generation failed: " << headerError << '\n';
         return ExitCode::CompilationError;
     }
@@ -4429,6 +4457,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         std::filesystem::remove(destination, removeError);
         std::filesystem::remove(importLibrary, removeError);
         std::filesystem::remove(headerDestination, removeError);
+        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: Stage 48.2 DLL metadata generation failed: " << metadataError << '\n';
         return ExitCode::CompilationError;
     }
@@ -4442,6 +4471,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         std::filesystem::remove(importLibrary, removeError);
         std::filesystem::remove(headerDestination, removeError);
         std::filesystem::remove(metadataDestination, removeError);
+        if (!pdbDestination.empty()) std::filesystem::remove(pdbDestination, removeError);
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
         return ExitCode::CompilationError;
     }
@@ -4450,6 +4480,12 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
            << "format: PE32+ DLL\n"
            << "machine: AMD64 (0x8664)\n"
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+           << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
+           << "program-database: "
+           << (debugInformation == llvm_backend::DebugInformationKind::None
+                   ? "none"
+                   : pdbDestination.generic_string())
+           << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
            << "packaged-runtimes: " << packagedRuntimes.size() << '\n'
            << "import-library: " << importLibrary.generic_string() << '\n'

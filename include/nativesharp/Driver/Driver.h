@@ -59,12 +59,16 @@ private:
         std::string_view inputPath,
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        llvm_backend::DebugInformationKind debugInformation,
+        const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProjectOopDynamicLibraryGeneration(
         std::string_view inputPath,
         std::string_view outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        llvm_backend::DebugInformationKind debugInformation,
+        const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
         std::ostream& output,
         std::ostream& error);

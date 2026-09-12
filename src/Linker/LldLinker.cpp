@@ -639,6 +639,7 @@ bool LldLinker::linkDynamicLibrary(
     std::span<const std::string> exportSymbols,
     const std::filesystem::path& outputPath,
     const std::filesystem::path& importLibraryPath,
+    const std::filesystem::path& pdbPath,
     std::string& error) const
 {
     error.clear();
@@ -648,7 +649,8 @@ bool LldLinker::linkDynamicLibrary(
         return false;
     }
     if (outputPath.empty() || importLibraryPath.empty() ||
-        containsQuote(outputPath) || containsQuote(importLibraryPath))
+        containsQuote(outputPath) || containsQuote(importLibraryPath) ||
+        (!pdbPath.empty() && containsQuote(pdbPath)))
     {
         error = "DLL or import-library output path is empty or contains an unsupported quote character";
         return false;
@@ -675,6 +677,12 @@ bool LldLinker::linkDynamicLibrary(
         "/nxcompat",
         "/highentropyva",
         responsePathArgument("/out:", outputPath)};
+    if (!pdbPath.empty())
+    {
+        arguments.push_back("/debug:full");
+        arguments.push_back(responsePathArgument("/pdb:", pdbPath));
+        arguments.push_back("/pdbaltpath:%_PDB%");
+    }
     if (!exportSymbols.empty())
         arguments.push_back(responsePathArgument("/implib:", importLibraryPath));
     for (const std::string& symbol : exportSymbols)
@@ -697,6 +705,7 @@ bool LldLinker::linkDynamicLibrary(
     std::error_code cleanupError;
     std::filesystem::remove(outputPath, cleanupError);
     std::filesystem::remove(importLibraryPath, cleanupError);
+    if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
     const bool success = runResponseFile(responsePath, logPath, error);
     if (!keepLinkTemporaries())
     {
@@ -707,6 +716,7 @@ bool LldLinker::linkDynamicLibrary(
     {
         std::filesystem::remove(outputPath, cleanupError);
         std::filesystem::remove(importLibraryPath, cleanupError);
+        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
         return false;
     }
     if (!std::filesystem::is_regular_file(outputPath))
@@ -714,6 +724,15 @@ bool LldLinker::linkDynamicLibrary(
         error = "lld-link reported success but did not create the requested DLL";
         std::filesystem::remove(outputPath, cleanupError);
         std::filesystem::remove(importLibraryPath, cleanupError);
+        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+        return false;
+    }
+    if (!pdbPath.empty() && !std::filesystem::is_regular_file(pdbPath))
+    {
+        error = "lld-link reported success but did not create the requested DLL PDB";
+        std::filesystem::remove(outputPath, cleanupError);
+        std::filesystem::remove(importLibraryPath, cleanupError);
+        std::filesystem::remove(pdbPath, cleanupError);
         return false;
     }
     if (exportSymbols.empty())
@@ -726,6 +745,7 @@ bool LldLinker::linkDynamicLibrary(
         if (!createStaticLibrary(companionObject, importLibraryPath, error))
         {
             std::filesystem::remove(outputPath, cleanupError);
+            if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
             return false;
         }
     }
@@ -733,6 +753,7 @@ bool LldLinker::linkDynamicLibrary(
     {
         error = "lld-link reported success but did not create the requested import library";
         std::filesystem::remove(outputPath, cleanupError);
+        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
         return false;
     }
     return true;

@@ -248,6 +248,7 @@ bool WindowsLibraryBuilder::buildDynamic(
     const std::filesystem::path& outputPath,
     const std::filesystem::path& importLibraryPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
     std::string& error)
 {
     dynamicLibraryInfo_ = {};
@@ -365,12 +366,19 @@ bool WindowsLibraryBuilder::buildDynamic(
     }
 
     const std::array<std::filesystem::path, 2> objects = {programObject, runtimeObject};
+    std::filesystem::path pdbPath;
+    if (debugInformation != llvm_backend::DebugInformationKind::None)
+    {
+        pdbPath = outputPath;
+        pdbPath.replace_extension(".pdb");
+    }
     if (!linker->linkDynamicLibrary(
             objects,
             importLibraries,
             exportSymbols,
             outputPath,
             importLibraryPath,
+            pdbPath,
             error))
     {
         return false;
