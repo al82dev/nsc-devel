@@ -479,6 +479,15 @@ switch intermedio. Etiquetas duplicadas o no constantes se rechazan.
 
 ## 12. Optimización y observabilidad
 
+### NS-SIMD-001 — Vectores SIMD portables
+
+`NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su
+representación pública es el struct `{ X, Y, Z, W }`; por tanto, layout, metadata, ABI y símbolos
+de depuración no dependen del conjunto de instrucciones de la CPU. `Add`, `Subtract` y `Multiply`
+operan simultáneamente sobre los cuatro carriles y el backend debe expresarlos como operaciones
+vectoriales, sin convertirlos en cuatro llamadas escalares. El target puede legalizar esas
+operaciones a instrucciones nativas o a una secuencia equivalente conservando IEEE estricto.
+
 ### NS-CONF-001 — O0 y O2 conservan el significado
 
 O0 y O2 deben conservar el mismo resultado observable, orden de efectos exigido, traps definidos,

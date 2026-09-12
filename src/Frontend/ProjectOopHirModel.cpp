@@ -83,6 +83,12 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{2U, ProjectOopHirNodeKind::StringConcat};
     case MethodCoreOperationKind::StringEquals:
         return StringCallLowering{2U, ProjectOopHirNodeKind::StringEquals};
+    case MethodCoreOperationKind::SimdFloat32x4Add:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdFloat32x4Add};
+    case MethodCoreOperationKind::SimdFloat32x4Subtract:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdFloat32x4Subtract};
+    case MethodCoreOperationKind::SimdFloat32x4Multiply:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdFloat32x4Multiply};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -571,6 +577,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
         case ProjectOopHirNodeKind::CoreInterlockedExchangeInt64: return "core-interlocked-exchange-int64";
         case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64: return "core-interlocked-compare-exchange-int64";
+        case ProjectOopHirNodeKind::CoreSimdFloat32x4Add: return "core-simd-float32x4-add";
+        case ProjectOopHirNodeKind::CoreSimdFloat32x4Subtract: return "core-simd-float32x4-subtract";
+        case ProjectOopHirNodeKind::CoreSimdFloat32x4Multiply: return "core-simd-float32x4-multiply";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

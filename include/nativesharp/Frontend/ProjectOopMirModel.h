@@ -174,6 +174,9 @@ enum class ProjectOopMirNodeKind
     CoreInterlockedAddInt64,
     CoreInterlockedExchangeInt64,
     CoreInterlockedCompareExchangeInt64,
+    CoreSimdFloat32x4Add,
+    CoreSimdFloat32x4Subtract,
+    CoreSimdFloat32x4Multiply,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,

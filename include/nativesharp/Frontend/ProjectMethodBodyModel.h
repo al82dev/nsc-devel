@@ -712,6 +712,12 @@ enum class MethodCoreOperationKind
     InterlockedAddInt64,
     InterlockedExchangeInt64,
     InterlockedCompareExchangeInt64,
+    // Entrega 228: primera familia SIMD deliberadamente pequena. Estas operaciones reconocen
+    // exclusivamente NativeSharp.Core.Numerics.Float32x4 y conservan el struct publico como
+    // contrato ABI; solamente la operacion aritmetica se convierte en un vector LLVM de 128 bits.
+    SimdFloat32x4Add,
+    SimdFloat32x4Subtract,
+    SimdFloat32x4Multiply,
     // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers PRIVADOS Y
     // ESTATICOS, EXACTO mismo patron estructural que los tres helpers de Thread arriba (Stage
     // 54.1): un HANDLE de Win32 guardado como builtin:nint, creado por MutexCreate y consumido

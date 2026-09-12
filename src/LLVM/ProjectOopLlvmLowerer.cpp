@@ -6797,6 +6797,39 @@ private:
                 return buildNoUnwindCall(
                     atomicLoadInt32FunctionType_, atomicLoadInt32Function_, args, 1, "atomic.load.i32");
             }
+            // Entrega 228: Float32x4 conserva su carrier agregado publico, pero la operacion
+            // interna se realiza sobre <4 x float>. Con punteros opacos basta un alloca del
+            // carrier para reinterpretar sin cambiar firmas, layout, PDB ni metadata.
+            case frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Add:
+            case frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract:
+            case frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply:
+            {
+                if (node->children.size() != 2)
+                    return failValue(error, "Float32x4 SIMD operation requires two operands");
+                LLVMValueRef left = lowerExpression(node->children[0].get(), error);
+                if (left == nullptr) return nullptr;
+                LLVMValueRef right = lowerExpression(node->children[1].get(), error);
+                if (right == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
+                LLVMValueRef leftSlot = LLVMBuildAlloca(builder_, carrier, "simd.left.addr");
+                LLVMValueRef rightSlot = LLVMBuildAlloca(builder_, carrier, "simd.right.addr");
+                LLVMBuildStore(builder_, left, leftSlot);
+                LLVMBuildStore(builder_, right, rightSlot);
+                LLVMValueRef leftVector = LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.left");
+                LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.right");
+                LLVMValueRef vectorResult = nullptr;
+                if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Add)
+                    vectorResult = LLVMBuildFAdd(builder_, leftVector, rightVector, "simd.add");
+                else if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract)
+                    vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.subtract");
+                else
+                    vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
+                LLVMValueRef resultSlot = LLVMBuildAlloca(builder_, carrier, "simd.result.addr");
+                LLVMBuildStore(builder_, vectorResult, resultSlot);
+                return LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.result");
+            }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
             {
                 if (node->children.size() != 2 || atomicStoreInt32Function_ == nullptr)

@@ -8015,6 +8015,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            // Entrega 228: SIMD por familia justificada, reconocida por identidad y firma exactas.
+            // Comparar los parametros con el tipo de retorno evita acoplar esta regla a la
+            // codificacion interna del type-key del proyecto que contiene NativeSharp.Core.
+            if (declaringType.identity.fullyQualifiedName() ==
+                    "NativeSharp.Core.Numerics.Float32x4" &&
+                selectedMember.isStatic &&
+                selectedMember.parameters.size() == 2 &&
+                selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&
+                selectedMember.parameters[1].typeKey == selectedMember.declaredTypeKey)
+            {
+                std::optional<MethodCoreOperationKind> simdKind;
+                if (selectedMember.name == "Add")
+                    simdKind = MethodCoreOperationKind::SimdFloat32x4Add;
+                else if (selectedMember.name == "Subtract")
+                    simdKind = MethodCoreOperationKind::SimdFloat32x4Subtract;
+                else if (selectedMember.name == "Multiply")
+                    simdKind = MethodCoreOperationKind::SimdFloat32x4Multiply;
+                if (simdKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *simdKind, expression, methodMemberOrdinal, scopeOrdinal,
+                        selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
+                        false, std::nullopt, std::nullopt});
+                }
+            }
             // SHR-022. Las cuatro salidas de consola. La firma es identica en las cuatro
             // --estatica, void, un solo `string`-- asi que lo unico que las separa es el nombre, y
             // por eso la tabla es de nombre a operacion en vez de cuatro `if` copiados.
@@ -12915,6 +12940,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::InterlockedAddInt64: return "interlocked-add-int64";
         case MethodCoreOperationKind::InterlockedExchangeInt64: return "interlocked-exchange-int64";
         case MethodCoreOperationKind::InterlockedCompareExchangeInt64: return "interlocked-compare-exchange-int64";
+        case MethodCoreOperationKind::SimdFloat32x4Add: return "simd-float32x4-add";
+        case MethodCoreOperationKind::SimdFloat32x4Subtract: return "simd-float32x4-subtract";
+        case MethodCoreOperationKind::SimdFloat32x4Multiply: return "simd-float32x4-multiply";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

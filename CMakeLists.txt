@@ -849,6 +849,13 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage40_2_aggregate_abi_execution_tests)
     add_test(NAME nsc.stage40-2.aggregate-abi-execution COMMAND nsc_stage40_2_aggregate_abi_execution_tests)
 
+    # Entrega 228 -- primera familia SIMD publica, inspeccionada en LLVM a O0.
+    add_executable(nsc_stage68_simd_tests tests/unit/Stage68SimdTests.cpp)
+    target_link_libraries(nsc_stage68_simd_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_stage68_simd_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_stage68_simd_tests)
+    add_test(NAME nsc.stage68.simd COMMAND nsc_stage68_simd_tests)
+
     # Stage 55.x -- Interop Foundation: generic FFI imports (dynamic + static-resolved),
     # --link-lib, OOP-pipeline pointers, extern C delegate creation, and the cross-host
     # certification (clang MSVC-ABI host exchanging structs with and calling back into a

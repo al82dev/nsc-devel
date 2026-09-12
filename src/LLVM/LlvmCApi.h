@@ -594,6 +594,7 @@ LLVMTypeRef LLVMInt32TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt64TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMFloatTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMDoubleTypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMVectorType(LLVMTypeRef elementType, unsigned elementCount);
 LLVMTypeRef LLVMPointerTypeInContext(LLVMContextRef context, unsigned addressSpace);
 LLVMTypeRef LLVMArrayType2(LLVMTypeRef elementType, std::uint64_t elementCount);
 LLVMTypeRef LLVMStructCreateNamed(LLVMContextRef context, const char* name);
