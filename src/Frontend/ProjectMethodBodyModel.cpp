@@ -5279,9 +5279,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         //    InvalidSizeof -- que estaba declarado desde hacia tiempo y no se usaba en ningun sitio.
         case ast::AstNodeKind::SizeofTypeExpression:
         case ast::AstNodeKind::SizeofExpression:
+        case ast::AstNodeKind::AlignofTypeExpression:
+        case ast::AstNodeKind::AlignofExpression:
         {
+            const bool alignmentQuery =
+                expression->kind() == ast::AstNodeKind::AlignofTypeExpression ||
+                expression->kind() == ast::AstNodeKind::AlignofExpression;
             std::string measuredTypeKey;
-            if (expression->kind() == ast::AstNodeKind::SizeofExpression)
+            if (expression->kind() == ast::AstNodeKind::SizeofExpression ||
+                expression->kind() == ast::AstNodeKind::AlignofExpression)
             {
                 const OwnershipFlowSnapshot beforeOperand = captureOwnershipFlow();
                 const ExpressionResult operand = analyzeExpression(
@@ -5298,7 +5304,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         diagnostics::DiagnosticId::InvalidSizeof,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->range(),
-                        "sizeof requires a value or a type; a method group has no size");
+                    alignmentQuery
+                        ? "alignof requires a value or a type; a method group has no alignment"
+                        : "sizeof requires a value or a type; a method group has no size");
                     break;
                 }
                 measuredTypeKey = operand.typeKey;
@@ -5322,12 +5330,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     diagnostics::DiagnosticId::InvalidSizeof,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "sizeof(void) has no size");
+                    alignmentQuery ? "alignof(void) has no alignment" : "sizeof(void) has no size");
                 break;
             }
 
             MethodCoreBinding binding;
-            binding.kind = MethodCoreOperationKind::SizeofConstant;
+            binding.kind = alignmentQuery ? MethodCoreOperationKind::AlignofConstant
+                                          : MethodCoreOperationKind::SizeofConstant;
             binding.syntax = expression;
             binding.methodMemberOrdinal = methodMemberOrdinal;
             binding.scopeOrdinal = scopeOrdinal;
@@ -10061,6 +10070,7 @@ bool ProjectMethodBodyModel::isAccessorDestinationReevaluable(
         case ast::AstNodeKind::BooleanLiteralExpression:
         case ast::AstNodeKind::NullLiteralExpression:
         case ast::AstNodeKind::SizeofTypeExpression:
+        case ast::AstNodeKind::AlignofTypeExpression:
         case ast::AstNodeKind::DefaultValueExpression:
             return true;
 
@@ -12800,6 +12810,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::ObjectTypeName: return "object-type-name";
         case MethodCoreOperationKind::ObjectReferenceHash: return "object-reference-hash";
         case MethodCoreOperationKind::SizeofConstant: return "sizeof-constant";
+        case MethodCoreOperationKind::AlignofConstant: return "alignof-constant";
         case MethodCoreOperationKind::StackAllocation: return "stack-allocation";
         case MethodCoreOperationKind::RawAllocation: return "raw-allocation";
         case MethodCoreOperationKind::PointerArithmetic: return "pointer-arithmetic";

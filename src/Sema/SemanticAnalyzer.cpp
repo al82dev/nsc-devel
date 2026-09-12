@@ -920,6 +920,10 @@ ExpressionInfo SemanticAnalyzer::analyzeExpression(ast::AstNode* node, bool allo
             return analyzeSizeof(node, true);
         case ast::AstNodeKind::SizeofExpression:
             return analyzeSizeof(node, false);
+        case ast::AstNodeKind::AlignofTypeExpression:
+            return analyzeAlignof(node, true);
+        case ast::AstNodeKind::AlignofExpression:
+            return analyzeAlignof(node, false);
         case ast::AstNodeKind::NewExpression:
             return analyzeNew(node);
         case ast::AstNodeKind::DeleteExpression:
@@ -1828,6 +1832,34 @@ ExpressionInfo SemanticAnalyzer::analyzeSizeof(ast::AstNode* node, bool typeForm
     ExpressionInfo result = makeRValue(types_.builtin(TypeKind::NUInt));
     result.isConstant = true;
     result.constantValue = ConstantValue::unsignedInteger(*size);
+    return record(node, result);
+}
+
+ExpressionInfo SemanticAnalyzer::analyzeAlignof(ast::AstNode* node, bool typeForm)
+{
+    Type* targetType = nullptr;
+    if (typeForm)
+    {
+        targetType = resolveType(node->typeSyntax());
+    }
+    else
+    {
+        ++constantTrapSuppressionDepth_;
+        targetType = analyzeExpression(node->first(), true).type;
+        --constantTrapSuppressionDepth_;
+    }
+
+    const std::optional<target::TypeLayout> layout = layoutOfType(targetType);
+    if (!layout.has_value())
+    {
+        report(node->range(), diagnostics::DiagnosticId::InvalidSizeof,
+               "alignof requires a complete aligned object type");
+        return makeError(node);
+    }
+
+    ExpressionInfo result = makeRValue(types_.builtin(TypeKind::NUInt));
+    result.isConstant = true;
+    result.constantValue = ConstantValue::unsignedInteger(layout->alignment);
     return record(node, result);
 }
 

@@ -529,6 +529,9 @@ enum class MethodCoreOperationKind
     // si tiene el modelo de layout y le pregunta a valueLayoutForTypeKey, el mismo servicio
     // canonico que ya comparten el stride de un arreglo y el offset de un campo.
     SizeofConstant,
+    // `alignof(T)` and `alignof(expression)` use the same late layout query as sizeof, but select
+    // the canonical layout's alignment. `elementTypeKey` is the measured closed type.
+    AlignofConstant,
     // CC1 fase 4B -- `stackalloc T[n]`. `elementTypeKey` es T; `resultTypeKey` es "T*". Igual que
     // SizeofConstant, el binding NO lleva el tamano: el modelo semantico corre antes que
     // ProjectObjectLayoutModel. El tamano y la alineacion los resuelve el MIR con elementLayout.

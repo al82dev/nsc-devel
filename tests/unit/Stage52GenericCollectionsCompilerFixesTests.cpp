@@ -1592,6 +1592,62 @@ namespace ReturnInTryCatch
     const std::string llvm = compileAndEmitObject(tests, directory, "return inside try/catch (fix 5)");
     tests.expect(!llvm.empty(), "return-inside-try/catch fixture reaches LLVM IR without the Stage 45.10 spill-slot crash");
 }
+
+void testGenericOwnedRawSlotLayoutAndMoves(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "GenericOwnedRawSlot";
+    writeProject(directory, "GenericOwnedRawSlot");
+    writeFile(directory / "Main.ns", R"NS(
+namespace GenericOwnedRawSlot
+{
+    public class Payload { public int Value; }
+
+    public class RawSlot<T>
+    {
+        private T* storage;
+
+        public RawSlot() { storage = new T; }
+        ~RawSlot() { delete storage; }
+
+        public void Put(owned T value) { storage[0] = move(value); }
+        public owned T Take() { return move(storage[0]); }
+        public static nuint ElementSize() { return sizeof(T); }
+        public static nuint ElementAlignment() { return alignof(T); }
+    }
+
+    public class Runner
+    {
+        public static int Main()
+        {
+            raii RawSlot<int> integers = new RawSlot<int>();
+            integers.Put(42);
+            int answer = integers.Take();
+
+            raii RawSlot<Payload> references = new RawSlot<Payload>();
+            raii Payload payload = new Payload();
+            payload.Value = 7;
+            references.Put(move(payload));
+            raii Payload recovered = references.Take();
+
+            if (RawSlot<int>.ElementSize() != 4u || RawSlot<int>.ElementAlignment() != 4u)
+            {
+                return 1;
+            }
+            if (RawSlot<Payload>.ElementSize() != 8u || RawSlot<Payload>.ElementAlignment() != 8u)
+            {
+                return 2;
+            }
+            return answer + recovered.Value - 7;
+        }
+    }
+}
+)NS");
+
+    const std::string llvm = compileAndEmitObject(
+        tests, directory, "generic owned raw slot layout and move closure");
+    tests.expect(!llvm.empty(),
+        "a generic T* slot supports canonical sizeof/alignof and ownership moves for value and reference T");
+}
 }
 
 int main()
@@ -1619,6 +1675,7 @@ int main()
     testOversizedStructWorksAsArrayElementButNotAsAStandaloneValue(tests, root);
     testDeleteValueTypeNoOpDoesNotSkipBoundsCheck(tests, root);
     testReturnInsideTryCatchDoesNotCrashLlvmLowering(tests, root);
+    testGenericOwnedRawSlotLayoutAndMoves(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

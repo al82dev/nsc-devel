@@ -323,6 +323,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::ConsoleErrorWriteLine:
     case MethodCoreOperationKind::ConsoleErrorWrite:
     case MethodCoreOperationKind::SizeofConstant:
+    case MethodCoreOperationKind::AlignofConstant:
     case MethodCoreOperationKind::StackAllocation:
     case MethodCoreOperationKind::RawAllocation:
     case MethodCoreOperationKind::PointerArithmetic:
@@ -4574,27 +4575,34 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         // pueda divergir de la primera.
         case ast::AstNodeKind::SizeofTypeExpression:
         case ast::AstNodeKind::SizeofExpression:
+        case ast::AstNodeKind::AlignofTypeExpression:
+        case ast::AstNodeKind::AlignofExpression:
         {
             const MethodCoreBinding* binding = coreBinding(expression);
-            if (binding == nullptr || binding->kind != MethodCoreOperationKind::SizeofConstant)
+            if (binding == nullptr ||
+                (binding->kind != MethodCoreOperationKind::SizeofConstant &&
+                 binding->kind != MethodCoreOperationKind::AlignofConstant))
             {
-                error = "CC1 sizeof reached OOP lowering without its resolved measured type";
+                error = "layout query reached OOP lowering without its resolved measured type";
                 return nullptr;
             }
             if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
             {
-                error = "CC1 sizeof requires the object layout model";
+                error = "layout query requires the object layout model";
                 return nullptr;
             }
             const std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
                 objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, binding->elementTypeKey);
             if (!layout.has_value())
             {
-                error = "sizeof cannot measure '" + binding->elementTypeKey + "': it has no value layout";
+                error = (binding->kind == MethodCoreOperationKind::AlignofConstant ? "alignof" : "sizeof") +
+                    std::string(" cannot measure '") + binding->elementTypeKey + "': it has no value layout";
                 return nullptr;
             }
             auto node = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nuint");
-            node->integerValue = layout->first;
+            node->integerValue = binding->kind == MethodCoreOperationKind::AlignofConstant
+                ? layout->second
+                : layout->first;
             return node;
         }
 

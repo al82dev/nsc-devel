@@ -182,10 +182,11 @@ int Main()
     const bool expressionFormsOk = expressionForms.compileBuffer(
         "expression_forms.ns",
         "struct P { int X; } int Main() { int x = 1; int* p = new int; *p = x; "
-        "nuint a = sizeof(x++); nuint b = sizeof(int); int y = (int)1.0f; ++x; x--; "
-        "P value; P* pp = &value; pp->X = y; delete p; return (int)(a + b); }");
+        "nuint a = sizeof(x++); nuint b = sizeof(int); nuint c = alignof(P); "
+        "nuint d = alignof(x++); int y = (int)1.0f; ++x; x--; "
+        "P value; P* pp = &value; pp->X = y; delete p; return (int)(a + b + c + d); }");
     tests.expect(expressionFormsOk,
-        "new/delete, sizeof(type/expression), casts, prefix/postfix, dereference, and pointer-member forms parse");
+        "new/delete, sizeof/alignof type and expression forms, casts, prefix/postfix, dereference, and pointer-member forms parse");
 
     frontend::FrontendCompilation recovery;
     const bool recoveryOk = recovery.compileBuffer(

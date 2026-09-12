@@ -5569,8 +5569,9 @@ ast::AstNode* Parser::parseUnaryExpression()
         return node;
     }
 
-    if (at(TokenKind::KwSizeof))
+    if (at(TokenKind::KwSizeof) || at(TokenKind::KwAlignof))
     {
+        const bool alignmentQuery = at(TokenKind::KwAlignof);
         const SourceRange start = consume().range();
         expect(TokenKind::LeftParen, "'('");
         if (canStartTypeAt(index_))
@@ -5645,7 +5646,8 @@ ast::AstNode* Parser::parseUnaryExpression()
                 ast::TypeSyntax* type = parseType();
                 expect(TokenKind::RightParen, "')'");
                 ast::AstNode* node = arena_.make<ast::AstNode>(
-                    ast::AstNodeKind::SizeofTypeExpression,
+                    alignmentQuery ? ast::AstNodeKind::AlignofTypeExpression
+                                   : ast::AstNodeKind::SizeofTypeExpression,
                     tokenRangeFrom(checkpoint));
                 node->setTypeSyntax(type);
                 node->setRange(join(start, tokens_[index_ - 1].range()));
@@ -5656,7 +5658,8 @@ ast::AstNode* Parser::parseUnaryExpression()
         ast::AstNode* expression = parseExpression();
         expect(TokenKind::RightParen, "')'");
         ast::AstNode* node = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::SizeofExpression,
+            alignmentQuery ? ast::AstNodeKind::AlignofExpression
+                           : ast::AstNodeKind::SizeofExpression,
             join(start, tokens_[index_ - 1].range()));
         node->setFirst(expression);
         return node;

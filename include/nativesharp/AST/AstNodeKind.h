@@ -87,6 +87,8 @@ enum class AstNodeKind
     LambdaExpression,
     SizeofTypeExpression,
     SizeofExpression,
+    AlignofTypeExpression,
+    AlignofExpression,
     DefaultValueExpression,
     NewExpression,
     ObjectCreationExpression,

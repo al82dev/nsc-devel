@@ -70,6 +70,7 @@ enum class TokenKind
     KwDelete,
     KwStackalloc,
     KwSizeof,
+    KwAlignof,
     KwDefault,
     KwExtern,
     KwExport,

@@ -385,6 +385,8 @@ HirNode* HirBuilder::lowerExpression(ast::AstNode* node, bool loadLValue)
         case ast::AstNodeKind::NullLiteralExpression:
         case ast::AstNodeKind::SizeofTypeExpression:
         case ast::AstNodeKind::SizeofExpression:
+        case ast::AstNodeKind::AlignofTypeExpression:
+        case ast::AstNodeKind::AlignofExpression:
         {
             if (!info->isConstant)
             {

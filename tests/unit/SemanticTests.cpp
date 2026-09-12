@@ -101,6 +101,8 @@ int main()
         "known floating-to-integer trap is diagnosed");
     tests.expect(accepts("int Main() { nuint x = sizeof((int)(1.0 / 0.0)); return (int)x; }"),
         "sizeof suppresses traps in unevaluated operand");
+    tests.expect(accepts("int Main() { nuint x = alignof((int)(1.0 / 0.0)); return (int)x; }"),
+        "alignof suppresses traps in unevaluated operand");
     tests.expect(accepts("int Main() { bool b = false && (1 / 0 == 0); if (b) { return 1; } return 0; }"),
         "constant short-circuit suppresses unevaluated trap");
     tests.expect(rejectsWith("const int X = 1 / 0; int Main() { return X; }", DiagnosticId::ConstantEvaluationTrap),
@@ -265,6 +267,11 @@ int main()
         "sizeof(function designator) is rejected");
     tests.expect(accepts("struct P { byte A; int B; } int Main() { const nuint s = sizeof(P); return (int)s; }"),
         "sizeof(struct) is a compile-time value derived from target layout");
+    tests.expect(accepts(
+        "struct P { byte A; int B; } int Main() { const nuint a = alignof(P); return (int)a; }"),
+        "alignof(struct) is a compile-time value derived from the same target layout");
+    tests.expect(rejectsWith("int Main() { nuint a = alignof(void); return (int)a; }", DiagnosticId::InvalidSizeof),
+        "alignof(void) is rejected");
 
     tests.expect(accepts("int x = 1; int Main() { int x = 2; { int x = 3; } return x; }"),
         "ordinary value names may shadow in strictly nested scopes");

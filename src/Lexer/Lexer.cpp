@@ -98,6 +98,7 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"delete", TokenKind::KwDelete},
         {"stackalloc", TokenKind::KwStackalloc},
         {"sizeof", TokenKind::KwSizeof},
+        {"alignof", TokenKind::KwAlignof},
         {"default", TokenKind::KwDefault},
         {"extern", TokenKind::KwExtern},
         {"export", TokenKind::KwExport},

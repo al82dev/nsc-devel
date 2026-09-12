@@ -61,6 +61,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwDelete);
         NS_TOKEN_CASE(KwStackalloc);
         NS_TOKEN_CASE(KwSizeof);
+        NS_TOKEN_CASE(KwAlignof);
         NS_TOKEN_CASE(KwDefault);
         NS_TOKEN_CASE(KwExtern);
         NS_TOKEN_CASE(KwExport);
