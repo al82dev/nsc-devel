@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 1;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 2;
 
 enum class ProjectOopMirNodeKind
 {
@@ -321,6 +321,11 @@ struct ProjectOopMirNode final
     bool valueTypeNoOpDeletion = false;
     bool catchAll = false;
     bool interfaceCleanupDispatch = false;
+    // Item 300: explicit optimization contract for InlineAssembly. These are derived once from
+    // the validated MIR children; late consumers do not guess barrier semantics from raw text.
+    bool inlineAssemblyHasSideEffects = false;
+    bool inlineAssemblyClobbersMemory = false;
+    bool inlineAssemblyClobbersFlags = false;
     std::size_t argumentCount = 0;
     std::vector<std::size_t> argumentParameterOrdinals;
     std::string calleeName;

@@ -802,6 +802,19 @@ Register results are stored back to their lvalues, `+r` also supplies the prior 
 operands remain typed indirect addresses, all clobber categories reach LLVM, and local labels are
 unique per expansion.
 
+### NS-ASM-014 — Efectos y barreras de optimización
+
+Toda sentencia asm tiene efectos observables y no puede eliminarse aunque no declare operands.
+`clobber("memory")` impide que el optimizador elimine, combine o mueva accesos ordinarios a través
+del bloque; `clobber("cc")` declara destrucción de flags. Sin `memory`, el bloque no es una barrera
+global implícita: sólo sus operands, resultados y demás clobbers limitan transformaciones. Este
+contrato se conserva explícitamente en MIR 1.2 y debe ser idéntico en O0 y compilaciones optimizadas.
+
+Every asm statement is observable and cannot be deleted even without operands. A `memory` clobber
+is a broad compiler barrier for ordinary memory accesses, while `cc` exposes flag destruction.
+Without `memory`, asm is not an implicit global memory fence; only its declared dependencies and
+clobbers constrain optimization. MIR 1.2 records these effects explicitly.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

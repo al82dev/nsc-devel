@@ -1281,7 +1281,19 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::Block: result->kind = ProjectOopMirNodeKind::Block; break;
         case ProjectOopHirNodeKind::LocalDeclaration: result->kind = ProjectOopMirNodeKind::LocalDeclaration; break;
         case ProjectOopHirNodeKind::ExpressionStatement: result->kind = ProjectOopMirNodeKind::ExpressionStatement; break;
-        case ProjectOopHirNodeKind::InlineAssembly: result->kind = ProjectOopMirNodeKind::InlineAssembly; break;
+        case ProjectOopHirNodeKind::InlineAssembly:
+            result->kind = ProjectOopMirNodeKind::InlineAssembly;
+            result->inlineAssemblyHasSideEffects = true;
+            for (const auto& child : node->children)
+            {
+                if (child == nullptr ||
+                    child->kind != ProjectOopHirNodeKind::InlineAssemblyClobber) continue;
+                result->inlineAssemblyClobbersMemory =
+                    result->inlineAssemblyClobbersMemory || child->elementTypeKey == "memory";
+                result->inlineAssemblyClobbersFlags =
+                    result->inlineAssemblyClobbersFlags || child->elementTypeKey == "flags";
+            }
+            break;
         case ProjectOopHirNodeKind::InlineAssemblyLine: result->kind = ProjectOopMirNodeKind::InlineAssemblyLine; break;
         case ProjectOopHirNodeKind::InlineAssemblyInput: result->kind = ProjectOopMirNodeKind::InlineAssemblyInput; break;
         case ProjectOopHirNodeKind::InlineAssemblyOutput: result->kind = ProjectOopMirNodeKind::InlineAssemblyOutput; break;

@@ -68,7 +68,10 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     if (node->kind == ProjectOopMirNodeKind::StringLiteral)
         output << " bytes=" << node->stringValue.size();
     if (node->kind == ProjectOopMirNodeKind::InlineAssembly)
-        output << " source-bytes=" << node->stringValue.size();
+        output << " source-bytes=" << node->stringValue.size()
+               << " side-effects=" << (node->inlineAssemblyHasSideEffects ? "true" : "false")
+               << " memory-barrier=" << (node->inlineAssemblyClobbersMemory ? "true" : "false")
+               << " flags=" << (node->inlineAssemblyClobbersFlags ? "true" : "false");
     if (node->kind == ProjectOopMirNodeKind::InlineAssemblyLine)
         output << " text=\"" << node->stringValue << "\" contract=" << node->elementTypeKey;
     if (node->kind == ProjectOopMirNodeKind::InlineAssemblyInput ||

@@ -763,3 +763,17 @@ call-site attribute. Canonical register, `cc`, and `memory` clobbers shall becom
 Local labels shall receive a per-expansion unique identity so repeated or inlined blocks cannot
 collide. The configured x86 target shall initialize both its assembly parser and printer, and a
 focused O0 test shall emit a verifier-clean COFF object rather than only inspect textual IR.
+
+## NSC-ASM-014 — Optimization barriers and effect summaries
+
+Every assembly statement shall be represented and emitted as side-effecting, including a block
+with no operands or clobbers. MIR schema 1.2 shall carry explicit `hasSideEffects`, memory-clobber,
+and condition-code-clobber summaries derived from the validated clobber records. LLVM lowering
+shall reject any disagreement between those summaries and the records instead of weakening an
+effect silently.
+
+A `memory` clobber shall become LLVM's broad memory clobber and prevent optimization from deleting,
+merging, or moving ordinary memory operations across the block. A `cc` clobber shall expose flag
+destruction. In the absence of `memory`, only declared operands and other clobbers constrain the
+optimizer; assembly is not an implicit full memory fence. Focused O2 evidence shall retain an
+operand-free block and stores on both sides of a memory-clobber block in source order.

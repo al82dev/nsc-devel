@@ -65,9 +65,13 @@ registro vuelven como resultados escalares o aggregate y se almacenan en sus lva
 constraints indirectos con `elementtype`; `+r`, `=m`, resultados múltiples, clobbers y labels
 locales únicos se ensamblan a COFF. Placeholders inválidos se rechazan en el parser.
 
+Todo bloque asm es un efecto observable, incluso sin operands. Un clobber `memory` es una barrera
+global para accesos ordinarios y `cc` declara el estado de flags destruido. Estas propiedades son
+flags MIR explícitas y O2 conserva tanto el bloque como el orden de stores alrededor de la barrera.
+
 Después de validarse, cada bloque es una operación propia de HIR y MIR. Conserva los bytes exactos,
 líneas y rangos fuente, operands con ordinal/constraint/valor o dirección, categorías de clobber y
-la obligación de preservar registros no volátiles. MIR usa schema 1.1 y no vuelve a interpretar el
+la obligación de preservar registros no volátiles. MIR usa schema 1.2 y no vuelve a interpretar el
 texto para recuperar información que el frontend ya resolvió.
 
 ## Superficie del lenguaje

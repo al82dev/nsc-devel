@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 
@@ -31,6 +32,17 @@ void collectNodes(const Node* node, std::vector<const Node*>& output)
     if (node == nullptr) return;
     output.push_back(node);
     for (const auto& child : node->children) collectNodes(child.get(), output);
+}
+
+std::string functionBody(std::string_view ir, std::string_view nameFragment)
+{
+    const std::size_t at = ir.find(nameFragment);
+    if (at == std::string_view::npos) return {};
+    const std::size_t open = ir.find('{', at);
+    if (open == std::string_view::npos) return {};
+    const std::size_t close = ir.find("\n}", open);
+    if (close == std::string_view::npos) return {};
+    return std::string(ir.substr(open, close - open));
 }
 }
 
@@ -99,6 +111,10 @@ public class Program
                 hirAsm[0]->stringValue == mirAsm[0]->stringValue &&
                 hirAsm[0]->stringValue.find("mov $out0, $0") != std::string::npos,
             "the exact assembly source bytes survive HIR-to-MIR lowering");
+        tests.expect(!mirAsm.empty() && mirAsm[0]->inlineAssemblyHasSideEffects &&
+                mirAsm[0]->inlineAssemblyClobbersMemory &&
+                mirAsm[0]->inlineAssemblyClobbersFlags,
+            "MIR summarizes mandatory side effects plus explicit memory and flag barriers");
 
         const auto hirLines = hirOf(ProjectOopHirNodeKind::InlineAssemblyLine);
         const auto mirLines = mirOf(ProjectOopMirNodeKind::InlineAssemblyLine);
@@ -135,7 +151,9 @@ public class Program
         const std::string mirDump = ProjectOopMirModelDumper::dump(*compilation.oopMirModel());
         tests.expect(hirDump.find("inline-assembly-output") != std::string::npos &&
                 hirDump.find("constraint=={rax}") != std::string::npos &&
-                mirDump.find("schema=1.1") != std::string::npos &&
+                mirDump.find("schema=1.2") != std::string::npos &&
+                mirDump.find("side-effects=true memory-barrier=true flags=true") !=
+                    std::string::npos &&
                 mirDump.find("category=memory") != std::string::npos,
             "HIR/MIR dumps expose the complete assembly contract and schema revision");
 
@@ -277,6 +295,71 @@ public class Stress
                         emitError),
                 "the x64 backend emits every supported assembly shape to one COFF object: " +
                     emitError);
+        }
+    }
+
+    const auto barriers = root / "barriers";
+    writeFile(barriers / "AssemblyBarriers.nsproj",
+        "<Project><PropertyGroup><Name>AssemblyBarriers</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(barriers / "Barriers.ns", R"NS(
+public class Barriers
+{
+    public static int Ordered(int* location)
+    {
+        *location = 1;
+        asm { nop } clobber("memory");
+        *location = 2;
+        return *location;
+    }
+
+    public static int Observable()
+    {
+        asm { nop }
+        return 42;
+    }
+}
+)NS");
+
+    ProjectCompilation barrierCompilation;
+    std::string barrierError;
+    const bool barrierBuilt = barrierCompilation.compileProjectOopMir(
+        barriers / "AssemblyBarriers.nsproj", barrierError);
+    tests.expect(barrierBuilt && barrierError.empty(),
+        "memory-barrier and operand-free observable asm reach MIR");
+    if (barrierBuilt)
+    {
+        nativesharp::llvm_backend::ProjectOopLlvmLowerer barrierLowerer;
+        auto barrierModule = barrierLowerer.lower(
+            *barrierCompilation.nameLookup(), *barrierCompilation.oopMirModel());
+        std::string targetError;
+        auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O2, targetError);
+        nativesharp::llvm_backend::LlvmOptimizer optimizer;
+        std::string optimizationError;
+        tests.expect(barrierModule != nullptr && target != nullptr &&
+                optimizer.optimize(
+                    *barrierModule,
+                    *target,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O2,
+                    optimizationError),
+            "the O2 pipeline accepts explicit asm optimization barriers: " + optimizationError);
+        if (barrierModule != nullptr && target != nullptr && optimizationError.empty())
+        {
+            const std::string optimized = barrierModule->text();
+            const std::string ordered = functionBody(optimized, "Barriers__Ordered");
+            const std::string observable = functionBody(optimized, "Barriers__Observable");
+            const std::size_t firstStore = ordered.find("store i32 1");
+            const std::size_t memoryBarrier = ordered.find("~{memory}");
+            const std::size_t secondStore = ordered.find("store i32 2");
+            tests.expect(firstStore != std::string::npos &&
+                    memoryBarrier != std::string::npos &&
+                    secondStore != std::string::npos &&
+                    firstStore < memoryBarrier && memoryBarrier < secondStore,
+                "O2 retains and orders stores on both sides of an asm memory clobber");
+            tests.expect(observable.find("asm sideeffect inteldialect \"nop\"") !=
+                    std::string::npos,
+                "O2 cannot delete operand-free asm because every block is observable");
         }
     }
 

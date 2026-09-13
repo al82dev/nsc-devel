@@ -5285,6 +5285,8 @@ private:
         std::vector<const frontend::ProjectOopMirNode*> inputs;
         std::vector<const frontend::ProjectOopMirNode*> outputs;
         std::vector<const frontend::ProjectOopMirNode*> clobbers;
+        bool sawMemoryClobber = false;
+        bool sawFlagsClobber = false;
         for (const auto& childOwner : node->children)
         {
             const frontend::ProjectOopMirNode* child = childOwner.get();
@@ -5314,6 +5316,8 @@ private:
         };
         if (!ordinalsAreDense(inputs) || !ordinalsAreDense(outputs) || !ordinalsAreDense(clobbers))
             return fail(error, "inline assembly MIR operand or clobber ordinals are not dense");
+        if (!node->inlineAssemblyHasSideEffects)
+            return fail(error, "inline assembly MIR lost its mandatory side-effect barrier");
 
         std::vector<std::string> constraintParts;
         std::vector<LLVMTypeRef> resultTypes;
@@ -5392,10 +5396,15 @@ private:
 
         for (const frontend::ProjectOopMirNode* clobber : clobbers)
         {
+            sawFlagsClobber = sawFlagsClobber || clobber->elementTypeKey == "flags";
+            sawMemoryClobber = sawMemoryClobber || clobber->elementTypeKey == "memory";
             const std::string name = clobber->elementTypeKey == "flags" ? "cc"
                 : clobber->elementTypeKey == "memory" ? "memory" : clobber->stringValue;
             constraintParts.push_back("~{" + name + "}");
         }
+        if (sawMemoryClobber != node->inlineAssemblyClobbersMemory ||
+            sawFlagsClobber != node->inlineAssemblyClobbersFlags)
+            return fail(error, "inline assembly MIR barrier summary disagrees with its clobbers");
 
         std::vector<std::size_t> inputConstraintOrdinals(inputs.size());
         for (std::size_t index = 0; index < inputs.size(); ++index)
@@ -5489,7 +5498,10 @@ private:
             functionType,
             assembly.data(), assembly.size(),
             constraints.data(), constraints.size(),
-            1, 0, LLVMInlineAsmDialectIntel, 0);
+            node->inlineAssemblyHasSideEffects ? 1 : 0,
+            0,
+            LLVMInlineAsmDialectIntel,
+            0);
         if (inlineAssembly == nullptr)
             return fail(error, "LLVM rejected the integrated assembly contract");
         LLVMValueRef call = LLVMBuildCall2(

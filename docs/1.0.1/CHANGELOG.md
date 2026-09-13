@@ -38,6 +38,9 @@ empaqueta con NativeSharp 1.0.1.
 - El backend emite esos nodos mediante inline asm LLVM en dialecto Intel. Soporta inputs de
   registro/inmediato/memoria, outputs `=r`/`+r`/fijos/memoria, resultados múltiples, clobbers y
   control local con labels únicos; el target x86 inicializa también su parser de assembly.
+- MIR 1.2 materializa el contrato de optimización de asm: side effects obligatorios y resúmenes
+  explícitos de clobber de memoria/flags. O2 no elimina bloques sin operands ni mueve o fusiona
+  stores a través de `clobber("memory")`.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su
