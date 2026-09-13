@@ -671,6 +671,23 @@ Every target must be an ordinary modifiable lvalue and is analyzed as a write, s
 becomes definitely assigned without a prior read. Output placeholders use their own `$outN`
 ordinal space and never renumber input `$N` placeholders.
 
+### NS-ASM-005 — Restricciones de registros
+
+Cada operando puede terminar en `: "constraint"`. Las entradas admiten `"r"` para cualquier
+registro general o `"{nombre}"` para fijar uno; las salidas admiten `"=r"` y `"={nombre}"` como
+escritura, además de `"+r"` y `"+{nombre}"` para lectura-escritura. Omitir la anotación conserva
+compatibilidad y normaliza a `"r"` en inputs o `"=r"` en outputs. El AST guarda siempre la forma
+normalizada y distingue si fue explícita. Un constraint debe ser un literal string válido, debe
+respetar la dirección del operando y un nombre entre braces sólo puede contener letras, dígitos o
+underscore. La disponibilidad del registro en la arquitectura y CPU destino se valida en
+NS-ASM-011; esta regla sólo fija el contrato independiente del target.
+
+Each operand may end in `: "constraint"`. Inputs accept `"r"` or a fixed `"{name}"`; outputs
+accept write-only `"=r"`/`"={name}"` and read-write `"+r"`/`"+{name}"`. Omitted annotations
+normalize to `"r"` for inputs and `"=r"` for outputs. The AST always stores that normalized form
+and records whether it was explicit. Constraints must be string literals with a direction valid
+for the operand. Target register availability remains the later NS-ASM-011 contract.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

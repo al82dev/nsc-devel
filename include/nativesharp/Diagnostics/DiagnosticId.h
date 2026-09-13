@@ -64,6 +64,7 @@ enum class DiagnosticId
     InvalidAllocationType,
     InvalidDeleteOperand,
     InvalidStackalloc,
+    InvalidInlineAssemblyConstraint,
     InlineAssemblyNotAvailable,
     ConstantEvaluationTrap,
     MissingMain,

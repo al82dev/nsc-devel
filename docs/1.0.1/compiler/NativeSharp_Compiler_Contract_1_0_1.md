@@ -677,3 +677,14 @@ Each target shall become `InlineAssemblyOutputOperand`, retain a zero-based `$ou
 its unary/postfix lvalue syntax as `first()`. Both semantic pipelines shall require a modifiable
 lvalue. Project definite-assignment analysis shall treat a whole-local output as a write and shall
 not diagnose a read of its previous uninitialized value.
+
+## NSC-ASM-005 — Register constraints
+
+The parser shall accept an optional `: "constraint"` after every assembly input expression and
+output target. It shall normalize an omitted input constraint to `r` and an omitted output
+constraint to `=r`, while retaining an explicitness bit independently from the normalized value.
+Inputs may use `r` or `{register}`. Outputs may use write-only `=r`/`={register}` or read-write
+`+r`/`+{register}`. Directionally invalid forms, non-literal constraints, empty fixed-register
+names, braces with trailing data, whitespace, and punctuation inside a register atom shall produce
+`InvalidInlineAssemblyConstraint` at the operand. Architecture-specific register validation is a
+separate later contract and shall not be guessed by the parser.

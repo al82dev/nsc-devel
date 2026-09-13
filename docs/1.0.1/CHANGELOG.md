@@ -16,6 +16,9 @@ empaqueta con NativeSharp 1.0.1.
 - La cláusula contextual `out(destino0, destino1)` precede a `in`, conserva ordinales `$outN` y
   exige lvalues modificables. El análisis la registra como escritura para no leer una local sin
   inicializar antes de que assembly produzca su valor.
+- Cada operando asm acepta un constraint string opcional. Inputs normalizan a `r`, outputs a `=r`,
+  y las formas explícitas permiten registros fijos y outputs de lectura-escritura. Las direcciones
+  inválidas o estructuras mal formadas se rechazan antes del lowering.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

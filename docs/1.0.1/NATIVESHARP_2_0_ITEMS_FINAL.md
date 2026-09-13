@@ -73,7 +73,7 @@
 43. **288 — Lexer y ubicaciones fuente de asm / Assembly lexer and source locations — COMPLETADO / COMPLETE**
 44. **289 — Operandos de entrada / Assembly input operands — COMPLETADO / COMPLETE**
 45. **290 — Operandos de salida / Assembly output operands — COMPLETADO / COMPLETE**
-46. **291 — Restricciones de registros / Register constraints**
+46. **291 — Restricciones de registros / Register constraints — COMPLETADO / COMPLETE**
 47. **292 — Inmediatos y operandos de memoria / Immediate and memory operands**
 48. **293 — Clobbers de registros / Register clobbers**
 49. **294 — Clobbers de flags y memoria / Flag and memory clobbers**

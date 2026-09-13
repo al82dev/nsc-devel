@@ -31,6 +31,12 @@ Los destinos de salida se declaran antes de las entradas:
 sentencia lo trata como escritura, por lo que puede inicializar una local todavía no leída. La
 plantilla los nombra `$out0`, `$out1`, etc., sin renumerar los placeholders `$0`, `$1` de entrada.
 
+Cada input u output puede declarar un constraint de registros con `: "..."`. Las entradas aceptan
+registro general (`"r"`) o fijo (`"{rcx}"`); las salidas distinguen escritura (`"=r"`,
+`"={rax}"`) y lectura-escritura (`"+r"`, `"+{rax}"`). Si se omite, el compilador conserva la
+sintaxis anterior y normaliza a `r` o `=r`. Los nombres concretos se contrastarán con el target en
+el item de validación x64; esta etapa ya fija y verifica estructura y dirección.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

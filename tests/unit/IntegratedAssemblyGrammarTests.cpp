@@ -194,9 +194,93 @@ int Main()
             outputOperand->kind() == AstNodeKind::InlineAssemblyOutputOperand &&
             outputOperand->integerValue() == 0 && outputOperand->first() != nullptr &&
             outputOperand->first()->text() == "result" &&
+            outputOperand->auxiliaryText() == "=r" && !outputOperand->flag() &&
             outputAssembly->children().size() == 3 &&
-            outputAssembly->children()[2]->kind() == AstNodeKind::InlineAssemblyInputOperand,
-        "asm out targets precede input expressions and retain stable $outN ordinals");
+            outputAssembly->children()[2]->kind() == AstNodeKind::InlineAssemblyInputOperand &&
+            outputAssembly->children()[2]->auxiliaryText() == "r" &&
+            !outputAssembly->children()[2]->flag(),
+        "asm operands retain stable ordinals and normalized default register constraints");
+
+    ParsedSyntax explicitConstraints;
+    parse(
+        explicitConstraints,
+        "int Main() { int result; int source = 42; "
+        "asm { mov $out0, $0 } out(result : \"={rax}\") in(source : \"{rcx}\"); "
+        "return result; }");
+    const AstNode* constrainedMain = findFunction(explicitConstraints.root, "Main");
+    const AstNode* constrainedBody = constrainedMain != nullptr ? constrainedMain->first() : nullptr;
+    const AstNode* constrainedAssembly =
+        constrainedBody != nullptr && constrainedBody->children().size() > 2
+            ? constrainedBody->children()[2]
+            : nullptr;
+    tests.expect(
+        !explicitConstraints.diagnostics.hasErrors() && constrainedAssembly != nullptr &&
+            constrainedAssembly->children().size() == 3 &&
+            constrainedAssembly->children()[1]->auxiliaryText() == "={rax}" &&
+            constrainedAssembly->children()[1]->flag() &&
+            constrainedAssembly->children()[2]->auxiliaryText() == "{rcx}" &&
+            constrainedAssembly->children()[2]->flag(),
+        "explicit fixed-register constraints are decoded and attached to their operands");
+
+    ParsedSyntax readWriteOutput;
+    parse(
+        readWriteOutput,
+        "int Main() { int value = 1; asm { inc $out0 } out(value : \"+r\"); return value; }");
+    tests.expect(
+        !readWriteOutput.diagnostics.hasErrors(),
+        "read-write general-register output constraint is accepted");
+
+    ParsedSyntax invalidInputConstraint;
+    parse(
+        invalidInputConstraint,
+        "int Main() { int value = 1; asm { nop } in(value : \"=r\"); return 0; }");
+    bool sawInvalidInputConstraint = false;
+    for (const diagnostics::Diagnostic& diagnostic :
+        invalidInputConstraint.diagnostics.diagnostics())
+    {
+        sawInvalidInputConstraint = sawInvalidInputConstraint ||
+            diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint;
+    }
+    tests.expect(
+        invalidInputConstraint.diagnostics.hasErrors() && sawInvalidInputConstraint,
+        "input operands reject output-only register constraints");
+
+    ParsedSyntax invalidOutputConstraint;
+    parse(
+        invalidOutputConstraint,
+        "int Main() { int value; asm { nop } out(value : \"r\"); return 0; }");
+    bool sawInvalidOutputConstraint = false;
+    for (const diagnostics::Diagnostic& diagnostic :
+        invalidOutputConstraint.diagnostics.diagnostics())
+    {
+        sawInvalidOutputConstraint = sawInvalidOutputConstraint ||
+            diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint;
+    }
+    tests.expect(
+        invalidOutputConstraint.diagnostics.hasErrors() && sawInvalidOutputConstraint,
+        "output operands require an explicit write or read-write marker");
+
+    ParsedSyntax malformedRegisterConstraint;
+    parse(
+        malformedRegisterConstraint,
+        "int Main() { int value = 1; asm { nop } in(value : \"{r ax}\"); return 0; }");
+    tests.expect(
+        malformedRegisterConstraint.diagnostics.hasErrors(),
+        "fixed-register constraints reject whitespace and malformed register atoms");
+
+    ParsedSyntax nonLiteralConstraint;
+    parse(
+        nonLiteralConstraint,
+        "int Main() { int value = 1; asm { nop } in(value : value); return 0; }");
+    bool sawNonLiteralConstraint = false;
+    for (const diagnostics::Diagnostic& diagnostic : nonLiteralConstraint.diagnostics.diagnostics())
+    {
+        sawNonLiteralConstraint = sawNonLiteralConstraint ||
+            diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint;
+    }
+    tests.expect(
+        nonLiteralConstraint.diagnostics.hasErrors() && sawNonLiteralConstraint,
+        "asm register constraints require compile-time string syntax");
 
     ParsedSyntax emptyOutputs;
     parse(emptyOutputs, "int Main() { asm { nop } out(); return 0; }");
