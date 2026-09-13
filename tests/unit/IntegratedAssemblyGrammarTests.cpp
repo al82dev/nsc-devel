@@ -436,6 +436,37 @@ int Main()
             clobberAssembly->children()[3]->auxiliaryText() == "register",
         "physical register clobbers remain explicitly classified as registers");
 
+    ParsedSyntax nonvolatileClobber;
+    parse(
+        nonvolatileClobber,
+        "int Main() { asm { xor rbx, rbx } clobber(\"rbx\", \"xmm15\"); return 0; }");
+    const AstNode* nonvolatileMain = findFunction(nonvolatileClobber.root, "Main");
+    const AstNode* nonvolatileBody = nonvolatileMain != nullptr ? nonvolatileMain->first() : nullptr;
+    const AstNode* nonvolatileAssembly =
+        nonvolatileBody != nullptr && !nonvolatileBody->children().empty()
+            ? nonvolatileBody->children()[0]
+            : nullptr;
+    tests.expect(
+        !nonvolatileClobber.diagnostics.hasErrors() && nonvolatileAssembly != nullptr &&
+            nonvolatileAssembly->children().size() == 3 &&
+            nonvolatileAssembly->children()[1]->flag() &&
+            nonvolatileAssembly->children()[2]->flag(),
+        "Windows x64 nonvolatile register clobbers carry an explicit preservation marker");
+
+    ParsedSyntax stackPointerClobber;
+    parse(stackPointerClobber, "int Main() { asm { nop } clobber(\"rsp\"); return 0; }");
+    tests.expect(
+        stackPointerClobber.diagnostics.hasErrors(),
+        "the stack pointer cannot be declared clobbered");
+
+    ParsedSyntax stackPointerOperand;
+    parse(
+        stackPointerOperand,
+        "int Main() { int value = 1; asm { nop } in(value : \"{rsp}\"); return 0; }");
+    tests.expect(
+        stackPointerOperand.diagnostics.hasErrors(),
+        "an operand cannot be fixed to the stack pointer");
+
     ParsedSyntax emptyClobber;
     parse(emptyClobber, "int Main() { asm { nop } clobber(); return 0; }");
     tests.expect(

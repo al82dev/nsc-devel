@@ -76,7 +76,8 @@ enum class AstNodeKind
     // operand constraint, and flag() records whether it was written explicitly.
     InlineAssemblyOutputOperand,
     // One canonical name from `clobber("name", ...)`. text() is lowercase, integerValue() is the
-    // stable source ordinal, and auxiliaryText() classifies it as register, flags, or memory.
+    // stable source ordinal, auxiliaryText() classifies it as register, flags, or memory, and
+    // flag() marks a Windows x64 nonvolatile register that the backend must preserve.
     InlineAssemblyClobber,
     ExpressionStatement,
 

@@ -26,6 +26,8 @@ empaqueta con NativeSharp 1.0.1.
   canonicalizado y rechaza duplicados o conflictos con constraints de registro fijo.
 - Los clobbers reservados `"cc"` y `"memory"` declaran efectos de condition codes y memoria y se
   conservan en el AST con categorías distintas de un registro físico.
+- Assembly prohíbe usar o destruir el stack pointer y marca clobbers no volátiles de Windows x64
+  para que la futura emisión preserve el ABI de la función.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

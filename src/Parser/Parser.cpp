@@ -4745,6 +4745,33 @@ std::string_view fixedInlineAssemblyRegister(std::string_view constraint) noexce
     return constraint.substr(open + 1, constraint.size() - open - 2);
 }
 
+bool isInlineAssemblyStackPointer(std::string_view name) noexcept
+{
+    return name == "rsp" || name == "esp" || name == "sp" || name == "spl";
+}
+
+bool isWindowsX64NonvolatileRegister(std::string_view name) noexcept
+{
+    static constexpr std::array<std::string_view, 28> names = {
+        "rbx", "ebx", "bx", "bl", "bh",
+        "rbp", "ebp", "bp", "bpl",
+        "rdi", "edi", "di", "dil",
+        "rsi", "esi", "si", "sil",
+        "r12", "r12d", "r12w", "r12b",
+        "r13", "r13d", "r13w", "r13b",
+        "r14", "r15", "xmm6"};
+    if (std::find(names.begin(), names.end(), name) != names.end()) return true;
+    if (name.starts_with("r14") || name.starts_with("r15")) return true;
+    if (name.starts_with("xmm"))
+    {
+        const std::string_view ordinal = name.substr(3);
+        return ordinal == "7" || ordinal == "8" || ordinal == "9" || ordinal == "10" ||
+            ordinal == "11" || ordinal == "12" || ordinal == "13" || ordinal == "14" ||
+            ordinal == "15";
+    }
+    return false;
+}
+
 bool isInlineAssemblyConstraint(std::string_view constraint, bool output) noexcept
 {
     if (!output)
@@ -4984,6 +5011,15 @@ void Parser::parseInlineAssemblyClobberClause(ast::AstNode* statement)
                 registerToken.range(),
                 "asm clobber requires a register atom, 'cc', or 'memory'");
         }
+        else if (!specialClobber && isInlineAssemblyStackPointer(registerName))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyClobber,
+                diagnostics::DiagnosticSeverity::Error,
+                registerToken.range(),
+                "asm cannot clobber the stack pointer; its value and alignment must survive the block");
+            valid = false;
+        }
         else if (!seen.insert(registerName).second)
         {
             diagnostics_.report(
@@ -5029,6 +5065,8 @@ void Parser::parseInlineAssemblyClobberClause(ast::AstNode* statement)
             clobber->setAuxiliaryText(
                 registerName == "cc" ? "flags" :
                 registerName == "memory" ? "memory" : "register");
+            clobber->setFlag(
+                !specialClobber && isWindowsX64NonvolatileRegister(registerName));
             statement->addChild(clobber);
         }
     }
@@ -5066,6 +5104,17 @@ std::string Parser::parseInlineAssemblyConstraint(
             output
                 ? "asm output constraint must be '=r', '+r', '=m', '+m', '={register}', or '+{register}'"
                 : "asm input constraint must be 'r', 'i', 'm', or '{register}'");
+        return defaultConstraint;
+    }
+    const std::string fixedRegister = canonicalInlineAssemblyRegister(
+        std::string(fixedInlineAssemblyRegister(constraint)));
+    if (!fixedRegister.empty() && isInlineAssemblyStackPointer(fixedRegister))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
+            diagnostics::DiagnosticSeverity::Error,
+            constraintToken.range(),
+            "asm cannot bind an operand to the stack pointer");
         return defaultConstraint;
     }
     return constraint;

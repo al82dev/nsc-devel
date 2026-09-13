@@ -730,6 +730,19 @@ effects and `memory` declares effects on storage not named by `m` operands. Both
 case-insensitive identities. The AST classifies them separately as `flags` and `memory`, while
 physical names remain `register`, so later lowering does not infer semantics from raw spelling.
 
+### NS-ASM-009 — Seguridad de stack y registros no volátiles
+
+Ningún constraint ni clobber puede nombrar `rsp`, `esp`, `sp` o `spl`: el stack pointer y su
+alineación deben sobrevivir intactos al bloque. Los clobbers de registros no volátiles del ABI
+Windows x64 se marcan explícitamente en el AST para obligar al backend a preservar su valor en la
+frontera de la función. Un output fijo ya informa su modificación mediante su constraint; una
+modificación implícita escrita sólo en el texto debe declararse como clobber.
+
+No constraint or clobber may name `rsp`, `esp`, `sp`, or `spl`; stack pointer value and alignment
+must survive the block. Windows x64 nonvolatile register clobbers carry an explicit AST marker so
+the backend must preserve them at the function boundary. Fixed outputs already describe their
+modification through their constraint; any modification implicit only in text must be a clobber.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

@@ -714,3 +714,10 @@ than physical registers. `InlineAssemblyClobber::auxiliaryText()` shall classify
 `register`, `cc` as `flags`, and `memory` as `memory`. Case normalization, stable ordering, and
 duplicate detection shall remain identical across all categories. Later MIR and LLVM stages shall
 consume the category instead of reinterpreting the source spelling.
+
+## NSC-ASM-009 — Stack and nonvolatile-register safety
+
+The parser shall reject stack-pointer aliases `rsp`, `esp`, `sp`, and `spl` in both fixed operand
+constraints and clobbers. It shall mark Windows x64 nonvolatile GPR and XMM clobbers through the
+clobber AST flag. Later lowering must translate that declaration into backend-visible preservation;
+it may not trust authored assembly to save and restore ABI state implicitly.

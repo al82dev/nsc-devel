@@ -50,6 +50,9 @@ La misma lista admite `"cc"` para condition codes y `"memory"` para efectos sobr
 no nombrado por operandos. El AST los distingue de registros físicos mediante categorías estables,
 preparadas para MIR, LLVM y las barreras de optimización posteriores.
 
+El stack pointer no puede aparecer como constraint fijo ni clobber. Los clobbers que pertenecen al
+conjunto no volátil de Windows x64 llevan una marca de preservación explícita para el backend.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros
