@@ -1509,14 +1509,19 @@ del tipo. Los operadores bit a bit sobre enums requieren compatibilidad con su r
 ### 32.2 Emisión
 
 ```text
---emit-project-oop-obj <project> [-O0|-O1|-O2|-O3] -o <file.obj>
---emit-project-oop-exe <project> [-O0|-O1|-O2|-O3] -o <file.exe>
---emit-project-oop-lib <project> [-O0|-O1|-O2|-O3] -o <file.lib>
---emit-project-oop-dll <project> [-O0|-O1|-O2|-O3] -o <file.dll>
+--emit-project-oop-obj <project> [--profile=debug|release] [-O0|-O1|-O2|-O3] [-g0|-gline-tables-only|-g] -o <file.obj>
+--emit-project-oop-exe <project> [--profile=debug|release] [-O0|-O1|-O2|-O3] [-g0|-gline-tables-only|-g] -o <file.exe>
+--emit-project-oop-lib <project> [--profile=debug|release] [-O0|-O1|-O2|-O3] [-g0|-gline-tables-only|-g] -o <file.lib>
+--emit-project-oop-dll <project> [--profile=debug|release] [-O0|-O1|-O2|-O3] [-g0|-gline-tables-only|-g] -o <file.dll>
 --emit-project-host-header <project> -o <file.h>
 --emit-project-library-metadata <project> -o <file.nsmeta>
 --verify-library-metadata <file.nsmeta>
 ```
+
+`--profile=debug` aplica `-O0 -g`; `--profile=release` aplica
+`-O2 -gline-tables-only` para conservar líneas útiles en fallos de producción. Son valores por
+defecto: un `-O*` o `-g*` explícito reemplaza sólo su dimensión, sin importar el orden de los
+argumentos. El compilador imprime el perfil y las políticas efectivas cuando se usa esta opción.
 
 Los modos de un solo archivo (`--check`, `--dump-tokens`, `--dump-ast`, `--dump-sema`, HIR, MIR,
 CFG, dominancia, SSA, optimización, LLVM, objeto, asm y ejecutable) son útiles para casos mínimos y

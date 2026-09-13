@@ -132,3 +132,17 @@ Debug support is conforming only when automated evidence verifies all applicable
 
 Human stepping in Visual Studio or WinDbg is a release acceptance check, not a substitute for the
 automated artifact checks.
+
+## NSC-DEBUG-007 — Named compilation profiles
+
+`--profile=debug` shall select O0 and the full `-g` debug-information policy by default.
+`--profile=release` shall select O2 and `-gline-tables-only` by default so optimized products retain
+source-level crash and stack attribution. Profile names are case-sensitive and only `debug` and
+`release` are supported.
+
+Profiles are convenience defaults, not a new coupling between optimization and debug information.
+An explicit `-O0` through `-O3` or `-g0`, `-gline-tables-only` or `-g` selection shall override the
+corresponding profile default independent of argument order. Duplicate profiles, unknown profiles
+and profiles attached to actions that cannot emit a project OOP object, executable, static library
+or DLL are command-line errors. When a profile is selected, the driver shall report its name and
+effective optimization and debug-information policies.

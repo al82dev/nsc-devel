@@ -1,5 +1,6 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
+#include "nativesharp/Driver/CompilationProfile.h"
 #include "nativesharp/Driver/CompilationJobPolicy.h"
 #include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/InstallationManifest.h"
@@ -2627,6 +2628,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
     bool optimizationLevelSeen = false;
+    std::optional<CompilationProfile> compilationProfile;
+    bool compilationProfileSeen = false;
     bool optimizationBudgetSeen = false;
     bool jobCountSeen = false;
     bool reservedCoresSeen = false;
@@ -2654,6 +2657,25 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (argument == "--llvm-pass-trace")
         {
+            continue;
+        }
+        static constexpr std::string_view compilationProfilePrefix = "--profile=";
+        if (argument.starts_with(compilationProfilePrefix))
+        {
+            if (compilationProfileSeen)
+            {
+                error << "nsc: error: duplicate compilation profile\n";
+                return ExitCode::CommandLineError;
+            }
+            compilationProfileSeen = true;
+            compilationProfile = parseCompilationProfile(
+                argument.substr(compilationProfilePrefix.size()));
+            if (!compilationProfile.has_value())
+            {
+                error << "nsc: error: unsupported compilation profile '" << argument
+                      << "'; expected --profile=debug or --profile=release\n";
+                return ExitCode::CommandLineError;
+            }
             continue;
         }
         if (argument == "-j" || (argument.starts_with("-j") && argument.size() > 2U))
@@ -2887,6 +2909,17 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         normalizedArguments.push_back(argument);
     }
 
+    const CompilationProfileSettings profileSettings = resolveCompilationProfile(
+        compilationProfile,
+        optimizationLevelSeen
+            ? std::optional<llvm_backend::LlvmOptimizationLevel>{optimizationLevel}
+            : std::nullopt,
+        debugInformationSeen
+            ? std::optional<llvm_backend::DebugInformationKind>{debugInformation}
+            : std::nullopt);
+    optimizationLevel = profileSettings.optimizationLevel;
+    debugInformation = profileSettings.debugInformation;
+
     if (normalizedArguments.empty())
     {
         error << "nsc: error: compilation options require an action or input file\n";
@@ -2922,11 +2955,26 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                  "a project OOP object, executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
     }
+    if (compilationProfileSeen && !debugCapableInvocation)
+    {
+        error << "nsc: error: compilation profiles are supported when emitting a project OOP "
+                 "object, executable, static library, or DLL\n";
+        return ExitCode::CommandLineError;
+    }
     if (artifactCacheSeen && !artifactCacheCapableInvocation)
     {
         error << "nsc: error: --artifact-cache is supported when emitting a project OOP "
                  "executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
+    }
+
+    if (compilationProfile.has_value())
+    {
+        output << "compilation-profile: " << compilationProfileName(*compilationProfile) << '\n'
+               << "profile-optimization: "
+               << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
+               << "profile-debug-information: "
+               << llvm_backend::debugInformationKindName(debugInformation) << '\n';
     }
 
     if (args.size() == 1)
@@ -3376,17 +3424,17 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-project-oop-llvm <file.nsproj>\n"
            << "  nsc --dump-project-oop-llvm <file.nsproj>\n"
            << "  nsc --emit-project-oop-obj <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.obj> [-g0|-gline-tables-only|-g] "
+              "<file.obj> [--profile=debug|release] [-g0|-gline-tables-only|-g] "
               "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
            << "  nsc --emit-project-oop-exe <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.exe> [-g0|-gline-tables-only|-g] "
+              "<file.exe> [--profile=debug|release] [-g0|-gline-tables-only|-g] "
               "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>] "
               "[/subsystem:console|/subsystem:windows]\n"
            << "  nsc --emit-project-oop-lib <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.lib> [-g0|-gline-tables-only|-g] "
+              "<file.lib> [--profile=debug|release] [-g0|-gline-tables-only|-g] "
               "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
            << "  nsc --emit-project-oop-dll <file.nsproj> [-O0|-O1|-O2|-O3] -o "
-              "<file.dll> [-g0|-gline-tables-only|-g] "
+              "<file.dll> [--profile=debug|release] [-g0|-gline-tables-only|-g] "
               "[-fdebug-prefix-map=<absolute-source-prefix>=<replacement-prefix>]\n"
            << "  nsc --emit-project-host-header <file.nsproj> -o <file.h>\n"
            << "  nsc --emit-project-library-metadata <file.nsproj> -o "
@@ -3462,6 +3510,8 @@ void Driver::printHelp(std::ostream &output)
               "Use --print-job-policy to inspect the effective value.\n"
            << "--artifact-cache=<absolute-directory> enables verified content-addressed reuse "
               "for optimized project object units.\n"
+           << "--profile=debug selects O0 with full debug information; --profile=release selects "
+              "O2 with line tables. Explicit -O and -g flags override profile defaults.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
@@ -4297,6 +4347,7 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     }
     output << "project OOP object emission: ok (machine=0x" << std::hex << verifier.info().machine << std::dec
            << ", sections=" << verifier.info().sectionCount << ")\n"
+           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n';
     return ExitCode::Success;
 }

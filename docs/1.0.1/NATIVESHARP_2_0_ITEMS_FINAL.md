@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–263 completados; siguiente item 264
+**Progreso:** Tanda 1, items 246–264 completados; baseline de tanda pendiente
 
 ## Regla de ejecución
 
@@ -37,7 +37,7 @@
 16. **261 — Diagnósticos deterministas en paralelo / Deterministic parallel diagnostics — COMPLETADO / COMPLETE**
 17. **262 — Cache de artefactos por contenido / Content-addressed artifact cache — COMPLETADO / COMPLETE**
 18. **263 — Invalidación incremental precisa / Precise incremental invalidation — COMPLETADO / COMPLETE**
-19. **264 — Perfiles Debug y Release / Debug and Release profiles**
+19. **264 — Perfiles Debug y Release / Debug and Release profiles — COMPLETADO / COMPLETE**
 
 ## Tanda 2 — Fundamentos del lenguaje
 

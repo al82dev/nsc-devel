@@ -368,6 +368,7 @@ nsc_enable_warnings(nsc_linker)
 
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
+    src/Driver/CompilationProfile.cpp
     src/Driver/CompilationGraphScheduler.cpp
     src/Driver/CompatibilityPolicy.cpp
     src/Driver/DiagnosticBundle.cpp
@@ -1686,6 +1687,13 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_compilation_artifact_cache_driver_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_compilation_artifact_cache_driver_tests)
     add_test(NAME nsc.compilation-artifact-cache-driver COMMAND nsc_compilation_artifact_cache_driver_tests)
+
+    add_executable(nsc_compilation_profile_tests tests/unit/CompilationProfileTests.cpp)
+    target_link_libraries(nsc_compilation_profile_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_compilation_profile_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_compilation_profile_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_compilation_profile_tests)
+    add_test(NAME nsc.compilation-profile COMMAND nsc_compilation_profile_tests)
 
     add_executable(nsc_llvm_optimization_tests tests/unit/LlvmOptimizationTests.cpp)
     target_link_libraries(nsc_llvm_optimization_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
