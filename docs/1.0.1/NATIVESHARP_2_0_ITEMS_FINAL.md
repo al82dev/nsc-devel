@@ -62,7 +62,7 @@
 35. **280 — Modificador `inline` / Inline modifier — COMPLETADO / COMPLETE**
 36. **281 — Modificador `forceinline` / Force-inline modifier — COMPLETADO / COMPLETE**
 37. **282 — Modificador `noinline` / No-inline modifier — COMPLETADO / COMPLETE**
-38. **283 — Inlining de métodos genéricos / Generic method inlining**
+38. **283 — Inlining de métodos genéricos / Generic method inlining — COMPLETADO / COMPLETE**
 39. **284 — Inlining de structs e interfaces / Struct and interface inlining**
 40. **285 — Inlining entre bibliotecas precompiladas / Cross-library inlining**
 41. **286 — PDB y stepping de funciones inline / Inline PDB and stepping**

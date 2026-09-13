@@ -745,6 +745,11 @@ No cambia la accesibilidad, identidad física, convención de llamada ni exporta
 válido en una declaración abstracta ni en otra ubicación sin cuerpo ordinario, y no puede combinarse
 con `inline` o `forceinline`.
 
+En un método genérico, la política de inlining forma parte de la plantilla semántica. Toda
+especialización cerrada —creada por argumentos explícitos o por inferencia local— hereda la misma
+política. La sustitución de tipos no puede convertir una preferencia en obligación, eliminar una
+prohibición ni tratar la especialización como un método automático.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su

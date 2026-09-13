@@ -103,6 +103,11 @@ u O3. LLVM recibe `noinline`, y el modificador no cambia visibilidad, identidad 
 Sólo se admite donde existe un cuerpo ordinario; duplicados, contratos abstractos y cualquier
 combinación con `inline` o `forceinline` son errores de compilación.
 
+La monomorfización conserva la política de inlining declarada por un método genérico. Esto vale
+tanto para especializaciones solicitadas con `<T>` como para las creadas por inferencia local. Cada
+función física cerrada recibe exactamente la política de su plantilla: preferencia, obligación o
+prohibición, sin volver a decidirla a partir del nombre especializado.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

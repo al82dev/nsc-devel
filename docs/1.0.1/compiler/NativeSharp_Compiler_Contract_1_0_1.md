@@ -582,3 +582,13 @@ Duplicate uses, abstract declarations, placements without an ordinary body, and 
 `inline` or `forceinline` are diagnostics. The modifier controls optimization only; linkage,
 visibility, physical identity, calling convention, exports, ownership, and exception behavior remain
 unchanged.
+
+## NSC-INLINE-006 — Generic specialization policy
+
+Generic method specialization shall clone the source inlining modifier before member binding.
+Explicit and locally inferred specializations shall therefore produce the same
+`InliningPolicy`. Every closed physical function shall carry that policy through HIR, MIR, and LLVM;
+specialized spelling or cache reuse shall never reset it to `Automatic`.
+
+At O0, focused evidence shall distinguish all three explicit outcomes in one generic call graph:
+`Preferred` remains optional, `Required` expands, and `Forbidden` retains its call boundary.

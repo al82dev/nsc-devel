@@ -2096,6 +2096,9 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     {
         result->setAuxiliaryText(std::string(kGenericRawNewAuxiliary));
     }
+    // Modifiers are semantic template state, not decoration. In particular, the mutually
+    // exclusive inline/forceinline/noinline policy must reach every explicit or inferred clone;
+    // ProjectMemberModel will consume the copied token into the single InliningPolicy field.
     for (const lexer::TokenKind modifier : source->modifiers()) result->addModifier(modifier);
     for (const std::string& parameter : source->genericParameters()) result->addGenericParameter(parameter);
     // NSC-LIMIT-007. Las clausulas se clonan con la sustitucion aplicada a sus tipos, igual que

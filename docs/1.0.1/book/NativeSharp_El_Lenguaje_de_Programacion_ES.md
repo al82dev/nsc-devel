@@ -2026,6 +2026,29 @@ de ejecución estable durante una investigación. No cambia el ABI ni convierte 
 Como las demás políticas explícitas, sólo se escribe sobre un método concreto con cuerpo y no puede
 combinarse con `inline` ni `forceinline`.
 
+Los modificadores también pertenecen a una plantilla de método genérico:
+
+```csharp
+public class IdentityOps
+{
+    public static forceinline T Identity<T>(T value)
+    {
+        return value;
+    }
+
+    public static int Run(int input)
+    {
+        int inferred = Identity(input);       // materializa Identity<int>
+        int explicitValue = Identity<int>(inferred);
+        return explicitValue;
+    }
+}
+```
+
+Las dos llamadas reutilizan una especialización física canónica y esa función conserva
+`forceinline`. La misma regla se aplica a `inline` y `noinline`; inferir el argumento no produce una
+política distinta de escribirlo explícitamente.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |
