@@ -9,6 +9,7 @@
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -425,6 +426,200 @@ bool WindowsLibraryBuilder::buildDynamic(
         return false;
     }
 
+    dynamicLibraryInfo_ = verifier.info();
+    return true;
+}
+
+bool WindowsLibraryBuilder::buildStaticObjects(
+    std::span<const std::filesystem::path> programObjects,
+    const std::filesystem::path& outputPath,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    std::string& error)
+{
+    archiveInfo_ = {};
+    error.clear();
+    if (programObjects.empty())
+    {
+        error = "partitioned static library has no program objects";
+        return false;
+    }
+    if (!validateOutputParent(outputPath, "static library", error)) return false;
+    for (const std::filesystem::path& object : programObjects)
+    {
+        if (!verifyObject(object, "program code unit", error)) return false;
+    }
+
+    std::string targetError;
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
+        llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
+    if (targetMachine == nullptr)
+    {
+        error = "could not create the Windows x64 TargetMachine: " + targetError;
+        return false;
+    }
+    runtime::WindowsRuntimeBuilder runtimeBuilder;
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = runtimeBuilder.buildSupport(targetError);
+    if (runtimeModule == nullptr)
+    {
+        error = "could not construct NativeSharp static-library runtime support: " + targetError;
+        return false;
+    }
+    llvm_backend::LlvmOptimizer optimizer;
+    llvm_backend::LlvmOptimizationObservation runtimeObservation;
+    if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel,
+            &runtimeObservation, targetError))
+    {
+        error = "runtime LLVM optimization failed: " + targetError;
+        return false;
+    }
+
+    std::unique_ptr<TemporaryDirectory> temporaryDirectory = createTemporaryDirectory(error);
+    if (temporaryDirectory == nullptr) return false;
+    const std::filesystem::path runtimeObject = temporaryDirectory->path() / "runtime.obj";
+    if (!targetMachine->emit(*runtimeModule, runtimeObject,
+            llvm_backend::LlvmCodeGenFileType::Object, targetError))
+    {
+        error = "runtime object emission failed: " + targetError;
+        return false;
+    }
+    if (!verifyObject(runtimeObject, "runtime", error)) return false;
+
+    std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+    if (linker == nullptr) return false;
+    std::vector<std::filesystem::path> archiveInputs(programObjects.begin(), programObjects.end());
+    archiveInputs.push_back(runtimeObject);
+    if (!linker->createStaticLibrary(archiveInputs, outputPath, error)) return false;
+
+    CoffArchiveVerifier verifier;
+    if (!verifier.verify(outputPath))
+    {
+        std::error_code cleanupError;
+        std::filesystem::remove(outputPath, cleanupError);
+        error = "static library verification failed: " + verifier.error();
+        return false;
+    }
+    archiveInfo_ = verifier.info();
+    return true;
+}
+
+bool WindowsLibraryBuilder::buildDynamicObjects(
+    std::span<const std::filesystem::path> programObjects,
+    std::string_view programLlvmText,
+    std::span<const std::string> exportSymbols,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& importLibraryPath,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
+    std::string& error)
+{
+    dynamicLibraryInfo_ = {};
+    error.clear();
+    if (programObjects.empty())
+    {
+        error = "partitioned DLL has no program objects";
+        return false;
+    }
+    if (!validateOutputParent(outputPath, "DLL", error) ||
+        !validateOutputParent(importLibraryPath, "DLL import library", error))
+    {
+        return false;
+    }
+    for (const std::filesystem::path& object : programObjects)
+    {
+        if (!verifyObject(object, "program code unit", error)) return false;
+    }
+
+    std::string targetError;
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
+        llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
+    if (targetMachine == nullptr)
+    {
+        error = "could not create the Windows x64 TargetMachine: " + targetError;
+        return false;
+    }
+    runtime::WindowsRuntimeBuilder runtimeBuilder;
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = runtimeBuilder.buildSupport(targetError);
+    if (runtimeModule == nullptr)
+    {
+        error = "could not construct NativeSharp DLL runtime support: " + targetError;
+        return false;
+    }
+    llvm_backend::LlvmOptimizer optimizer;
+    llvm_backend::LlvmOptimizationObservation runtimeObservation;
+    if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel,
+            &runtimeObservation, targetError))
+    {
+        error = "runtime LLVM optimization failed: " + targetError;
+        return false;
+    }
+
+    std::unique_ptr<TemporaryDirectory> temporaryDirectory = createTemporaryDirectory(error);
+    if (temporaryDirectory == nullptr) return false;
+    const std::filesystem::path runtimeObject = temporaryDirectory->path() / "runtime.obj";
+    if (!targetMachine->emit(*runtimeModule, runtimeObject,
+            llvm_backend::LlvmCodeGenFileType::Object, targetError))
+    {
+        error = "runtime object emission failed: " + targetError;
+        return false;
+    }
+    if (!verifyObject(runtimeObject, "runtime", error)) return false;
+
+    std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+    if (linker == nullptr) return false;
+    std::vector<std::filesystem::path> importLibraries;
+    const std::string allLlvmText = std::string(programLlvmText) + runtimeModule->text();
+    if (!createRuntimeImportLibraries(*linker, temporaryDirectory->path(), allLlvmText,
+            externalImports_, importLibraries, error))
+    {
+        return false;
+    }
+    importLibraries.insert(
+        importLibraries.end(), extraLinkLibraries_.begin(), extraLinkLibraries_.end());
+    std::vector<std::filesystem::path> objects(programObjects.begin(), programObjects.end());
+    objects.push_back(runtimeObject);
+    std::filesystem::path pdbPath;
+    if (debugInformation != llvm_backend::DebugInformationKind::None)
+    {
+        pdbPath = outputPath;
+        pdbPath.replace_extension(".pdb");
+    }
+    if (!linker->linkDynamicLibrary(objects, importLibraries, exportSymbols, outputPath,
+            importLibraryPath, pdbPath, error))
+    {
+        return false;
+    }
+
+    PeExecutableVerifier verifier;
+    if (!verifier.verifyDynamicLibrary(outputPath))
+    {
+        std::error_code cleanupError;
+        std::filesystem::remove(outputPath, cleanupError);
+        std::filesystem::remove(importLibraryPath, cleanupError);
+        error = "linked DLL verification failed: " + verifier.error();
+        return false;
+    }
+    for (const std::string& exportSymbol : exportSymbols)
+    {
+        if (std::find(verifier.info().exportedSymbols.begin(),
+                verifier.info().exportedSymbols.end(), exportSymbol) ==
+            verifier.info().exportedSymbols.end())
+        {
+            std::error_code cleanupError;
+            std::filesystem::remove(outputPath, cleanupError);
+            std::filesystem::remove(importLibraryPath, cleanupError);
+            error = "linked DLL is missing requested export '" + exportSymbol + "'";
+            return false;
+        }
+    }
+    CoffArchiveVerifier importVerifier;
+    if (!importVerifier.verify(importLibraryPath))
+    {
+        std::error_code cleanupError;
+        std::filesystem::remove(outputPath, cleanupError);
+        std::filesystem::remove(importLibraryPath, cleanupError);
+        error = "DLL import-library verification failed: " + importVerifier.error();
+        return false;
+    }
     dynamicLibraryInfo_ = verifier.info();
     return true;
 }

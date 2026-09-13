@@ -333,6 +333,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/LlvmOptimizer.cpp
     src/LLVM/LlvmLowerer.cpp
     src/LLVM/ProjectOopCodePartition.cpp
+    src/LLVM/ProjectOopObjectGenerator.cpp
     src/LLVM/ProjectOopLlvmLowerer.cpp
     src/LLVM/LlvmTargetMachine.cpp
     src/LLVM/CoffObjectVerifier.cpp)
@@ -667,7 +668,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.project-object-layout-model COMMAND nsc_project_object_layout_model_tests)
 
     add_executable(nsc_project_oop_lowering_tests tests/unit/ProjectOopLoweringTests.cpp)
-    target_link_libraries(nsc_project_oop_lowering_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_link_libraries(nsc_project_oop_lowering_tests PRIVATE nsc_linker nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_project_oop_lowering_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_project_oop_lowering_tests)
     add_test(NAME nsc.project-oop-lowering COMMAND nsc_project_oop_lowering_tests)

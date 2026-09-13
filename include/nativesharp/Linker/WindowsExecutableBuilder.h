@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -35,6 +36,14 @@ public:
 
     bool build(
         llvm_backend::LlvmModule& programModule,
+        const std::filesystem::path& outputPath,
+        llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        std::string_view mainSymbol,
+        std::string& error);
+
+    bool buildObjects(
+        std::span<const std::filesystem::path> programObjects,
+        std::string_view programLlvmText,
         const std::filesystem::path& outputPath,
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
         std::string_view mainSymbol,

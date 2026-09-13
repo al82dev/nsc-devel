@@ -4,9 +4,11 @@
 #include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace nativesharp::frontend
 {
@@ -38,6 +40,18 @@ public:
         const source::SourceManager& sourceManager,
         DebugInformationKind debugInformation,
         LlvmOptimizationLevel optimizationLevel,
+        std::span<const DebugPrefixMap> debugPrefixMaps = {});
+
+    std::unique_ptr<LlvmModule> lowerPartition(
+        const frontend::ProjectNameLookup& nameLookup,
+        const frontend::ProjectMemberModel& memberModel,
+        const frontend::ProjectOopMirModel& mirModel,
+        const source::SourceManager& sourceManager,
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimizationLevel,
+        std::span<const std::size_t> functionOrdinals,
+        bool ownsModuleGlobals,
+        std::string_view moduleName,
         std::span<const DebugPrefixMap> debugPrefixMaps = {});
 
     const std::string& error() const noexcept;

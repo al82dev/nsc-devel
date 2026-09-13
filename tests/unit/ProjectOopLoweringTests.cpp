@@ -10,6 +10,8 @@
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
+#include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
+#include "nativesharp/Linker/WindowsLibraryBuilder.h"
 
 #include "../support/TestContext.h"
 
@@ -344,6 +346,71 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
         }
         tests.expect(validCoverage,
             "every defined MIR function belongs to exactly one stable code unit and imports belong to none");
+
+        nativesharp::llvm_backend::ProjectOopLlvmLowerer globalLowerer;
+        auto globalModule = globalLowerer.lowerPartition(
+            *compilation.nameLookup(), *compilation.memberModel(), mir,
+            compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, {}, true,
+            "Stage30Test.globals");
+        bool partitionModulesValid = globalModule != nullptr && globalLowerer.error().empty();
+        std::string partitionFailure = globalLowerer.error();
+        std::string partitionVerificationError;
+        if (globalModule != nullptr && !globalModule->verify(partitionVerificationError))
+        {
+            partitionModulesValid = false;
+            partitionFailure = partitionVerificationError;
+        }
+        for (const auto& unit : serialPartition.units())
+        {
+            nativesharp::llvm_backend::ProjectOopLlvmLowerer unitLowerer;
+            auto unitModule = unitLowerer.lowerPartition(
+                *compilation.nameLookup(), *compilation.memberModel(), mir,
+                compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+                unit.functionOrdinals, false, "Stage30Test." + unit.stableKey);
+            partitionModulesValid = partitionModulesValid && unitModule != nullptr &&
+                unitLowerer.error().empty();
+            if (unitModule == nullptr && partitionFailure.empty())
+                partitionFailure = unitLowerer.error();
+            if (unitModule != nullptr)
+            {
+                partitionVerificationError.clear();
+                if (!unitModule->verify(partitionVerificationError))
+                {
+                    partitionModulesValid = false;
+                    if (partitionFailure.empty()) partitionFailure = partitionVerificationError;
+                }
+            }
+        }
+        tests.expect(partitionModulesValid,
+            "global and per-code-unit LLVM modules independently pass the verifier" +
+                (partitionFailure.empty() ? std::string{} : ": " + partitionFailure));
+
+        nativesharp::llvm_backend::ProjectOopObjectGenerator objectGenerator;
+        std::string objectGenerationError;
+        auto objectBundle = objectGenerator.generate(
+            *compilation.nameLookup(), *compilation.memberModel(), mir,
+            compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, objectGenerationError);
+        tests.expect(objectBundle != nullptr && objectGenerationError.empty() &&
+                objectBundle->codeUnitCount() == serialPartition.units().size() &&
+                objectBundle->objectFiles().size() == serialPartition.units().size() + 1,
+            "four-worker code generation emits one verified coordinator object and one object per code unit");
+        if (objectBundle != nullptr)
+        {
+            nativesharp::linker::WindowsLibraryBuilder partitionedBuilder;
+            const std::vector<std::string> exports = {mir.functions()[1].mangledName};
+            std::string linkError;
+            const bool linked = partitionedBuilder.buildDynamicObjects(
+                objectBundle->objectFiles(), objectBundle->combinedLlvmText(), exports,
+                directory / "Stage30Partitioned.dll", directory / "Stage30Partitioned.lib",
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+                nativesharp::llvm_backend::DebugInformationKind::None, linkError);
+            tests.expect(linked && linkError.empty(),
+                "partitioned code units link into one native DLL without duplicate or missing symbols" +
+                    (linkError.empty() ? std::string{} : ": " + linkError));
+        }
     }
 
     nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;

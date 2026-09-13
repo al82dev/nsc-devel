@@ -49,6 +49,7 @@
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
+#include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 #include "nativesharp/Lexer/TokenDumper.h"
 #include "nativesharp/Linker/CoffArchiveVerifier.h"
 #include "nativesharp/Linker/LldLinker.h"
@@ -205,6 +206,12 @@ void configureProjectExecution(frontend::ProjectCompilation& compilation)
                 scope->recordPhase(phase, elapsed);
             });
     }
+}
+
+std::size_t effectiveCompilationJobs() noexcept
+{
+    const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
+    return jobs != nullptr ? jobs->effectiveJobs() : 1;
 }
 
 struct LayoutRow
@@ -4391,23 +4398,18 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
         return ExitCode::CompilationError;
     }
 
-    llvm_backend::ProjectOopLlvmLowerer lowerer;
-    std::unique_ptr<llvm_backend::LlvmModule> module =
-        measureDriverPhase("llvm-lowering", [&] {
-            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
-                *compilation.oopMirModel(), compilation.sourceManager(),
-                debugInformation, optimizationLevel, debugPrefixMaps);
+    llvm_backend::ProjectOopObjectGenerator objectGenerator;
+    std::string codeGenerationError;
+    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
+        measureDriverPhase("llvm-object-generation", [&] {
+            return objectGenerator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+                compilation.sourceManager(), debugInformation, optimizationLevel,
+                effectiveCompilationJobs(), debugPrefixMaps, codeGenerationError);
         });
-    if (module == nullptr)
+    if (objectBundle == nullptr)
     {
-        error << "nsc: error: " << lowerer.error() << '\n';
-        return ExitCode::CompilationError;
-    }
-
-    std::string verificationError;
-    if (!module->verify(verificationError))
-    {
-        error << "nsc: error: OOP LLVM verification failed: " << verificationError << '\n';
+        error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -4428,8 +4430,9 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!measureDriverPhase("executable-build", [&] {
-            return builder.build(
-                *module, destination, optimizationLevel, entryFunction->mangledName, buildError);
+            return builder.buildObjects(
+                objectBundle->objectFiles(), objectBundle->combinedLlvmText(), destination,
+                optimizationLevel, entryFunction->mangledName, buildError);
         }))
     {
         error << "nsc: error: OOP Windows executable generation failed: " << buildError << '\n';
@@ -4459,6 +4462,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << "subsystem: " << subsystemDisplayName(subsystem) << '\n'
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
+           << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
            << "packaged-runtimes: " << packagedRuntimes.size() << '\n'
            << "sections: " << builder.info().sectionCount << '\n'
@@ -4529,22 +4533,18 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
         return ExitCode::CompilationError;
     }
 
-    llvm_backend::ProjectOopLlvmLowerer lowerer;
-    std::unique_ptr<llvm_backend::LlvmModule> module =
-        measureDriverPhase("llvm-lowering", [&] {
-            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
-                *compilation.oopMirModel(), compilation.sourceManager(),
-                debugInformation, optimizationLevel, debugPrefixMaps);
+    llvm_backend::ProjectOopObjectGenerator objectGenerator;
+    std::string codeGenerationError;
+    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
+        measureDriverPhase("llvm-object-generation", [&] {
+            return objectGenerator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+                compilation.sourceManager(), debugInformation, optimizationLevel,
+                effectiveCompilationJobs(), debugPrefixMaps, codeGenerationError);
         });
-    if (module == nullptr)
+    if (objectBundle == nullptr)
     {
-        error << "nsc: error: " << lowerer.error() << '\n';
-        return ExitCode::CompilationError;
-    }
-    std::string verificationError;
-    if (!module->verify(verificationError))
-    {
-        error << "nsc: error: static-library LLVM verification failed: " << verificationError << '\n';
+        error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -4554,7 +4554,8 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
     if (!measureDriverPhase("static-library-build", [&] {
-            return builder.buildStatic(*module, destination, optimizationLevel, buildError);
+            return builder.buildStaticObjects(
+                objectBundle->objectFiles(), destination, optimizationLevel, buildError);
         }))
     {
         error << "nsc: error: NativeSharp static-library generation failed: " << buildError << '\n';
@@ -4595,6 +4596,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
            << "machine-members: AMD64 COFF\n"
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
+           << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "debug-companion: "
            << (debugInformation == llvm_backend::DebugInformationKind::None
                    ? "none"
@@ -4743,22 +4745,18 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
                  "public type or method in the root project\n";
         return ExitCode::CompilationError;
     }
-    llvm_backend::ProjectOopLlvmLowerer lowerer;
-    std::unique_ptr<llvm_backend::LlvmModule> module =
-        measureDriverPhase("llvm-lowering", [&] {
-            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
-                *compilation.oopMirModel(), compilation.sourceManager(),
-                debugInformation, optimizationLevel, debugPrefixMaps);
+    llvm_backend::ProjectOopObjectGenerator objectGenerator;
+    std::string codeGenerationError;
+    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
+        measureDriverPhase("llvm-object-generation", [&] {
+            return objectGenerator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+                compilation.sourceManager(), debugInformation, optimizationLevel,
+                effectiveCompilationJobs(), debugPrefixMaps, codeGenerationError);
         });
-    if (module == nullptr)
+    if (objectBundle == nullptr)
     {
-        error << "nsc: error: " << lowerer.error() << '\n';
-        return ExitCode::CompilationError;
-    }
-    std::string verificationError;
-    if (!module->verify(verificationError))
-    {
-        error << "nsc: error: DLL LLVM verification failed: " << verificationError << '\n';
+        error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
 
@@ -4790,8 +4788,9 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     if (!measureDriverPhase("dynamic-library-build", [&] {
-            return builder.buildDynamic(*module, exportSymbols, destination, importLibrary,
-                optimizationLevel, debugInformation, buildError);
+            return builder.buildDynamicObjects(
+                objectBundle->objectFiles(), objectBundle->combinedLlvmText(), exportSymbols,
+                destination, importLibrary, optimizationLevel, debugInformation, buildError);
         }))
     {
         error << "nsc: error: NativeSharp DLL generation failed: " << buildError << '\n';
@@ -4859,6 +4858,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
            << "machine: AMD64 (0x8664)\n"
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
+           << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "program-database: "
            << (debugInformation == llvm_backend::DebugInformationKind::None
                    ? "none"

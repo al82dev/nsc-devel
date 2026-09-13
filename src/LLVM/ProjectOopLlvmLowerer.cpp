@@ -321,22 +321,41 @@ public:
         const source::SourceManager* sourceManager,
         DebugInformationKind debugInformation,
         LlvmOptimizationLevel optimizationLevel,
-        std::span<const DebugPrefixMap> debugPrefixMaps = {})
+        std::span<const DebugPrefixMap> debugPrefixMaps = {},
+        bool partitioned = false,
+        bool ownsModuleGlobals = true,
+        std::span<const std::size_t> functionOrdinals = {},
+        std::string_view moduleName = "NativeSharp.Stage34.OOP")
         : nameLookup_(nameLookup),
           memberModel_(memberModel),
           mirModel_(mirModel),
           sourceManager_(sourceManager),
           debugInformation_(debugInformation),
           optimizationLevel_(optimizationLevel),
-          debugPrefixMaps_(debugPrefixMaps.begin(), debugPrefixMaps.end())
+          debugPrefixMaps_(debugPrefixMaps.begin(), debugPrefixMaps.end()),
+          partitioned_(partitioned),
+          ownsModuleGlobals_(ownsModuleGlobals),
+          functionDefinitions_(mirModel.functions().size(), false),
+          moduleName_(moduleName)
     {
+        for (const std::size_t ordinal : functionOrdinals)
+        {
+            if (ordinal < functionDefinitions_.size()) functionDefinitions_[ordinal] = true;
+            else invalidFunctionOrdinal_ = ordinal;
+        }
     }
 
     bool lower(std::string& error)
     {
         error.clear();
+        if (invalidFunctionOrdinal_.has_value())
+        {
+            error = "LLVM code partition refers to invalid MIR function ordinal " +
+                std::to_string(*invalidFunctionOrdinal_);
+            return false;
+        }
         context_ = LLVMContextCreate();
-        module_ = LLVMModuleCreateWithNameInContext("NativeSharp.Stage34.OOP", context_);
+        module_ = LLVMModuleCreateWithNameInContext(moduleName_.c_str(), context_);
         builder_ = LLVMCreateBuilderInContext(context_);
         if (context_ == nullptr || module_ == nullptr || builder_ == nullptr)
         {
@@ -352,12 +371,18 @@ public:
             return false;
         }
 
-        if (!declareRuntime(error) || !declareStaticFields(error) || !declareFunctions(error) ||
-            !declareTypeInitializers(error) || !declareDestructionEntries(error) ||
-            !emitDispatchMetadata(error) || !defineRttiHelpers(error) || !defineTypedCatchFilters(error) ||
-            !defineTypeInitializers(error) || !defineStaticFieldAccessors(error) ||
-            !defineCallbackGuardThunks(error) ||
-            !defineFunctions(error) || !defineCAbiWrappers(error) || !defineDestructionEntries(error))
+        if (!declareRuntime(error) || !declareStaticFields(error, !partitioned_ || ownsModuleGlobals_) ||
+            !declareFunctions(error) ||
+            !declareTypeInitializers(error, !partitioned_ || ownsModuleGlobals_) ||
+            !declareDestructionEntries(error) ||
+            !emitDispatchMetadata(error, !partitioned_ || ownsModuleGlobals_) ||
+            !defineRttiHelpers(error) || !defineTypedCatchFilters(error) ||
+            ((!partitioned_ || ownsModuleGlobals_) &&
+             (!defineTypeInitializers(error) || !defineStaticFieldAccessors(error))) ||
+            !defineCallbackGuardThunks(error, !partitioned_ || ownsModuleGlobals_) ||
+            !defineFunctions(error) ||
+            ((!partitioned_ || ownsModuleGlobals_) &&
+             (!defineCAbiWrappers(error) || !defineDestructionEntries(error))))
         {
             dispose();
             return false;
@@ -1941,7 +1966,7 @@ private:
         applyOdrDefinition(value);
     }
 
-    bool declareStaticFields(std::string& error)
+    bool declareStaticFields(std::string& error, bool defineStorage)
     {
         for (const frontend::ProjectOopMirStaticField& field : mirModel_.staticFields())
         {
@@ -1959,7 +1984,8 @@ private:
                 LLVMValueRef accessor = LLVMAddFunction(module_, field.accessorName.c_str(), accessorType);
                 if (accessor == nullptr)
                     return fail(error, "Stage 37 failed to declare static field accessor " + field.accessorName);
-                applyGenericOdrDefinition(accessor, field.genericSpecializationKey);
+                if (defineStorage)
+                    applyGenericOdrDefinition(accessor, field.genericSpecializationKey);
                 applyUwtableAttribute(accessor);
                 staticFieldAccessorFunctions_[field.memberOrdinal] =
                     FunctionInfo{accessor, accessorType, nullptr};
@@ -1969,9 +1995,13 @@ private:
             LLVMValueRef global = LLVMAddGlobal(module_, type, field.storageSymbol.c_str());
             if (global == nullptr)
                 return fail(error, "Stage 37 failed to declare static field global " + field.storageSymbol);
-            if (field.genericSpecializationKey.empty())
-                LLVMSetLinkage(global, LLVMPrivateLinkage);
-            else
+            staticFieldGlobals_[field.memberOrdinal] = global;
+            if (!defineStorage)
+            {
+                LLVMSetLinkage(global, LLVMExternalLinkage);
+                continue;
+            }
+            if (!field.genericSpecializationKey.empty())
                 applyGenericOdrDefinition(global, field.genericSpecializationKey);
 
             LLVMValueRef initializer = LLVMConstNull(type);
@@ -2015,7 +2045,6 @@ private:
                 LLVMSetGlobalConstant(global, 1);
             }
             LLVMSetInitializer(global, initializer);
-            staticFieldGlobals_[field.memberOrdinal] = global;
         }
         return true;
     }
@@ -2066,7 +2095,7 @@ private:
         return true;
     }
 
-    bool declareTypeInitializers(std::string& error)
+    bool declareTypeInitializers(std::string& error, bool defineStorage)
     {
         std::unordered_map<std::size_t, bool> needsInitializer;
         for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel_.fieldInitializers())
@@ -2077,35 +2106,37 @@ private:
             }
         }
 
-        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
         LLVMTypeRef voidType = LLVMVoidTypeInContext(context_);
         for (const auto& [typeOrdinal, ignored] : needsInitializer)
         {
             (void)ignored;
             const std::string suffix = std::to_string(typeOrdinal);
-            LLVMValueRef state = LLVMAddGlobal(module_, i8, ("__nsc_cctor_state_" + suffix).c_str());
-            if (state == nullptr)
+            if (defineStorage)
             {
-                return fail(error, "Stage 37 failed to declare type-initialization state");
-            }
-            LLVMSetInitializer(state, LLVMConstInt(i8, 0, 0));
-            LLVMSetLinkage(state, LLVMPrivateLinkage);
-            staticInitStateGlobals_[typeOrdinal] = state;
+                LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+                LLVMValueRef state = LLVMAddGlobal(
+                    module_, i8, ("__nsc_cctor_state_" + suffix).c_str());
+                if (state == nullptr)
+                {
+                    return fail(error, "Stage 37 failed to declare type-initialization state");
+                }
+                LLVMSetInitializer(state, LLVMConstInt(i8, 0, 0));
+                LLVMSetLinkage(state, LLVMPrivateLinkage);
+                staticInitStateGlobals_[typeOrdinal] = state;
 
-            // Stage 54.3 "Mutex" (fix) -- see defineTypeInitializers's comment for the full
-            // design. Holds the Win32 thread id of whichever thread is CURRENTLY running (or most
-            // recently ran) this type's field initializers -- a real Windows thread id is never 0,
-            // so the zero-initializer here is a safe "nobody yet" sentinel that can never be
-            // mistaken for a real thread's own id.
-            LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-            LLVMValueRef owner = LLVMAddGlobal(module_, i32, ("__nsc_cctor_owner_" + suffix).c_str());
-            if (owner == nullptr)
-            {
-                return fail(error, "Stage 54.3 failed to declare type-initialization owner");
+                // The owner/state storage has one coordinator definition. Code units call the
+                // externally declared cctor and never address this private guard storage.
+                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+                LLVMValueRef owner = LLVMAddGlobal(
+                    module_, i32, ("__nsc_cctor_owner_" + suffix).c_str());
+                if (owner == nullptr)
+                {
+                    return fail(error, "Stage 54.3 failed to declare type-initialization owner");
+                }
+                LLVMSetInitializer(owner, LLVMConstInt(i32, 0, 0));
+                LLVMSetLinkage(owner, LLVMPrivateLinkage);
+                staticInitOwnerGlobals_[typeOrdinal] = owner;
             }
-            LLVMSetInitializer(owner, LLVMConstInt(i32, 0, 0));
-            LLVMSetLinkage(owner, LLVMPrivateLinkage);
-            staticInitOwnerGlobals_[typeOrdinal] = owner;
 
             LLVMTypeRef functionType = LLVMFunctionType(voidType, nullptr, 0, 0);
             const std::string functionName = "__nsc_cctor_" + suffix;
@@ -2114,7 +2145,6 @@ private:
             {
                 return fail(error, "Stage 37 failed to declare type initializer");
             }
-            LLVMSetLinkage(function, LLVMPrivateLinkage);
             applyUwtableAttribute(function);
             LLVMMetadataRef subprogram = nullptr;
             if (typeOrdinal < nameLookup_.namedTypes().size())
@@ -2304,8 +2334,10 @@ private:
 
     bool declareFunctions(std::string& error)
     {
-        for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
+        const std::span<const frontend::ProjectOopMirFunction> mirFunctions = mirModel_.functions();
+        for (std::size_t functionOrdinal = 0; functionOrdinal < mirFunctions.size(); ++functionOrdinal)
         {
+            const frontend::ProjectOopMirFunction& function = mirFunctions[functionOrdinal];
             // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). An indirect
             // struct return becomes `void` plus a leading sret pointer parameter; an indirect
             // struct parameter becomes a plain pointer to a caller-owned per-call copy. For
@@ -2364,11 +2396,13 @@ private:
             }
             if (!function.isImportedC && !function.isImportedNative)
             {
-                if (!function.genericSpecializationKey.empty())
+                const bool ownsDefinition = !partitioned_ ||
+                    (!ownsModuleGlobals_ && functionDefinitions_[functionOrdinal]);
+                if (ownsDefinition && !function.genericSpecializationKey.empty())
                 {
                     applyGenericOdrDefinition(llvmFunction, function.genericSpecializationKey);
                 }
-                else if (function.isSyntheticImplicitConstructor)
+                else if (ownsDefinition && function.isSyntheticImplicitConstructor)
                 {
                     // An implicit constructor is a compiler-owned ODR definition. The same nominal
                     // type can legitimately reach a final native link through a source dependency
@@ -2427,7 +2461,8 @@ private:
                 return fail(error, "Stage 35 failed to declare destruction entry " +
                     table.destructionEntryName);
             }
-            applyGenericOdrDefinition(function, table.genericSpecializationKey);
+            if (!partitioned_ || ownsModuleGlobals_)
+                applyGenericOdrDefinition(function, table.genericSpecializationKey);
             LLVMMetadataRef subprogram = nullptr;
             if (table.typeOrdinal < nameLookup_.namedTypes().size())
             {
@@ -2451,7 +2486,7 @@ private:
         return true;
     }
 
-    bool emitDispatchMetadata(std::string& error)
+    bool emitDispatchMetadata(std::string& error, bool defineStorage)
     {
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
@@ -2509,6 +2544,41 @@ private:
                 addedRuntimeDescriptor =
                     runtimeDescriptorAccessorTypes_.insert(table.typeOrdinal).second || addedRuntimeDescriptor;
             }
+        }
+
+        if (!defineStorage)
+        {
+            // Function code units need only the externally visible descriptor data and accessor
+            // declarations used by construction/casts. Vtables, interface maps, type-name data
+            // and accessor bodies have exactly one definition in the coordinator module.
+            for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
+            {
+                if (table.descriptorAccessorName.empty())
+                {
+                    return fail(error, "partitioned class has no descriptor accessor");
+                }
+                LLVMValueRef accessor = LLVMAddFunction(
+                    module_, table.descriptorAccessorName.c_str(), descriptorAccessorFunctionType_);
+                if (accessor == nullptr)
+                {
+                    return fail(error, "failed to declare partitioned class-descriptor accessor " +
+                        table.descriptorAccessorName);
+                }
+                descriptorAccessorFunctions_[table.typeOrdinal] =
+                    FunctionInfo{accessor, descriptorAccessorFunctionType_};
+                if (table.isImported) continue;
+
+                LLVMValueRef descriptor = LLVMAddGlobal(
+                    module_, descriptorType_, table.descriptorName.c_str());
+                if (descriptor == nullptr)
+                {
+                    return fail(error, "failed to declare partitioned class descriptor " +
+                        table.descriptorName);
+                }
+                LLVMSetLinkage(descriptor, LLVMExternalLinkage);
+                descriptorGlobals_[table.typeOrdinal] = descriptor;
+            }
+            return true;
         }
 
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
@@ -3069,8 +3139,10 @@ private:
 
     bool defineFunctions(std::string& error)
     {
-        for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
+        const std::span<const frontend::ProjectOopMirFunction> mirFunctions = mirModel_.functions();
+        for (std::size_t functionOrdinal = 0; functionOrdinal < mirFunctions.size(); ++functionOrdinal)
         {
+            const frontend::ProjectOopMirFunction& function = mirFunctions[functionOrdinal];
             // Interop Foundation: imported C functions stay DECLARATIONS -- declareFunctions gave
             // them their (ABI-mapped) prototype and the definition lives in the external DLL.
             // C1.2 "import identity" is the one exception: an import whose C symbol name is
@@ -3078,6 +3150,7 @@ private:
             // gets a real body that binds the external symbol at first call.
             if (function.isImportedC || function.isImportedNative)
             {
+                if (partitioned_ && !ownsModuleGlobals_) continue;
                 // Same deduplication as declareFunctions: one identity, one body. The set is what
                 // keeps a second declaration of the same import from redefining it.
                 if (function.importRequiresRuntimeBinding &&
@@ -3086,6 +3159,11 @@ private:
                 {
                     return false;
                 }
+                continue;
+            }
+            if (partitioned_ &&
+                (ownsModuleGlobals_ || !functionDefinitions_[functionOrdinal]))
+            {
                 continue;
             }
             if (!defineFunction(function, error))
@@ -3125,7 +3203,7 @@ private:
     // The thunk is cached per target so that converting the same method twice yields the SAME
     // function pointer -- a host that compares two callbacks it was handed must still see them as
     // equal.
-    bool defineCallbackGuardThunks(std::string& error)
+    bool defineCallbackGuardThunks(std::string& error, bool defineBodies)
     {
         std::vector<std::string> targets;
         const auto visit = [&](const frontend::ProjectOopMirNode* node, auto&& self) -> void
@@ -3150,7 +3228,7 @@ private:
         }
         for (const std::string& target : targets)
         {
-            if (callbackGuardThunk(target, error) == nullptr) return false;
+            if (callbackGuardThunk(target, error, defineBodies) == nullptr) return false;
         }
         return true;
     }
@@ -3199,7 +3277,10 @@ private:
         return true;
     }
 
-    LLVMValueRef callbackGuardThunk(const std::string& targetName, std::string& error)
+    LLVMValueRef callbackGuardThunk(
+        const std::string& targetName,
+        std::string& error,
+        bool defineBody = true)
     {
         const auto cached = callbackGuardThunks_.find(targetName);
         if (cached != callbackGuardThunks_.end()) return cached->second.function;
@@ -3221,7 +3302,6 @@ private:
             return failValue(error, "C1.3 failed to declare the callback boundary thunk for " + targetName);
         }
         applyUwtableAttribute(thunk);
-        LLVMSetPersonalityFn(thunk, sehPersonalityFunction_);
         // Whatever ABI attributes the target's declaration carries (an sret return, above all)
         // must be reproduced on the thunk, because the thunk is what C sees.
         const frontend::ProjectOopMirFunction* mirFunction = nullptr;
@@ -3233,14 +3313,18 @@ private:
         {
             return failValue(error, "C1.3 callback boundary lost the target's MIR record: " + targetName);
         }
-        LLVMMetadataRef subprogram = createGeneratedDebugSubprogram(
-            *mirFunction, "C callback boundary", thunkName, true);
-        if (debugBuilder_ != nullptr && subprogram == nullptr)
+        LLVMMetadataRef subprogram = nullptr;
+        if (defineBody)
         {
-            return failValue(error, "failed to create debug subprogram for callback boundary " +
-                thunkName);
+            subprogram = createGeneratedDebugSubprogram(
+                *mirFunction, "C callback boundary", thunkName, true);
+            if (debugBuilder_ != nullptr && subprogram == nullptr)
+            {
+                return failValue(error, "failed to create debug subprogram for callback boundary " +
+                    thunkName);
+            }
+            if (subprogram != nullptr) LLVMSetSubprogram(thunk, subprogram);
         }
-        if (subprogram != nullptr) LLVMSetSubprogram(thunk, subprogram);
         const bool sretReturn = isIndirectStructTypeKey(mirFunction->returnTypeKey);
         if (sretReturn)
         {
@@ -3249,6 +3333,12 @@ private:
                 { LLVMAddAttributeAtIndex(thunk, index, attribute); },
                 0U, mirFunction->returnTypeKey);
         }
+        if (!defineBody)
+        {
+            callbackGuardThunks_[targetName] = FunctionInfo{thunk, thunkType, nullptr};
+            return thunk;
+        }
+        LLVMSetPersonalityFn(thunk, sehPersonalityFunction_);
 
         LLVMValueRef savedFunction = currentFunction_;
         const std::size_t savedBlockCounter = blockCounter_;
@@ -11106,6 +11196,11 @@ private:
     DebugInformationKind debugInformation_ = DebugInformationKind::None;
     LlvmOptimizationLevel optimizationLevel_ = LlvmOptimizationLevel::O0;
     std::vector<DebugPrefixMap> debugPrefixMaps_;
+    bool partitioned_ = false;
+    bool ownsModuleGlobals_ = true;
+    std::vector<bool> functionDefinitions_;
+    std::string moduleName_;
+    std::optional<std::size_t> invalidFunctionOrdinal_;
     LLVMContextRef context_ = nullptr;
     LLVMModuleRef module_ = nullptr;
     LLVMBuilderRef builder_ = nullptr;
@@ -11445,6 +11540,38 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
     OopLlvmImplementation implementation(
         nameLookup, &memberModel, mirModel, &sourceManager, debugInformation, optimizationLevel,
         debugPrefixMaps);
+    if (!implementation.lower(error_)) return nullptr;
+    return std::unique_ptr<LlvmModule>(
+        new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));
+}
+
+std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lowerPartition(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel,
+    std::span<const std::size_t> functionOrdinals,
+    bool ownsModuleGlobals,
+    std::string_view moduleName,
+    std::span<const DebugPrefixMap> debugPrefixMaps)
+{
+    error_.clear();
+    if (!verifyLoadedLlvmVersion(error_)) return nullptr;
+    if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !mirModel.isBuilt())
+    {
+        error_ = "partitioned LLVM lowering requires built project names, members and physical MIR";
+        return nullptr;
+    }
+    if (moduleName.empty())
+    {
+        error_ = "partitioned LLVM lowering requires a stable module name";
+        return nullptr;
+    }
+    OopLlvmImplementation implementation(
+        nameLookup, &memberModel, mirModel, &sourceManager, debugInformation, optimizationLevel,
+        debugPrefixMaps, true, ownsModuleGlobals, functionOrdinals, moduleName);
     if (!implementation.lower(error_)) return nullptr;
     return std::unique_ptr<LlvmModule>(
         new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));

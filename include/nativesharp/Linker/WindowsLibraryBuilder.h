@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace nativesharp::llvm_backend
 {
@@ -28,6 +29,22 @@ public:
 
     bool buildDynamic(
         llvm_backend::LlvmModule& programModule,
+        std::span<const std::string> exportSymbols,
+        const std::filesystem::path& outputPath,
+        const std::filesystem::path& importLibraryPath,
+        llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        llvm_backend::DebugInformationKind debugInformation,
+        std::string& error);
+
+    bool buildStaticObjects(
+        std::span<const std::filesystem::path> programObjects,
+        const std::filesystem::path& outputPath,
+        llvm_backend::LlvmOptimizationLevel optimizationLevel,
+        std::string& error);
+
+    bool buildDynamicObjects(
+        std::span<const std::filesystem::path> programObjects,
+        std::string_view programLlvmText,
         std::span<const std::string> exportSymbols,
         const std::filesystem::path& outputPath,
         const std::filesystem::path& importLibraryPath,

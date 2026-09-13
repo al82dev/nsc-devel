@@ -364,6 +364,120 @@ bool WindowsExecutableBuilder::build(
     return true;
 }
 
+bool WindowsExecutableBuilder::buildObjects(
+    std::span<const std::filesystem::path> programObjects,
+    std::string_view programLlvmText,
+    const std::filesystem::path& outputPath,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    std::string_view mainSymbol,
+    std::string& error)
+{
+    info_ = {};
+    error.clear();
+    if (programObjects.empty())
+    {
+        error = "partitioned executable has no program objects";
+        return false;
+    }
+    if (outputPath.empty() || mainSymbol.empty())
+    {
+        error = "partitioned executable output path or entry symbol is empty";
+        return false;
+    }
+    const std::filesystem::path parent = outputPath.parent_path();
+    if (!parent.empty() && !std::filesystem::is_directory(parent))
+    {
+        error = "Windows executable output directory does not exist: " + parent.string();
+        return false;
+    }
+    for (std::size_t ordinal = 0; ordinal < programObjects.size(); ++ordinal)
+    {
+        if (!verifyObject(programObjects[ordinal], "program code unit", error)) return false;
+    }
+
+    std::string targetError;
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
+        llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
+    if (targetMachine == nullptr)
+    {
+        error = "could not create the Windows x64 TargetMachine: " + targetError;
+        return false;
+    }
+    runtime::WindowsRuntimeBuilder runtimeBuilder;
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule =
+        runtimeBuilder.build(mainSymbol, targetError);
+    if (runtimeModule == nullptr)
+    {
+        error = "could not construct the NativeSharp runtime: " + targetError;
+        return false;
+    }
+    llvm_backend::LlvmOptimizer optimizer;
+    llvm_backend::LlvmOptimizationObservation runtimeObservation;
+    if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel,
+            &runtimeObservation, targetError))
+    {
+        error = "runtime LLVM optimization failed: " + targetError;
+        return false;
+    }
+
+    std::unique_ptr<TemporaryDirectory> temporaryDirectory = createTemporaryDirectory(targetError);
+    if (temporaryDirectory == nullptr)
+    {
+        error = targetError;
+        return false;
+    }
+    const std::filesystem::path runtimeObject = temporaryDirectory->path() / "runtime.obj";
+    if (!targetMachine->emit(*runtimeModule, runtimeObject,
+            llvm_backend::LlvmCodeGenFileType::Object, targetError))
+    {
+        error = "runtime object emission failed: " + targetError;
+        return false;
+    }
+    if (!verifyObject(runtimeObject, "runtime", error)) return false;
+
+    std::unique_ptr<LldLinker> linker = LldLinker::discover(targetError);
+    if (linker == nullptr)
+    {
+        error = targetError;
+        return false;
+    }
+    const std::string allLlvmText = std::string(programLlvmText) + runtimeModule->text();
+    std::vector<std::filesystem::path> importLibraries;
+    if (!createWindowsImportLibraries(*linker, temporaryDirectory->path(), allLlvmText,
+            externalImports_, importLibraries, error))
+    {
+        return false;
+    }
+    importLibraries.insert(
+        importLibraries.end(), extraLinkLibraries_.begin(), extraLinkLibraries_.end());
+
+    std::vector<std::filesystem::path> objectFiles(programObjects.begin(), programObjects.end());
+    objectFiles.push_back(runtimeObject);
+    std::filesystem::path pdbPath;
+    if (debugInformation_ != llvm_backend::DebugInformationKind::None)
+    {
+        pdbPath = outputPath;
+        pdbPath.replace_extension(".pdb");
+    }
+    if (!linker->linkExecutable(
+            objectFiles, importLibraries, outputPath, subsystem_, pdbPath, targetError))
+    {
+        error = targetError;
+        return false;
+    }
+    PeExecutableVerifier verifier;
+    if (!verifier.verify(outputPath))
+    {
+        std::error_code cleanupError;
+        std::filesystem::remove(outputPath, cleanupError);
+        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+        error = "linked PE verification failed: " + verifier.error();
+        return false;
+    }
+    info_ = verifier.info();
+    return true;
+}
+
 void WindowsExecutableBuilder::setExternalImports(std::vector<ExternalImportModule> externalImports)
 {
     externalImports_ = std::move(externalImports);

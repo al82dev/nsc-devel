@@ -236,6 +236,27 @@ assigned to the currently least-loaded unit, breaking ties by unit ordinal. Func
 unit are restored to canonical MIR order. The mapping, costs and textual plan must therefore be
 identical for equivalent serial and parallel MIR models and independent of worker completion order.
 
+## NSC-CODEGEN-002 — Parallel LLVM and COFF generation
+
+When more than one compilation job and more than one code unit are available, project product
+generation shall lower one coordinator module plus every planned code unit through the bounded
+worker pool. The coordinator module owns mutable statics, type initialization, descriptors,
+vtables, interface maps, RTTI-visible global data, destruction entries, runtime-bound imports,
+callback boundary thunks and C ABI wrappers. Function modules own only their assigned callable
+definitions and reference coordinator data through external declarations.
+
+Every independently lowered module must pass LLVM verification. O0 legalization and any requested
+optimization are applied to each module before object emission; in this contract revision the
+optimization loop remains ordered. COFF emission and validation execute as parallel per-module
+tasks. Errors are selected by module ordinal, and object paths are returned in coordinator-first,
+code-unit order. EXE, static-library and DLL builders shall accept that ordered object set, append
+exactly one runtime object and preserve existing import, export, PDB and verification behavior.
+
+With one effective job, the generator shall retain the compatible single-module/single-object path.
+The standalone `--emit-project-oop-obj` action also remains a single-object compatibility surface;
+multi-object generation applies to linked project products whose output format can contain or link
+multiple COFF inputs.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR
