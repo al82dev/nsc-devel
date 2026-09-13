@@ -40,6 +40,7 @@
 #include "nativesharp/Interop/CHeaderGenerator.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
+#include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/LlvmLowerer.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
@@ -2608,6 +2609,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     llvm_backend::LlvmOptimizationBudgetScope optimizationBudgetScope(executionScope.o2Budget);
     CompilationJobPolicy jobPolicy;
     CompilationJobPolicyScope jobPolicyScope(jobPolicy);
+    llvm_backend::CompilationArtifactCache artifactCache;
+    artifactCache.setToolchainIdentity(std::string(kCompilerBuildId));
+    llvm_backend::CompilationArtifactCacheScope artifactCacheScope(artifactCache);
     DriverExecutionScope* previousScope = activeExecutionScope;
     activeExecutionScope = &executionScope;
     struct RestoreScope final
@@ -2626,6 +2630,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool optimizationBudgetSeen = false;
     bool jobCountSeen = false;
     bool reservedCoresSeen = false;
+    bool artifactCacheSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
     std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
@@ -2699,6 +2704,26 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CommandLineError;
             }
             jobPolicy.setReservedCores(reserved);
+            continue;
+        }
+        static constexpr std::string_view artifactCachePrefix = "--artifact-cache=";
+        if (argument.starts_with(artifactCachePrefix))
+        {
+            if (artifactCacheSeen)
+            {
+                error << "nsc: error: duplicate artifact-cache directory\n";
+                return ExitCode::CommandLineError;
+            }
+            artifactCacheSeen = true;
+            const std::string_view value = argument.substr(artifactCachePrefix.size());
+            const std::filesystem::path cachePath{std::string(value)};
+            if (value.empty() || !cachePath.is_absolute())
+            {
+                error << "nsc: error: artifact cache requires an absolute directory: '"
+                      << value << "'\n";
+                return ExitCode::CommandLineError;
+            }
+            artifactCache.setRoot(cachePath);
             continue;
         }
         static constexpr std::string_view timeoutPrefix = "--timeout-ms=";
@@ -2877,6 +2902,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     const bool debugCapableInvocation = args.size() == 4 && args[2] == "-o" &&
         (args[0] == "--emit-project-oop-obj" || args[0] == "--emit-project-oop-exe" ||
          args[0] == "--emit-project-oop-lib" || args[0] == "--emit-project-oop-dll");
+    const bool artifactCacheCapableInvocation = args.size() == 4 && args[2] == "-o" &&
+        (args[0] == "--emit-project-oop-exe" || args[0] == "--emit-project-oop-lib" ||
+         args[0] == "--emit-project-oop-dll");
     if (subsystemSeen && !executableInvocation)
     {
         error << "nsc: error: /subsystem is only valid when emitting an executable\n";
@@ -2892,6 +2920,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     {
         error << "nsc: error: debug prefix maps are currently supported when emitting "
                  "a project OOP object, executable, static library, or DLL\n";
+        return ExitCode::CommandLineError;
+    }
+    if (artifactCacheSeen && !artifactCacheCapableInvocation)
+    {
+        error << "nsc: error: --artifact-cache is supported when emitting a project OOP "
+                 "executable, static library, or DLL\n";
         return ExitCode::CommandLineError;
     }
 
@@ -3426,6 +3460,8 @@ void Driver::printHelp(std::ostream &output)
               "diagnostics for optimized builds.\n"
            << "-j N (or -jN) caps compiler jobs; --reserve-cores=N keeps host capacity free. "
               "Use --print-job-policy to inspect the effective value.\n"
+           << "--artifact-cache=<absolute-directory> enables verified content-addressed reuse "
+              "for optimized project object units.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
@@ -4463,6 +4499,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
+           << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
+           << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
            << "packaged-runtimes: " << packagedRuntimes.size() << '\n'
            << "sections: " << builder.info().sectionCount << '\n'
@@ -4597,6 +4635,8 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
+           << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
+           << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
            << "debug-companion: "
            << (debugInformation == llvm_backend::DebugInformationKind::None
                    ? "none"
@@ -4859,6 +4899,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
+           << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
+           << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
            << "program-database: "
            << (debugInformation == llvm_backend::DebugInformationKind::None
                    ? "none"

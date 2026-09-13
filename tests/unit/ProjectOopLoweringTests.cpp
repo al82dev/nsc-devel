@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
+#include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
@@ -388,6 +389,10 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
                 (partitionFailure.empty() ? std::string{} : ": " + partitionFailure));
 
         nativesharp::llvm_backend::ProjectOopObjectGenerator objectGenerator;
+        nativesharp::llvm_backend::CompilationArtifactCache artifactCache;
+        artifactCache.setRoot(directory / "object-cache");
+        artifactCache.setToolchainIdentity("project-oop-lowering-test");
+        nativesharp::llvm_backend::CompilationArtifactCacheScope artifactCacheScope(artifactCache);
         std::string objectGenerationError;
         auto objectBundle = objectGenerator.generate(
             *compilation.nameLookup(), *compilation.memberModel(), mir,
@@ -395,10 +400,25 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
             nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, objectGenerationError);
         tests.expect(objectBundle != nullptr && objectGenerationError.empty() &&
                 objectBundle->codeUnitCount() == serialPartition.units().size() &&
-                objectBundle->objectFiles().size() == serialPartition.units().size() + 1,
+                objectBundle->objectFiles().size() == serialPartition.units().size() + 1 &&
+                objectBundle->cacheHitCount() == 0 &&
+                objectBundle->cacheMissCount() == objectBundle->objectFiles().size(),
             "four-worker code generation emits one verified coordinator object and one object per code unit");
         if (objectBundle != nullptr)
         {
+            objectGenerationError.clear();
+            auto cachedBundle = objectGenerator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), mir,
+                compilation.sourceManager(),
+                nativesharp::llvm_backend::DebugInformationKind::None,
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {},
+                objectGenerationError);
+            tests.expect(cachedBundle != nullptr && objectGenerationError.empty() &&
+                    cachedBundle->cacheHitCount() == cachedBundle->objectFiles().size() &&
+                    cachedBundle->cacheMissCount() == 0,
+                "second equivalent generation restores every verified code unit from content cache" +
+                    (objectGenerationError.empty() ? std::string{} : ": " + objectGenerationError));
+
             nativesharp::linker::WindowsLibraryBuilder partitionedBuilder;
             const std::vector<std::string> exports = {mir.functions()[1].mangledName};
             std::string linkError;

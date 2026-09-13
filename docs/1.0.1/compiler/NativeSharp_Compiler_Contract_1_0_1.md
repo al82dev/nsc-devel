@@ -150,6 +150,22 @@ the current scheduler kind. Once project-reference discovery uses the worker poo
 shall identify itself as `project-references`; this label does not claim that later compilation
 phases are parallel.
 
+## NSC-CACHE-001 — Verified content-addressed object cache
+
+`--artifact-cache=<absolute-directory>` enables object-unit reuse for linked project OOP products.
+The option is explicit and invocation-scoped; an absent option performs no cache reads or writes.
+Relative paths, duplicate options and use with unsupported actions are command-line errors.
+
+Every object key shall include the exact compiler build identity, loaded LLVM version, target triple,
+data layout, optimization level, debug-information mode and complete optimized LLVM text. Cache
+paths are derived only from the lowercase SHA-256 key. A stored object has a versioned sidecar that
+binds its key, byte size and object SHA-256.
+
+A hit must match the sidecar digest and size, be copied into invocation-owned temporary storage and
+pass the ordinary AMD64 COFF verifier before emission is skipped. Missing, incomplete, malformed,
+corrupt or non-COFF entries are misses and are rebuilt. A verified miss may be stored for later use.
+Parallel units keep independent hit/miss slots, and product output reports their totals.
+
 ## NSC-WORKERS-001 — Internal compiler worker pool
 
 The internal worker pool shall own a fixed number of joinable threads resolved from the active job

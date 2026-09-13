@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–261 completados; siguiente item 262
+**Progreso:** Tanda 1, items 246–262 completados; siguiente item 263
 
 ## Regla de ejecución
 
@@ -35,7 +35,7 @@
 14. **259 — Optimización O2 paralela / Parallel O2 optimization — COMPLETADO / COMPLETE**
 15. **260 — Unión determinista de NSMETA / Deterministic NSMETA merging — COMPLETADO / COMPLETE**
 16. **261 — Diagnósticos deterministas en paralelo / Deterministic parallel diagnostics — COMPLETADO / COMPLETE**
-17. **262 — Cache de artefactos por contenido / Content-addressed artifact cache**
+17. **262 — Cache de artefactos por contenido / Content-addressed artifact cache — COMPLETADO / COMPLETE**
 18. **263 — Invalidación incremental precisa / Precise incremental invalidation**
 19. **264 — Perfiles Debug y Release / Debug and Release profiles**
 

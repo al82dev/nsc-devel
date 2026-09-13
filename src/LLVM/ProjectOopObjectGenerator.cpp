@@ -1,6 +1,7 @@
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
@@ -80,6 +81,16 @@ std::size_t ProjectOopObjectBundle::codeUnitCount() const noexcept
 bool ProjectOopObjectBundle::usedParallelOptimization() const noexcept
 {
     return usedParallelOptimization_;
+}
+
+std::size_t ProjectOopObjectBundle::cacheHitCount() const noexcept
+{
+    return cacheHitCount_;
+}
+
+std::size_t ProjectOopObjectBundle::cacheMissCount() const noexcept
+{
+    return cacheMissCount_;
 }
 
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
@@ -202,16 +213,44 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     result->codeUnitCount_ = usePartitions ? partition.units().size() : 1;
     result->usedParallelOptimization_ = parallelOptimization;
     result->objectFiles_.reserve(moduleCount);
+    std::vector<std::string> moduleTexts(moduleCount);
     for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
     {
-        result->combinedLlvmText_ += modules[ordinal]->text();
+        moduleTexts[ordinal] = modules[ordinal]->text();
+        result->combinedLlvmText_ += moduleTexts[ordinal];
         result->combinedLlvmText_ += '\n';
         result->objectFiles_.push_back(
             *temporaryDirectory / ("program-" + std::to_string(ordinal) + ".obj"));
     }
 
     std::vector<std::string> emissionErrors(moduleCount);
+    std::vector<std::uint8_t> cacheHits(moduleCount, 0);
+    std::vector<std::uint8_t> cacheMisses(moduleCount, 0);
+    const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
     const auto emitModule = [&](std::size_t ordinal) {
+        std::string cacheKey;
+        if (cache != nullptr && cache->enabled())
+        {
+            cacheKey = cache->objectKey(
+                moduleTexts[ordinal], targetMachines[ordinal]->triple(),
+                targetMachines[ordinal]->dataLayout(), optimizationLevel,
+                debugInformation);
+            bool hit = false;
+            if (!cache->restoreObject(
+                    cacheKey, result->objectFiles_[ordinal], hit,
+                    emissionErrors[ordinal]))
+                return;
+            if (hit)
+            {
+                CoffObjectVerifier verifier;
+                if (verifier.verify(result->objectFiles_[ordinal]))
+                {
+                    cacheHits[ordinal] = 1;
+                    return;
+                }
+            }
+            cacheMisses[ordinal] = 1;
+        }
         if (!targetMachines[ordinal]->emit(
                 *modules[ordinal], result->objectFiles_[ordinal],
                 LlvmCodeGenFileType::Object, emissionErrors[ordinal]))
@@ -221,6 +260,9 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         CoffObjectVerifier verifier;
         if (!verifier.verify(result->objectFiles_[ordinal]))
             emissionErrors[ordinal] = verifier.error();
+        if (emissionErrors[ordinal].empty() && cache != nullptr && cache->enabled() &&
+            !cache->storeObject(cacheKey, result->objectFiles_[ordinal], emissionErrors[ordinal]))
+            return;
     };
     if (usePartitions)
     {
@@ -241,6 +283,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 " object emission failed: " + emissionErrors[ordinal];
             return nullptr;
         }
+        result->cacheHitCount_ += cacheHits[ordinal];
+        result->cacheMissCount_ += cacheMisses[ordinal];
     }
     return result;
 }

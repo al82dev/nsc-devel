@@ -36,6 +36,8 @@ public:
     const std::string& combinedLlvmText() const noexcept;
     std::size_t codeUnitCount() const noexcept;
     bool usedParallelOptimization() const noexcept;
+    std::size_t cacheHitCount() const noexcept;
+    std::size_t cacheMissCount() const noexcept;
 
 private:
     friend class ProjectOopObjectGenerator;
@@ -46,6 +48,8 @@ private:
     std::string combinedLlvmText_;
     std::size_t codeUnitCount_ = 0;
     bool usedParallelOptimization_ = false;
+    std::size_t cacheHitCount_ = 0;
+    std::size_t cacheMissCount_ = 0;
 };
 
 class ProjectOopObjectGenerator final
