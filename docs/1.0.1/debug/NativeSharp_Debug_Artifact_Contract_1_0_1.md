@@ -146,3 +146,14 @@ corresponding profile default independent of argument order. Duplicate profiles,
 and profiles attached to actions that cannot emit a project OOP object, executable, static library
 or DLL are command-line errors. When a profile is selected, the driver shall report its name and
 effective optimization and debug-information policies.
+
+## NSC-DEBUG-008 — Partitioned debug ownership
+
+In partitioned code generation, only the LLVM module that owns a function definition shall attach a
+definition `DISubprogram` to that function. Coordinator and peer modules may declare the physical
+function for calls, but those declarations shall not carry independently-created definition debug
+metadata. The same rule applies to generated type initializers and destruction entries.
+
+Every partition shall independently pass the LLVM verifier with full debug information enabled.
+Combining partitions shall preserve the owning definition's CodeView records without inventing
+multiple source definitions for one physical function.

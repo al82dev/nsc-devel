@@ -389,6 +389,32 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
             "global and per-code-unit LLVM modules independently pass the verifier" +
                 (partitionFailure.empty() ? std::string{} : ": " + partitionFailure));
 
+        nativesharp::llvm_backend::ProjectOopLlvmLowerer debugGlobalLowerer;
+        auto debugGlobalModule = debugGlobalLowerer.lowerPartition(
+            *compilation.nameLookup(), *compilation.memberModel(), mir,
+            compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::Full,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, {}, true,
+            "Stage30Test.debug.globals");
+        bool partitionDebugValid = debugGlobalModule != nullptr &&
+            debugGlobalLowerer.error().empty();
+        std::string partitionDebugFailure = debugGlobalLowerer.error();
+        for (const auto& unit : serialPartition.units())
+        {
+            nativesharp::llvm_backend::ProjectOopLlvmLowerer debugUnitLowerer;
+            auto debugUnitModule = debugUnitLowerer.lowerPartition(
+                *compilation.nameLookup(), *compilation.memberModel(), mir,
+                compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::Full,
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+                unit.functionOrdinals, false, "Stage30Test.debug." + unit.stableKey);
+            partitionDebugValid = partitionDebugValid && debugUnitModule != nullptr &&
+                debugUnitLowerer.error().empty();
+            if (debugUnitModule == nullptr && partitionDebugFailure.empty())
+                partitionDebugFailure = debugUnitLowerer.error();
+        }
+        tests.expect(partitionDebugValid,
+            "partitioned debug metadata belongs only to defining modules and verifies cleanly" +
+                (partitionDebugFailure.empty() ? std::string{} : ": " + partitionDebugFailure));
+
         nativesharp::llvm_backend::ProjectOopObjectGenerator objectGenerator;
         nativesharp::llvm_backend::CompilationArtifactCache artifactCache;
         artifactCache.setRoot(directory / "object-cache");

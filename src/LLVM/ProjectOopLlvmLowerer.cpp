@@ -2147,7 +2147,7 @@ private:
             }
             applyUwtableAttribute(function);
             LLVMMetadataRef subprogram = nullptr;
-            if (typeOrdinal < nameLookup_.namedTypes().size())
+            if (defineStorage && typeOrdinal < nameLookup_.namedTypes().size())
             {
                 const frontend::NamedTypeDeclaration& type = nameLookup_.namedTypes()[typeOrdinal];
                 const std::vector<std::string> noParameters;
@@ -2157,7 +2157,7 @@ private:
                     type.range, displayName, functionName, "builtin:void",
                     noParameters, true, false);
             }
-            if (debugBuilder_ != nullptr && subprogram == nullptr)
+            if (debugBuilder_ != nullptr && defineStorage && subprogram == nullptr)
             {
                 return fail(error, "failed to create debug subprogram for type initializer " + functionName);
             }
@@ -2394,10 +2394,10 @@ private:
                 error = "Stage 34 failed to declare LLVM function " + function.mangledName;
                 return false;
             }
+            const bool ownsDefinition = !function.isImportedC && !function.isImportedNative &&
+                (!partitioned_ || (!ownsModuleGlobals_ && functionDefinitions_[functionOrdinal]));
             if (!function.isImportedC && !function.isImportedNative)
             {
-                const bool ownsDefinition = !partitioned_ ||
-                    (!ownsModuleGlobals_ && functionDefinitions_[functionOrdinal]);
                 if (ownsDefinition && !function.genericSpecializationKey.empty())
                 {
                     applyGenericOdrDefinition(llvmFunction, function.genericSpecializationKey);
@@ -2423,8 +2423,8 @@ private:
                     function.isStatic ? 0U : 1U,
                     function.returnTypeKey);
             }
-            LLVMMetadataRef subprogram = createDebugSubprogram(function);
-            if (debugBuilder_ != nullptr && !function.isImportedC && !function.isImportedNative &&
+            LLVMMetadataRef subprogram = ownsDefinition ? createDebugSubprogram(function) : nullptr;
+            if (debugBuilder_ != nullptr && ownsDefinition &&
                 subprogram == nullptr)
             {
                 error = "failed to create LLVM debug subprogram for " + function.mangledName;
@@ -2463,8 +2463,9 @@ private:
             }
             if (!partitioned_ || ownsModuleGlobals_)
                 applyGenericOdrDefinition(function, table.genericSpecializationKey);
+            const bool ownsDefinition = !partitioned_ || ownsModuleGlobals_;
             LLVMMetadataRef subprogram = nullptr;
-            if (table.typeOrdinal < nameLookup_.namedTypes().size())
+            if (ownsDefinition && table.typeOrdinal < nameLookup_.namedTypes().size())
             {
                 const frontend::NamedTypeDeclaration& type = nameLookup_.namedTypes()[table.typeOrdinal];
                 const std::vector<std::string> parameters = {table.typeKey};
@@ -2474,7 +2475,7 @@ private:
                     type.range, displayName, table.destructionEntryName, "builtin:void",
                     parameters, true, false);
             }
-            if (debugBuilder_ != nullptr && subprogram == nullptr)
+            if (debugBuilder_ != nullptr && ownsDefinition && subprogram == nullptr)
             {
                 return fail(error, "failed to create debug subprogram for destruction entry " +
                     table.destructionEntryName);
