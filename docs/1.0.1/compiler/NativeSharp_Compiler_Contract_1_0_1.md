@@ -688,3 +688,12 @@ Inputs may use `r` or `{register}`. Outputs may use write-only `=r`/`={register}
 names, braces with trailing data, whitespace, and punctuation inside a register atom shall produce
 `InvalidInlineAssemblyConstraint` at the operand. Architecture-specific register validation is a
 separate later contract and shall not be guessed by the parser.
+
+## NSC-ASM-006 — Immediate and memory operand validation
+
+The `i` input constraint shall require an integral `ExpressionResult` carrying a compile-time
+integer constant. The `m` input constraint shall require addressable storage. Project expression
+analysis shall track addressability independently from assignability so readonly storage can be
+distinguished from properties that merely have a setter. Output constraints `=m` and `+m` shall
+require both addressability and the existing modifiable-lvalue contract. No validation path may
+silently spill a temporary or convert a property access into a memory operand.

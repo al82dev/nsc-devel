@@ -37,6 +37,11 @@ registro general (`"r"`) o fijo (`"{rcx}"`); las salidas distinguen escritura (`
 sintaxis anterior y normaliza a `r` o `=r`. Los nombres concretos se contrastarán con el target en
 el item de validación x64; esta etapa ya fija y verifica estructura y dirección.
 
+Los constraints `"i"` y `"m"` modelan inmediatos integrales constantes y ubicaciones de memoria
+direccionables. Outputs de memoria usan `"=m"` o `"+m"`. El compilador distingue una ubicación
+real de una property asignable y rechaza cálculos temporales; no crea spills ocultos para satisfacer
+el assembly.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

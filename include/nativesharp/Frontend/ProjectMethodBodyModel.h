@@ -1217,6 +1217,10 @@ private:
         bool valid = false;
         bool methodGroup = false;
         bool assignable = false;
+        // True only for storage-backed expressions (locals, parameters, fields, raw elements,
+        // and dereferences). Properties may be assignable through a setter but are not memory
+        // locations and therefore cannot satisfy an inline-assembly `m` constraint.
+        bool addressable = false;
         // True when the value is a struct location reached through `in`, a readonly field, or
         // the implicit receiver of a readonly struct member. Reads remain legal; writes and calls
         // to mutating instance members do not.

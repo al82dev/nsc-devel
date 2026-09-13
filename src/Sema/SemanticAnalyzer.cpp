@@ -710,7 +710,24 @@ void SemanticAnalyzer::analyzeStatement(ast::AstNode* node)
                 if (child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand &&
                     child->first() != nullptr)
                 {
-                    analyzeExpression(child->first());
+                    const ExpressionInfo input = analyzeExpression(child->first());
+                    if (child->auxiliaryText() == "i" && input.type != nullptr &&
+                        input.type->kind() != TypeKind::Error &&
+                        (!input.isConstant || !isInteger(input.type)))
+                    {
+                        report(
+                            child->first()->range(),
+                            diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
+                            "asm immediate input requires a compile-time integral constant");
+                    }
+                    else if (child->auxiliaryText() == "m" && input.type != nullptr &&
+                        input.type->kind() != TypeKind::Error && !input.addressable)
+                    {
+                        report(
+                            child->first()->range(),
+                            diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
+                            "asm memory input requires an addressable storage location");
+                    }
                 }
                 else if (child->kind() == ast::AstNodeKind::InlineAssemblyOutputOperand &&
                     child->first() != nullptr)
@@ -723,6 +740,16 @@ void SemanticAnalyzer::analyzeStatement(ast::AstNode* node)
                             child->first()->range(),
                             diagnostics::DiagnosticId::InvalidAssignmentTarget,
                             "asm output must be a modifiable lvalue");
+                    }
+                    else if ((child->auxiliaryText() == "=m" ||
+                              child->auxiliaryText() == "+m") &&
+                        target.type != nullptr && target.type->kind() != TypeKind::Error &&
+                        !target.addressable)
+                    {
+                        report(
+                            child->first()->range(),
+                            diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
+                            "asm memory output requires an addressable storage location");
                     }
                 }
             }

@@ -688,6 +688,21 @@ normalize to `"r"` for inputs and `"=r"` for outputs. The AST always stores that
 and records whether it was explicit. Constraints must be string literals with a direction valid
 for the operand. Target register availability remains the later NS-ASM-011 contract.
 
+### NS-ASM-006 — Inmediatos y operandos de memoria
+
+Una entrada `: "i"` exige una expresión integral reducible a constante en compilación. Una entrada
+`: "m"` exige almacenamiento direccionable: local, parámetro, campo, elemento raw o dereference;
+un literal, cálculo temporal, llamada o property no representa memoria. Las salidas `"=m"` y
+`"+m"` exigen además el lvalue modificable ya requerido por todo output. `=m` es escritura y `+m`
+lectura-escritura. El contrato de memoria no convierte una property con setter en una dirección ni
+materializa un temporal oculto.
+
+An `: "i"` input must be an integral compile-time constant. An `: "m"` input must denote
+addressable storage: a local, parameter, field, raw element, or dereference. Literals, computed
+temporaries, calls, and properties do not denote memory. `"=m"` and `"+m"` outputs additionally
+retain the ordinary modifiable-lvalue requirement. The compiler never synthesizes hidden storage
+to make a non-addressable expression satisfy `m`.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

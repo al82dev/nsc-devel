@@ -69,11 +69,11 @@ enum class AstNodeKind
     InlineAssemblyLine,
     // A positional `in(expression : "constraint")` operand. first() is the NativeSharp
     // expression, integerValue() is its zero-based input ordinal, auxiliaryText() is the
-    // normalized register constraint, and flag() records whether it was written explicitly.
+    // normalized operand constraint, and flag() records whether it was written explicitly.
     InlineAssemblyInputOperand,
     // A positional `out(target : "constraint")` operand. first() is a writable NativeSharp
     // lvalue, integerValue() is its zero-based `$outN` ordinal, auxiliaryText() is the normalized
-    // register constraint, and flag() records whether it was written explicitly.
+    // operand constraint, and flag() records whether it was written explicitly.
     InlineAssemblyOutputOperand,
     ExpressionStatement,
 

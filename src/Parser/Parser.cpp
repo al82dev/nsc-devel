@@ -4729,17 +4729,18 @@ bool isInlineAssemblyRegisterName(std::string_view name) noexcept
     return true;
 }
 
-bool isInlineAssemblyRegisterConstraint(std::string_view constraint, bool output) noexcept
+bool isInlineAssemblyConstraint(std::string_view constraint, bool output) noexcept
 {
     if (!output)
     {
-        if (constraint == "r") return true;
+        if (constraint == "r" || constraint == "i" || constraint == "m") return true;
         return constraint.size() >= 3 && constraint.front() == '{' &&
             constraint.back() == '}' &&
             isInlineAssemblyRegisterName(constraint.substr(1, constraint.size() - 2));
     }
 
-    if (constraint == "=r" || constraint == "+r") return true;
+    if (constraint == "=r" || constraint == "+r" ||
+        constraint == "=m" || constraint == "+m") return true;
     if (constraint.size() < 4 || (constraint.front() != '=' && constraint.front() != '+') ||
         constraint[1] != '{' || constraint.back() != '}')
     {
@@ -4872,7 +4873,7 @@ void Parser::parseInlineAssemblyOutputClause(ast::AstNode* statement)
         operand->setIntegerValue(ordinal++);
         bool explicitConstraint = false;
         operand->setAuxiliaryText(
-            parseInlineAssemblyRegisterConstraint(true, explicitConstraint));
+            parseInlineAssemblyConstraint(true, explicitConstraint));
         operand->setFlag(explicitConstraint);
         operand->setRange(tokenRangeFrom(operandBegin));
         statement->addChild(operand);
@@ -4909,7 +4910,7 @@ void Parser::parseInlineAssemblyInputClause(ast::AstNode* statement)
         operand->setIntegerValue(ordinal++);
         bool explicitConstraint = false;
         operand->setAuxiliaryText(
-            parseInlineAssemblyRegisterConstraint(false, explicitConstraint));
+            parseInlineAssemblyConstraint(false, explicitConstraint));
         operand->setFlag(explicitConstraint);
         operand->setRange(tokenRangeFrom(operandBegin));
         statement->addChild(operand);
@@ -4919,7 +4920,7 @@ void Parser::parseInlineAssemblyInputClause(ast::AstNode* statement)
     expect(TokenKind::RightParen, "')' after asm input operands");
 }
 
-std::string Parser::parseInlineAssemblyRegisterConstraint(
+std::string Parser::parseInlineAssemblyConstraint(
     bool output,
     bool& explicitConstraint)
 {
@@ -4939,15 +4940,15 @@ std::string Parser::parseInlineAssemblyRegisterConstraint(
 
     const lexer::Token& constraintToken = consume();
     const std::string constraint = std::get<std::string>(constraintToken.value());
-    if (!isInlineAssemblyRegisterConstraint(constraint, output))
+    if (!isInlineAssemblyConstraint(constraint, output))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
             diagnostics::DiagnosticSeverity::Error,
             constraintToken.range(),
             output
-                ? "asm output register constraint must be '=r', '+r', '={register}', or '+{register}'"
-                : "asm input register constraint must be 'r' or '{register}'");
+                ? "asm output constraint must be '=r', '+r', '=m', '+m', '={register}', or '+{register}'"
+                : "asm input constraint must be 'r', 'i', 'm', or '{register}'");
         return defaultConstraint;
     }
     return constraint;

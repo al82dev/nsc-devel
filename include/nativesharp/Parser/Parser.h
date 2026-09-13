@@ -202,7 +202,7 @@ private:
     ast::AstNode* parseInlineAssemblyStatement();
     void parseInlineAssemblyOutputClause(ast::AstNode* statement);
     void parseInlineAssemblyInputClause(ast::AstNode* statement);
-    std::string parseInlineAssemblyRegisterConstraint(bool output, bool& explicitConstraint);
+    std::string parseInlineAssemblyConstraint(bool output, bool& explicitConstraint);
     ast::AstNode* parseVariableDeclaration(bool expectSemicolon);
     // C7 "aggregate initializer": the braced right-hand side of a declaration.
     ast::AstNode* parseAggregateInitializer();

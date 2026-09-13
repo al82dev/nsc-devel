@@ -282,6 +282,84 @@ int Main()
         nonLiteralConstraint.diagnostics.hasErrors() && sawNonLiteralConstraint,
         "asm register constraints require compile-time string syntax");
 
+    ParsedSyntax immediateAndMemoryConstraints;
+    parse(
+        immediateAndMemoryConstraints,
+        "int Main() { int output; int input = 40; "
+        "asm { add $out0, $0 } out(output : \"=m\") in(2 : \"i\", input : \"m\"); "
+        "return output; }");
+    const AstNode* storageMain = findFunction(immediateAndMemoryConstraints.root, "Main");
+    const AstNode* storageBody = storageMain != nullptr ? storageMain->first() : nullptr;
+    const AstNode* storageAssembly = storageBody != nullptr && storageBody->children().size() > 2
+        ? storageBody->children()[2]
+        : nullptr;
+    tests.expect(
+        !immediateAndMemoryConstraints.diagnostics.hasErrors() && storageAssembly != nullptr &&
+            storageAssembly->children().size() == 4 &&
+            storageAssembly->children()[1]->auxiliaryText() == "=m" &&
+            storageAssembly->children()[2]->auxiliaryText() == "i" &&
+            storageAssembly->children()[3]->auxiliaryText() == "m",
+        "immediate and memory constraints preserve their positional AST contracts");
+
+    frontend::FrontendCompilation nonConstantImmediate;
+    const bool nonConstantImmediateOk = nonConstantImmediate.compileBuffer(
+        "assembly_nonconstant_immediate.ns",
+        "int Main() { int value = 2; asm { mov rax, $0 } in(value : \"i\"); return 0; }");
+    bool sawNonConstantImmediate = false;
+    for (const diagnostics::Diagnostic& diagnostic :
+        nonConstantImmediate.diagnostics().diagnostics())
+    {
+        sawNonConstantImmediate = sawNonConstantImmediate ||
+            (diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint &&
+             diagnostic.message().find("compile-time integral constant") != std::string::npos);
+    }
+    tests.expect(
+        !nonConstantImmediateOk && sawNonConstantImmediate,
+        "asm immediate inputs reject runtime values");
+
+    frontend::FrontendCompilation floatingImmediate;
+    const bool floatingImmediateOk = floatingImmediate.compileBuffer(
+        "assembly_floating_immediate.ns",
+        "int Main() { asm { mov rax, $0 } in(2.0 : \"i\"); return 0; }");
+    bool sawFloatingImmediate = false;
+    for (const diagnostics::Diagnostic& diagnostic : floatingImmediate.diagnostics().diagnostics())
+    {
+        sawFloatingImmediate = sawFloatingImmediate ||
+            diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint;
+    }
+    tests.expect(
+        !floatingImmediateOk && sawFloatingImmediate,
+        "asm immediate inputs reject non-integral constants");
+
+    frontend::FrontendCompilation temporaryMemory;
+    const bool temporaryMemoryOk = temporaryMemory.compileBuffer(
+        "assembly_temporary_memory.ns",
+        "int Main() { asm { mov rax, $0 } in(40 + 2 : \"m\"); return 0; }");
+    bool sawTemporaryMemory = false;
+    for (const diagnostics::Diagnostic& diagnostic : temporaryMemory.diagnostics().diagnostics())
+    {
+        sawTemporaryMemory = sawTemporaryMemory ||
+            (diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint &&
+             diagnostic.message().find("addressable storage") != std::string::npos);
+    }
+    tests.expect(
+        !temporaryMemoryOk && sawTemporaryMemory,
+        "asm memory inputs reject rvalue temporaries");
+
+    frontend::FrontendCompilation addressableMemory;
+    const bool addressableMemoryOk = addressableMemory.compileBuffer(
+        "assembly_addressable_memory.ns",
+        "int Main() { int value = 42; asm { mov rax, $0 } in(value : \"m\"); return 0; }");
+    bool sawAddressableMemoryError = false;
+    for (const diagnostics::Diagnostic& diagnostic : addressableMemory.diagnostics().diagnostics())
+    {
+        sawAddressableMemoryError = sawAddressableMemoryError ||
+            diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint;
+    }
+    tests.expect(
+        !addressableMemoryOk && !sawAddressableMemoryError,
+        "an addressable local satisfies the memory contract before lowering is enabled");
+
     ParsedSyntax emptyOutputs;
     parse(emptyOutputs, "int Main() { asm { nop } out(); return 0; }");
     bool sawRequiredOutput = false;

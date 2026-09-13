@@ -2071,7 +2071,26 @@ void ProjectMethodBodyModel::analyzeStatement(
                 if (child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand &&
                     child->first() != nullptr)
                 {
-                    analyzeExpression(child->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                    const ExpressionResult input = analyzeExpression(
+                        child->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                    if (child->auxiliaryText() == "i" && input.valid &&
+                        (!ProjectTypeConversion::isIntegral(input.typeKey) ||
+                         !input.integerConstant.has_value()))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
+                            diagnostics::DiagnosticSeverity::Error,
+                            child->first()->range(),
+                            "asm immediate input requires a compile-time integral constant");
+                    }
+                    else if (child->auxiliaryText() == "m" && input.valid && !input.addressable)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
+                            diagnostics::DiagnosticSeverity::Error,
+                            child->first()->range(),
+                            "asm memory input requires an addressable storage location");
+                    }
                 }
                 else if (child->kind() == ast::AstNodeKind::InlineAssemblyOutputOperand &&
                     child->first() != nullptr)
@@ -2095,6 +2114,16 @@ void ProjectMethodBodyModel::analyzeStatement(
                             diagnostics::DiagnosticSeverity::Error,
                             child->first()->range(),
                             "asm output must be a modifiable lvalue");
+                    }
+                    else if ((child->auxiliaryText() == "=m" ||
+                              child->auxiliaryText() == "+m") &&
+                        target.valid && !target.addressable)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidInlineAssemblyConstraint,
+                            diagnostics::DiagnosticSeverity::Error,
+                            child->first()->range(),
+                            "asm memory output requires an addressable storage location");
                     }
                 }
             }
@@ -5661,6 +5690,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.typeKey = variableArrayLocal->variableLengthArrayElementTypeKey;
                 result.valid = true;
                 result.assignable = true;
+                result.addressable = true;
                 MethodCoreBinding binding;
                 binding.kind = MethodCoreOperationKind::RawElement;
                 binding.syntax = expression;
@@ -5693,6 +5723,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     (validFixedIndices || validFlexibleIndex);
                 result.assignable = !readonlyInlineElement &&
                     !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();
+                result.addressable = true;
                 result.readonlyReceiver = readonlyInlineElement;
                 MethodCoreBinding binding;
                 binding.kind = MethodCoreOperationKind::RawElement;
@@ -6408,6 +6439,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 // const and borrowed locals keep their existing restrictions.
                 result.assignable = !local.isConst &&
                     local.ownership != sema::OwnershipKind::Borrowed;
+                result.addressable = true;
                 result.readonlyReceiver = local.isConst;
                 nameBindings_.push_back(MethodNameBinding{
                     MethodNameBindingKind::Local,
@@ -6473,6 +6505,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             // E11 captured parameters are shared cells too.  `in` remains read-only; value/ref/
             // out parameters preserve the same assignability inside a closure as in the method.
             result.assignable = parameter.passKind != ParameterPassKind::In;
+            result.addressable = true;
             result.readonlyReceiver = parameter.passKind == ParameterPassKind::In;
             nameBindings_.push_back(MethodNameBinding{
                 MethodNameBindingKind::Parameter,
@@ -6594,6 +6627,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         result.valid = true;
         result.assignable = !readonlyThis && !field.isConst &&
             (!field.isReadonly || readonlyFieldAssignable(field, methodMemberOrdinal));
+        result.addressable = true;
         result.readonlyReceiver = readonlyThis || field.isReadonly;
         result.assignmentMemberOrdinal = fields.front();
         if (!field.isStatic)
@@ -6670,6 +6704,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 result.typeKey = field.declaredTypeKey;
                 result.valid = true;
                 result.assignable = true;
+                result.addressable = true;
                 result.assignmentMemberOrdinal = *backing;
                 result.receiverTypeKey = thisTypeKey;
                 result.receiverTypeOrdinal = accessingTypeOrdinal;
@@ -7216,6 +7251,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             readonlyFieldAssignable(field, methodMemberOrdinal);
         result.assignable = !receiver.readonlyReceiver && !field.isConst &&
             (!field.isReadonly || readonlyOnThis);
+        result.addressable = true;
         result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
         result.receiverSyntax = typeReceiver ? nullptr : expression->first();
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
@@ -7273,6 +7309,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                 result.typeKey = field.declaredTypeKey;
                 result.valid = true;
                 result.assignable = true;
+                result.addressable = true;
                 result.assignmentMemberOrdinal = *backing;
                 result.receiverSyntax = expression->first();
                 result.receiverTypeKey = receiver.typeKey;
@@ -10062,6 +10099,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
         result.typeKey = operand.typeKey.substr(0, operand.typeKey.size() - 1);
         result.valid = true;
         result.assignable = true;
+        result.addressable = true;
         return result;
     }
 
