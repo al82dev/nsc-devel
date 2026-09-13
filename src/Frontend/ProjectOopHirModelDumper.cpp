@@ -61,6 +61,18 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->kind == ProjectOopHirNodeKind::BooleanConstant) output << " value=" << (node->booleanValue ? "true" : "false");
     if (!node->elementTypeKey.empty()) output << " element=" << node->elementTypeKey;
     if (node->kind == ProjectOopHirNodeKind::StringLiteral) output << " bytes=" << node->stringValue.size();
+    if (node->kind == ProjectOopHirNodeKind::InlineAssembly)
+        output << " source-bytes=" << node->stringValue.size();
+    if (node->kind == ProjectOopHirNodeKind::InlineAssemblyLine)
+        output << " text=\"" << node->stringValue << "\" contract=" << node->elementTypeKey;
+    if (node->kind == ProjectOopHirNodeKind::InlineAssemblyInput ||
+        node->kind == ProjectOopHirNodeKind::InlineAssemblyOutput)
+        output << " ordinal=" << node->integerValue << " constraint=" << node->stringValue
+               << " explicit=" << (node->booleanValue ? "true" : "false");
+    if (node->kind == ProjectOopHirNodeKind::InlineAssemblyClobber)
+        output << " ordinal=" << node->integerValue << " name=" << node->stringValue
+               << " category=" << node->elementTypeKey
+               << " preserve=" << (node->booleanValue ? "true" : "false");
     if (node->kind == ProjectOopHirNodeKind::Deallocation)
         output << " destruction=" << (node->dynamicDestruction ? "dynamic-descriptor" : "direct-free");
     output << '\n';

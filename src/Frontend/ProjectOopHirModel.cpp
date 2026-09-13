@@ -819,6 +819,11 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::Block: return "block";
         case ProjectOopHirNodeKind::LocalDeclaration: return "local-declaration";
         case ProjectOopHirNodeKind::ExpressionStatement: return "expression-statement";
+        case ProjectOopHirNodeKind::InlineAssembly: return "inline-assembly";
+        case ProjectOopHirNodeKind::InlineAssemblyLine: return "inline-assembly-line";
+        case ProjectOopHirNodeKind::InlineAssemblyInput: return "inline-assembly-input";
+        case ProjectOopHirNodeKind::InlineAssemblyOutput: return "inline-assembly-output";
+        case ProjectOopHirNodeKind::InlineAssemblyClobber: return "inline-assembly-clobber";
         case ProjectOopHirNodeKind::If: return "if";
         case ProjectOopHirNodeKind::While: return "while";
         case ProjectOopHirNodeKind::DoWhile: return "do-while";
@@ -2119,6 +2124,72 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             }
             node->children.push_back(std::move(expression));
             return node;
+        }
+
+        case ast::AstNodeKind::InlineAssemblyStatement:
+        {
+            auto assembly = makeNode(ProjectOopHirNodeKind::InlineAssembly, statement, "builtin:void");
+            assembly->stringValue = statement->text();
+            for (const ast::AstNode* child : statement->children())
+            {
+                if (child == nullptr)
+                {
+                    error = "integrated assembly contains a null contract record";
+                    return nullptr;
+                }
+
+                if (child->kind() == ast::AstNodeKind::InlineAssemblyLine)
+                {
+                    auto line = makeNode(
+                        ProjectOopHirNodeKind::InlineAssemblyLine, child, "builtin:void");
+                    line->stringValue = child->text();
+                    line->elementTypeKey = child->auxiliaryText();
+                    assembly->children.push_back(std::move(line));
+                    continue;
+                }
+
+                if (child->kind() == ast::AstNodeKind::InlineAssemblyClobber)
+                {
+                    auto clobber = makeNode(
+                        ProjectOopHirNodeKind::InlineAssemblyClobber, child, "builtin:void");
+                    clobber->stringValue = child->text();
+                    clobber->elementTypeKey = child->auxiliaryText();
+                    clobber->integerValue = child->integerValue();
+                    clobber->booleanValue = child->flag();
+                    assembly->children.push_back(std::move(clobber));
+                    continue;
+                }
+
+                const bool input = child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand;
+                const bool output = child->kind() == ast::AstNodeKind::InlineAssemblyOutputOperand;
+                if (!input && !output)
+                {
+                    error = "integrated assembly contains an unknown contract record";
+                    return nullptr;
+                }
+                if (child->first() == nullptr)
+                {
+                    error = "integrated assembly operand lost its NativeSharp expression";
+                    return nullptr;
+                }
+
+                const bool memoryInput = input && child->auxiliaryText() == "m";
+                auto value = lowerExpression(
+                    child->first(), memberOrdinal, output || memoryInput, error);
+                if (value == nullptr) return nullptr;
+
+                auto operand = makeNode(
+                    input ? ProjectOopHirNodeKind::InlineAssemblyInput
+                          : ProjectOopHirNodeKind::InlineAssemblyOutput,
+                    child,
+                    value->typeKey);
+                operand->stringValue = child->auxiliaryText();
+                operand->integerValue = child->integerValue();
+                operand->booleanValue = child->flag();
+                operand->children.push_back(std::move(value));
+                assembly->children.push_back(std::move(operand));
+            }
+            return assembly;
         }
 
         case ast::AstNodeKind::StaticAssertStatement:

@@ -645,9 +645,9 @@ bodies, consume balanced braces, retain an explicit `InlineAssemblyStatement` AS
 resume at the following statement without requiring a semicolon. Namespace-scope use and an
 unterminated block shall produce source diagnostics with deterministic recovery.
 
-Before the assembly operand and lowering contracts are present, both standalone and project
-semantic pipelines shall reject the AST node with `InlineAssemblyNotAvailable`. No pipeline may
-treat it as an expression, silently erase it, or fail later with an unsupported-node internal error.
+The standalone frontend may reject the AST node with `InlineAssemblyNotAvailable` while it lacks a
+physical backend. The project pipeline shall accept a fully validated node and lower it explicitly;
+no pipeline may treat assembly as an expression, silently erase it, or fail later as unknown syntax.
 
 ## NSC-ASM-002 — Assembly lexical records and source locations
 
@@ -666,9 +666,9 @@ immediately after the outer brace, and using `asm` without `{` shall remain an o
 The parser shall accept a non-empty `in(expression, ...)` clause after the assembly block and
 require a final semicolon whenever that clause exists. Every expression shall become an
 `InlineAssemblyInputOperand` with a stable zero-based ordinal and retain the ordinary expression
-AST as its first child. Standalone and project semantic analysis shall bind every input expression
-before issuing the temporary pre-lowering assembly diagnostic. An empty clause shall be rejected
-at its closing parenthesis and shall not create a phantom operand.
+AST as its first child. Both semantic pipelines shall bind every input expression before their
+respective lowering boundary. An empty clause shall be rejected at its closing parenthesis and
+shall not create a phantom operand.
 
 ## NSC-ASM-004 — Positional output operands
 
@@ -736,3 +736,16 @@ the valid physical-register catalog, and instruction-to-required-feature classif
 shall reject unknown fixed/clobber registers and instructions whose required feature is absent.
 Diagnostics shall identify the spelling, missing feature, and selected baseline before HIR. The
 contract shall be deterministic and independent from the compiler host CPU.
+
+## NSC-ASM-012 — Structured HIR and MIR assembly contract
+
+The project pipeline shall lower each validated statement to one `InlineAssembly` HIR operation
+and one corresponding MIR operation. The operation shall preserve exact body bytes. Ordered child
+records shall retain instruction spelling and source identity; operand direction, ordinal,
+normalized constraint, explicitness, resolved type, and lowered value or address; and clobber
+ordinal, category, canonical name, and nonvolatile-preservation marker.
+
+Memory inputs and every output shall carry storage addresses; register and immediate inputs shall
+carry values. HIR-to-MIR conversion shall not reparse assembly text or infer constraints from it.
+The schema revision introducing these node meanings is MIR 1.1. Executable LLVM emission remains a
+separate contract and absence of that later layer must never erase or mutate this representation.

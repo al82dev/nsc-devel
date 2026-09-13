@@ -634,6 +634,14 @@ if(NSC_BUILD_TESTS)
         nsc_integrated_assembly_grammar_tests
         tests/unit/IntegratedAssemblyGrammarTests.cpp
         nsc.integrated-assembly.grammar)
+    add_executable(
+        nsc_integrated_assembly_mir_tests
+        tests/unit/IntegratedAssemblyMirTests.cpp)
+    target_link_libraries(
+        nsc_integrated_assembly_mir_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_integrated_assembly_mir_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_integrated_assembly_mir_tests)
+    add_test(NAME nsc.integrated-assembly.mir COMMAND nsc_integrated_assembly_mir_tests)
     nsc_add_unit_test(nsc_namespace_syntax_tests tests/unit/NamespaceSyntaxTests.cpp nsc.namespace-syntax)
     nsc_add_unit_test(nsc_class_declaration_tests tests/unit/ClassDeclarationTests.cpp nsc.class-declarations)
     nsc_add_unit_test(nsc_class_member_syntax_tests tests/unit/ClassMemberSyntaxTests.cpp nsc.class-member-syntax)

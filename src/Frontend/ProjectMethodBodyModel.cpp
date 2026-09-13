@@ -2127,11 +2127,9 @@ void ProjectMethodBodyModel::analyzeStatement(
                     }
                 }
             }
-            diagnostics.report(
-                diagnostics::DiagnosticId::InlineAssemblyNotAvailable,
-                diagnostics::DiagnosticSeverity::Error,
-                statement->range(),
-                "integrated assembly is recognized but is not executable until its operand and lowering contracts are complete");
+            // Item 298: the project pipeline now has an explicit HIR/MIR representation for the
+            // complete validated contract. The standalone frontend keeps its pre-lowering
+            // diagnostic until it acquires the same physical backend path.
             break;
         case ast::AstNodeKind::ExpressionStatement:
             analyzeExpression(statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);

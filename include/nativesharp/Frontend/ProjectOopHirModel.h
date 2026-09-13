@@ -30,6 +30,15 @@ enum class ProjectOopHirNodeKind
     Block,
     LocalDeclaration,
     ExpressionStatement,
+    // NativeSharp 2.0 item 298. The complete, already-validated integrated-assembly contract.
+    // stringValue preserves the exact bytes between the braces; children remain in source order
+    // and are InlineAssemblyLine/Input/Output/Clobber nodes. Operand children contain the lowered
+    // NativeSharp value (inputs) or storage address (outputs and memory inputs).
+    InlineAssembly,
+    InlineAssemblyLine,
+    InlineAssemblyInput,
+    InlineAssemblyOutput,
+    InlineAssemblyClobber,
     If,
     While,
     // Same operand order as While -- children[0] is the condition, children[1] the body --

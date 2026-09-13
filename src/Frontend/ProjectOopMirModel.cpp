@@ -508,6 +508,11 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::AggregateInitialize: return "aggregate-initialize";
         case ProjectOopMirNodeKind::AggregateElementStore: return "aggregate-element-store";
         case ProjectOopMirNodeKind::ExpressionStatement: return "expression-statement";
+        case ProjectOopMirNodeKind::InlineAssembly: return "inline-assembly";
+        case ProjectOopMirNodeKind::InlineAssemblyLine: return "inline-assembly-line";
+        case ProjectOopMirNodeKind::InlineAssemblyInput: return "inline-assembly-input";
+        case ProjectOopMirNodeKind::InlineAssemblyOutput: return "inline-assembly-output";
+        case ProjectOopMirNodeKind::InlineAssemblyClobber: return "inline-assembly-clobber";
         case ProjectOopMirNodeKind::If: return "if";
         case ProjectOopMirNodeKind::While: return "while";
         case ProjectOopMirNodeKind::DoWhile: return "do-while";
@@ -1276,6 +1281,11 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::Block: result->kind = ProjectOopMirNodeKind::Block; break;
         case ProjectOopHirNodeKind::LocalDeclaration: result->kind = ProjectOopMirNodeKind::LocalDeclaration; break;
         case ProjectOopHirNodeKind::ExpressionStatement: result->kind = ProjectOopMirNodeKind::ExpressionStatement; break;
+        case ProjectOopHirNodeKind::InlineAssembly: result->kind = ProjectOopMirNodeKind::InlineAssembly; break;
+        case ProjectOopHirNodeKind::InlineAssemblyLine: result->kind = ProjectOopMirNodeKind::InlineAssemblyLine; break;
+        case ProjectOopHirNodeKind::InlineAssemblyInput: result->kind = ProjectOopMirNodeKind::InlineAssemblyInput; break;
+        case ProjectOopHirNodeKind::InlineAssemblyOutput: result->kind = ProjectOopMirNodeKind::InlineAssemblyOutput; break;
+        case ProjectOopHirNodeKind::InlineAssemblyClobber: result->kind = ProjectOopMirNodeKind::InlineAssemblyClobber; break;
         case ProjectOopHirNodeKind::If: result->kind = ProjectOopMirNodeKind::If; break;
         case ProjectOopHirNodeKind::While: result->kind = ProjectOopMirNodeKind::While; break;
         case ProjectOopHirNodeKind::DoWhile: result->kind = ProjectOopMirNodeKind::DoWhile; break;

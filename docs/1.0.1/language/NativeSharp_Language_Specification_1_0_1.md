@@ -631,15 +631,16 @@ El lexer entra en modo assembly únicamente después de la pareja contextual `as
 brace externo balanceado. Dentro conserva los bytes de cada línea, incluidos espacios, comentarios
 y puntuación que no son tokens NativeSharp, además del spelling físico de `CRLF`, `LF` o `CR`. El
 nodo padre conserva el cuerpo exacto; cada línea no vacía produce `InlineAssemblyLine`, cuyo rango
-empieza en el primer byte significativo y termina después del último. Mientras no estén presentes
-los contratos posteriores de la tanda 4, el análisis semántico debe rechazar el nodo con
-`InlineAssemblyNotAvailable`; nunca debe llegar a HIR como nodo desconocido ni aceptarse como no-op.
+empieza en el primer byte significativo y termina después del último. El pipeline de proyecto baja
+un contrato validado a HIR/MIR; el frontend aislado conserva `InlineAssemblyNotAvailable` mientras
+no tenga backend físico. Ninguna ruta puede aceptarlo como no-op o perderlo como nodo desconocido.
 
 `asm { ... }` is a block statement valid only inside a function or method body and requires no
 trailing semicolon. In delivery 287 the spelling is contextual. The AST retains the complete
 statement range and exact physical body bytes. Every non-blank line has an AST record beginning at
-its first significant source byte. Until the later batch-4 operand and lowering contracts are implemented, semantic analysis must reject it with
-`InlineAssemblyNotAvailable`, never as an unknown internal HIR node or a silent no-op.
+its first significant source byte. The project pipeline lowers a validated contract to HIR/MIR;
+the standalone frontend retains `InlineAssemblyNotAvailable` while it has no physical backend.
+Neither route may erase assembly as a no-op or lose it as an unknown internal node.
 
 ### NS-ASM-003 — Operandos posicionales de entrada
 
@@ -648,10 +649,9 @@ una expresión y, cuando existe, el semicolon final es obligatorio. Cada expresi
 las reglas ordinarias de scope, nombres y tipos y se evalúa una sola vez, de izquierda a derecha.
 Su ordinal estable empieza en cero y se referencia dentro del texto assembly como `$0`, `$1`, etc.
 
-La ausencia de una cláusula conserva la forma `asm { ... }` sin semicolon. En esta entrega los
-operandos no tienen todavía constraint escrito y no llegan a LLVM; el diagnóstico temporal
-`InlineAssemblyNotAvailable` continúa después de analizar todas las expresiones para que un nombre
-inválido no quede oculto por la frontera incremental.
+La ausencia de una cláusula conserva la forma `asm { ... }` sin semicolon. Todos los operandos se
+resuelven antes de HIR y conservan valor o dirección según su constraint; la emisión LLVM se define
+por separado y no cambia estas reglas de binding.
 
 An assembly block may end in `in(expression0, expression1, ...);`. The non-empty clause and its
 trailing semicolon are required together. Expressions use ordinary binding, are evaluated once in
@@ -767,6 +767,25 @@ The current target declares the `x86-64-v1` baseline: GPR, MMX, x87, and XMM0–
 with SSE2 guaranteed. Every fixed register and physical clobber must exist in that catalog.
 Instructions requiring AVX, AES, PCLMUL, SSE4.2, POPCNT, LZCNT, or BMI are rejected when the target
 does not enable the feature. Compilation never inherits capabilities from the host CPU.
+
+### NS-ASM-012 — Contrato estructurado HIR/MIR
+
+Después del binding y la validación, el pipeline de proyecto representa cada sentencia como una
+operación `InlineAssembly` propia en HIR y MIR. El bloque conserva sus bytes exactos y cada línea
+mantiene spelling y ubicación. Inputs y outputs conservan dirección, ordinal, constraint
+normalizado, explicitness y expresión tipada; clobbers conservan ordinal, categoría, nombre
+canónico y la marca de preservación no volátil.
+
+Una entrada `r` o `i` transporta un valor. Una entrada `m` y todo output transportan la dirección
+del almacenamiento validado. La conversión HIR→MIR no vuelve a parsear assembly ni infiere datos
+semánticos desde el texto. El schema MIR que define esta forma es 1.1; la emisión de código se
+especifica por separado.
+
+After binding and validation, the project pipeline represents every statement as a first-class
+`InlineAssembly` operation in HIR and MIR. Exact body bytes, line spelling and source identity,
+typed operand values or addresses, ordinals, normalized constraints, explicitness, clobber
+categories, and ABI preservation markers survive lowering. HIR-to-MIR conversion never reparses
+assembly text. This representation is defined by MIR schema 1.1; code emission is a separate rule.
 
 ### NS-GEN-001 — Monomorfización
 

@@ -22,13 +22,20 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 0;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 1;
 
 enum class ProjectOopMirNodeKind
 {
     Block,
     LocalDeclaration,
     ExpressionStatement,
+    // NativeSharp 2.0 item 298. Mirrors the structured HIR assembly contract without reparsing
+    // source text. See ProjectOopHirNodeKind::InlineAssembly and its four child kinds.
+    InlineAssembly,
+    InlineAssemblyLine,
+    InlineAssemblyInput,
+    InlineAssemblyOutput,
+    InlineAssemblyClobber,
     If,
     While,
     DoWhile,

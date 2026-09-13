@@ -80,7 +80,7 @@
 50. **295 — Conservación de stack y registros no volátiles / Stack and nonvolatile-register safety — COMPLETADO / COMPLETE**
 51. **296 — Saltos y control de flujo / Assembly control flow — COMPLETADO / COMPLETE**
 52. **297 — Validación x64 y características de CPU / x64 and CPU-feature validation — COMPLETADO / COMPLETE**
-53. **298 — Representación de asm en MIR / Assembly MIR representation**
+53. **298 — Representación de asm en MIR / Assembly MIR representation — COMPLETADO / COMPLETE**
 54. **299 — Lowering LLVM de asm / Assembly LLVM lowering**
 55. **300 — Barreras de optimización alrededor de asm / Assembly optimization barriers**
 56. **301 — PDB y stepping dentro de asm / Assembly PDB and stepping**
