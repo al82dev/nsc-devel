@@ -381,11 +381,8 @@ bool ProjectNameLookup::build(
         {
             expressionTypeBindingBySyntax_.emplace(syntax, expressionBase + ordinal);
         }
-        for (const diagnostics::Diagnostic& diagnostic : localDiagnostics[index].diagnostics())
-        {
-            diagnostics.append(diagnostic);
-        }
     }
+    diagnostics.mergeDeterministically(localDiagnostics);
 
     built_ = true;
     return !diagnostics.hasErrors();

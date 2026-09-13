@@ -29,6 +29,19 @@ into success.
 A source diagnostic shall contain path, one-based line, one-based column, severity and cause. When
 source text is available, the renderer shall show the affected line and a stable marker.
 
+## NSC-DIAG-003 — Deterministic parallel diagnostic reduction
+
+Compiler phases that collect diagnostics in worker-local engines shall reduce those shards by
+canonical diagnostic content, never by worker completion order. Valid source locations sort before
+locationless diagnostics, followed by file identity, source offset, range end, severity, diagnostic
+identifier and message. Diagnostics indistinguishable under that complete key may appear in either
+internal order because their rendered content is identical.
+
+The destination engine shall apply the compilation error budget once to the canonical sequence.
+Suppression already performed inside a bounded worker-local engine must be added to suppression
+performed by the destination; it must not disappear during reduction. Reversing shard arrival order
+must preserve the retained diagnostics, counts, error-limit state and suppressed-diagnostic count.
+
 ## NSC-IR-001 — LLVM verification
 
 Every LLVM module shall pass the LLVM verifier before it can be optimized or emitted as a release

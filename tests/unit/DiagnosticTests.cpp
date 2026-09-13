@@ -7,6 +7,7 @@
 
 #include <sstream>
 #include <string>
+#include <vector>
 
 int main()
 {
@@ -48,6 +49,46 @@ int main()
             merged.diagnostics()[0].message() == "unexpected character '@'" &&
             merged.diagnostics()[2].message() == "example note",
         "appended task diagnostics preserve stable local order");
+
+    DiagnosticEngine late(2);
+    late.report(DiagnosticId::UnexpectedToken, DiagnosticSeverity::Error,
+        SourceLocation(id, 24), "late error");
+    late.report(DiagnosticId::ExpectedToken, DiagnosticSeverity::Error,
+        SourceLocation(id, 26), "last retained error");
+    late.report(DiagnosticId::ExpectedExpression, DiagnosticSeverity::Error,
+        SourceLocation(id, 28), "locally suppressed error");
+    DiagnosticEngine early(2);
+    early.report(DiagnosticId::UnknownIdentifier, DiagnosticSeverity::Error,
+        SourceLocation(id, 4), "early error");
+    early.report(DiagnosticId::InvalidType, DiagnosticSeverity::Error,
+        SourceLocation(id, 14), "middle error");
+
+    DiagnosticEngine forward(3);
+    const std::vector<DiagnosticEngine> forwardShards = {late, early};
+    forward.mergeDeterministically(forwardShards);
+    DiagnosticEngine reverse(3);
+    const std::vector<DiagnosticEngine> reverseShards = {early, late};
+    reverse.mergeDeterministically(reverseShards);
+    tests.expect(forward.diagnostics().size() == 3 && reverse.diagnostics().size() == 3,
+        "parallel diagnostic reduction applies one global error limit");
+    tests.expect(forward.diagnostics()[0].message() == "early error" &&
+            forward.diagnostics()[1].message() == "middle error" &&
+            forward.diagnostics()[2].message() == "late error",
+        "parallel diagnostics publish in canonical source order");
+    bool sameParallelOrder = forward.diagnostics().size() == reverse.diagnostics().size();
+    for (std::size_t index = 0; sameParallelOrder && index < forward.diagnostics().size(); ++index)
+    {
+        sameParallelOrder = forward.diagnostics()[index].id() == reverse.diagnostics()[index].id() &&
+            forward.diagnostics()[index].location() == reverse.diagnostics()[index].location() &&
+            forward.diagnostics()[index].message() == reverse.diagnostics()[index].message();
+    }
+    tests.expect(sameParallelOrder,
+        "reversing worker completion order preserves exact diagnostics");
+    tests.expect(forward.errorCount() == 3 && forward.errorLimitReached(),
+        "canonical reduction retains exact error-budget state");
+    tests.expect(forward.suppressedDiagnosticCount() == 2 &&
+            reverse.suppressedDiagnosticCount() == 2,
+        "global and worker-local suppression counts are both retained");
 
     std::ostringstream output;
     DiagnosticRenderer renderer(sources);

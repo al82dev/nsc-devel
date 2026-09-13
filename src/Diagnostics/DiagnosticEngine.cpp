@@ -1,6 +1,10 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::diagnostics
 {
@@ -88,6 +92,64 @@ void DiagnosticEngine::append(const Diagnostic& diagnostic)
         diagnostic.severity(),
         diagnostic.location(),
         diagnostic.message());
+}
+
+void DiagnosticEngine::mergeDeterministically(std::span<const DiagnosticEngine> shards)
+{
+    struct Entry final
+    {
+        const Diagnostic* diagnostic = nullptr;
+    };
+
+    std::vector<Entry> entries;
+    std::size_t suppressedByShards = 0;
+    for (const DiagnosticEngine& shard : shards)
+    {
+        entries.reserve(entries.size() + shard.diagnostics().size());
+        for (const Diagnostic& diagnostic : shard.diagnostics())
+            entries.push_back({&diagnostic});
+        suppressedByShards += shard.suppressedDiagnosticCount();
+    }
+
+    const auto severityOrder = [](DiagnosticSeverity severity) noexcept {
+        switch (severity)
+        {
+            case DiagnosticSeverity::Error: return 0;
+            case DiagnosticSeverity::Warning: return 1;
+            case DiagnosticSeverity::Note: return 2;
+        }
+        return 3;
+    };
+    std::sort(entries.begin(), entries.end(), [&](const Entry& left, const Entry& right) {
+        const Diagnostic& a = *left.diagnostic;
+        const Diagnostic& b = *right.diagnostic;
+        const std::uint32_t aFile = a.location().fileId().value();
+        const std::uint32_t bFile = b.location().fileId().value();
+        const std::uint32_t aEnd = a.range().has_value()
+            ? a.range()->end().offset()
+            : a.location().offset();
+        const std::uint32_t bEnd = b.range().has_value()
+            ? b.range()->end().offset()
+            : b.location().offset();
+        return std::tuple(
+                   a.location().isValid() ? 0 : 1,
+                   aFile,
+                   a.location().offset(),
+                   aEnd,
+                   severityOrder(a.severity()),
+                   static_cast<int>(a.id()),
+                   std::string_view(a.message())) <
+            std::tuple(
+                   b.location().isValid() ? 0 : 1,
+                   bFile,
+                   b.location().offset(),
+                   bEnd,
+                   severityOrder(b.severity()),
+                   static_cast<int>(b.id()),
+                   std::string_view(b.message()));
+    });
+    for (const Entry& entry : entries) append(*entry.diagnostic);
+    suppressedDiagnosticCount_ += suppressedByShards;
 }
 
 std::size_t DiagnosticEngine::errorLimit() const noexcept

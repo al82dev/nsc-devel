@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,10 @@ public:
         std::string message);
 
     void append(const Diagnostic& diagnostic);
+
+    // Reduces worker-local engines by canonical diagnostic content. The result is
+    // independent of shard arrival order and applies this engine's error budget once.
+    void mergeDeterministically(std::span<const DiagnosticEngine> shards);
 
     const std::vector<Diagnostic>& diagnostics() const noexcept;
     std::size_t errorCount() const noexcept;

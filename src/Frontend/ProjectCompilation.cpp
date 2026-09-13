@@ -86,16 +86,6 @@ bool waitForSyntaxWorkers(
     return false;
 }
 
-void appendDiagnostics(
-    diagnostics::DiagnosticEngine& destination,
-    const diagnostics::DiagnosticEngine& source)
-{
-    for (const diagnostics::Diagnostic& diagnostic : source.diagnostics())
-    {
-        destination.append(diagnostic);
-    }
-}
-
 std::string joinName(std::span<const std::string> prefix, std::string_view name)
 {
     std::string result;
@@ -941,8 +931,8 @@ bool ProjectCompilation::compileSyntaxCore(
         for (std::size_t index = 0; index < units_.size(); ++index)
         {
             lexicalOk = units_[index]->isLexicallyValid() && lexicalOk;
-            appendDiagnostics(diagnostics_, localDiagnostics[index]);
         }
+        diagnostics_.mergeDeterministically(localDiagnostics);
     }
 
     {
@@ -963,8 +953,8 @@ bool ProjectCompilation::compileSyntaxCore(
         for (std::size_t index = 0; index < units_.size(); ++index)
         {
             syntaxOk = units_[index]->isSyntaxValid() && syntaxOk;
-            appendDiagnostics(diagnostics_, localDiagnostics[index]);
         }
+        diagnostics_.mergeDeterministically(localDiagnostics);
         return syntaxOk && !diagnostics_.hasErrors();
     }
 }
