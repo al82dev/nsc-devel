@@ -41,6 +41,7 @@ enum class TokenKind
     KwReadonly,
     KwInline,
     KwForceInline,
+    KwNoInline,
     KwPublic,
     KwInternal,
     KwProtected,

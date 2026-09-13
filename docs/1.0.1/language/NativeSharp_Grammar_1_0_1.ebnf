@@ -40,7 +40,7 @@ interface-member = [ ownership ], type,
                    ( identifier, "(", [ parameter-list ], ")", ";" |
                      identifier, accessor-body | "this", "[", parameter-list, "]", accessor-body ) ;
 member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" |
-                  "inline" | "forceinline" ;
+                  "inline" | "forceinline" | "noinline" ;
 
 field-declaration = [ ownership ], type, identifier, [ "at", integer-literal ],
                     [ "=", expression | aggregate-initializer ], ";" ;

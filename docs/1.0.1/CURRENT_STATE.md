@@ -98,6 +98,11 @@ habilitar por ello el inlining automático. Sólo se admite en métodos concreto
 combinación con `inline`, un contrato abstracto o un ciclo formado exclusivamente por métodos
 `forceinline` se rechaza en la fuente en vez de degradar silenciosamente la promesa.
 
+`noinline` fija la política opuesta: el método concreto conserva el límite de llamada aun bajo O2
+u O3. LLVM recibe `noinline`, y el modificador no cambia visibilidad, identidad física ni ABI.
+Sólo se admite donde existe un cuerpo ordinario; duplicados, contratos abstractos y cualquier
+combinación con `inline` o `forceinline` son errores de compilación.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

@@ -571,3 +571,14 @@ policies, and recursive cycles whose every participating callable is required-in
 cannot satisfy every static call-site obligation and must not be silently emitted with residual
 calls. Public, exported, or address-taken functions retain any independently required out-of-line
 identity.
+
+## NSC-INLINE-005 — Forbidden source modifier
+
+The `noinline` keyword shall bind to `InliningPolicy::Forbidden` on a concrete ordinary method and
+remain explicit through member, HIR, and MIR models. LLVM lowering shall attach `noinline`, and every
+optimization level shall preserve an out-of-line call boundary for that method.
+
+Duplicate uses, abstract declarations, placements without an ordinary body, and combinations with
+`inline` or `forceinline` are diagnostics. The modifier controls optimization only; linkage,
+visibility, physical identity, calling convention, exports, ownership, and exception behavior remain
+unchanged.

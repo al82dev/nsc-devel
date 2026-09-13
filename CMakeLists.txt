@@ -772,6 +772,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_forceinline_modifier_tests)
     add_test(NAME nsc.language.forceinline-modifier COMMAND nsc_forceinline_modifier_tests)
 
+    add_executable(nsc_noinline_modifier_tests tests/unit/NoInlineModifierTests.cpp)
+    target_link_libraries(nsc_noinline_modifier_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_noinline_modifier_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_noinline_modifier_tests)
+    add_test(NAME nsc.language.noinline-modifier COMMAND nsc_noinline_modifier_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)

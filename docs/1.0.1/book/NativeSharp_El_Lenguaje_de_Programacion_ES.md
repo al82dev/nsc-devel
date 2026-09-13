@@ -2003,6 +2003,29 @@ la ABI todavía necesite. Un método abstracto no tiene cuerpo que expandir. Dos
 rechaza ambos casos en lugar de ignorar el modificador. Puede existir recursión a través de un
 método automático: ese método ordinario actúa como el límite de llamada que termina la expansión.
 
+`noinline` expresa la decisión inversa y conserva deliberadamente un límite observable:
+
+```csharp
+public class TraceBoundary
+{
+    public static noinline int MeasureStep(int value)
+    {
+        return value * 2 + 1;
+    }
+
+    public static int Run(int input)
+    {
+        // Esta llamada permanece incluso si el costo permitiría expandirla en O2 u O3.
+        return MeasureStep(input);
+    }
+}
+```
+
+Es útil para mantener una frontera de profiling, evitar crecimiento de código o conservar una forma
+de ejecución estable durante una investigación. No cambia el ABI ni convierte el método en público.
+Como las demás políticas explícitas, sólo se escribe sobre un método concreto con cuerpo y no puede
+combinarse con `inline` ni `forceinline`.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |

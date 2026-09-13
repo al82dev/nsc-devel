@@ -19,6 +19,9 @@ empaqueta con NativeSharp 1.0.1.
 - `forceinline` exige expandir llamadas estáticamente resueltas, llega a LLVM como `alwaysinline` y
   activa la expansión obligatoria incluso en O0. Declaraciones sin cuerpo, políticas contradictorias
   y ciclos recursivos compuestos sólo por métodos obligatorios producen un diagnóstico de fuente.
+- `noinline` preserva una llamada fuera de línea aun con optimización agresiva. La política atraviesa
+  los modelos semánticos y llega a LLVM como `noinline`; formas sin cuerpo, duplicadas o combinadas
+  con otra política explícita se rechazan.
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union

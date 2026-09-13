@@ -2442,6 +2442,11 @@ private:
             {
                 applyFunctionAttribute(llvmFunction, "alwaysinline");
             }
+            else if (function.inliningPolicy == frontend::InliningPolicy::Forbidden &&
+                !function.isImportedC && !function.isImportedNative)
+            {
+                applyFunctionAttribute(llvmFunction, "noinline");
+            }
             if (sretReturn)
             {
                 applySretAttributes(

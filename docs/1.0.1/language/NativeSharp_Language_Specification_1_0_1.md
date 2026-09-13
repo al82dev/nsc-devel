@@ -739,6 +739,12 @@ métodos `forceinline` son errores, porque ninguna emisión podría cumplir esas
 conserva una definición fuera de línea cuando su visibilidad, exportación o toma de dirección la
 requieren.
 
+El modificador `noinline` puede aplicarse a un método concreto que declara cuerpo. Establece política
+prohibida: los call sites conservan una llamada fuera de línea en todos los niveles de optimización.
+No cambia la accesibilidad, identidad física, convención de llamada ni exportación del método. No es
+válido en una declaración abstracta ni en otra ubicación sin cuerpo ordinario, y no puede combinarse
+con `inline` o `forceinline`.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su
