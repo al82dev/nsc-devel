@@ -39,6 +39,7 @@ enum class TokenKind
     KwConst,
     KwStatic,
     KwReadonly,
+    KwInline,
     KwPublic,
     KwInternal,
     KwProtected,

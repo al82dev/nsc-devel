@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/InliningPolicy.h"
+
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
@@ -436,6 +438,7 @@ struct ProjectOopHirFunction final
     bool constructor = false;
     bool destructor = false;
     bool isStatic = false;
+    InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body
     // anywhere in the project -- mangledName is the C symbol verbatim, the backend emits only a

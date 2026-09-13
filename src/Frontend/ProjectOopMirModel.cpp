@@ -957,6 +957,7 @@ bool ProjectOopMirModel::build(
         function.constructor = source.constructor;
         function.destructor = source.destructor;
         function.isStatic = source.isStatic;
+        function.inliningPolicy = source.inliningPolicy;
         function.isExportedC = source.isExportedC;
         function.isImportedC = source.isImportedC;
         function.isImportedNative = source.isImportedNative;

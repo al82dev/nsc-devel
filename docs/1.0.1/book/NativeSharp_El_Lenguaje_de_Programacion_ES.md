@@ -1959,6 +1959,25 @@ política balanceada y O3 una más agresiva. No son límites arbitrarios propios
 nivel selecciona el pipeline canónico de LLVM y éste calcula el costo con información del target.
 Así el mismo mapa que elige optimización elige también la intención de inlining.
 
+`inline` es la forma preferida, no una promesa. Por ejemplo:
+
+```csharp
+public class PixelMath
+{
+    public static inline int ClampByte(int value)
+    {
+        if (value < 0) return 0;
+        if (value > 255) return 255;
+        return value;
+    }
+}
+```
+
+El método conserva cuerpo y símbolo normales. En un call site visible el modelo de costo recibe una
+preferencia mayor; si la expansión fuera ilegal o perjudicial, la llamada puede permanecer. Marcar
+un field, property, tipo, import o contrato abstracto es un error porque allí no existe un cuerpo
+ordinario que esta preferencia pueda expandir.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |

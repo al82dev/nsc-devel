@@ -59,7 +59,7 @@
 
 33. **278 — Contrato semántico de `inline` / Inline semantic contract — COMPLETADO / COMPLETE**
 34. **279 — Inlining automático basado en costo / Cost-based automatic inlining — COMPLETADO / COMPLETE**
-35. **280 — Modificador `inline` / Inline modifier**
+35. **280 — Modificador `inline` / Inline modifier — COMPLETADO / COMPLETE**
 36. **281 — Modificador `forceinline` / Force-inline modifier**
 37. **282 — Modificador `noinline` / No-inline modifier**
 38. **283 — Inlining de métodos genéricos / Generic method inlining**

@@ -726,6 +726,11 @@ costo target-aware del pipeline canónico, con agresividad conservadora, balance
 respectivamente. El nivel elegido y el target son entradas reproducibles de esa decisión; el orden
 de compilación en paralelo no lo es.
 
+El modificador `inline` puede aplicarse a un método concreto que declara cuerpo. Establece política
+preferida: eleva su prioridad ante el modelo de costo, pero no exige que el call site se expanda.
+No es válido en fields, properties, eventos, tipos, constructores, destructores, imports ni métodos
+abstractos. Su presencia no elimina una definición fuera de línea requerida.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su

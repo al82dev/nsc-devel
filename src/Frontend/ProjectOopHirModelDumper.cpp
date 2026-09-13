@@ -79,6 +79,7 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
     {
         output << "function #" << function.memberOrdinal << ' ' << function.mangledName
                << " abi=" << (function.isStatic ? "static" : "this:first")
+               << " inlining=" << inliningPolicyName(function.inliningPolicy)
                << (function.isExportedC ? " export-c=" + function.cAbiName : "")
                << (function.isImportedNative ? " import-native" : "")
                << " return=" << function.returnTypeKey

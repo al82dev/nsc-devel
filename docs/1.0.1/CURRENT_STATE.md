@@ -87,6 +87,11 @@ En política automática, O0 conserva límites de llamada. O1, O2 y O3 usan los 
 de LLVM y su modelo de costo dependiente del target con agresividad creciente. El compilador no
 mantiene umbrales paralelos ni heurísticas ocultas que puedan discrepar del nivel solicitado.
 
+Un método concreto puede declarar `inline`. El modificador expresa preferencia y llega a LLVM como
+`inlinehint`; el optimizador aún puede conservar la llamada cuando expandir no sea legal o rentable.
+No se admite en fields, properties, tipos, imports ni contratos abstractos. No elimina por sí mismo
+la definición fuera de línea ni cambia dispatch, ABI o ownership.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

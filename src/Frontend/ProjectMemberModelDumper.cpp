@@ -45,6 +45,7 @@ void ProjectMemberModelDumper::dump(
                 output << " signature=" << member.signatureKey
                        << " implicit-this=" << (member.hasImplicitThis ? type.identity.key() : "none")
                        << " virtual=" << (member.isVirtual ? "true" : "false")
+                       << " inlining=" << inliningPolicyName(member.inliningPolicy)
                        << " override=" << (member.isOverride ? "true" : "false")
                        << " abstract=" << (member.isAbstract ? "true" : "false")
                        << " sealed=" << (member.isSealed ? "true" : "false");

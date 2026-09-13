@@ -1382,6 +1382,7 @@ bool ProjectOopHirModel::buildImpl(
         function.constructor = member.kind == ClassMemberKind::Constructor;
         function.destructor = member.kind == ClassMemberKind::Destructor;
         function.isStatic = member.isStatic;
+        function.inliningPolicy = member.inliningPolicy;
         function.isExportedC = member.isExportedC;
         function.cAbiName = member.cAbiName;
         constexpr std::string_view kSpecializationPrefix = "stage44-specialization:";

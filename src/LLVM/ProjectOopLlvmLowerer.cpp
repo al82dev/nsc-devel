@@ -2432,6 +2432,11 @@ private:
                 }
             }
             applyUwtableAttribute(llvmFunction);
+            if (function.inliningPolicy == frontend::InliningPolicy::Preferred &&
+                !function.isImportedC && !function.isImportedNative)
+            {
+                applyFunctionAttribute(llvmFunction, "inlinehint");
+            }
             if (sretReturn)
             {
                 applySretAttributes(

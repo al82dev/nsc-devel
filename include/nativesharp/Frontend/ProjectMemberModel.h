@@ -6,6 +6,7 @@
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/InliningPolicy.h"
 #include "nativesharp/Sema/OwnershipKind.h"
 
 #include <cstddef>
@@ -118,6 +119,7 @@ struct ClassMemberSymbol final
     bool isNewSlot = false;
     bool isReadonly = false;
     bool isConst = false;
+    InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isVirtual = false;
     bool isOverride = false;
     bool isAbstract = false;

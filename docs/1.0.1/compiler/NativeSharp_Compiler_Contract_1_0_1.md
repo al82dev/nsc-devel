@@ -551,3 +551,10 @@ level mapping. It shall not maintain a second undocumented threshold table.
 For identical input, target, LLVM version, and optimization level, scheduling or code-partition
 completion order shall not affect the decision. Focused evidence shall prove that O0 retains an
 ordinary cheap call while every enabled level can expand that call and preserve its result.
+
+## NSC-INLINE-003 — Preferred source modifier
+
+The `inline` keyword shall bind to `InliningPolicy::Preferred` on a concrete ordinary method and
+remain explicit in member, HIR, and MIR dumps. LLVM lowering shall attach `inlinehint` to the
+definition. The modifier is invalid where no ordinary method body exists, and duplicate uses are a
+diagnostic. The hint shall not remove a required out-of-line symbol or override LLVM legality.

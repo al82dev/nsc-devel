@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/InliningPolicy.h"
+
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectDestructionModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
@@ -491,6 +493,7 @@ struct ProjectOopMirFunction final
     bool constructor = false;
     bool destructor = false;
     bool isStatic = false;
+    InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     bool isImportedC = false;
     bool isImportedNative = false;
