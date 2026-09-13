@@ -258,7 +258,7 @@ namespace proj {
 )NS";
     reject(
         tests, root, "FixedArrayParameter", source,
-        "a fixed array cannot be passed by value");
+        "an inline array cannot be passed by value");
 }
 
 // --- C2.2: union and explicit layout ------------------------------------------------------------
