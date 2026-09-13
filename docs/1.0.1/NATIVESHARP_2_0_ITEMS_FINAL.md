@@ -51,7 +51,7 @@
 27. **272 — Alineación explícita por campo / Explicit per-field alignment — COMPLETADO / COMPLETE**
 28. **273 — Almacenamiento trailing/flexible / Trailing and flexible storage — COMPLETADO / COMPLETE**
 29. **274 — `readonly struct` / Readonly structures — COMPLETADO / COMPLETE**
-30. **275 — Receptores readonly / Readonly receivers**
+30. **275 — Receptores readonly / Readonly receivers — COMPLETADO / COMPLETE**
 31. **276 — Alias genéricos / Generic aliases**
 32. **277 — Inferencia genérica local / Local generic inference**
 

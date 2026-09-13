@@ -4601,6 +4601,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.receiverSyntax = expression;
             result.receiverTypeKey = result.typeKey;
             result.receiverTypeOrdinal = referenceTypeOrdinalForTypeKey(result.typeKey);
+            result.readonlyReceiver = contextHasReadonlyReceiver(methodMemberOrdinal);
             nameBindings_.push_back(MethodNameBinding{
                 MethodNameBindingKind::ThisReference,
                 expression,
@@ -5448,11 +5449,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         receiverType,
                         false,
                         interfaceCall,
-                        diagnostics);
+                        diagnostics,
+                        true,
+                        base.readonlyReceiver);
                     const std::vector<std::size_t> setters = stage38AccessorCandidates(
                         *receiverType, "set_Item", false, false, false,
                         accessingTypeOrdinal, *receiverType);
-                    result.assignable = result.valid && !setters.empty();
+                    result.assignable = result.valid && !base.readonlyReceiver && !setters.empty();
+                    result.readonlyReceiver = base.readonlyReceiver;
                     result.receiverSyntax = expression->first();
                     result.receiverTypeKey = base.typeKey;
                     result.receiverTypeOrdinal = receiverType;
@@ -5586,8 +5590,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         ? *flexibleElementType
                         : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
                 result.valid = true;
-                result.assignable =
+                const bool readonlyInlineElement = base.readonlyReceiver &&
+                    (validFixedIndices || validFlexibleIndex);
+                result.assignable = !readonlyInlineElement &&
                     !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();
+                result.readonlyReceiver = readonlyInlineElement;
                 MethodCoreBinding binding;
                 binding.kind = MethodCoreOperationKind::RawElement;
                 binding.syntax = expression;
@@ -5595,7 +5602,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 binding.scopeOrdinal = scopeOrdinal;
                 binding.resultTypeKey = result.typeKey;
                 binding.elementTypeKey = result.typeKey;
-                binding.assignable = true;
+                binding.assignable = result.assignable;
                 coreBindings_.push_back(std::move(binding));
             }
             else if (base.valid)
@@ -6302,6 +6309,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 // const and borrowed locals keep their existing restrictions.
                 result.assignable = !local.isConst &&
                     local.ownership != sema::OwnershipKind::Borrowed;
+                result.readonlyReceiver = local.isConst;
                 nameBindings_.push_back(MethodNameBinding{
                     MethodNameBindingKind::Local,
                     expression,
@@ -6366,6 +6374,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             // E11 captured parameters are shared cells too.  `in` remains read-only; value/ref/
             // out parameters preserve the same assignability inside a closure as in the method.
             result.assignable = parameter.passKind != ParameterPassKind::In;
+            result.readonlyReceiver = parameter.passKind == ParameterPassKind::In;
             nameBindings_.push_back(MethodNameBinding{
                 MethodNameBindingKind::Parameter,
                 expression,
@@ -6445,6 +6454,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         result.valid = allowEvent;
         result.assignable = false;
         result.eventMemberOrdinal = eventOrdinal;
+        result.readonlyReceiver = !event.isStatic &&
+            contextHasReadonlyReceiver(methodMemberOrdinal);
         if (!event.isStatic)
         {
             result.receiverTypeKey = thisTypeKey;
@@ -6479,10 +6490,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
     if (!fields.empty())
     {
         const ClassMemberSymbol& field = memberModel_->members()[fields.front()];
+        const bool readonlyThis = !field.isStatic && contextHasReadonlyReceiver(methodMemberOrdinal);
         result.typeKey = field.declaredTypeKey;
         result.valid = true;
-        result.assignable = !field.isConst &&
+        result.assignable = !readonlyThis && !field.isConst &&
             (!field.isReadonly || readonlyFieldAssignable(field, methodMemberOrdinal));
+        result.readonlyReceiver = readonlyThis || field.isReadonly;
         result.assignmentMemberOrdinal = fields.front();
         if (!field.isStatic)
         {
@@ -6589,8 +6602,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 staticProperty ? std::nullopt : std::optional<std::size_t>(accessingTypeOrdinal),
                 false,
                 false,
-                diagnostics);
-            result.assignable = !propertySetters.empty();
+                diagnostics,
+                true,
+                !staticProperty && contextHasReadonlyReceiver(methodMemberOrdinal));
+            result.assignable = !contextHasReadonlyReceiver(methodMemberOrdinal) &&
+                !propertySetters.empty();
             return result;
         }
     }
@@ -6609,6 +6625,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         {
             result.receiverTypeKey = thisTypeKey;
             result.receiverTypeOrdinal = accessingTypeOrdinal;
+            result.readonlyReceiver = contextHasReadonlyReceiver(methodMemberOrdinal);
         }
         nameBindings_.push_back(MethodNameBinding{
             allStatic ? MethodNameBindingKind::StaticMethodGroup : MethodNameBindingKind::ImplicitMethodGroup,
@@ -7058,6 +7075,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.valid = allowEvent;
         result.assignable = false;
         result.eventMemberOrdinal = eventOrdinal;
+        result.readonlyReceiver = receiver.readonlyReceiver;
         result.receiverSyntax = typeReceiver ? nullptr : expression->first();
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
@@ -7097,7 +7115,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         const bool readonlyOnThis = field.isReadonly && !typeReceiver &&
             expression->first()->kind() == ast::AstNodeKind::ThisExpression &&
             readonlyFieldAssignable(field, methodMemberOrdinal);
-        result.assignable = !field.isConst && (!field.isReadonly || readonlyOnThis);
+        result.assignable = !receiver.readonlyReceiver && !field.isConst &&
+            (!field.isReadonly || readonlyOnThis);
+        result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
         result.receiverSyntax = typeReceiver ? nullptr : expression->first();
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
@@ -7188,8 +7208,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
                 typeReceiver ? std::nullopt : receiverType,
                 receiver.baseReceiver,
                 interfaceCall,
-                diagnostics);
-            result.assignable = !propertySetters.empty();
+                diagnostics,
+                true,
+                receiver.readonlyReceiver);
+            result.assignable = !receiver.readonlyReceiver && !propertySetters.empty();
             result.receiverSyntax = typeReceiver ? nullptr : expression->first();
             result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
             result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
@@ -7207,6 +7229,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
         result.receiverTypeOrdinal = typeReceiver ? std::nullopt : receiverType;
         result.baseReceiver = receiver.baseReceiver;
+        result.readonlyReceiver = receiver.readonlyReceiver;
         nameBindings_.push_back(MethodNameBinding{
             methodBindingKind,
             expression,
@@ -8211,6 +8234,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     }
 
     const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
+    if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        if (callee.readonlyReceiver && selectedMember.declaringTypeIsStruct &&
+            !selectedMember.isStatic && !selectedMember.isReadonly)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "readonly receiver cannot invoke mutating struct member '" +
+                    selectedMember.name + "'");
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
+    }
     checkArgumentPassKinds(
         expression, call.methodName, selected.memberOrdinal, arguments, diagnostics,
         std::span<const std::size_t>(selected.argumentParameterOrdinals).subspan(
@@ -9495,7 +9535,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     bool baseReceiver,
     bool interfaceCall,
     diagnostics::DiagnosticEngine& diagnostics,
-    bool diagnoseFailure)
+    bool diagnoseFailure,
+    bool readonlyReceiver)
 {
     ExpressionResult result;
     MethodCallBinding call;
@@ -9643,6 +9684,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
     }
 
     const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
+    if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        if (readonlyReceiver && selectedMember.declaringTypeIsStruct &&
+            !selectedMember.isStatic && !selectedMember.isReadonly)
+        {
+            if (diagnoseFailure)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCall,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax != nullptr ? syntax->range() : SourceRange{},
+                    "readonly receiver cannot invoke mutating struct member '" +
+                        selectedMember.name + "'");
+            }
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
+    }
     if (diagnoseFailure)
     {
         checkArgumentPassKinds(syntax, call.methodName, selected.memberOrdinal, arguments, diagnostics);
@@ -10813,6 +10874,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
 
     if (left.eventMemberOrdinal.has_value())
     {
+        if (left.readonlyReceiver)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "readonly receiver cannot add or remove an event handler");
+            return {};
+        }
         if (expression->tokenKind() != TokenKind::PlusEqual &&
             expression->tokenKind() != TokenKind::MinusEqual)
         {
@@ -11714,6 +11784,13 @@ bool ProjectMethodBodyModel::contextHasImplicitThis(std::size_t memberOrdinal) c
 {
     const ClassMemberSymbol* member = methodSymbol(memberOrdinal);
     return member != nullptr && member->hasImplicitThis;
+}
+
+bool ProjectMethodBodyModel::contextHasReadonlyReceiver(std::size_t memberOrdinal) const noexcept
+{
+    const ClassMemberSymbol* member = methodSymbol(memberOrdinal);
+    return member != nullptr && member->declaringTypeIsStruct && member->hasImplicitThis &&
+        member->isReadonly;
 }
 
 bool ProjectMethodBodyModel::readonlyFieldAssignable(

@@ -1020,8 +1020,16 @@ bool ProjectMemberModel::collectTypeMembers(
                 symbol.kind == ClassMemberKind::Method) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);
             symbol.isNewSlot = memberNode->hasModifier(lexer::TokenKind::KwNew);
-            symbol.isReadonly = symbol.kind == ClassMemberKind::Field &&
-                memberNode->hasModifier(lexer::TokenKind::KwReadonly);
+            const bool readonlyDeclaringStruct = type.kind == NamedTypeDeclarationKind::Struct &&
+                type.syntax != nullptr &&
+                type.syntax->hasModifier(lexer::TokenKind::KwReadonly);
+            const bool readonlyPropertyBacking = readonlyDeclaringStruct &&
+                memberNode->auxiliaryText().starts_with("property-backing:");
+            symbol.isReadonly =
+                (symbol.kind == ClassMemberKind::Field &&
+                 (memberNode->hasModifier(lexer::TokenKind::KwReadonly) || readonlyPropertyBacking)) ||
+                (symbol.kind == ClassMemberKind::Method && !symbol.isStatic &&
+                 (memberNode->hasModifier(lexer::TokenKind::KwReadonly) || readonlyDeclaringStruct));
             if (type.syntax != nullptr &&
                 type.syntax->hasModifier(lexer::TokenKind::KwReadonly) &&
                 symbol.kind == ClassMemberKind::Field && !symbol.isStatic && !symbol.isReadonly)

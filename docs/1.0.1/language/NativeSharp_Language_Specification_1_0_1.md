@@ -143,6 +143,27 @@ must be readonly, while static fields remain governed independently. The declari
 initialize the current receiver; later assignments are rejected. The modifier is valid only for
 non-union structs, changes no ABI property, and is preserved in NSMETA.
 
+### NS-CALL-002 — Receptores readonly
+
+Un receptor de struct es readonly cuando procede de un parámetro `in`, de un campo readonly o de
+`this` dentro de un miembro readonly. Todos los miembros de instancia de un `readonly struct`, salvo
+su constructor durante inicialización, tienen receptor readonly implícito.
+
+Un receptor readonly puede leer campos e invocar métodos, getters de properties o getters de
+indexers que también tengan contrato readonly. No puede ser destino de una asignación, ni invocar
+un método o accessor mutador. La restricción se propaga al acceder a un campo struct: una ubicación
+alcanzada a través de almacenamiento readonly no recupera mutabilidad por encadenar otro miembro.
+
+En un struct mutable se puede escribir `readonly` sobre un método de instancia, una property sin
+setter o un indexer sin setter. El modificador es inválido en miembros estáticos, miembros de clase,
+properties con setter e indexers con setter. La llamada conserva la dirección original del valor;
+el compilador no crea una copia defensiva para hacer que una llamada mutadora parezca segura.
+
+A struct receiver is readonly when it comes from an `in` parameter, a readonly field, or `this`
+inside a readonly member. Reads and calls to readonly members remain valid; stores and calls to
+mutating members are rejected. Readonly structs apply the receiver contract implicitly, and the
+compiler does not manufacture defensive copies.
+
 ### NS-MEMBER-001 — Miembros y modificadores
 
 Campos almacenan estado; métodos ejecutan cuerpos; propiedades e indexadores son pares de accessors;

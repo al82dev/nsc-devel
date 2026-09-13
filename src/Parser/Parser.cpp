@@ -1895,7 +1895,7 @@ ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form, bool isBorro
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
-        ast::AstNode* member = parseClassMember(structName, true);
+        ast::AstNode* member = parseClassMember(structName, true, true);
         if (member != nullptr)
         {
             // C6 "struct members". This gate used to be ONE condition refusing constructors,
@@ -2401,7 +2401,10 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     return declaration;
 }
 
-ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnresolvedNamedTypes)
+ast::AstNode* Parser::parseClassMember(
+    std::string_view className,
+    bool allowUnresolvedNamedTypes,
+    bool structContext)
 {
     (void)allowUnresolvedNamedTypes;
     const std::size_t beginIndex = index_;
@@ -2997,17 +3000,39 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isStatic || isReadonly || isConst)
+        if (isStatic || isConst || (isReadonly && !structContext))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "indexers are instance members and cannot be static, readonly, or const");
+                "indexers are instance members; readonly is valid only for a struct indexer and "
+                "static or const are never valid here");
         }
-        return parseIndexerTail(
+        ast::AstNode* indexer = parseIndexerTail(
             type, accessibility, isNew, isVirtual, isOverride, isAbstract, isSealed,
             beginIndex, false);
+        if (isReadonly && indexer != nullptr)
+        {
+            indexer->addModifier(TokenKind::KwReadonly);
+            bool setterFound = false;
+            for (ast::AstNode* accessor : indexer->children())
+            {
+                if (accessor == nullptr || accessor->kind() != ast::AstNodeKind::MethodDeclaration) continue;
+                if (accessor->auxiliaryText().starts_with("indexer:set:")) setterFound = true;
+                else if (accessor->auxiliaryText().starts_with("indexer:get:"))
+                    accessor->addModifier(TokenKind::KwReadonly);
+            }
+            if (setterFound)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    indexer->range(),
+                    "a readonly struct indexer cannot declare a setter");
+            }
+        }
+        return indexer;
     }
 
     if (!at(TokenKind::Identifier))
@@ -3030,17 +3055,20 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
 
     if (at(TokenKind::LeftParen) || at(TokenKind::Less))
     {
-        if (isReadonly || isConst)
+        if (isConst || (isReadonly && (!structContext || isStatic)))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 name.range(),
-                "readonly and const modifiers are valid only on fields in Stage 37");
+                "readonly is valid only on an instance struct method; const remains valid only on fields");
         }
-        return parseMethodTail(
+        ast::AstNode* method = parseMethodTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
             isExported, isExternC, beginIndex);
+        if (isReadonly && structContext && !isStatic && method != nullptr)
+            method->addModifier(TokenKind::KwReadonly);
+        return method;
     }
 
     if (at(TokenKind::LeftBrace))
@@ -3053,17 +3081,43 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
                 name.range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isReadonly || isConst)
+        if (isConst || (isReadonly && (!structContext || isStatic)))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 name.range(),
-                "readonly and const modifiers are not property modifiers; use accessor restrictions instead");
+                "readonly is valid only on an instance struct property; const is not a property modifier");
         }
-        return parsePropertyTail(
+        ast::AstNode* property = parsePropertyTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
             beginIndex, false);
+        if (isReadonly && structContext && !isStatic && property != nullptr)
+        {
+            property->addModifier(TokenKind::KwReadonly);
+            bool setterFound = false;
+            for (ast::AstNode* child : property->children())
+            {
+                if (child == nullptr) continue;
+                if (child->kind() == ast::AstNodeKind::FieldDeclaration)
+                    child->addModifier(TokenKind::KwReadonly);
+                else if (child->kind() == ast::AstNodeKind::MethodDeclaration &&
+                         child->auxiliaryText().starts_with("property:get:"))
+                    child->addModifier(TokenKind::KwReadonly);
+                else if (child->kind() == ast::AstNodeKind::MethodDeclaration &&
+                         child->auxiliaryText().starts_with("property:set:"))
+                    setterFound = true;
+            }
+            if (setterFound)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    property->range(),
+                    "a readonly struct property cannot declare a setter");
+            }
+        }
+        return property;
     }
 
     if (isExported || isExternC)

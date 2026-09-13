@@ -736,6 +736,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_readonly_struct_tests)
     add_test(NAME nsc.language.readonly-structs COMMAND nsc_readonly_struct_tests)
 
+    add_executable(nsc_readonly_receiver_tests tests/unit/ReadonlyReceiverTests.cpp)
+    target_link_libraries(nsc_readonly_receiver_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_readonly_receiver_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_readonly_receiver_tests)
+    add_test(NAME nsc.language.readonly-receivers COMMAND nsc_readonly_receiver_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)

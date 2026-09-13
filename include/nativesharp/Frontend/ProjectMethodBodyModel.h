@@ -1217,6 +1217,10 @@ private:
         bool valid = false;
         bool methodGroup = false;
         bool assignable = false;
+        // True when the value is a struct location reached through `in`, a readonly field, or
+        // the implicit receiver of a readonly struct member. Reads remain legal; writes and calls
+        // to mutating instance members do not.
+        bool readonlyReceiver = false;
         std::vector<std::size_t> methodCandidates;
         std::optional<ProjectIntegerConstant> integerConstant;
         sema::OwnershipKind ownership = sema::OwnershipKind::None;
@@ -1516,7 +1520,8 @@ private:
         bool baseReceiver,
         bool interfaceCall,
         diagnostics::DiagnosticEngine& diagnostics,
-        bool diagnoseFailure = true);
+        bool diagnoseFailure = true,
+        bool readonlyReceiver = false);
     std::vector<std::size_t> stage38AccessorCandidates(
         std::size_t receiverTypeOrdinal,
         std::string_view accessorName,
@@ -1583,6 +1588,7 @@ private:
         std::size_t contextMemberOrdinal,
         std::string_view name) const noexcept;
     bool contextHasImplicitThis(std::size_t memberOrdinal) const noexcept;
+    bool contextHasReadonlyReceiver(std::size_t memberOrdinal) const noexcept;
     bool readonlyFieldAssignable(
         const ClassMemberSymbol& field,
         std::size_t contextMemberOrdinal) const noexcept;

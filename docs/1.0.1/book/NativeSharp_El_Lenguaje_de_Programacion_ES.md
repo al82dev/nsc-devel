@@ -577,7 +577,63 @@ enteros. Lo que cambia es el conjunto de escrituras legales. Los receptores read
 protección contra mutaciones transitivas se tratan como un contrato adicional; declarar el tipo no
 inventa copias defensivas silenciosas en esta etapa.
 
-### 6.2 Asignación definida
+### 6.2 Receptores readonly y parámetros `in`
+
+Un parámetro `in` pasa la dirección de un valor sin autorizar a la función a cambiarlo. Para que esa
+promesa abarque llamadas y no sólo asignaciones visibles, los métodos de lectura se declaran
+`readonly`:
+
+```csharp
+public struct Counter
+{
+    public int Value;
+
+    public readonly int Read()
+    {
+        return Value;
+    }
+
+    public readonly int OffsetValue
+    {
+        get { return Value + 1; }
+    }
+
+    public readonly int this[int offset]
+    {
+        get { return Value + offset; }
+    }
+
+    public void Increment()
+    {
+        Value = Value + 1;
+    }
+}
+
+public static int Observe(in Counter counter)
+{
+    // Las tres operaciones leen el objeto original por dirección.
+    return counter.Read() + counter.OffsetValue + counter[2];
+}
+
+public static void Change(ref Counter counter)
+{
+    // ref sí concede un canal de escritura.
+    counter.Increment();
+    counter.Value = 10;
+}
+```
+
+Dentro de `Observe`, `counter.Value = 10` y `counter.Increment()` son inválidos. La segunda forma es
+tan importante como la primera: permitirla entregaría a un método mutador la misma dirección que
+`in` prometió proteger. NativeSharp no resuelve la contradicción copiando silenciosamente el struct;
+la llamada se rechaza y el programador elige entre un miembro readonly o un parámetro `ref`.
+
+La regla también se propaga desde campos readonly y desde `this` dentro de un miembro readonly. En
+un `readonly struct` no hace falta repetir el modificador sobre cada método: todos sus receptores de
+instancia lo reciben implícitamente. Los constructores conservan la única excepción necesaria para
+inicializar el valor.
+
+### 6.3 Asignación definida
 
 El análisis es sensible al control de flujo. En el siguiente método, `answer` está asignada en cada
 rama que llega al `return`:

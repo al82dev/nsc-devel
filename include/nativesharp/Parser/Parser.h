@@ -79,7 +79,10 @@ private:
     ast::AstNode* parseInterfaceDeclaration(bool isPartial);
     ast::AstNode* parseDelegateDeclaration();
     ast::AstNode* parseInterfaceMember();
-    ast::AstNode* parseClassMember(std::string_view className, bool allowUnresolvedNamedTypes = false);
+    ast::AstNode* parseClassMember(
+        std::string_view className,
+        bool allowUnresolvedNamedTypes = false,
+        bool structContext = false);
     // NSC-LIMIT-009. Los modificadores que `parseClassMember` ya leyo cuando descubre que lo que
     // sigue no es un campo ni un metodo sino una DECLARACION DE TIPO. Viajan juntos porque el
     // diagnostico tiene que poder decir cual de ellos sobra, y decirlo por su nombre.

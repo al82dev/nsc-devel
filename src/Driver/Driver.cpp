@@ -1397,6 +1397,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                                            const bool interfaceContext,
                                            std::set<const interop::LibraryMetadataMember *> &materialized) -> bool {
         constexpr std::uint32_t kStatic = 1U << 0U;
+        constexpr std::uint32_t kReadonly = 1U << 1U;
         constexpr std::uint32_t kVirtual = 1U << 3U;
         constexpr std::uint32_t kOverride = 1U << 4U;
         constexpr std::uint32_t kAbstract = 1U << 5U;
@@ -1406,7 +1407,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         constexpr std::uint32_t kGetter = 1U << 14U;
         constexpr std::uint32_t kSetter = 1U << 15U;
         constexpr std::uint32_t kNewSlot = 1U << 19U;
-        constexpr std::uint32_t kDeclarationFlags = kStatic | kVirtual | kOverride | kAbstract | kSealed | kNewSlot;
+        constexpr std::uint32_t kDeclarationFlags =
+            kStatic | kReadonly | kVirtual | kOverride | kAbstract | kSealed | kNewSlot;
         std::vector<AccessorContract> contracts;
         std::unordered_map<std::string, std::size_t> contractByKey;
         for (const interop::LibraryMetadataMember *member : members)
@@ -1508,6 +1510,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if (!interfaceContext)
             {
                 if ((shape.flags & kStatic) != 0U) generated << "static ";
+                if ((shape.flags & kReadonly) != 0U) generated << "readonly ";
                 if ((shape.flags & kSealed) != 0U) generated << "sealed ";
                 if ((shape.flags & kNewSlot) != 0U) generated << "new ";
                 if ((shape.flags & kOverride) != 0U) generated << "override ";
@@ -1780,7 +1783,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 generated << (member == nullptr ? std::string_view("private")
                                                 : sourceAccessibility(member->accessibility))
                           << ' ';
-                if (member != nullptr && (member->flags & (1U << 1U)) != 0U) generated << "readonly ";
+                if ((field.flags & (1U << 1U)) != 0U || (type.flags & (1U << 6U)) != 0U)
+                    generated << "readonly ";
                 generated << ownershipPrefix(field.ownership) << fieldType << ' ' << fieldName << ";\n";
             }
         }
@@ -1841,6 +1845,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             std::string returnType;
             if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, returnType, error)) return false;
             constexpr std::uint32_t kStatic = 1U << 0U;
+            constexpr std::uint32_t kReadonly = 1U << 1U;
             constexpr std::uint32_t kVirtual = 1U << 3U;
             constexpr std::uint32_t kOverride = 1U << 4U;
             constexpr std::uint32_t kAbstract = 1U << 5U;
@@ -1886,6 +1891,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             generated << "    " << sourceAccessibility(member->accessibility) << ' ';
             if ((member->flags & kStatic) != 0U) generated << "static ";
+            if ((member->flags & kReadonly) != 0U) generated << "readonly ";
             if ((member->flags & kSealed) != 0U) generated << "sealed ";
             if ((member->flags & kNewSlot) != 0U) generated << "new ";
             if ((member->flags & kOverride) != 0U) generated << "override ";

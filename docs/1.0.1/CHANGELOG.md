@@ -16,6 +16,9 @@ empaqueta con NativeSharp 1.0.1.
   encabezado, el indexado es raw y el header C publica `T field[]`.
 - `readonly struct` declara un valor inmutable después de construcción: todos sus campos de
   instancia deben ser `readonly`, mientras que sus campos estáticos conservan reglas independientes.
+- Los receptores readonly se aplican a parámetros `in`, campos readonly, miembros marcados
+  `readonly` y todos los miembros de instancia de un `readonly struct`; permiten lectura pero no
+  stores ni llamadas a miembros mutadores.
 - Los arreglos multidimensionales fijos usan `T[d0, d1, ...]`, almacenamiento inline contiguo y
   orden row-major sin cabecera ni asignación de heap.
 - `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice

@@ -37,6 +37,11 @@ campo de instancia debe declararse `readonly`; el constructor del propio struct 
 pero ningún método ordinario puede reasignarlo. Los campos estáticos no forman parte del valor y
 mantienen sus reglas normales. El modificador no cambia layout ni ABI y sobrevive en NSMETA.
 
+Un método, property getter o indexer getter de struct puede declarar `readonly`. Su `this` permite
+lecturas, pero no stores ni llamadas a miembros mutadores. La misma restricción se propaga al usar
+un struct mediante un parámetro `in` o un campo readonly. Todos los miembros de instancia de un
+`readonly struct` reciben el contrato implícitamente. No se generan copias defensivas ocultas.
+
 Los arreglos locales `T[length]` pueden tomar su longitud de una expresión integral evaluada al
 ejecutar la declaración. Su almacenamiento es contiguo, pertenece al frame actual y no requiere
 `new` ni `delete`. Esta forma no se extiende a campos, parámetros o retornos: esas posiciones forman
