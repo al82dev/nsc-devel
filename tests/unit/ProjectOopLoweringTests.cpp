@@ -482,6 +482,20 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
                     "parallel O2 code units retain all cross-unit and exported symbols at link" +
                         (linkError.empty() ? std::string{} : ": " + linkError));
             }
+
+            objectGenerationError.clear();
+            auto optimizedDebugBundle = objectGenerator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), mir,
+                compilation.sourceManager(),
+                nativesharp::llvm_backend::DebugInformationKind::Full,
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O2, 4, {},
+                objectGenerationError);
+            tests.expect(optimizedDebugBundle != nullptr && objectGenerationError.empty() &&
+                    optimizedDebugBundle->codeUnitCount() == 1 &&
+                    optimizedDebugBundle->objectFiles().size() == 1 &&
+                    !optimizedDebugBundle->usedParallelOptimization(),
+                "full-debug optimized generation remains monolithic so LLVM retains inline sites" +
+                    (objectGenerationError.empty() ? std::string{} : ": " + objectGenerationError));
         }
     }
 

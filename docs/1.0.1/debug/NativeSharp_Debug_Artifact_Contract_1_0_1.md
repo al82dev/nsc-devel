@@ -163,3 +163,10 @@ the coordinator object at module index zero owns ordinary user functions: partit
 places their procedure, variable and line records in the code units that own their definitions.
 Line-tables-only verification applies the same whole-PDB rule while continuing to reject local and
 def-range records that belong exclusively to the full-debug profile.
+
+An optimized full-debug (`-g` with O1, O2 or O3) product shall remain a whole LLVM module until the
+partition pipeline can import an authoritative cross-unit inline summary. This is required because
+LLVM can only emit truthful inline-site scopes when caller and callee coexist during optimization.
+O0 full-debug products remain partitionable, as do optimized `-g0` and `-gline-tables-only`
+products. Compilation throughput must not be obtained by silently dropping inline frames from a
+full PDB.

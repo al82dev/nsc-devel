@@ -305,13 +305,21 @@ The standalone `--emit-project-oop-obj` action also remains a single-object comp
 multi-object generation applies to linked project products whose output format can contain or link
 multiple COFF inputs.
 
+Optimized full-debug products are a deliberate exception to module partitioning until the compiler
+implements authoritative cross-unit inline-summary import. They shall use the single-module path so
+LLVM observes caller and callee together and can preserve truthful CodeView inline-site scopes.
+O0 full-debug generation and optimized `-g0` or `-gline-tables-only` generation retain the
+partitioned path.
+
 ## NSC-CODEGEN-003 — Parallel per-unit optimization
 
 After target configuration, every partitioned LLVM module shall be optimized by an independent
 `LlvmOptimizer`, observation record and target machine. O1, O2 and O3 module optimization tasks
-execute through the same bounded job policy as lowering and emission. O0 legalization remains an
-ordered pass because its mandatory Win64 EH repair is small and avoiding another worker barrier is
-the lower-overhead behavior for debug builds.
+execute through the same bounded job policy as lowering and emission when the selected debug
+profile permits partitioning. Optimized full-debug generation is monolithic under NSC-CODEGEN-002
+so inline-site fidelity is not exchanged for throughput. O0 legalization remains an ordered pass
+because its mandatory Win64 EH repair is small and avoiding another worker barrier is the
+lower-overhead behavior for debug builds.
 
 No optimizer, observation object or mutable LLVM context may be shared by concurrent tasks.
 Optimization completion order shall not determine diagnostics: the coordinator inspects success

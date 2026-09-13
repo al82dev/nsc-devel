@@ -62,6 +62,9 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Depuración
 
+- Los productos optimizados con debug completo conservan temporalmente un módulo LLVM único para
+  que caller, callee e inline sites permanezcan disponibles al generar CodeView/PDB; O0 y los
+  perfiles sin variables completas conservan la partición paralela.
 - Se formalizó el contrato CodeView/PDB para líneas, variables, tipos y funciones sintetizadas.
 - Los checksums SHA-256 y `-fdebug-prefix-map` permiten identidad de fuente reproducible.
 - Se documentaron y cubrieron `this`, structs, scopes, thunks, dispatch de interfaces, SEH,

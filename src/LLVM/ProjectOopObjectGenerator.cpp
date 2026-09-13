@@ -115,7 +115,15 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 ? ProjectOopCodePartitionPolicy::StableIncremental
                 : ProjectOopCodePartitionPolicy::Balanced))
         return nullptr;
-    const bool usePartitions = workerCount > 1 && partition.units().size() > 1;
+    // LLVM can only create truthful inline-site scopes while caller and callee coexist in the
+    // same module. Until code-unit summary import is available, splitting a full-debug optimized
+    // build silently removes those scopes from CodeView/PDB. Keep that profile monolithic; O0
+    // full-debug builds and every non-full-debug optimized build retain parallel partitioning.
+    const bool requiresWholeModuleDebugInlining =
+        debugInformation == DebugInformationKind::Full &&
+        optimizationLevel != LlvmOptimizationLevel::O0;
+    const bool usePartitions = workerCount > 1 && partition.units().size() > 1 &&
+        !requiresWholeModuleDebugInlining;
     const std::size_t moduleCount = usePartitions ? partition.units().size() + 1 : 1;
     std::vector<std::unique_ptr<LlvmModule>> modules(moduleCount);
     std::vector<std::string> moduleErrors(moduleCount);
