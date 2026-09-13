@@ -25,6 +25,7 @@ using nativesharp::frontend::FrontendCompilation;
 using nativesharp::llvm_backend::LlvmLowerer;
 using nativesharp::llvm_backend::LlvmModule;
 using nativesharp::llvm_backend::LlvmOptimizationLevel;
+using nativesharp::llvm_backend::AutomaticInliningCostModel;
 using nativesharp::llvm_backend::kLlvmRepeatedPassSuspicion;
 using nativesharp::llvm_backend::kLlvmProcessTraceBegin;
 using nativesharp::llvm_backend::kLlvmProcessTraceEnd;
@@ -36,6 +37,7 @@ using nativesharp::llvm_backend::LlvmOptimizer;
 using nativesharp::llvm_backend::observeActiveLlvmOptimizationBudget;
 using nativesharp::llvm_backend::llvmProcessTraceRequired;
 using nativesharp::llvm_backend::llvmVerifyEachPassRequired;
+using nativesharp::llvm_backend::llvmAutomaticInliningConfiguration;
 using nativesharp::llvm_backend::observeLlvmPassLog;
 using nativesharp::llvm_backend::LlvmTargetMachine;
 
@@ -141,6 +143,26 @@ int main(int argc, char** argv)
         "O2 selects the LLVM default O2 pipeline");
     tests.expect(llvmOptimizationPipelineName(LlvmOptimizationLevel::O3) == "default<O3>",
         "O3 selects the LLVM default O3 pipeline");
+
+    const auto automaticO0 = llvmAutomaticInliningConfiguration(LlvmOptimizationLevel::O0);
+    const auto automaticO1 = llvmAutomaticInliningConfiguration(LlvmOptimizationLevel::O1);
+    const auto automaticO2 = llvmAutomaticInliningConfiguration(LlvmOptimizationLevel::O2);
+    const auto automaticO3 = llvmAutomaticInliningConfiguration(LlvmOptimizationLevel::O3);
+    tests.expect(!automaticO0.enabled() && automaticO0.pipeline == "default<O0>",
+        "O0 disables automatic inlining while retaining its canonical pipeline");
+    tests.expect(automaticO1.enabled() &&
+            automaticO1.costModel == AutomaticInliningCostModel::Conservative,
+        "O1 selects conservative target-aware automatic inlining");
+    tests.expect(automaticO2.enabled() &&
+            automaticO2.costModel == AutomaticInliningCostModel::Balanced,
+        "O2 selects balanced target-aware automatic inlining");
+    tests.expect(automaticO3.enabled() &&
+            automaticO3.costModel == AutomaticInliningCostModel::Aggressive,
+        "O3 selects aggressive target-aware automatic inlining");
+    tests.expect(automaticO1.pipeline == llvmOptimizationPipelineName(LlvmOptimizationLevel::O1) &&
+            automaticO2.pipeline == llvmOptimizationPipelineName(LlvmOptimizationLevel::O2) &&
+            automaticO3.pipeline == llvmOptimizationPipelineName(LlvmOptimizationLevel::O3),
+        "automatic inlining and optimization share one canonical LLVM pipeline mapping");
 
     tests.expect(!llvmProcessTraceRequired(std::array<std::string_view, 1>{"--version"}),
         "non-compilation commands do not launch the LLVM trace supervisor");
@@ -714,6 +736,27 @@ int main(int argc, char** argv)
             tests.expect(trace.diagnostics ==
                     "diagnostico anterior\ndiagnostico posterior\n",
                 "process trace framing preserves only diagnostics outside LLVM windows");
+        }
+    }
+
+    for (const LlvmOptimizationLevel level : {LlvmOptimizationLevel::O1,
+                                              LlvmOptimizationLevel::O2,
+                                              LlvmOptimizationLevel::O3})
+    {
+        std::string targetError;
+        std::unique_ptr<LlvmTargetMachine> targetMachine =
+            LlvmTargetMachine::createWindowsX64(level, targetError);
+        FrontendCompilation compilation;
+        std::unique_ptr<LlvmLowerer> lowerer;
+        std::unique_ptr<LlvmModule> module = makeInliningFixture(compilation, lowerer);
+        if (targetMachine != nullptr && module != nullptr)
+        {
+            std::string optimizationError;
+            tests.expect(optimizer.optimize(*module, *targetMachine, level, optimizationError),
+                "automatic inlining fixture optimizes at every enabled level");
+            const std::string text = module->text();
+            tests.expect(text.find("call i32 @Square") == std::string::npos,
+                "each enabled automatic cost model expands the cheap local call");
         }
     }
 

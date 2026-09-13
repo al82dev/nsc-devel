@@ -31,6 +31,23 @@ bool llvmVerifyEachPassRequired(
     return level != LlvmOptimizationLevel::O0 && detailedPassDiagnostics;
 }
 
+AutomaticInliningConfiguration llvmAutomaticInliningConfiguration(
+    LlvmOptimizationLevel level) noexcept
+{
+    switch (level)
+    {
+    case LlvmOptimizationLevel::O0:
+        return {AutomaticInliningCostModel::Disabled, "default<O0>"};
+    case LlvmOptimizationLevel::O1:
+        return {AutomaticInliningCostModel::Conservative, "default<O1>"};
+    case LlvmOptimizationLevel::O2:
+        return {AutomaticInliningCostModel::Balanced, "default<O2>"};
+    case LlvmOptimizationLevel::O3:
+        return {AutomaticInliningCostModel::Aggressive, "default<O3>"};
+    }
+    return {AutomaticInliningCostModel::Disabled, {}};
+}
+
 namespace
 {
 // Bug B-001 fix (EH+RAII reuse-after-catch SIGSEGV/access-violation crash) -- see
@@ -214,7 +231,9 @@ bool LlvmOptimizer::optimize(
             &observation->llvmMajor, &observation->llvmMinor, &observation->llvmPatch);
     }
 
-    const std::string_view pipeline = llvmOptimizationPipelineName(level);
+    const AutomaticInliningConfiguration automaticInlining =
+        llvmAutomaticInliningConfiguration(level);
+    const std::string_view pipeline = automaticInlining.pipeline;
     if (pipeline.empty())
     {
         error = "unsupported LLVM optimization level";

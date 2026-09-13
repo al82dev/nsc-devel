@@ -4,6 +4,7 @@
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 
 #include <string>
+#include <string_view>
 
 namespace nativesharp::llvm_backend
 {
@@ -14,6 +15,28 @@ class LlvmTargetMachine;
 // pass so a transformation failure can still name its last completed pass.
 bool llvmVerifyEachPassRequired(
     LlvmOptimizationLevel level, bool detailedPassDiagnostics) noexcept;
+
+enum class AutomaticInliningCostModel
+{
+    Disabled,
+    Conservative,
+    Balanced,
+    Aggressive
+};
+
+struct AutomaticInliningConfiguration final
+{
+    AutomaticInliningCostModel costModel;
+    std::string_view pipeline;
+
+    constexpr bool enabled() const noexcept
+    {
+        return costModel != AutomaticInliningCostModel::Disabled;
+    }
+};
+
+AutomaticInliningConfiguration llvmAutomaticInliningConfiguration(
+    LlvmOptimizationLevel level) noexcept;
 
 class LlvmOptimizer final
 {

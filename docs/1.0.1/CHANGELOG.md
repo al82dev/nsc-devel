@@ -10,6 +10,9 @@ empaqueta con NativeSharp 1.0.1.
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su
   lowering se incorporan en las siguientes entregas de la tanda.
+- El inlining automático queda desactivado en O0 y usa el modelo target-aware de LLVM con
+  agresividad conservadora en O1, balanceada en O2 y agresiva en O3. La configuración y el pipeline
+  provienen de un solo mapa comprobado.
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union

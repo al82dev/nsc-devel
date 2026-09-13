@@ -721,6 +721,11 @@ Inlining never changes observable semantics, ownership, cleanup, exception, disp
 export, or debugging obligations. Required inlining must diagnose a statically resolvable call that
 cannot be expanded; forbidden inlining must retain an out-of-line call.
 
+La política automática no realiza expansión en O0. En O1, O2 y O3 delega rentabilidad al modelo de
+costo target-aware del pipeline canónico, con agresividad conservadora, balanceada y agresiva,
+respectivamente. El nivel elegido y el target son entradas reproducibles de esa decisión; el orden
+de compilación en paralelo no lo es.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su

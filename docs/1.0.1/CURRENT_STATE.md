@@ -83,6 +83,10 @@ cleanups, excepciones, dispatch dinámico, ABI, símbolos públicos y observabil
 deben permanecer correctos con o sin expansión. Esta entrega fija el contrato interno; la sintaxis
 y el lowering de cada modificador se habilitan en los siguientes ítems de la tanda 3.
 
+En política automática, O0 conserva límites de llamada. O1, O2 y O3 usan los pipelines canónicos
+de LLVM y su modelo de costo dependiente del target con agresividad creciente. El compilador no
+mantiene umbrales paralelos ni heurísticas ocultas que puedan discrepar del nivel solicitado.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

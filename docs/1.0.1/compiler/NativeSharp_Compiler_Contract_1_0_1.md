@@ -540,3 +540,14 @@ constraint makes that impossible. `Forbidden` must prevent expansion at every op
 Attributes implementing these policies are optimization controls, not ABI declarations. Required
 out-of-line definitions, public/export identities, ownership and EH cleanups, dynamic dispatch and
 truthful inline debug scopes remain governed by their existing contracts.
+
+## NSC-INLINE-002 — Target-aware automatic inlining
+
+O0 shall disable automatic call expansion. O1, O2, and O3 shall use the target-aware cost model in
+their canonical LLVM default pipeline with conservative, balanced, and aggressive intent,
+respectively. `LlvmOptimizer` shall obtain both the pipeline and automatic-inlining intent from one
+level mapping. It shall not maintain a second undocumented threshold table.
+
+For identical input, target, LLVM version, and optimization level, scheduling or code-partition
+completion order shall not affect the decision. Focused evidence shall prove that O0 retains an
+ordinary cheap call while every enabled level can expand that call and preserve its result.

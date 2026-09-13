@@ -1954,6 +1954,11 @@ instrucciones con el cuerpo y con la ubicación de la llamada. Si la llamada per
 línea, sigue existiendo un frame ordinario. El depurador debe mostrar lo ocurrido, no la preferencia
 que el programador escribió.
 
+Sin modificador, O0 no inlinea automáticamente. O1 activa una política conservadora, O2 una
+política balanceada y O3 una más agresiva. No son límites arbitrarios propios de NativeSharp: cada
+nivel selecciona el pipeline canónico de LLVM y éste calcula el costo con información del target.
+Así el mismo mapa que elige optimización elige también la intención de inlining.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |
