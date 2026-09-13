@@ -462,7 +462,7 @@ bool ProjectCompilation::compileProjectNames(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, "names");
     nameLookup_ = std::make_unique<ProjectNameLookup>();
-    return nameLookup_->build(*projectGraph_, units_, diagnostics_);
+    return nameLookup_->build(*projectGraph_, units_, diagnostics_, compilationJobs_);
 }
 
 bool ProjectCompilation::compileProjectGenerics(

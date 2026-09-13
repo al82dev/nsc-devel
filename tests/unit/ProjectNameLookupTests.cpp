@@ -164,6 +164,21 @@ void testNamespaceUsingAndAlias(TestContext& tests, const std::filesystem::path&
         "name-lookup dump exposes module-qualified type identity");
     tests.expect(dump.str().find("status=resolved") != std::string::npos,
         "name-lookup dump exposes resolved type bindings");
+
+    ProjectCompilation parallelCompilation;
+    parallelCompilation.setCompilationJobs(4);
+    std::string parallelError;
+    const bool parallelOk = parallelCompilation.compileProjectNames(app / "App.nsproj", parallelError);
+    tests.expect(parallelOk && parallelError.empty(),
+        "four-worker per-file name indexing succeeds on the same project");
+    std::ostringstream parallelDump;
+    if (parallelCompilation.nameLookup() != nullptr)
+    {
+        nativesharp::frontend::ProjectNameLookupDumper().dump(
+            *parallelCompilation.nameLookup(), parallelDump);
+    }
+    tests.expect(parallelDump.str() == dump.str(),
+        "parallel declaration and binding indexes exactly match serial name lookup");
 }
 
 void testTransitiveVisibility(TestContext& tests, const std::filesystem::path& root)

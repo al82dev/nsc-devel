@@ -162,7 +162,8 @@ public:
     bool build(
         const compilation::ProjectGraph& graph,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::size_t workerCount = 1);
 
     std::span<const std::unique_ptr<ModuleDeclarationSpace>> modules() const noexcept;
     std::span<const NamedTypeDeclaration> namedTypes() const noexcept;
@@ -184,43 +185,64 @@ private:
         NamedTypeDeclarationPart part;
     };
 
+    struct UnitDeclarationIndex final
+    {
+        std::vector<std::vector<std::string>> namespaces;
+        std::vector<PendingTypeDeclaration> pendingTypes;
+    };
+
+    struct UnitBindingIndex final
+    {
+        std::vector<TypeNameBinding> bindings;
+        std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax;
+        std::vector<ExpressionTypeNameBinding> expressionTypeBindings;
+        std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax;
+    };
+
     void buildVisibility(const compilation::ProjectGraph& graph);
-    void predeclareUnit(
+    void indexUnitDeclarations(
         const ProjectSyntaxUnit& unit,
-        const std::string& sourcePath);
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index) const;
     void predeclareNode(
         const ProjectSyntaxUnit& unit,
         const ast::AstNode* node,
         const std::vector<std::string>& namespaceSegments,
         const std::vector<compilation::TypeNameSegment>& containingTypes,
-        const std::string& sourcePath);
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index) const;
     void finalizePredeclarations(diagnostics::DiagnosticEngine& diagnostics);
     void bindUnit(
         const ProjectSyntaxUnit& unit,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
     void bindScope(
         const ProjectSyntaxUnit& unit,
         const ast::AstNode* scopeNode,
         const std::vector<std::string>& namespaceSegments,
         const LookupEnvironment& inheritedEnvironment,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
     void bindNode(
         const ProjectSyntaxUnit& unit,
         const ast::AstNode* node,
         const std::vector<std::string>& namespaceSegments,
         const LookupEnvironment& environment,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
     void bindTypeSyntax(
         const ProjectSyntaxUnit& unit,
         const ast::TypeSyntax* syntax,
         const std::vector<std::string>& namespaceSegments,
         const LookupEnvironment& environment,
-        diagnostics::DiagnosticEngine& diagnostics);
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
     void bindExpressionTypeReceiver(
         const ProjectSyntaxUnit& unit,
         const ast::AstNode* expression,
         const std::vector<std::string>& namespaceSegments,
-        const LookupEnvironment& environment);
+        const LookupEnvironment& environment,
+        UnitBindingIndex& index);
 
     std::vector<std::string> enclosingTypeSpellings(const LookupEnvironment& environment) const;
     std::vector<std::size_t> resolveTypeCandidates(

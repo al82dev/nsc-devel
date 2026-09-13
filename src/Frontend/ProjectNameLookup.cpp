@@ -8,6 +8,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -15,6 +16,7 @@
 #include <cctype>
 #include <filesystem>
 #include <functional>
+#include <iterator>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -299,7 +301,8 @@ std::span<const std::size_t> ModuleDeclarationSpace::visibleProjectOrdinals() co
 bool ProjectNameLookup::build(
     const compilation::ProjectGraph& graph,
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::size_t workerCount)
 {
     if (built_ || !modules_.empty() || !pendingTypes_.empty() || !namedTypes_.empty() || !bindings_.empty())
     {
@@ -319,20 +322,68 @@ bool ProjectNameLookup::build(
 
     buildVisibility(graph);
 
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+    driver::CompilationWorkerPool workers(workerCount);
+    std::vector<UnitDeclarationIndex> declarationIndexes(units.size());
+    for (std::size_t index = 0; index < units.size(); ++index)
     {
-        if (unit != nullptr && unit->syntaxTree() != nullptr)
+        if (units[index] == nullptr || units[index]->syntaxTree() == nullptr) continue;
+        workers.submit([&, index](std::size_t) {
+            indexUnitDeclarations(
+                *units[index], sourcePathForUnit(graph, *units[index]), declarationIndexes[index]);
+        });
+    }
+    workers.wait();
+    for (std::size_t index = 0; index < units.size(); ++index)
+    {
+        if (units[index] == nullptr) continue;
+        UnitDeclarationIndex& unitIndex = declarationIndexes[index];
+        for (const std::vector<std::string>& namespacePath : unitIndex.namespaces)
         {
-            predeclareUnit(*unit, sourcePathForUnit(graph, *unit));
+            modules_[units[index]->projectOrdinal()]->globalNamespace().ensureNamespace(namespacePath);
         }
+        pendingTypes_.insert(
+            pendingTypes_.end(),
+            std::make_move_iterator(unitIndex.pendingTypes.begin()),
+            std::make_move_iterator(unitIndex.pendingTypes.end()));
     }
     finalizePredeclarations(diagnostics);
 
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+    std::vector<UnitBindingIndex> bindingIndexes(units.size());
+    std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
+    localDiagnostics.reserve(units.size());
+    for (std::size_t index = 0; index < units.size(); ++index)
     {
-        if (unit != nullptr && unit->syntaxTree() != nullptr)
+        localDiagnostics.emplace_back(diagnostics.errorLimit());
+        if (units[index] == nullptr || units[index]->syntaxTree() == nullptr) continue;
+        workers.submit([&, index](std::size_t) {
+            bindUnit(*units[index], localDiagnostics[index], bindingIndexes[index]);
+        });
+    }
+    workers.wait();
+    for (std::size_t index = 0; index < units.size(); ++index)
+    {
+        UnitBindingIndex& unitIndex = bindingIndexes[index];
+        const std::size_t bindingBase = bindings_.size();
+        bindings_.insert(
+            bindings_.end(),
+            std::make_move_iterator(unitIndex.bindings.begin()),
+            std::make_move_iterator(unitIndex.bindings.end()));
+        for (const auto& [syntax, ordinal] : unitIndex.bindingBySyntax)
         {
-            bindUnit(*unit, diagnostics);
+            bindingBySyntax_.emplace(syntax, bindingBase + ordinal);
+        }
+        const std::size_t expressionBase = expressionTypeBindings_.size();
+        expressionTypeBindings_.insert(
+            expressionTypeBindings_.end(),
+            std::make_move_iterator(unitIndex.expressionTypeBindings.begin()),
+            std::make_move_iterator(unitIndex.expressionTypeBindings.end()));
+        for (const auto& [syntax, ordinal] : unitIndex.expressionTypeBindingBySyntax)
+        {
+            expressionTypeBindingBySyntax_.emplace(syntax, expressionBase + ordinal);
+        }
+        for (const diagnostics::Diagnostic& diagnostic : localDiagnostics[index].diagnostics())
+        {
+            diagnostics.append(diagnostic);
         }
     }
 
@@ -457,11 +508,12 @@ void ProjectNameLookup::buildVisibility(const compilation::ProjectGraph& graph)
     }
 }
 
-void ProjectNameLookup::predeclareUnit(
+void ProjectNameLookup::indexUnitDeclarations(
     const ProjectSyntaxUnit& unit,
-    const std::string& sourcePath)
+    const std::string& sourcePath,
+    UnitDeclarationIndex& index) const
 {
-    predeclareNode(unit, unit.syntaxTree(), {}, {}, sourcePath);
+    predeclareNode(unit, unit.syntaxTree(), {}, {}, sourcePath, index);
 }
 
 void ProjectNameLookup::predeclareNode(
@@ -469,7 +521,8 @@ void ProjectNameLookup::predeclareNode(
     const ast::AstNode* node,
     const std::vector<std::string>& namespaceSegments,
     const std::vector<compilation::TypeNameSegment>& containingTypes,
-    const std::string& sourcePath)
+    const std::string& sourcePath,
+    UnitDeclarationIndex& index) const
 {
     if (node == nullptr)
     {
@@ -489,10 +542,10 @@ void ProjectNameLookup::predeclareNode(
             nestedNamespace.end(),
             declaredSegments.begin(),
             declaredSegments.end());
-        modules_[unit.projectOrdinal()]->globalNamespace().ensureNamespace(nestedNamespace);
+        index.namespaces.push_back(nestedNamespace);
         for (const ast::AstNode* child : node->children())
         {
-            predeclareNode(unit, child, nestedNamespace, containingTypes, sourcePath);
+            predeclareNode(unit, child, nestedNamespace, containingTypes, sourcePath, index);
         }
         return;
     }
@@ -555,7 +608,7 @@ void ProjectNameLookup::predeclareNode(
             node->range(),
             node,
             sourcePath};
-        pendingTypes_.push_back(PendingTypeDeclaration{std::move(identity), std::move(part)});
+        index.pendingTypes.push_back(PendingTypeDeclaration{std::move(identity), std::move(part)});
 
         // NSC-LIMIT-009. Y AHORA SE BAJA. La version anterior devolvia aqui, que es exactamente
         // por lo que un tipo dentro de otro no existia para nadie: se parseaba, se colgaba del
@@ -571,7 +624,7 @@ void ProjectNameLookup::predeclareNode(
         {
             if (isNamedTypeDeclaration(child->kind()))
             {
-                predeclareNode(unit, child, namespaceSegments, nestedChain, sourcePath);
+                predeclareNode(unit, child, namespaceSegments, nestedChain, sourcePath, index);
             }
         }
         return;
@@ -581,7 +634,7 @@ void ProjectNameLookup::predeclareNode(
     {
         for (const ast::AstNode* child : node->children())
         {
-            predeclareNode(unit, child, namespaceSegments, containingTypes, sourcePath);
+            predeclareNode(unit, child, namespaceSegments, containingTypes, sourcePath, index);
         }
     }
 }
@@ -802,10 +855,11 @@ void ProjectNameLookup::finalizePredeclarations(
 
 void ProjectNameLookup::bindUnit(
     const ProjectSyntaxUnit& unit,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    UnitBindingIndex& index)
 {
     const LookupEnvironment environment;
-    bindScope(unit, unit.syntaxTree(), {}, environment, diagnostics);
+    bindScope(unit, unit.syntaxTree(), {}, environment, diagnostics, index);
 }
 
 void ProjectNameLookup::bindScope(
@@ -813,7 +867,8 @@ void ProjectNameLookup::bindScope(
     const ast::AstNode* scopeNode,
     const std::vector<std::string>& namespaceSegments,
     const LookupEnvironment& inheritedEnvironment,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    UnitBindingIndex& index)
 {
     LookupEnvironment environment = inheritedEnvironment;
     std::unordered_set<std::string> localAliases;
@@ -928,10 +983,10 @@ void ProjectNameLookup::bindScope(
             std::vector<std::string> nestedNamespace = namespaceSegments;
             const std::vector<std::string> segments = splitQualifiedName(child->text());
             nestedNamespace.insert(nestedNamespace.end(), segments.begin(), segments.end());
-            bindScope(unit, child, nestedNamespace, environment, diagnostics);
+            bindScope(unit, child, nestedNamespace, environment, diagnostics, index);
             continue;
         }
-        bindNode(unit, child, namespaceSegments, environment, diagnostics);
+        bindNode(unit, child, namespaceSegments, environment, diagnostics, index);
     }
 }
 
@@ -940,7 +995,8 @@ void ProjectNameLookup::bindNode(
     const ast::AstNode* node,
     const std::vector<std::string>& namespaceSegments,
     const LookupEnvironment& environment,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    UnitBindingIndex& index)
 {
     if (node == nullptr)
     {
@@ -967,7 +1023,7 @@ void ProjectNameLookup::bindNode(
         {
             for (const ast::TypeSyntax* constraint : clause.typeConstraints)
             {
-                bindTypeSyntax(unit, constraint, namespaceSegments, environment, diagnostics);
+                bindTypeSyntax(unit, constraint, namespaceSegments, environment, diagnostics, index);
             }
         }
         return;
@@ -978,7 +1034,7 @@ void ProjectNameLookup::bindNode(
         std::vector<std::string> nestedNamespace = namespaceSegments;
         const std::vector<std::string> segments = splitQualifiedName(node->text());
         nestedNamespace.insert(nestedNamespace.end(), segments.begin(), segments.end());
-        bindScope(unit, node, nestedNamespace, environment, diagnostics);
+        bindScope(unit, node, nestedNamespace, environment, diagnostics, index);
         return;
     }
 
@@ -1002,23 +1058,23 @@ void ProjectNameLookup::bindNode(
 
     if (node->kind() == ast::AstNodeKind::MemberExpression)
     {
-        bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, scope);
+        bindExpressionTypeReceiver(unit, node->first(), namespaceSegments, scope, index);
     }
 
     if (node->typeSyntax() != nullptr)
     {
-        bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, diagnostics);
+        bindTypeSyntax(unit, node->typeSyntax(), namespaceSegments, scope, diagnostics, index);
         for (const ast::TypeModifierSyntax& modifier : node->typeSyntax()->modifiers())
         {
             if (modifier.arrayCount != nullptr)
             {
-                bindNode(unit, modifier.arrayCount, namespaceSegments, scope, diagnostics);
+                bindNode(unit, modifier.arrayCount, namespaceSegments, scope, diagnostics, index);
             }
         }
     }
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
     {
-        bindTypeSyntax(unit, syntax, namespaceSegments, scope, diagnostics);
+        bindTypeSyntax(unit, syntax, namespaceSegments, scope, diagnostics, index);
     }
     // NSC-LIMIT-007. Los tipos escritos en un `where` son referencias de tipo como cualquier otra
     // y se resuelven por el mismo camino: con el mismo alcance, los mismos `using` y los mismos
@@ -1029,21 +1085,21 @@ void ProjectNameLookup::bindNode(
     {
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
         {
-            bindTypeSyntax(unit, constraint, namespaceSegments, scope, diagnostics);
+            bindTypeSyntax(unit, constraint, namespaceSegments, scope, diagnostics, index);
         }
         if (clause.substitutedArgument != nullptr)
         {
             bindTypeSyntax(
-                unit, clause.substitutedArgument, namespaceSegments, scope, diagnostics);
+                unit, clause.substitutedArgument, namespaceSegments, scope, diagnostics, index);
         }
     }
 
-    bindNode(unit, node->first(), namespaceSegments, scope, diagnostics);
-    bindNode(unit, node->second(), namespaceSegments, scope, diagnostics);
-    bindNode(unit, node->third(), namespaceSegments, scope, diagnostics);
+    bindNode(unit, node->first(), namespaceSegments, scope, diagnostics, index);
+    bindNode(unit, node->second(), namespaceSegments, scope, diagnostics, index);
+    bindNode(unit, node->third(), namespaceSegments, scope, diagnostics, index);
     for (const ast::AstNode* child : node->children())
     {
-        bindNode(unit, child, namespaceSegments, scope, diagnostics);
+        bindNode(unit, child, namespaceSegments, scope, diagnostics, index);
     }
 }
 
@@ -1051,9 +1107,10 @@ void ProjectNameLookup::bindExpressionTypeReceiver(
     const ProjectSyntaxUnit& unit,
     const ast::AstNode* expression,
     const std::vector<std::string>& namespaceSegments,
-    const LookupEnvironment& environment)
+    const LookupEnvironment& environment,
+    UnitBindingIndex& index)
 {
-    if (expression == nullptr || expressionTypeBindingBySyntax_.contains(expression))
+    if (expression == nullptr || index.expressionTypeBindingBySyntax.contains(expression))
     {
         return;
     }
@@ -1070,10 +1127,10 @@ void ProjectNameLookup::bindExpressionTypeReceiver(
         return;
     }
 
-    const std::size_t ordinal = expressionTypeBindings_.size();
-    expressionTypeBindings_.push_back(ExpressionTypeNameBinding{
+    const std::size_t ordinal = index.expressionTypeBindings.size();
+    index.expressionTypeBindings.push_back(ExpressionTypeNameBinding{
         expression, *writtenName, std::move(candidates), environment.enclosingTypeOrdinals});
-    expressionTypeBindingBySyntax_.emplace(expression, ordinal);
+    index.expressionTypeBindingBySyntax.emplace(expression, ordinal);
 }
 
 void ProjectNameLookup::bindTypeSyntax(
@@ -1081,9 +1138,10 @@ void ProjectNameLookup::bindTypeSyntax(
     const ast::TypeSyntax* syntax,
     const std::vector<std::string>& namespaceSegments,
     const LookupEnvironment& environment,
-    diagnostics::DiagnosticEngine& diagnostics)
+    diagnostics::DiagnosticEngine& diagnostics,
+    UnitBindingIndex& index)
 {
-    if (syntax == nullptr || bindingBySyntax_.contains(syntax))
+    if (syntax == nullptr || index.bindingBySyntax.contains(syntax))
     {
         return;
     }
@@ -1138,7 +1196,7 @@ void ProjectNameLookup::bindTypeSyntax(
 
     for (const ast::TypeSyntax* argument : syntax->typeArguments())
     {
-        bindTypeSyntax(unit, argument, namespaceSegments, environment, diagnostics);
+        bindTypeSyntax(unit, argument, namespaceSegments, environment, diagnostics, index);
     }
 
     // Stage 52 fix: a generic type argument substituted into a specialization cloned from a
@@ -1302,9 +1360,9 @@ void ProjectNameLookup::bindTypeSyntax(
         }
     }
 
-    const std::size_t ordinal = bindings_.size();
-    bindings_.push_back(std::move(binding));
-    bindingBySyntax_.emplace(syntax, ordinal);
+    const std::size_t ordinal = index.bindings.size();
+    index.bindings.push_back(std::move(binding));
+    index.bindingBySyntax.emplace(syntax, ordinal);
 }
 
 // NSC-LIMIT-007/009. La escritura COMPLETA de cada tipo contenedor del sitio, de fuera adentro.

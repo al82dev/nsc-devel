@@ -183,6 +183,19 @@ many-worker compilation of unchanged input shall produce equivalent tokens, synt
 diagnostics and syntax-unit dumps. The dedicated `syntax-read`, `syntax-lex` and `syntax-parse`
 timings measure their respective complete parallel stages.
 
+## NSC-NAMES-001 — Parallel per-file declaration and binding indexes
+
+After syntax is complete, each source unit shall independently index namespace declarations and
+named-type parts into a private result. The coordinator shall merge those results by syntax-unit
+ordinal before partial-type aggregation, assigning global type ordinals only after the merge.
+Namespace-tree mutation and duplicate/partial diagnostics remain coordinator operations.
+
+Once the complete declaration index exists, each unit shall independently resolve its type syntax
+and expression type receivers against immutable global declaration tables. Per-unit bindings and
+diagnostics shall be reduced by unit ordinal; pointer-to-binding maps shall be rebased to the final
+global vector offsets. Serial and parallel builds shall expose identical namespace trees, named-type
+ordinals, bindings, expression bindings and diagnostics.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR
