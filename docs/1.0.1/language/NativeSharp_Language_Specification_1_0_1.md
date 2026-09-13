@@ -518,6 +518,26 @@ su contrato de devolver el valor nuevo; `Exchange` devuelve el anterior.
 Ordered `Increment`, `Decrement`, `Add`, and `Exchange` overloads accept all five public
 memory orders on both integer widths. They lower to naturally aligned `atomicrmw` instructions.
 Increment, Decrement, and Add return the new value; Exchange returns the old value.
+
+### NS-MEM-007 — Compare-exchange con órdenes de éxito y fallo
+
+`AtomicInt32` y `AtomicInt64` ofrecen
+`CompareExchange(valor, comparando, ordenExito, ordenFallo)`. Ambos órdenes deben ser constantes
+`MemoryOrder` de compilación. El orden de éxito admite los cinco valores públicos. El orden de
+fallo admite únicamente `Relaxed`, `Acquire` o `SequentiallyConsistent`: un fallo no almacena y
+por ello no puede tener semántica `Release` ni `AcquireRelease`.
+
+El orden de fallo tampoco puede ser más fuerte que el orden de éxito. En concreto: éxito Relaxed
+admite sólo fallo Relaxed; Acquire admite Relaxed o Acquire; Release admite sólo Relaxed;
+AcquireRelease admite Relaxed o Acquire; SequentiallyConsistent admite Relaxed, Acquire o
+SequentiallyConsistent. La operación devuelve siempre el valor anterior, coincida o no el
+comparando, y se emite como `cmpxchg` con alineación natural.
+
+`AtomicInt32` and `AtomicInt64` provide a four-argument ordered `CompareExchange`. Both orders
+must be compile-time `MemoryOrder` constants. Success accepts all five public orders; failure
+accepts only Relaxed, Acquire, or SequentiallyConsistent and cannot be stronger than success.
+The operation always returns the old value and lowers to a naturally aligned `cmpxchg` with
+independent success and failure orderings.
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

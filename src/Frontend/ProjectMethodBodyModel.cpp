@@ -9186,6 +9186,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     isMemoryOrderType(selectedMember.parameters[1].typeKey) &&
                     selectedMember.declaredTypeKey == valueTypeKey;
                 const bool orderedRmw = orderedUnaryRmw || orderedValueRmw;
+                const bool orderedCompareExchange = selectedMember.name == "CompareExchange" &&
+                    selectedMember.parameters.size() == 4 &&
+                    selectedMember.parameters[0].typeKey == valueTypeKey &&
+                    selectedMember.parameters[1].typeKey == valueTypeKey &&
+                    isMemoryOrderType(selectedMember.parameters[2].typeKey) &&
+                    isMemoryOrderType(selectedMember.parameters[3].typeKey) &&
+                    selectedMember.declaredTypeKey == valueTypeKey;
                 std::optional<MethodCoreOperationKind> atomicKind;
                 if ((selectedMember.name == "Load" && selectedMember.parameters.empty() &&
                         selectedMember.declaredTypeKey == valueTypeKey) || orderedLoad)
@@ -9235,17 +9242,87 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         ? MethodCoreOperationKind::InterlockedExchangeInt32
                         : MethodCoreOperationKind::InterlockedExchangeInt64;
                 }
-                else if (selectedMember.name == "CompareExchange" && selectedMember.parameters.size() == 2 &&
+                else if ((selectedMember.name == "CompareExchange" && selectedMember.parameters.size() == 2 &&
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
                     selectedMember.parameters[1].typeKey == valueTypeKey &&
-                    selectedMember.declaredTypeKey == valueTypeKey)
+                    selectedMember.declaredTypeKey == valueTypeKey) || orderedCompareExchange)
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedCompareExchangeInt32
                         : MethodCoreOperationKind::InterlockedCompareExchangeInt64;
                 }
                 std::optional<std::uint8_t> atomicMemoryOrder;
-                if (atomicKind.has_value() && (orderedLoad || orderedStore || orderedRmw))
+                std::optional<std::uint8_t> atomicFailureMemoryOrder;
+                if (atomicKind.has_value() && orderedCompareExchange)
+                {
+                    const ast::AstNode* successSyntax = expression->children().size() >= 3
+                        ? expression->children()[2]
+                        : nullptr;
+                    const ast::AstNode* failureSyntax = expression->children().size() >= 4
+                        ? expression->children()[3]
+                        : nullptr;
+                    const std::optional<ProjectIntegerValue> foldedSuccess =
+                        foldIntegerConstant(successSyntax, selectedMember.declaringTypeOrdinal);
+                    const std::optional<ProjectIntegerValue> foldedFailure =
+                        foldIntegerConstant(failureSyntax, selectedMember.declaringTypeOrdinal);
+                    if (!foldedSuccess.has_value() || !foldedFailure.has_value())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::ConstRequiresConstant,
+                            diagnostics::DiagnosticSeverity::Error,
+                            !foldedSuccess.has_value() && successSyntax != nullptr
+                                ? successSyntax->range()
+                                : failureSyntax != nullptr ? failureSyntax->range() : expression->range(),
+                            "atomic compare-exchange orders must be compile-time MemoryOrder constants");
+                        atomicKind.reset();
+                    }
+                    else
+                    {
+                        const std::uint64_t success = foldedSuccess->bits;
+                        const std::uint64_t failure = foldedFailure->bits;
+                        const bool successLegal = success <= 4U;
+                        const bool failureLegal = failure == 0U || failure == 1U || failure == 4U;
+                        const bool failureNotStronger =
+                            (success == 0U && failure == 0U) ||
+                            (success == 1U && (failure == 0U || failure == 1U)) ||
+                            (success == 2U && failure == 0U) ||
+                            (success == 3U && (failure == 0U || failure == 1U)) ||
+                            (success == 4U && failureLegal);
+                        if (!successLegal)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                successSyntax != nullptr ? successSyntax->range() : expression->range(),
+                                "atomic compare-exchange success order is outside MemoryOrder");
+                            atomicKind.reset();
+                        }
+                        else if (!failureLegal)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                failureSyntax != nullptr ? failureSyntax->range() : expression->range(),
+                                "atomic compare-exchange failure order must be Relaxed, Acquire, or SequentiallyConsistent");
+                            atomicKind.reset();
+                        }
+                        else if (!failureNotStronger)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                failureSyntax != nullptr ? failureSyntax->range() : expression->range(),
+                                "atomic compare-exchange failure order cannot be stronger than success order");
+                            atomicKind.reset();
+                        }
+                        else
+                        {
+                            atomicMemoryOrder = static_cast<std::uint8_t>(success);
+                            atomicFailureMemoryOrder = static_cast<std::uint8_t>(failure);
+                        }
+                    }
+                }
+                else if (atomicKind.has_value() && (orderedLoad || orderedStore || orderedRmw))
                 {
                     const ast::AstNode* orderSyntax = expression->children().empty()
                         ? nullptr
@@ -9314,6 +9391,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             valueTypeKey,
                             false, std::nullopt, std::nullopt};
                         binding.atomicMemoryOrder = atomicMemoryOrder;
+                        binding.atomicFailureMemoryOrder = atomicFailureMemoryOrder;
                         binding.implicitFieldMemberOrdinal = valueFieldOrdinal;
                         coreBindings_.push_back(std::move(binding));
                     }

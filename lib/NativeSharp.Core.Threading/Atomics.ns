@@ -188,6 +188,11 @@ namespace NativeSharp.Core.Threading
         {
             return 0;
         }
+
+        public int CompareExchange(int value, int comparand, MemoryOrder successOrder, MemoryOrder failureOrder)
+        {
+            return 0;
+        }
     }
 
     // Gemela de AtomicInt32 en ancho de 64 bits -- ver el comentario de cabecera de AtomicInt32
@@ -265,6 +270,11 @@ namespace NativeSharp.Core.Threading
         }
 
         public long CompareExchange(long value, long comparand)
+        {
+            return 0;
+        }
+
+        public long CompareExchange(long value, long comparand, MemoryOrder successOrder, MemoryOrder failureOrder)
         {
             return 0;
         }

@@ -196,6 +196,17 @@ class Program
         if (ordered64.Exchange(60000000000, MemoryOrder.AcquireRelease) != 43000000007) { return 47; }
         if (ordered64.Increment(MemoryOrder.SequentiallyConsistent) != 60000000001) { return 48; }
 
+        // ==== Seccion 9: CompareExchange con orden de exito y fallo independiente =============
+        if (ordered32.CompareExchange(70, 61, MemoryOrder.AcquireRelease, MemoryOrder.Acquire) != 61) { return 49; }
+        if (ordered32.Load(MemoryOrder.Relaxed) != 70) { return 50; }
+        if (ordered32.CompareExchange(80, 61, MemoryOrder.SequentiallyConsistent, MemoryOrder.SequentiallyConsistent) != 70) { return 51; }
+        if (ordered32.Load(MemoryOrder.Relaxed) != 70) { return 52; }
+
+        if (ordered64.CompareExchange(70000000000, 60000000001, MemoryOrder.AcquireRelease, MemoryOrder.Acquire) != 60000000001) { return 53; }
+        if (ordered64.Load(MemoryOrder.Relaxed) != 70000000000) { return 54; }
+        if (ordered64.CompareExchange(80000000000, 60000000001, MemoryOrder.SequentiallyConsistent, MemoryOrder.SequentiallyConsistent) != 70000000000) { return 55; }
+        if (ordered64.Load(MemoryOrder.Relaxed) != 70000000000) { return 56; }
+
         return 0;
     }
 }

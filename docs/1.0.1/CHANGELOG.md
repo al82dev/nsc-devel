@@ -14,6 +14,10 @@ empaqueta con NativeSharp 1.0.1.
   con alineación natural, sin dependencias `__atomic_*`.
 - `Increment`, `Decrement`, `Add` y `Exchange` aceptan los cinco `MemoryOrder`, emiten
   `atomicrmw` alineado en 32/64 bits y mantienen sus contratos de retorno.
+- `CompareExchange` acepta órdenes independientes de éxito y fallo. El frontend rechaza órdenes
+  de fallo Release/AcquireRelease o más fuertes que éxito; LLVM recibe ambos órdenes en un
+  `cmpxchg` alineado y la API mantiene el retorno del valor anterior.
+
 
 - La gramática 2.0 reconoce bloques `asm { ... }` dentro de funciones y métodos mediante un nodo
   AST explícito y diagnostica su uso en namespace. Un modo léxico acotado al cuerpo conserva bytes,

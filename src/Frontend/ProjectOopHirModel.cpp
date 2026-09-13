@@ -4302,7 +4302,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     expectedValueArguments = 2U;
                 }
                 const std::size_t expectedExplicitArguments = expectedValueArguments +
-                    (core->atomicMemoryOrder.has_value() ? 1U : 0U);
+                    (core->atomicMemoryOrder.has_value() ? 1U : 0U) +
+                    (core->atomicFailureMemoryOrder.has_value() ? 1U : 0U);
                 if (expression->children().size() != expectedExplicitArguments)
                 {
                     error = "Stage 54.2 Atomic core operation received an invalid explicit argument count";
@@ -4332,6 +4333,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     // as ABI value + 1. LLVM lowering performs the explicit NativeSharp->LLVM map.
                     node->integerValue =
                         static_cast<std::uint64_t>(*core->atomicMemoryOrder) + 1U;
+                    if (core->atomicFailureMemoryOrder.has_value())
+                    {
+                        // CompareExchange packs its independent failure order in the next byte.
+                        // This is internal HIR/MIR metadata, not part of the public enum ABI.
+                        node->integerValue |=
+                            (static_cast<std::uint64_t>(*core->atomicFailureMemoryOrder) + 1U) << 8U;
+                    }
                 }
                 node->children.push_back(std::move(location));
                 for (std::size_t index = 0; index < expectedValueArguments; ++index)

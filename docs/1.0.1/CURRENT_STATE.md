@@ -91,6 +91,11 @@ La línea 2.0 publica `NativeSharp.Core.Threading.MemoryOrder` y ya lo aplica a 
 conservan su semántica `seq_cst`.
 `Increment`, `Decrement`, `Add` y `Exchange` también aceptan los cinco órdenes públicos en ambos
 anchos. Se emiten como `atomicrmw` alineado y conservan sus contratos de valor nuevo/anterior.
+`CompareExchange` agrega una sobrecarga de cuatro argumentos con órdenes independientes de éxito
+y fallo. Éxito admite los cinco valores; fallo sólo `Relaxed`, `Acquire` o
+`SequentiallyConsistent` y nunca puede ser más fuerte que éxito. Ambos son constantes de
+compilación y el backend emite `cmpxchg` alineado conservando el retorno del valor anterior.
+
 
 
 ## Superficie del lenguaje

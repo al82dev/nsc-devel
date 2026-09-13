@@ -35,7 +35,7 @@
 //      through a real linked Windows x64 PE executable via the actual `nsc` Driver, AT BOTH O0
 //      and O2 -- same discipline every Stage 53/54 round has followed since 53.2b.
 //   3. REAL EXECUTION under Wine (when available, gracefully skipped otherwise), at BOTH
-//      optimization levels: Main.ns returns 0 only if every one of its 48 runtime checks passed
+//      optimization levels: Main.ns returns 0 only if every one of its 56 runtime checks passed
 //      (see examples/project_stage54_2/Main.ns for the full numbering) -- the EXACT return-value
 //      contract of all ten operations (including CompareExchange's "does not match" branch, not
 //      just its happy path) for both widths, TWO genuine multi-threaded stress tests (4 threads x
@@ -186,6 +186,7 @@ namespace NativeSharp.Core.Threading
         public int Add(int value) { return 0; }
         public int Exchange(int value) { return 0; }
         public int CompareExchange(int value, int comparand) { return 0; }
+        public int CompareExchange(int value, int comparand, MemoryOrder successOrder, MemoryOrder failureOrder) { return 0; }
     }
 
     public class AtomicInt64
@@ -205,6 +206,7 @@ namespace NativeSharp.Core.Threading
         public long Add(long value) { return 0; }
         public long Exchange(long value) { return 0; }
         public long CompareExchange(long value, long comparand) { return 0; }
+        public long CompareExchange(long value, long comparand, MemoryOrder successOrder, MemoryOrder failureOrder) { return 0; }
     }
 }
 )NS");
@@ -261,6 +263,14 @@ class Program
         r64 = a64.Add(9, MemoryOrder.Release);
         r64 = a64.Exchange(10, MemoryOrder.AcquireRelease);
         r64 = a64.Increment(MemoryOrder.SequentiallyConsistent);
+        r32 = a32.CompareExchange(11, 8, MemoryOrder.Relaxed, MemoryOrder.Relaxed);
+        r32 = a32.CompareExchange(12, 11, MemoryOrder.Acquire, MemoryOrder.Acquire);
+        r32 = a32.CompareExchange(13, 12, MemoryOrder.Release, MemoryOrder.Relaxed);
+        r32 = a32.CompareExchange(14, 13, MemoryOrder.AcquireRelease, MemoryOrder.Acquire);
+        r64 = a64.CompareExchange(15, 10, MemoryOrder.SequentiallyConsistent, MemoryOrder.SequentiallyConsistent);
+        r64 = a64.CompareExchange(16, 15, MemoryOrder.AcquireRelease, MemoryOrder.Relaxed);
+        r64 = a64.CompareExchange(17, 16, MemoryOrder.SequentiallyConsistent, MemoryOrder.Acquire);
+        r64 = a64.CompareExchange(18, 17, MemoryOrder.SequentiallyConsistent, MemoryOrder.Relaxed);
         return r64 + r32;
     }
 }
@@ -315,6 +325,11 @@ class Program
     // Also confirm the "location" operand feeding each of those calls is a field-address GEP
     tests.expect(llvm.find("acq_rel") != std::string::npos,
         "ordered RMW accepts AcquireRelease and lowers it to LLVM acq_rel");
+    tests.expect(llvm.find("cmpxchg") != std::string::npos &&
+            llvm.find("acq_rel acquire") != std::string::npos,
+        "ordered CompareExchange emits independent acquire-release success and acquire failure orders");
+    tests.expect(llvm.find("seq_cst seq_cst") != std::string::npos,
+        "ordered CompareExchange preserves sequential consistency independently on success and failure");
     // (`field.addr`), not some other addressing scheme -- proof that the synthetic FieldAddress
     // node this round introduces (see ProjectOopHirModel.cpp's dedicated Atomics block) is really
     // being used, and not silently bypassed.
@@ -345,6 +360,7 @@ namespace NativeSharp.Core.Threading
         public int Load(MemoryOrder order) { return 0; }
         public int Increment(MemoryOrder order) { return 0; }
         public void Store(int value, MemoryOrder order) { }
+        public int CompareExchange(int value, int comparand, MemoryOrder successOrder, MemoryOrder failureOrder) { return 0; }
     }
 }
 
@@ -359,6 +375,10 @@ class Program
         value.Store(1, MemoryOrder.Acquire);
         value.Increment(MemoryOrder.Invalid);
         MemoryOrder dynamicOrder = MemoryOrder.Relaxed;
+        value.CompareExchange(2, 1, MemoryOrder.SequentiallyConsistent, MemoryOrder.Release);
+        value.CompareExchange(2, 1, MemoryOrder.Relaxed, MemoryOrder.Acquire);
+        value.CompareExchange(2, 1, MemoryOrder.Invalid, MemoryOrder.Relaxed);
+        value.CompareExchange(2, 1, dynamicOrder, MemoryOrder.Relaxed);
         value.Load(dynamicOrder);
         return 0;
     }
@@ -387,8 +407,20 @@ class Program
     tests.expect(diagnostics.find(
         "atomic memory order must be a compile-time MemoryOrder constant") != std::string::npos,
         "ordered atomic operations reject runtime-selected ordering");
-}
 
+    tests.expect(diagnostics.find(
+        "atomic compare-exchange failure order must be Relaxed, Acquire, or SequentiallyConsistent") != std::string::npos,
+        "ordered CompareExchange rejects Release as a failure order");
+    tests.expect(diagnostics.find(
+        "atomic compare-exchange failure order cannot be stronger than success order") != std::string::npos,
+        "ordered CompareExchange rejects a failure order stronger than success");
+    tests.expect(diagnostics.find(
+        "atomic compare-exchange success order is outside MemoryOrder") != std::string::npos,
+        "ordered CompareExchange rejects success values outside the public MemoryOrder ABI");
+    tests.expect(diagnostics.find(
+        "atomic compare-exchange orders must be compile-time MemoryOrder constants") != std::string::npos,
+        "ordered CompareExchange rejects runtime-selected ordering");
+}
 // ---------------------------------------------------------------------------------------
 // 2. Runtime-module fixture: confirm the actual atomic HARDWARE instructions (not a Win32 call)
 //    are what each of the ten runtime hooks emits -- see this file's header comment for why this
@@ -543,7 +575,7 @@ void testPackagedExampleAtOptimizationLevel(
         tests.expect(!crashed, "Stage 54.2 (" + runLabel + ") executable does not crash under real execution");
         tests.expect(exitCode == 0,
             "Stage 54.2 (" + runLabel +
-                ") executable returns exit code 0 (all 48 atomics runtime checks passed -- exact "
+                ") executable returns exit code 0 (all 56 atomics runtime checks passed -- exact "
                 "return-value contract for Increment/Decrement/Add/Exchange/CompareExchange on both "
                 "Int32 and Int64, including CompareExchange's non-matching branch, plus two genuine "
                 "4-threads-x-2500-increments stress tests on a SHARED counter verifying the exact "

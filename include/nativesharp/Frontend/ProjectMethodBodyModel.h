@@ -970,6 +970,10 @@ struct MethodCoreBinding final
     // time and carries this value as node metadata, so an ordering can never become a runtime
     // integer passed accidentally to LLVM.
     std::optional<std::uint8_t> atomicMemoryOrder = std::nullopt;
+    // Item 306 only: CompareExchange has an independent failure order. It remains absent on
+    // every legacy overload and on all single-order atomic operations.
+    std::optional<std::uint8_t> atomicFailureMemoryOrder = std::nullopt;
+
 };
 
 struct MethodVariableArrayIndexBinding final

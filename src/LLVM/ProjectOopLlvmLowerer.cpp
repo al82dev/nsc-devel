@@ -159,6 +159,18 @@ LLVMValueRef buildOrderedAtomicRmw(
         ? LLVMBuildAdd(builder, oldValue, operand, resultName)
         : oldValue;
 }
+
+LLVMValueRef buildOrderedAtomicCompareExchange(
+    LLVMBuilderRef builder, LLVMValueRef location, LLVMValueRef value,
+    LLVMValueRef comparand, LLVMAtomicOrdering successOrder,
+    LLVMAtomicOrdering failureOrder, unsigned alignment, const char* resultName)
+{
+    LLVMValueRef pair = LLVMBuildAtomicCmpXchg(
+        builder, location, comparand, value, successOrder, failureOrder, 0);
+    LLVMSetAlignment(pair, alignment);
+    return LLVMBuildExtractValue(builder, pair, 0U, resultName);
+}
+
 constexpr const char* kInterlockedIncrementInt32FunctionName = "__nativesharp_interlocked_increment_int32";
 constexpr const char* kInterlockedDecrementInt32FunctionName = "__nativesharp_interlocked_decrement_int32";
 constexpr const char* kInterlockedAddInt32FunctionName = "__nativesharp_interlocked_add_int32";
@@ -7684,6 +7696,26 @@ private:
             // regardless of whether the comparison matched, forwarded directly from Win32.
             case frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt32:
             {
+                if (node->integerValue != 0U)
+                {
+                    if (node->children.size() != 3)
+                        return failValue(error, "ordered atomic CompareExchange requires pointer, value, and comparand arguments");
+                    const std::optional<LLVMAtomicOrdering> successOrder =
+                        orderedAtomicRmwOrdering(node->integerValue & 0xffU);
+                    const std::optional<LLVMAtomicOrdering> failureOrder =
+                        orderedAtomicLoadOrdering((node->integerValue >> 8U) & 0xffU);
+                    if (!successOrder.has_value() || !failureOrder.has_value())
+                        return failValue(error, "ordered atomic CompareExchange carries invalid MemoryOrder metadata");
+                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                    if (location == nullptr) return nullptr;
+                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                    if (value == nullptr) return nullptr;
+                    LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
+                    if (comparand == nullptr) return nullptr;
+                    return buildOrderedAtomicCompareExchange(
+                        builder_, location, value, comparand, *successOrder, *failureOrder, 4U,
+                        "atomic.compare_exchange.ordered.i32");
+                }
                 if (node->children.size() != 3 || interlockedCompareExchangeInt32Function_ == nullptr)
                     return failValue(error, "Stage 54.2 Interlocked.CompareExchange(int*, int, int) requires three arguments and runtime hook");
                 LLVMValueRef location = lowerExpression(node->children[0].get(), error);
@@ -7698,6 +7730,26 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt64:
             {
+                if (node->integerValue != 0U)
+                {
+                    if (node->children.size() != 3)
+                        return failValue(error, "ordered atomic CompareExchange requires pointer, value, and comparand arguments");
+                    const std::optional<LLVMAtomicOrdering> successOrder =
+                        orderedAtomicRmwOrdering(node->integerValue & 0xffU);
+                    const std::optional<LLVMAtomicOrdering> failureOrder =
+                        orderedAtomicLoadOrdering((node->integerValue >> 8U) & 0xffU);
+                    if (!successOrder.has_value() || !failureOrder.has_value())
+                        return failValue(error, "ordered atomic CompareExchange carries invalid MemoryOrder metadata");
+                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                    if (location == nullptr) return nullptr;
+                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                    if (value == nullptr) return nullptr;
+                    LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
+                    if (comparand == nullptr) return nullptr;
+                    return buildOrderedAtomicCompareExchange(
+                        builder_, location, value, comparand, *successOrder, *failureOrder, 8U,
+                        "atomic.compare_exchange.ordered.i64");
+                }
                 if (node->children.size() != 3 || interlockedCompareExchangeInt64Function_ == nullptr)
                     return failValue(error, "Stage 54.2 Interlocked.CompareExchange(long*, long, long) requires three arguments and runtime hook");
                 LLVMValueRef location = lowerExpression(node->children[0].get(), error);
