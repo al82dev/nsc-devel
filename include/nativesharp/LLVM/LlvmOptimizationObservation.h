@@ -2,7 +2,9 @@
 
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -148,4 +150,47 @@ inline constexpr std::string_view kLlvmProcessTraceEnd = "nsc-llvm-pass-trace-en
 // diagnostico en una forma nueva de romper builds.
 inline constexpr std::size_t kLlvmRepeatedPassSuspicion = 64;
 inline constexpr double kLlvmOptimizationTimeBudgetSeconds = 120.0;
+
+// The O2 budget is observational: exceeding it diagnoses a slow build but never aborts an opaque
+// LLVMRunPasses call or changes the generated program.
+inline constexpr std::uint64_t kDefaultLlvmO2BudgetMilliseconds = 120000;
+
+class LlvmOptimizationBudgetTracker final
+{
+public:
+    explicit LlvmOptimizationBudgetTracker(
+        std::uint64_t budgetMilliseconds = kDefaultLlvmO2BudgetMilliseconds) noexcept;
+
+    void setBudgetMilliseconds(std::uint64_t value) noexcept;
+    void observe(LlvmOptimizationLevel level, std::chrono::nanoseconds elapsed) noexcept;
+
+    std::uint64_t budgetMilliseconds() const noexcept;
+    std::chrono::nanoseconds elapsed() const noexcept;
+    std::size_t invocations() const noexcept;
+    bool exceeded() const noexcept;
+    std::string report() const;
+
+private:
+    std::uint64_t budgetMilliseconds_;
+    std::chrono::nanoseconds elapsed_{};
+    std::size_t invocations_ = 0;
+};
+
+// Installs a tracker only for the current compiler thread and restores the previous tracker on
+// scope exit. Future worker threads must install their own scope explicitly.
+class LlvmOptimizationBudgetScope final
+{
+public:
+    explicit LlvmOptimizationBudgetScope(LlvmOptimizationBudgetTracker& tracker) noexcept;
+    ~LlvmOptimizationBudgetScope();
+
+    LlvmOptimizationBudgetScope(const LlvmOptimizationBudgetScope&) = delete;
+    LlvmOptimizationBudgetScope& operator=(const LlvmOptimizationBudgetScope&) = delete;
+
+private:
+    LlvmOptimizationBudgetTracker* previous_;
+};
+
+void observeActiveLlvmOptimizationBudget(
+    LlvmOptimizationLevel level, std::chrono::nanoseconds elapsed) noexcept;
 }

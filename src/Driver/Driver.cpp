@@ -42,7 +42,9 @@
 #include "nativesharp/LLVM/LlvmLowerer.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
+#include "nativesharp/LLVM/LlvmProcessTrace.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
@@ -95,10 +97,20 @@ using target::BuiltinLayoutKind;
 
 struct DriverExecutionScope final
 {
-    explicit DriverExecutionScope(std::ostream& destination)
-        : output(destination), started(std::chrono::steady_clock::now()) {}
+    DriverExecutionScope(std::ostream& destination, std::ostream& diagnosticDestination)
+        : output(destination), error(diagnosticDestination),
+          started(std::chrono::steady_clock::now()) {}
     ~DriverExecutionScope()
     {
+        if (o2Budget.invocations() != 0)
+        {
+            if (reportTiming) output << o2Budget.report() << '\n';
+            if (o2Budget.exceeded())
+            {
+                error << "nsc: warning: O2 optimization budget exceeded; "
+                      << o2Budget.report() << '\n';
+            }
+        }
         if (!reportTiming) return;
         for (const auto& [phase, elapsed] : phaseTimings)
         {
@@ -120,9 +132,11 @@ struct DriverExecutionScope final
         return deadline.has_value() && std::chrono::steady_clock::now() >= *deadline;
     }
     std::ostream& output;
+    std::ostream& error;
     std::chrono::steady_clock::time_point started;
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::vector<std::pair<std::string, std::chrono::nanoseconds>> phaseTimings;
+    llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
     bool reportTiming = false;
 };
 
@@ -2563,7 +2577,8 @@ void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles)
 
 ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &output, std::ostream &error) const
 {
-    DriverExecutionScope executionScope(output);
+    DriverExecutionScope executionScope(output, error);
+    llvm_backend::LlvmOptimizationBudgetScope optimizationBudgetScope(executionScope.o2Budget);
     DriverExecutionScope* previousScope = activeExecutionScope;
     activeExecutionScope = &executionScope;
     struct RestoreScope final
@@ -2579,6 +2594,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
     bool optimizationLevelSeen = false;
+    bool optimizationBudgetSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
     std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
@@ -2600,6 +2616,10 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             executionScope.reportTiming = true;
             continue;
         }
+        if (argument == "--llvm-pass-trace")
+        {
+            continue;
+        }
         static constexpr std::string_view timeoutPrefix = "--timeout-ms=";
         if (argument.starts_with(timeoutPrefix))
         {
@@ -2618,6 +2638,32 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CommandLineError;
             }
             executionScope.deadline = executionScope.started + std::chrono::milliseconds(milliseconds);
+            continue;
+        }
+        static constexpr std::string_view o2BudgetPrefix = "--o2-budget-ms=";
+        if (argument.starts_with(o2BudgetPrefix))
+        {
+            if (optimizationBudgetSeen)
+            {
+                error << "nsc: error: duplicate O2 optimization budget\n";
+                return ExitCode::CommandLineError;
+            }
+            optimizationBudgetSeen = true;
+            const std::string_view value = argument.substr(o2BudgetPrefix.size());
+            std::uint64_t milliseconds = 0;
+            if (value.empty() || value.size() > 8U ||
+                !std::ranges::all_of(value, [](unsigned char ch) { return std::isdigit(ch) != 0; }))
+            {
+                error << "nsc: error: malformed O2 budget; expected --o2-budget-ms=1..86400000\n";
+                return ExitCode::CommandLineError;
+            }
+            for (char ch : value) milliseconds = milliseconds * 10U + static_cast<unsigned>(ch - '0');
+            if (milliseconds == 0 || milliseconds > 86400000U)
+            {
+                error << "nsc: error: O2 budget must be between 1 and 86400000 milliseconds\n";
+                return ExitCode::CommandLineError;
+            }
+            executionScope.o2Budget.setBudgetMilliseconds(milliseconds);
             continue;
         }
         if (foldedArgument.starts_with("/subsystem:"))
@@ -2737,8 +2783,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 
     if (normalizedArguments.empty())
     {
-        error << "nsc: error: optimization level requires a compilation action or "
-                 "input file\n";
+        error << "nsc: error: compilation options require an action or input file\n";
         return ExitCode::CommandLineError;
     }
 
@@ -3282,6 +3327,10 @@ void Driver::printHelp(std::ostream &output)
               "compilation command.\n"
            << "--time reports deterministic per-phase microseconds plus total wall time; "
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
+           << "--o2-budget-ms=N sets the advisory cumulative LLVM O2 budget; exceeding it warns "
+              "without changing the artifact or exit code.\n"
+           << "--llvm-pass-trace enables the expensive full LLVM pass log and verify-each "
+              "diagnostics for optimized builds.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
@@ -3355,7 +3404,12 @@ void Driver::printLlvmPipeline(llvm_backend::LlvmOptimizationLevel optimizationL
     output << "optimization-level: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "pass-pipeline: " << llvm_backend::llvmOptimizationPipelineName(optimizationLevel) << '\n'
            << "target-aware: yes\n"
-           << "verify-each: yes\n";
+           << "verify-each: "
+           << (llvm_backend::llvmVerifyEachPassRequired(
+                   optimizationLevel, llvm_backend::llvmProcessTraceActive())
+                   ? "yes"
+                   : "no")
+           << '\n';
 }
 
 ExitCode Driver::runCodeGeneration(std::string_view action,

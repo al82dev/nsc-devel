@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–247 completados; siguiente item 248
+**Progreso:** Tanda 1, items 246–248 completados; siguiente item 249
 
 ## Regla de ejecución
 
@@ -21,7 +21,7 @@
 
 1. **246 — Perfil detallado de compilación / Detailed compilation profiling — COMPLETADO / COMPLETE**
 2. **247 — Eliminar trabajo innecesario en O0 / Remove unnecessary O0 work — COMPLETADO / COMPLETE**
-3. **248 — Presupuesto de optimización O2 / O2 optimization budget**
+3. **248 — Presupuesto de optimización O2 / O2 optimization budget — COMPLETADO / COMPLETE**
 4. **249 — Control `-j N` y núcleos reservados / Job and reserved-core controls**
 5. **250 — Pool interno de workers del compilador / Internal compiler worker pool**
 6. **251 — Scheduler determinista sobre el grafo existente / Deterministic graph scheduler**

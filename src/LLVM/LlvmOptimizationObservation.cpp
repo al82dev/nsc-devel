@@ -5,6 +5,80 @@
 
 namespace nativesharp::llvm_backend
 {
+namespace
+{
+thread_local LlvmOptimizationBudgetTracker* activeBudgetTracker = nullptr;
+}
+
+LlvmOptimizationBudgetTracker::LlvmOptimizationBudgetTracker(
+    std::uint64_t budgetMilliseconds) noexcept
+    : budgetMilliseconds_(budgetMilliseconds)
+{
+}
+
+void LlvmOptimizationBudgetTracker::setBudgetMilliseconds(std::uint64_t value) noexcept
+{
+    budgetMilliseconds_ = value;
+}
+
+void LlvmOptimizationBudgetTracker::observe(
+    LlvmOptimizationLevel level, std::chrono::nanoseconds elapsed) noexcept
+{
+    if (level != LlvmOptimizationLevel::O2 || elapsed.count() <= 0) return;
+    ++invocations_;
+    const auto remaining = std::chrono::nanoseconds::max() - elapsed_;
+    elapsed_ = elapsed > remaining ? std::chrono::nanoseconds::max() : elapsed_ + elapsed;
+}
+
+std::uint64_t LlvmOptimizationBudgetTracker::budgetMilliseconds() const noexcept
+{
+    return budgetMilliseconds_;
+}
+
+std::chrono::nanoseconds LlvmOptimizationBudgetTracker::elapsed() const noexcept
+{
+    return elapsed_;
+}
+
+std::size_t LlvmOptimizationBudgetTracker::invocations() const noexcept
+{
+    return invocations_;
+}
+
+bool LlvmOptimizationBudgetTracker::exceeded() const noexcept
+{
+    return elapsed_ > std::chrono::milliseconds(budgetMilliseconds_);
+}
+
+std::string LlvmOptimizationBudgetTracker::report() const
+{
+    std::ostringstream text;
+    text << "optimization-budget level=O2 budget_ms=" << budgetMilliseconds_
+         << " elapsed_us="
+         << std::chrono::duration_cast<std::chrono::microseconds>(elapsed_).count()
+         << " invocations=" << invocations_
+         << " status=" << (exceeded() ? "exceeded" : "within");
+    return text.str();
+}
+
+LlvmOptimizationBudgetScope::LlvmOptimizationBudgetScope(
+    LlvmOptimizationBudgetTracker& tracker) noexcept
+    : previous_(activeBudgetTracker)
+{
+    activeBudgetTracker = &tracker;
+}
+
+LlvmOptimizationBudgetScope::~LlvmOptimizationBudgetScope()
+{
+    activeBudgetTracker = previous_;
+}
+
+void observeActiveLlvmOptimizationBudget(
+    LlvmOptimizationLevel level, std::chrono::nanoseconds elapsed) noexcept
+{
+    if (activeBudgetTracker != nullptr) activeBudgetTracker->observe(level, elapsed);
+}
+
 // El registro de LLVM tiene la forma «Running pass: <Pase> on <Unidad>» (a veces con un sufijo
 // entre parentesis). Aqui NO se interpreta nada: se cuenta lo que se vio y se guarda lo ultimo.
 void observeLlvmPassLog(std::string_view log, LlvmOptimizationObservation& observation)

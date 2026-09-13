@@ -12,7 +12,8 @@ class LlvmTargetMachine;
 
 // O0 is verified at the optimizer boundary; optimized pipelines additionally verify after each
 // pass so a transformation failure can still name its last completed pass.
-bool llvmVerifyEachPassRequired(LlvmOptimizationLevel level) noexcept;
+bool llvmVerifyEachPassRequired(
+    LlvmOptimizationLevel level, bool detailedPassDiagnostics) noexcept;
 
 class LlvmOptimizer final
 {

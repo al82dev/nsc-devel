@@ -48,11 +48,12 @@ by CMake. A monolithic library discovered without package metadata shall be chec
 O0 and O2 shall preserve the same observable language behavior. Every corrected optimization-only
 miscompilation must keep a differential fixture that executes both configurations.
 
-On Windows, O0 compilation shall execute directly in the requested compiler process. It shall not
-create the LLVM trace-supervisor child process or enable LLVM's verbose per-pass log. The O0 module
-shall still be verified before and after its required pipeline, and the targeted SEH legalization
-passes remain mandatory. O1, O2, and O3 retain the child-process trace and per-pass verification so
-an optimizer failure can identify the last completed LLVM pass.
+Ordinary compilation shall execute directly in the requested compiler process. It shall not create
+the LLVM trace-supervisor child process or enable LLVM's verbose per-pass log. Every LLVM module
+shall still be verified before and after its required pipeline, and the targeted O0 SEH legalization
+passes remain mandatory. `--llvm-pass-trace` on O1, O2, or O3 enables the child-process trace and
+per-pass verification explicitly so an optimizer investigation can identify its last completed
+LLVM pass without imposing that diagnostic cost on normal builds.
 
 ## NSC-EXIT-001 — Exit-code classes
 
@@ -116,6 +117,12 @@ participate in artifact identity.
 
 Neither timing nor cancellation changes language semantics, optimization or artifact identity. The
 diagnostic limit and hostile-input ceilings remain independent resource controls.
+
+O2 has an advisory cumulative LLVM optimization budget of 120,000 milliseconds per compiler
+invocation. `--o2-budget-ms=N` may set it from 1 through 86,400,000 milliseconds. `--time` emits
+`optimization-budget level=O2 budget_ms=<N> elapsed_us=<N> invocations=<N> status=<within|exceeded>`
+when O2 work occurred. Exceeding the budget emits a warning but shall not abort the opaque LLVM
+pipeline, change the exit code, or alter the generated artifact.
 
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 

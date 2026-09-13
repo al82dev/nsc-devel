@@ -59,6 +59,10 @@ int main()
             "help documents standard CodeView/PDB debug profiles");
         tests.expect(output.str().find("-fdebug-prefix-map") != std::string::npos,
             "help documents reproducible debug source path remapping");
+        tests.expect(output.str().find("--o2-budget-ms=N") != std::string::npos,
+            "help documents the advisory cumulative O2 budget");
+        tests.expect(output.str().find("--llvm-pass-trace") != std::string::npos,
+            "help documents opt-in expensive LLVM pass diagnostics");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
     }
 
@@ -79,6 +83,16 @@ int main()
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::CommandLineError && error.str().find("between 1 and") != std::string::npos,
             "invalid cancellation budget is rejected deterministically");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--version", "--o2-budget-ms=0"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                error.str().find("between 1 and 86400000") != std::string::npos,
+            "an invalid O2 optimization budget is rejected deterministically");
     }
 
     {
@@ -656,13 +670,18 @@ int main()
         const std::filesystem::path objectPath = oopProjectDirectory / "stage30_driver.obj";
         const std::string object = objectPath.string();
         const std::vector<std::string_view> arguments = {
-            "--emit-project-oop-obj", path, "-O2", "-o", object};
+            "--emit-project-oop-obj", path, "-O2", "-o", object,
+            "--time", "--o2-budget-ms=86400000"};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--emit-project-oop-obj emits Stage 30 Windows x64 object code");
         tests.expect(output.str().find("project OOP object emission: ok (machine=0x8664") != std::string::npos,
             "Stage 30 object command verifies AMD64 COFF structure");
         tests.expect(std::filesystem::exists(objectPath) && std::filesystem::file_size(objectPath) > 0,
             "Stage 30 object command materializes a non-empty COFF object");
+        tests.expect(output.str().find(
+                "optimization-budget level=O2 budget_ms=86400000 elapsed_us=") != std::string::npos &&
+                output.str().find("invocations=1 status=within") != std::string::npos,
+            "timed O2 object emission reports its cumulative advisory budget");
         tests.expect(error.str().empty(), "valid Stage 30 OOP object emission keeps stderr empty");
     }
 
@@ -900,8 +919,8 @@ int main()
         tests.expect(code == ExitCode::Success, "--print-llvm-pipeline accepts -O2");
         tests.expect(output.str().find("default<O2>") != std::string::npos,
             "pipeline dump identifies LLVM's O2 default pipeline");
-        tests.expect(output.str().find("verify-each: yes") != std::string::npos,
-            "pipeline dump documents per-pass verification");
+        tests.expect(output.str().find("verify-each: no") != std::string::npos,
+            "ordinary pipeline reporting documents boundary-only verification");
         tests.expect(error.str().empty(), "pipeline reporting keeps stderr empty");
     }
 

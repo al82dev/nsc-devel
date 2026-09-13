@@ -74,6 +74,9 @@ int runCompiler(int argc, char** argv)
     {
         nativesharp::llvm_backend::setLlvmProcessTraceActive(true);
     }
+#else
+    nativesharp::llvm_backend::setLlvmProcessTraceActive(
+        nativesharp::llvm_backend::llvmProcessTraceRequired(arguments));
 #endif
 
     const nativesharp::driver::Driver driver;

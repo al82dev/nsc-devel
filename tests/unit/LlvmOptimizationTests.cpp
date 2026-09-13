@@ -12,6 +12,7 @@
 #include "../support/TestContext.h"
 
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -29,7 +30,10 @@ using nativesharp::llvm_backend::kLlvmProcessTraceBegin;
 using nativesharp::llvm_backend::kLlvmProcessTraceEnd;
 using nativesharp::llvm_backend::kLlvmStandardErrorProbe;
 using nativesharp::llvm_backend::LlvmOptimizationObservation;
+using nativesharp::llvm_backend::LlvmOptimizationBudgetScope;
+using nativesharp::llvm_backend::LlvmOptimizationBudgetTracker;
 using nativesharp::llvm_backend::LlvmOptimizer;
+using nativesharp::llvm_backend::observeActiveLlvmOptimizationBudget;
 using nativesharp::llvm_backend::llvmProcessTraceRequired;
 using nativesharp::llvm_backend::llvmVerifyEachPassRequired;
 using nativesharp::llvm_backend::observeLlvmPassLog;
@@ -146,19 +150,58 @@ int main(int argc, char** argv)
     tests.expect(!llvmProcessTraceRequired(
             std::array<std::string_view, 1>{"--emit-project-oop-obj"}),
         "the default O0 compilation does not launch the LLVM trace supervisor");
+    tests.expect(!llvmProcessTraceRequired(
+            std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O2"}),
+        "an ordinary O2 compilation does not pay for the full LLVM pass trace");
     tests.expect(llvmProcessTraceRequired(
-            std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O1"}) &&
+            std::array<std::string_view, 3>{"--emit-project-oop-obj", "-O1", "--llvm-pass-trace"}) &&
             llvmProcessTraceRequired(
-                std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O2"}) &&
+                std::array<std::string_view, 3>{"--emit-project-oop-obj", "-O2", "--llvm-pass-trace"}) &&
             llvmProcessTraceRequired(
-                std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O3"}),
-        "optimized compilation levels retain full LLVM process tracing");
-    tests.expect(!llvmVerifyEachPassRequired(LlvmOptimizationLevel::O0),
+                std::array<std::string_view, 3>{"--emit-project-oop-obj", "-O3", "--llvm-pass-trace"}),
+        "optimized levels retain full tracing when explicitly requested");
+    tests.expect(!llvmVerifyEachPassRequired(LlvmOptimizationLevel::O0, true),
         "O0 relies on optimizer boundary verification instead of verifying after every pass");
-    tests.expect(llvmVerifyEachPassRequired(LlvmOptimizationLevel::O1) &&
-            llvmVerifyEachPassRequired(LlvmOptimizationLevel::O2) &&
-            llvmVerifyEachPassRequired(LlvmOptimizationLevel::O3),
-        "optimized pipelines retain verification after every pass");
+    tests.expect(!llvmVerifyEachPassRequired(LlvmOptimizationLevel::O2, false),
+        "ordinary O2 relies on optimizer boundary verification");
+    tests.expect(llvmVerifyEachPassRequired(LlvmOptimizationLevel::O1, true) &&
+            llvmVerifyEachPassRequired(LlvmOptimizationLevel::O2, true) &&
+            llvmVerifyEachPassRequired(LlvmOptimizationLevel::O3, true),
+        "explicit detailed diagnostics verify every optimized pass");
+
+    {
+        LlvmOptimizationBudgetTracker budget(10);
+        budget.observe(LlvmOptimizationLevel::O0, std::chrono::milliseconds(20));
+        tests.expect(budget.invocations() == 0 && budget.elapsed().count() == 0,
+            "the O2 budget ignores work from other optimization levels");
+        budget.observe(LlvmOptimizationLevel::O2, std::chrono::milliseconds(4));
+        budget.observe(LlvmOptimizationLevel::O2, std::chrono::milliseconds(7));
+        tests.expect(budget.invocations() == 2 && budget.exceeded(),
+            "the O2 budget accumulates every optimizer invocation in the compilation");
+        tests.expect(budget.report() ==
+                "optimization-budget level=O2 budget_ms=10 elapsed_us=11000 invocations=2 status=exceeded",
+            "the O2 budget has a stable machine-readable report");
+    }
+
+    {
+        LlvmOptimizationBudgetTracker outer(100);
+        LlvmOptimizationBudgetTracker inner(100);
+        {
+            LlvmOptimizationBudgetScope outerScope(outer);
+            observeActiveLlvmOptimizationBudget(
+                LlvmOptimizationLevel::O2, std::chrono::milliseconds(3));
+            {
+                LlvmOptimizationBudgetScope innerScope(inner);
+                observeActiveLlvmOptimizationBudget(
+                    LlvmOptimizationLevel::O2, std::chrono::milliseconds(5));
+            }
+            observeActiveLlvmOptimizationBudget(
+                LlvmOptimizationLevel::O2, std::chrono::milliseconds(7));
+        }
+        tests.expect(outer.elapsed() == std::chrono::milliseconds(10) &&
+                inner.elapsed() == std::chrono::milliseconds(5),
+            "nested budget scopes restore the previous compiler-thread tracker");
+    }
 
     constexpr std::array<LlvmOptimizationLevel, 4> levels = {
         LlvmOptimizationLevel::O0,

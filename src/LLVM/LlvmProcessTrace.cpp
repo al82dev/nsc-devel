@@ -80,11 +80,15 @@ bool llvmProcessTraceActive() noexcept
 
 bool llvmProcessTraceRequired(std::span<const std::string_view> arguments) noexcept
 {
+    bool optimizedPipeline = false;
+    bool traceRequested = false;
     for (const std::string_view argument : arguments)
     {
-        if (argument == "-O1" || argument == "-O2" || argument == "-O3") return true;
+        optimizedPipeline = optimizedPipeline ||
+            argument == "-O1" || argument == "-O2" || argument == "-O3";
+        traceRequested = traceRequested || argument == "--llvm-pass-trace";
     }
-    return false;
+    return optimizedPipeline && traceRequested;
 }
 
 bool runCurrentExecutableWithCapturedStandardError(

@@ -25,9 +25,10 @@
 
 namespace nativesharp::llvm_backend
 {
-bool llvmVerifyEachPassRequired(LlvmOptimizationLevel level) noexcept
+bool llvmVerifyEachPassRequired(
+    LlvmOptimizationLevel level, bool detailedPassDiagnostics) noexcept
 {
-    return level != LlvmOptimizationLevel::O0;
+    return level != LlvmOptimizationLevel::O0 && detailedPassDiagnostics;
 }
 
 namespace
@@ -251,19 +252,20 @@ bool LlvmOptimizer::optimize(
     // O0 already verifies the complete module immediately before and after the pipeline. Asking
     // LLVM to verify after every individual O0 pass repeats the same whole-module walk without
     // improving the release boundary: any invalid result is still rejected before emission. The
-    // optimized pipelines retain verify-each because their transformations are substantially
-    // broader and the failing pass is valuable diagnostic evidence.
+    // optimized pipelines retain verify-each when detailed pass diagnostics were explicitly
+    // requested, because then naming the failing pass is valuable evidence.
+    const bool detailedPassDiagnostics = llvmProcessTraceActive();
     llvm_api::LLVMPassBuilderOptionsSetVerifyEach(
-        options, llvmVerifyEachPassRequired(level) ? 1 : 0);
+        options, llvmVerifyEachPassRequired(level, detailedPassDiagnostics) ? 1 : 0);
     // En Windows sólo se enciende dentro del hijo cuya stderr fue fijada por CreateProcess. Hacerlo
     // en el proceso padre produciria un registro que nadie puede capturar: LLVM-C.dll lleva su
     // propio CRT. En POSIX se conserva la captura temporal dentro del proceso.
 #if defined(_WIN32)
-    const bool emitProcessTrace = observation != nullptr && llvmProcessTraceActive();
+    const bool emitProcessTrace = observation != nullptr && detailedPassDiagnostics;
     const bool enableDebugLogging = emitProcessTrace;
 #else
     const bool emitProcessTrace = false;
-    const bool enableDebugLogging = observation != nullptr;
+    const bool enableDebugLogging = observation != nullptr && detailedPassDiagnostics;
 #endif
     if (enableDebugLogging)
     {
@@ -394,10 +396,18 @@ bool LlvmOptimizer::optimize(
 #endif
     if (observation != nullptr)
     {
-        observation->seconds =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        const auto elapsed = std::chrono::steady_clock::now() - started;
+        observation->seconds = std::chrono::duration<double>(elapsed).count();
         observation->timeBudgetExceeded =
             observation->seconds > kLlvmOptimizationTimeBudgetSeconds;
+        observeActiveLlvmOptimizationBudget(
+            level, std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed));
+    }
+    else
+    {
+        observeActiveLlvmOptimizationBudget(level,
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - started));
     }
     llvm_api::LLVMDisposePassBuilderOptions(options);
 
