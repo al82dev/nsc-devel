@@ -155,10 +155,10 @@ int main()
                 "two source-order extents are captured into two hidden locals");
             tests.expect(locals.size() == 3 &&
                     locals[locals[0].variableLengthArrayExtentLocalOrdinals[0]].typeKey ==
-                        "builtin:nuint" &&
+                        "builtin:int" &&
                     locals[locals[0].variableLengthArrayExtentLocalOrdinals[1]].typeKey ==
-                        "builtin:nuint",
-                "captured extents use pointer-width unsigned storage for size arithmetic");
+                        "builtin:int",
+                "captured extents preserve their signed source type until runtime guards execute");
         }
         std::size_t allocations = 0;
         std::size_t addresses = 0;
@@ -189,6 +189,67 @@ int main()
             directory / "VariableLengthRankMismatch.nsproj", error);
         tests.expect(!ok && hasDiagnostic(compilation, DiagnosticId::InvalidIndex),
             "multidimensional VLA access requires exactly one index per dimension");
+    }
+
+    {
+        const auto directory = root / "ReturnEscape";
+        writeProject(
+            directory,
+            "VariableLengthReturnEscape",
+            "public class Program { public static int* Escape(int count) { "
+            "int[count] values; int* alias = values; return alias; } }");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMethodBodies(
+            directory / "VariableLengthReturnEscape.nsproj", error);
+        tests.expect(!ok && hasDiagnostic(compilation, DiagnosticId::InvalidReturn),
+            "a VLA pointer cannot escape through a direct or local-alias return");
+    }
+
+    {
+        const auto directory = root / "FieldEscape";
+        writeProject(
+            directory,
+            "VariableLengthFieldEscape",
+            "public class Program { private int* stored; public void Escape(int count) { "
+            "int[count] values; stored = values; } }");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMethodBodies(
+            directory / "VariableLengthFieldEscape.nsproj", error);
+        tests.expect(!ok && hasDiagnostic(compilation, DiagnosticId::InvalidOperand),
+            "a VLA pointer cannot be stored in a field that outlives the frame");
+    }
+
+    {
+        const auto directory = root / "ReassignStorage";
+        writeProject(
+            directory,
+            "VariableLengthReassign",
+            "public class Program { public static int Main(int count) { "
+            "int[count] values; int* other = null; values = other; return 0; } }");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMethodBodies(
+            directory / "VariableLengthReassign.nsproj", error);
+        tests.expect(!ok && hasDiagnostic(compilation, DiagnosticId::InvalidAssignmentTarget),
+            "a VLA declaration remains array storage and cannot be reassigned as a pointer");
+    }
+
+    {
+        const auto directory = root / "LambdaEscape";
+        writeProject(
+            directory,
+            "VariableLengthLambdaEscape",
+            "public delegate int Reader(); public class Program { "
+            "public static Reader Capture(int count) { int[count] values; "
+            "Reader read = () => values[0]; return read; } }");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMethodBodies(
+            directory / "VariableLengthLambdaEscape.nsproj", error);
+        tests.expect(!ok && hasDiagnostic(compilation, DiagnosticId::InvalidOperand),
+            "a lambda cannot capture a VLA or an alias into its frame storage");
     }
 
     {

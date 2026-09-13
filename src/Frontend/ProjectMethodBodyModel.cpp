@@ -986,6 +986,35 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
     return std::nullopt;
 }
 
+std::optional<std::size_t> ProjectMethodBodyModel::variableArrayRootLocalOfExpression(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr) return std::nullopt;
+    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+        if (name.has_value() && name->kind == ScopeNameKind::Local &&
+            name->semanticOrdinal < locals_.size())
+        {
+            return locals_[name->semanticOrdinal].variableLengthArrayRootLocalOrdinal;
+        }
+        return std::nullopt;
+    }
+    const auto probe = [&](const ast::AstNode* child) -> std::optional<std::size_t>
+    {
+        return variableArrayRootLocalOfExpression(child, scopeOrdinal);
+    };
+    if (auto root = probe(expression->first()); root.has_value()) return root;
+    if (auto root = probe(expression->second()); root.has_value()) return root;
+    if (auto root = probe(expression->third()); root.has_value()) return root;
+    for (const ast::AstNode* child : expression->children())
+    {
+        if (auto root = probe(child); root.has_value()) return root;
+    }
+    return std::nullopt;
+}
+
 bool ProjectMethodBodyModel::definiteAssignmentTracksLocal(std::size_t localOrdinal) const noexcept
 {
     if (localOrdinal >= locals_.size())
@@ -2677,6 +2706,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     std::string variableLengthArrayElementTypeKey;
     const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
     std::vector<const ast::AstNode*> variableLengthArrayExtentSyntaxes;
+    std::vector<std::string> variableLengthArrayExtentTypeKeys;
 
     // NativeSharp 2.0 item 269 -- a non-constant array extent is meaningful only on a local
     // declaration: `T[length] values;` reserves raw, contiguous storage in the current stack
@@ -2761,6 +2791,7 @@ void ProjectMethodBodyModel::analyzeVariable(
                     {
                         const ExpressionResult count = analyzeExpression(
                             extentSyntax, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                        variableLengthArrayExtentTypeKeys.push_back(count.typeKey);
                         if (!count.valid || !ProjectTypeConversion::isIntegral(count.typeKey) ||
                             count.typeKey == "builtin:bool")
                         {
@@ -3146,6 +3177,12 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.variableLengthArrayElementTypeKey = variableLengthArrayElementTypeKey;
     local.variableLengthArrayCountSyntax = variableLengthArrayCountSyntax;
     local.variableLengthArrayExtentSyntaxes = variableLengthArrayExtentSyntaxes;
+    local.variableLengthArrayExtentTypeKeys = variableLengthArrayExtentTypeKeys;
+    if (!isVariableLengthArray && variable->first() != nullptr && typeKey.ends_with("*"))
+    {
+        local.variableLengthArrayRootLocalOrdinal =
+            variableArrayRootLocalOfExpression(variable->first(), scopeOrdinal);
+    }
     local.isConst = variable->flag();
     // El valor de un `const` entero, plegado aqui. Ver el comentario del campo: sirve para
     // contestar "¿el divisor es cero?" y para nada mas.
@@ -3204,6 +3241,8 @@ void ProjectMethodBodyModel::analyzeVariable(
 
     const std::size_t localOrdinal = locals_.size();
     locals_.push_back(std::move(local));
+    if (isVariableLengthArray)
+        locals_[localOrdinal].variableLengthArrayRootLocalOrdinal = localOrdinal;
     scopes_[scopeOrdinal].localOrdinals.push_back(localOrdinal);
     scopeNames_[scopeOrdinal].push_back(ScopeName{
         ScopeNameKind::Local,
@@ -3229,7 +3268,8 @@ void ProjectMethodBodyModel::analyzeVariable(
             extentLocal.syntax = variableLengthArrayExtentSyntaxes[dimension];
             extentLocal.name = "__vla_extent_" + std::to_string(localOrdinal) + "_" +
                 std::to_string(dimension);
-            extentLocal.typeKey = "builtin:nuint";
+            extentLocal.typeKey = dimension < variableLengthArrayExtentTypeKeys.size()
+                ? variableLengthArrayExtentTypeKeys[dimension] : "builtin:nuint";
             extentLocal.lambdaOrdinal = currentLambdaOrdinal_;
             const std::size_t extentOrdinal = locals_.size();
             locals_.push_back(std::move(extentLocal));
@@ -3689,6 +3729,23 @@ void ProjectMethodBodyModel::analyzeReturn(
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
             "non-void instance method must return a value");
+        return;
+    }
+
+    if (const std::optional<std::size_t> vlaRoot =
+            method->declaredTypeKey.ends_with("*")
+                ? variableArrayRootLocalOfExpression(statement->first(), scopeOrdinal)
+                : std::nullopt;
+        vlaRoot.has_value())
+    {
+        const std::string name = *vlaRoot < locals_.size()
+            ? locals_[*vlaRoot].name : std::string("<variable-length-array>");
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->first()->range(),
+            "variable-length array storage rooted at '" + name +
+                "' cannot be returned; its stack frame ends with this call");
         return;
     }
 
@@ -10858,6 +10915,52 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         return {};
     }
 
+    std::optional<std::size_t> assignmentTargetLocal;
+    if (expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> target = lookupScopeName(
+            scopeOrdinal, expression->first()->text());
+        if (target.has_value() && target->kind == ScopeNameKind::Local &&
+            target->semanticOrdinal < locals_.size())
+        {
+            assignmentTargetLocal = target->semanticOrdinal;
+        }
+    }
+    if (assignmentTargetLocal.has_value() &&
+        locals_[*assignmentTargetLocal].isVariableLengthArray)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->first()->range(),
+            "a variable-length array is storage, not a reassignable pointer");
+        return {};
+    }
+    const std::optional<std::size_t> assignedVlaRoot =
+        variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
+    if (assignedVlaRoot.has_value())
+    {
+        if (!assignmentTargetLocal.has_value())
+        {
+            const std::string name = *assignedVlaRoot < locals_.size()
+                ? locals_[*assignedVlaRoot].name : std::string("<variable-length-array>");
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->second()->range(),
+                "pointer into variable-length array '" + name +
+                    "' cannot be stored outside a local alias because the stack frame owns it");
+            return {};
+        }
+        locals_[*assignmentTargetLocal].variableLengthArrayRootLocalOrdinal = assignedVlaRoot;
+    }
+    else if (assignmentTargetLocal.has_value() &&
+        locals_[*assignmentTargetLocal].typeKey.ends_with("*"))
+    {
+        locals_[*assignmentTargetLocal].variableLengthArrayRootLocalOrdinal.reset();
+    }
+
     // Stage 52: same value-type bypass as the local-declaration case above -- a borrowed value
     // assigned into a plain local/field/parameter whose CLOSED type never needed ownership
     // tracking (a generic T monomorphized to int, bool, a struct, ...) carries no real lifetime
@@ -12209,6 +12312,19 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                     "view local '" + local.name + "' of type '" + local.typeKey +
                         "' cannot be captured by a lambda because the delegate may outlive what "
                         "the view borrows from");
+                safe = false;
+            }
+            if (local.variableLengthArrayRootLocalOrdinal.has_value())
+            {
+                const std::size_t root = *local.variableLengthArrayRootLocalOrdinal;
+                const std::string rootName = root < locals_.size()
+                    ? locals_[root].name : local.name;
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "pointer into variable-length array '" + rootName +
+                        "' cannot be captured by a lambda because the delegate may outlive its stack frame");
                 safe = false;
             }
             if (local.isRaii || local.ownership == sema::OwnershipKind::Borrowed)

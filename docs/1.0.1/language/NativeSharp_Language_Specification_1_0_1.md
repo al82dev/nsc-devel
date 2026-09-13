@@ -485,6 +485,21 @@ El almacenamiento es una sola reserva contigua row-major de
 `(((i0 * d1) + i1) * d2 + i2) ...`. La cantidad de índices debe coincidir con el rank y cada índice
 debe ser integral. No se crea un arreglo de punteros ni una reserva independiente por fila.
 
+### NS-ARRAY-005 — Seguridad y duración de VLAs
+
+Cada extensión VLA se evalúa exactamente una vez. Una extensión de tipo integral con signo debe ser
+mayor o igual que cero antes de convertirse al índice nativo sin signo. El compilador comprueba cada
+factor antes de multiplicarlo: ni el total de elementos ni el tamaño en bytes pueden desbordarse.
+Una declaración VLA puede reservar como máximo 1 MiB de stack; una dimensión negativa, un producto
+excesivo o un tamaño superior a ese límite terminan mediante la trampa
+`AllocationSizeOverflow`. Una extensión cero es válida y produce una reserva de cero elementos.
+
+El almacenamiento pertenece exclusivamente al frame que ejecuta la declaración. El valor del VLA
+no puede reasignarse como si fuera un puntero ordinario. Un puntero derivado puede usarse como alias
+local y pasarse de forma prestada a una llamada, pero no puede retornarse, almacenarse en un campo ni
+capturarse por una lambda. La procedencia se conserva al copiar el puntero entre aliases locales; la
+API receptora de un préstamo sigue siendo responsable de no retenerlo después de la llamada.
+
 ### NS-LAYOUT-002 — Objetos y delegates
 
 El layout público de clases, descriptores, tablas de dispatch, interfaces y delegates está

@@ -47,7 +47,7 @@
 23. **268 — Indexado `array[i, j]` / Multidimensional indexing — COMPLETADO / COMPLETE**
 24. **269 — Arreglos locales variables `T[length]` / Variable-length local arrays — COMPLETADO / COMPLETE**
 25. **270 — VLAs multidimensionales `T[rows, columns]` / Multidimensional VLAs — COMPLETADO / COMPLETE**
-26. **271 — Seguridad, overflow y duración de VLAs / VLA safety, overflow, and lifetime**
+26. **271 — Seguridad, overflow y duración de VLAs / VLA safety, overflow, and lifetime — COMPLETADO / COMPLETE**
 27. **272 — Alineación explícita por campo / Explicit per-field alignment**
 28. **273 — Almacenamiento trailing/flexible / Trailing and flexible storage**
 29. **274 — `readonly struct` / Readonly structures**

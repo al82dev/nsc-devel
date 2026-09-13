@@ -850,6 +850,27 @@ Las dimensiones se capturan una sola vez al declarar. La tabla es un único bloq
 array de filas: `table[row, column]` usa el número de columnas capturado como stride de la fila.
 Cambiar después la variable `columns` no reinterpreta ni redimensiona el almacenamiento existente.
 
+La reserva se valida antes de tocar el stack. Una dimensión negativa no se convierte silenciosamente
+en un entero sin signo enorme; cada multiplicación se comprueba antes de ejecutarse y una declaración
+no puede reservar más de 1 MiB. Las dimensiones cero son válidas. Las demás violaciones terminan con
+la trampa nativa `AllocationSizeOverflow`, en vez de corromper el frame.
+
+Un VLA tampoco puede escapar de la función. Es válido crear un alias local o pasar el buffer como
+puntero prestado a una operación que termina antes del retorno:
+
+```csharp
+public static void Fill(int count)
+{
+    int[count] values;
+    int* data = values;
+    NativeFill(data, count);
+}
+```
+
+No es válido retornar `values` o `data`, guardarlos en un campo ni capturarlos en una lambda. El
+compilador conserva la procedencia a través de aliases locales para que cambiar el nombre del
+puntero no oculte que el almacenamiento desaparece con el frame.
+
 ## 12. Clases, invariantes y destrucción
 
 Una clase combina estado, operaciones e identidad. El constructor debe dejar cada instancia en un

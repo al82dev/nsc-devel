@@ -19,6 +19,10 @@ empaqueta con NativeSharp 1.0.1.
   dimensiones contractuales.
 - `T[rows, columns] local;` compone dimensiones de ejecución en una sola reserva row-major; cada
   extensión se evalúa una vez al declarar y conserva sus strides aunque cambien las variables fuente.
+- Cada dimensión VLA se valida antes de convertirla a `nuint`; el producto se comprueba antes de
+  multiplicar y una reserva individual no puede superar 1 MiB de stack.
+- El almacenamiento de un VLA no puede escapar mediante retornos, campos o capturas de lambdas;
+  los aliases locales conservan su procedencia para que la regla no se pierda al copiar el puntero.
 - `const string` es una constante de compilación utilizable en APIs y metadata.
 - Strings nativos conservan unión condicional, literales y préstamos en constructores.
 - Enums, conversiones numéricas y conversiones de usuario conservan identidad lógica y física.

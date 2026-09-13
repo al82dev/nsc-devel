@@ -73,7 +73,11 @@ struct MethodLocalSymbol final
     // Source-order dimensions for multidimensional VLAs plus the compiler-generated locals
     // that snapshot each extent exactly once at the declaration.
     std::vector<const ast::AstNode*> variableLengthArrayExtentSyntaxes;
+    std::vector<std::string> variableLengthArrayExtentTypeKeys;
     std::vector<std::size_t> variableLengthArrayExtentLocalOrdinals;
+    // Set on the VLA itself and on local pointer aliases derived from it. This provenance is
+    // consumed by return, assignment, and lambda-capture checks so frame storage cannot escape.
+    std::optional<std::size_t> variableLengthArrayRootLocalOrdinal;
     bool isConst = false;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //
@@ -1674,6 +1678,9 @@ private:
     // SHR-013: el nombre del local de este metodo del que la expresion toma prestado, si alguno.
     // Es la pieza que contesta "devolver una vista de un local".
     std::optional<std::string> viewRootLocalOfExpression(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
+    std::optional<std::size_t> variableArrayRootLocalOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
     bool aggregateIsBorrowedView(std::string_view typeKey) const noexcept;

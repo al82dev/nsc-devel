@@ -1999,6 +1999,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                     return nullptr;
                 }
                 std::unique_ptr<ProjectOopHirNode> count;
+                std::vector<std::unique_ptr<ProjectOopHirNode>> allocationCounts;
                 std::unique_ptr<ProjectOopHirNode> vlaBlock;
                 if (local->variableLengthArrayExtentSyntaxes.size() > 1)
                 {
@@ -2018,22 +2019,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                             false,
                             error);
                         if (extent == nullptr) return nullptr;
-                        if (extent->typeKey != "builtin:nuint")
-                        {
-                            auto converted = makeNode(
-                                ProjectOopHirNodeKind::Conversion,
-                                local->variableLengthArrayExtentSyntaxes[dimension],
-                                "builtin:nuint");
-                            converted->children.push_back(std::move(extent));
-                            extent = std::move(converted);
-                        }
-
                         const std::size_t extentOrdinal =
                             local->variableLengthArrayExtentLocalOrdinals[dimension];
+                        const std::string& extentType =
+                            methodBodyModel_->locals()[extentOrdinal].typeKey;
                         auto extentDeclaration = makeNode(
                             ProjectOopHirNodeKind::LocalDeclaration,
                             local->variableLengthArrayExtentSyntaxes[dimension],
-                            "builtin:nuint");
+                            extentType);
                         extentDeclaration->stringValue =
                             methodBodyModel_->locals()[extentOrdinal].name;
                         extentDeclaration->localOrdinal = extentOrdinal;
@@ -2043,21 +2036,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                         auto extentValue = makeNode(
                             ProjectOopHirNodeKind::LocalValue,
                             local->variableLengthArrayExtentSyntaxes[dimension],
-                            "builtin:nuint");
+                            extentType);
                         extentValue->localOrdinal = extentOrdinal;
-                        if (count == nullptr)
-                        {
-                            count = std::move(extentValue);
-                        }
-                        else
-                        {
-                            auto product = makeNode(
-                                ProjectOopHirNodeKind::Binary, statement, "builtin:nuint");
-                            product->operation = lexer::TokenKind::Star;
-                            product->children.push_back(std::move(count));
-                            product->children.push_back(std::move(extentValue));
-                            count = std::move(product);
-                        }
+                        allocationCounts.push_back(std::move(extentValue));
                     }
                 }
                 else
@@ -2070,7 +2051,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 auto allocation = makeNode(
                     ProjectOopHirNodeKind::StackAllocation, statement, local->typeKey);
                 allocation->elementTypeKey = local->variableLengthArrayElementTypeKey;
-                allocation->children.push_back(std::move(count));
+                if (!allocationCounts.empty())
+                {
+                    for (auto& extent : allocationCounts)
+                        allocation->children.push_back(std::move(extent));
+                }
+                else
+                {
+                    allocation->children.push_back(std::move(count));
+                }
                 node->children.push_back(std::move(allocation));
                 if (vlaBlock != nullptr)
                 {
@@ -3571,9 +3560,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         auto extent = makeNode(
                             ProjectOopHirNodeKind::LocalValue,
                             expression,
-                            "builtin:nuint");
+                            methodBodyModel_->locals()[
+                                variableArrayIndex->extentLocalOrdinals[dimension]].typeKey);
                         extent->localOrdinal =
                             variableArrayIndex->extentLocalOrdinals[dimension];
+                        if (extent->typeKey != "builtin:nuint")
+                        {
+                            auto convertedExtent = makeNode(
+                                ProjectOopHirNodeKind::Conversion, expression, "builtin:nuint");
+                            convertedExtent->children.push_back(std::move(extent));
+                            extent = std::move(convertedExtent);
+                        }
                         auto rowOffset = makeNode(
                             ProjectOopHirNodeKind::Binary, expression, "builtin:nuint");
                         rowOffset->operation = lexer::TokenKind::Star;

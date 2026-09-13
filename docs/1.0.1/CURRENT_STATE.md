@@ -29,6 +29,12 @@ parte de contratos de layout o ABI y conservan dimensiones constantes o tipos di
 La forma admite varias dimensiones: `T[rows, columns]` captura cada extensión una sola vez y calcula
 direcciones row-major sobre una única reserva contigua.
 
+Las dimensiones con signo se comprueban antes de convertirse a `nuint`. El producto completo se
+valida sin overflow y cada declaración limita su reserva a 1 MiB. Un VLA es almacenamiento del
+frame, no un puntero propietario: puede prestarse durante la llamada actual, pero no retornarse,
+guardarse en un campo ni capturarse en una lambda que pueda sobrevivir al frame. Los aliases
+locales de puntero conservan esa procedencia.
+
 Los strings son objetos nativos. `const string` representa una constante de compilación; los
 literales, comparaciones y operaciones documentadas no dependen de `System.String` ni del CLR. Los
 constructores pueden recibir préstamos de string conforme a las reglas de lifetime y escape.
