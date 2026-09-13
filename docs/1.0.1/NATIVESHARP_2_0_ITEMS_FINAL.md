@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–256 completados; siguiente item 257
+**Progreso:** Tanda 1, items 246–257 completados; siguiente item 258
 
 ## Regla de ejecución
 
@@ -30,7 +30,7 @@
 9. **254 — Índices y símbolos por archivo en paralelo / Parallel per-file symbol indexing — COMPLETADO / COMPLETE**
 10. **255 — Construcción HIR de funciones en paralelo / Parallel function HIR construction — COMPLETADO / COMPLETE**
 11. **256 — Construcción MIR de funciones en paralelo / Parallel function MIR construction — COMPLETADO / COMPLETE**
-12. **257 — Partición del módulo en unidades de código / Module code partitioning**
+12. **257 — Partición del módulo en unidades de código / Module code partitioning — COMPLETADO / COMPLETE**
 13. **258 — Generación LLVM/OBJ paralela / Parallel LLVM and object generation**
 14. **259 — Optimización O2 paralela / Parallel O2 optimization**
 15. **260 — Unión determinista de NSMETA / Deterministic NSMETA merging**

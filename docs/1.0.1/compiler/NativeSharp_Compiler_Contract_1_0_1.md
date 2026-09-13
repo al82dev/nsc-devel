@@ -223,6 +223,19 @@ diagnostic. Imported callables remain bodyless records, and field initializers, 
 layouts and dispatch/destruction plans remain coordinated passes. Serial and parallel construction
 of unchanged input shall produce byte-for-byte equivalent textual MIR dumps.
 
+## NSC-CODEGEN-001 — Deterministic module code partitioning
+
+Before parallel LLVM generation, every defined MIR callable shall be assigned to exactly one code
+unit. Imported C and native callables are declarations and shall not own a code unit. The requested
+unit count is clamped to the number of definitions, empty units are forbidden and unit identities
+shall be stable ordinal keys.
+
+Partitioning shall estimate work from the complete MIR node tree. Candidates are ordered by
+descending cost, then physical function identity and canonical MIR ordinal. Each candidate is
+assigned to the currently least-loaded unit, breaking ties by unit ordinal. Functions inside each
+unit are restored to canonical MIR order. The mapping, costs and textual plan must therefore be
+identical for equivalent serial and parallel MIR models and independent of worker completion order.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR

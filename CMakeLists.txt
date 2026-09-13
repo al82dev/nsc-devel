@@ -332,6 +332,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/LlvmProcessTrace.cpp
     src/LLVM/LlvmOptimizer.cpp
     src/LLVM/LlvmLowerer.cpp
+    src/LLVM/ProjectOopCodePartition.cpp
     src/LLVM/ProjectOopLlvmLowerer.cpp
     src/LLVM/LlvmTargetMachine.cpp
     src/LLVM/CoffObjectVerifier.cpp)

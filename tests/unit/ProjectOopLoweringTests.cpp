@@ -8,6 +8,7 @@
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
+#include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 
 #include "../support/TestContext.h"
@@ -309,6 +310,40 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
                 *parallelCompilation.oopMirModel());
         tests.expect(parallelMirDump == mirDump,
             "parallel per-function MIR is exactly equivalent to serial MIR");
+
+        nativesharp::llvm_backend::ProjectOopCodePartition serialPartition;
+        nativesharp::llvm_backend::ProjectOopCodePartition parallelPartition;
+        std::string partitionError;
+        const bool serialPartitionOk = serialPartition.build(mir, 4, partitionError);
+        const bool parallelPartitionOk = parallelPartition.build(
+            *parallelCompilation.oopMirModel(), 4, partitionError);
+        tests.expect(serialPartitionOk && parallelPartitionOk && partitionError.empty(),
+            "module code partitioning accepts equivalent serial and parallel MIR");
+        tests.expect(serialPartition.dump() == parallelPartition.dump(),
+            "module code partitioning is deterministic across MIR scheduling modes");
+
+        std::vector<bool> assigned(mir.functions().size(), false);
+        bool validCoverage = true;
+        for (const auto& unit : serialPartition.units())
+        {
+            validCoverage = validCoverage && !unit.stableKey.empty() &&
+                !unit.functionOrdinals.empty();
+            for (const std::size_t functionOrdinal : unit.functionOrdinals)
+            {
+                validCoverage = validCoverage && functionOrdinal < assigned.size() &&
+                    !assigned[functionOrdinal] &&
+                    serialPartition.unitForFunction(functionOrdinal) == unit.ordinal;
+                if (functionOrdinal < assigned.size()) assigned[functionOrdinal] = true;
+            }
+        }
+        for (std::size_t functionOrdinal = 0; functionOrdinal < mir.functions().size(); ++functionOrdinal)
+        {
+            const auto& function = mir.functions()[functionOrdinal];
+            const bool shouldBeAssigned = !function.isImportedC && !function.isImportedNative;
+            validCoverage = validCoverage && assigned[functionOrdinal] == shouldBeAssigned;
+        }
+        tests.expect(validCoverage,
+            "every defined MIR function belongs to exactly one stable code unit and imports belong to none");
     }
 
     nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
