@@ -270,6 +270,23 @@ Optimization completion order shall not determine diagnostics: the coordinator i
 and error slots by module ordinal. A successful optimized bundle must retain all cross-unit calls,
 coordinator references and explicitly exported symbols when linked.
 
+## NSC-META-001 — Deterministic NSMETA fragment merging
+
+Metadata records collected by independent workers shall be combined by canonical record identity,
+never by worker completion order. All fragments must describe the same format, target, producer,
+module and frozen ABI header. An incompatible fragment is rejected before any output is published.
+
+Types, members, generic templates, closed specializations, external nominal dependencies, dispatch
+tables and C ABI exports have explicit stable ordering keys. Set-like nested collections, including
+implemented interfaces, generic dependencies, dispatch interfaces and external type keys, are
+sorted and deduplicated. Ordered ABI collections such as parameters, generic arguments and virtual
+slots retain their declared order. Exact duplicate records collapse; two different records with
+the same canonical identity are an error naming that identity.
+
+Every `LibraryMetadataCodec::writeModel` operation shall pass through the same merger even when the
+producer supplies one fragment. Equivalent fragment sets must therefore produce byte-for-byte
+identical NSMETA payloads, hashes and ABI fingerprints independent of their arrival order.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR

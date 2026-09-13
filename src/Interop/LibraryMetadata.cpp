@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/LibraryMetadataMerger.h"
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
@@ -1734,7 +1735,10 @@ bool LibraryMetadataCodec::writeModel(
     std::string& error) const
 {
     error.clear();
-    LibraryMetadata metadata = model;
+    LibraryMetadata metadata;
+    const std::array<LibraryMetadata, 1> fragments = {model};
+    LibraryMetadataMerger merger;
+    if (!merger.merge(fragments, metadata, error)) return false;
     if (metadata.formatMajor != kFormatMajor || metadata.formatMinor > kFormatMinor)
     {
         error = "cannot write NativeSharp metadata format " +

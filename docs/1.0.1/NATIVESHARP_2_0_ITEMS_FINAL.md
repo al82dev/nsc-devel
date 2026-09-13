@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–259 completados; siguiente item 260
+**Progreso:** Tanda 1, items 246–260 completados; siguiente item 261
 
 ## Regla de ejecución
 
@@ -33,7 +33,7 @@
 12. **257 — Partición del módulo en unidades de código / Module code partitioning — COMPLETADO / COMPLETE**
 13. **258 — Generación LLVM/OBJ paralela / Parallel LLVM and object generation — COMPLETADO / COMPLETE**
 14. **259 — Optimización O2 paralela / Parallel O2 optimization — COMPLETADO / COMPLETE**
-15. **260 — Unión determinista de NSMETA / Deterministic NSMETA merging**
+15. **260 — Unión determinista de NSMETA / Deterministic NSMETA merging — COMPLETADO / COMPLETE**
 16. **261 — Diagnósticos deterministas en paralelo / Deterministic parallel diagnostics**
 17. **262 — Cache de artefactos por contenido / Content-addressed artifact cache**
 18. **263 — Invalidación incremental precisa / Precise incremental invalidation**

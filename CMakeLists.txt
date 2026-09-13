@@ -377,7 +377,8 @@ add_library(nsc_driver STATIC
     src/Driver/PackageLifecycle.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
-    src/Interop/LibraryMetadata.cpp)
+    src/Interop/LibraryMetadata.cpp
+    src/Interop/LibraryMetadataMerger.cpp)
 
 target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
@@ -1222,6 +1223,12 @@ if(NSC_BUILD_TESTS)
     target_compile_definitions(nsc_stage48_2_library_metadata_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_stage48_2_library_metadata_tests)
     add_test(NAME nsc.stage48_2.library-metadata COMMAND nsc_stage48_2_library_metadata_tests)
+
+    add_executable(nsc_library_metadata_merger_tests tests/unit/LibraryMetadataMergerTests.cpp)
+    target_link_libraries(nsc_library_metadata_merger_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_library_metadata_merger_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_library_metadata_merger_tests)
+    add_test(NAME nsc.library-metadata-merger COMMAND nsc_library_metadata_merger_tests)
 
     add_executable(nsc_stage48_3_c_host_tests tests/unit/Stage48_3CHostIntegrationTests.cpp)
     target_link_libraries(nsc_stage48_3_c_host_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
