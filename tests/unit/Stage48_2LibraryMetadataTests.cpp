@@ -1360,8 +1360,10 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     const auto futureMinorPath = directory / "future-minor.nsmeta";
     writeBytes(futureMinorPath, futureMinor);
     error.clear();
+    const std::string futureMinorDiagnostic = "unsupported NativeSharp metadata format 1." +
+        std::to_string(nativesharp::interop::kMetadataFormatMinor + 1U);
     tests.expect(!codec.read(futureMinorPath, ignored, error) &&
-                     error.find("unsupported NativeSharp metadata format 1.13") != std::string::npos,
+                     error.find(futureMinorDiagnostic) != std::string::npos,
                  "a future NSMETA minor is rejected before payload decoding");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
