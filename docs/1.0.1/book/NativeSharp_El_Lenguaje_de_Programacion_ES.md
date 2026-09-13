@@ -2126,6 +2126,29 @@ Los métodos ordinarios de struct usan el mismo transporte: el receptor continú
 dirección del valor, no una caja. Los genéricos no duplican el cuerpo en el registro del miembro;
 reutilizan la plantilla que NSMETA ya publica y adquieren la política al monomorfizarse.
 
+En una compilación O0 con `-g`, `forceinline` no desaparece de la experiencia de depuración. El
+PDB registra un inline site bajo el caller, conserva las líneas y los locals del helper y vuelve a
+la línea de llamada al terminar ese rango. Por ejemplo:
+
+```csharp
+public static forceinline int DecodeChannel(uint packed)
+{
+    int channel = (int)(packed & 255u);
+    return channel;
+}
+
+public static noinline int Observe(uint packed)
+{
+    int decoded = DecodeChannel(packed);
+    return decoded + 1;
+}
+```
+
+Al entrar en `Observe`, el depurador puede recorrer `DecodeChannel` como un scope inline y mostrar
+`channel`, pero `Observe` continúa siendo un frame físico porque `noinline` conserva su límite. Un
+método marcado sólo `inline` puede conservar también su propio frame en O0: el PDB describe si la
+expansión ocurrió, no la intención aislada de la palabra clave.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |

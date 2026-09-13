@@ -1,6 +1,7 @@
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
@@ -115,15 +116,21 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
                 ? ProjectOopCodePartitionPolicy::StableIncremental
                 : ProjectOopCodePartitionPolicy::Balanced))
         return nullptr;
-    // LLVM can only create truthful inline-site scopes while caller and callee coexist in the
-    // same module. Until code-unit summary import is available, splitting a full-debug optimized
-    // build silently removes those scopes from CodeView/PDB. Keep that profile monolithic; O0
-    // full-debug builds and every non-full-debug optimized build retain parallel partitioning.
+    // LLVM can only inline a call while caller and callee coexist in the same module. Until
+    // code-unit summary import is available, splitting a full-debug optimized build silently
+    // removes its CodeView/PDB inline scopes. More importantly, splitting any build containing a
+    // Required callable can leave a forceinline call unexpanded -- including O0, where the
+    // mandatory inliner otherwise works correctly. Keep both profiles monolithic. Projects with
+    // no forceinline obligation retain their existing partitioned O0 and lightweight-debug paths.
     const bool requiresWholeModuleDebugInlining =
         debugInformation == DebugInformationKind::Full &&
         optimizationLevel != LlvmOptimizationLevel::O0;
+    const bool requiresWholeModuleRequiredInlining = std::ranges::any_of(
+        mirModel.functions(), [](const frontend::ProjectOopMirFunction& function) {
+            return function.inliningPolicy == frontend::InliningPolicy::Required;
+        });
     const bool usePartitions = workerCount > 1 && partition.units().size() > 1 &&
-        !requiresWholeModuleDebugInlining;
+        !requiresWholeModuleDebugInlining && !requiresWholeModuleRequiredInlining;
     const std::size_t moduleCount = usePartitions ? partition.units().size() + 1 : 1;
     std::vector<std::unique_ptr<LlvmModule>> modules(moduleCount);
     std::vector<std::string> moduleErrors(moduleCount);

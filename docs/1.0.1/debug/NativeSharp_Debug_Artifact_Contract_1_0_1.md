@@ -165,8 +165,15 @@ Line-tables-only verification applies the same whole-PDB rule while continuing t
 def-range records that belong exclusively to the full-debug profile.
 
 An optimized full-debug (`-g` with O1, O2 or O3) product shall remain a whole LLVM module until the
-partition pipeline can import an authoritative cross-unit inline summary. This is required because
-LLVM can only emit truthful inline-site scopes when caller and callee coexist during optimization.
-O0 full-debug products remain partitionable, as do optimized `-g0` and `-gline-tables-only`
-products. Compilation throughput must not be obtained by silently dropping inline frames from a
-full PDB.
+partition pipeline can import an authoritative cross-unit inline summary. The same whole-module
+rule applies at every profile and optimization level when the product contains a required-inline
+callable: otherwise partitioning can prevent the mandatory expansion before debug information is
+considered. LLVM can only emit truthful inline-site scopes when caller and callee coexist during
+optimization.
+
+At O0 with full debug information, an expanded `forceinline` call shall produce a standard
+`S_INLINESITE` nested below its caller and retain authored body lines, inline locals and the source
+call location. A preferred `inline` call that is not expanded and a `noinline` boundary shall remain
+ordinary procedure records. O0 products without a required-inline obligation remain partitionable,
+as do other profiles not constrained by this clause. Compilation throughput must not be obtained by
+silently retaining a forbidden residual call or dropping a truthful inline frame.

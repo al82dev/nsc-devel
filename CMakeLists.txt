@@ -1875,6 +1875,17 @@ if(NSC_BUILD_TESTS)
             "-DDEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpExtremeDebugO0.cmake")
 
+    add_test(
+        NAME nsc.debug.inline-stepping-o0
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "NSC_LLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DLLVM_PDBUTIL=${NSC_LLVM_PDBUTIL_EXECUTABLE}"
+            "-DINLINE_DEBUG_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/inline_debug/InlineDebug.nsproj"
+            "-DINLINE_DEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/inline-debug-o0-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpInlineDebugO0.cmake")
+
     # CC1-000: este regex comprueba la identidad visible del compilador instalado. El stage exacto
     # se extrae de Version.h para conservar una sola fuente de verdad sin aceptar una instalacion
     # atrasada. nsc.version.identity comprueba por separado las constantes enlazadas en este build.

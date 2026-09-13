@@ -121,6 +121,13 @@ la llamada hacia la identidad física del productor. El mismo mecanismo cubre m�
 receptores de clase y receptores de struct; las plantillas genéricas continúan usando su clausura
 reutilizable especializada por el consumidor.
 
+Una obligación `forceinline` requiere que caller y callee estén juntos durante la optimización.
+Hasta disponer de summaries importables entre unidades, el generador conserva como módulo único
+solamente los productos que contienen esa obligación. En O0 el PDB resultante representa la
+expansión mediante un `S_INLINESITE` con líneas y locales del cuerpo, mientras `inline` preferido y
+`noinline` conservan sus procedimientos y límites de llamada. Proyectos O0 sin `forceinline`
+continúan usando generación particionada y paralela.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,
@@ -169,6 +176,10 @@ La ruta de depuración usa CodeView en objetos COFF y Microsoft PDB/MSF en el ej
 `-gline-tables-only` y `-g` son independientes de `-O0` a `-O3`. El contrato incluye checksums de
 fuente, remapeo reproducible de prefijos, líneas, parámetros, locales, `this`, structs, funciones
 sintetizadas, dispatch virtual e interfaz, SEH, closures y fidelidad bajo optimización.
+
+En O0, una expansión `forceinline` conserva frame inline, ubicación de llamada y líneas internas
+recorribles. Una preferencia `inline` no cumplida y una frontera `noinline` se describen como frames
+ordinarios; la información de depuración refleja el código realmente emitido, no sólo el modificador.
 
 Esta superficie continúa en desarrollo dentro de 1.0.1. La existencia del contrato indica qué debe
 producirse y verificarse; el sufijo `-dev` evita presentar el trabajo actual como baseline final.

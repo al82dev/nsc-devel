@@ -623,3 +623,17 @@ specialization shall not create a second transport representation.
 Readers shall reject a transported body attached to a non-method, C import, or policy other than
 preferred/required. Writers targeting NSMETA 1.12 or older shall remove the policy bits and body
 payload rather than producing a down-level file containing semantics that version never defined.
+
+## NSC-INLINE-009 — Required-inline debug scopes and code-unit ownership
+
+LLVM can expand a call and emit a truthful CodeView inline scope only while caller and callee are
+available in the same module. Until code-unit summary import can carry both the required body and
+its debug scope, any product containing an `InliningPolicy::Required` callable shall remain a whole
+LLVM module at every optimization and debug level. This is a correctness constraint: partitioning
+must not leave a residual call that violates `forceinline` or erase its PDB inline site.
+
+With full debug information at O0, a required-inline call shall produce a standard `S_INLINESITE`
+record nested under the caller, retain authored body lines and locals, and retain the source call
+location. Preferred calls that remain unexpanded and forbidden calls shall retain ordinary
+procedure records. Products without required-inline callables keep the existing partitioned O0
+path; this restriction shall not globally disable parallel code generation.

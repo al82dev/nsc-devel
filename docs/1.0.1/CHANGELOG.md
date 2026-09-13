@@ -31,6 +31,10 @@ empaqueta con NativeSharp 1.0.1.
 - NSMETA 1.13 conserva la política y el cuerpo de métodos ordinarios `inline`/`forceinline` para
   analizarlos e inlinearlos en consumidores `LibraryReference`. Las copias usan ODR/COMDAT por
   símbolo; `noinline` cruza como restricción de la declaración sin duplicar el cuerpo.
+- Los productos que contienen una obligación `forceinline` conservan temporalmente caller y callee
+  en un módulo LLVM incluso en O0. Así la expansión ocurre de verdad y el PDB publica su
+  `S_INLINESITE`, las líneas del cuerpo y la ubicación de llamada; `inline` opcional y `noinline`
+  siguen apareciendo como procedimientos fuera de línea en O0.
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union
@@ -88,9 +92,10 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Depuración
 
-- Los productos optimizados con debug completo conservan temporalmente un módulo LLVM único para
-  que caller, callee e inline sites permanezcan disponibles al generar CodeView/PDB; O0 y los
-  perfiles sin variables completas conservan la partición paralela.
+- Los productos optimizados con debug completo y cualquier producto con obligaciones `forceinline`
+  conservan temporalmente un módulo LLVM único para que caller, callee e inline sites permanezcan
+  disponibles al generar CodeView/PDB. O0 sin `forceinline` y los perfiles no afectados conservan
+  la partición paralela.
 - Se formalizó el contrato CodeView/PDB para líneas, variables, tipos y funciones sintetizadas.
 - Los checksums SHA-256 y `-fdebug-prefix-map` permiten identidad de fuente reproducible.
 - Se documentaron y cubrieron `this`, structs, scopes, thunks, dispatch de interfaces, SEH,

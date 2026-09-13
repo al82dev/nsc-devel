@@ -1,0 +1,31 @@
+namespace InlineDebug
+{
+    public static class Program
+    {
+        public static forceinline int RequiredStep(int value)
+        {
+            int requiredLocal = value + 1;
+            return requiredLocal;
+        }
+
+        public static inline int PreferredStep(int value)
+        {
+            int preferredLocal = value + 2;
+            return preferredLocal;
+        }
+
+        public static noinline int BoundaryStep(int value)
+        {
+            int boundaryLocal = value + 3;
+            return boundaryLocal;
+        }
+
+        public static int Main()
+        {
+            int required = RequiredStep(36);
+            int preferred = PreferredStep(required);
+            int result = BoundaryStep(preferred);
+            return result;
+        }
+    }
+}

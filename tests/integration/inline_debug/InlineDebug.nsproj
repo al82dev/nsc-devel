@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>InlineDebug</Name>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

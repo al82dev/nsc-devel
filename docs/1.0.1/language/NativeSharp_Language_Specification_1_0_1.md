@@ -766,6 +766,11 @@ transporta implementación: conserva el símbolo externo y aplica la prohibició
 importada. Los métodos genéricos siguen transportándose como templates reutilizables y heredan la
 política al especializarse.
 
+En O0 con `-g`, una llamada `forceinline` expandida conserva un scope inline CodeView/PDB, las líneas
+y locales del cuerpo y la ubicación desde la que fue llamada. Una llamada `inline` que el
+optimizador no expandió y una llamada `noinline` conservan procedimientos ordinarios. El depurador
+muestra la transformación efectiva; no fabrica un inline site por la sola presencia del modificador.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su
