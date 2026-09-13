@@ -78,7 +78,7 @@
 48. **293 — Clobbers de registros / Register clobbers — COMPLETADO / COMPLETE**
 49. **294 — Clobbers de flags y memoria / Flag and memory clobbers — COMPLETADO / COMPLETE**
 50. **295 — Conservación de stack y registros no volátiles / Stack and nonvolatile-register safety — COMPLETADO / COMPLETE**
-51. **296 — Saltos y control de flujo / Assembly control flow**
+51. **296 — Saltos y control de flujo / Assembly control flow — COMPLETADO / COMPLETE**
 52. **297 — Validación x64 y características de CPU / x64 and CPU-feature validation**
 53. **298 — Representación de asm en MIR / Assembly MIR representation**
 54. **299 — Lowering LLVM de asm / Assembly LLVM lowering**

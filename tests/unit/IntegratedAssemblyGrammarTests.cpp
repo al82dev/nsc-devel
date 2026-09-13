@@ -467,6 +467,34 @@ int Main()
         stackPointerOperand.diagnostics.hasErrors(),
         "an operand cannot be fixed to the stack pointer");
 
+    ParsedSyntax localControlFlow;
+    parse(
+        localControlFlow,
+        "int Main() { asm {\n jmp Done\n mov rax, 0\nDone:\n } return 0; }");
+    const AstNode* controlMain = findFunction(localControlFlow.root, "Main");
+    const AstNode* controlBody = controlMain != nullptr ? controlMain->first() : nullptr;
+    const AstNode* controlAssembly = controlBody != nullptr && !controlBody->children().empty()
+        ? controlBody->children()[0]
+        : nullptr;
+    tests.expect(
+        !localControlFlow.diagnostics.hasErrors() && controlAssembly != nullptr &&
+            controlAssembly->children().size() == 3 &&
+            controlAssembly->children()[0]->auxiliaryText() == "branch:jmp:done" &&
+            controlAssembly->children()[2]->auxiliaryText() == "label:done",
+        "direct forward branches resolve only to labels in the same asm block");
+
+    ParsedSyntax externalBranch;
+    parse(externalBranch, "int Main() { asm { jmp Outside } return 0; }");
+    tests.expect(
+        externalBranch.diagnostics.hasErrors(),
+        "branches to labels outside the asm block are rejected");
+
+    ParsedSyntax assemblyReturn;
+    parse(assemblyReturn, "int Main() { asm { ret } return 0; }");
+    tests.expect(
+        assemblyReturn.diagnostics.hasErrors(),
+        "asm cannot return around NativeSharp cleanups and unwind state");
+
     ParsedSyntax emptyClobber;
     parse(emptyClobber, "int Main() { asm { nop } clobber(); return 0; }");
     tests.expect(

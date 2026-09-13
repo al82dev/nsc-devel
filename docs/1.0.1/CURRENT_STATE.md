@@ -53,6 +53,9 @@ preparadas para MIR, LLVM y las barreras de optimización posteriores.
 El stack pointer no puede aparecer como constraint fijo ni clobber. Los clobbers que pertenecen al
 conjunto no volátil de Windows x64 llevan una marca de preservación explícita para el backend.
 
+Los saltos directos pueden usar labels locales del mismo bloque, incluso hacia adelante. Destinos
+externos, saltos indirectos y call/return se rechazan para conservar CFG, cleanup y unwind.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

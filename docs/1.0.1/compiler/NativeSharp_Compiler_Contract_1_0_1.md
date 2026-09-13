@@ -721,3 +721,10 @@ The parser shall reject stack-pointer aliases `rsp`, `esp`, `sp`, and `spl` in b
 constraints and clobbers. It shall mark Windows x64 nonvolatile GPR and XMM clobbers through the
 clobber AST flag. Later lowering must translate that declaration into backend-visible preservation;
 it may not trust authored assembly to save and restore ABI state implicitly.
+
+## NSC-ASM-010 — Local assembly control flow
+
+The parser shall collect labels before resolving branches so forward targets work. Labels shall be
+unique inside one block after case normalization. Direct x64 branch mnemonics may target only those
+labels. External or indirect branches and call/return instructions shall produce
+`InvalidInlineAssemblyControlFlow`. Resolved lines shall carry stable label/branch AST metadata.

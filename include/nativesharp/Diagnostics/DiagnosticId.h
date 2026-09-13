@@ -66,6 +66,7 @@ enum class DiagnosticId
     InvalidStackalloc,
     InvalidInlineAssemblyConstraint,
     InvalidInlineAssemblyClobber,
+    InvalidInlineAssemblyControlFlow,
     InlineAssemblyNotAvailable,
     ConstantEvaluationTrap,
     MissingMain,

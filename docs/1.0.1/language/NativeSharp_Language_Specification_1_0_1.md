@@ -743,6 +743,18 @@ must survive the block. Windows x64 nonvolatile register clobbers carry an expli
 the backend must preserve them at the function boundary. Fixed outputs already describe their
 modification through their constraint; any modification implicit only in text must be a clobber.
 
+### NS-ASM-010 — Control de flujo local
+
+Un bloque puede declarar labels de identificador y usar saltos x64 directos hacia ellos, incluidos
+saltos forward. Todo destino debe pertenecer al mismo bloque y cada label es único sin distinguir
+case. Saltos indirectos, destinos externos, `call`, `ret` e `iret` se rechazan para proteger CFG,
+cleanups y unwind. Las líneas guardan identidades `label:` o `branch:` resueltas.
+
+An asm block may declare identifier labels and use direct x64 branches to them, including forward
+branches. Every target must belong to the same block and labels are case-insensitively unique.
+Indirect/external transfers, `call`, `ret`, and `iret` are rejected. Lines retain resolved
+`label:` or `branch:` identities.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

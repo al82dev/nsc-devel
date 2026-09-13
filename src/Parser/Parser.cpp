@@ -4738,6 +4738,23 @@ std::string canonicalInlineAssemblyRegister(std::string value)
     return value;
 }
 
+std::string_view trimAssemblyText(std::string_view text) noexcept
+{
+    const std::size_t begin = text.find_first_not_of(" \t\v\f");
+    if (begin == std::string_view::npos) return {};
+    const std::size_t end = text.find_last_not_of(" \t\v\f");
+    return text.substr(begin, end - begin + 1);
+}
+
+bool isInlineAssemblyBranchMnemonic(std::string_view mnemonic) noexcept
+{
+    static const std::unordered_set<std::string_view> branches = {
+        "jmp", "je", "jne", "jz", "jnz", "ja", "jae", "jb", "jbe", "jg", "jge",
+        "jl", "jle", "jo", "jno", "js", "jns", "jp", "jnp", "jc", "jnc",
+        "jcxz", "jecxz", "jrcxz", "loop", "loope", "loopne"};
+    return branches.contains(mnemonic);
+}
+
 std::string_view fixedInlineAssemblyRegister(std::string_view constraint) noexcept
 {
     const std::size_t open = constraint.find('{');
@@ -4870,6 +4887,7 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
     expect(TokenKind::RightBrace, "'}' to close asm block");
     statement->setRange(tokenRangeFrom(beginIndex));
     statement->setText(std::move(exactBody));
+    validateInlineAssemblyControlFlow(statement);
     bool hasOperandClauses = false;
     if (atContextualKeyword("out"))
     {
@@ -4892,6 +4910,70 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
         statement->setRange(tokenRangeFrom(beginIndex));
     }
     return statement;
+}
+
+void Parser::validateInlineAssemblyControlFlow(ast::AstNode* statement)
+{
+    std::unordered_set<std::string> labels;
+    for (ast::AstNode* line : statement->children())
+    {
+        if (line->kind() != ast::AstNodeKind::InlineAssemblyLine) continue;
+        std::string_view code = line->text();
+        if (const std::size_t comment = code.find(';'); comment != std::string_view::npos)
+            code = code.substr(0, comment);
+        code = trimAssemblyText(code);
+        if (code.empty() || code.back() != ':') continue;
+        const std::string label = canonicalInlineAssemblyRegister(
+            std::string(trimAssemblyText(code.substr(0, code.size() - 1))));
+        if (!isInlineAssemblyRegisterName(label) || !labels.insert(label).second)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyControlFlow,
+                diagnostics::DiagnosticSeverity::Error,
+                line->range(),
+                "asm label must be a unique identifier within its block");
+            continue;
+        }
+        line->setAuxiliaryText("label:" + label);
+    }
+
+    for (ast::AstNode* line : statement->children())
+    {
+        if (line->kind() != ast::AstNodeKind::InlineAssemblyLine ||
+            line->auxiliaryText().starts_with("label:")) continue;
+        std::string_view code = line->text();
+        if (const std::size_t comment = code.find(';'); comment != std::string_view::npos)
+            code = code.substr(0, comment);
+        code = trimAssemblyText(code);
+        if (code.empty()) continue;
+        const std::size_t separator = code.find_first_of(" \t");
+        const std::string mnemonic = canonicalInlineAssemblyRegister(
+            std::string(code.substr(0, separator)));
+        std::string_view target = separator == std::string_view::npos
+            ? std::string_view{} : trimAssemblyText(code.substr(separator + 1));
+        if (mnemonic == "ret" || mnemonic == "retq" || mnemonic.starts_with("iret") ||
+            mnemonic == "call" || mnemonic == "callq")
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyControlFlow,
+                diagnostics::DiagnosticSeverity::Error,
+                line->range(),
+                "asm call/return instructions cannot escape NativeSharp structured control flow");
+            continue;
+        }
+        if (!isInlineAssemblyBranchMnemonic(mnemonic)) continue;
+        const std::string canonicalTarget = canonicalInlineAssemblyRegister(std::string(target));
+        if (!isInlineAssemblyRegisterName(canonicalTarget) || !labels.contains(canonicalTarget))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyControlFlow,
+                diagnostics::DiagnosticSeverity::Error,
+                line->range(),
+                "asm branch target must be a label declared in the same block");
+            continue;
+        }
+        line->setAuxiliaryText("branch:" + mnemonic + ":" + canonicalTarget);
+    }
 }
 
 void Parser::parseInlineAssemblyOutputClause(ast::AstNode* statement)
