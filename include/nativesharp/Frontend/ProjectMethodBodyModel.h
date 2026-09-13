@@ -964,6 +964,12 @@ struct MethodCoreBinding final
     // this ordinal, computed once during HIR->MIR conversion, mirroring how `immediate` already
     // holds the primary field's byte offset for an ordinary FieldAddress node).
     std::optional<std::size_t> secondaryImplicitFieldMemberOrdinal;
+    // Tanda 5, item 304 -- present only for the ordered AtomicInt32/AtomicInt64 Load/Store
+    // overloads. The value is the stable NativeSharp MemoryOrder ABI value (0..4), deliberately
+    // not an LLVMAtomicOrdering ordinal. HIR lowering consumes the source argument at compile
+    // time and carries this value as node metadata, so an ordering can never become a runtime
+    // integer passed accidentally to LLVM.
+    std::optional<std::uint8_t> atomicMemoryOrder = std::nullopt;
 };
 
 struct MethodVariableArrayIndexBinding final

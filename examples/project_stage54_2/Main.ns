@@ -167,6 +167,22 @@ class Program
         if ((int)MemoryOrder.Release != 2) { return 30; }
         if ((int)MemoryOrder.AcquireRelease != 3) { return 31; }
         if ((int)MemoryOrder.SequentiallyConsistent != 4) { return 32; }
+        // ==== Seccion 7: load/store con orden explicito =========================================
+        raii AtomicInt32 ordered32 = new AtomicInt32(0);
+        ordered32.Store(41, MemoryOrder.Relaxed);
+        if (ordered32.Load(MemoryOrder.Relaxed) != 41) { return 33; }
+        ordered32.Store(42, MemoryOrder.Release);
+        if (ordered32.Load(MemoryOrder.Acquire) != 42) { return 34; }
+        ordered32.Store(43, MemoryOrder.SequentiallyConsistent);
+        if (ordered32.Load(MemoryOrder.SequentiallyConsistent) != 43) { return 35; }
+
+        raii AtomicInt64 ordered64 = new AtomicInt64(0);
+        ordered64.Store(41000000000, MemoryOrder.Relaxed);
+        if (ordered64.Load(MemoryOrder.Relaxed) != 41000000000) { return 36; }
+        ordered64.Store(42000000000, MemoryOrder.Release);
+        if (ordered64.Load(MemoryOrder.Acquire) != 42000000000) { return 37; }
+        ordered64.Store(43000000000, MemoryOrder.SequentiallyConsistent);
+        if (ordered64.Load(MemoryOrder.SequentiallyConsistent) != 43000000000) { return 38; }
 
         return 0;
     }

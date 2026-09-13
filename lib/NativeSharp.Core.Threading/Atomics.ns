@@ -124,7 +124,16 @@ namespace NativeSharp.Core.Threading
             return 0;
         }
 
+        public int Load(MemoryOrder order)
+        {
+            return 0;
+        }
+
         public void Store(int value)
+        {
+        }
+
+        public void Store(int value, MemoryOrder order)
         {
         }
 
@@ -182,7 +191,16 @@ namespace NativeSharp.Core.Threading
             return 0;
         }
 
+        public long Load(MemoryOrder order)
+        {
+            return 0;
+        }
+
         public void Store(long value)
+        {
+        }
+
+        public void Store(long value, MemoryOrder order)
         {
         }
 

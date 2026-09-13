@@ -9156,18 +9156,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 const bool isInt32 =
                     declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt32";
                 const std::string valueTypeKey = isInt32 ? "builtin:int" : "builtin:long";
+                const auto isMemoryOrderType = [&](const std::string& typeKey)
+                {
+                    if (inheritanceModel_ == nullptr || nameLookup_ == nullptr) return false;
+                    const std::optional<std::size_t> ordinal =
+                        inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+                    return ordinal.has_value() && *ordinal < nameLookup_->namedTypes().size() &&
+                        nameLookup_->namedTypes()[*ordinal].identity.fullyQualifiedName() ==
+                            "NativeSharp.Core.Threading.MemoryOrder";
+                };
+                const bool orderedLoad = selectedMember.name == "Load" &&
+                    selectedMember.parameters.size() == 1 &&
+                    isMemoryOrderType(selectedMember.parameters[0].typeKey) &&
+                    selectedMember.declaredTypeKey == valueTypeKey;
+                const bool orderedStore = selectedMember.name == "Store" &&
+                    selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey == valueTypeKey &&
+                    isMemoryOrderType(selectedMember.parameters[1].typeKey) &&
+                    selectedMember.declaredTypeKey == "builtin:void";
                 std::optional<MethodCoreOperationKind> atomicKind;
-                if (selectedMember.name == "Load" && selectedMember.parameters.empty() &&
-                    selectedMember.declaredTypeKey == valueTypeKey)
+                if ((selectedMember.name == "Load" && selectedMember.parameters.empty() &&
+                        selectedMember.declaredTypeKey == valueTypeKey) || orderedLoad)
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::AtomicLoadInt32
                         : MethodCoreOperationKind::AtomicLoadInt64;
                 }
-                else if (selectedMember.name == "Store" &&
+                else if ((selectedMember.name == "Store" &&
                     selectedMember.parameters.size() == 1 &&
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
-                    selectedMember.declaredTypeKey == "builtin:void")
+                    selectedMember.declaredTypeKey == "builtin:void") || orderedStore)
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::AtomicStoreInt32
@@ -9212,6 +9230,46 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         ? MethodCoreOperationKind::InterlockedCompareExchangeInt32
                         : MethodCoreOperationKind::InterlockedCompareExchangeInt64;
                 }
+                std::optional<std::uint8_t> atomicMemoryOrder;
+                if (atomicKind.has_value() && (orderedLoad || orderedStore))
+                {
+                    const ast::AstNode* orderSyntax = expression->children().empty()
+                        ? nullptr
+                        : expression->children().back();
+                    const std::optional<ProjectIntegerValue> foldedOrder =
+                        foldIntegerConstant(orderSyntax, selectedMember.declaringTypeOrdinal);
+                    if (!foldedOrder.has_value())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::ConstRequiresConstant,
+                            diagnostics::DiagnosticSeverity::Error,
+                            orderSyntax != nullptr ? orderSyntax->range() : expression->range(),
+                            "atomic memory order must be a compile-time MemoryOrder constant");
+                        atomicKind.reset();
+                    }
+                    else
+                    {
+                        const std::uint64_t order = foldedOrder->bits;
+                        const bool legal = orderedLoad
+                            ? (order == 0U || order == 1U || order == 4U)
+                            : (order == 0U || order == 2U || order == 4U);
+                        if (!legal)
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidOperand,
+                                diagnostics::DiagnosticSeverity::Error,
+                                orderSyntax != nullptr ? orderSyntax->range() : expression->range(),
+                                orderedLoad
+                                    ? "atomic Load order must be Relaxed, Acquire, or SequentiallyConsistent"
+                                    : "atomic Store order must be Relaxed, Release, or SequentiallyConsistent");
+                            atomicKind.reset();
+                        }
+                        else
+                        {
+                            atomicMemoryOrder = static_cast<std::uint8_t>(order);
+                        }
+                    }
+                }
                 if (atomicKind.has_value() && memberModel_ != nullptr)
                 {
                     std::optional<std::size_t> valueFieldOrdinal;
@@ -9237,6 +9295,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             selectedMember.declaredTypeKey,
                             valueTypeKey,
                             false, std::nullopt, std::nullopt};
+                        binding.atomicMemoryOrder = atomicMemoryOrder;
                         binding.implicitFieldMemberOrdinal = valueFieldOrdinal;
                         coreBindings_.push_back(std::move(binding));
                     }

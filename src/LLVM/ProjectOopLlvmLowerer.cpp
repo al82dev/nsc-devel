@@ -109,6 +109,29 @@ constexpr const char* kAtomicLoadInt32FunctionName = "__nativesharp_atomic_load_
 constexpr const char* kAtomicStoreInt32FunctionName = "__nativesharp_atomic_store_int32";
 constexpr const char* kAtomicLoadInt64FunctionName = "__nativesharp_atomic_load_int64";
 constexpr const char* kAtomicStoreInt64FunctionName = "__nativesharp_atomic_store_int64";
+std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encoded)
+{
+    if (encoded == 0U) return std::nullopt;
+    switch (encoded - 1U)
+    {
+        case 0U: return LLVMAtomicOrderingMonotonic;
+        case 1U: return LLVMAtomicOrderingAcquire;
+        case 4U: return LLVMAtomicOrderingSequentiallyConsistent;
+        default: return std::nullopt;
+    }
+}
+
+std::optional<LLVMAtomicOrdering> orderedAtomicStoreOrdering(std::uint64_t encoded)
+{
+    if (encoded == 0U) return std::nullopt;
+    switch (encoded - 1U)
+    {
+        case 0U: return LLVMAtomicOrderingMonotonic;
+        case 2U: return LLVMAtomicOrderingRelease;
+        case 4U: return LLVMAtomicOrderingSequentiallyConsistent;
+        default: return std::nullopt;
+    }
+}
 constexpr const char* kInterlockedIncrementInt32FunctionName = "__nativesharp_interlocked_increment_int32";
 constexpr const char* kInterlockedDecrementInt32FunctionName = "__nativesharp_interlocked_decrement_int32";
 constexpr const char* kInterlockedAddInt32FunctionName = "__nativesharp_interlocked_add_int32";
@@ -7267,6 +7290,22 @@ private:
             // meaningful value at the NativeSharp level too.
             case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt32:
             {
+                if (node->integerValue != 0U)
+                {
+                    if (node->children.size() != 1)
+                        return failValue(error, "ordered atomic Load requires one pointer argument");
+                    LLVMValueRef location = lowerExpression(node->children.front().get(), error);
+                    if (location == nullptr) return nullptr;
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicLoadOrdering(node->integerValue);
+                    if (!ordering.has_value())
+                        return failValue(error, "ordered atomic Load carries an invalid MemoryOrder");
+                    LLVMValueRef load = LLVMBuildLoad2(
+                        builder_, LLVMInt32TypeInContext(context_), location, "atomic.load.ordered.i32");
+                    LLVMSetOrdering(load, *ordering);
+                    LLVMSetAlignment(load, 4U);
+                    return load;
+                }
                 if (node->children.size() != 1 || atomicLoadInt32Function_ == nullptr)
                     return failValue(error, "atomic Load(int*) requires one pointer argument and runtime hook");
                 LLVMValueRef location = lowerExpression(node->children.front().get(), error);
@@ -7310,6 +7349,23 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
             {
+                if (node->integerValue != 0U)
+                {
+                    if (node->children.size() != 2)
+                        return failValue(error, "ordered atomic Store requires pointer and value arguments");
+                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                    if (location == nullptr) return nullptr;
+                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                    if (value == nullptr) return nullptr;
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicStoreOrdering(node->integerValue);
+                    if (!ordering.has_value())
+                        return failValue(error, "ordered atomic Store carries an invalid MemoryOrder");
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, location);
+                    LLVMSetOrdering(store, *ordering);
+                    LLVMSetAlignment(store, 4U);
+                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+                }
                 if (node->children.size() != 2 || atomicStoreInt32Function_ == nullptr)
                     return failValue(error, "atomic Store(int*, int) requires two arguments and runtime hook");
                 LLVMValueRef location = lowerExpression(node->children[0].get(), error);
@@ -7322,6 +7378,22 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt64:
             {
+                if (node->integerValue != 0U)
+                {
+                    if (node->children.size() != 1)
+                        return failValue(error, "ordered atomic Load requires one pointer argument");
+                    LLVMValueRef location = lowerExpression(node->children.front().get(), error);
+                    if (location == nullptr) return nullptr;
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicLoadOrdering(node->integerValue);
+                    if (!ordering.has_value())
+                        return failValue(error, "ordered atomic Load carries an invalid MemoryOrder");
+                    LLVMValueRef load = LLVMBuildLoad2(
+                        builder_, LLVMInt64TypeInContext(context_), location, "atomic.load.ordered.i64");
+                    LLVMSetOrdering(load, *ordering);
+                    LLVMSetAlignment(load, 8U);
+                    return load;
+                }
                 if (node->children.size() != 1 || atomicLoadInt64Function_ == nullptr)
                     return failValue(error, "atomic Load(long*) requires one pointer argument and runtime hook");
                 LLVMValueRef location = lowerExpression(node->children.front().get(), error);
@@ -7332,6 +7404,23 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt64:
             {
+                if (node->integerValue != 0U)
+                {
+                    if (node->children.size() != 2)
+                        return failValue(error, "ordered atomic Store requires pointer and value arguments");
+                    LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                    if (location == nullptr) return nullptr;
+                    LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                    if (value == nullptr) return nullptr;
+                    const std::optional<LLVMAtomicOrdering> ordering =
+                        orderedAtomicStoreOrdering(node->integerValue);
+                    if (!ordering.has_value())
+                        return failValue(error, "ordered atomic Store carries an invalid MemoryOrder");
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, location);
+                    LLVMSetOrdering(store, *ordering);
+                    LLVMSetAlignment(store, 8U);
+                    return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+                }
                 if (node->children.size() != 2 || atomicStoreInt64Function_ == nullptr)
                     return failValue(error, "atomic Store(long*, long) requires two arguments and runtime hook");
                 LLVMValueRef location = lowerExpression(node->children[0].get(), error);

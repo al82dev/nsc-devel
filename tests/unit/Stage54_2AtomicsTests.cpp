@@ -35,7 +35,7 @@
 //      through a real linked Windows x64 PE executable via the actual `nsc` Driver, AT BOTH O0
 //      and O2 -- same discipline every Stage 53/54 round has followed since 53.2b.
 //   3. REAL EXECUTION under Wine (when available, gracefully skipped otherwise), at BOTH
-//      optimization levels: Main.ns returns 0 only if every one of its 32 runtime checks passed
+//      optimization levels: Main.ns returns 0 only if every one of its 38 runtime checks passed
 //      (see examples/project_stage54_2/Main.ns for the full numbering) -- the EXACT return-value
 //      contract of all ten operations (including CompareExchange's "does not match" branch, not
 //      just its happy path) for both widths, TWO genuine multi-threaded stress tests (4 threads x
@@ -160,12 +160,23 @@ void testAtomicCoreOperationsLowerToRuntimeCalls(TestContext& tests, const std::
     writeFile(directory / "Atomics.ns", R"NS(
 namespace NativeSharp.Core.Threading
 {
+    public enum MemoryOrder
+    {
+        Relaxed = 0,
+        Acquire = 1,
+        Release = 2,
+        AcquireRelease = 3,
+        SequentiallyConsistent = 4
+    }
+
     public class AtomicInt32
     {
         private int value_;
         public AtomicInt32(int initialValue) { value_ = initialValue; }
         public int Load() { return 0; }
+        public int Load(MemoryOrder order) { return 0; }
         public void Store(int value) { }
+        public void Store(int value, MemoryOrder order) { }
         public int Increment() { return 0; }
         public int Decrement() { return 0; }
         public int Add(int value) { return 0; }
@@ -178,7 +189,9 @@ namespace NativeSharp.Core.Threading
         private long value_;
         public AtomicInt64(long initialValue) { value_ = initialValue; }
         public long Load() { return 0; }
+        public long Load(MemoryOrder order) { return 0; }
         public void Store(long value) { }
+        public void Store(long value, MemoryOrder order) { }
         public long Increment() { return 0; }
         public long Decrement() { return 0; }
         public long Add(long value) { return 0; }
@@ -214,6 +227,23 @@ class Program
         r = a.Exchange(value);
         r = a.CompareExchange(value, comparand);
         return r;
+    }
+
+    public static long RunOrdered(AtomicInt32 a32, AtomicInt64 a64)
+    {
+        a32.Store(1, MemoryOrder.Relaxed);
+        a32.Store(2, MemoryOrder.Release);
+        a32.Store(3, MemoryOrder.SequentiallyConsistent);
+        int r32 = a32.Load(MemoryOrder.Relaxed);
+        r32 = a32.Load(MemoryOrder.Acquire);
+        r32 = a32.Load(MemoryOrder.SequentiallyConsistent);
+        a64.Store(4, MemoryOrder.Relaxed);
+        a64.Store(5, MemoryOrder.Release);
+        a64.Store(6, MemoryOrder.SequentiallyConsistent);
+        long r64 = a64.Load(MemoryOrder.Relaxed);
+        r64 = a64.Load(MemoryOrder.Acquire);
+        r64 = a64.Load(MemoryOrder.SequentiallyConsistent);
+        return r64 + r32;
     }
 }
 )NS");
@@ -252,12 +282,85 @@ class Program
         tests.expect(llvm.find(expected) != std::string::npos,
             "Atomic core operation lowers to a direct call to " + std::string(expected));
     }
+    tests.expect(
+        llvm.find("load atomic i32") != std::string::npos &&
+            llvm.find("load atomic i64") != std::string::npos &&
+            llvm.find("acquire") != std::string::npos,
+        "ordered AtomicInt32/AtomicInt64 loads lower to native acquire instructions");
+    tests.expect(
+        llvm.find("store atomic i32") != std::string::npos &&
+            llvm.find("store atomic i64") != std::string::npos &&
+            llvm.find("release") != std::string::npos,
+        "ordered AtomicInt32/AtomicInt64 stores lower to native release instructions");
+    tests.expect(llvm.find("monotonic") != std::string::npos,
+        "MemoryOrder.Relaxed maps explicitly to LLVM monotonic ordering");
     // Also confirm the "location" operand feeding each of those calls is a field-address GEP
     // (`field.addr`), not some other addressing scheme -- proof that the synthetic FieldAddress
     // node this round introduces (see ProjectOopHirModel.cpp's dedicated Atomics block) is really
     // being used, and not silently bypassed.
     tests.expect(llvm.find("field.addr") != std::string::npos,
         "Atomic core operations address their implicit `value_` field via the shared field-address GEP machinery");
+}
+void testOrderedAtomicDiagnostics(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "AtomicOrderReject";
+    writeProject(directory, "AtomicOrderReject");
+    writeFile(directory / "Main.ns", R"NS(
+namespace NativeSharp.Core.Threading
+{
+    public enum MemoryOrder
+    {
+        Relaxed = 0,
+        Acquire = 1,
+        Release = 2,
+        AcquireRelease = 3,
+        SequentiallyConsistent = 4
+    }
+
+    public class AtomicInt32
+    {
+        private int value_;
+        public AtomicInt32(int initialValue) { value_ = initialValue; }
+        public int Load(MemoryOrder order) { return 0; }
+        public void Store(int value, MemoryOrder order) { }
+    }
+}
+
+using NativeSharp.Core.Threading;
+
+class Program
+{
+    public static int Main()
+    {
+        raii AtomicInt32 value = new AtomicInt32(0);
+        value.Load(MemoryOrder.Release);
+        value.Store(1, MemoryOrder.Acquire);
+        MemoryOrder dynamicOrder = MemoryOrder.Relaxed;
+        value.Load(dynamicOrder);
+        return 0;
+    }
+}
+)NS");
+
+    const std::string projectText = (directory / "AtomicOrderReject.nsproj").string();
+    const std::string exeText = (directory / "AtomicOrderReject.exe").string();
+    const std::array<std::string_view, 5> args = {
+        "--emit-project-oop-exe", projectText, "-O0", "-o", exeText};
+    Driver driver;
+    std::ostringstream out;
+    std::ostringstream err;
+    const ExitCode result = driver.run(args, out, err);
+    const std::string diagnostics = err.str() + out.str();
+    tests.expect(result != ExitCode::Success, "invalid ordered atomic operations are rejected");
+    tests.expect(diagnostics.find(
+        "atomic Load order must be Relaxed, Acquire, or SequentiallyConsistent") != std::string::npos,
+        "ordered Load rejects Release");
+    tests.expect(diagnostics.find(
+        "atomic Store order must be Relaxed, Release, or SequentiallyConsistent") != std::string::npos,
+        "ordered Store rejects Acquire");
+    tests.expect(diagnostics.find(
+        "atomic memory order must be a compile-time MemoryOrder constant") != std::string::npos,
+        "ordered atomic operations reject runtime-selected ordering");
 }
 
 // ---------------------------------------------------------------------------------------
@@ -414,7 +517,7 @@ void testPackagedExampleAtOptimizationLevel(
         tests.expect(!crashed, "Stage 54.2 (" + runLabel + ") executable does not crash under real execution");
         tests.expect(exitCode == 0,
             "Stage 54.2 (" + runLabel +
-                ") executable returns exit code 0 (all 32 atomics runtime checks passed -- exact "
+                ") executable returns exit code 0 (all 38 atomics runtime checks passed -- exact "
                 "return-value contract for Increment/Decrement/Add/Exchange/CompareExchange on both "
                 "Int32 and Int64, including CompareExchange's non-matching branch, plus two genuine "
                 "4-threads-x-2500-increments stress tests on a SHARED counter verifying the exact "
@@ -433,6 +536,7 @@ int main()
     std::filesystem::create_directories(root);
 
     testAtomicCoreOperationsLowerToRuntimeCalls(tests, root);
+    testOrderedAtomicDiagnostics(tests, root);
     testRuntimeHooksEmitRealAtomicInstructions(tests);
     testPackagedExampleAtOptimizationLevel(
         tests, root, nativesharp::llvm_backend::LlvmOptimizationLevel::O0, "-O0", "O0");

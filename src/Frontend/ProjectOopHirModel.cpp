@@ -4286,7 +4286,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 location->memberOrdinal = *core->implicitFieldMemberOrdinal;
                 location->children.push_back(std::move(receiver));
 
-                std::size_t expectedExplicitArguments = 0U;
+                std::size_t expectedValueArguments = 0U;
                 if (core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
                     core->kind == MethodCoreOperationKind::AtomicStoreInt64 ||
                     core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
@@ -4294,13 +4294,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
                     core->kind == MethodCoreOperationKind::InterlockedExchangeInt64)
                 {
-                    expectedExplicitArguments = 1U;
+                    expectedValueArguments = 1U;
                 }
                 else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32 ||
                     core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64)
                 {
-                    expectedExplicitArguments = 2U;
+                    expectedValueArguments = 2U;
                 }
+                const std::size_t expectedExplicitArguments = expectedValueArguments +
+                    (core->atomicMemoryOrder.has_value() ? 1U : 0U);
                 if (expression->children().size() != expectedExplicitArguments)
                 {
                     error = "Stage 54.2 Atomic core operation received an invalid explicit argument count";
@@ -4324,8 +4326,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64;
 
                 auto node = makeNode(kind, expression, core->resultTypeKey);
+                if (core->atomicMemoryOrder.has_value())
+                {
+                    // Zero means "legacy overload" on the MIR node, so ordered values are carried
+                    // as ABI value + 1. LLVM lowering performs the explicit NativeSharp->LLVM map.
+                    node->integerValue =
+                        static_cast<std::uint64_t>(*core->atomicMemoryOrder) + 1U;
+                }
                 node->children.push_back(std::move(location));
-                for (std::size_t index = 0; index < expression->children().size(); ++index)
+                for (std::size_t index = 0; index < expectedValueArguments; ++index)
                 {
                     const ast::AstNode* argumentSyntax = expression->children()[index];
                     auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);

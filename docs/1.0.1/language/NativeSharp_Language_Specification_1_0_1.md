@@ -488,6 +488,23 @@ atomic operations. Its values are NativeSharp ABI values, not LLVM or C++ enum o
 parameterless operations remain sequentially consistent, and future ordered operations must reject
 orders that are invalid for their access category instead of silently strengthening them.
 
+### NS-MEM-005 — Cargas y almacenes atómicos ordenados
+
+`AtomicInt32` y `AtomicInt64` ofrecen `Load(MemoryOrder)` y
+`Store(valor, MemoryOrder)`. El orden es parte estática de la instrucción y debe ser una constante
+de compilación: no puede seleccionarse con una variable en tiempo de ejecución.
+
+Una carga acepta `Relaxed`, `Acquire` o `SequentiallyConsistent`; un almacén acepta `Relaxed`,
+`Release` o `SequentiallyConsistent`. Las demás combinaciones se rechazan. `Relaxed` se mapea
+explícitamente a LLVM `monotonic`, no a `unordered`; los valores públicos nunca se convierten por
+cast a los ordinales internos de LLVM. Los accesos declaran alineación natural de 4 u 8 bytes para
+mantener la emisión nativa y evitar helpers externos `__atomic_*`.
+
+`AtomicInt32` and `AtomicInt64` provide ordered `Load` and `Store` overloads. Their order must
+be a compile-time `MemoryOrder` constant. Loads accept Relaxed, Acquire, or
+SequentiallyConsistent; stores accept Relaxed, Release, or SequentiallyConsistent. Relaxed maps to
+LLVM monotonic through an explicit ABI translation, and each access carries its natural alignment.
+
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

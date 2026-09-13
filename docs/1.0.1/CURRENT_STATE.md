@@ -84,10 +84,11 @@ líneas y rangos fuente, operands con ordinal/constraint/valor o dirección, cat
 la obligación de preservar registros no volátiles. MIR usa schema 1.2 y no vuelve a interpretar el
 texto para recuperar información que el frontend ya resolvió.
 
-La línea 2.0 publica `NativeSharp.Core.Threading.MemoryOrder` con las identidades estables
-`Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`. Esta entrega fija el
-vocabulario y sus valores ABI; las operaciones 1.0.1 sin parámetro todavía son `seq_cst`, mientras
-que los overloads ordenados se incorporan por operación en los siguientes items de la tanda 5.
+La línea 2.0 publica `NativeSharp.Core.Threading.MemoryOrder` y ya lo aplica a las sobrecargas
+`AtomicInt32/AtomicInt64.Load(order)` y `Store(value, order)`. Las cargas admiten `Relaxed`,
+`Acquire` y `SequentiallyConsistent`; los almacenes admiten `Relaxed`, `Release` y
+`SequentiallyConsistent`. El orden debe resolverse en compilación. Las operaciones sin parámetro
+conservan su semántica `seq_cst`.
 
 ## Superficie del lenguaje
 
