@@ -4,6 +4,7 @@ using NativeSharp.Core.Threading;
 //
 // Misma convencion de exit codes que cada ronda de Stage 53/54.1: cada chequeo que falla
 // devuelve un codigo de salida DISTINTO, y el ultimo chequeo exitoso termina en "return 0".
+// La Seccion 6 congela además el vocabulario público MemoryOrder agregado por el item 303.
 //
 // DISCIPLINA EXTRA DE ESTA RONDA (la misma regla de rigor de Stage 54, ver
 // claude/05_metodo_de_trabajo_y_archivo_historico.md): las Secciones 1 y 2 verifican el
@@ -158,6 +159,14 @@ class Program
         // pasando "gratis" por memoria pre-inicializada en 0 por casualidad).
 
         if (SharedCounters.NeverTouched != 0) { return 27; }
+
+        // ==== Seccion 6: identidad publica y estable de las ordenes de memoria =================
+
+        if ((int)MemoryOrder.Relaxed != 0) { return 28; }
+        if ((int)MemoryOrder.Acquire != 1) { return 29; }
+        if ((int)MemoryOrder.Release != 2) { return 30; }
+        if ((int)MemoryOrder.AcquireRelease != 3) { return 31; }
+        if ((int)MemoryOrder.SequentiallyConsistent != 4) { return 32; }
 
         return 0;
     }

@@ -6,6 +6,9 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Lenguaje y Core
 
+- `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
+  `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
+  parámetro conservan por ahora su semántica `seq_cst`.
 - La gramática 2.0 reconoce bloques `asm { ... }` dentro de funciones y métodos mediante un nodo
   AST explícito y diagnostica su uso en namespace. Un modo léxico acotado al cuerpo conserva bytes,
   saltos físicos y rangos exactos por línea, incluso para puntuación que no pertenece al lenguaje

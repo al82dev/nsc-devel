@@ -472,6 +472,22 @@ observarlas. `Thread.Join` establece que, después de retornar, el hilo que une 
 escrituras anteriores del hilo unido. Estas garantías no se extienden a accesos que el programa
 deja fuera del protocolo de sincronización.
 
+### NS-MEM-004 — Vocabulario público de ordenamiento
+
+`NativeSharp.Core.Threading.MemoryOrder` es la identidad pública y estable usada por las operaciones
+atómicas ordenadas de la línea 2.0. Sus miembros y valores son `Relaxed = 0`, `Acquire = 1`,
+`Release = 2`, `AcquireRelease = 3` y `SequentiallyConsistent = 4`. Estos valores pertenecen al ABI
+de NativeSharp y no son alias numéricos de enumeradores LLVM, C++ o del sistema operativo.
+
+Publicar el enum no debilita las operaciones 1.0.1 sin parámetro: continúan siendo `seq_cst`. Cada
+operación que acepte un orden debe validar el subconjunto permitido por su clase de acceso; no es
+válido reinterpretar silenciosamente una combinación ilegal como orden secuencialmente consistente.
+
+`NativeSharp.Core.Threading.MemoryOrder` is the stable public identity used by the 2.0 ordered
+atomic operations. Its values are NativeSharp ABI values, not LLVM or C++ enum ordinals. Existing
+parameterless operations remain sequentially consistent, and future ordered operations must reject
+orders that are invalid for their access category instead of silently strengthening them.
+
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

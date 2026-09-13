@@ -1,5 +1,20 @@
 namespace NativeSharp.Core.Threading
 {
+    // Public, ABI-stable vocabulary for the ordered atomic operations introduced by the
+    // NativeSharp 2.0 memory-system roadmap. The values are NativeSharp's own contract rather
+    // than LLVM enum ordinals; the compiler maps them explicitly at each atomic operation.
+    //
+    // Item 303 publishes the vocabulary only. The parameterless 1.0.1 operations below remain
+    // sequentially consistent. Ordered overloads are introduced independently by items 304-306.
+    public enum MemoryOrder
+    {
+        Relaxed = 0,
+        Acquire = 1,
+        Release = 2,
+        AcquireRelease = 3,
+        SequentiallyConsistent = 4
+    }
+
     // NativeSharp.Core.Threading.AtomicInt32 / AtomicInt64 -- Stage 54.2 "Atomics".
     //
     // == Por que clases wrapper y NO "Interlocked.Increment(ref int location)" al estilo C# ==

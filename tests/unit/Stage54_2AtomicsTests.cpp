@@ -35,7 +35,7 @@
 //      through a real linked Windows x64 PE executable via the actual `nsc` Driver, AT BOTH O0
 //      and O2 -- same discipline every Stage 53/54 round has followed since 53.2b.
 //   3. REAL EXECUTION under Wine (when available, gracefully skipped otherwise), at BOTH
-//      optimization levels: Main.ns returns 0 only if every one of its 27 runtime checks passed
+//      optimization levels: Main.ns returns 0 only if every one of its 32 runtime checks passed
 //      (see examples/project_stage54_2/Main.ns for the full numbering) -- the EXACT return-value
 //      contract of all ten operations (including CompareExchange's "does not match" branch, not
 //      just its happy path) for both widths, TWO genuine multi-threaded stress tests (4 threads x
@@ -414,7 +414,7 @@ void testPackagedExampleAtOptimizationLevel(
         tests.expect(!crashed, "Stage 54.2 (" + runLabel + ") executable does not crash under real execution");
         tests.expect(exitCode == 0,
             "Stage 54.2 (" + runLabel +
-                ") executable returns exit code 0 (all 27 atomics runtime checks passed -- exact "
+                ") executable returns exit code 0 (all 32 atomics runtime checks passed -- exact "
                 "return-value contract for Increment/Decrement/Add/Exchange/CompareExchange on both "
                 "Int32 and Int64, including CompareExchange's non-matching branch, plus two genuine "
                 "4-threads-x-2500-increments stress tests on a SHARED counter verifying the exact "

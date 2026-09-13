@@ -88,7 +88,7 @@
 
 ## Tanda 5 — Atomics y memoria de sistema
 
-58. **303 — Órdenes de memoria públicas / Public memory orders**
+58. **303 — Órdenes de memoria públicas / Public memory orders — COMPLETADO / COMPLETE**
 59. **304 — Load/store atómicos ordenados / Ordered atomic loads and stores**
 60. **305 — Operaciones RMW ordenadas / Ordered read-modify-write operations**
 61. **306 — Compare-exchange con órdenes de éxito y fallo / Ordered compare-exchange**
