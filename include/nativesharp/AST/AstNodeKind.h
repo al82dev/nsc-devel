@@ -70,6 +70,9 @@ enum class AstNodeKind
     // A positional `in(expression)` operand. first() is the NativeSharp expression and
     // integerValue() is its zero-based input ordinal. Constraints arrive in item 291.
     InlineAssemblyInputOperand,
+    // A positional `out(target)` operand. first() is a writable NativeSharp lvalue and
+    // integerValue() is its zero-based `$outN` ordinal.
+    InlineAssemblyOutputOperand,
     ExpressionStatement,
 
     IdentifierExpression,

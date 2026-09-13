@@ -13,6 +13,9 @@ empaqueta con NativeSharp 1.0.1.
 - Los bloques asm aceptan una cláusula de entradas `in(expr0, expr1);`. Cada expresión se conserva
   como operando AST posicional, participa en resolución de nombres y corresponde por orden a los
   placeholders `$0`, `$1`, etc.; constraints y lowering permanecen en ítems posteriores.
+- La cláusula contextual `out(destino0, destino1)` precede a `in`, conserva ordinales `$outN` y
+  exige lvalues modificables. El análisis la registra como escritura para no leer una local sin
+  inicializar antes de que assembly produzca su valor.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

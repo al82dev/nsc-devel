@@ -712,6 +712,19 @@ void SemanticAnalyzer::analyzeStatement(ast::AstNode* node)
                 {
                     analyzeExpression(child->first());
                 }
+                else if (child->kind() == ast::AstNodeKind::InlineAssemblyOutputOperand &&
+                    child->first() != nullptr)
+                {
+                    const ExpressionInfo target = analyzeExpression(child->first());
+                    if (target.type != nullptr && target.type->kind() != TypeKind::Error &&
+                        !target.modifiable)
+                    {
+                        report(
+                            child->first()->range(),
+                            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                            "asm output must be a modifiable lvalue");
+                    }
+                }
             }
             report(
                 node->range(),

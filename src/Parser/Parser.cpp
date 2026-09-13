@@ -4793,13 +4793,55 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
     expect(TokenKind::RightBrace, "'}' to close asm block");
     statement->setRange(tokenRangeFrom(beginIndex));
     statement->setText(std::move(exactBody));
+    bool hasOperandClauses = false;
+    if (atContextualKeyword("out"))
+    {
+        parseInlineAssemblyOutputClause(statement);
+        hasOperandClauses = true;
+    }
     if (at(TokenKind::KwIn))
     {
         parseInlineAssemblyInputClause(statement);
+        hasOperandClauses = true;
+    }
+    if (hasOperandClauses)
+    {
         expect(TokenKind::Semicolon, "';' after asm operand clauses");
         statement->setRange(tokenRangeFrom(beginIndex));
     }
     return statement;
+}
+
+void Parser::parseInlineAssemblyOutputClause(ast::AstNode* statement)
+{
+    consume(); // contextual `out`
+    if (!expect(TokenKind::LeftParen, "'(' after asm out")) return;
+    if (at(TokenKind::RightParen))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedExpression,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "asm out clause requires at least one output target");
+        consume();
+        return;
+    }
+
+    std::uint64_t ordinal = 0;
+    do
+    {
+        const std::size_t operandBegin = index_;
+        ast::AstNode* target = parseUnaryExpression();
+        ast::AstNode* operand = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::InlineAssemblyOutputOperand,
+            tokenRangeFrom(operandBegin));
+        operand->setFirst(target);
+        operand->setIntegerValue(ordinal++);
+        statement->addChild(operand);
+    }
+    while (consumeIf(TokenKind::Comma));
+
+    expect(TokenKind::RightParen, "')' after asm output targets");
 }
 
 void Parser::parseInlineAssemblyInputClause(ast::AstNode* statement)

@@ -669,3 +669,11 @@ require a final semicolon whenever that clause exists. Every expression shall be
 AST as its first child. Standalone and project semantic analysis shall bind every input expression
 before issuing the temporary pre-lowering assembly diagnostic. An empty clause shall be rejected
 at its closing parenthesis and shall not create a phantom operand.
+
+## NSC-ASM-004 — Positional output operands
+
+The parser shall accept a non-empty contextual `out(target, ...)` clause before any input clause.
+Each target shall become `InlineAssemblyOutputOperand`, retain a zero-based `$outN` ordinal and keep
+its unary/postfix lvalue syntax as `first()`. Both semantic pipelines shall require a modifiable
+lvalue. Project definite-assignment analysis shall treat a whole-local output as a write and shall
+not diagnose a read of its previous uninitialized value.

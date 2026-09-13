@@ -176,6 +176,55 @@ int Main()
         emptyInputs.diagnostics.hasErrors() && sawRequiredInput,
         "empty asm in clause is rejected at its closing parenthesis");
 
+    ParsedSyntax outputs;
+    parse(
+        outputs,
+        "int Main() { int result; int source = 42; "
+        "asm { mov $out0, $0 } out(result) in(source); return result; }");
+    const AstNode* outputMain = findFunction(outputs.root, "Main");
+    const AstNode* outputBody = outputMain != nullptr ? outputMain->first() : nullptr;
+    const AstNode* outputAssembly = outputBody != nullptr && outputBody->children().size() > 2
+        ? outputBody->children()[2]
+        : nullptr;
+    const AstNode* outputOperand = outputAssembly != nullptr && outputAssembly->children().size() > 1
+        ? outputAssembly->children()[1]
+        : nullptr;
+    tests.expect(
+        !outputs.diagnostics.hasErrors() && outputOperand != nullptr &&
+            outputOperand->kind() == AstNodeKind::InlineAssemblyOutputOperand &&
+            outputOperand->integerValue() == 0 && outputOperand->first() != nullptr &&
+            outputOperand->first()->text() == "result" &&
+            outputAssembly->children().size() == 3 &&
+            outputAssembly->children()[2]->kind() == AstNodeKind::InlineAssemblyInputOperand,
+        "asm out targets precede input expressions and retain stable $outN ordinals");
+
+    ParsedSyntax emptyOutputs;
+    parse(emptyOutputs, "int Main() { asm { nop } out(); return 0; }");
+    bool sawRequiredOutput = false;
+    for (const diagnostics::Diagnostic& diagnostic : emptyOutputs.diagnostics.diagnostics())
+    {
+        sawRequiredOutput = sawRequiredOutput ||
+            diagnostic.message().find("requires at least one output target") != std::string::npos;
+    }
+    tests.expect(
+        emptyOutputs.diagnostics.hasErrors() && sawRequiredOutput,
+        "empty asm out clause is rejected at its closing parenthesis");
+
+    frontend::FrontendCompilation invalidOutput;
+    const bool invalidOutputOk = invalidOutput.compileBuffer(
+        "assembly_output_lvalue.ns",
+        "int Main() { asm { mov $out0, 1 } out(42); return 0; }");
+    bool sawInvalidOutput = false;
+    for (const diagnostics::Diagnostic& diagnostic : invalidOutput.diagnostics().diagnostics())
+    {
+        sawInvalidOutput = sawInvalidOutput ||
+            (diagnostic.id() == diagnostics::DiagnosticId::InvalidAssignmentTarget &&
+             diagnostic.message().find("asm output") != std::string::npos);
+    }
+    tests.expect(
+        !invalidOutputOk && sawInvalidOutput,
+        "asm out rejects a value that is not a modifiable lvalue");
+
     ParsedSyntax missingClauseTerminator;
     parse(missingClauseTerminator, "int Main() { int x = 1; asm { nop } in(x) return 0; }");
     bool sawClauseSemicolon = false;

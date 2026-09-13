@@ -658,6 +658,19 @@ trailing semicolon are required together. Expressions use ordinary binding, are 
 left-to-right order, and receive stable zero-based `$0`, `$1`, ... positions. Constraints and LLVM
 lowering remain later batch-4 contracts.
 
+### NS-ASM-004 — Operandos posicionales de salida
+
+La cláusula opcional `out(destino0, destino1, ...)` aparece después del bloque y antes de `in`.
+Debe ser no vacía y cada destino debe ser un lvalue modificable conforme a las reglas ordinarias de
+asignación. El análisis la considera una escritura: un identificador local completo queda
+definitivamente asignado sin exigir que tuviera un valor anterior. Los ordinales son independientes
+de las entradas y se escriben `$out0`, `$out1`, etc.; agregar un output no renumera `$0` de entrada.
+
+An optional non-empty `out(target0, target1, ...)` clause follows the block and precedes `in`.
+Every target must be an ordinary modifiable lvalue and is analyzed as a write, so a whole local
+becomes definitely assigned without a prior read. Output placeholders use their own `$outN`
+ordinal space and never renumber input `$N` placeholders.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

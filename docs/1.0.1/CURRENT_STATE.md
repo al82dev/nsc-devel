@@ -26,6 +26,11 @@ expresiones usan el binding NativeSharp ordinario, se evalúan en orden y corres
 etc. dentro de la plantilla. La cláusula no vacía exige el `;`; un bloque sin cláusulas conserva la
 forma breve `asm { ... }`.
 
+Los destinos de salida se declaran antes de las entradas:
+`asm { ... } out(destino0, destino1) in(expr0);`. Cada destino debe ser un lvalue modificable y la
+sentencia lo trata como escritura, por lo que puede inicializar una local todavía no leída. La
+plantilla los nombra `$out0`, `$out1`, etc., sin renumerar los placeholders `$0`, `$1` de entrada.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

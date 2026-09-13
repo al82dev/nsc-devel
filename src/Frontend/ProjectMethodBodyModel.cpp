@@ -2073,6 +2073,30 @@ void ProjectMethodBodyModel::analyzeStatement(
                 {
                     analyzeExpression(child->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
                 }
+                else if (child->kind() == ast::AstNodeKind::InlineAssemblyOutputOperand &&
+                    child->first() != nullptr)
+                {
+                    const ast::AstNode* const previousWriteTarget = definiteAssignmentWriteTarget_;
+                    markAssignmentTarget(child->first(), scopeOrdinal);
+                    const ExpressionResult target = analyzeExpression(
+                        child->first(),
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        diagnostics,
+                        false,
+                        true,
+                        false,
+                        true);
+                    definiteAssignmentWriteTarget_ = previousWriteTarget;
+                    if (target.valid && !target.assignable)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                            diagnostics::DiagnosticSeverity::Error,
+                            child->first()->range(),
+                            "asm output must be a modifiable lvalue");
+                    }
+                }
             }
             diagnostics.report(
                 diagnostics::DiagnosticId::InlineAssemblyNotAvailable,
