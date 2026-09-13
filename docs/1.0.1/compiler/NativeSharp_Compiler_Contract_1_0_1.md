@@ -660,3 +660,12 @@ The parent AST statement shall reconstruct the exact body. Every non-blank physi
 produce an `InlineAssemblyLine` whose text excludes surrounding horizontal whitespace and whose
 range begins at the first significant byte and ends after the last. Normal lexing shall resume
 immediately after the outer brace, and using `asm` without `{` shall remain an ordinary identifier.
+
+## NSC-ASM-003 — Positional input operands
+
+The parser shall accept a non-empty `in(expression, ...)` clause after the assembly block and
+require a final semicolon whenever that clause exists. Every expression shall become an
+`InlineAssemblyInputOperand` with a stable zero-based ordinal and retain the ordinary expression
+AST as its first child. Standalone and project semantic analysis shall bind every input expression
+before issuing the temporary pre-lowering assembly diagnostic. An empty clause shall be rejected
+at its closing parenthesis and shall not create a phantom operand.

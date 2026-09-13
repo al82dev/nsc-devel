@@ -67,6 +67,9 @@ enum class AstNodeKind
     // One non-blank physical line inside InlineAssemblyStatement. text() is the exact
     // non-whitespace spelling and range() begins at its first significant source byte.
     InlineAssemblyLine,
+    // A positional `in(expression)` operand. first() is the NativeSharp expression and
+    // integerValue() is its zero-based input ordinal. Constraints arrive in item 291.
+    InlineAssemblyInputOperand,
     ExpressionStatement,
 
     IdentifierExpression,

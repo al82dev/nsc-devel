@@ -94,9 +94,10 @@ statement = block | variable-declaration | expression-statement | if-statement |
             inline-assembly-statement | ";" ;
 static-assert-statement = "static_assert", "(", expression,
                           [ ",", string-literal ], ")", ";" ;
-inline-assembly-statement = "asm", assembly-block ;
+inline-assembly-statement = "asm", assembly-block, [ asm-input-clause, ";" ] ;
 assembly-block = "{", { assembly-body-token | assembly-block }, "}" ;
 assembly-body-token = ? ordinary lexer token other than "{", "}" or EOF ? ;
+asm-input-clause = "in", "(", expression, { ",", expression }, ")" ;
 variable-declaration = [ "const" ], ( "var" | type ), identifier,
                        [ "=", expression | aggregate-initializer ], ";" ;
 expression-statement = expression, ";" ;

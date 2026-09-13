@@ -10,6 +10,9 @@ empaqueta con NativeSharp 1.0.1.
   AST explícito y diagnostica su uso en namespace. Un modo léxico acotado al cuerpo conserva bytes,
   saltos físicos y rangos exactos por línea, incluso para puntuación que no pertenece al lenguaje
   NativeSharp. La semántica ejecutable se completa de forma incremental en la tanda 4.
+- Los bloques asm aceptan una cláusula de entradas `in(expr0, expr1);`. Cada expresión se conserva
+  como operando AST posicional, participa en resolución de nombres y corresponde por orden a los
+  placeholders `$0`, `$1`, etc.; constraints y lowering permanecen en ítems posteriores.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

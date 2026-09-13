@@ -21,6 +21,11 @@ cada línea no vacía con su rango fuente e inicio de instrucción. Operandos, r
 validación y emisión se incorporan en los ítems siguientes de la tanda 4; hasta entonces no
 constituye todavía una sentencia ejecutable.
 
+Un bloque puede declarar entradas posicionales mediante `asm { ... } in(expr0, expr1);`. Las
+expresiones usan el binding NativeSharp ordinario, se evalúan en orden y corresponden a `$0`, `$1`,
+etc. dentro de la plantilla. La cláusula no vacía exige el `;`; un bloque sin cláusulas conserva la
+forma breve `asm { ... }`.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

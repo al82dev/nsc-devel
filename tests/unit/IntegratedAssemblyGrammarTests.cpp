@@ -64,48 +64,50 @@ int main()
         R"NS(
 int Main()
 {
+    int left = 40;
+    int right = 2;
     asm {
-        mov rax, rbx
-        add rax, 2
-    }
+        mov rax, $0
+        add rax, $1
+    } in(left, right);
     return 42;
 }
 )NS");
     tests.expect(!valid.diagnostics.hasErrors(), "asm block grammar parses without diagnostics");
     const AstNode* mainFunction = findFunction(valid.root, "Main");
     const AstNode* body = mainFunction != nullptr ? mainFunction->first() : nullptr;
-    const AstNode* assembly = body != nullptr && !body->children().empty()
-        ? body->children().front()
+    const AstNode* assembly = body != nullptr && body->children().size() > 2
+        ? body->children()[2]
         : nullptr;
     tests.expect(
         assembly != nullptr && assembly->kind() == AstNodeKind::InlineAssemblyStatement,
         "asm block has an explicit InlineAssemblyStatement AST node");
     tests.expect(
         assembly != nullptr &&
-            assembly->text() == "\n        mov rax, rbx\n        add rax, 2\n    ",
+            assembly->text() == "\n        mov rax, $0\n        add rax, $1\n    ",
         "assembly body retains its exact source bytes including physical newlines");
     tests.expect(
         assembly != nullptr && assembly->range().isValid(),
         "asm node covers a valid whole-statement source range");
     tests.expect(
-        body != nullptr && body->children().size() == 2 &&
-            body->children()[1]->kind() == AstNodeKind::ReturnStatement,
-        "parsing resumes at the statement following the asm block without a semicolon");
+        body != nullptr && body->children().size() == 4 &&
+            body->children()[3]->kind() == AstNodeKind::ReturnStatement,
+        "parsing resumes at the statement following the terminated asm operand clauses");
     tests.expect(
-        assembly != nullptr && assembly->children().size() == 2 &&
+        assembly != nullptr && assembly->children().size() == 4 &&
             assembly->children()[0]->kind() == AstNodeKind::InlineAssemblyLine &&
-            assembly->children()[0]->text() == "mov rax, rbx" &&
-            assembly->children()[1]->text() == "add rax, 2",
+            assembly->children()[0]->text() == "mov rax, $0" &&
+            assembly->children()[1]->text() == "add rax, $1",
         "non-blank physical assembly lines have explicit exact-spelling AST records");
-    if (assembly != nullptr && assembly->children().size() == 2)
+    if (assembly != nullptr && assembly->children().size() >= 2)
     {
         const source::SourcePosition firstPosition =
             valid.sources.getPosition(assembly->children()[0]->range().begin());
         const source::SourcePosition secondPosition =
             valid.sources.getPosition(assembly->children()[1]->range().begin());
         tests.expect(
-            firstPosition.line == 5 && firstPosition.column == 9 &&
-                secondPosition.line == 6 && secondPosition.column == 9,
+            firstPosition.line == 7 && firstPosition.column == 9 &&
+                secondPosition.line == 8 && secondPosition.column == 9,
             "assembly line records begin at their exact one-based instruction locations");
     }
     else
@@ -123,6 +125,24 @@ int Main()
     tests.expect(
         sawRawText && sawRawNewLine,
         "lexer switches to exact assembly text and newline tokens inside asm braces");
+    if (assembly != nullptr && assembly->children().size() == 4)
+    {
+        const AstNode* firstInput = assembly->children()[2];
+        const AstNode* secondInput = assembly->children()[3];
+        tests.expect(
+            firstInput->kind() == AstNodeKind::InlineAssemblyInputOperand &&
+                firstInput->integerValue() == 0 && firstInput->first() != nullptr &&
+                firstInput->first()->kind() == AstNodeKind::IdentifierExpression &&
+                firstInput->first()->text() == "left" &&
+                secondInput->kind() == AstNodeKind::InlineAssemblyInputOperand &&
+                secondInput->integerValue() == 1 && secondInput->first() != nullptr &&
+                secondInput->first()->text() == "right",
+            "asm in clause records expressions in stable zero-based positional order");
+    }
+    else
+    {
+        tests.expect(false, "asm input operands are present in the AST");
+    }
 
     ParsedSyntax balanced;
     parse(balanced, "int Main() { asm { outer { inner } } return 0; }");
@@ -143,6 +163,30 @@ int Main()
     tests.expect(
         !assemblyCharacters.diagnostics.hasErrors(),
         "assembly lexical mode preserves punctuation that is invalid in ordinary NativeSharp");
+
+    ParsedSyntax emptyInputs;
+    parse(emptyInputs, "int Main() { asm { nop } in(); return 0; }");
+    bool sawRequiredInput = false;
+    for (const diagnostics::Diagnostic& diagnostic : emptyInputs.diagnostics.diagnostics())
+    {
+        sawRequiredInput = sawRequiredInput ||
+            diagnostic.message().find("requires at least one input expression") != std::string::npos;
+    }
+    tests.expect(
+        emptyInputs.diagnostics.hasErrors() && sawRequiredInput,
+        "empty asm in clause is rejected at its closing parenthesis");
+
+    ParsedSyntax missingClauseTerminator;
+    parse(missingClauseTerminator, "int Main() { int x = 1; asm { nop } in(x) return 0; }");
+    bool sawClauseSemicolon = false;
+    for (const diagnostics::Diagnostic& diagnostic : missingClauseTerminator.diagnostics.diagnostics())
+    {
+        sawClauseSemicolon = sawClauseSemicolon ||
+            diagnostic.message().find("after asm operand clauses") != std::string::npos;
+    }
+    tests.expect(
+        missingClauseTerminator.diagnostics.hasErrors() && sawClauseSemicolon,
+        "asm input clauses require a final semicolon");
 
     ParsedSyntax namespaceScope;
     parse(namespaceScope, "asm { nop } int Main() { return 0; }");
@@ -184,6 +228,20 @@ int Main()
     tests.expect(
         !executable && sawSemanticBoundary && semanticBoundary.hirError().empty(),
         "pre-lowering asm is rejected as a source diagnostic instead of an internal HIR failure");
+
+    frontend::FrontendCompilation boundInput;
+    const bool boundInputOk = boundInput.compileBuffer(
+        "assembly_input_binding.ns",
+        "int Main() { asm { mov rax, $0 } in(missing); return 0; }");
+    bool sawUnknownInput = false;
+    for (const diagnostics::Diagnostic& diagnostic : boundInput.diagnostics().diagnostics())
+    {
+        sawUnknownInput = sawUnknownInput ||
+            diagnostic.id() == diagnostics::DiagnosticId::UnknownIdentifier;
+    }
+    tests.expect(
+        !boundInputOk && sawUnknownInput,
+        "asm input expressions participate in ordinary semantic name binding");
 
     return tests.result();
 }

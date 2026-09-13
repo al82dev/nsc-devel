@@ -2066,6 +2066,14 @@ void ProjectMethodBodyModel::analyzeStatement(
             break;
         }
         case ast::AstNodeKind::InlineAssemblyStatement:
+            for (ast::AstNode* child : statement->children())
+            {
+                if (child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand &&
+                    child->first() != nullptr)
+                {
+                    analyzeExpression(child->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                }
+            }
             diagnostics.report(
                 diagnostics::DiagnosticId::InlineAssemblyNotAvailable,
                 diagnostics::DiagnosticSeverity::Error,

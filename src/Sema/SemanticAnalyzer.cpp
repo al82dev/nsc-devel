@@ -705,6 +705,14 @@ void SemanticAnalyzer::analyzeStatement(ast::AstNode* node)
             analyzeStaticAssert(node);
             break;
         case ast::AstNodeKind::InlineAssemblyStatement:
+            for (ast::AstNode* child : node->children())
+            {
+                if (child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand &&
+                    child->first() != nullptr)
+                {
+                    analyzeExpression(child->first());
+                }
+            }
             report(
                 node->range(),
                 diagnostics::DiagnosticId::InlineAssemblyNotAvailable,

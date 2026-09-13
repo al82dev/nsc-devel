@@ -200,6 +200,7 @@ private:
     ast::AstNode* parseStatement();
     ast::AstNode* parseStaticAssertStatement();
     ast::AstNode* parseInlineAssemblyStatement();
+    void parseInlineAssemblyInputClause(ast::AstNode* statement);
     ast::AstNode* parseVariableDeclaration(bool expectSemicolon);
     // C7 "aggregate initializer": the braced right-hand side of a declaration.
     ast::AstNode* parseAggregateInitializer();

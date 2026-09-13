@@ -4793,7 +4793,45 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
     expect(TokenKind::RightBrace, "'}' to close asm block");
     statement->setRange(tokenRangeFrom(beginIndex));
     statement->setText(std::move(exactBody));
+    if (at(TokenKind::KwIn))
+    {
+        parseInlineAssemblyInputClause(statement);
+        expect(TokenKind::Semicolon, "';' after asm operand clauses");
+        statement->setRange(tokenRangeFrom(beginIndex));
+    }
     return statement;
+}
+
+void Parser::parseInlineAssemblyInputClause(ast::AstNode* statement)
+{
+    consume(); // `in`
+    if (!expect(TokenKind::LeftParen, "'(' after asm in")) return;
+    if (at(TokenKind::RightParen))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedExpression,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "asm in clause requires at least one input expression");
+        consume();
+        return;
+    }
+
+    std::uint64_t ordinal = 0;
+    do
+    {
+        const std::size_t operandBegin = index_;
+        ast::AstNode* expression = parseAssignmentExpression();
+        ast::AstNode* operand = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::InlineAssemblyInputOperand,
+            tokenRangeFrom(operandBegin));
+        operand->setFirst(expression);
+        operand->setIntegerValue(ordinal++);
+        statement->addChild(operand);
+    }
+    while (consumeIf(TokenKind::Comma));
+
+    expect(TokenKind::RightParen, "')' after asm input operands");
 }
 
 ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)

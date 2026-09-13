@@ -641,6 +641,23 @@ statement range and exact physical body bytes. Every non-blank line has an AST r
 its first significant source byte. Until the later batch-4 operand and lowering contracts are implemented, semantic analysis must reject it with
 `InlineAssemblyNotAvailable`, never as an unknown internal HIR node or a silent no-op.
 
+### NS-ASM-003 — Operandos posicionales de entrada
+
+Un bloque puede terminar en `in(expresión0, expresión1, ...);`. La cláusula debe contener al menos
+una expresión y, cuando existe, el semicolon final es obligatorio. Cada expresión se analiza con
+las reglas ordinarias de scope, nombres y tipos y se evalúa una sola vez, de izquierda a derecha.
+Su ordinal estable empieza en cero y se referencia dentro del texto assembly como `$0`, `$1`, etc.
+
+La ausencia de una cláusula conserva la forma `asm { ... }` sin semicolon. En esta entrega los
+operandos no tienen todavía constraint escrito y no llegan a LLVM; el diagnóstico temporal
+`InlineAssemblyNotAvailable` continúa después de analizar todas las expresiones para que un nombre
+inválido no quede oculto por la frontera incremental.
+
+An assembly block may end in `in(expression0, expression1, ...);`. The non-empty clause and its
+trailing semicolon are required together. Expressions use ordinary binding, are evaluated once in
+left-to-right order, and receive stable zero-based `$0`, `$1`, ... positions. Constraints and LLVM
+lowering remain later batch-4 contracts.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico
