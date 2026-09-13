@@ -10,6 +10,15 @@ std::optional<FileId> SourceManager::loadFile(
     const std::filesystem::path& path,
     std::string& errorMessage)
 {
+    std::optional<std::string> buffer = readFileBuffer(path, errorMessage);
+    if (!buffer.has_value()) return std::nullopt;
+    return addBuffer(path, std::move(*buffer));
+}
+
+std::optional<std::string> SourceManager::readFileBuffer(
+    const std::filesystem::path& path,
+    std::string& errorMessage)
+{
     std::ifstream stream(path, std::ios::binary);
     if (!stream)
     {
@@ -43,7 +52,7 @@ std::optional<FileId> SourceManager::loadFile(
         return std::nullopt;
     }
 
-    return addBuffer(path, std::move(buffer));
+    return buffer;
 }
 
 FileId SourceManager::addBuffer(std::filesystem::path path, std::string buffer)

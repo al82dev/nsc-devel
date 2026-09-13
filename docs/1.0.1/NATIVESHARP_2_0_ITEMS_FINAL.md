@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–252 completados; siguiente item 253
+**Progreso:** Tanda 1, items 246–253 completados; siguiente item 254
 
 ## Regla de ejecución
 
@@ -26,7 +26,7 @@
 5. **250 — Pool interno de workers del compilador / Internal compiler worker pool — COMPLETADO / COMPLETE**
 6. **251 — Scheduler determinista sobre el grafo existente / Deterministic graph scheduler — COMPLETADO / COMPLETE**
 7. **252 — ProjectReferences en paralelo / Parallel project references — COMPLETADO / COMPLETE**
-8. **253 — Lectura, lexer y parser en paralelo / Parallel reading, lexing, and parsing**
+8. **253 — Lectura, lexer y parser en paralelo / Parallel reading, lexing, and parsing — COMPLETADO / COMPLETE**
 9. **254 — Índices y símbolos por archivo en paralelo / Parallel per-file symbol indexing**
 10. **255 — Construcción HIR de funciones en paralelo / Parallel function HIR construction**
 11. **256 — Construcción MIR de funciones en paralelo / Parallel function MIR construction**

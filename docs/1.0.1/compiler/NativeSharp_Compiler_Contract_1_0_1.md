@@ -108,8 +108,8 @@ inside a non-transactional call; the next safe boundary observes it.
 
 `--time` reports every project phase that was entered as
 `timing phase=<stable-name> us=N`, in deterministic execution order, and finally appends
-`timing total_ms=N` on every exit path. Frontend phases include graph loading, source and
-precompiled syntax, generics, names, members, inheritance, interfaces, constraints, bodies,
+`timing total_ms=N` on every exit path. Frontend phases include graph loading, source reading,
+source and precompiled syntax, generics, names, members, inheritance, interfaces, constraints, bodies,
 dispatch, destruction, construction, layout, HIR and MIR. Artifact-producing commands also name
 their LLVM, object, library, header and metadata work. Durations use a monotonic clock; phase names
 and ordering are stable diagnostic interfaces, while measured values are observational and do not
@@ -168,6 +168,20 @@ unchanged project tree shall produce the same logical graph.
 The pool and job policy are linked from the compilation layer so graph loading can use the shared
 capacity without introducing a Frontend-to-Driver dependency cycle. Existing Driver-facing headers
 remain the compatibility surface for these internal facilities.
+
+## NSC-SYNTAX-001 — Parallel deterministic source syntax
+
+Source file reads, lexing and parsing shall execute as bounded per-file tasks using the effective
+compilation job policy. File buffers and syntax units shall be published only by the coordinator in
+canonical project/source order, preserving `FileId`, project ordinal and source ordinal assignments.
+All buffers shall be installed before concurrent lexer work starts, and all lexer tasks shall finish
+before parser-known-type collection and parser tasks begin.
+
+Each task shall collect diagnostics privately. The coordinator shall append those diagnostics in
+stable syntax-unit order and preserve each task's internal diagnostic order. A one-worker and a
+many-worker compilation of unchanged input shall produce equivalent tokens, syntax validity,
+diagnostics and syntax-unit dumps. The dedicated `syntax-read`, `syntax-lex` and `syntax-parse`
+timings measure their respective complete parallel stages.
 
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 

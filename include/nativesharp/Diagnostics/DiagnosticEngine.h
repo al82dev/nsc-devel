@@ -32,6 +32,8 @@ public:
         SourceRange range,
         std::string message);
 
+    void append(const Diagnostic& diagnostic);
+
     const std::vector<Diagnostic>& diagnostics() const noexcept;
     std::size_t errorCount() const noexcept;
     std::size_t warningCount() const noexcept;

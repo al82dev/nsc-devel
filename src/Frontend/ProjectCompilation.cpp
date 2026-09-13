@@ -1,12 +1,15 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
+#include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Lexer/TokenKind.h"
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Source/SourcePosition.h"
 
 #include <chrono>
+#include <exception>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,6 +64,37 @@ private:
     std::string_view phase_;
     std::chrono::steady_clock::time_point started_;
 };
+
+bool waitForSyntaxWorkers(
+    driver::CompilationWorkerPool& pool,
+    std::string_view phase,
+    std::string& error)
+{
+    try
+    {
+        pool.wait();
+        return true;
+    }
+    catch (const std::exception& exception)
+    {
+        error = "parallel " + std::string(phase) + " failed: " + exception.what();
+    }
+    catch (...)
+    {
+        error = "parallel " + std::string(phase) + " failed with a non-standard exception";
+    }
+    return false;
+}
+
+void appendDiagnostics(
+    diagnostics::DiagnosticEngine& destination,
+    const diagnostics::DiagnosticEngine& source)
+{
+    for (const diagnostics::Diagnostic& diagnostic : source.diagnostics())
+    {
+        destination.append(diagnostic);
+    }
+}
 
 std::string joinName(std::span<const std::string> prefix, std::string_view name)
 {
@@ -762,40 +796,57 @@ bool ProjectCompilation::compileSyntaxCore(
     {
         return false;
     }
-    bool lexicalOk = true;
+    struct SourceRead final
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-lex");
-        for (std::size_t projectOrdinal = 0;
-             projectOrdinal < projectGraph_->projects().size();
-             ++projectOrdinal)
+        std::size_t projectOrdinal = 0;
+        std::size_t sourceOrdinal = 0;
+        std::string moduleName;
+        std::filesystem::path path;
+        std::optional<std::string> buffer;
+        std::string error;
+    };
+    driver::CompilationWorkerPool syntaxWorkers(compilationJobs_);
+    std::vector<SourceRead> sourceReads;
+    for (std::size_t projectOrdinal = 0;
+         projectOrdinal < projectGraph_->projects().size();
+         ++projectOrdinal)
+    {
+        const compilation::Project& project = projectGraph_->projects()[projectOrdinal];
+        for (const compilation::ProjectSource& source : project.sourceSet().sources())
         {
-            const compilation::Project& project = projectGraph_->projects()[projectOrdinal];
-            for (const compilation::ProjectSource& source : project.sourceSet().sources())
+            sourceReads.push_back({
+                projectOrdinal,
+                source.ordinal,
+                project.moduleName(),
+                source.absolutePath,
+                std::nullopt,
+                {}});
+        }
+    }
+
+    {
+        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-read");
+        for (std::size_t index = 0; index < sourceReads.size(); ++index)
+        {
+            syntaxWorkers.submit([&, index](std::size_t) {
+                sourceReads[index].buffer = source::SourceManager::readFileBuffer(
+                    sourceReads[index].path, sourceReads[index].error);
+            });
+        }
+        if (!waitForSyntaxWorkers(syntaxWorkers, "source reading", loadError)) return false;
+        for (SourceRead& read : sourceReads)
+        {
+            if (!read.buffer.has_value())
             {
-                const std::optional<FileId> fileId = sourceManager_.loadFile(source.absolutePath, loadError);
-                if (!fileId.has_value())
-                {
-                    return false;
-                }
-
-                const source::SourceFile* sourceFile = sourceManager_.getFile(*fileId);
-                if (sourceFile == nullptr)
-                {
-                    loadError = "internal error: loaded project source has no SourceFile slot";
-                    return false;
-                }
-
-                auto unit = std::make_unique<ProjectSyntaxUnit>(
-                    projectOrdinal,
-                    source.ordinal,
-                    project.moduleName(),
-                    *fileId);
-                if (!unit->lex(*sourceFile, diagnostics_))
-                {
-                    lexicalOk = false;
-                }
-                units_.push_back(std::move(unit));
+                loadError = read.error;
+                return false;
             }
+            const FileId fileId = sourceManager_.addBuffer(read.path, std::move(*read.buffer));
+            units_.push_back(std::make_unique<ProjectSyntaxUnit>(
+                read.projectOrdinal,
+                read.sourceOrdinal,
+                std::move(read.moduleName),
+                fileId));
         }
     }
 
@@ -844,7 +895,6 @@ bool ProjectCompilation::compileSyntaxCore(
         }
         auto unit = std::make_unique<ProjectSyntaxUnit>(
             *projectOrdinal, 0, module.moduleName, fileId, true);
-        if (!unit->lex(*sourceFile, diagnostics_)) lexicalOk = false;
         units_.push_back(std::move(unit));
 
         if (!module.templateSourceText.empty())
@@ -863,9 +913,34 @@ bool ProjectCompilation::compileSyntaxCore(
             // ordinary generic pass, which specializes only what that consumer requests.
             auto templateUnit = std::make_unique<ProjectSyntaxUnit>(
                 *projectOrdinal, 1, module.moduleName, templateFileId, false);
-            if (!templateUnit->lex(*templateSourceFile, diagnostics_)) lexicalOk = false;
             units_.push_back(std::move(templateUnit));
         }
+        }
+    }
+
+    bool lexicalOk = true;
+    {
+        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-lex");
+        std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
+        localDiagnostics.reserve(units_.size());
+        for (std::size_t index = 0; index < units_.size(); ++index)
+        {
+            localDiagnostics.emplace_back(diagnostics_.errorLimit());
+            syntaxWorkers.submit([&, index](std::size_t) {
+                const source::SourceFile* sourceFile =
+                    sourceManager_.getFile(units_[index]->fileId());
+                if (sourceFile == nullptr)
+                {
+                    throw std::logic_error("syntax unit has no SourceFile slot");
+                }
+                units_[index]->lex(*sourceFile, localDiagnostics[index]);
+            });
+        }
+        if (!waitForSyntaxWorkers(syntaxWorkers, "lexing", loadError)) return false;
+        for (std::size_t index = 0; index < units_.size(); ++index)
+        {
+            lexicalOk = units_[index]->isLexicallyValid() && lexicalOk;
+            appendDiagnostics(diagnostics_, localDiagnostics[index]);
         }
     }
 
@@ -873,17 +948,21 @@ bool ProjectCompilation::compileSyntaxCore(
         const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-parse");
         const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
         bool syntaxOk = lexicalOk;
-        for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
+        std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
+        localDiagnostics.reserve(units_.size());
+        for (std::size_t index = 0; index < units_.size(); ++index)
         {
-            if (!unit->isLexicallyValid())
-            {
-                syntaxOk = false;
-                continue;
-            }
-            if (!unit->parse(diagnostics_, knownTypeNames))
-            {
-                syntaxOk = false;
-            }
+            localDiagnostics.emplace_back(diagnostics_.errorLimit());
+            if (!units_[index]->isLexicallyValid()) continue;
+            syntaxWorkers.submit([&, index](std::size_t) {
+                units_[index]->parse(localDiagnostics[index], knownTypeNames);
+            });
+        }
+        if (!waitForSyntaxWorkers(syntaxWorkers, "parsing", loadError)) return false;
+        for (std::size_t index = 0; index < units_.size(); ++index)
+        {
+            syntaxOk = units_[index]->isSyntaxValid() && syntaxOk;
+            appendDiagnostics(diagnostics_, localDiagnostics[index]);
         }
         return syntaxOk && !diagnostics_.hasErrors();
     }

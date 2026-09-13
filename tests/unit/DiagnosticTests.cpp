@@ -40,6 +40,15 @@ int main()
     tests.expect(engine.hasErrors(), "hasErrors reflects error diagnostics");
     tests.expect(engine.diagnostics().size() == 3, "all diagnostics are retained");
 
+    DiagnosticEngine merged;
+    for (const Diagnostic& diagnostic : engine.diagnostics()) merged.append(diagnostic);
+    tests.expect(merged.errorCount() == 1 && merged.warningCount() == 1,
+        "appended task diagnostics preserve severity counts");
+    tests.expect(merged.diagnostics().size() == 3 &&
+            merged.diagnostics()[0].message() == "unexpected character '@'" &&
+            merged.diagnostics()[2].message() == "example note",
+        "appended task diagnostics preserve stable local order");
+
     std::ostringstream output;
     DiagnosticRenderer renderer(sources);
     renderer.renderAll(engine, output);

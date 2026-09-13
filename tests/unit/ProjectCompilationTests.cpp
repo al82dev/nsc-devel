@@ -158,6 +158,74 @@ void testSyntaxFailurePreservesSlots(TestContext& tests, const std::filesystem::
     }
 }
 
+void testParallelSyntaxMatchesSerial(TestContext& tests, const std::filesystem::path& root)
+{
+    createValidGraph(root);
+    ProjectCompilation serial;
+    serial.setCompilationJobs(1);
+    ProjectCompilation parallel;
+    parallel.setCompilationJobs(4);
+    std::string serialError;
+    std::string parallelError;
+    const bool serialOk = serial.compileProjectSyntax(root / "App" / "App.nsproj", serialError);
+    const bool parallelOk = parallel.compileProjectSyntax(root / "App" / "App.nsproj", parallelError);
+    tests.expect(serialOk && parallelOk, "serial and parallel syntax compilation both succeed");
+    tests.expect(serialError == parallelError, "serial and parallel load errors are identical");
+
+    std::ostringstream serialDump;
+    std::ostringstream parallelDump;
+    ProjectCompilationDumper{}.dump(serial, serialDump);
+    ProjectCompilationDumper{}.dump(parallel, parallelDump);
+    tests.expect(serialDump.str() == parallelDump.str(),
+        "parallel reading, lexing and parsing preserve deterministic syntax-unit slots");
+    if (serial.units().size() != parallel.units().size()) return;
+    bool tokensMatch = true;
+    for (std::size_t unit = 0; unit < serial.units().size(); ++unit)
+    {
+        const auto left = serial.units()[unit]->tokens();
+        const auto right = parallel.units()[unit]->tokens();
+        if (left.size() != right.size())
+        {
+            tokensMatch = false;
+            break;
+        }
+        for (std::size_t token = 0; token < left.size(); ++token)
+        {
+            if (left[token].kind() != right[token].kind() ||
+                left[token].lexeme() != right[token].lexeme())
+            {
+                tokensMatch = false;
+                break;
+            }
+        }
+    }
+    tests.expect(tokensMatch, "parallel lexer output is byte-for-byte equivalent to serial output");
+
+    const std::filesystem::path broken = root / "BrokenParallel";
+    writeFile(broken / "A.ns", "int A( { return 1; }\n");
+    writeFile(broken / "B.ns", "int B() { return @; }\n");
+    writeFile(
+        broken / "Broken.nsproj",
+        "<Project><PropertyGroup><Name>BrokenParallel</Name></PropertyGroup></Project>\n");
+    ProjectCompilation brokenSerial;
+    brokenSerial.setCompilationJobs(1);
+    ProjectCompilation brokenParallel;
+    brokenParallel.setCompilationJobs(4);
+    brokenSerial.compileProjectSyntax(broken / "Broken.nsproj", serialError);
+    brokenParallel.compileProjectSyntax(broken / "Broken.nsproj", parallelError);
+    const auto& serialDiagnostics = brokenSerial.diagnostics().diagnostics();
+    const auto& parallelDiagnostics = brokenParallel.diagnostics().diagnostics();
+    bool diagnosticsMatch = serialDiagnostics.size() == parallelDiagnostics.size();
+    for (std::size_t index = 0; diagnosticsMatch && index < serialDiagnostics.size(); ++index)
+    {
+        diagnosticsMatch = serialDiagnostics[index].id() == parallelDiagnostics[index].id() &&
+            serialDiagnostics[index].location() == parallelDiagnostics[index].location() &&
+            serialDiagnostics[index].message() == parallelDiagnostics[index].message();
+    }
+    tests.expect(diagnosticsMatch,
+        "parallel lexer and parser diagnostics preserve exact serial order and locations");
+}
+
 void testSingleFileCompatibility(TestContext& tests)
 {
     FrontendCompilation compilation;
@@ -182,6 +250,7 @@ int main()
 
     testProjectSyntaxSlots(tests, root);
     testSyntaxFailurePreservesSlots(tests, root);
+    testParallelSyntaxMatchesSerial(tests, root / "ParallelEquivalence");
     testSingleFileCompatibility(tests);
 
     std::filesystem::remove_all(root, errorCode);

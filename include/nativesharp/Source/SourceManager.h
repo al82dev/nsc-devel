@@ -17,6 +17,9 @@ namespace nativesharp::source
 class SourceManager final
 {
 public:
+    static std::optional<std::string> readFileBuffer(
+        const std::filesystem::path& path,
+        std::string& errorMessage);
     std::optional<FileId> loadFile(const std::filesystem::path& path, std::string& errorMessage);
     FileId addBuffer(std::filesystem::path path, std::string buffer);
 

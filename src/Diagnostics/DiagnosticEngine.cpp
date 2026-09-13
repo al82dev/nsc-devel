@@ -72,6 +72,24 @@ std::size_t DiagnosticEngine::warningCount() const noexcept
     return warningCount_;
 }
 
+void DiagnosticEngine::append(const Diagnostic& diagnostic)
+{
+    if (diagnostic.range().has_value())
+    {
+        report(
+            diagnostic.id(),
+            diagnostic.severity(),
+            *diagnostic.range(),
+            diagnostic.message());
+        return;
+    }
+    report(
+        diagnostic.id(),
+        diagnostic.severity(),
+        diagnostic.location(),
+        diagnostic.message());
+}
+
 std::size_t DiagnosticEngine::errorLimit() const noexcept
 {
     return errorLimit_;
