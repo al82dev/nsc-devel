@@ -333,6 +333,7 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::ConsoleErrorWrite:
     case MethodCoreOperationKind::SizeofConstant:
     case MethodCoreOperationKind::AlignofConstant:
+    case MethodCoreOperationKind::OffsetofConstant:
     case MethodCoreOperationKind::StackAllocation:
     case MethodCoreOperationKind::RawAllocation:
     case MethodCoreOperationKind::PointerArithmetic:
@@ -5098,6 +5099,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             node->integerValue = binding->kind == MethodCoreOperationKind::AlignofConstant
                 ? layout->second
                 : layout->first;
+            return node;
+        }
+
+        case ast::AstNodeKind::OffsetofExpression:
+        {
+            const MethodCoreBinding* binding = coreBinding(expression);
+            if (binding == nullptr || binding->kind != MethodCoreOperationKind::OffsetofConstant ||
+                !binding->implicitFieldMemberOrdinal.has_value())
+            {
+                error = "offsetof reached OOP lowering without its resolved field";
+                return nullptr;
+            }
+            if (objectLayoutModel_ == nullptr)
+            {
+                error = "offsetof requires the object layout model";
+                return nullptr;
+            }
+            const ObjectFieldLayout* field = objectLayoutModel_->fieldLayoutForMember(
+                *binding->implicitFieldMemberOrdinal);
+            if (field == nullptr)
+            {
+                error = "offsetof cannot find the canonical layout for field '" +
+                    expression->text() + "'";
+                return nullptr;
+            }
+            auto node = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nuint");
+            node->integerValue = field->offset;
             return node;
         }
 

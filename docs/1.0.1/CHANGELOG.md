@@ -8,6 +8,8 @@ empaqueta con NativeSharp 1.0.1.
 
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
+- `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union
+  usando el mismo layout canónico que el ABI, los arreglos y los headers C.
 - `const string` es una constante de compilación utilizable en APIs y metadata.
 - Strings nativos conservan unión condicional, literales y préstamos en constructores.
 - Enums, conversiones numéricas y conversiones de usuario conservan identidad lógica y física.

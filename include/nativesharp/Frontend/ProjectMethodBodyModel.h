@@ -537,6 +537,9 @@ enum class MethodCoreOperationKind
     // `alignof(T)` and `alignof(expression)` use the same late layout query as sizeof, but select
     // the canonical layout's alignment. `elementTypeKey` is the measured closed type.
     AlignofConstant,
+    // `offsetof(T, field)` stores T in elementTypeKey and the selected instance field in
+    // implicitFieldMemberOrdinal. The byte offset is resolved later by ProjectObjectLayoutModel.
+    OffsetofConstant,
     // CC1 fase 4B -- `stackalloc T[n]`. `elementTypeKey` es T; `resultTypeKey` es "T*". Igual que
     // SizeofConstant, el binding NO lleva el tamano: el modelo semantico corre antes que
     // ProjectObjectLayoutModel. El tamano y la alineacion los resuelve el MIR con elementLayout.

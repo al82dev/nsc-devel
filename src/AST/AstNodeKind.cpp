@@ -75,6 +75,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(SizeofExpression);
         NS_AST_KIND(AlignofTypeExpression);
         NS_AST_KIND(AlignofExpression);
+        NS_AST_KIND(OffsetofExpression);
         NS_AST_KIND(DefaultValueExpression);
         NS_AST_KIND(NewExpression);
         NS_AST_KIND(ObjectCreationExpression);

@@ -67,6 +67,7 @@ int Add(int a, int b)
 int Main()
 {
     static_assert(sizeof(int) == 4u, "int ABI");
+    static_assert(offsetof(Node, Next) == 8u, "Node.Next ABI");
     int x = 1;
     int* p = &x;
     int[4] values;
@@ -187,11 +188,11 @@ int Main()
     const bool expressionFormsOk = expressionForms.compileBuffer(
         "expression_forms.ns",
         "struct P { int X; } int Main() { int x = 1; int* p = new int; *p = x; "
-        "nuint a = sizeof(x++); nuint b = sizeof(int); nuint c = alignof(P); "
+        "nuint a = sizeof(x++); nuint b = sizeof(int); nuint c = alignof(P); nuint o = offsetof(P, X); "
         "nuint d = alignof(x++); int y = (int)1.0f; ++x; x--; "
-        "P value; P* pp = &value; pp->X = y; delete p; return (int)(a + b + c + d); }");
+        "P value; P* pp = &value; pp->X = y; delete p; return (int)(a + b + c + d + o); }");
     tests.expect(expressionFormsOk,
-        "new/delete, sizeof/alignof type and expression forms, casts, prefix/postfix, dereference, and pointer-member forms parse");
+        "new/delete, sizeof/alignof/offsetof, casts, prefix/postfix, dereference, and pointer-member forms parse");
 
     frontend::FrontendCompilation recovery;
     const bool recoveryOk = recovery.compileBuffer(

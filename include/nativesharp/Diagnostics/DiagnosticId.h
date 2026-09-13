@@ -60,6 +60,7 @@ enum class DiagnosticId
     InvalidArrayCount,
     InvalidEnumInitializer,
     InvalidSizeof,
+    InvalidOffsetof,
     InvalidAllocationType,
     InvalidDeleteOperand,
     InvalidStackalloc,

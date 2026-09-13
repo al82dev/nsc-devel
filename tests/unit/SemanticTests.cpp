@@ -94,6 +94,17 @@ int main()
         "int Main() { static_assert(1); return 0; }",
         DiagnosticId::InvalidCondition),
         "static assertion condition must have type bool");
+    tests.expect(accepts(
+        "struct P { byte A; long B; } int Main() { static_assert(offsetof(P, B) == 8u); return 0; }"),
+        "offsetof is a nuint constant derived from canonical struct layout");
+    tests.expect(rejectsWith(
+        "struct P { int X; } int Main() { nuint x = offsetof(P, Missing); return (int)x; }",
+        DiagnosticId::InvalidOffsetof),
+        "offsetof rejects an unknown field");
+    tests.expect(rejectsWith(
+        "int Main() { nuint x = offsetof(int, Value); return (int)x; }",
+        DiagnosticId::InvalidOffsetof),
+        "offsetof rejects a non-aggregate type");
 
     tests.expect(accepts("int Main() { nuint x = 0; if (x == 0u) { return 1; } return 0; }"),
         "uint and nuint use nuint as their common integral type");

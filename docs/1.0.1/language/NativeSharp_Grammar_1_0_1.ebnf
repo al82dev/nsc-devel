@@ -138,6 +138,7 @@ multiplicative-expression = unary-expression, { ( "*" | "/" | "%" ), unary-expre
 unary-expression = postfix-expression | ( "+" | "-" | "!" | "~" | "++" | "--" | "move" ),
                    unary-expression | cast-expression | allocation-expression |
                    ( "sizeof" | "alignof" ), "(", type, ")" |
+                   "offsetof", "(", type, ",", identifier, ")" |
                    "default", [ "(", type, ")" ] |
                    "delete", [ "[", "]" ], unary-expression |
                    "stackalloc", type, "[", expression, "]" ;

@@ -90,6 +90,7 @@ enum class AstNodeKind
     SizeofExpression,
     AlignofTypeExpression,
     AlignofExpression,
+    OffsetofExpression,
     DefaultValueExpression,
     NewExpression,
     ObjectCreationExpression,

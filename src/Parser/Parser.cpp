@@ -5609,6 +5609,30 @@ ast::AstNode* Parser::parseUnaryExpression()
         return node;
     }
 
+    if (at(TokenKind::KwOffsetof))
+    {
+        const SourceRange start = consume().range();
+        expect(TokenKind::LeftParen, "'('");
+        ast::TypeSyntax* type = parseType();
+        expect(TokenKind::Comma, "','");
+        std::string fieldName;
+        if (at(TokenKind::Identifier))
+        {
+            fieldName = std::string(consume().lexeme());
+        }
+        else
+        {
+            expect(TokenKind::Identifier, "field name");
+        }
+        expect(TokenKind::RightParen, "')'");
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::OffsetofExpression,
+            join(start, tokens_[index_ - 1].range()));
+        node->setTypeSyntax(type);
+        node->setText(std::move(fieldName));
+        return node;
+    }
+
     if (at(TokenKind::KwSizeof) || at(TokenKind::KwAlignof))
     {
         const bool alignmentQuery = at(TokenKind::KwAlignof);

@@ -1412,7 +1412,7 @@ const static readonly public internal protected private
 if else while do for switch case break continue return
 try catch finally throw
 struct class interface enum namespace using
-new delete stackalloc sizeof alignof static_assert default
+new delete stackalloc sizeof alignof offsetof static_assert default
 extern export
 true false null this base
 virtual override abstract sealed
@@ -1494,6 +1494,36 @@ public class PacketReader
 La condición debe ser `bool` y constante. `static_assert(variable == 4);` no es una comprobación
 dinámica y se rechaza; para esa intención use control de flujo normal. La comparación de tamaños
 usa literales `u` porque `sizeof` y `alignof` producen `nuint`.
+
+### 31.2 Offset de campos
+
+`offsetof(T, campo)` permite certificar formatos binarios, registros compartidos y ABI C sin
+construir un objeto ni fabricar aritmética de punteros:
+
+```csharp
+public struct PacketHeader
+{
+    public byte Kind;
+    public uint Length;
+    public long Sequence;
+}
+
+public class PacketAbi
+{
+    public static int Validate()
+    {
+        static_assert(offsetof(PacketHeader, Kind) == 0u, "Kind moved");
+        static_assert(offsetof(PacketHeader, Length) == 4u, "Length moved");
+        static_assert(offsetof(PacketHeader, Sequence) == 8u, "Sequence moved");
+        static_assert(sizeof(PacketHeader) == 16u, "PacketHeader size changed");
+        return 0;
+    }
+}
+```
+
+El resultado es `nuint` y proviene del layout real del target. Sólo admite campos de instancia
+directos de structs y unions completos. También funciona sobre especializaciones cerradas, por
+ejemplo `offsetof(Box<long>, Value)`, después de sustituir `T` y calcular el padding resultante.
 
 ## 32. Referencia del compilador
 

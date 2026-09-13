@@ -71,6 +71,7 @@ enum class TokenKind
     KwStackalloc,
     KwSizeof,
     KwAlignof,
+    KwOffsetof,
     KwStaticAssert,
     KwDefault,
     KwExtern,

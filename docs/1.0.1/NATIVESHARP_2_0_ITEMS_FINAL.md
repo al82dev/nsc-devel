@@ -42,7 +42,7 @@
 ## Tanda 2 — Fundamentos del lenguaje
 
 20. **265 — `static_assert` / Static assertions — COMPLETADO / COMPLETE**
-21. **266 — `offsetof` / Field offsets**
+21. **266 — `offsetof` / Field offsets — COMPLETADO / COMPLETE**
 22. **267 — Arreglos multidimensionales fijos `T[3, 4]` / Fixed multidimensional arrays**
 23. **268 — Indexado `array[i, j]` / Multidimensional indexing**
 24. **269 — Arreglos locales variables `T[length]` / Variable-length local arrays**

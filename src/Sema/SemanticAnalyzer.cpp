@@ -958,6 +958,8 @@ ExpressionInfo SemanticAnalyzer::analyzeExpression(ast::AstNode* node, bool allo
             return analyzeAlignof(node, true);
         case ast::AstNodeKind::AlignofExpression:
             return analyzeAlignof(node, false);
+        case ast::AstNodeKind::OffsetofExpression:
+            return analyzeOffsetof(node);
         case ast::AstNodeKind::NewExpression:
             return analyzeNew(node);
         case ast::AstNodeKind::DeleteExpression:
@@ -1894,6 +1896,47 @@ ExpressionInfo SemanticAnalyzer::analyzeAlignof(ast::AstNode* node, bool typeFor
     ExpressionInfo result = makeRValue(types_.builtin(TypeKind::NUInt));
     result.isConstant = true;
     result.constantValue = ConstantValue::unsignedInteger(layout->alignment);
+    return record(node, result);
+}
+
+ExpressionInfo SemanticAnalyzer::analyzeOffsetof(ast::AstNode* node)
+{
+    Type* targetType = resolveType(node->typeSyntax());
+    if (targetType == nullptr || targetType->kind() == TypeKind::Error)
+    {
+        return makeError(node);
+    }
+    if (targetType->kind() != TypeKind::Struct || !targetType->isComplete())
+    {
+        report(
+            node->range(),
+            diagnostics::DiagnosticId::InvalidOffsetof,
+            "offsetof requires a complete struct or union type");
+        return makeError(node);
+    }
+
+    Symbol* typeSymbol = globalScope_->lookupLocal(targetType->name());
+    Symbol* field = typeSymbol == nullptr ? nullptr : typeSymbol->findMember(node->text());
+    if (field == nullptr || field->kind() != SymbolKind::Field)
+    {
+        report(
+            node->range(),
+            diagnostics::DiagnosticId::InvalidOffsetof,
+            "struct '" + targetType->name() + "' has no field '" + node->text() + "'");
+        return makeError(node);
+    }
+    if (!field->hasFieldOffset())
+    {
+        report(
+            node->range(),
+            diagnostics::DiagnosticId::InvalidOffsetof,
+            "field '" + node->text() + "' has no resolved physical offset");
+        return makeError(node);
+    }
+
+    ExpressionInfo result = makeRValue(types_.builtin(TypeKind::NUInt));
+    result.isConstant = true;
+    result.constantValue = ConstantValue::unsignedInteger(field->fieldOffset());
     return record(node, result);
 }
 

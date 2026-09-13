@@ -390,6 +390,7 @@ HirNode* HirBuilder::lowerExpression(ast::AstNode* node, bool loadLValue)
         case ast::AstNodeKind::SizeofExpression:
         case ast::AstNodeKind::AlignofTypeExpression:
         case ast::AstNodeKind::AlignofExpression:
+        case ast::AstNodeKind::OffsetofExpression:
         {
             if (!info->isConstant)
             {

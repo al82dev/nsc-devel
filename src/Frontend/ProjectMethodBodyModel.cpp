@@ -5369,6 +5369,64 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.valid = true;
             break;
         }
+        case ast::AstNodeKind::OffsetofExpression:
+        {
+            if (memberModel_ == nullptr || nameLookup_ == nullptr || inheritanceModel_ == nullptr)
+            {
+                break;
+            }
+            const std::string measuredTypeKey =
+                memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+            if (isErrorType(measuredTypeKey)) break;
+            const std::optional<std::size_t> typeOrdinal =
+                inheritanceModel_->typeOrdinalForTypeKey(measuredTypeKey);
+            if (!typeOrdinal.has_value() || *typeOrdinal >= nameLookup_->namedTypes().size() ||
+                nameLookup_->namedTypes()[*typeOrdinal].kind != NamedTypeDeclarationKind::Struct)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOffsetof,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "offsetof requires a complete struct or union type");
+                break;
+            }
+
+            std::optional<std::size_t> selectedField;
+            for (const std::size_t candidate : memberModel_->findMembers(*typeOrdinal, expression->text()))
+            {
+                if (candidate >= memberModel_->members().size()) continue;
+                const ClassMemberSymbol& member = memberModel_->members()[candidate];
+                if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                {
+                    selectedField = candidate;
+                    break;
+                }
+            }
+            if (!selectedField.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOffsetof,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "type '" + measuredTypeKey + "' has no instance field named '" +
+                        expression->text() + "'");
+                break;
+            }
+
+            MethodCoreBinding binding;
+            binding.kind = MethodCoreOperationKind::OffsetofConstant;
+            binding.syntax = expression;
+            binding.methodMemberOrdinal = methodMemberOrdinal;
+            binding.scopeOrdinal = scopeOrdinal;
+            binding.resultTypeKey = "builtin:nuint";
+            binding.elementTypeKey = measuredTypeKey;
+            binding.implicitFieldMemberOrdinal = selectedField;
+            coreBindings_.push_back(std::move(binding));
+
+            result.typeKey = "builtin:nuint";
+            result.valid = true;
+            break;
+        }
         // Stage 52: default(T) -- the zero-equivalent value of T (0/false/'\0' for a numeric
         // primitive, null for a reference type or string, an all-zero-fields instance for a
         // value-typed struct). This is what lets a generic method give an honest "nothing found"
@@ -10134,6 +10192,7 @@ bool ProjectMethodBodyModel::isAccessorDestinationReevaluable(
         case ast::AstNodeKind::NullLiteralExpression:
         case ast::AstNodeKind::SizeofTypeExpression:
         case ast::AstNodeKind::AlignofTypeExpression:
+        case ast::AstNodeKind::OffsetofExpression:
         case ast::AstNodeKind::DefaultValueExpression:
             return true;
 
@@ -12914,6 +12973,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::ObjectReferenceHash: return "object-reference-hash";
         case MethodCoreOperationKind::SizeofConstant: return "sizeof-constant";
         case MethodCoreOperationKind::AlignofConstant: return "alignof-constant";
+        case MethodCoreOperationKind::OffsetofConstant: return "offsetof-constant";
         case MethodCoreOperationKind::StackAllocation: return "stack-allocation";
         case MethodCoreOperationKind::RawAllocation: return "raw-allocation";
         case MethodCoreOperationKind::PointerArithmetic: return "pointer-arithmetic";

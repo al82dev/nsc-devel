@@ -694,6 +694,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_static_assert_tests)
     add_test(NAME nsc.language.static-assert COMMAND nsc_static_assert_tests)
 
+    add_executable(nsc_offsetof_tests tests/unit/OffsetofTests.cpp)
+    target_link_libraries(nsc_offsetof_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_offsetof_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_offsetof_tests)
+    add_test(NAME nsc.language.offsetof COMMAND nsc_offsetof_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)

@@ -478,6 +478,20 @@ ni efectos en tiempo de ejecución. Sus operandos se analizan para nombres y tip
 ejecutan. En comparaciones con `sizeof`/`alignof`, el literal debe respetar las conversiones
 numéricas ordinarias; por ejemplo, `sizeof(int) == 4u` compara `nuint` con un valor sin signo.
 
+### NS-CT-002 — Desplazamiento físico de campos
+
+`offsetof(T, campo)` es una expresión constante de tipo `nuint`. `T` debe ser un struct o union
+completo y `campo` debe nombrar uno de sus campos de instancia directos. El resultado es el
+desplazamiento en bytes desde el inicio del valor `T` hasta el campo seleccionado.
+
+La operación consulta `ProjectObjectLayoutModel`; no recalcula padding, `pack`, alineación mínima
+ni offsets explícitos. Por ello coincide por construcción con `sizeof`, el stride de arreglos, el
+acceso a campos emitido por LLVM, NSMETA y los headers C. No acepta clases: sus referencias y su
+cabecera de objeto pertenecen al ABI OOP, no al contrato de value layout que expresa `offsetof`.
+
+En una especialización genérica cerrada se mide el layout de la especialización concreta. Un campo
+inexistente, estático o perteneciente a un tipo que no sea struct/union es un error de compilación.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

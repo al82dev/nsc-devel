@@ -70,6 +70,7 @@ private:
     ExpressionInfo analyzeCast(ast::AstNode* node);
     ExpressionInfo analyzeSizeof(ast::AstNode* node, bool typeForm);
     ExpressionInfo analyzeAlignof(ast::AstNode* node, bool typeForm);
+    ExpressionInfo analyzeOffsetof(ast::AstNode* node);
     ExpressionInfo analyzeNew(ast::AstNode* node);
     ExpressionInfo analyzeDelete(ast::AstNode* node);
     ExpressionInfo analyzeStackalloc(ast::AstNode* node);
