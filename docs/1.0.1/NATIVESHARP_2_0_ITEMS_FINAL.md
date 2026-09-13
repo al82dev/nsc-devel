@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–258 completados; siguiente item 259
+**Progreso:** Tanda 1, items 246–259 completados; siguiente item 260
 
 ## Regla de ejecución
 
@@ -32,7 +32,7 @@
 11. **256 — Construcción MIR de funciones en paralelo / Parallel function MIR construction — COMPLETADO / COMPLETE**
 12. **257 — Partición del módulo en unidades de código / Module code partitioning — COMPLETADO / COMPLETE**
 13. **258 — Generación LLVM/OBJ paralela / Parallel LLVM and object generation — COMPLETADO / COMPLETE**
-14. **259 — Optimización O2 paralela / Parallel O2 optimization**
+14. **259 — Optimización O2 paralela / Parallel O2 optimization — COMPLETADO / COMPLETE**
 15. **260 — Unión determinista de NSMETA / Deterministic NSMETA merging**
 16. **261 — Diagnósticos deterministas en paralelo / Deterministic parallel diagnostics**
 17. **262 — Cache de artefactos por contenido / Content-addressed artifact cache**

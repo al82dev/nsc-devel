@@ -410,6 +410,31 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
             tests.expect(linked && linkError.empty(),
                 "partitioned code units link into one native DLL without duplicate or missing symbols" +
                     (linkError.empty() ? std::string{} : ": " + linkError));
+
+            objectGenerationError.clear();
+            auto optimizedBundle = objectGenerator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), mir,
+                compilation.sourceManager(),
+                nativesharp::llvm_backend::DebugInformationKind::None,
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O2, 4, {},
+                objectGenerationError);
+            tests.expect(optimizedBundle != nullptr && objectGenerationError.empty() &&
+                    optimizedBundle->usedParallelOptimization(),
+                "O2 optimization runs as independent code-unit tasks" +
+                    (objectGenerationError.empty() ? std::string{} : ": " + objectGenerationError));
+            if (optimizedBundle != nullptr)
+            {
+                linkError.clear();
+                const bool optimizedLinked = partitionedBuilder.buildDynamicObjects(
+                    optimizedBundle->objectFiles(), optimizedBundle->combinedLlvmText(), exports,
+                    directory / "Stage30PartitionedO2.dll",
+                    directory / "Stage30PartitionedO2.lib",
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O2,
+                    nativesharp::llvm_backend::DebugInformationKind::None, linkError);
+                tests.expect(optimizedLinked && linkError.empty(),
+                    "parallel O2 code units retain all cross-unit and exported symbols at link" +
+                        (linkError.empty() ? std::string{} : ": " + linkError));
+            }
         }
     }
 

@@ -77,6 +77,11 @@ std::size_t ProjectOopObjectBundle::codeUnitCount() const noexcept
     return codeUnitCount_;
 }
 
+bool ProjectOopObjectBundle::usedParallelOptimization() const noexcept
+{
+    return usedParallelOptimization_;
+}
+
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const frontend::ProjectNameLookup& nameLookup,
     const frontend::ProjectMemberModel& memberModel,
@@ -144,28 +149,47 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         }
     }
 
-    // Item 258 parallelizes lowering and emission. Optimization intentionally remains an ordered
-    // coordinator pass; item 259 moves this exact loop to the worker pool without changing units.
     std::vector<std::unique_ptr<LlvmTargetMachine>> targetMachines(moduleCount);
-    LlvmOptimizer optimizer;
+    std::vector<std::string> optimizationErrors(moduleCount);
+    std::vector<std::uint8_t> optimizationSucceeded(moduleCount, 0);
     for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
     {
-        std::string moduleError;
         targetMachines[ordinal] = LlvmTargetMachine::createWindowsX64(
-            optimizationLevel, moduleError);
+            optimizationLevel, optimizationErrors[ordinal]);
         if (targetMachines[ordinal] == nullptr ||
-            !targetMachines[ordinal]->configureModuleForTarget(*modules[ordinal], moduleError))
+            !targetMachines[ordinal]->configureModuleForTarget(
+                *modules[ordinal], optimizationErrors[ordinal]))
         {
             error = "LLVM code unit #" + std::to_string(ordinal) +
-                " target configuration failed: " + moduleError;
+                " target configuration failed: " + optimizationErrors[ordinal];
             return nullptr;
         }
+    }
+    const auto optimizeModule = [&](std::size_t ordinal) {
+        LlvmOptimizer optimizer;
         LlvmOptimizationObservation observation;
-        if (!optimizer.optimize(*modules[ordinal], *targetMachines[ordinal], optimizationLevel,
-                &observation, moduleError))
+        optimizationSucceeded[ordinal] = optimizer.optimize(
+            *modules[ordinal], *targetMachines[ordinal], optimizationLevel,
+            &observation, optimizationErrors[ordinal]) ? 1U : 0U;
+    };
+    const bool parallelOptimization = usePartitions && optimizationLevel != LlvmOptimizationLevel::O0;
+    if (parallelOptimization)
+    {
+        driver::CompilationWorkerPool workers(workerCount);
+        for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
+            workers.submit([&, ordinal](std::size_t) { optimizeModule(ordinal); });
+        workers.wait();
+    }
+    else
+    {
+        for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal) optimizeModule(ordinal);
+    }
+    for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
+    {
+        if (optimizationSucceeded[ordinal] == 0 || !optimizationErrors[ordinal].empty())
         {
             error = "LLVM code unit #" + std::to_string(ordinal) +
-                " optimization failed: " + moduleError;
+                " optimization failed: " + optimizationErrors[ordinal];
             return nullptr;
         }
     }
@@ -176,6 +200,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     auto result = std::unique_ptr<ProjectOopObjectBundle>(
         new ProjectOopObjectBundle(*temporaryDirectory));
     result->codeUnitCount_ = usePartitions ? partition.units().size() : 1;
+    result->usedParallelOptimization_ = parallelOptimization;
     result->objectFiles_.reserve(moduleCount);
     for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
     {

@@ -35,6 +35,7 @@ public:
     std::span<const std::filesystem::path> objectFiles() const noexcept;
     const std::string& combinedLlvmText() const noexcept;
     std::size_t codeUnitCount() const noexcept;
+    bool usedParallelOptimization() const noexcept;
 
 private:
     friend class ProjectOopObjectGenerator;
@@ -44,6 +45,7 @@ private:
     std::vector<std::filesystem::path> objectFiles_;
     std::string combinedLlvmText_;
     std::size_t codeUnitCount_ = 0;
+    bool usedParallelOptimization_ = false;
 };
 
 class ProjectOopObjectGenerator final

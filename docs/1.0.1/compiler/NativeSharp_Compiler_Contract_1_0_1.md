@@ -257,6 +257,19 @@ The standalone `--emit-project-oop-obj` action also remains a single-object comp
 multi-object generation applies to linked project products whose output format can contain or link
 multiple COFF inputs.
 
+## NSC-CODEGEN-003 — Parallel per-unit optimization
+
+After target configuration, every partitioned LLVM module shall be optimized by an independent
+`LlvmOptimizer`, observation record and target machine. O1, O2 and O3 module optimization tasks
+execute through the same bounded job policy as lowering and emission. O0 legalization remains an
+ordered pass because its mandatory Win64 EH repair is small and avoiding another worker barrier is
+the lower-overhead behavior for debug builds.
+
+No optimizer, observation object or mutable LLVM context may be shared by concurrent tasks.
+Optimization completion order shall not determine diagnostics: the coordinator inspects success
+and error slots by module ordinal. A successful optimized bundle must retain all cross-unit calls,
+coordinator references and explicitly exported symbols when linked.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR
