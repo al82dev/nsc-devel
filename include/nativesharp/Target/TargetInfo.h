@@ -33,6 +33,10 @@ public:
     std::string_view objectFormatName() const noexcept;
     std::string_view llvmTriple() const noexcept;
     std::string_view abiName() const noexcept;
+    std::string_view cpuBaselineName() const noexcept;
+    bool supportsCpuFeature(std::string_view feature) const noexcept;
+    bool isAssemblyRegister(std::string_view name) const noexcept;
+    std::string_view requiredAssemblyFeature(std::string_view mnemonic) const noexcept;
 
 private:
     TargetInfo(

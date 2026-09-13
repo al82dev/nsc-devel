@@ -755,6 +755,19 @@ branches. Every target must belong to the same block and labels are case-insensi
 Indirect/external transfers, `call`, `ret`, and `iret` are rejected. Lines retain resolved
 `label:` or `branch:` identities.
 
+### NS-ASM-011 — Validación x64 y características de CPU
+
+El target actual declara baseline `x86-64-v1`: registros GPR, MMX, x87 y XMM0–XMM15, con SSE2
+como extensión SIMD garantizada. Todo registro fijo o clobber debe existir en ese catálogo. Una
+instrucción que exige AVX, AES, PCLMUL, SSE4.2, POPCNT, LZCNT o BMI se rechaza si la característica
+no está en el target; el diagnóstico nombra instrucción, feature y baseline. El compilador nunca
+deduce capacidades de la CPU que ejecuta la compilación.
+
+The current target declares the `x86-64-v1` baseline: GPR, MMX, x87, and XMM0–XMM15 registers,
+with SSE2 guaranteed. Every fixed register and physical clobber must exist in that catalog.
+Instructions requiring AVX, AES, PCLMUL, SSE4.2, POPCNT, LZCNT, or BMI are rejected when the target
+does not enable the feature. Compilation never inherits capabilities from the host CPU.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

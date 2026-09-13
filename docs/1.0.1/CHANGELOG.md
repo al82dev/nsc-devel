@@ -30,6 +30,8 @@ empaqueta con NativeSharp 1.0.1.
   para que la futura emisión preserve el ABI de la función.
 - Labels y saltos directos locales se resuelven dentro de cada bloque asm; transferencias externas,
   indirectas y call/return no pueden evadir el control de flujo estructurado.
+- `TargetInfo` publica baseline `x86-64-v1`, catálogo de registros y requisitos de extensiones asm;
+  registros desconocidos e instrucciones AVX/AES/BMI/etc. sin habilitar fallan antes de HIR.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

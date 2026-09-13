@@ -728,3 +728,11 @@ The parser shall collect labels before resolving branches so forward targets wor
 unique inside one block after case normalization. Direct x64 branch mnemonics may target only those
 labels. External or indirect branches and call/return instructions shall produce
 `InvalidInlineAssemblyControlFlow`. Resolved lines shall carry stable label/branch AST metadata.
+
+## NSC-ASM-011 — x64 register and CPU-feature validation
+
+`TargetInfo` shall own the assembly target contract: a named CPU baseline, its guaranteed features,
+the valid physical-register catalog, and instruction-to-required-feature classification. The parser
+shall reject unknown fixed/clobber registers and instructions whose required feature is absent.
+Diagnostics shall identify the spelling, missing feature, and selected baseline before HIR. The
+contract shall be deterministic and independent from the compiler host CPU.

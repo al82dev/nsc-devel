@@ -43,6 +43,15 @@ void testTargetInfo()
     expect(target.operatingSystemName() == "windows", "target operating system");
     expect(target.objectFormatName() == "COFF", "target object format");
     expect(target.llvmTriple() == "x86_64-pc-windows-msvc", "target LLVM triple");
+    expect(target.cpuBaselineName() == "x86-64-v1", "target CPU baseline");
+    expect(target.supportsCpuFeature("sse2"), "baseline supports SSE2");
+    expect(!target.supportsCpuFeature("avx"), "baseline does not silently assume AVX");
+    expect(target.isAssemblyRegister("rax") && target.isAssemblyRegister("r15d") &&
+        target.isAssemblyRegister("xmm15"), "x64 register catalog accepts baseline registers");
+    expect(!target.isAssemblyRegister("r16") && !target.isAssemblyRegister("ymm0"),
+        "x64 register catalog rejects unavailable registers");
+    expect(target.requiredAssemblyFeature("vaddps") == "avx" &&
+        target.requiredAssemblyFeature("add").empty(), "instruction feature requirements");
 }
 
 void testScalarLayouts()

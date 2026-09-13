@@ -3,6 +3,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
+#include "nativesharp/Target/TargetInfo.h"
 
 #include <algorithm>
 #include <array>
@@ -4961,6 +4962,19 @@ void Parser::validateInlineAssemblyControlFlow(ast::AstNode* statement)
                 "asm call/return instructions cannot escape NativeSharp structured control flow");
             continue;
         }
+        const target::TargetInfo targetInfo = target::TargetInfo::WindowsX64();
+        const std::string_view requiredFeature = targetInfo.requiredAssemblyFeature(mnemonic);
+        if (!targetInfo.supportsCpuFeature(requiredFeature))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                line->range(),
+                "asm instruction '" + mnemonic + "' requires CPU feature '" +
+                    std::string(requiredFeature) + "' outside baseline " +
+                    std::string(targetInfo.cpuBaselineName()));
+            continue;
+        }
         if (!isInlineAssemblyBranchMnemonic(mnemonic)) continue;
         const std::string canonicalTarget = canonicalInlineAssemblyRegister(std::string(target));
         if (!isInlineAssemblyRegisterName(canonicalTarget) || !labels.contains(canonicalTarget))
@@ -5102,6 +5116,16 @@ void Parser::parseInlineAssemblyClobberClause(ast::AstNode* statement)
                 "asm cannot clobber the stack pointer; its value and alignment must survive the block");
             valid = false;
         }
+        else if (!specialClobber &&
+            !target::TargetInfo::WindowsX64().isAssemblyRegister(registerName))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                registerToken.range(),
+                "unknown x64 register '" + registerName + "'");
+            valid = false;
+        }
         else if (!seen.insert(registerName).second)
         {
             diagnostics_.report(
@@ -5197,6 +5221,16 @@ std::string Parser::parseInlineAssemblyConstraint(
             diagnostics::DiagnosticSeverity::Error,
             constraintToken.range(),
             "asm cannot bind an operand to the stack pointer");
+        return defaultConstraint;
+    }
+    if (!fixedRegister.empty() &&
+        !target::TargetInfo::WindowsX64().isAssemblyRegister(fixedRegister))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidInlineAssemblyTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            constraintToken.range(),
+            "unknown x64 register '" + fixedRegister + "'");
         return defaultConstraint;
     }
     return constraint;

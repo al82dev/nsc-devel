@@ -56,6 +56,10 @@ conjunto no volátil de Windows x64 llevan una marca de preservación explícita
 Los saltos directos pueden usar labels locales del mismo bloque, incluso hacia adelante. Destinos
 externos, saltos indirectos y call/return se rechazan para conservar CFG, cleanup y unwind.
 
+Assembly usa un target determinista `x86-64-v1`. Constraints y clobbers se validan contra su
+catálogo físico y las instrucciones que requieren extensiones ausentes fallan antes de HIR con la
+feature concreta; la máquina host no amplía silenciosamente el producto.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

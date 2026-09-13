@@ -495,6 +495,20 @@ int Main()
         assemblyReturn.diagnostics.hasErrors(),
         "asm cannot return around NativeSharp cleanups and unwind state");
 
+    ParsedSyntax unknownTargetRegister;
+    parse(unknownTargetRegister,
+        "int Main() { int x = 1; asm { nop } in(x : \"{notareg}\"); return 0; }");
+    tests.expect(unknownTargetRegister.diagnostics.hasErrors(),
+        "fixed constraints reject names outside the x64 register catalog");
+
+    ParsedSyntax unsupportedCpuFeature;
+    parse(unsupportedCpuFeature, "int Main() { asm { vaddps xmm0, xmm1, xmm2 } return 0; }");
+    bool sawCpuFeature = false;
+    for (const diagnostics::Diagnostic& diagnostic : unsupportedCpuFeature.diagnostics.diagnostics())
+        sawCpuFeature = sawCpuFeature || diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyTarget;
+    tests.expect(unsupportedCpuFeature.diagnostics.hasErrors() && sawCpuFeature,
+        "instructions beyond the x86-64-v1 baseline identify their missing CPU feature");
+
     ParsedSyntax emptyClobber;
     parse(emptyClobber, "int Main() { asm { nop } clobber(); return 0; }");
     tests.expect(
