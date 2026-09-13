@@ -5,6 +5,7 @@
 
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/BuiltinIntegerTypes.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -2045,6 +2046,11 @@ private:
                 LLVMSetGlobalConstant(global, 1);
             }
             LLVMSetInitializer(global, initializer);
+            // Constants are materialized from the same certified value in producers and
+            // consumers. Mark both sides ODR: a DLL consumer keeps a local selectable copy,
+            // while a static producer and consumer contribute equivalent COMDAT definitions
+            // instead of one strong plus one selectable definition that COFF still rejects.
+            if (field.isConst) applyOdrDefinition(global);
         }
         return true;
     }
@@ -2110,12 +2116,18 @@ private:
         for (const auto& [typeOrdinal, ignored] : needsInitializer)
         {
             (void)ignored;
-            const std::string suffix = std::to_string(typeOrdinal);
+            if (typeOrdinal >= nameLookup_.namedTypes().size())
+            {
+                return fail(error, "Stage 37 type initializer has an invalid declaring type ordinal");
+            }
+            const std::string localSuffix = std::to_string(typeOrdinal);
+            const std::string physicalSuffix = compilation::symbolFragmentForIdentityKey(
+                nameLookup_.namedTypes()[typeOrdinal].identity.key());
             if (defineStorage)
             {
                 LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
                 LLVMValueRef state = LLVMAddGlobal(
-                    module_, i8, ("__nsc_cctor_state_" + suffix).c_str());
+                    module_, i8, ("__nsc_cctor_state_" + localSuffix).c_str());
                 if (state == nullptr)
                 {
                     return fail(error, "Stage 37 failed to declare type-initialization state");
@@ -2128,7 +2140,7 @@ private:
                 // externally declared cctor and never address this private guard storage.
                 LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
                 LLVMValueRef owner = LLVMAddGlobal(
-                    module_, i32, ("__nsc_cctor_owner_" + suffix).c_str());
+                    module_, i32, ("__nsc_cctor_owner_" + localSuffix).c_str());
                 if (owner == nullptr)
                 {
                     return fail(error, "Stage 54.3 failed to declare type-initialization owner");
@@ -2139,12 +2151,17 @@ private:
             }
 
             LLVMTypeRef functionType = LLVMFunctionType(voidType, nullptr, 0, 0);
-            const std::string functionName = "__nsc_cctor_" + suffix;
+            const std::string functionName = "__nsc_cctor_" + physicalSuffix;
             LLVMValueRef function = LLVMAddFunction(module_, functionName.c_str(), functionType);
             if (function == nullptr)
             {
                 return fail(error, "Stage 37 failed to declare type initializer");
             }
+            // A monolithic module can keep its initializer private. Partitioned code units call
+            // the coordinator definition across COFF objects, so that definition must be
+            // external and its name must be derived from nominal type identity (above), never a
+            // project-local ordinal that can collide when independent libraries are linked.
+            if (!partitioned_) LLVMSetLinkage(function, LLVMPrivateLinkage);
             applyUwtableAttribute(function);
             LLVMMetadataRef subprogram = nullptr;
             if (defineStorage && typeOrdinal < nameLookup_.namedTypes().size())
@@ -7734,6 +7751,11 @@ private:
             module_, "__nativesharp_capture_cell_release", captureCellFunctionType_);
         if (captureCellRetainFunction_ == nullptr || captureCellReleaseFunction_ == nullptr)
             return fail(error, "E11 could not declare capture-cell lifetime helpers");
+        // These helpers are implementation details emitted on demand in every code unit that
+        // owns capturing-lambda code. Calls never cross module boundaries, so internal linkage is
+        // the precise contract and prevents duplicate strong definitions at the final link.
+        LLVMSetLinkage(captureCellRetainFunction_, LLVMInternalLinkage);
+        LLVMSetLinkage(captureCellReleaseFunction_, LLVMInternalLinkage);
 
         LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
         LLVMBasicBlockRef retainEntry = LLVMAppendBasicBlockInContext(

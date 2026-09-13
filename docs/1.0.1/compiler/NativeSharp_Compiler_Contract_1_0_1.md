@@ -313,6 +313,25 @@ Optimization completion order shall not determine diagnostics: the coordinator i
 and error slots by module ordinal. A successful optimized bundle must retain all cross-unit calls,
 coordinator references and explicitly exported symbols when linked.
 
+## NSC-CODEGEN-004 — Synthesized symbol ownership and ODR identity
+
+Every synthesized physical symbol shall have an ownership rule derived from its actual linkage
+boundary. A helper whose calls and definition stay inside one LLVM module shall use internal
+linkage. A helper referenced by peer code units shall use a nominally stable physical name rather
+than a project-local ordinal. Independent products must therefore be linkable even when their local
+MIR ordinals and generated-helper sets overlap.
+
+Type initializer entry points shall derive their physical identity from the declaring nominal type.
+Their guard and owner storage remain private to the coordinator. In a monolithic module the entry
+point may remain private; in a partitioned product it is externally declared by peer units and
+defined once by the coordinator.
+
+Compile-time constants reconstructed from certified NSMETA values are equivalent definitions.
+Producer and consumer copies shall use symbol-specific selectable COMDAT definitions so a DLL
+consumer can materialize the value locally and a static-library consumer can merge it with the
+producer copy. Mutable imported static storage remains producer-owned and is accessed through its
+published accessor.
+
 ## NSC-META-001 — Deterministic NSMETA fragment merging
 
 Metadata records collected by independent workers shall be combined by canonical record identity,

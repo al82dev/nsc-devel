@@ -19,6 +19,8 @@ empaqueta con NativeSharp 1.0.1.
   cerradas sobreviven el consumo mediante `LibraryReference`.
 - Callables, constructores y destructores precompilados conservan nombres físicos enlazables.
 - Las especializaciones reutilizables y helpers EH aplican reglas ODR/COMDAT por símbolo.
+- Los helpers locales de closures, inicializadores estáticos y constantes precompiladas aplican
+  ownership e identidad física coherentes entre unidades, bibliotecas estáticas y DLLs.
 - Las bibliotecas estáticas no venden como propias las definiciones de sus dependencias.
 - La selección de runtimes depende de símbolos efectivamente alcanzados y deduplica DLLs idénticas
   por contenido, no por ruta incidental.
