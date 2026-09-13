@@ -35,7 +35,7 @@
 //      through a real linked Windows x64 PE executable via the actual `nsc` Driver, AT BOTH O0
 //      and O2 -- same discipline every Stage 53/54 round has followed since 53.2b.
 //   3. REAL EXECUTION under Wine (when available, gracefully skipped otherwise), at BOTH
-//      optimization levels: Main.ns returns 0 only if every one of its 38 runtime checks passed
+//      optimization levels: Main.ns returns 0 only if every one of its 48 runtime checks passed
 //      (see examples/project_stage54_2/Main.ns for the full numbering) -- the EXACT return-value
 //      contract of all ten operations (including CompareExchange's "does not match" branch, not
 //      just its happy path) for both widths, TWO genuine multi-threaded stress tests (4 threads x
@@ -178,6 +178,10 @@ namespace NativeSharp.Core.Threading
         public void Store(int value) { }
         public void Store(int value, MemoryOrder order) { }
         public int Increment() { return 0; }
+        public int Increment(MemoryOrder order) { return 0; }
+        public int Decrement(MemoryOrder order) { return 0; }
+        public int Add(int value, MemoryOrder order) { return 0; }
+        public int Exchange(int value, MemoryOrder order) { return 0; }
         public int Decrement() { return 0; }
         public int Add(int value) { return 0; }
         public int Exchange(int value) { return 0; }
@@ -193,6 +197,10 @@ namespace NativeSharp.Core.Threading
         public void Store(long value) { }
         public void Store(long value, MemoryOrder order) { }
         public long Increment() { return 0; }
+        public long Increment(MemoryOrder order) { return 0; }
+        public long Decrement(MemoryOrder order) { return 0; }
+        public long Add(long value, MemoryOrder order) { return 0; }
+        public long Exchange(long value, MemoryOrder order) { return 0; }
         public long Decrement() { return 0; }
         public long Add(long value) { return 0; }
         public long Exchange(long value) { return 0; }
@@ -243,6 +251,16 @@ class Program
         long r64 = a64.Load(MemoryOrder.Relaxed);
         r64 = a64.Load(MemoryOrder.Acquire);
         r64 = a64.Load(MemoryOrder.SequentiallyConsistent);
+        r32 = a32.Increment(MemoryOrder.Relaxed);
+        r32 = a32.Decrement(MemoryOrder.Acquire);
+        r32 = a32.Add(7, MemoryOrder.Release);
+        r32 = a32.Exchange(8, MemoryOrder.AcquireRelease);
+        r32 = a32.Increment(MemoryOrder.SequentiallyConsistent);
+        r64 = a64.Increment(MemoryOrder.Relaxed);
+        r64 = a64.Decrement(MemoryOrder.Acquire);
+        r64 = a64.Add(9, MemoryOrder.Release);
+        r64 = a64.Exchange(10, MemoryOrder.AcquireRelease);
+        r64 = a64.Increment(MemoryOrder.SequentiallyConsistent);
         return r64 + r32;
     }
 }
@@ -295,6 +313,8 @@ class Program
     tests.expect(llvm.find("monotonic") != std::string::npos,
         "MemoryOrder.Relaxed maps explicitly to LLVM monotonic ordering");
     // Also confirm the "location" operand feeding each of those calls is a field-address GEP
+    tests.expect(llvm.find("acq_rel") != std::string::npos,
+        "ordered RMW accepts AcquireRelease and lowers it to LLVM acq_rel");
     // (`field.addr`), not some other addressing scheme -- proof that the synthetic FieldAddress
     // node this round introduces (see ProjectOopHirModel.cpp's dedicated Atomics block) is really
     // being used, and not silently bypassed.
@@ -314,7 +334,8 @@ namespace NativeSharp.Core.Threading
         Acquire = 1,
         Release = 2,
         AcquireRelease = 3,
-        SequentiallyConsistent = 4
+        SequentiallyConsistent = 4,
+        Invalid = 7
     }
 
     public class AtomicInt32
@@ -322,6 +343,7 @@ namespace NativeSharp.Core.Threading
         private int value_;
         public AtomicInt32(int initialValue) { value_ = initialValue; }
         public int Load(MemoryOrder order) { return 0; }
+        public int Increment(MemoryOrder order) { return 0; }
         public void Store(int value, MemoryOrder order) { }
     }
 }
@@ -335,6 +357,7 @@ class Program
         raii AtomicInt32 value = new AtomicInt32(0);
         value.Load(MemoryOrder.Release);
         value.Store(1, MemoryOrder.Acquire);
+        value.Increment(MemoryOrder.Invalid);
         MemoryOrder dynamicOrder = MemoryOrder.Relaxed;
         value.Load(dynamicOrder);
         return 0;
@@ -358,6 +381,9 @@ class Program
     tests.expect(diagnostics.find(
         "atomic Store order must be Relaxed, Release, or SequentiallyConsistent") != std::string::npos,
         "ordered Store rejects Acquire");
+    tests.expect(diagnostics.find(
+        "atomic read-modify-write order is outside MemoryOrder") != std::string::npos,
+        "ordered RMW rejects values outside the public MemoryOrder ABI");
     tests.expect(diagnostics.find(
         "atomic memory order must be a compile-time MemoryOrder constant") != std::string::npos,
         "ordered atomic operations reject runtime-selected ordering");
@@ -517,7 +543,7 @@ void testPackagedExampleAtOptimizationLevel(
         tests.expect(!crashed, "Stage 54.2 (" + runLabel + ") executable does not crash under real execution");
         tests.expect(exitCode == 0,
             "Stage 54.2 (" + runLabel +
-                ") executable returns exit code 0 (all 38 atomics runtime checks passed -- exact "
+                ") executable returns exit code 0 (all 48 atomics runtime checks passed -- exact "
                 "return-value contract for Increment/Decrement/Add/Exchange/CompareExchange on both "
                 "Int32 and Int64, including CompareExchange's non-matching branch, plus two genuine "
                 "4-threads-x-2500-increments stress tests on a SHARED counter verifying the exact "

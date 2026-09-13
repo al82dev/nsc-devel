@@ -183,6 +183,18 @@ class Program
         if (ordered64.Load(MemoryOrder.Acquire) != 42000000000) { return 37; }
         ordered64.Store(43000000000, MemoryOrder.SequentiallyConsistent);
         if (ordered64.Load(MemoryOrder.SequentiallyConsistent) != 43000000000) { return 38; }
+        // ==== Seccion 8: RMW con orden explicito ================================================
+        if (ordered32.Increment(MemoryOrder.Relaxed) != 44) { return 39; }
+        if (ordered32.Decrement(MemoryOrder.Acquire) != 43) { return 40; }
+        if (ordered32.Add(7, MemoryOrder.Release) != 50) { return 41; }
+        if (ordered32.Exchange(60, MemoryOrder.AcquireRelease) != 50) { return 42; }
+        if (ordered32.Increment(MemoryOrder.SequentiallyConsistent) != 61) { return 43; }
+
+        if (ordered64.Increment(MemoryOrder.Relaxed) != 43000000001) { return 44; }
+        if (ordered64.Decrement(MemoryOrder.Acquire) != 43000000000) { return 45; }
+        if (ordered64.Add(7, MemoryOrder.Release) != 43000000007) { return 46; }
+        if (ordered64.Exchange(60000000000, MemoryOrder.AcquireRelease) != 43000000007) { return 47; }
+        if (ordered64.Increment(MemoryOrder.SequentiallyConsistent) != 60000000001) { return 48; }
 
         return 0;
     }

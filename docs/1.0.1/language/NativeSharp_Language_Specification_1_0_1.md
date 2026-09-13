@@ -505,6 +505,19 @@ be a compile-time `MemoryOrder` constant. Loads accept Relaxed, Acquire, or
 SequentiallyConsistent; stores accept Relaxed, Release, or SequentiallyConsistent. Relaxed maps to
 LLVM monotonic through an explicit ABI translation, and each access carries its natural alignment.
 
+
+### NS-MEM-006 — Operaciones read-modify-write ordenadas
+
+`Increment`, `Decrement`, `Add` y `Exchange` ofrecen sobrecargas con `MemoryOrder` en
+`AtomicInt32` y `AtomicInt64`. Admiten los cinco órdenes públicos. El orden debe ser constante
+de compilación y un valor fuera del ABI 0..4 se rechaza.
+
+Las operaciones se emiten como `atomicrmw` alineado. `Increment`, `Decrement` y `Add` conservan
+su contrato de devolver el valor nuevo; `Exchange` devuelve el anterior.
+
+Ordered `Increment`, `Decrement`, `Add`, and `Exchange` overloads accept all five public
+memory orders on both integer widths. They lower to naturally aligned `atomicrmw` instructions.
+Increment, Decrement, and Add return the new value; Exchange returns the old value.
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

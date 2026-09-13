@@ -12,6 +12,9 @@ empaqueta con NativeSharp 1.0.1.
 - `AtomicInt32` y `AtomicInt64` aceptan orden explícito en `Load` y `Store`; validan el
   subconjunto legal en compilación y emiten LLVM `monotonic`, `acquire`, `release` o `seq_cst`
   con alineación natural, sin dependencias `__atomic_*`.
+- `Increment`, `Decrement`, `Add` y `Exchange` aceptan los cinco `MemoryOrder`, emiten
+  `atomicrmw` alineado en 32/64 bits y mantienen sus contratos de retorno.
+
 - La gramática 2.0 reconoce bloques `asm { ... }` dentro de funciones y métodos mediante un nodo
   AST explícito y diagnostica su uso en namespace. Un modo léxico acotado al cuerpo conserva bytes,
   saltos físicos y rangos exactos por línea, incluso para puntuación que no pertenece al lenguaje

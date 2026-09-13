@@ -149,7 +149,17 @@ namespace NativeSharp.Core.Threading
             return 0;
         }
 
+        public int Increment(MemoryOrder order)
+        {
+            return 0;
+        }
+
         public int Decrement()
+        {
+            return 0;
+        }
+
+        public int Decrement(MemoryOrder order)
         {
             return 0;
         }
@@ -159,7 +169,17 @@ namespace NativeSharp.Core.Threading
             return 0;
         }
 
+        public int Add(int value, MemoryOrder order)
+        {
+            return 0;
+        }
+
         public int Exchange(int value)
+        {
+            return 0;
+        }
+
+        public int Exchange(int value, MemoryOrder order)
         {
             return 0;
         }
@@ -209,7 +229,17 @@ namespace NativeSharp.Core.Threading
             return 0;
         }
 
+        public long Increment(MemoryOrder order)
+        {
+            return 0;
+        }
+
         public long Decrement()
+        {
+            return 0;
+        }
+
+        public long Decrement(MemoryOrder order)
         {
             return 0;
         }
@@ -219,7 +249,17 @@ namespace NativeSharp.Core.Threading
             return 0;
         }
 
+        public long Add(long value, MemoryOrder order)
+        {
+            return 0;
+        }
+
         public long Exchange(long value)
+        {
+            return 0;
+        }
+
+        public long Exchange(long value, MemoryOrder order)
         {
             return 0;
         }

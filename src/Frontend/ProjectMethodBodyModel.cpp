@@ -9174,6 +9174,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
                     isMemoryOrderType(selectedMember.parameters[1].typeKey) &&
                     selectedMember.declaredTypeKey == "builtin:void";
+                const bool orderedUnaryRmw =
+                    (selectedMember.name == "Increment" || selectedMember.name == "Decrement") &&
+                    selectedMember.parameters.size() == 1 &&
+                    isMemoryOrderType(selectedMember.parameters[0].typeKey) &&
+                    selectedMember.declaredTypeKey == valueTypeKey;
+                const bool orderedValueRmw =
+                    (selectedMember.name == "Add" || selectedMember.name == "Exchange") &&
+                    selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey == valueTypeKey &&
+                    isMemoryOrderType(selectedMember.parameters[1].typeKey) &&
+                    selectedMember.declaredTypeKey == valueTypeKey;
+                const bool orderedRmw = orderedUnaryRmw || orderedValueRmw;
                 std::optional<MethodCoreOperationKind> atomicKind;
                 if ((selectedMember.name == "Load" && selectedMember.parameters.empty() &&
                         selectedMember.declaredTypeKey == valueTypeKey) || orderedLoad)
@@ -9191,31 +9203,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         ? MethodCoreOperationKind::AtomicStoreInt32
                         : MethodCoreOperationKind::AtomicStoreInt64;
                 }
-                else if (selectedMember.name == "Increment" && selectedMember.parameters.empty() &&
-                    selectedMember.declaredTypeKey == valueTypeKey)
+                else if ((selectedMember.name == "Increment" && selectedMember.parameters.empty() &&
+                    selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Increment"))
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedIncrementInt32
                         : MethodCoreOperationKind::InterlockedIncrementInt64;
                 }
-                else if (selectedMember.name == "Decrement" && selectedMember.parameters.empty() &&
-                    selectedMember.declaredTypeKey == valueTypeKey)
+                else if ((selectedMember.name == "Decrement" && selectedMember.parameters.empty() &&
+                    selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Decrement"))
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedDecrementInt32
                         : MethodCoreOperationKind::InterlockedDecrementInt64;
                 }
-                else if (selectedMember.name == "Add" && selectedMember.parameters.size() == 1 &&
+                else if ((selectedMember.name == "Add" && selectedMember.parameters.size() == 1 &&
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
-                    selectedMember.declaredTypeKey == valueTypeKey)
+                    selectedMember.declaredTypeKey == valueTypeKey) ||
+                    (orderedRmw && selectedMember.name == "Add"))
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedAddInt32
                         : MethodCoreOperationKind::InterlockedAddInt64;
                 }
-                else if (selectedMember.name == "Exchange" && selectedMember.parameters.size() == 1 &&
+                else if ((selectedMember.name == "Exchange" && selectedMember.parameters.size() == 1 &&
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
-                    selectedMember.declaredTypeKey == valueTypeKey)
+                    selectedMember.declaredTypeKey == valueTypeKey) ||
+                    (orderedRmw && selectedMember.name == "Exchange"))
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedExchangeInt32
@@ -9231,7 +9245,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         : MethodCoreOperationKind::InterlockedCompareExchangeInt64;
                 }
                 std::optional<std::uint8_t> atomicMemoryOrder;
-                if (atomicKind.has_value() && (orderedLoad || orderedStore))
+                if (atomicKind.has_value() && (orderedLoad || orderedStore || orderedRmw))
                 {
                     const ast::AstNode* orderSyntax = expression->children().empty()
                         ? nullptr
@@ -9252,7 +9266,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         const std::uint64_t order = foldedOrder->bits;
                         const bool legal = orderedLoad
                             ? (order == 0U || order == 1U || order == 4U)
-                            : (order == 0U || order == 2U || order == 4U);
+                            : orderedStore
+                                ? (order == 0U || order == 2U || order == 4U)
+                                : order <= 4U;
                         if (!legal)
                         {
                             diagnostics.report(
@@ -9261,7 +9277,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                                 orderSyntax != nullptr ? orderSyntax->range() : expression->range(),
                                 orderedLoad
                                     ? "atomic Load order must be Relaxed, Acquire, or SequentiallyConsistent"
-                                    : "atomic Store order must be Relaxed, Release, or SequentiallyConsistent");
+                                    : orderedStore
+                                        ? "atomic Store order must be Relaxed, Release, or SequentiallyConsistent"
+                                        : "atomic read-modify-write order is outside MemoryOrder");
                             atomicKind.reset();
                         }
                         else

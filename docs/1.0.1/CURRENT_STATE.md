@@ -89,6 +89,9 @@ La línea 2.0 publica `NativeSharp.Core.Threading.MemoryOrder` y ya lo aplica a 
 `Acquire` y `SequentiallyConsistent`; los almacenes admiten `Relaxed`, `Release` y
 `SequentiallyConsistent`. El orden debe resolverse en compilación. Las operaciones sin parámetro
 conservan su semántica `seq_cst`.
+`Increment`, `Decrement`, `Add` y `Exchange` también aceptan los cinco órdenes públicos en ambos
+anchos. Se emiten como `atomicrmw` alineado y conservan sus contratos de valor nuevo/anterior.
+
 
 ## Superficie del lenguaje
 
