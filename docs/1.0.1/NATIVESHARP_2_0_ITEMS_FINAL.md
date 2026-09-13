@@ -75,7 +75,7 @@
 45. **290 — Operandos de salida / Assembly output operands — COMPLETADO / COMPLETE**
 46. **291 — Restricciones de registros / Register constraints — COMPLETADO / COMPLETE**
 47. **292 — Inmediatos y operandos de memoria / Immediate and memory operands — COMPLETADO / COMPLETE**
-48. **293 — Clobbers de registros / Register clobbers**
+48. **293 — Clobbers de registros / Register clobbers — COMPLETADO / COMPLETE**
 49. **294 — Clobbers de flags y memoria / Flag and memory clobbers**
 50. **295 — Conservación de stack y registros no volátiles / Stack and nonvolatile-register safety**
 51. **296 — Saltos y control de flujo / Assembly control flow**

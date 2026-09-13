@@ -42,6 +42,10 @@ direccionables. Outputs de memoria usan `"=m"` o `"+m"`. El compilador distingue
 real de una property asignable y rechaza cálculos temporales; no crea spills ocultos para satisfacer
 el assembly.
 
+Los registros destruidos se declaran al final con `clobber("rax", "r11")`. Los nombres quedan
+normalizados y ordenados, sin duplicados, y no pueden contradecir un registro fijo de entrada o
+salida. La comprobación de que el nombre existe en el target x64 pertenece al item 297.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

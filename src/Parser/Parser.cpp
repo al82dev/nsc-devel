@@ -4729,6 +4729,22 @@ bool isInlineAssemblyRegisterName(std::string_view name) noexcept
     return true;
 }
 
+std::string canonicalInlineAssemblyRegister(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char byte)
+    {
+        return static_cast<char>(std::tolower(byte));
+    });
+    return value;
+}
+
+std::string_view fixedInlineAssemblyRegister(std::string_view constraint) noexcept
+{
+    const std::size_t open = constraint.find('{');
+    if (open == std::string_view::npos || constraint.back() != '}') return {};
+    return constraint.substr(open + 1, constraint.size() - open - 2);
+}
+
 bool isInlineAssemblyConstraint(std::string_view constraint, bool output) noexcept
 {
     if (!output)
@@ -4838,6 +4854,11 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
         parseInlineAssemblyInputClause(statement);
         hasOperandClauses = true;
     }
+    if (atContextualKeyword("clobber"))
+    {
+        parseInlineAssemblyClobberClause(statement);
+        hasOperandClauses = true;
+    }
     if (hasOperandClauses)
     {
         expect(TokenKind::Semicolon, "';' after asm operand clauses");
@@ -4918,6 +4939,99 @@ void Parser::parseInlineAssemblyInputClause(ast::AstNode* statement)
     while (consumeIf(TokenKind::Comma));
 
     expect(TokenKind::RightParen, "')' after asm input operands");
+}
+
+void Parser::parseInlineAssemblyClobberClause(ast::AstNode* statement)
+{
+    consume(); // contextual `clobber`
+    if (!expect(TokenKind::LeftParen, "'(' after asm clobber")) return;
+    if (at(TokenKind::RightParen))
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::InvalidInlineAssemblyClobber,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "asm clobber clause requires at least one register name");
+        consume();
+        return;
+    }
+
+    std::unordered_set<std::string> seen;
+    std::uint64_t ordinal = 0;
+    do
+    {
+        if (!at(TokenKind::StringLiteral))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyClobber,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "asm register clobber must be a string literal");
+            if (!at(TokenKind::RightParen) && !at(TokenKind::EndOfFile)) consume();
+            continue;
+        }
+
+        const lexer::Token& registerToken = consume();
+        const std::string registerName = canonicalInlineAssemblyRegister(
+            std::get<std::string>(registerToken.value()));
+        bool valid = isInlineAssemblyRegisterName(registerName) &&
+            registerName != "cc" && registerName != "memory";
+        if (!valid)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyClobber,
+                diagnostics::DiagnosticSeverity::Error,
+                registerToken.range(),
+                "asm register clobber requires a register atom; 'cc' and 'memory' use the item 294 contract");
+        }
+        else if (!seen.insert(registerName).second)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidInlineAssemblyClobber,
+                diagnostics::DiagnosticSeverity::Error,
+                registerToken.range(),
+                "duplicate asm register clobber '" + registerName + "'");
+            valid = false;
+        }
+
+        if (valid)
+        {
+            for (const ast::AstNode* child : statement->children())
+            {
+                if (child->kind() != ast::AstNodeKind::InlineAssemblyInputOperand &&
+                    child->kind() != ast::AstNodeKind::InlineAssemblyOutputOperand)
+                {
+                    continue;
+                }
+                const std::string fixed = canonicalInlineAssemblyRegister(
+                    std::string(fixedInlineAssemblyRegister(child->auxiliaryText())));
+                if (!fixed.empty() && fixed == registerName)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::InvalidInlineAssemblyClobber,
+                        diagnostics::DiagnosticSeverity::Error,
+                        registerToken.range(),
+                        "asm register '" + registerName +
+                            "' cannot be both a fixed operand and a clobber");
+                    valid = false;
+                    break;
+                }
+            }
+        }
+
+        if (valid)
+        {
+            ast::AstNode* clobber = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::InlineAssemblyClobber,
+                registerToken.range());
+            clobber->setText(registerName);
+            clobber->setIntegerValue(ordinal++);
+            statement->addChild(clobber);
+        }
+    }
+    while (consumeIf(TokenKind::Comma));
+
+    expect(TokenKind::RightParen, "')' after asm clobbers");
 }
 
 std::string Parser::parseInlineAssemblyConstraint(

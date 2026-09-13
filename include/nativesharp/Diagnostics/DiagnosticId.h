@@ -65,6 +65,7 @@ enum class DiagnosticId
     InvalidDeleteOperand,
     InvalidStackalloc,
     InvalidInlineAssemblyConstraint,
+    InvalidInlineAssemblyClobber,
     InlineAssemblyNotAvailable,
     ConstantEvaluationTrap,
     MissingMain,

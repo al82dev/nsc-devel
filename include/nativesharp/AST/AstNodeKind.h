@@ -75,6 +75,9 @@ enum class AstNodeKind
     // lvalue, integerValue() is its zero-based `$outN` ordinal, auxiliaryText() is the normalized
     // operand constraint, and flag() records whether it was written explicitly.
     InlineAssemblyOutputOperand,
+    // One canonical register name from `clobber("register", ...)`. text() is lowercase and
+    // integerValue() is the stable source ordinal. Flag and memory clobbers arrive in item 294.
+    InlineAssemblyClobber,
     ExpressionStatement,
 
     IdentifierExpression,

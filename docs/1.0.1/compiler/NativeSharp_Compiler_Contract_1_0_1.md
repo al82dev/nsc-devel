@@ -697,3 +697,12 @@ analysis shall track addressability independently from assignability so readonly
 distinguished from properties that merely have a setter. Output constraints `=m` and `+m` shall
 require both addressability and the existing modifiable-lvalue contract. No validation path may
 silently spill a temporary or convert a property access into a memory operand.
+
+## NSC-ASM-007 — Register clobbers
+
+The parser shall accept one optional non-empty `clobber(string-literal, ...)` clause after operand
+clauses. Each valid entry shall produce `InlineAssemblyClobber` with a lowercase name and stable
+zero-based ordinal. Duplicate names after case normalization, non-literals, malformed atoms, and a
+name also selected by a fixed-register input or output constraint shall produce
+`InvalidInlineAssemblyClobber`. `cc` and `memory` shall remain reserved until their explicit
+semantic contract is implemented; architecture-specific register availability remains separate.

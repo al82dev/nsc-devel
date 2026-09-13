@@ -703,6 +703,20 @@ temporaries, calls, and properties do not denote memory. `"=m"` and `"+m"` outpu
 retain the ordinary modifiable-lvalue requirement. The compiler never synthesizes hidden storage
 to make a non-addressable expression satisfy `m`.
 
+### NS-ASM-007 — Clobbers de registros
+
+La cláusula opcional no vacía `clobber("registro", ...)` aparece después de outputs e inputs y
+antes del semicolon final. Cada literal nombra un registro destruido por el bloque. Los nombres se
+normalizan a minúsculas, conservan su orden fuente y no pueden repetirse. Un registro fijado por un
+constraint `{registro}` no puede aparecer también como clobber. En esta etapa se exige un átomo de
+registro bien formado; la existencia en x64 se certifica en NS-ASM-011. Los nombres especiales
+`cc` y `memory` pertenecen a NS-ASM-008.
+
+The optional non-empty `clobber("register", ...)` clause follows outputs and inputs before the
+final semicolon. Names are lowercased, retain source order, and may not repeat. A register fixed by
+an operand constraint may not also be clobbered. This rule validates register atoms; target
+availability remains NS-ASM-011, while `cc` and `memory` belong to NS-ASM-008.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

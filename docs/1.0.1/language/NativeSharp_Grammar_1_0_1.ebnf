@@ -95,13 +95,16 @@ statement = block | variable-declaration | expression-statement | if-statement |
 static-assert-statement = "static_assert", "(", expression,
                           [ ",", string-literal ], ")", ";" ;
 inline-assembly-statement = "asm", assembly-block,
-                            [ [ asm-output-clause ], [ asm-input-clause ], ";" ] ;
+                            [ [ asm-output-clause ], [ asm-input-clause ],
+                              [ asm-clobber-clause ], ";" ] ;
 assembly-block = "{", { assembly-body-token | assembly-block }, "}" ;
 assembly-body-token = ? ordinary lexer token other than "{", "}" or EOF ? ;
 asm-output-clause = "out", "(", asm-output-operand, { ",", asm-output-operand }, ")" ;
 asm-input-clause = "in", "(", asm-input-operand, { ",", asm-input-operand }, ")" ;
 asm-output-operand = unary-expression, [ ":", string-literal ] ;
 asm-input-operand = expression, [ ":", string-literal ] ;
+asm-clobber-clause = "clobber", "(", string-literal,
+                     { ",", string-literal }, ")" ;
 variable-declaration = [ "const" ], ( "var" | type ), identifier,
                        [ "=", expression | aggregate-initializer ], ";" ;
 expression-statement = expression, ";" ;

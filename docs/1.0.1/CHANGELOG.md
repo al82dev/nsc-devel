@@ -22,6 +22,8 @@ empaqueta con NativeSharp 1.0.1.
 - Assembly admite inmediatos integrales constantes con `"i"` y memoria direccionable con `"m"`,
   `"=m"` o `"+m"`. El modelo semántico distingue addressability de una property con setter y no
   sintetiza temporales para hacer válido un operando.
+- `clobber("registro", ...)` declara registros destruidos por un bloque asm, conserva su orden
+  canonicalizado y rechaza duplicados o conflictos con constraints de registro fijo.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

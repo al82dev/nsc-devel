@@ -360,6 +360,70 @@ int Main()
         !addressableMemoryOk && !sawAddressableMemoryError,
         "an addressable local satisfies the memory contract before lowering is enabled");
 
+    ParsedSyntax registerClobbers;
+    parse(
+        registerClobbers,
+        "int Main() { int value = 42; "
+        "asm { add rax, $0 } in(value) clobber(\"RAX\", \"r11\"); return 0; }");
+    const AstNode* clobberMain = findFunction(registerClobbers.root, "Main");
+    const AstNode* clobberBody = clobberMain != nullptr ? clobberMain->first() : nullptr;
+    const AstNode* clobberAssembly = clobberBody != nullptr && clobberBody->children().size() > 1
+        ? clobberBody->children()[1]
+        : nullptr;
+    tests.expect(
+        !registerClobbers.diagnostics.hasErrors() && clobberAssembly != nullptr &&
+            clobberAssembly->children().size() == 4 &&
+            clobberAssembly->children()[2]->kind() == AstNodeKind::InlineAssemblyClobber &&
+            clobberAssembly->children()[2]->text() == "rax" &&
+            clobberAssembly->children()[2]->integerValue() == 0 &&
+            clobberAssembly->children()[3]->text() == "r11" &&
+            clobberAssembly->children()[3]->integerValue() == 1,
+        "register clobbers are canonicalized and retain stable source order");
+
+    ParsedSyntax duplicateClobber;
+    parse(
+        duplicateClobber,
+        "int Main() { asm { nop } clobber(\"rax\", \"RAX\"); return 0; }");
+    bool sawDuplicateClobber = false;
+    for (const diagnostics::Diagnostic& diagnostic : duplicateClobber.diagnostics.diagnostics())
+    {
+        sawDuplicateClobber = sawDuplicateClobber ||
+            (diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyClobber &&
+             diagnostic.message().find("duplicate") != std::string::npos);
+    }
+    tests.expect(
+        duplicateClobber.diagnostics.hasErrors() && sawDuplicateClobber,
+        "register clobbers reject duplicates after case normalization");
+
+    ParsedSyntax fixedRegisterClobber;
+    parse(
+        fixedRegisterClobber,
+        "int Main() { int value = 1; "
+        "asm { nop } in(value : \"{rax}\") clobber(\"rax\"); return 0; }");
+    bool sawFixedRegisterConflict = false;
+    for (const diagnostics::Diagnostic& diagnostic :
+        fixedRegisterClobber.diagnostics.diagnostics())
+    {
+        sawFixedRegisterConflict = sawFixedRegisterConflict ||
+            (diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyClobber &&
+             diagnostic.message().find("fixed operand") != std::string::npos);
+    }
+    tests.expect(
+        fixedRegisterClobber.diagnostics.hasErrors() && sawFixedRegisterConflict,
+        "a fixed operand register cannot also be declared clobbered");
+
+    ParsedSyntax reservedClobber;
+    parse(reservedClobber, "int Main() { asm { nop } clobber(\"memory\"); return 0; }");
+    tests.expect(
+        reservedClobber.diagnostics.hasErrors(),
+        "memory and condition-code clobbers remain reserved for item 294");
+
+    ParsedSyntax emptyClobber;
+    parse(emptyClobber, "int Main() { asm { nop } clobber(); return 0; }");
+    tests.expect(
+        emptyClobber.diagnostics.hasErrors(),
+        "empty register clobber clauses are rejected");
+
     ParsedSyntax emptyOutputs;
     parse(emptyOutputs, "int Main() { asm { nop } out(); return 0; }");
     bool sawRequiredOutput = false;
