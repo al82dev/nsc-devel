@@ -34,6 +34,8 @@ empaqueta con NativeSharp 1.0.1.
   excepciones, closures y código optimizado.
 - El verificador PDB reconoce helpers locales y nombres físicos largos sin confundirlos con símbolos
   públicos ausentes.
+- La certificación PDB inspecciona todas las unidades de código particionadas y permite ejecutar su
+  evidencia dirigida únicamente en O0 sin reducir la cobertura O0/O2 del baseline.
 
 ## Herramientas y desarrollo local
 

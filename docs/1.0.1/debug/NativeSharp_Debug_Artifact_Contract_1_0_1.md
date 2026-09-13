@@ -157,3 +157,9 @@ metadata. The same rule applies to generated type initializers and destruction e
 Every partition shall independently pass the LLVM verifier with full debug information enabled.
 Combining partitions shall preserve the owning definition's CodeView records without inventing
 multiple source definitions for one physical function.
+
+Artifact verification shall inspect the complete PDB module set. A verifier must not assume that
+the coordinator object at module index zero owns ordinary user functions: partitioned compilation
+places their procedure, variable and line records in the code units that own their definitions.
+Line-tables-only verification applies the same whole-PDB rule while continuing to reject local and
+def-range records that belong exclusively to the full-debug profile.

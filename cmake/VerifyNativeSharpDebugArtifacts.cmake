@@ -66,7 +66,7 @@ if(NOT line_executable_result EQUAL 0 OR
         "stdout:\n${line_executable_output}\nstderr:\n${line_executable_error}")
 endif()
 execute_process(
-    COMMAND "${LLVM_PDBUTIL}" dump -summary -symbols --modi=0 "${line_pdb}"
+    COMMAND "${LLVM_PDBUTIL}" dump -summary -symbols "${line_pdb}"
     RESULT_VARIABLE line_pdb_result
     OUTPUT_VARIABLE line_pdb_dump
     ERROR_VARIABLE line_pdb_error)
@@ -80,7 +80,13 @@ if(NOT line_pdb_result EQUAL 0 OR
         "${line_pdb_dump}\n${line_pdb_error}")
 endif()
 
-foreach(level IN ITEMS O0 O2)
+if(NOT DEFINED DEBUG_OPTIMIZATION_LEVELS)
+    set(DEBUG_OPTIMIZATION_LEVELS O0 O2)
+endif()
+if(NOT DEFINED DEBUG_REPRO_OPTIMIZATION_LEVEL)
+    set(DEBUG_REPRO_OPTIMIZATION_LEVEL O2)
+endif()
+foreach(level IN LISTS DEBUG_OPTIMIZATION_LEVELS)
     string(TOLOWER "${level}" stem)
     set(object "${DEBUG_OUTPUT_DIR}/debug_${stem}.obj")
     execute_process(
@@ -156,7 +162,7 @@ foreach(level IN ITEMS O0 O2)
     endif()
 
     execute_process(
-        COMMAND "${LLVM_PDBUTIL}" dump -summary -modules -files -types -symbols --modi=0 "${pdb}"
+        COMMAND "${LLVM_PDBUTIL}" dump -summary -modules -files -types -symbols "${pdb}"
         RESULT_VARIABLE pdb_result
         OUTPUT_VARIABLE pdb_dump
         ERROR_VARIABLE pdb_error)
@@ -260,7 +266,7 @@ foreach(level IN ITEMS O0 O2)
     endif()
 
     execute_process(
-        COMMAND "${LLVM_PDBUTIL}" dump -l --modi=0 "${pdb}"
+        COMMAND "${LLVM_PDBUTIL}" dump -l "${pdb}"
         RESULT_VARIABLE lines_result
         OUTPUT_VARIABLE lines_dump
         ERROR_VARIABLE lines_error)
@@ -348,13 +354,15 @@ set(repro_object_a "${DEBUG_OUTPUT_DIR}/repro-a.obj")
 set(repro_object_b "${DEBUG_OUTPUT_DIR}/repro-b.obj")
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${repro_source_a}/DebugPdb.nsproj"
-        -g "-fdebug-prefix-map=${repro_source_a}=/_/nativesharp/repro" -O2 -o "${repro_object_a}"
+        -g "-fdebug-prefix-map=${repro_source_a}=/_/nativesharp/repro"
+        "-${DEBUG_REPRO_OPTIMIZATION_LEVEL}" -o "${repro_object_a}"
     RESULT_VARIABLE repro_a_result
     OUTPUT_VARIABLE repro_a_output
     ERROR_VARIABLE repro_a_error)
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${repro_source_b}/DebugPdb.nsproj"
-        -g "-fdebug-prefix-map=${repro_source_b}=/_/nativesharp/repro" -O2 -o "${repro_object_b}"
+        -g "-fdebug-prefix-map=${repro_source_b}=/_/nativesharp/repro"
+        "-${DEBUG_REPRO_OPTIMIZATION_LEVEL}" -o "${repro_object_b}"
     RESULT_VARIABLE repro_b_result
     OUTPUT_VARIABLE repro_b_output
     ERROR_VARIABLE repro_b_error)
@@ -378,7 +386,8 @@ file(APPEND "${repro_source_b}/right/Shared.ns" "\n// source identity mutation\n
 set(modified_object "${DEBUG_OUTPUT_DIR}/modified-source.obj")
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-obj "${repro_source_b}/DebugPdb.nsproj"
-        -g "-fdebug-prefix-map=${repro_source_b}=/_/nativesharp/repro" -O2 -o "${modified_object}"
+        -g "-fdebug-prefix-map=${repro_source_b}=/_/nativesharp/repro"
+        "-${DEBUG_REPRO_OPTIMIZATION_LEVEL}" -o "${modified_object}"
     RESULT_VARIABLE modified_result
     OUTPUT_VARIABLE modified_output
     ERROR_VARIABLE modified_error)
@@ -392,4 +401,6 @@ if(modified_sha256 STREQUAL repro_sha256_a)
     message(FATAL_ERROR "a source-byte change did not change the CodeView object identity")
 endif()
 
-message(STATUS "NativeSharp O0/O2 CodeView/PDB source identity and remapping verified")
+string(JOIN "," debug_profiles ${DEBUG_OPTIMIZATION_LEVELS})
+message(STATUS
+    "NativeSharp ${debug_profiles} CodeView/PDB source identity and remapping verified")
