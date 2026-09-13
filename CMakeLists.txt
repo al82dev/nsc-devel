@@ -364,6 +364,7 @@ nsc_enable_warnings(nsc_linker)
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
     src/Driver/CompilationJobPolicy.cpp
+    src/Driver/CompilationWorkerPool.cpp
     src/Driver/CompatibilityPolicy.cpp
     src/Driver/DiagnosticBundle.cpp
     src/Driver/Driver.cpp
@@ -1686,6 +1687,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_driver_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_driver_tests)
     add_test(NAME nsc.driver COMMAND nsc_driver_tests)
+
+    add_executable(nsc_compilation_worker_pool_tests tests/unit/CompilationWorkerPoolTests.cpp)
+    target_link_libraries(nsc_compilation_worker_pool_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_compilation_worker_pool_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_compilation_worker_pool_tests)
+    add_test(NAME nsc.compilation-worker-pool COMMAND nsc_compilation_worker_pool_tests)
 
     find_program(NSC_LLVM_PDBUTIL_EXECUTABLE
         NAMES llvm-pdbutil

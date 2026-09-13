@@ -133,8 +133,21 @@ one progress job. `-j N` and `-jN` accept 1 through 1,024 and cap requested comp
 available host capacity. Duplicate or malformed controls are command-line errors.
 
 `--print-job-policy` reports hardware threads, requested jobs, reserved cores, effective jobs and
-the current scheduler kind. Establishing the policy does not claim parallel execution: until the
-worker-pool contract is implemented, the scheduler shall identify itself as `sequential`.
+the current scheduler kind. Establishing the policy and pool does not claim that compilation phases
+are scheduled in parallel: until the deterministic graph scheduler is connected, the scheduler
+shall identify itself as `sequential`.
+
+## NSC-WORKERS-001 — Internal compiler worker pool
+
+The internal worker pool shall own a fixed number of joinable threads resolved from the active job
+policy. Tasks receive a stable zero-based worker index and a monotonic submission ordinal. Worker
+threads shall inherit the resolved job policy. Destruction shall finish queued work and join every
+thread; no detached compiler work may outlive the pool.
+
+Task exceptions shall not terminate the process. `wait()` shall first wait for all submitted work,
+then rethrow the failure with the lowest submission ordinal and leave the pool reusable. An empty
+task is rejected before queueing. This pool provides execution capacity only; dependency order and
+deterministic graph scheduling are a separate contract.
 
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
