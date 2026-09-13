@@ -789,3 +789,15 @@ The backend shall retain one inline-assembly operation for the complete source b
 split lines into independent calls merely to manufacture stepping records, because doing so can
 change register continuity, outputs and local control flow. Focused O0 evidence shall link a
 standard PDB, execute the program, and show distinct addresses for consecutive instruction lines.
+
+## NSC-ASM-016 — Independent C and C++ ABI certification
+
+An `export extern C` function containing integrated assembly shall retain the ordinary generated C
+ABI contract. Its generated header and import library shall be sufficient for independent strict
+C11 and C++20 hosts to compile, link and execute without NativeSharp source or a private adapter.
+
+Focused Windows x64 evidence shall cover scalar register inputs and outputs, an observable write
+through a raw pointer, and a physical nonvolatile-register clobber. The last case shall modify `rbx`
+inside NativeSharp assembly while independent callers keep a sentinel live across the call; both
+callers must observe it unchanged. Successful return values alone do not replace this preservation
+check. The certification uses O0 and the real DLL/import-library/header product path.

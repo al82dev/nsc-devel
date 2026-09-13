@@ -829,6 +829,20 @@ no cambia el código con marcadores de depuración. / With debug information ena
 physical asm line retains a standard CodeView source location. Consecutive instructions remain
 distinct PDB stepping addresses without splitting or otherwise changing the assembly contract.
 
+### NS-ASM-016 — Frontera ABI C/C++
+
+Usar `asm` dentro de un método `export extern C` no crea una convención de llamada nueva. Firma,
+nombre exportado, paso de parámetros, retorno, acceso por puntero y preservación de registros siguen
+el ABI Windows x64 que publica el header generado. En particular, declarar un registro no volátil
+como clobber obliga al backend a preservarlo para el caller; el autor no puede transferir esa
+responsabilidad al consumidor.
+
+La conformidad se demuestra con hosts C y C++ independientes que compilan sólo contra el header y
+la import library, enlazan la DLL real y validan el comportamiento en ejecución. / Assembly inside
+an `export extern C` method does not define a new calling convention. The generated header, import
+library, scalar/pointer behavior, and Win64 nonvolatile preservation remain authoritative and are
+executed by independent C and C++ hosts.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

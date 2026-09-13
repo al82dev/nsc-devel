@@ -44,6 +44,8 @@ empaqueta con NativeSharp 1.0.1.
 - Los perfiles `-g` y `-gline-tables-only` publican en PDB una dirección de stepping distinta para
   cada instrucción física de un bloque asm mediante ubicaciones CodeView estándar, sin dividir el
   contrato asm en múltiples llamadas.
+- Hosts independientes C11 y C++20 certifican en ejecución la ABI de exports con asm para inputs,
+  outputs, memoria y preservación del registro no volátil `rbx` en Windows x64.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

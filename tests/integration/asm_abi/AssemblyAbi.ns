@@ -1,0 +1,33 @@
+namespace AssemblyAbi
+{
+    public static class Api
+    {
+        public static export extern C int NSAsmAdd(int left, int right)
+        {
+            int result;
+            asm {
+                mov $out0, $0
+                add $out0, $1
+            } out(result : "={rax}") in(left : "r", right : "r") clobber("cc");
+            return result;
+        }
+
+        public static export extern C int NSAsmAddMemory(int* value, int delta)
+        {
+            asm {
+                add dword ptr [$0], $1
+            } in(value : "r", delta : "r") clobber("cc", "memory");
+            return value[0];
+        }
+
+        public static export extern C int NSAsmUseNonvolatile(int value)
+        {
+            int result;
+            asm {
+                mov rbx, $0
+                mov $out0, rbx
+            } out(result : "=r") in(value : "r") clobber("rbx");
+            return result;
+        }
+    }
+}

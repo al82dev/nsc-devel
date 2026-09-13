@@ -74,6 +74,11 @@ CodeView propia. El backend conserva una sola operación asm y genera directivas
 identidad remapeada del archivo; así PDB permite detenerse en instrucciones sucesivas sin alterar
 constraints, continuidad de registros ni saltos locales. `-g0` no agrega directivas de depuración.
 
+La frontera ABI de funciones `export extern C` que contienen asm está certificada en Windows x64
+por consumidores independientes C11 y C++20. Ambos consumen exclusivamente el header y la import
+library generados, ejercitan registros y memoria y verifican en ejecución que un clobber de `rbx`
+se preserve conforme a la convención no volátil Win64.
+
 Después de validarse, cada bloque es una operación propia de HIR y MIR. Conserva los bytes exactos,
 líneas y rangos fuente, operands con ordinal/constraint/valor o dirección, categorías de clobber y
 la obligación de preservar registros no volátiles. MIR usa schema 1.2 y no vuelve a interpretar el

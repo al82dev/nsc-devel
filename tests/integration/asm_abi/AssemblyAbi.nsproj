@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>AssemblyAbi</Name>
+    <OutputType>SharedLibrary</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

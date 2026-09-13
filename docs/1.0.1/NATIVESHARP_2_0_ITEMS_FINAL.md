@@ -84,7 +84,7 @@
 54. **299 — Lowering LLVM de asm / Assembly LLVM lowering — COMPLETADO / COMPLETE**
 55. **300 — Barreras de optimización alrededor de asm / Assembly optimization barriers — COMPLETADO / COMPLETE**
 56. **301 — PDB y stepping dentro de asm / Assembly PDB and stepping — COMPLETADO / COMPLETE**
-57. **302 — Certificación ABI C/C++ de asm / C and C++ assembly ABI certification**
+57. **302 — Certificación ABI C/C++ de asm / C and C++ assembly ABI certification — COMPLETADO / COMPLETE**
 
 ## Tanda 5 — Atomics y memoria de sistema
 
