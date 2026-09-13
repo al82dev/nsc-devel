@@ -671,8 +671,27 @@ private:
         LLVMMetadataRef file = LLVMDIBuilderCreateFileWithChecksum(
             debugBuilder_, filename.data(), filename.size(), directory.data(), directory.size(),
             CSK_SHA256, checksum.data(), checksum.size(), nullptr, 0);
-        if (file != nullptr) debugFiles_.emplace(fileKey, file);
+        if (file != nullptr)
+        {
+            debugFiles_.emplace(fileKey, file);
+            // LLVM's CodeView streamer numbers files in the same first-use order in which the
+            // lowering creates their DIFile records. Integrated assembly uses that stable number
+            // in generated .cv_loc directives so every physical instruction line remains
+            // step-able without splitting one asm contract into semantically different calls.
+            debugCodeViewFileNumbers_.emplace(
+                fileKey, static_cast<unsigned>(debugCodeViewFileNumbers_.size() + 1));
+        }
         return file;
+    }
+
+    unsigned debugCodeViewFileNumber(SourceLocation location)
+    {
+        if (debugBuilder_ == nullptr || !location.isValid()) return 0;
+        const std::uint32_t fileKey = location.fileId().value();
+        if (debugFiles_.find(fileKey) == debugFiles_.end() && debugFile(location) == nullptr)
+            return 0;
+        const auto found = debugCodeViewFileNumbers_.find(fileKey);
+        return found == debugCodeViewFileNumbers_.end() ? 0 : found->second;
     }
 
     LLVMMetadataRef createDebugSubprogram(const frontend::ProjectOopMirFunction& function)
@@ -5448,18 +5467,36 @@ private:
         };
 
         std::string assembly;
+        const auto appendAssemblyLine = [&](std::string_view text)
+        {
+            if (!assembly.empty()) assembly.push_back('\n');
+            assembly.append(text);
+        };
         for (const frontend::ProjectOopMirNode* line : lines)
         {
             std::string rewritten;
             if (!rewritePlaceholders(line->stringValue, rewritten)) return false;
-            if (!assembly.empty()) assembly.push_back('\n');
+
+            if (debugInformation_ != DebugInformationKind::None && sourceManager_ != nullptr &&
+                line->syntax != nullptr && line->syntax->range().isValid())
+            {
+                const SourceLocation location = line->syntax->range().begin();
+                const unsigned fileNumber = debugCodeViewFileNumber(location);
+                if (fileNumber != 0)
+                {
+                    const source::SourcePosition position = sourceManager_->getPosition(location);
+                    appendAssemblyLine(
+                        ".cv_loc 0 " + std::to_string(fileNumber) + " " +
+                        std::to_string(position.line) + " " + std::to_string(position.column));
+                }
+            }
 
             constexpr std::string_view labelPrefix = "label:";
             constexpr std::string_view branchPrefix = "branch:";
             if (line->elementTypeKey.starts_with(labelPrefix))
             {
                 const std::string label = line->elementTypeKey.substr(labelPrefix.size());
-                assembly.append(".Lnsc_").append(label).append("_${:uid}:");
+                appendAssemblyLine(".Lnsc_" + label + "_${:uid}:");
             }
             else if (line->elementTypeKey.starts_with(branchPrefix))
             {
@@ -5469,11 +5506,11 @@ private:
                 const std::string mnemonic = line->elementTypeKey.substr(
                     branchPrefix.size(), separator - branchPrefix.size());
                 const std::string label = line->elementTypeKey.substr(separator + 1);
-                assembly.append(mnemonic).append(" .Lnsc_").append(label).append("_${:uid}");
+                appendAssemblyLine(mnemonic + " .Lnsc_" + label + "_${:uid}");
             }
             else
             {
-                assembly.append(rewritten);
+                appendAssemblyLine(rewritten);
             }
         }
 
@@ -11568,6 +11605,7 @@ private:
     LLVMDIBuilderRef debugBuilder_ = nullptr;
     LLVMMetadataRef debugCompileUnit_ = nullptr;
     std::unordered_map<std::uint32_t, LLVMMetadataRef> debugFiles_;
+    std::unordered_map<std::uint32_t, unsigned> debugCodeViewFileNumbers_;
     std::unordered_map<std::string, LLVMMetadataRef> debugTypes_;
     std::unordered_map<std::string, LLVMMetadataRef> debugPointeeTypes_;
     std::unordered_set<std::size_t> debugDeclaredLocals_;

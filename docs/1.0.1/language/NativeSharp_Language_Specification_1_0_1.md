@@ -815,6 +815,20 @@ is a broad compiler barrier for ordinary memory accesses, while `cc` exposes fla
 Without `memory`, asm is not an implicit global memory fence; only its declared dependencies and
 clobbers constrain optimization. MIR 1.2 records these effects explicitly.
 
+### NS-ASM-015 — Depuración fuente de assembly
+
+Con información de depuración habilitada, cada línea física no vacía de `asm` conserva su archivo,
+línea y columna como una ubicación CodeView estándar. Dos instrucciones consecutivas deben poder
+tener direcciones de stepping distintas en el PDB aunque pertenezcan a una sola sentencia
+NativeSharp. Las rutas publicadas obedecen `-fdebug-prefix-map` y el checksum corresponde a los
+bytes fuente exactos.
+
+El contrato ejecutable sigue siendo un solo bloque: producir stepping no puede separarlo en calls,
+insertar stores intermedios ni cambiar continuidad de registros, labels, outputs o clobbers. `-g0`
+no cambia el código con marcadores de depuración. / With debug information enabled, every non-blank
+physical asm line retains a standard CodeView source location. Consecutive instructions remain
+distinct PDB stepping addresses without splitting or otherwise changing the assembly contract.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

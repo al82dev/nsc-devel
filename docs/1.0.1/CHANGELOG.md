@@ -41,6 +41,9 @@ empaqueta con NativeSharp 1.0.1.
 - MIR 1.2 materializa el contrato de optimización de asm: side effects obligatorios y resúmenes
   explícitos de clobber de memoria/flags. O2 no elimina bloques sin operands ni mueve o fusiona
   stores a través de `clobber("memory")`.
+- Los perfiles `-g` y `-gline-tables-only` publican en PDB una dirección de stepping distinta para
+  cada instrucción física de un bloque asm mediante ubicaciones CodeView estándar, sin dividir el
+  contrato asm en múltiples llamadas.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

@@ -69,6 +69,11 @@ Todo bloque asm es un efecto observable, incluso sin operands. Un clobber `memor
 global para accesos ordinarios y `cc` declara el estado de flags destruido. Estas propiedades son
 flags MIR explícitas y O2 conserva tanto el bloque como el orden de stores alrededor de la barrera.
 
+Con `-g` o `-gline-tables-only`, cada línea física ejecutable del bloque recibe una ubicación
+CodeView propia. El backend conserva una sola operación asm y genera directivas `.cv_loc` con la
+identidad remapeada del archivo; así PDB permite detenerse en instrucciones sucesivas sin alterar
+constraints, continuidad de registros ni saltos locales. `-g0` no agrega directivas de depuración.
+
 Después de validarse, cada bloque es una operación propia de HIR y MIR. Conserva los bytes exactos,
 líneas y rangos fuente, operands con ordinal/constraint/valor o dirección, categorías de clobber y
 la obligación de preservar registros no volátiles. MIR usa schema 1.2 y no vuelve a interpretar el

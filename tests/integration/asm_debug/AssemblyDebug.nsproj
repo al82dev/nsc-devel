@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>AssemblyDebug</Name>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+  </ItemGroup>
+</Project>

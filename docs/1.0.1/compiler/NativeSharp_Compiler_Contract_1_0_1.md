@@ -777,3 +777,15 @@ merging, or moving ordinary memory operations across the block. A `cc` clobber s
 destruction. In the absence of `memory`, only declared operands and other clobbers constrain the
 optimizer; assembly is not an implicit full memory fence. Focused O2 evidence shall retain an
 operand-free block and stores on both sides of a memory-clobber block in source order.
+
+## NSC-ASM-015 — CodeView locations for assembly instructions
+
+When either `-g` or `-gline-tables-only` is active, LLVM lowering shall prefix every physical
+non-blank assembly source line with a generated CodeView location for that line and column. The
+file number shall identify the same checksummed and prefix-remapped `DIFile` used by the enclosing
+NativeSharp function. `-g0` shall add no debug directive.
+
+The backend shall retain one inline-assembly operation for the complete source block. It shall not
+split lines into independent calls merely to manufacture stepping records, because doing so can
+change register continuity, outputs and local control flow. Focused O0 evidence shall link a
+standard PDB, execute the program, and show distinct addresses for consecutive instruction lines.

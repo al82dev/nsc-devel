@@ -1,0 +1,16 @@
+namespace AssemblyDebug
+{
+    public static class Program
+    {
+        public static int Main()
+        {
+            int source = 40;
+            int result;
+            asm {
+                mov $out0, $0
+                add $out0, $1
+            } out(result : "={rax}") in(source : "r", 2 : "i") clobber("cc");
+            return result;
+        }
+    }
+}

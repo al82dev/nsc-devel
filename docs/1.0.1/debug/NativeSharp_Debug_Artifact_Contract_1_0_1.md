@@ -177,3 +177,16 @@ call location. A preferred `inline` call that is not expanded and a `noinline` b
 ordinary procedure records. O0 products without a required-inline obligation remain partitionable,
 as do other profiles not constrained by this clause. Compilation throughput must not be obtained by
 silently retaining a forbidden residual call or dropping a truthful inline frame.
+
+## NSC-DEBUG-009 — Integrated assembly stepping
+
+Integrated assembly shall participate in the standard CodeView/PDB line program. Under `-g` and
+`-gline-tables-only`, each executable physical assembly line shall carry its authored file, line
+and column. Consecutive instructions that emit bytes shall retain distinct stepping addresses at
+O0. Source paths and SHA-256 identity obey the same normalization and prefix-remapping contract as
+ordinary NativeSharp statements.
+
+Line attribution shall be encoded inside the single backend assembly operation using generated
+CodeView locations. The compiler shall not obtain prettier stepping by splitting one block into
+operations with different register, output, clobber or local-branch semantics. These locations are
+absent under `-g0` and require no NativeSharp-specific PDB extension or debugger protocol.
