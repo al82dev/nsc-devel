@@ -524,3 +524,19 @@ producer-consumer matrix. `--print-migration-baseline`, `--write-migration-basel
 `--verify-migration-baseline` shall share one ordered field authority. Missing, reordered,
 additional or incompatible fields are compilation failures. Any future 2.0 proposal must classify
 each difference from this artifact as preserved, migrated, or intentionally broken before release.
+
+## NSC-INLINE-001 — Authoritative inlining policy
+
+The frontend shall represent every callable with exactly one `InliningPolicy`: `Automatic`,
+`Preferred`, `Required`, or `Forbidden`. All later semantic, metadata, optimization, and diagnostic
+phases shall consume that vocabulary rather than infer policy independently. Invalid serialized
+values fail closed.
+
+`Automatic` permits the target-aware cost model to decide. `Preferred` increases profitability but
+never overrides legality. `Required` requires every statically resolved call to expand and shall
+produce a source diagnostic when recursion, missing bodies, unresolved dispatch, or another safety
+constraint makes that impossible. `Forbidden` must prevent expansion at every optimization level.
+
+Attributes implementing these policies are optimization controls, not ABI declarations. Required
+out-of-line definitions, public/export identities, ownership and EH cleanups, dynamic dispatch and
+truthful inline debug scopes remain governed by their existing contracts.

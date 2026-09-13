@@ -695,6 +695,32 @@ switch intermedio. Etiquetas duplicadas o no constantes se rechazan.
 
 ## 12. Optimización y observabilidad
 
+### NS-INLINE-001 — Contrato semántico de inlining
+
+Cada callable tiene exactamente una política de inlining: automática, preferida (`inline`),
+obligatoria (`forceinline`) o prohibida (`noinline`). La política automática deja la decisión al
+modelo de costo. La preferida solicita expansión, pero permite rechazarla cuando no sea legal o
+segura. La obligatoria exige expandir todo call site cuyo destino sea estáticamente resoluble; si
+la expansión no puede realizarse, el compilador debe diagnosticarlo. La prohibida exige conservar
+una llamada fuera de línea.
+
+El inlining no cambia el orden de evaluación ni efectos observables, ownership, préstamos,
+cleanups, destrucción, propagación de excepciones, dispatch virtual o de interfaz, layout, ABI,
+identidad de símbolos ni requisitos de exportación. Un miembro público, exportado o cuya dirección
+se toma conserva una definición fuera de línea cuando el programa o ABI pueda necesitarla. Un call
+virtual o de interfaz sólo puede expandirse después de demostrar el destino real sin omitir el
+dispatch permitido. Las políticas contradictorias se rechazan y una política desconocida en un
+artefacto precompilado nunca se interpreta como automática.
+
+Cuando una expansión ocurre con información de depuración, el compilador debe atribuir instrucciones
+y variables a scopes inline reales y conservar un sitio de llamada recorrible. La política no
+autoriza inventar frames ni ocultar un frame que todavía ejecuta fuera de línea.
+
+Every callable has exactly one inlining policy: automatic, preferred, required, or forbidden.
+Inlining never changes observable semantics, ownership, cleanup, exception, dispatch, ABI, symbol,
+export, or debugging obligations. Required inlining must diagnose a statically resolvable call that
+cannot be expanded; forbidden inlining must retain an out-of-line call.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su

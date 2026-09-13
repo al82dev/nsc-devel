@@ -76,6 +76,13 @@ locals explícitos o `var`, parámetros, campos, casts, `new`, arrays, punteros 
 by-reference aportan evidencia. `null`, una lambda sin target o un parámetro presente sólo en el
 retorno no aportan tipo; en esos casos se escriben los argumentos explícitos.
 
+El compilador modela el inlining con cuatro políticas semánticas exclusivas: automático,
+preferido (`inline`), obligatorio (`forceinline`) y prohibido (`noinline`). La política gobierna
+la decisión de optimización, nunca el significado del programa. Evaluación, efectos, ownership,
+cleanups, excepciones, dispatch dinámico, ABI, símbolos públicos y observabilidad de depuración
+deben permanecer correctos con o sin expansión. Esta entrega fija el contrato interno; la sintaxis
+y el lowering de cada modificador se habilitan en los siguientes ítems de la tanda 3.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

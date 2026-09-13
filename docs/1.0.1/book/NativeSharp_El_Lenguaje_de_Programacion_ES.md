@@ -1931,6 +1931,29 @@ bibliotecas modernas.
 `--print-llvm-pipeline` documentan la configuración efectiva. `--version` debe guardarse junto a una
 certificación para que “funciona” tenga un referente concreto.
 
+### 32.3 Contrato de inlining
+
+Inlining sustituye una llamada por una expansión del cuerpo del destino; es una transformación del
+compilador, no una convención de llamada diferente. NativeSharp distingue cuatro políticas:
+
+| Política | Intención | Obligación |
+|---|---|---|
+| automática | dejar decidir al modelo de costo | puede expandir o conservar la llamada |
+| `inline` | favorecer una expansión rentable | puede negarse por legalidad o seguridad |
+| `forceinline` | exigir la expansión de un destino estático | expande o produce diagnóstico |
+| `noinline` | conservar el límite de llamada | nunca expande el call site |
+
+Estas políticas no conceden permiso para alterar el programa. Los argumentos se evalúan en el
+mismo orden; ownership, préstamos, destrucción y excepciones conservan sus rutas; una llamada
+virtual o de interfaz no pierde su dispatch hasta demostrar un destino único. Una función pública,
+exportada o cuya dirección se toma todavía necesita un símbolo fuera de línea cuando otro módulo o
+la ABI puedan llamarlo.
+
+En una compilación con debug, una expansión real produce un inline site que relaciona las
+instrucciones con el cuerpo y con la ubicación de la llamada. Si la llamada permanece fuera de
+línea, sigue existiendo un frame ordinario. El depurador debe mostrar lo ocurrido, no la preferencia
+que el programador escribió.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |

@@ -6,6 +6,10 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Lenguaje y Core
 
+- El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
+  obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
+  ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su
+  lowering se incorporan en las siguientes entregas de la tanda.
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union

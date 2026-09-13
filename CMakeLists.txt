@@ -754,6 +754,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_generic_inference_tests)
     add_test(NAME nsc.language.generic-inference COMMAND nsc_generic_inference_tests)
 
+    add_executable(nsc_inlining_policy_tests tests/unit/InliningPolicyTests.cpp)
+    target_link_libraries(nsc_inlining_policy_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_inlining_policy_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_inlining_policy_tests)
+    add_test(NAME nsc.language.inlining-policy COMMAND nsc_inlining_policy_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)
