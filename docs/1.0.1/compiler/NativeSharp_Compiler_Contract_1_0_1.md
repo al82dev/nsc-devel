@@ -226,6 +226,11 @@ many-worker compilation of unchanged input shall produce equivalent tokens, synt
 diagnostics and syntax-unit dumps. The dedicated `syntax-read`, `syntax-lex` and `syntax-parse`
 timings measure their respective complete parallel stages.
 
+Detailed timing preserves dependency order: the driver loads `precompiled-metadata`, the frontend
+builds the `project-graph`, physical `syntax-read` completes, `precompiled-syntax` units are
+materialized, and only then do `syntax-lex` and `syntax-parse` run. The report shall include every
+reached phase exactly in execution order before `timing total_ms`.
+
 ## NSC-NAMES-001 — Parallel per-file declaration and binding indexes
 
 After syntax is complete, each source unit shall independently index namespace declarations and

@@ -628,8 +628,9 @@ int main()
         const std::vector<std::string_view> expectedPhases = {
             "precompiled-metadata",
             "project-graph",
-            "syntax-lex",
+            "syntax-read",
             "precompiled-syntax",
+            "syntax-lex",
             "syntax-parse",
             "generics",
             "names",
