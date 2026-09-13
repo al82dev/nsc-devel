@@ -60,6 +60,10 @@ enum class AstNodeKind
     ThrowStatement,
     UsingStatement,
     StaticAssertStatement,
+    // `asm { ... }`. Item 287 records the structural assembly block and its canonical token
+    // spelling. Assembly-specific tokens and per-instruction locations are introduced by item
+    // 288; operands and executable semantics are deliberately later layers.
+    InlineAssemblyStatement,
     ExpressionStatement,
 
     IdentifierExpression,

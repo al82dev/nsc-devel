@@ -620,6 +620,25 @@ cabecera de objeto pertenecen al ABI OOP, no al contrato de value layout que exp
 En una especialización genérica cerrada se mide el layout de la especialización concreta. Un campo
 inexistente, estático o perteneciente a un tipo que no sea struct/union es un error de compilación.
 
+### NS-ASM-001 — Frontera gramatical de ensamblador integrado
+
+`asm { ... }` es una sentencia de bloque válida exclusivamente dentro del cuerpo de una función o
+método. No requiere `;` posterior. Sus braces externos delimitan la sentencia; braces internos
+deben estar balanceados. En la entrega 287 `asm` es contextual: fuera de la forma `asm {` conserva
+su validez como identificador ordinario.
+
+El nodo AST conserva el rango de la sentencia completa y una secuencia canónica provisional de los
+tokens del cuerpo. Esa secuencia no constituye todavía un contrato de whitespace, líneas,
+operandos, registros ni efectos. Mientras no estén presentes los contratos posteriores de la tanda
+4, el análisis semántico debe rechazar el nodo con `InlineAssemblyNotAvailable`; nunca debe llegar a
+HIR como un nodo desconocido ni aceptarse silenciosamente como código sin efecto.
+
+`asm { ... }` is a block statement valid only inside a function or method body and requires no
+trailing semicolon. In delivery 287 the spelling is contextual. The AST retains the complete
+statement range and a provisional canonical token sequence. Until the later batch-4 operand and
+lowering contracts are implemented, semantic analysis must reject it with
+`InlineAssemblyNotAvailable`, never as an unknown internal HIR node or a silent no-op.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

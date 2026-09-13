@@ -637,3 +637,14 @@ record nested under the caller, retain authored body lines and locals, and retai
 location. Preferred calls that remain unexpanded and forbidden calls shall retain ordinary
 procedure records. Products without required-inline callables keep the existing partitioned O0
 path; this restriction shall not globally disable parallel code generation.
+
+## NSC-ASM-001 — Integrated assembly grammar boundary
+
+The parser shall recognize contextual `asm { ... }` only as a statement in function and method
+bodies, consume balanced braces, retain an explicit `InlineAssemblyStatement` AST identity, and
+resume at the following statement without requiring a semicolon. Namespace-scope use and an
+unterminated block shall produce source diagnostics with deterministic recovery.
+
+Before the assembly operand and lowering contracts are present, both standalone and project
+semantic pipelines shall reject the AST node with `InlineAssemblyNotAvailable`. No pipeline may
+treat it as an expression, silently erase it, or fail later with an unsupported-node internal error.

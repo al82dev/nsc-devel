@@ -15,6 +15,11 @@ en la gramática y en la especificación, no porque exista en C#. El código de 
 3. una comodidad de C# deliberadamente ausente;
 4. un defecto real donde NSC incumple su propio contrato.
 
+La línea 2.0 reconoce estructuralmente `asm { ... }` como una sentencia dentro de funciones y
+métodos. El ítem 287 establece únicamente su frontera gramatical y nodo AST: el lexer específico,
+operandos, restricciones, validación y emisión se incorporan en los ítems siguientes de la tanda 4.
+Hasta entonces no constituye todavía una sentencia ejecutable.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

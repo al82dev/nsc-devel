@@ -630,6 +630,10 @@ if(NSC_BUILD_TESTS)
     nsc_add_unit_test(nsc_diagnostic_tests tests/unit/DiagnosticTests.cpp nsc.diagnostics)
     nsc_add_unit_test(nsc_lexer_tests tests/unit/LexerTests.cpp nsc.lexer)
     nsc_add_unit_test(nsc_parser_tests tests/unit/ParserTests.cpp nsc.parser)
+    nsc_add_unit_test(
+        nsc_integrated_assembly_grammar_tests
+        tests/unit/IntegratedAssemblyGrammarTests.cpp
+        nsc.integrated-assembly.grammar)
     nsc_add_unit_test(nsc_namespace_syntax_tests tests/unit/NamespaceSyntaxTests.cpp nsc.namespace-syntax)
     nsc_add_unit_test(nsc_class_declaration_tests tests/unit/ClassDeclarationTests.cpp nsc.class-declarations)
     nsc_add_unit_test(nsc_class_member_syntax_tests tests/unit/ClassMemberSyntaxTests.cpp nsc.class-member-syntax)

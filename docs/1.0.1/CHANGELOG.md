@@ -6,6 +6,9 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Lenguaje y Core
 
+- La gramática 2.0 reconoce bloques `asm { ... }` dentro de funciones y métodos mediante un nodo
+  AST explícito, conserva una representación canónica provisional del cuerpo y diagnostica su uso
+  en namespace. La semántica ejecutable se completa de forma incremental en la tanda 4.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

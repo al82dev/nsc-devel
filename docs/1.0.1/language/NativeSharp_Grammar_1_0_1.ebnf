@@ -90,9 +90,13 @@ block = "{", { statement }, "}" ;
 statement = block | variable-declaration | expression-statement | if-statement |
             while-statement | do-statement | for-statement | foreach-statement |
             switch-statement | "break", ";" | "continue", ";" | return-statement |
-            try-statement | throw-statement | using-statement | static-assert-statement | ";" ;
+            try-statement | throw-statement | using-statement | static-assert-statement |
+            inline-assembly-statement | ";" ;
 static-assert-statement = "static_assert", "(", expression,
                           [ ",", string-literal ], ")", ";" ;
+inline-assembly-statement = "asm", assembly-block ;
+assembly-block = "{", { assembly-body-token | assembly-block }, "}" ;
+assembly-body-token = ? ordinary lexer token other than "{", "}" or EOF ? ;
 variable-declaration = [ "const" ], ( "var" | type ), identifier,
                        [ "=", expression | aggregate-initializer ], ";" ;
 expression-statement = expression, ";" ;

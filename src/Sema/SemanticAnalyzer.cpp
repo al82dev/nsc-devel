@@ -704,6 +704,12 @@ void SemanticAnalyzer::analyzeStatement(ast::AstNode* node)
         case ast::AstNodeKind::StaticAssertStatement:
             analyzeStaticAssert(node);
             break;
+        case ast::AstNodeKind::InlineAssemblyStatement:
+            report(
+                node->range(),
+                diagnostics::DiagnosticId::InlineAssemblyNotAvailable,
+                "integrated assembly is recognized but is not executable until its operand and lowering contracts are complete");
+            break;
         case ast::AstNodeKind::ExpressionStatement:
             analyzeExpression(node->first());
             break;

@@ -2065,6 +2065,13 @@ void ProjectMethodBodyModel::analyzeStatement(
             }
             break;
         }
+        case ast::AstNodeKind::InlineAssemblyStatement:
+            diagnostics.report(
+                diagnostics::DiagnosticId::InlineAssemblyNotAvailable,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "integrated assembly is recognized but is not executable until its operand and lowering contracts are complete");
+            break;
         case ast::AstNodeKind::ExpressionStatement:
             analyzeExpression(statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;

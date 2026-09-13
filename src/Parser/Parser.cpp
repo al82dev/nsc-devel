@@ -1273,6 +1273,22 @@ ast::AstNode* Parser::parseUsingDirective()
 
 ast::AstNode* Parser::parseGlobalDeclaration()
 {
+    // Item 287 keeps `asm` contextual: an existing type/local/member called `asm` is not broken.
+    // The spelling only opens an assembly statement when immediately followed by `{`. At
+    // namespace scope that same unambiguous shape gets a precise diagnostic and is consumed as a
+    // unit so recovery can continue at the next declaration.
+    if (atContextualKeyword("asm") && peek().kind() == TokenKind::LeftBrace)
+    {
+        const SourceRange keywordRange = current().range();
+        parseInlineAssemblyStatement();
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            keywordRange,
+            "asm blocks are only valid inside function or method bodies");
+        return nullptr;
+    }
+
     const std::size_t declarationBeginIndex = index_;
     TokenKind accessibility = TokenKind::Invalid;
     bool isPartial = false;
@@ -4649,6 +4665,8 @@ ast::AstNode* Parser::parseBlock()
 ast::AstNode* Parser::parseStatement()
 {
     if (at(TokenKind::LeftBrace)) return parseBlock();
+    if (atContextualKeyword("asm") && peek().kind() == TokenKind::LeftBrace)
+        return parseInlineAssemblyStatement();
     if (at(TokenKind::KwIf)) return parseIfStatement();
     if (at(TokenKind::KwWhile)) return parseWhileStatement();
     if (at(TokenKind::KwDo)) return parseDoWhileStatement();
@@ -4729,6 +4747,52 @@ ast::AstNode* Parser::parseStaticAssertStatement()
         tokenRangeFrom(beginIndex));
     statement->setFirst(condition);
     statement->setText(std::move(message));
+    return statement;
+}
+
+ast::AstNode* Parser::parseInlineAssemblyStatement()
+{
+    const std::size_t beginIndex = index_;
+    consume(); // contextual `asm`
+    expect(TokenKind::LeftBrace, "'{' after asm");
+
+    // Item 287 owns only the grammar boundary. The ordinary lexer has already separated the
+    // contents, so retain a deterministic spelling without pretending it preserves assembly
+    // whitespace or instruction locations. Item 288 replaces this bridge with assembly-aware
+    // lexical records. Balanced braces make diagnostics recover correctly even when a future
+    // dialect uses a braced operand or directive inside the block.
+    std::string canonicalBody;
+    std::size_t braceDepth = 1;
+    while (braceDepth != 0 && !at(TokenKind::EndOfFile))
+    {
+        if (at(TokenKind::LeftBrace))
+        {
+            ++braceDepth;
+        }
+        else if (at(TokenKind::RightBrace))
+        {
+            --braceDepth;
+            if (braceDepth == 0)
+            {
+                consume();
+                break;
+            }
+        }
+
+        if (!canonicalBody.empty()) canonicalBody.push_back(' ');
+        canonicalBody += current().lexeme();
+        consume();
+    }
+
+    if (braceDepth != 0)
+    {
+        expect(TokenKind::RightBrace, "'}' to close asm block");
+    }
+
+    ast::AstNode* statement = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::InlineAssemblyStatement,
+        tokenRangeFrom(beginIndex));
+    statement->setText(std::move(canonicalBody));
     return statement;
 }
 
