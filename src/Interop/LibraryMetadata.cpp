@@ -759,8 +759,15 @@ bool buildMetadataModel(
     std::vector<std::size_t> memberOrdinals;
     for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
     {
-        if (isPubliclyReachableRootType(members[ordinal].declaringTypeOrdinal))
+        const frontend::ClassMemberSymbol& member = members[ordinal];
+        const bool contractAccessibility =
+            member.accessibility == frontend::ClassMemberAccessibility::Public ||
+            member.accessibility == frontend::ClassMemberAccessibility::Protected;
+        if (contractAccessibility &&
+            isPubliclyReachableRootType(member.declaringTypeOrdinal))
+        {
             memberOrdinals.push_back(ordinal);
+        }
     }
     std::sort(memberOrdinals.begin(), memberOrdinals.end(), [&](std::size_t left, std::size_t right) {
         const frontend::ClassMemberSymbol& a = members[left];

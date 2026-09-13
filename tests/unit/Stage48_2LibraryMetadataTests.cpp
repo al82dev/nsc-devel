@@ -1694,6 +1694,7 @@ namespace HiddenSurface
         public static int Rigid;
     }
 }
+
 )NS");
 
     const auto project = directory / "InternalTypePublicField.nsproj";
@@ -1725,6 +1726,62 @@ namespace HiddenSurface
     output.clear(); error.clear();
     tests.expect(verifyArtifacts(metadataPath, library, {}, output, error) == ExitCode::Success,
                  "artifact verification does not require public members of an internal container (" + error + ")");
+}
+
+void testPrivateStaticFieldIsNotPublished(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "PrivateStaticField";
+    writeProject(directory, "PrivateStaticField", "SharedLibrary", R"NS(
+namespace HiddenMemberSurface
+{
+    extern C delegate void NativeSetter(int value);
+
+    public class Api
+    {
+        private static NativeSetter callback;
+
+        public static void Set(int value)
+        {
+        }
+    }
+}
+)NS");
+
+    const auto project = directory / "PrivateStaticField.nsproj";
+    const auto library = directory / "PrivateStaticField.lib";
+    const auto runtime = directory / "PrivateStaticField.dll";
+    const auto metadataPath = directory / "PrivateStaticField.nsmeta";
+    std::string output;
+    std::string error;
+    tests.expect(emitProduct("--emit-project-oop-dll", project, runtime, output, error) == ExitCode::Success,
+                 "producer with a private delegate-typed static field emits a DLL (" + error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(metadataPath, metadata, error);
+    tests.expect(read, "private static field NSMETA can be decoded (" + error + ")");
+    const bool publishesPrivateField = std::ranges::any_of(
+        metadata.members, [](const LibraryMetadataMember& member) {
+            return member.name == "callback" &&
+                member.declaringTypeKey.ends_with("::HiddenMemberSurface.Api");
+        });
+    tests.expect(read && !publishesPrivateField,
+                 "private static implementation fields are omitted from public NSMETA members");
+    const LibraryMetadataType* hiddenDelegate = findType(metadata, "::HiddenMemberSurface.NativeSetter");
+    tests.expect(read && hiddenDelegate == nullptr,
+                 "a type referenced only by a private static field is not promoted into public NSMETA");
+    const bool publishesPublicMethod = std::ranges::any_of(
+        metadata.members, [](const LibraryMetadataMember& member) {
+            return member.name == "Set" &&
+                member.declaringTypeKey.ends_with("::HiddenMemberSurface.Api");
+        });
+    tests.expect(read && publishesPublicMethod,
+                 "filtering private fields preserves public members of the same container");
+
+    output.clear(); error.clear();
+    tests.expect(verifyArtifacts(metadataPath, library, runtime, output, error) == ExitCode::Success,
+                 "artifacts verify without private static implementation members (" + error + ")");
 }
 
 void testPublicInterfaceSignaturesMatchDllExports(TestContext& tests, const std::filesystem::path& root)
@@ -1836,6 +1893,7 @@ int main()
     testScopeAndFailureBehavior(tests, root);
     testInterfaceContractsUseDeclaringTypeKind(tests, root);
     testPublicFieldInsideInternalTypeIsNotRequired(tests, root);
+    testPrivateStaticFieldIsNotPublished(tests, root);
     testPublicInterfaceSignaturesMatchDllExports(tests, root);
     testPublicReferenceArraysMatchDllExports(tests, root);
 

@@ -25,6 +25,8 @@ empaqueta con NativeSharp 1.0.1.
 - La selección de runtimes depende de símbolos efectivamente alcanzados y deduplica DLLs idénticas
   por contenido, no por ruta incidental.
 - El verificador compara de manera temprana NSMETA, archivos COFF, DLL e import library.
+- NSMETA omite miembros privados e internos de tipos públicos sin perder el layout físico requerido;
+  tipos usados sólo por campos estáticos privados ya no contaminan la clausura pública.
 
 ## Depuración
 

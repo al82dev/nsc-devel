@@ -359,6 +359,19 @@ producer model's insertion position, because serialization deliberately canonica
 failed or incomplete decode must be reported without dereferencing absent records; malformed legacy
 metadata may fail, but the compatibility harness itself must never crash.
 
+## NSC-META-002 — Public member surface and private implementation state
+
+NSMETA member records shall contain only public and protected members declared by publicly reachable
+root-project types. Private and internal methods, properties, events and static fields are producer
+implementation details and shall not be serialized merely because their declaring type is public.
+A type referenced exclusively by such an omitted member shall not be promoted into the public type
+closure.
+
+This rule does not erase physical instance layout. Private instance fields that contribute to the
+size or offsets of a published type remain represented by its layout records, together with every
+type identity required to interpret that layout. Filtering API members and preserving ABI layout are
+separate operations.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR
