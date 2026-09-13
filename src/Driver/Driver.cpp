@@ -1,5 +1,6 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
+#include "nativesharp/Driver/CompilationJobPolicy.h"
 #include "nativesharp/Driver/DiagnosticBundle.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
@@ -94,6 +95,22 @@ namespace nativesharp::driver
 namespace
 {
 using target::BuiltinLayoutKind;
+
+bool parseBoundedDecimal(
+    std::string_view text, std::size_t maximum, std::size_t& value) noexcept
+{
+    if (text.empty()) return false;
+    std::size_t parsed = 0;
+    for (const unsigned char ch : text)
+    {
+        if (std::isdigit(ch) == 0) return false;
+        const std::size_t digit = static_cast<std::size_t>(ch - '0');
+        if (parsed > (maximum - digit) / 10U) return false;
+        parsed = parsed * 10U + digit;
+    }
+    value = parsed;
+    return true;
+}
 
 struct DriverExecutionScope final
 {
@@ -2579,6 +2596,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
 {
     DriverExecutionScope executionScope(output, error);
     llvm_backend::LlvmOptimizationBudgetScope optimizationBudgetScope(executionScope.o2Budget);
+    CompilationJobPolicy jobPolicy;
+    CompilationJobPolicyScope jobPolicyScope(jobPolicy);
     DriverExecutionScope* previousScope = activeExecutionScope;
     activeExecutionScope = &executionScope;
     struct RestoreScope final
@@ -2595,6 +2614,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     llvm_backend::LlvmOptimizationLevel optimizationLevel = llvm_backend::LlvmOptimizationLevel::O0;
     bool optimizationLevelSeen = false;
     bool optimizationBudgetSeen = false;
+    bool jobCountSeen = false;
+    bool reservedCoresSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
     std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
@@ -2618,6 +2639,56 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (argument == "--llvm-pass-trace")
         {
+            continue;
+        }
+        if (argument == "-j" || (argument.starts_with("-j") && argument.size() > 2U))
+        {
+            if (jobCountSeen)
+            {
+                error << "nsc: error: duplicate compilation job count\n";
+                return ExitCode::CommandLineError;
+            }
+            jobCountSeen = true;
+            std::string_view value;
+            if (argument == "-j")
+            {
+                if (argumentIndex + 1U >= arguments.size())
+                {
+                    error << "nsc: error: -j requires a job count from 1 through 1024\n";
+                    return ExitCode::CommandLineError;
+                }
+                value = arguments[++argumentIndex];
+            }
+            else
+            {
+                value = argument.substr(2);
+            }
+            std::size_t jobs = 0;
+            if (!parseBoundedDecimal(value, kMaximumCompilationJobs, jobs) || jobs == 0)
+            {
+                error << "nsc: error: compilation job count must be between 1 and 1024\n";
+                return ExitCode::CommandLineError;
+            }
+            jobPolicy.setRequestedJobs(jobs);
+            continue;
+        }
+        static constexpr std::string_view reservedCoresPrefix = "--reserve-cores=";
+        if (argument.starts_with(reservedCoresPrefix))
+        {
+            if (reservedCoresSeen)
+            {
+                error << "nsc: error: duplicate reserved-core count\n";
+                return ExitCode::CommandLineError;
+            }
+            reservedCoresSeen = true;
+            const std::string_view value = argument.substr(reservedCoresPrefix.size());
+            std::size_t reserved = 0;
+            if (!parseBoundedDecimal(value, kMaximumCompilationJobs - 1U, reserved))
+            {
+                error << "nsc: error: reserved-core count must be between 0 and 1023\n";
+                return ExitCode::CommandLineError;
+            }
+            jobPolicy.setReservedCores(reserved);
             continue;
         }
         static constexpr std::string_view timeoutPrefix = "--timeout-ms=";
@@ -2867,6 +2938,18 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         if (argument == "--print-compatibility-policy")
         {
             output << currentCompatibilityPolicy();
+            return ExitCode::Success;
+        }
+        if (argument == "--print-job-policy")
+        {
+            output << "hardware-threads: " << jobPolicy.hardwareThreads() << '\n'
+                   << "requested-jobs: ";
+            if (jobPolicy.usesAutomaticJobs()) output << "auto";
+            else output << jobPolicy.requestedJobs();
+            output << '\n'
+                   << "reserved-cores: " << jobPolicy.reservedCores() << '\n'
+                   << "effective-jobs: " << jobPolicy.effectiveJobs() << '\n'
+                   << "scheduler: sequential\n";
             return ExitCode::Success;
         }
         if (argument == "--print-migration-baseline")
@@ -3331,6 +3414,8 @@ void Driver::printHelp(std::ostream &output)
               "without changing the artifact or exit code.\n"
            << "--llvm-pass-trace enables the expensive full LLVM pass log and verify-each "
               "diagnostics for optimized builds.\n"
+           << "-j N (or -jN) caps compiler jobs; --reserve-cores=N keeps host capacity free. "
+              "Use --print-job-policy to inspect the effective value.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "

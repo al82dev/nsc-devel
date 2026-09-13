@@ -124,6 +124,18 @@ invocation. `--o2-budget-ms=N` may set it from 1 through 86,400,000 milliseconds
 when O2 work occurred. Exceeding the budget emits a warning but shall not abort the opaque LLVM
 pipeline, change the exit code, or alter the generated artifact.
 
+## NSC-JOBS-001 — Compilation job policy
+
+The compiler shall detect host hardware concurrency, treating an unavailable zero report as one.
+Automatic mode reserves one core and uses the remaining capacity, while always retaining at least
+one progress job. `-j N` and `-jN` accept 1 through 1,024 and cap requested compiler jobs.
+`--reserve-cores=N` accepts 0 through 1,023 and caps both automatic and explicit requests against
+available host capacity. Duplicate or malformed controls are command-line errors.
+
+`--print-job-policy` reports hardware threads, requested jobs, reserved cores, effective jobs and
+the current scheduler kind. Establishing the policy does not claim parallel execution: until the
+worker-pool contract is implemented, the scheduler shall identify itself as `sequential`.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR

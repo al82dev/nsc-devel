@@ -1,4 +1,5 @@
 #include "nativesharp/Basic/ExitCode.h"
+#include "nativesharp/Driver/CompilationJobPolicy.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
 
@@ -40,6 +41,9 @@ nativesharp::ExitCode runDriver(
 int main()
 {
     using nativesharp::ExitCode;
+    using nativesharp::driver::activeCompilationJobPolicy;
+    using nativesharp::driver::CompilationJobPolicy;
+    using nativesharp::driver::CompilationJobPolicyScope;
     using nativesharp::tests::TestContext;
 
     TestContext tests;
@@ -63,6 +67,9 @@ int main()
             "help documents the advisory cumulative O2 budget");
         tests.expect(output.str().find("--llvm-pass-trace") != std::string::npos,
             "help documents opt-in expensive LLVM pass diagnostics");
+        tests.expect(output.str().find("-j N") != std::string::npos &&
+                output.str().find("--reserve-cores=N") != std::string::npos,
+            "help documents compiler job and reserved-core controls");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
     }
 
@@ -93,6 +100,67 @@ int main()
         tests.expect(code == ExitCode::CommandLineError &&
                 error.str().find("between 1 and 86400000") != std::string::npos,
             "an invalid O2 optimization budget is rejected deterministically");
+    }
+
+    {
+        CompilationJobPolicy policy(16);
+        tests.expect(policy.usesAutomaticJobs() && policy.effectiveJobs() == 15,
+            "automatic jobs reserve one host core by default");
+        policy.setRequestedJobs(8);
+        tests.expect(policy.effectiveJobs() == 8,
+            "an explicit job count caps available compiler workers");
+        policy.setReservedCores(10);
+        tests.expect(policy.effectiveJobs() == 6,
+            "reserved cores cap an explicit job request against host capacity");
+        policy.setReservedCores(16);
+        tests.expect(policy.effectiveJobs() == 1,
+            "reserving every reported core still leaves one progress worker");
+        tests.expect(CompilationJobPolicy(0).effectiveJobs() == 1,
+            "an unavailable hardware-concurrency report falls back to one worker");
+    }
+
+    {
+        CompilationJobPolicy outer(8);
+        CompilationJobPolicy inner(4);
+        {
+            CompilationJobPolicyScope outerScope(outer);
+            tests.expect(activeCompilationJobPolicy() == &outer,
+                "a job-policy scope publishes its policy to the compiler thread");
+            {
+                CompilationJobPolicyScope innerScope(inner);
+                tests.expect(activeCompilationJobPolicy() == &inner,
+                    "a nested job-policy scope replaces the current policy");
+            }
+            tests.expect(activeCompilationJobPolicy() == &outer,
+                "leaving a nested job-policy scope restores the previous policy");
+        }
+        tests.expect(activeCompilationJobPolicy() == nullptr,
+            "leaving the outer job-policy scope clears compiler-thread state");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {
+            "--print-job-policy", "-j", "8", "--reserve-cores=2"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::Success &&
+                output.str().find("requested-jobs: 8") != std::string::npos &&
+                output.str().find("reserved-cores: 2") != std::string::npos &&
+                output.str().find("effective-jobs: ") != std::string::npos &&
+                output.str().find("scheduler: sequential") != std::string::npos,
+            "the driver reports the resolved job policy before parallel scheduling exists");
+        tests.expect(error.str().empty(), "a valid job policy keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string_view> arguments = {"--version", "-j0"};
+        const ExitCode code = runDriver(arguments, output, error);
+        tests.expect(code == ExitCode::CommandLineError &&
+                error.str().find("between 1 and 1024") != std::string::npos,
+            "zero compiler jobs are rejected deterministically");
     }
 
     {
