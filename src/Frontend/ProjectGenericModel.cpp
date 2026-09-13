@@ -1312,6 +1312,8 @@ ast::TypeSyntax* ProjectGenericModel::cloneType(
                     identity->second.push_back('*');
                 else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray)
                     identity->second += "[]";
+                else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
+                    identity->second += "[*]";
                 else
                     identity->second += "[fixed]";
             }
@@ -1493,6 +1495,7 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
     {
         if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer) result.push_back('*');
         else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray) result += "[]";
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) result += "[*]";
         else result += "[fixed]";
     }
     return result;
@@ -1622,6 +1625,7 @@ void ProjectGenericModel::appendTypeModifiers(
     {
         if (modifier.kind == ast::TypeModifierSyntaxKind::Pointer) identity.push_back('*');
         else if (modifier.kind == ast::TypeModifierSyntaxKind::DynamicArray) identity += "[]";
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) identity += "[*]";
         else identity += "[fixed]";
     }
 }

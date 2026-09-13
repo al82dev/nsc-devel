@@ -2719,6 +2719,17 @@ void ProjectMethodBodyModel::analyzeVariable(
     if (!isVarInferred && variable->typeSyntax() != nullptr)
     {
         const auto& modifiers = variable->typeSyntax()->modifiers();
+        if (std::ranges::any_of(modifiers, [](const ast::TypeModifierSyntax& modifier) {
+                return modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray;
+            }))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->typeSyntax()->range(),
+                "a flexible array is incomplete trailing struct storage and cannot be a local variable");
+            return;
+        }
         std::size_t fixedArrayModifierCount = 0;
         bool hasRuntimeExtent = false;
         for (const ast::TypeModifierSyntax& modifier : modifiers)
@@ -5471,6 +5482,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             const std::optional<std::string> fixedElementType = memberModel_ != nullptr
                 ? ProjectMemberModel::fixedArrayElementTypeKey(base.typeKey)
                 : std::nullopt;
+            const std::optional<std::string> flexibleElementType = memberModel_ != nullptr
+                ? ProjectMemberModel::flexibleArrayElementTypeKey(base.typeKey)
+                : std::nullopt;
             const bool rawPointerBase = ProjectTypeConversion::isPointer(base.typeKey);
             bool validFixedIndices = base.valid && fixedElementType.has_value() && !indices.empty();
             std::string indexedType = base.typeKey;
@@ -5560,11 +5574,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             const bool validPointerIndex = base.valid && rawPointerBase && indices.size() == 1 &&
                 indices.front().valid && ProjectTypeConversion::isIntegral(indices.front().typeKey);
-            if (validFixedIndices || validPointerIndex)
+            const bool validFlexibleIndex = base.valid && flexibleElementType.has_value() &&
+                indices.size() == 1 && indices.front().valid &&
+                ProjectTypeConversion::isIntegral(indices.front().typeKey) &&
+                indices.front().typeKey != "builtin:bool";
+            if (validFixedIndices || validFlexibleIndex || validPointerIndex)
             {
                 result.typeKey = validFixedIndices
                     ? indexedType
-                    : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
+                    : validFlexibleIndex
+                        ? *flexibleElementType
+                        : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
                 result.valid = true;
                 result.assignable =
                     !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();

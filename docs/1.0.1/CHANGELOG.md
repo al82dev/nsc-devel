@@ -12,6 +12,8 @@ empaqueta con NativeSharp 1.0.1.
   usando el mismo layout canónico que el ABI, los arreglos y los headers C.
 - `align(N)` puede aplicarse a un campo de instancia para elevar su alineación, su offset y la
   alineación final del agregado; el contrato se conserva en NSMETA y headers C.
+- `T[*]` declara una cola inline flexible como último campo de un struct; `sizeof` cubre sólo el
+  encabezado, el indexado es raw y el header C publica `T field[]`.
 - Los arreglos multidimensionales fijos usan `T[d0, d1, ...]`, almacenamiento inline contiguo y
   orden row-major sin cabecera ni asignación de heap.
 - `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice

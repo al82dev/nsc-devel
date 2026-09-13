@@ -27,6 +27,11 @@ campo actúa como alineación mínima, se aplica después de `pack(N)` y eleva t
 el padding final del contenedor. `at(offset)` puede combinarse con ella sólo cuando el offset
 satisface la alineación declarada. El mismo contrato se publica en NSMETA y en headers C.
 
+Un struct puede terminar en `T[*] Tail;` para modelar un flexible array member de C. El campo fija
+el offset y la alineación de `T`, pero no agrega un elemento a `sizeof(struct)`. El propietario
+reserva el encabezado más los elementos y conserva explícitamente su cantidad. Sólo se admiten
+elementos de lifetime trivial; la forma no puede aparecer en clases, unions, locales ni firmas.
+
 Los arreglos locales `T[length]` pueden tomar su longitud de una expresión integral evaluada al
 ejecutar la declaración. Su almacenamiento es contiguo, pertenece al frame actual y no requiere
 `new` ni `delete`. Esta forma no se extiende a campos, parámetros o retornos: esas posiciones forman

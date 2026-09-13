@@ -10,6 +10,8 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <limits>
+#include <functional>
+#include <set>
 #include <utility>
 
 namespace nativesharp::frontend
@@ -300,6 +302,21 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutTypeSyntax(
             continue;
         }
 
+        if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
+        {
+            if (modifierIndex + 1 != modifiers.size())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range,
+                    "a flexible array must be the outermost type modifier");
+                return std::nullopt;
+            }
+            current.size = 0;
+            continue;
+        }
+
         const std::optional<std::uint64_t> count = evaluateArrayCount(modifier.arrayCount);
         if (!count.has_value() || *count == 0)
         {
@@ -524,6 +541,39 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     }
 
     namedLayoutStates_[typeOrdinal] = NamedLayoutState::Visiting;
+    std::function<bool(std::string_view, std::set<std::size_t>&)> hasTrivialLifetime =
+        [&](std::string_view candidate, std::set<std::size_t>& visiting) -> bool
+    {
+        std::string current(candidate);
+        while (const std::optional<std::string> element =
+                   ProjectMemberModel::fixedArrayElementTypeKey(current))
+            current = *element;
+        if (!current.starts_with("type:")) return true;
+        const std::string_view identity = std::string_view(current).substr(5);
+        for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+        {
+            const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[ordinal];
+            if (declaration.identity.key() != identity) continue;
+            if (declaration.kind != NamedTypeDeclarationKind::Struct) return true;
+            if (!visiting.insert(ordinal).second) return false;
+            for (const std::size_t nestedOrdinal : memberModel_->membersOfType(ordinal))
+            {
+                if (nestedOrdinal >= memberModel_->members().size()) continue;
+                const ClassMemberSymbol& nested = memberModel_->members()[nestedOrdinal];
+                if (nested.kind == ClassMemberKind::Destructor ||
+                    (nested.kind == ClassMemberKind::Field && !nested.isStatic &&
+                     (nested.declaredOwnership == sema::OwnershipKind::Owned ||
+                      !hasTrivialLifetime(nested.declaredTypeKey, visiting))))
+                {
+                    visiting.erase(ordinal);
+                    return false;
+                }
+            }
+            visiting.erase(ordinal);
+            return true;
+        }
+        return true;
+    };
     std::vector<target::StructFieldRequest> physicalFields;
     std::vector<std::size_t> fieldMembers;
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
@@ -538,9 +588,28 @@ bool ProjectObjectLayoutModel::buildStructLayout(
             namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
             return false;
         }
+        const bool flexible =
+            ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey).has_value();
+        if (flexible)
+        {
+            const std::string element =
+                *ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey);
+            std::set<std::size_t> visiting;
+            if (member.declaredOwnership != sema::OwnershipKind::None ||
+                !hasTrivialLifetime(element, visiting))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member.range,
+                    "a flexible array requires an unqualified element type with trivial lifetime");
+                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+                return false;
+            }
+        }
         physicalFields.push_back(
             target::StructFieldRequest{
-                *fieldLayout, member.explicitFieldOffset, member.explicitFieldAlignment});
+                *fieldLayout, member.explicitFieldOffset, member.explicitFieldAlignment, flexible});
         fieldMembers.push_back(memberOrdinal);
     }
 
@@ -550,6 +619,20 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     // because in every respect except where the fields sit, they ARE identical. The markers were
     // written onto the declaration by the parser (`union`, `pack=N`, `align=N`).
     const target::StructLayoutOptions layoutOptions = parseStructLayoutOptions(type);
+    for (std::size_t index = 0; index < physicalFields.size(); ++index)
+    {
+        if (!physicalFields[index].isFlexibleArray) continue;
+        if (layoutOptions.isUnion || index + 1 != physicalFields.size())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                memberModel_->members()[fieldMembers[index]].range,
+                "a flexible array is permitted only as the final instance field of a non-union struct");
+            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+            return false;
+        }
+    }
     const std::optional<target::StructLayout> layout =
         targetLayout_.layoutStruct(physicalFields, layoutOptions);
     if (!layout.has_value())
@@ -693,6 +776,16 @@ bool ProjectObjectLayoutModel::buildClassLayout(
         if (member.kind != ClassMemberKind::Field || member.isStatic)
         {
             continue;
+        }
+
+        if (ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey).has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                member.range,
+                "a flexible array belongs only to the final field of a struct; class allocation has a fixed object size");
+            return false;
         }
 
         const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(

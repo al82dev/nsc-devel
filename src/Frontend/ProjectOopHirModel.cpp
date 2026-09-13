@@ -3520,7 +3520,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 const MethodExpressionTypeBinding* baseType = expressionType(baseSyntax);
                 const bool baseIsFixedArray = baseType != nullptr &&
                     ProjectMemberModel::fixedArrayElementTypeKey(baseType->typeKey).has_value();
-                auto base = lowerExpression(baseSyntax, memberOrdinal, baseIsFixedArray, error);
+                const bool baseIsFlexibleArray = baseType != nullptr &&
+                    ProjectMemberModel::flexibleArrayElementTypeKey(baseType->typeKey).has_value();
+                auto base = lowerExpression(
+                    baseSyntax, memberOrdinal, baseIsFixedArray || baseIsFlexibleArray, error);
                 if (base == nullptr) return nullptr;
                 std::vector<const ast::AstNode*> indices;
                 if (!expression->children().empty())
@@ -3607,8 +3610,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     const std::optional<std::string> fixedElement = baseIsFixedArray
                         ? ProjectMemberModel::fixedArrayElementTypeKey(indexedType)
                         : std::optional<std::string>();
+                    const std::optional<std::string> flexibleElement = baseIsFlexibleArray
+                        ? ProjectMemberModel::flexibleArrayElementTypeKey(indexedType)
+                        : std::optional<std::string>();
                     const std::string elementType = fixedElement.has_value()
-                        ? *fixedElement : core->elementTypeKey;
+                        ? *fixedElement
+                        : flexibleElement.has_value() ? *flexibleElement : core->elementTypeKey;
                     auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
                     if (index == nullptr) return nullptr;
                     address = makeNode(

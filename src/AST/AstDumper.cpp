@@ -119,6 +119,10 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         {
             output << "[]";
         }
+        else if (modifier.kind == TypeModifierSyntaxKind::FlexibleArray)
+        {
+            output << "[*]";
+        }
         else
         {
             output << "[expr]";

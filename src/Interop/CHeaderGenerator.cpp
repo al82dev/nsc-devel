@@ -456,8 +456,13 @@ bool emitStruct(
         // `float color[4]` inside a C struct expressible in both directions.
         const std::optional<std::string> element =
             frontend::ProjectMemberModel::fixedArrayElementTypeKey(field.declaredTypeKey);
+        const std::optional<std::string> flexibleElement =
+            frontend::ProjectMemberModel::flexibleArrayElementTypeKey(field.declaredTypeKey);
         const std::string fieldType = hostType(
-            element.has_value() ? *element : field.declaredTypeKey, context, error);
+            element.has_value() ? *element
+                : flexibleElement.has_value() ? *flexibleElement : field.declaredTypeKey,
+            context,
+            error);
         if (!error.empty()) return false;
         out << "    ";
         if (field.explicitFieldAlignment.has_value())
@@ -480,6 +485,10 @@ bool emitStruct(
                 return false;
             }
             out << '[' << *count << ']';
+        }
+        else if (flexibleElement.has_value())
+        {
+            out << "[]";
         }
         out << ";\n";
     }

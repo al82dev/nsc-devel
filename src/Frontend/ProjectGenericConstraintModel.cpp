@@ -42,6 +42,7 @@ std::string writtenSpelling(const ast::TypeSyntax* syntax)
             case ast::TypeModifierSyntaxKind::Pointer: text += "*"; break;
             case ast::TypeModifierSyntaxKind::Array: text += "[N]"; break;
             case ast::TypeModifierSyntaxKind::DynamicArray: text += "[]"; break;
+            case ast::TypeModifierSyntaxKind::FlexibleArray: text += "[*]"; break;
         }
     }
     return text;

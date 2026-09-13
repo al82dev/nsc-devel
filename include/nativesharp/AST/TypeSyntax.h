@@ -26,7 +26,8 @@ enum class TypeModifierSyntaxKind
 {
     Pointer,
     Array,
-    DynamicArray
+    DynamicArray,
+    FlexibleArray
 };
 
 struct TypeModifierSyntax

@@ -50,7 +50,8 @@ bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
     const auto& modifiers = type->modifiers();
     return modifiers.empty() ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::Array ||
-        modifiers.front().kind == ast::TypeModifierSyntaxKind::DynamicArray;
+        modifiers.front().kind == ast::TypeModifierSyntaxKind::DynamicArray ||
+        modifiers.front().kind == ast::TypeModifierSyntaxKind::FlexibleArray;
 }
 
 bool isAccessibilityToken(TokenKind kind) noexcept
@@ -624,6 +625,20 @@ ast::TypeSyntax* Parser::parseType()
         if (at(TokenKind::LeftBracket))
         {
             const SourceRange left = consume().range();
+            // Item 273: `T[*]` is an unsized inline tail, deliberately distinct from `T[]`
+            // (a native heap-array reference) and `T[N]` (a complete inline value).
+            if (at(TokenKind::Star) && peek().kind() == TokenKind::RightBracket)
+            {
+                consume();
+                const SourceRange right = consume().range();
+                const SourceRange modifierRange = join(left, right);
+                type->addModifier(ast::TypeModifierSyntax{
+                    ast::TypeModifierSyntaxKind::FlexibleArray,
+                    nullptr,
+                    modifierRange});
+                completeRange = join(completeRange, modifierRange);
+                continue;
+            }
             if (at(TokenKind::RightBracket))
             {
                 const SourceRange right = consume().range();

@@ -113,7 +113,8 @@ std::optional<StructLayout> TargetDataLayout::layoutStruct(
     for (const StructFieldRequest& request : fields)
     {
         const TypeLayout field = request.layout;
-        if (field.size == 0 || field.alignment == 0) return std::nullopt;
+        if ((!request.isFlexibleArray && field.size == 0) || field.alignment == 0)
+            return std::nullopt;
         std::uint64_t effectiveAlignment =
             options.pack == 0 ? field.alignment : (std::min)(field.alignment, options.pack);
         if (request.minimumAlignment.has_value())

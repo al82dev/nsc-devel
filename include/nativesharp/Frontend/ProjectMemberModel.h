@@ -264,6 +264,7 @@ public:
     // array ("T[]"), a pointer, or a plain type.
     static std::optional<std::string> fixedArrayElementTypeKey(std::string_view typeKey);
     static std::optional<std::uint64_t> fixedArrayCount(std::string_view typeKey);
+    static std::optional<std::string> flexibleArrayElementTypeKey(std::string_view typeKey);
 
 private:
     std::string syntaxFingerprint(const ast::AstNode* node) const;

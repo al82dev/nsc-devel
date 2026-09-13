@@ -252,7 +252,8 @@ bool isInvalidVoidObjectType(const ast::TypeSyntax* type) noexcept
     const auto& modifiers = type->modifiers();
     return modifiers.empty() ||
         modifiers.front().kind == ast::TypeModifierSyntaxKind::Array ||
-        modifiers.front().kind == ast::TypeModifierSyntaxKind::DynamicArray;
+        modifiers.front().kind == ast::TypeModifierSyntaxKind::DynamicArray ||
+        modifiers.front().kind == ast::TypeModifierSyntaxKind::FlexibleArray;
 }
 }
 
@@ -665,6 +666,10 @@ std::string ProjectMemberModel::canonicalTypeKey(
         {
             result += "[]";
         }
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
+        {
+            result += "[*]";
+        }
         else
         {
             // C2.1 "fixed arrays": the canonical key carries the COUNT ITSELF -- "builtin:float[4]"
@@ -784,6 +789,13 @@ std::optional<std::uint64_t> ProjectMemberModel::fixedArrayCount(std::string_vie
         value = value * 10U + digit;
     }
     return value;
+}
+
+std::optional<std::string> ProjectMemberModel::flexibleArrayElementTypeKey(
+    std::string_view typeKey)
+{
+    if (!typeKey.ends_with("[*]") || typeKey.size() <= 3) return std::nullopt;
+    return std::string(typeKey.substr(0, typeKey.size() - 3));
 }
 
 const char* parameterPassKindName(ParameterPassKind kind) noexcept
@@ -1431,22 +1443,24 @@ bool ProjectMemberModel::collectTypeMembers(
             // exactly where a fixed array does belong, and all three work.
             if (symbol.kind == ClassMemberKind::Method)
             {
-                if (fixedArrayElementTypeKey(symbol.declaredTypeKey).has_value())
+                if (fixedArrayElementTypeKey(symbol.declaredTypeKey).has_value() ||
+                    flexibleArrayElementTypeKey(symbol.declaredTypeKey).has_value())
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidType,
                         diagnostics::DiagnosticSeverity::Error,
                         symbol.range,
-                        "a fixed array cannot be returned by value; return a pointer to its element type");
+                        "an inline array cannot be returned by value; return a pointer to its element type");
                 }
                 for (const MethodParameterSymbol& parameter : symbol.parameters)
                 {
-                    if (!fixedArrayElementTypeKey(parameter.typeKey).has_value()) continue;
+                    if (!fixedArrayElementTypeKey(parameter.typeKey).has_value() &&
+                        !flexibleArrayElementTypeKey(parameter.typeKey).has_value()) continue;
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidType,
                         diagnostics::DiagnosticSeverity::Error,
                         parameter.range,
-                        "a fixed array cannot be passed by value; declare the parameter as a pointer to its element type");
+                        "an inline array cannot be passed by value; declare the parameter as a pointer to its element type");
                 }
             }
 

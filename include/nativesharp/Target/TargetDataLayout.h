@@ -84,6 +84,7 @@ struct StructFieldRequest
     TypeLayout layout;
     std::optional<std::uint64_t> explicitOffset;
     std::optional<std::uint64_t> minimumAlignment;
+    bool isFlexibleArray = false;
 };
 
 class TargetDataLayout final

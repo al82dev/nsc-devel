@@ -793,6 +793,28 @@ después de `pack(N)`, porque una solicitud explícita de alineación no debe se
 Si se combina con `at(N)`, el offset escrito debe respetar la alineación. No se admite en campos
 estáticos, que son globals y no forman parte del objeto.
 
+Para contratos C cuyo payload comienza justo después de un encabezado, `T[*]` expresa una cola
+flexible sin convertirla en un puntero ni en un array de heap:
+
+```csharp
+public struct SamplePacket
+{
+    public uint Count;
+    public float[*] Samples;
+}
+
+public static float Read(SamplePacket* packet, int index)
+{
+    return packet->Samples[index];
+}
+```
+
+`sizeof(SamplePacket)` y `offsetof(SamplePacket, Samples)` valen 4. La memoria real debe haberse
+reservado para `sizeof(SamplePacket) + Count * sizeof(float)` bytes, con su propia comprobación de
+overflow. No hay `Length`, bounds check ni destrucción automática de los elementos. Por eso la cola
+debe ser el último campo de un struct no-union y su elemento debe tener lifetime trivial. En el
+header C, la misma declaración aparece como `float Samples[]`.
+
 Cada dimensión se indexa en el mismo orden en que se declara:
 
 ```csharp

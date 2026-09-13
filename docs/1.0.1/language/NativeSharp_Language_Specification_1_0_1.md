@@ -513,6 +513,20 @@ local y pasarse de forma prestada a una llamada, pero no puede retornarse, almac
 capturarse por una lambda. La procedencia se conserva al copiar el puntero entre aliases locales; la
 API receptora de un préstamo sigue siendo responsable de no retenerlo después de la llamada.
 
+### NS-ARRAY-006 — Almacenamiento trailing/flexible
+
+`T[*] tail;` declara un arreglo inline de extensión incompleta. La forma se permite únicamente como
+último campo de instancia de un struct que no sea union. El campo se coloca con la alineación de
+`T`, pero contribuye cero elementos al tamaño: `sizeof(Header)` termina en el inicio alineado de la
+cola y `offsetof(Header, tail)` devuelve ese mismo comienzo. El propietario debe reservar de forma
+explícita y con overflow comprobado `sizeof(Header) + count * sizeof(T)` bytes.
+
+El indexado `header->tail[index]` pertenece al nivel raw: no existe longitud oculta ni bounds check.
+La cantidad vive en otro campo o contrato elegido por la API. `T` debe tener lifetime trivial y el
+campo no admite ownership, porque el compilador desconoce cuántos elementos tendría que destruir.
+La forma no puede aparecer en clases, unions, locales, parámetros o retornos. NSMETA conserva `T[*]`
+y un header C lo materializa como el flexible array member `T tail[]`.
+
 ### NS-LAYOUT-002 — Objetos y delegates
 
 El layout público de clases, descriptores, tablas de dispatch, interfaces y delegates está
