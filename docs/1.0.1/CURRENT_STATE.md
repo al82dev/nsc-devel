@@ -69,6 +69,13 @@ calcular especializaciones genéricas. El alias es transparente: layout, ownersh
 metadata y ABI observan exclusivamente el tipo expandido. Una aridad incorrecta o un ciclo se
 rechazan en compilación.
 
+Los métodos genéricos admiten inferencia local en llamadas como `Identity(value)`,
+`First(buffer)` para un parámetro `T[]` y `Read(box)` para un parámetro `Box<T>`. El compilador
+unifica la forma declarada con el tipo local del argumento antes de monomorfizar. Literales,
+locals explícitos o `var`, parámetros, campos, casts, `new`, arrays, punteros y argumentos
+by-reference aportan evidencia. `null`, una lambda sin target o un parámetro presente sólo en el
+retorno no aportan tipo; en esos casos se escriben los argumentos explícitos.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

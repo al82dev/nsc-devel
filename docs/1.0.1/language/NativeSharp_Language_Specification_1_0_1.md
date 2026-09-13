@@ -650,6 +650,35 @@ exact declared arity. Expansion precedes template registration and specializatio
 create no nominal, metadata, layout, template, or ABI identity. Alias chains are transitive;
 cycles, arity mismatches, and contradictory ownership qualifiers are compile-time errors.
 
+### NS-GEN-003 — Inferencia genérica local
+
+Una llamada a un método genérico puede omitir su lista `<...>` cuando todos los parámetros de tipo
+se deducen de sus argumentos de valor. La deducción unifica recursivamente el tipo del parámetro
+con el tipo estático local del argumento. Reconoce una aparición directa `T`, contenedores
+genéricos como `Box<T>`, y sufijos de puntero o arreglo como `T*` y `T[]`.
+
+La evidencia puede proceder de literales, parámetros, campos, locals de tipo explícito, locals
+`var` cuyo inicializador tenga tipo deducible, casts, `default`, construcción de objetos, `new`,
+`stackalloc`, expresiones by-reference y otra llamada genérica local ya inferida. Los argumentos
+nombrados se emparejan por nombre y los parámetros opcionales omitidos no aportan evidencia.
+
+Una aparición repetida del mismo parámetro debe deducir exactamente el mismo tipo; la inferencia no
+inventa un "mejor tipo común" mediante conversiones. `null`, lambdas sin target y parámetros que
+aparecen sólo en el retorno no aportan evidencia. Si falta evidencia o existe un empate igualmente
+específico con deducciones incompatibles, la llamada se rechaza y el programador escribe `<...>`.
+El tipo esperado del resultado nunca participa: `T Make<T>()` requiere `Make<int>()`.
+
+Cuando varias plantillas son viables, una forma estructural (`Box<T>`, `T[]`, `T*`) es más específica
+que una aparición desnuda `T`. Después de elegir la deducción, todas las plantillas del grupo se
+materializan con esa sustitución y la resolución ordinaria de overloads decide por tipos. La
+especialización resultante usa exactamente la misma cache e identidad que una llamada explícita.
+
+A generic method call may omit `<...>` when every type parameter can be inferred from local value
+arguments. Inference recursively unifies exact static shapes, including nested generic types,
+pointers, arrays, named/default arguments, and by-reference arguments. Return context, null, and an
+untargeted lambda provide no evidence. Missing or equally specific incompatible evidence requires
+explicit type arguments; inferred and explicit calls share one canonical specialization cache.
+
 ### NS-OBJ-001 — Raíz de objetos sin boxing
 
 Las clases pueden compartir la raíz `NativeSharp.Core.Object` y su dispatch virtual. Los structs

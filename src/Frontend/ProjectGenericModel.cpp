@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -799,6 +800,20 @@ void ProjectGenericModel::processNode(
         }
     }
 
+    // Parameters and fields are visible throughout their containing method/type regardless of
+    // textual order.  Snapshot their source spelling before processTypeSyntax replaces closed
+    // generic uses with generated physical names; inference needs the original structure.
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr || child->typeSyntax() == nullptr ||
+            (child->kind() != ast::AstNodeKind::ParameterDeclaration &&
+             child->kind() != ast::AstNodeKind::FieldDeclaration))
+            continue;
+        bool conflict = false;
+        currentScope.valueTypes[child->text()] =
+            cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict);
+    }
+
     // The declaration is a compile-time rewrite rule, not a use of its still-open target.  Its
     // normalized target was handled by expandAliasesInNode; materializing it here would create
     // e.g. Box<T> and leak the alias parameter T into the concrete program.
@@ -825,6 +840,11 @@ void ProjectGenericModel::processNode(
         processTypeSyntax(unit, node->typeSyntax(), currentNamespace, currentScope, diagnostics);
     }
 
+    if (node->kind() == ast::AstNodeKind::CallExpression && node->typeSyntaxes().empty())
+    {
+        inferGenericCall(
+            unit, node, currentNamespace, ownerName, currentScope, diagnostics);
+    }
     if (node->kind() == ast::AstNodeKind::CallExpression && !node->typeSyntaxes().empty())
     {
         processGenericCall(unit, node, currentNamespace, ownerName, currentScope, diagnostics);
@@ -850,9 +870,34 @@ void ProjectGenericModel::processNode(
         (node->kind() == ast::AstNodeKind::ClassDeclaration || node->kind() == ast::AstNodeKind::StructDeclaration)
             ? appendOwner(ownerName, node->text()) : ownerName;
     const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+    GenericLookupScope sequentialScope = currentScope;
     for (ast::AstNode* child : children)
     {
-        processNode(unit, child, currentNamespace, childOwner, currentScope, false, diagnostics);
+        ast::TypeSyntax* declaredLocalType = nullptr;
+        if (child != nullptr && child->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+            child->typeSyntax() != nullptr &&
+            child->typeSyntax()->baseTokenKind() != lexer::TokenKind::KwVar)
+        {
+            bool conflict = false;
+            declaredLocalType =
+                cloneAliasType(unit.arena(), child->typeSyntax(), {}, conflict);
+        }
+        else if (child != nullptr &&
+                 child->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                 child->first() != nullptr)
+        {
+            // Capture `var` from the initializer before its closed generic syntax is rewritten to
+            // a physical specialization name; structural inference still needs Box<int>, not the
+            // generated Box__g1__... spelling.
+            declaredLocalType = inferExpressionType(unit, child->first(), sequentialScope);
+        }
+        processNode(unit, child, currentNamespace, childOwner, sequentialScope, false, diagnostics);
+        if (child == nullptr || child->kind() != ast::AstNodeKind::VariableDeclarationStatement)
+            continue;
+        if (declaredLocalType == nullptr && child->first() != nullptr)
+            declaredLocalType = inferExpressionType(unit, child->first(), sequentialScope);
+        if (declaredLocalType != nullptr)
+            sequentialScope.valueTypes[child->text()] = declaredLocalType;
     }
 }
 
@@ -956,6 +1001,410 @@ bool ProjectGenericModel::processTypeSyntax(
         syntax->setBaseName(specialized);
     }
     syntax->clearTypeArguments();
+    return true;
+}
+
+ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
+    ProjectSyntaxUnit& unit,
+    const ast::AstNode* expression,
+    const GenericLookupScope& scope)
+{
+    if (expression == nullptr) return nullptr;
+    const auto builtin = [&](lexer::TokenKind kind, std::string name)
+    {
+        return unit.arena().make<ast::TypeSyntax>(expression->range(), kind, std::move(name));
+    };
+    const auto clone = [&](const ast::TypeSyntax* source)
+    {
+        bool conflict = false;
+        return cloneAliasType(unit.arena(), source, {}, conflict);
+    };
+
+    switch (expression->kind())
+    {
+        case ast::AstNodeKind::IdentifierExpression:
+        {
+            const auto found = scope.valueTypes.find(expression->text());
+            return found == scope.valueTypes.end() ? nullptr : clone(found->second);
+        }
+        case ast::AstNodeKind::MemberExpression:
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::ThisExpression)
+            {
+                const auto found = scope.valueTypes.find(expression->text());
+                return found == scope.valueTypes.end() ? nullptr : clone(found->second);
+            }
+            return nullptr;
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        {
+            const std::string key(builtins::integerLiteralTypeKey(
+                expression->text(), expression->integerValue(), false));
+            if (key == "builtin:uint") return builtin(lexer::TokenKind::KwUInt, "uint");
+            if (key == "builtin:long") return builtin(lexer::TokenKind::KwLong, "long");
+            if (key == "builtin:ulong") return builtin(lexer::TokenKind::KwULong, "ulong");
+            return builtin(lexer::TokenKind::KwInt, "int");
+        }
+        case ast::AstNodeKind::FloatingLiteralExpression:
+            return !expression->text().empty() &&
+                    (expression->text().back() == 'f' || expression->text().back() == 'F')
+                ? builtin(lexer::TokenKind::KwFloat, "float")
+                : builtin(lexer::TokenKind::KwDouble, "double");
+        case ast::AstNodeKind::CharacterLiteralExpression:
+            return builtin(lexer::TokenKind::KwChar, "char");
+        case ast::AstNodeKind::StringLiteralExpression:
+            return builtin(lexer::TokenKind::KwString, "string");
+        case ast::AstNodeKind::BooleanLiteralExpression:
+            return builtin(lexer::TokenKind::KwBool, "bool");
+        case ast::AstNodeKind::CastExpression:
+        case ast::AstNodeKind::SafeCastExpression:
+        case ast::AstNodeKind::DefaultValueExpression:
+        case ast::AstNodeKind::ObjectCreationExpression:
+            return clone(expression->typeSyntax());
+        case ast::AstNodeKind::NewExpression:
+        {
+            ast::TypeSyntax* result = clone(expression->typeSyntax());
+            if (result == nullptr) return nullptr;
+            result->addModifier(ast::TypeModifierSyntax{
+                expression->flag() ? ast::TypeModifierSyntaxKind::DynamicArray
+                                   : ast::TypeModifierSyntaxKind::Pointer,
+                nullptr,
+                expression->range()});
+            return result;
+        }
+        case ast::AstNodeKind::StackallocExpression:
+        {
+            ast::TypeSyntax* result = clone(expression->typeSyntax());
+            if (result != nullptr)
+                result->addModifier(ast::TypeModifierSyntax{
+                    ast::TypeModifierSyntaxKind::Pointer, nullptr, expression->range()});
+            return result;
+        }
+        case ast::AstNodeKind::MoveExpression:
+            return inferExpressionType(unit, expression->first(), scope);
+        case ast::AstNodeKind::UnaryExpression:
+        {
+            ast::TypeSyntax* operand = inferExpressionType(unit, expression->first(), scope);
+            if (operand == nullptr) return nullptr;
+            if (expression->tokenKind() == lexer::TokenKind::Bang)
+                return builtin(lexer::TokenKind::KwBool, "bool");
+            if (expression->tokenKind() == lexer::TokenKind::Amp)
+            {
+                operand->addModifier(ast::TypeModifierSyntax{
+                    ast::TypeModifierSyntaxKind::Pointer, nullptr, expression->range()});
+                return operand;
+            }
+            if (expression->tokenKind() != lexer::TokenKind::Star ||
+                operand->modifiers().empty() ||
+                operand->modifiers().back().kind != ast::TypeModifierSyntaxKind::Pointer)
+                return operand;
+
+            ast::TypeSyntax* result = unit.arena().make<ast::TypeSyntax>(
+                operand->range(), operand->baseTokenKind(), operand->baseName());
+            result->setOwnershipQualifier(operand->ownershipQualifier());
+            for (ast::TypeSyntax* argument : operand->typeArguments())
+                result->addTypeArgument(clone(argument));
+            for (std::size_t index = 0; index + 1 < operand->modifiers().size(); ++index)
+                result->addModifier(operand->modifiers()[index]);
+            return result;
+        }
+        case ast::AstNodeKind::AssignmentExpression:
+            return inferExpressionType(unit, expression->second(), scope);
+        case ast::AstNodeKind::ConditionalExpression:
+        {
+            ast::TypeSyntax* whenTrue = inferExpressionType(unit, expression->second(), scope);
+            ast::TypeSyntax* whenFalse = inferExpressionType(unit, expression->third(), scope);
+            if (whenTrue == nullptr || whenFalse == nullptr ||
+                typeSpelling(whenTrue) != typeSpelling(whenFalse)) return nullptr;
+            return whenTrue;
+        }
+        case ast::AstNodeKind::BinaryExpression:
+        {
+            switch (expression->tokenKind())
+            {
+                case lexer::TokenKind::EqualEqual:
+                case lexer::TokenKind::BangEqual:
+                case lexer::TokenKind::Less:
+                case lexer::TokenKind::LessEqual:
+                case lexer::TokenKind::Greater:
+                case lexer::TokenKind::GreaterEqual:
+                case lexer::TokenKind::AmpAmp:
+                case lexer::TokenKind::PipePipe:
+                    return builtin(lexer::TokenKind::KwBool, "bool");
+                default: break;
+            }
+            ast::TypeSyntax* left = inferExpressionType(unit, expression->first(), scope);
+            ast::TypeSyntax* right = inferExpressionType(unit, expression->second(), scope);
+            if (left == nullptr || right == nullptr || typeSpelling(left) != typeSpelling(right))
+                return nullptr;
+            return left;
+        }
+        case ast::AstNodeKind::CallExpression:
+        {
+            const auto found = inferredCallReturnTypes_.find(expression);
+            return found == inferredCallReturnTypes_.end() ? nullptr : clone(found->second);
+        }
+        default:
+            return nullptr;
+    }
+}
+
+bool ProjectGenericModel::inferTypeArguments(
+    ProjectSyntaxUnit& unit,
+    const ast::TypeSyntax* pattern,
+    const ast::TypeSyntax* actual,
+    const std::unordered_set<std::string>& parameters,
+    std::unordered_map<std::string, ast::TypeSyntax*>& inferred)
+{
+    if (pattern == nullptr || actual == nullptr) return false;
+    if (actual->modifiers().size() < pattern->modifiers().size()) return false;
+    const std::size_t modifierPrefix = actual->modifiers().size() - pattern->modifiers().size();
+    for (std::size_t index = 0; index < pattern->modifiers().size(); ++index)
+    {
+        if (pattern->modifiers()[index].kind != actual->modifiers()[modifierPrefix + index].kind)
+            return false;
+    }
+
+    if (parameters.contains(pattern->baseName()) && pattern->typeArguments().empty())
+    {
+        ast::TypeSyntax* value = unit.arena().make<ast::TypeSyntax>(
+            actual->range(), actual->baseTokenKind(), actual->baseName());
+        if (pattern->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::None)
+            value->setOwnershipQualifier(actual->ownershipQualifier());
+        bool conflict = false;
+        for (const ast::TypeSyntax* argument : actual->typeArguments())
+            value->addTypeArgument(cloneAliasType(unit.arena(), argument, {}, conflict));
+        for (std::size_t index = 0; index < modifierPrefix; ++index)
+            value->addModifier(actual->modifiers()[index]);
+        const auto prior = inferred.find(pattern->baseName());
+        if (prior == inferred.end())
+        {
+            inferred.emplace(pattern->baseName(), value);
+            return true;
+        }
+        return typeSpelling(prior->second) == typeSpelling(value);
+    }
+
+    if (modifierPrefix != 0 || pattern->baseTokenKind() != actual->baseTokenKind() ||
+        pattern->baseName() != actual->baseName() ||
+        pattern->typeArguments().size() != actual->typeArguments().size())
+        return false;
+    for (std::size_t index = 0; index < pattern->typeArguments().size(); ++index)
+    {
+        if (!inferTypeArguments(
+                unit, pattern->typeArguments()[index], actual->typeArguments()[index],
+                parameters, inferred)) return false;
+    }
+    return true;
+}
+
+bool ProjectGenericModel::inferGenericCall(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* call,
+    const std::string& namespaceName,
+    const std::string& ownerName,
+    const GenericLookupScope& scope,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (call == nullptr || call->kind() != ast::AstNodeKind::CallExpression ||
+        !call->typeSyntaxes().empty()) return true;
+    ast::AstNode* callee = methodCalleeSyntax(call);
+    const std::string methodName = methodCalleeName(call);
+    if (callee == nullptr || methodName.empty()) return true;
+
+    std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);
+    if (callee->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        const std::string written = receiverSourceSpelling(callee->first());
+        if (!written.empty()) requestedOwner = written;
+    }
+    const std::vector<std::string> namespaceSegments = splitDotted(namespaceName);
+    const std::vector<std::string> enclosingTypes =
+        enclosingTypeSpellings(namespaceName, ownerName);
+    QualifiedNameSite site;
+    site.namespaceSegments = namespaceSegments;
+    site.enclosingTypeNames = enclosingTypes;
+    site.aliases = &scope.aliases;
+    site.importedNamespaces = scope.importedNamespaces;
+    constexpr std::size_t kAny = std::numeric_limits<std::size_t>::max();
+    const std::vector<TemplateState*> named = templatesNamedBy(
+        unit, site, requestedOwner, methodName, kAny, kAny);
+    if (named.empty()) return true;
+
+    // Infer inner calls first so `Identity(Identity(42))` has a concrete argument type at the
+    // outer site.  The later ordinary AST walk may visit the inner node again, but its callee has
+    // already been rewritten to a non-template specialization and the cache prevents duplication.
+    for (ast::AstNode* argument : call->children())
+    {
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::CallExpression ||
+            !argument->typeSyntaxes().empty()) continue;
+        inferGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics);
+        if (!argument->typeSyntaxes().empty())
+            processGenericCall(unit, argument, namespaceName, ownerName, scope, diagnostics);
+    }
+
+    // A non-generic overload in the same owner remains an ordinary overload-resolution problem.
+    // This early phase cannot compare its conversions with a synthesized generic candidate, so it
+    // leaves the call untouched; explicit `<...>` remains available when the generic is intended.
+    for (const TemplateState* candidate : named)
+    {
+        if (candidate == nullptr || candidate->parent == nullptr) continue;
+        for (const ast::AstNode* sibling : candidate->parent->children())
+        {
+            if (sibling != nullptr && sibling->kind() == ast::AstNodeKind::MethodDeclaration &&
+                sibling->genericParameters().empty() && sibling->text() == methodName &&
+                valueParameterCount(sibling) == call->children().size())
+                return true;
+        }
+    }
+
+    struct Inference final
+    {
+        TemplateState* candidate = nullptr;
+        std::vector<ast::TypeSyntax*> arguments;
+        std::size_t specificity = 0;
+    };
+    const auto patternSpecificity = [&](auto&& self, const ast::TypeSyntax* pattern,
+                                        const std::unordered_set<std::string>& parameters)
+        -> std::size_t
+    {
+        if (pattern == nullptr) return 0;
+        std::size_t score = parameters.contains(pattern->baseName()) &&
+                pattern->typeArguments().empty()
+            ? 0U : 4U;
+        score += pattern->modifiers().size() * 2U;
+        for (const ast::TypeSyntax* argument : pattern->typeArguments())
+            score += self(self, argument, parameters);
+        return score;
+    };
+    std::vector<Inference> successes;
+    for (TemplateState* candidate : named)
+    {
+        if (candidate == nullptr || candidate->syntax == nullptr) continue;
+        std::vector<const ast::AstNode*> parameters;
+        for (const ast::AstNode* child : candidate->syntax->children())
+            if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration)
+                parameters.push_back(child);
+
+        std::vector<std::optional<std::size_t>> mapping(call->children().size());
+        std::vector<bool> used(parameters.size(), false);
+        std::size_t nextPositional = 0;
+        bool viable = true;
+        for (std::size_t argumentIndex = 0; argumentIndex < call->children().size(); ++argumentIndex)
+        {
+            const ast::AstNode* argument = call->children()[argumentIndex];
+            std::optional<std::size_t> parameterIndex;
+            if (argument != nullptr && !argument->argumentName().empty())
+            {
+                for (std::size_t index = 0; index < parameters.size(); ++index)
+                    if (parameters[index]->text() == argument->argumentName())
+                    {
+                        parameterIndex = index;
+                        break;
+                    }
+            }
+            else
+            {
+                while (nextPositional < used.size() && used[nextPositional]) ++nextPositional;
+                if (nextPositional < used.size()) parameterIndex = nextPositional++;
+            }
+            if (!parameterIndex.has_value() || used[*parameterIndex])
+            {
+                viable = false;
+                break;
+            }
+            used[*parameterIndex] = true;
+            mapping[argumentIndex] = parameterIndex;
+        }
+        for (std::size_t index = 0; viable && index < parameters.size(); ++index)
+            if (!used[index] && parameters[index]->first() == nullptr) viable = false;
+        if (!viable) continue;
+
+        const std::unordered_set<std::string> genericParameters(
+            candidate->record.parameters.begin(), candidate->record.parameters.end());
+        std::unordered_map<std::string, ast::TypeSyntax*> inferred;
+        for (std::size_t index = 0; viable && index < call->children().size(); ++index)
+        {
+            ast::TypeSyntax* actual = inferExpressionType(unit, call->children()[index], scope);
+            const ast::TypeSyntax* pattern = parameters[*mapping[index]]->typeSyntax();
+            viable = inferTypeArguments(
+                unit, pattern, actual, genericParameters, inferred);
+        }
+        if (!viable || inferred.size() != candidate->record.parameters.size()) continue;
+        Inference success;
+        success.candidate = candidate;
+        for (const ast::AstNode* parameter : parameters)
+            success.specificity +=
+                patternSpecificity(patternSpecificity, parameter->typeSyntax(), genericParameters);
+        for (const std::string& parameter : candidate->record.parameters)
+            success.arguments.push_back(inferred.at(parameter));
+        successes.push_back(std::move(success));
+    }
+
+    if (successes.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            call->range(),
+            "type arguments for generic method '" + methodName +
+                "' cannot be inferred from the local call arguments; write them explicitly");
+        return false;
+    }
+    const std::size_t bestSpecificity = std::ranges::max_element(
+        successes, {}, &Inference::specificity)->specificity;
+    std::erase_if(successes, [&](const Inference& inference)
+    {
+        return inference.specificity != bestSpecificity;
+    });
+    const auto sameArguments = [&](const Inference& candidate)
+    {
+        if (candidate.arguments.size() != successes.front().arguments.size()) return false;
+        for (std::size_t index = 0; index < candidate.arguments.size(); ++index)
+            if (typeSpelling(candidate.arguments[index]) !=
+                typeSpelling(successes.front().arguments[index])) return false;
+        return true;
+    };
+    std::string returnSpelling;
+    ast::TypeSyntax* inferredReturn = nullptr;
+    bool commonReturn = true;
+    for (const Inference& success : successes)
+    {
+        std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+        for (std::size_t index = 0; index < success.arguments.size(); ++index)
+            substitutions.emplace(success.candidate->record.parameters[index], success.arguments[index]);
+        bool conflict = false;
+        ast::TypeSyntax* candidateReturn = cloneAliasType(
+            unit.arena(), success.candidate->syntax->typeSyntax(), substitutions, conflict);
+        const std::string spelling = typeSpelling(candidateReturn);
+        if (inferredReturn == nullptr)
+        {
+            inferredReturn = candidateReturn;
+            returnSpelling = spelling;
+        }
+        else if (spelling != returnSpelling)
+        {
+            commonReturn = false;
+        }
+    }
+    if (commonReturn && inferredReturn != nullptr)
+        inferredCallReturnTypes_[call] = inferredReturn;
+
+    if (!std::ranges::all_of(successes, sameArguments))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            call->range(),
+            "generic method call '" + methodName +
+                "' has equally specific but incompatible type inferences; write type arguments explicitly");
+        return false;
+    }
+
+    for (ast::TypeSyntax* argument : successes.front().arguments)
+    {
+        bool conflict = false;
+        call->addTypeSyntax(cloneAliasType(unit.arena(), argument, {}, conflict));
+    }
     return true;
 }
 

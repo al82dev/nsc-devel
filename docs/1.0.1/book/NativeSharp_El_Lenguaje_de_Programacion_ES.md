@@ -1412,6 +1412,59 @@ resuelve antes de monomorfizar, de modo que todas las escrituras equivalentes ll
 especialización canónica. Un ciclo como `A<T> = B<T>` y `B<T> = A<T>` es un error, no un tipo
 recursivo; para recursión nominal se declara una clase o struct.
 
+### 21.2 Inferencia local de argumentos genéricos
+
+Cuando los argumentos ya contienen toda la información, la llamada puede omitir `<T>`:
+
+```csharp
+public class Box<T>
+{
+    public T Value;
+    public Box(T value) { Value = value; }
+}
+
+public class GenericAlgorithms
+{
+    public static T Identity<T>(T value) { return value; }
+    public static T First<T>(T[] values) { return values[0]; }
+    public static T Unbox<T>(Box<T> box) { return box.Value; }
+    public static void Assign<T>(ref T target, T value) { target = value; }
+
+    public static int Run()
+    {
+        int seed = 40;
+        int direct = Identity(seed);       // T = int por el local.
+        long wide = Identity(2L);          // T = long por el sufijo L.
+
+        int[] values = new int[1];
+        values[0] = direct;
+        int first = First(values);         // T[] contra int[] deduce T = int.
+
+        var box = new Box<int>(first + 2);
+        int answer = Unbox(box);            // Box<T> contra Box<int> deduce T = int.
+        Assign(ref answer, Identity(answer));
+
+        delete[] values;
+        return answer == 42 ? 0 : 1;
+    }
+}
+```
+
+La inferencia es local, estructural y exacta. No espera al tipo de la variable destino ni usa el
+tipo de retorno para decidir: `T Create<T>()` se llama como `Create<Job>()`. Tampoco asigna un tipo
+a `null` aislado ni a una lambda sin delegate target. Esta regla evita que un cambio lejano en el
+contexto de retorno cambie qué código AOT se materializa.
+
+Si `T` aparece varias veces, todas deben concordar. `Same(1, 2L)` no inventa un tipo común entre
+`int` y `long`; se escribe `Same<long>(1, 2L)` si esa conversión es la intención. Los argumentos
+nombrados se vinculan al parámetro correspondiente, y omitir un parámetro opcional es válido siempre
+que los argumentos presentes ya deduzcan todos los parámetros de tipo.
+
+Una forma aporta más información que un parámetro desnudo. Entre `Inspect<T>(T)` e
+`Inspect<T>(Box<T>)`, un argumento `Box<int>` deduce `T = int` mediante la segunda forma. La
+especialización creada es la misma que produciría la escritura explícita; no hay una variante ABI
+"inferida".
+
 ## 22. `var`, `foreach` y el protocolo enumerador
 
 `var` pide al compilador inferir el tipo estático del inicializador. No crea tipado dinámico. La

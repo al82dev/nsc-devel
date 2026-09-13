@@ -22,6 +22,9 @@ empaqueta con NativeSharp 1.0.1.
 - Los aliases de tipo pueden declarar parámetros (`using Buffer<T> = T*;`). Se expanden antes de
   la monomorfización, aceptan composición, reordenamiento y repetición de argumentos, y no crean
   una identidad nominal ni un símbolo ABI distintos del tipo subyacente.
+- Las llamadas a métodos genéricos pueden omitir `<...>` cuando cada parámetro de tipo se deduce
+  de los argumentos locales. La inferencia es estructural y exacta sobre valores, genéricos
+  anidados, arrays, punteros y argumentos `ref/out/in`; no usa el tipo de retorno para adivinar.
 - Los arreglos multidimensionales fijos usan `T[d0, d1, ...]`, almacenamiento inline contiguo y
   orden row-major sin cabecera ni asignación de heap.
 - `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice

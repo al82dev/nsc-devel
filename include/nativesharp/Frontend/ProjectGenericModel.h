@@ -225,6 +225,9 @@ private:
         // carries both the target syntax and its optional type-parameter list.
         std::unordered_map<std::string, const ast::AstNode*> typeAliases;
         std::unordered_set<std::string> typeParameters;
+        // Item 277. Types written on parameters, fields, and preceding locals are sufficient for
+        // local generic inference without running a second semantic pipeline before Stage 44.
+        std::unordered_map<std::string, const ast::TypeSyntax*> valueTypes;
     };
 
     bool expandAliasesInNode(
@@ -270,6 +273,26 @@ private:
         const std::string& ownerName,
         const GenericLookupScope& scope,
         diagnostics::DiagnosticEngine& diagnostics);
+
+    bool inferGenericCall(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics);
+
+    ast::TypeSyntax* inferExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression,
+        const GenericLookupScope& scope);
+
+    bool inferTypeArguments(
+        ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* pattern,
+        const ast::TypeSyntax* actual,
+        const std::unordered_set<std::string>& parameters,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
 
     TemplateState* resolveTypeTemplate(
         const ProjectSyntaxUnit& unit,
@@ -375,6 +398,7 @@ private:
     std::unordered_map<std::string, std::size_t> specializationByKey_;
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
+    std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
     std::vector<std::vector<std::size_t>> visibleProjects_;
     std::vector<std::string> projectModuleNames_;
     bool built_ = false;
