@@ -4910,7 +4910,63 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
         expect(TokenKind::Semicolon, "';' after asm operand clauses");
         statement->setRange(tokenRangeFrom(beginIndex));
     }
+    validateInlineAssemblyPlaceholders(statement);
     return statement;
+}
+
+void Parser::validateInlineAssemblyPlaceholders(ast::AstNode* statement)
+{
+    std::size_t inputCount = 0;
+    std::size_t outputCount = 0;
+    for (const ast::AstNode* child : statement->children())
+    {
+        inputCount += child->kind() == ast::AstNodeKind::InlineAssemblyInputOperand ? 1U : 0U;
+        outputCount += child->kind() == ast::AstNodeKind::InlineAssemblyOutputOperand ? 1U : 0U;
+    }
+
+    for (const ast::AstNode* line : statement->children())
+    {
+        if (line->kind() != ast::AstNodeKind::InlineAssemblyLine) continue;
+        std::string_view code = line->text();
+        if (const std::size_t comment = code.find(';'); comment != std::string_view::npos)
+            code = code.substr(0, comment);
+        for (std::size_t index = 0; index < code.size(); ++index)
+        {
+            if (code[index] != '$') continue;
+            if (index + 1 < code.size() && code[index + 1] == '$')
+            {
+                ++index;
+                continue;
+            }
+
+            const bool output = code.substr(index + 1, 3) == "out";
+            std::size_t cursor = index + (output ? 4 : 1);
+            std::size_t ordinal = 0;
+            const std::size_t digitBegin = cursor;
+            while (cursor < code.size() &&
+                std::isdigit(static_cast<unsigned char>(code[cursor])))
+            {
+                ordinal = ordinal * 10 + static_cast<std::size_t>(code[cursor] - '0');
+                ++cursor;
+            }
+            const bool malformed = cursor == digitBegin ||
+                (cursor < code.size() &&
+                 (std::isalnum(static_cast<unsigned char>(code[cursor])) || code[cursor] == '_'));
+            const std::size_t bound = output ? outputCount : inputCount;
+            if (malformed || ordinal >= bound)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::InvalidInlineAssemblyPlaceholder,
+                    diagnostics::DiagnosticSeverity::Error,
+                    line->range(),
+                    output
+                        ? "asm output placeholder does not name a declared out operand"
+                        : "asm input placeholder does not name a declared in operand");
+                break;
+            }
+            index = cursor - 1;
+        }
+    }
 }
 
 void Parser::validateInlineAssemblyControlFlow(ast::AstNode* statement)

@@ -3,6 +3,10 @@
 #include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
+#include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/LlvmTargetMachine.h"
+#include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 
 #include "../support/TestContext.h"
 
@@ -134,6 +138,146 @@ public class Program
                 mirDump.find("schema=1.1") != std::string::npos &&
                 mirDump.find("category=memory") != std::string::npos,
             "HIR/MIR dumps expose the complete assembly contract and schema revision");
+
+        nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+        auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+        tests.expect(module != nullptr && lowerer.error().empty(),
+            "the structured assembly contract lowers to LLVM inline asm: " + lowerer.error());
+        if (module != nullptr)
+        {
+            std::string verifyError;
+            tests.expect(module->verify(verifyError),
+                "LLVM accepts the integrated assembly function and constraint types");
+            const std::string llvm = module->text();
+            tests.expect(llvm.find("asm sideeffect inteldialect") != std::string::npos &&
+                    llvm.find("={rax},*m,i,~{cc},~{memory},~{rbx}") != std::string::npos &&
+                    llvm.find("asm.result") != std::string::npos,
+                "LLVM IR exposes Intel syntax, normalized constraints, clobbers, and output value");
+
+            std::string targetError;
+            auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0, targetError);
+            tests.expect(target != nullptr && targetError.empty(),
+                "the Windows x64 O0 target is available for the assembly probe");
+            if (target != nullptr)
+            {
+                std::string emitError;
+                const auto object = root / "AssemblyMir.obj";
+                tests.expect(target->configureModuleForTarget(*module, emitError) &&
+                        target->emit(
+                            *module,
+                            object,
+                            nativesharp::llvm_backend::LlvmCodeGenFileType::Object,
+                            emitError) &&
+                        std::filesystem::exists(object) &&
+                        std::filesystem::file_size(object) > 0,
+                    "the LLVM x64 backend assembles the integrated block into a COFF object");
+            }
+        }
+    }
+
+    const auto stress = root / "stress";
+    writeFile(stress / "AssemblyStress.nsproj",
+        "<Project><PropertyGroup><Name>AssemblyStress</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(stress / "Stress.ns", R"NS(
+public class Stress
+{
+    public static int ReadWrite(int value)
+    {
+        asm { add $out0, 2 } out(value : "+r") clobber("cc");
+        return value;
+    }
+
+    public static void MemoryOutput(int* destination)
+    {
+        asm { mov dword ptr $out0, 42 } out(*destination : "=m") clobber("memory");
+    }
+
+    public static void MemoryReadWrite(int* destination)
+    {
+        asm { inc dword ptr $out0 } out(*destination : "+m") clobber("cc", "memory");
+    }
+
+    public static int FixedInput(int value)
+    {
+        int result;
+        asm { mov $out0, $0 } out(result : "={eax}") in(value : "{ecx}");
+        return result;
+    }
+
+    public static int TwoOutputs()
+    {
+        int left;
+        int right;
+        asm {
+            mov $out0, 40
+            mov $out1, 2
+        } out(left : "=r", right : "=r");
+        return left + right;
+    }
+
+    public static int LocalBranch()
+    {
+        int result;
+        asm {
+            xor eax, eax
+        Again:
+            inc eax
+            cmp eax, 2
+            jl Again
+        } out(result : "={eax}") clobber("cc");
+        return result;
+    }
+
+    public static void Touch()
+    {
+        asm { nop }
+    }
+}
+)NS");
+
+    ProjectCompilation stressCompilation;
+    std::string stressError;
+    const bool stressBuilt = stressCompilation.compileProjectOopMir(
+        stress / "AssemblyStress.nsproj", stressError);
+    tests.expect(stressBuilt && stressError.empty(),
+        "read-write, memory, multi-output, local-control, and operand-free asm reach MIR");
+    if (stressBuilt)
+    {
+        nativesharp::llvm_backend::ProjectOopLlvmLowerer stressLowerer;
+        auto stressModule = stressLowerer.lower(
+            *stressCompilation.nameLookup(), *stressCompilation.oopMirModel());
+        tests.expect(stressModule != nullptr && stressLowerer.error().empty(),
+            "all supported assembly operand shapes lower to LLVM: " + stressLowerer.error());
+        if (stressModule != nullptr)
+        {
+            std::string verifyError;
+            tests.expect(stressModule->verify(verifyError),
+                "LLVM verifies read-write, indirect-memory, aggregate-output, and local-label asm");
+            const std::string llvm = stressModule->text();
+            tests.expect(llvm.find("+r,~{cc}") != std::string::npos &&
+                    llvm.find("=*m,~{memory}") != std::string::npos &&
+                    llvm.find("=*m,*m,~{cc},~{memory}") != std::string::npos &&
+                    llvm.find("={eax},{ecx}") != std::string::npos &&
+                    llvm.find("asm.result") != std::string::npos &&
+                    llvm.find("${:uid}") != std::string::npos,
+                "IR retains read-write, indirect output, multi-result, and unique local labels");
+
+            std::string targetError;
+            auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0, targetError);
+            std::string emitError;
+            tests.expect(target != nullptr &&
+                    target->configureModuleForTarget(*stressModule, emitError) &&
+                    target->emit(
+                        *stressModule,
+                        stress / "AssemblyStress.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object,
+                        emitError),
+                "the x64 backend emits every supported assembly shape to one COFF object: " +
+                    emitError);
+        }
     }
 
     std::filesystem::remove_all(root, ignored);

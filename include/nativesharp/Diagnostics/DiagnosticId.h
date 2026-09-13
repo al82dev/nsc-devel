@@ -68,6 +68,7 @@ enum class DiagnosticId
     InvalidInlineAssemblyClobber,
     InvalidInlineAssemblyControlFlow,
     InvalidInlineAssemblyTarget,
+    InvalidInlineAssemblyPlaceholder,
     InlineAssemblyNotAvailable,
     ConstantEvaluationTrap,
     MissingMain,

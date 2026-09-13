@@ -638,7 +638,7 @@ if(NSC_BUILD_TESTS)
         nsc_integrated_assembly_mir_tests
         tests/unit/IntegratedAssemblyMirTests.cpp)
     target_link_libraries(
-        nsc_integrated_assembly_mir_tests PRIVATE nsc_frontend nsc_compilation)
+        nsc_integrated_assembly_mir_tests PRIVATE nsc_llvm nsc_frontend nsc_compilation)
     target_compile_features(nsc_integrated_assembly_mir_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_integrated_assembly_mir_tests)
     add_test(NAME nsc.integrated-assembly.mir COMMAND nsc_integrated_assembly_mir_tests)

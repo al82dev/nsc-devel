@@ -229,6 +229,12 @@ enum LLVMComdatSelectionKind
     LLVMSameSizeComdatSelectionKind = 4
 };
 
+enum LLVMInlineAsmDialect
+{
+    LLVMInlineAsmDialectATT = 0,
+    LLVMInlineAsmDialectIntel = 1
+};
+
 LLVMComdatRef LLVMGetOrInsertComdat(LLVMModuleRef module, const char* name);
 void LLVMSetComdat(LLVMValueRef value, LLVMComdatRef comdat);
 void LLVMSetComdatSelectionKind(LLVMComdatRef comdat, LLVMComdatSelectionKind kind);
@@ -529,6 +535,7 @@ void LLVMSetCurrentDebugLocation2(LLVMBuilderRef builder, LLVMMetadataRef locati
 void LLVMInitializeX86TargetInfo();
 void LLVMInitializeX86Target();
 void LLVMInitializeX86TargetMC();
+void LLVMInitializeX86AsmParser();
 void LLVMInitializeX86AsmPrinter();
 LLVMBool LLVMGetTargetFromTriple(const char* triple, LLVMTargetRef* target, char** errorMessage);
 LLVMTargetMachineRef LLVMCreateTargetMachine(
@@ -598,6 +605,11 @@ LLVMTypeRef LLVMVectorType(LLVMTypeRef elementType, unsigned elementCount);
 LLVMTypeRef LLVMPointerTypeInContext(LLVMContextRef context, unsigned addressSpace);
 LLVMTypeRef LLVMArrayType2(LLVMTypeRef elementType, std::uint64_t elementCount);
 LLVMTypeRef LLVMStructCreateNamed(LLVMContextRef context, const char* name);
+LLVMTypeRef LLVMStructTypeInContext(
+    LLVMContextRef context,
+    LLVMTypeRef* elementTypes,
+    unsigned elementCount,
+    LLVMBool packed);
 void LLVMStructSetBody(
     LLVMTypeRef structType,
     LLVMTypeRef* elementTypes,
@@ -968,6 +980,16 @@ LLVMValueRef LLVMBuildCall2(
     LLVMValueRef* arguments,
     unsigned argumentCount,
     const char* name);
+LLVMValueRef LLVMGetInlineAsm(
+    LLVMTypeRef functionType,
+    char* assembly,
+    std::size_t assemblyLength,
+    char* constraints,
+    std::size_t constraintsLength,
+    LLVMBool hasSideEffects,
+    LLVMBool alignStack,
+    LLVMInlineAsmDialect dialect,
+    LLVMBool canThrow);
 LLVMOperandBundleRef LLVMCreateOperandBundle(
     const char* tag,
     std::size_t tagLength,

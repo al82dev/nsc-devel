@@ -749,3 +749,17 @@ Memory inputs and every output shall carry storage addresses; register and immed
 carry values. HIR-to-MIR conversion shall not reparse assembly text or infer constraints from it.
 The schema revision introducing these node meanings is MIR 1.1. Executable LLVM emission remains a
 separate contract and absence of that later layer must never erase or mutate this representation.
+
+## NSC-ASM-013 — LLVM inline-assembly lowering
+
+The x64 backend shall emit structured MIR assembly through LLVM inline asm in Intel dialect. It
+shall map NativeSharp `$outN` and `$N` placeholders into the combined LLVM operand space, diagnose
+undeclared or malformed placeholders before HIR, and preserve source operand evaluation order.
+
+Register outputs shall be returned by the inline-asm call and stored to their validated addresses;
+multiple register outputs shall use an aggregate result. Read-write outputs shall supply their
+incoming value. Memory operands shall use indirect constraints and carry the required `elementtype`
+call-site attribute. Canonical register, `cc`, and `memory` clobbers shall become LLVM clobbers.
+Local labels shall receive a per-expansion unique identity so repeated or inlined blocks cannot
+collide. The configured x86 target shall initialize both its assembly parser and printer, and a
+focused O0 test shall emit a verifier-clean COFF object rather than only inspect textual IR.

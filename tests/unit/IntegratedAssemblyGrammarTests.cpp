@@ -509,6 +509,27 @@ int Main()
     tests.expect(unsupportedCpuFeature.diagnostics.hasErrors() && sawCpuFeature,
         "instructions beyond the x86-64-v1 baseline identify their missing CPU feature");
 
+    ParsedSyntax missingInputPlaceholder;
+    parse(missingInputPlaceholder, "int Main() { asm { mov eax, $0 } return 0; }");
+    bool sawMissingInputPlaceholder = false;
+    for (const diagnostics::Diagnostic& diagnostic :
+        missingInputPlaceholder.diagnostics.diagnostics())
+        sawMissingInputPlaceholder = sawMissingInputPlaceholder ||
+            diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyPlaceholder;
+    tests.expect(missingInputPlaceholder.diagnostics.hasErrors() && sawMissingInputPlaceholder,
+        "an asm input placeholder must name a declared input operand");
+
+    ParsedSyntax missingOutputPlaceholder;
+    parse(missingOutputPlaceholder,
+        "int Main() { int x; asm { mov $out1, 1 } out(x); return x; }");
+    bool sawMissingOutputPlaceholder = false;
+    for (const diagnostics::Diagnostic& diagnostic :
+        missingOutputPlaceholder.diagnostics.diagnostics())
+        sawMissingOutputPlaceholder = sawMissingOutputPlaceholder ||
+            diagnostic.id() == diagnostics::DiagnosticId::InvalidInlineAssemblyPlaceholder;
+    tests.expect(missingOutputPlaceholder.diagnostics.hasErrors() && sawMissingOutputPlaceholder,
+        "an asm output placeholder must name a declared output operand");
+
     ParsedSyntax emptyClobber;
     parse(emptyClobber, "int Main() { asm { nop } clobber(); return 0; }");
     tests.expect(

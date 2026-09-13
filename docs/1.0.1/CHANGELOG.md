@@ -35,6 +35,9 @@ empaqueta con NativeSharp 1.0.1.
 - Assembly validado atraviesa el pipeline de proyecto como nodos propios HIR/MIR. El schema MIR 1.1
   conserva texto, líneas y ubicaciones, operands tipados con valor o dirección, constraints,
   clobbers y marcas ABI sin reparsing ni pérdida de orden.
+- El backend emite esos nodos mediante inline asm LLVM en dialecto Intel. Soporta inputs de
+  registro/inmediato/memoria, outputs `=r`/`+r`/fijos/memoria, resultados múltiples, clobbers y
+  control local con labels únicos; el target x86 inicializa también su parser de assembly.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

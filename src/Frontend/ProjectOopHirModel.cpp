@@ -2177,12 +2177,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 auto value = lowerExpression(
                     child->first(), memberOrdinal, output || memoryInput, error);
                 if (value == nullptr) return nullptr;
+                const MethodExpressionTypeBinding* operandType = expressionType(child->first());
+                if (operandType == nullptr || operandType->typeKey.empty())
+                {
+                    error = "integrated assembly operand lost its resolved NativeSharp type";
+                    return nullptr;
+                }
 
                 auto operand = makeNode(
                     input ? ProjectOopHirNodeKind::InlineAssemblyInput
                           : ProjectOopHirNodeKind::InlineAssemblyOutput,
                     child,
-                    value->typeKey);
+                    operandType->typeKey);
                 operand->stringValue = child->auxiliaryText();
                 operand->integerValue = child->integerValue();
                 operand->booleanValue = child->flag();

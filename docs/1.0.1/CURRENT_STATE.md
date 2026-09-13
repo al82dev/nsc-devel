@@ -19,7 +19,7 @@ La línea 2.0 reconoce estructuralmente `asm { ... }` como una sentencia dentro 
 métodos. El lexer conserva exactamente los bytes y saltos físicos del cuerpo, y el AST registra
 cada línea no vacía con su rango fuente e inicio de instrucción. Operandos, restricciones,
 validación y representación intermedia se incorporan por capas en la tanda 4. El pipeline de
-proyecto ya conserva el contrato completo en HIR y MIR; la emisión ejecutable llega en el item 299.
+proyecto ya conserva el contrato completo en HIR/MIR y lo emite como inline assembly LLVM x64.
 
 Un bloque puede declarar entradas posicionales mediante `asm { ... } in(expr0, expr1);`. Las
 expresiones usan el binding NativeSharp ordinario, se evalúan en orden y corresponden a `$0`, `$1`,
@@ -59,6 +59,11 @@ externos, saltos indirectos y call/return se rechazan para conservar CFG, cleanu
 Assembly usa un target determinista `x86-64-v1`. Constraints y clobbers se validan contra su
 catálogo físico y las instrucciones que requieren extensiones ausentes fallan antes de HIR con la
 feature concreta; la máquina host no amplía silenciosamente el producto.
+
+El lowering usa dialecto Intel y traduce `$outN`/`$N` al espacio de operands de LLVM. Outputs de
+registro vuelven como resultados escalares o aggregate y se almacenan en sus lvalues; memoria usa
+constraints indirectos con `elementtype`; `+r`, `=m`, resultados múltiples, clobbers y labels
+locales únicos se ensamblan a COFF. Placeholders inválidos se rechazan en el parser.
 
 Después de validarse, cada bloque es una operación propia de HIR y MIR. Conserva los bytes exactos,
 líneas y rangos fuente, operands con ordinal/constraint/valor o dirección, categorías de clobber y

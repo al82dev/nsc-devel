@@ -205,6 +205,7 @@ private:
     void parseInlineAssemblyClobberClause(ast::AstNode* statement);
     std::string parseInlineAssemblyConstraint(bool output, bool& explicitConstraint);
     void validateInlineAssemblyControlFlow(ast::AstNode* statement);
+    void validateInlineAssemblyPlaceholders(ast::AstNode* statement);
     ast::AstNode* parseVariableDeclaration(bool expectSemicolon);
     // C7 "aggregate initializer": the braced right-hand side of a declaration.
     ast::AstNode* parseAggregateInitializer();

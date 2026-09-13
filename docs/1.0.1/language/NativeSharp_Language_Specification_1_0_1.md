@@ -787,6 +787,21 @@ typed operand values or addresses, ordinals, normalized constraints, explicitnes
 categories, and ABI preservation markers survive lowering. HIR-to-MIR conversion never reparses
 assembly text. This representation is defined by MIR schema 1.1; code emission is a separate rule.
 
+### NS-ASM-013 — Emisión LLVM de ensamblador integrado
+
+El backend x64 emite el bloque en dialecto Intel. `$outN` referencia el output N y `$N` el input N;
+cualquier placeholder debe tener dígitos, quedar dentro del rango declarado y no continuar como
+identificador. `$$` representa un dólar literal. Outputs de registro se escriben al lvalue después
+de la llamada, incluidos resultados múltiples; `+r` aporta además el valor previo. Operands `m`
+son direcciones indirectas tipadas. Los clobbers físicos, `cc` y `memory` son efectos visibles al
+backend. Labels locales reciben identidad única por expansión.
+
+The x64 backend emits Intel-dialect LLVM inline assembly. `$outN` selects output N and `$N` selects
+input N; malformed or out-of-range placeholders are source errors, while `$$` is a literal dollar.
+Register results are stored back to their lvalues, `+r` also supplies the prior value, memory
+operands remain typed indirect addresses, all clobber categories reach LLVM, and local labels are
+unique per expansion.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

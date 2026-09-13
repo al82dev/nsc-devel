@@ -22,6 +22,7 @@ void initializeX86Backend()
     llvm_api::LLVMInitializeX86TargetInfo();
     llvm_api::LLVMInitializeX86Target();
     llvm_api::LLVMInitializeX86TargetMC();
+    llvm_api::LLVMInitializeX86AsmParser();
     llvm_api::LLVMInitializeX86AsmPrinter();
 }
 
