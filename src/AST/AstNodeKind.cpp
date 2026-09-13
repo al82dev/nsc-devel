@@ -49,6 +49,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(UsingStatement);
         NS_AST_KIND(StaticAssertStatement);
         NS_AST_KIND(InlineAssemblyStatement);
+        NS_AST_KIND(InlineAssemblyLine);
         NS_AST_KIND(ExpressionStatement);
         NS_AST_KIND(IdentifierExpression);
         NS_AST_KIND(IntegerLiteralExpression);

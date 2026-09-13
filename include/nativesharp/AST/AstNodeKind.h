@@ -64,6 +64,9 @@ enum class AstNodeKind
     // spelling. Assembly-specific tokens and per-instruction locations are introduced by item
     // 288; operands and executable semantics are deliberately later layers.
     InlineAssemblyStatement,
+    // One non-blank physical line inside InlineAssemblyStatement. text() is the exact
+    // non-whitespace spelling and range() begins at its first significant source byte.
+    InlineAssemblyLine,
     ExpressionStatement,
 
     IdentifierExpression,

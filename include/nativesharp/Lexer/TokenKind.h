@@ -13,6 +13,10 @@ enum class TokenKind
     FloatingLiteral,
     CharacterLiteral,
     StringLiteral,
+    // Raw physical-line records emitted only between the outer braces of contextual `asm {}`.
+    // Their lexemes retain source bytes exactly; parsing and validation happen in later layers.
+    AssemblyText,
+    AssemblyNewLine,
 
     KwVoid,
     KwBool,

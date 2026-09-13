@@ -39,6 +39,7 @@ private:
     Token lexCharacter(std::uint32_t begin);
     Token lexString(std::uint32_t begin);
     Token lexOperatorOrPunctuation(std::uint32_t begin);
+    Token lexAssemblyBodyToken();
 
     Token makeToken(TokenKind kind, std::uint32_t begin) const;
 
@@ -54,5 +55,8 @@ private:
     diagnostics::DiagnosticEngine& diagnostics_;
     std::string_view buffer_;
     std::uint32_t offset_ = 0;
+    bool awaitingAssemblyBrace_ = false;
+    bool insideAssemblyBody_ = false;
+    std::uint32_t assemblyBraceDepth_ = 0;
 };
 }

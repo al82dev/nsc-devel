@@ -4756,43 +4756,43 @@ ast::AstNode* Parser::parseInlineAssemblyStatement()
     consume(); // contextual `asm`
     expect(TokenKind::LeftBrace, "'{' after asm");
 
-    // Item 287 owns only the grammar boundary. The ordinary lexer has already separated the
-    // contents, so retain a deterministic spelling without pretending it preserves assembly
-    // whitespace or instruction locations. Item 288 replaces this bridge with assembly-aware
-    // lexical records. Balanced braces make diagnostics recover correctly even when a future
-    // dialect uses a braced operand or directive inside the block.
-    std::string canonicalBody;
-    std::size_t braceDepth = 1;
-    while (braceDepth != 0 && !at(TokenKind::EndOfFile))
-    {
-        if (at(TokenKind::LeftBrace))
-        {
-            ++braceDepth;
-        }
-        else if (at(TokenKind::RightBrace))
-        {
-            --braceDepth;
-            if (braceDepth == 0)
-            {
-                consume();
-                break;
-            }
-        }
-
-        if (!canonicalBody.empty()) canonicalBody.push_back(' ');
-        canonicalBody += current().lexeme();
-        consume();
-    }
-
-    if (braceDepth != 0)
-    {
-        expect(TokenKind::RightBrace, "'}' to close asm block");
-    }
-
+    // Item 288: the lexer owns the outer-brace depth and hands the parser exact physical-line
+    // records. The parent retains the complete body byte-for-byte. Non-blank records become child
+    // nodes whose range starts at the first significant byte, so subsequent operand diagnostics
+    // can name the real instruction column without re-scanning the source file.
+    std::string exactBody;
     ast::AstNode* statement = arena_.make<ast::AstNode>(
         ast::AstNodeKind::InlineAssemblyStatement,
         tokenRangeFrom(beginIndex));
-    statement->setText(std::move(canonicalBody));
+    while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
+    {
+        const lexer::Token& token = current();
+        exactBody += token.lexeme();
+        if (token.kind() == TokenKind::AssemblyText)
+        {
+            const std::string_view raw = token.lexeme();
+            const std::size_t first = raw.find_first_not_of(" \t\v\f");
+            if (first != std::string_view::npos)
+            {
+                const std::size_t last = raw.find_last_not_of(" \t\v\f");
+                const SourceRange significantRange(
+                    SourceLocation(token.range().begin().fileId(),
+                        token.range().begin().offset() + static_cast<std::uint32_t>(first)),
+                    SourceLocation(token.range().end().fileId(),
+                        token.range().begin().offset() + static_cast<std::uint32_t>(last + 1)));
+                ast::AstNode* line = arena_.make<ast::AstNode>(
+                    ast::AstNodeKind::InlineAssemblyLine,
+                    significantRange);
+                line->setText(std::string(raw.substr(first, last - first + 1)));
+                statement->addChild(line);
+            }
+        }
+        consume();
+    }
+
+    expect(TokenKind::RightBrace, "'}' to close asm block");
+    statement->setRange(tokenRangeFrom(beginIndex));
+    statement->setText(std::move(exactBody));
     return statement;
 }
 

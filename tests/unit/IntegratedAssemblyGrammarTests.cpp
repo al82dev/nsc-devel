@@ -81,8 +81,9 @@ int Main()
         assembly != nullptr && assembly->kind() == AstNodeKind::InlineAssemblyStatement,
         "asm block has an explicit InlineAssemblyStatement AST node");
     tests.expect(
-        assembly != nullptr && assembly->text() == "mov rax , rbx add rax , 2",
-        "item 287 retains a deterministic canonical spelling of the assembly body");
+        assembly != nullptr &&
+            assembly->text() == "\n        mov rax, rbx\n        add rax, 2\n    ",
+        "assembly body retains its exact source bytes including physical newlines");
     tests.expect(
         assembly != nullptr && assembly->range().isValid(),
         "asm node covers a valid whole-statement source range");
@@ -90,6 +91,38 @@ int Main()
         body != nullptr && body->children().size() == 2 &&
             body->children()[1]->kind() == AstNodeKind::ReturnStatement,
         "parsing resumes at the statement following the asm block without a semicolon");
+    tests.expect(
+        assembly != nullptr && assembly->children().size() == 2 &&
+            assembly->children()[0]->kind() == AstNodeKind::InlineAssemblyLine &&
+            assembly->children()[0]->text() == "mov rax, rbx" &&
+            assembly->children()[1]->text() == "add rax, 2",
+        "non-blank physical assembly lines have explicit exact-spelling AST records");
+    if (assembly != nullptr && assembly->children().size() == 2)
+    {
+        const source::SourcePosition firstPosition =
+            valid.sources.getPosition(assembly->children()[0]->range().begin());
+        const source::SourcePosition secondPosition =
+            valid.sources.getPosition(assembly->children()[1]->range().begin());
+        tests.expect(
+            firstPosition.line == 5 && firstPosition.column == 9 &&
+                secondPosition.line == 6 && secondPosition.column == 9,
+            "assembly line records begin at their exact one-based instruction locations");
+    }
+    else
+    {
+        tests.expect(false, "assembly line source locations are available");
+    }
+
+    bool sawRawText = false;
+    bool sawRawNewLine = false;
+    for (const lexer::Token& token : valid.tokens)
+    {
+        sawRawText = sawRawText || token.kind() == lexer::TokenKind::AssemblyText;
+        sawRawNewLine = sawRawNewLine || token.kind() == lexer::TokenKind::AssemblyNewLine;
+    }
+    tests.expect(
+        sawRawText && sawRawNewLine,
+        "lexer switches to exact assembly text and newline tokens inside asm braces");
 
     ParsedSyntax balanced;
     parse(balanced, "int Main() { asm { outer { inner } } return 0; }");
@@ -102,6 +135,14 @@ int Main()
     tests.expect(
         !contextualIdentifier.diagnostics.hasErrors(),
         "asm remains an ordinary identifier when it is not followed by an assembly block");
+
+    ParsedSyntax assemblyCharacters;
+    parse(
+        assemblyCharacters,
+        "int Main() { asm { mov rax, [rbx + rcx*4] ; $ @ # stay raw } return 0; }");
+    tests.expect(
+        !assemblyCharacters.diagnostics.hasErrors(),
+        "assembly lexical mode preserves punctuation that is invalid in ordinary NativeSharp");
 
     ParsedSyntax namespaceScope;
     parse(namespaceScope, "asm { nop } int Main() { return 0; }");

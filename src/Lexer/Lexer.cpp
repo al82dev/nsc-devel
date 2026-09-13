@@ -175,35 +175,108 @@ std::vector<Token> Lexer::lexAll()
 
 Token Lexer::nextToken()
 {
+    if (insideAssemblyBody_)
+    {
+        return lexAssemblyBodyToken();
+    }
+
     skipTrivia();
 
+    const std::uint32_t begin = offset_;
+    if (isAtEnd())
+    {
+        awaitingAssemblyBrace_ = false;
+        return Token(TokenKind::EndOfFile, range(begin, begin), {});
+    }
+
+    Token token = Token(TokenKind::Invalid, range(begin, begin), {});
+    if (isIdentifierStart(current()))
+    {
+        token = lexIdentifierOrKeyword(begin);
+    }
+    else if (isDecimalDigit(current()))
+    {
+        token = lexNumber(begin);
+    }
+    else if (current() == '\'')
+    {
+        token = lexCharacter(begin);
+    }
+    else if (current() == '"')
+    {
+        token = lexString(begin);
+    }
+    else
+    {
+        token = lexOperatorOrPunctuation(begin);
+    }
+
+    if (awaitingAssemblyBrace_)
+    {
+        if (token.kind() == TokenKind::LeftBrace)
+        {
+            insideAssemblyBody_ = true;
+            assemblyBraceDepth_ = 1;
+        }
+        awaitingAssemblyBrace_ = false;
+    }
+    else if (token.kind() == TokenKind::Identifier && token.lexeme() == "asm")
+    {
+        // `asm` remains contextual. Whitespace and comments may separate it from `{`, while any
+        // real token other than `{` cancels assembly mode and leaves the identifier untouched.
+        awaitingAssemblyBrace_ = true;
+    }
+
+    return token;
+}
+
+Token Lexer::lexAssemblyBodyToken()
+{
     const std::uint32_t begin = offset_;
     if (isAtEnd())
     {
         return Token(TokenKind::EndOfFile, range(begin, begin), {});
     }
 
-    if (isIdentifierStart(current()))
+    if (current() == '\r' || current() == '\n')
     {
-        return lexIdentifierOrKeyword(begin);
+        const char first = advance();
+        if (first == '\r' && current() == '\n') advance();
+        return Token(TokenKind::AssemblyNewLine, range(begin, offset_), text(begin, offset_));
     }
 
-    if (isDecimalDigit(current()))
+    // Emit one exact physical-line fragment. Inner braces remain part of the raw text while their
+    // depth protects the outer statement terminator. The sole outer `}` is returned as ordinary
+    // punctuation so the parser keeps ownership of the grammatical boundary.
+    while (!isAtEnd() && current() != '\r' && current() != '\n')
     {
-        return lexNumber(begin);
+        if (current() == '{')
+        {
+            ++assemblyBraceDepth_;
+            advance();
+            continue;
+        }
+        if (current() == '}')
+        {
+            if (assemblyBraceDepth_ == 1)
+            {
+                if (offset_ != begin)
+                {
+                    return Token(TokenKind::AssemblyText, range(begin, offset_), text(begin, offset_));
+                }
+                advance();
+                insideAssemblyBody_ = false;
+                assemblyBraceDepth_ = 0;
+                return Token(TokenKind::RightBrace, range(begin, offset_), text(begin, offset_));
+            }
+            --assemblyBraceDepth_;
+            advance();
+            continue;
+        }
+        advance();
     }
 
-    if (current() == '\'')
-    {
-        return lexCharacter(begin);
-    }
-
-    if (current() == '"')
-    {
-        return lexString(begin);
-    }
-
-    return lexOperatorOrPunctuation(begin);
+    return Token(TokenKind::AssemblyText, range(begin, offset_), text(begin, offset_));
 }
 
 bool Lexer::isAtEnd() const noexcept

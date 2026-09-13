@@ -70,7 +70,7 @@
 ## Tanda 4 — Ensamblador integrado
 
 42. **287 — Gramática de `asm {}` / Integrated assembly grammar — COMPLETADO / COMPLETE**
-43. **288 — Lexer y ubicaciones fuente de asm / Assembly lexer and source locations**
+43. **288 — Lexer y ubicaciones fuente de asm / Assembly lexer and source locations — COMPLETADO / COMPLETE**
 44. **289 — Operandos de entrada / Assembly input operands**
 45. **290 — Operandos de salida / Assembly output operands**
 46. **291 — Restricciones de registros / Register constraints**

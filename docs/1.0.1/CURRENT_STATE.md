@@ -16,9 +16,10 @@ en la gramática y en la especificación, no porque exista en C#. El código de 
 4. un defecto real donde NSC incumple su propio contrato.
 
 La línea 2.0 reconoce estructuralmente `asm { ... }` como una sentencia dentro de funciones y
-métodos. El ítem 287 establece únicamente su frontera gramatical y nodo AST: el lexer específico,
-operandos, restricciones, validación y emisión se incorporan en los ítems siguientes de la tanda 4.
-Hasta entonces no constituye todavía una sentencia ejecutable.
+métodos. El lexer conserva exactamente los bytes y saltos físicos del cuerpo, y el AST registra
+cada línea no vacía con su rango fuente e inicio de instrucción. Operandos, restricciones,
+validación y emisión se incorporan en los ítems siguientes de la tanda 4; hasta entonces no
+constituye todavía una sentencia ejecutable.
 
 ## Superficie del lenguaje
 

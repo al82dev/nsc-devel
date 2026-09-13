@@ -627,16 +627,18 @@ método. No requiere `;` posterior. Sus braces externos delimitan la sentencia; 
 deben estar balanceados. En la entrega 287 `asm` es contextual: fuera de la forma `asm {` conserva
 su validez como identificador ordinario.
 
-El nodo AST conserva el rango de la sentencia completa y una secuencia canónica provisional de los
-tokens del cuerpo. Esa secuencia no constituye todavía un contrato de whitespace, líneas,
-operandos, registros ni efectos. Mientras no estén presentes los contratos posteriores de la tanda
-4, el análisis semántico debe rechazar el nodo con `InlineAssemblyNotAvailable`; nunca debe llegar a
-HIR como un nodo desconocido ni aceptarse silenciosamente como código sin efecto.
+El lexer entra en modo assembly únicamente después de la pareja contextual `asm {` y sale en su
+brace externo balanceado. Dentro conserva los bytes de cada línea, incluidos espacios, comentarios
+y puntuación que no son tokens NativeSharp, además del spelling físico de `CRLF`, `LF` o `CR`. El
+nodo padre conserva el cuerpo exacto; cada línea no vacía produce `InlineAssemblyLine`, cuyo rango
+empieza en el primer byte significativo y termina después del último. Mientras no estén presentes
+los contratos posteriores de la tanda 4, el análisis semántico debe rechazar el nodo con
+`InlineAssemblyNotAvailable`; nunca debe llegar a HIR como nodo desconocido ni aceptarse como no-op.
 
 `asm { ... }` is a block statement valid only inside a function or method body and requires no
 trailing semicolon. In delivery 287 the spelling is contextual. The AST retains the complete
-statement range and a provisional canonical token sequence. Until the later batch-4 operand and
-lowering contracts are implemented, semantic analysis must reject it with
+statement range and exact physical body bytes. Every non-blank line has an AST record beginning at
+its first significant source byte. Until the later batch-4 operand and lowering contracts are implemented, semantic analysis must reject it with
 `InlineAssemblyNotAvailable`, never as an unknown internal HIR node or a silent no-op.
 
 ### NS-GEN-001 — Monomorfización

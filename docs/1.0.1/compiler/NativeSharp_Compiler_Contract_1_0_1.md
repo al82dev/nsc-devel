@@ -648,3 +648,15 @@ unterminated block shall produce source diagnostics with deterministic recovery.
 Before the assembly operand and lowering contracts are present, both standalone and project
 semantic pipelines shall reject the AST node with `InlineAssemblyNotAvailable`. No pipeline may
 treat it as an expression, silently erase it, or fail later with an unsupported-node internal error.
+
+## NSC-ASM-002 — Assembly lexical records and source locations
+
+After contextual `asm` and its opening brace, the lexer shall suspend ordinary NativeSharp token
+classification until the balanced outer closing brace. It shall preserve every body byte and the
+physical spelling of CRLF, LF, or CR. Characters that are illegal in ordinary NativeSharp source
+shall remain assembly text rather than produce an ordinary-language lexical diagnostic.
+
+The parent AST statement shall reconstruct the exact body. Every non-blank physical line shall
+produce an `InlineAssemblyLine` whose text excludes surrounding horizontal whitespace and whose
+range begins at the first significant byte and ends after the last. Normal lexing shall resume
+immediately after the outer brace, and using `asm` without `{` shall remain an ordinary identifier.
