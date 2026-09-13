@@ -46,6 +46,10 @@ Los registros destruidos se declaran al final con `clobber("rax", "r11")`. Los n
 normalizados y ordenados, sin duplicados, y no pueden contradecir un registro fijo de entrada o
 salida. La comprobación de que el nombre existe en el target x64 pertenece al item 297.
 
+La misma lista admite `"cc"` para condition codes y `"memory"` para efectos sobre almacenamiento
+no nombrado por operandos. El AST los distingue de registros físicos mediante categorías estables,
+preparadas para MIR, LLVM y las barreras de optimización posteriores.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

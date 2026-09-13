@@ -24,6 +24,8 @@ empaqueta con NativeSharp 1.0.1.
   sintetiza temporales para hacer válido un operando.
 - `clobber("registro", ...)` declara registros destruidos por un bloque asm, conserva su orden
   canonicalizado y rechaza duplicados o conflictos con constraints de registro fijo.
+- Los clobbers reservados `"cc"` y `"memory"` declaran efectos de condition codes y memoria y se
+  conservan en el AST con categorías distintas de un registro físico.
 - El inlining usa un contrato único de cuatro políticas: automático, preferido (`inline`),
   obligatorio (`forceinline`) y prohibido (`noinline`). Ninguna política puede alterar efectos,
   ownership, cleanups, excepciones, dispatch, ABI o identidad pública; las palabras clave y su

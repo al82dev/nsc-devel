@@ -717,6 +717,19 @@ final semicolon. Names are lowercased, retain source order, and may not repeat. 
 an operand constraint may not also be clobbered. This rule validates register atoms; target
 availability remains NS-ASM-011, while `cc` and `memory` belong to NS-ASM-008.
 
+### NS-ASM-008 — Clobbers de flags y memoria
+
+Los nombres reservados `"cc"` y `"memory"` usan la misma cláusula `clobber`. `cc` declara que el
+bloque destruye condition codes y `memory` declara efectos sobre memoria no descritos por los
+operandos `m`. Ambos son identidades únicas, case-insensitive y participan en la prohibición de
+duplicados. El AST los clasifica como `flags` y `memory`, separados de `register`, para que el
+lowering no dependa de comparar strings ni confunda efectos globales con registros físicos.
+
+Reserved names `"cc"` and `"memory"` use the same clobber clause. `cc` declares condition-code
+effects and `memory` declares effects on storage not named by `m` operands. Both are unique,
+case-insensitive identities. The AST classifies them separately as `flags` and `memory`, while
+physical names remain `register`, so later lowering does not infer semantics from raw spelling.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

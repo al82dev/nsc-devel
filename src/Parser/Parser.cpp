@@ -4974,15 +4974,15 @@ void Parser::parseInlineAssemblyClobberClause(ast::AstNode* statement)
         const lexer::Token& registerToken = consume();
         const std::string registerName = canonicalInlineAssemblyRegister(
             std::get<std::string>(registerToken.value()));
-        bool valid = isInlineAssemblyRegisterName(registerName) &&
-            registerName != "cc" && registerName != "memory";
+        const bool specialClobber = registerName == "cc" || registerName == "memory";
+        bool valid = specialClobber || isInlineAssemblyRegisterName(registerName);
         if (!valid)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::InvalidInlineAssemblyClobber,
                 diagnostics::DiagnosticSeverity::Error,
                 registerToken.range(),
-                "asm register clobber requires a register atom; 'cc' and 'memory' use the item 294 contract");
+                "asm clobber requires a register atom, 'cc', or 'memory'");
         }
         else if (!seen.insert(registerName).second)
         {
@@ -4994,7 +4994,7 @@ void Parser::parseInlineAssemblyClobberClause(ast::AstNode* statement)
             valid = false;
         }
 
-        if (valid)
+        if (valid && !specialClobber)
         {
             for (const ast::AstNode* child : statement->children())
             {
@@ -5026,6 +5026,9 @@ void Parser::parseInlineAssemblyClobberClause(ast::AstNode* statement)
                 registerToken.range());
             clobber->setText(registerName);
             clobber->setIntegerValue(ordinal++);
+            clobber->setAuxiliaryText(
+                registerName == "cc" ? "flags" :
+                registerName == "memory" ? "memory" : "register");
             statement->addChild(clobber);
         }
     }

@@ -412,11 +412,29 @@ int Main()
         fixedRegisterClobber.diagnostics.hasErrors() && sawFixedRegisterConflict,
         "a fixed operand register cannot also be declared clobbered");
 
-    ParsedSyntax reservedClobber;
-    parse(reservedClobber, "int Main() { asm { nop } clobber(\"memory\"); return 0; }");
+    ParsedSyntax effectClobbers;
+    parse(
+        effectClobbers,
+        "int Main() { asm { nop } clobber(\"cc\", \"memory\"); return 0; }");
+    const AstNode* effectMain = findFunction(effectClobbers.root, "Main");
+    const AstNode* effectBody = effectMain != nullptr ? effectMain->first() : nullptr;
+    const AstNode* effectAssembly = effectBody != nullptr && !effectBody->children().empty()
+        ? effectBody->children()[0]
+        : nullptr;
     tests.expect(
-        reservedClobber.diagnostics.hasErrors(),
-        "memory and condition-code clobbers remain reserved for item 294");
+        !effectClobbers.diagnostics.hasErrors() && effectAssembly != nullptr &&
+            effectAssembly->children().size() == 3 &&
+            effectAssembly->children()[1]->text() == "cc" &&
+            effectAssembly->children()[1]->auxiliaryText() == "flags" &&
+            effectAssembly->children()[2]->text() == "memory" &&
+            effectAssembly->children()[2]->auxiliaryText() == "memory",
+        "condition-code and memory clobbers carry distinct non-register categories");
+
+    tests.expect(
+        clobberAssembly != nullptr && clobberAssembly->children().size() == 4 &&
+            clobberAssembly->children()[2]->auxiliaryText() == "register" &&
+            clobberAssembly->children()[3]->auxiliaryText() == "register",
+        "physical register clobbers remain explicitly classified as registers");
 
     ParsedSyntax emptyClobber;
     parse(emptyClobber, "int Main() { asm { nop } clobber(); return 0; }");

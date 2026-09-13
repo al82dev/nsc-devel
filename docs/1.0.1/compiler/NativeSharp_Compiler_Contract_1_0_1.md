@@ -706,3 +706,11 @@ zero-based ordinal. Duplicate names after case normalization, non-literals, malf
 name also selected by a fixed-register input or output constraint shall produce
 `InvalidInlineAssemblyClobber`. `cc` and `memory` shall remain reserved until their explicit
 semantic contract is implemented; architecture-specific register availability remains separate.
+
+## NSC-ASM-008 — Condition-code and memory clobbers
+
+The clobber parser shall recognize canonical `cc` and `memory` entries as reserved effects rather
+than physical registers. `InlineAssemblyClobber::auxiliaryText()` shall classify physical names as
+`register`, `cc` as `flags`, and `memory` as `memory`. Case normalization, stable ordering, and
+duplicate detection shall remain identical across all categories. Later MIR and LLVM stages shall
+consume the category instead of reinterpreting the source spelling.
