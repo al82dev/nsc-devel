@@ -209,6 +209,20 @@ shall be rebased into deterministic global ranges before publication. The first 
 logical order supplies the error and source range. Lambda callables, field initializers and implicit
 constructors remain a coordinator pass because they depend on the completed regular-function table.
 
+## NSC-MIR-001 — Parallel deterministic callable MIR
+
+Every HIR callable shall be transformed to MIR independently through the bounded worker pool when
+more than one compilation job is available. Each task shall own its MIR-lowering context and error
+buffer. Completed semantic, layout, dispatch, interface, destruction and HIR models are immutable
+task inputs; workers shall not mutate the destination function table or member index.
+
+Results shall occupy slots assigned from the canonical HIR function order. Only the coordinator may
+publish them into the MIR model and rebuild `functionByMember`, so worker completion order cannot
+affect function order or member resolution. The first failure in logical HIR order supplies the
+diagnostic. Imported callables remain bodyless records, and field initializers, static constants,
+layouts and dispatch/destruction plans remain coordinated passes. Serial and parallel construction
+of unchanged input shall produce byte-for-byte equivalent textual MIR dumps.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR

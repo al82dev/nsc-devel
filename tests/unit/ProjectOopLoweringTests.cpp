@@ -292,17 +292,23 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
     ProjectCompilation parallelCompilation;
     parallelCompilation.setCompilationJobs(4);
     std::string parallelError;
-    const bool parallelOk = parallelCompilation.compileProjectOopHir(
+    const bool parallelOk = parallelCompilation.compileProjectOopMir(
         directory / "Stage30Test.nsproj", parallelError);
-    tests.expect(parallelOk && parallelError.empty() && parallelCompilation.oopHirModel() != nullptr,
-        "four-worker per-function HIR lowering succeeds on the same project");
-    if (parallelCompilation.oopHirModel() != nullptr)
+    tests.expect(parallelOk && parallelError.empty() && parallelCompilation.oopHirModel() != nullptr &&
+            parallelCompilation.oopMirModel() != nullptr,
+        "four-worker per-function HIR and MIR lowering succeeds on the same project");
+    if (parallelCompilation.oopHirModel() != nullptr && parallelCompilation.oopMirModel() != nullptr)
     {
         const std::string parallelHirDump =
             nativesharp::frontend::ProjectOopHirModelDumper::dump(
                 *parallelCompilation.oopHirModel());
         tests.expect(parallelHirDump == hirDump,
             "parallel per-function HIR is exactly equivalent to serial HIR");
+        const std::string parallelMirDump =
+            nativesharp::frontend::ProjectOopMirModelDumper::dump(
+                *parallelCompilation.oopMirModel());
+        tests.expect(parallelMirDump == mirDump,
+            "parallel per-function MIR is exactly equivalent to serial MIR");
     }
 
     nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;

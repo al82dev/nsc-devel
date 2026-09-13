@@ -1,4 +1,5 @@
 #include "nativesharp/Compilation/TypeIdentity.h"
+#include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
@@ -693,7 +694,8 @@ bool ProjectOopMirModel::build(
     const ProjectInterfaceModel& interfaceModel,
     const ProjectDestructionModel& destructionModel,
     const ProjectOopHirModel& hirModel,
-    std::string& error)
+    std::string& error,
+    std::size_t workerCount)
 {
     error.clear();
     if (built_)
@@ -946,8 +948,9 @@ bool ProjectOopMirModel::build(
         }
     }
 
-    for (const ProjectOopHirFunction& source : hirModel.functions())
-    {
+    const auto lowerFunction = [&](ProjectOopMirModel& lowerer,
+                                   const ProjectOopHirFunction& source,
+                                   std::string& functionError) {
         ProjectOopMirFunction function;
         function.memberOrdinal = source.memberOrdinal;
         function.declaringTypeOrdinal = source.declaringTypeOrdinal;
@@ -985,11 +988,9 @@ bool ProjectOopMirModel::build(
             // Interop Foundation: imported C functions have no body to lower -- the definition
             // lives in the external DLL. The record still flows through so call sites resolve
             // and the backend declares it.
-            functionByMember_[function.memberOrdinal] = functions_.size();
-            functions_.push_back(std::move(function));
-            continue;
+            return function;
         }
-        function.body = lowerNode(source.body.get(), error);
+        function.body = lowerer.lowerNode(source.body.get(), functionError);
         if (function.body == nullptr)
         {
             // Say WHERE. An internal error from this pipeline used to arrive as a bare sentence --
@@ -998,9 +999,57 @@ bool ProjectOopMirModel::build(
             // manual bisection, which is exactly what happened porting objloader, and the cost is
             // paid again by every internal error after it. The mangled name is the cheapest thing
             // here that actually narrows the search, and it is always available.
-            error += "\n  while lowering '" + source.mangledName + "'";
+            functionError += "\n  while lowering '" + source.mangledName + "'";
+        }
+        return function;
+    };
+
+    const std::span<const ProjectOopHirFunction> hirFunctions = hirModel.functions();
+    std::vector<std::optional<ProjectOopMirFunction>> loweredFunctions(hirFunctions.size());
+    std::vector<std::string> loweringErrors(hirFunctions.size());
+    const auto configureLowerer = [&](ProjectOopMirModel& lowerer) {
+        lowerer.nameLookup_ = &nameLookup;
+        lowerer.memberModel_ = &memberModel;
+        lowerer.objectLayoutModel_ = &objectLayoutModel;
+        lowerer.virtualDispatchModel_ = &virtualDispatchModel;
+        lowerer.interfaceModel_ = &interfaceModel;
+        lowerer.destructionModel_ = &destructionModel;
+        lowerer.hirModel_ = &hirModel;
+    };
+
+    if (workerCount > 1 && hirFunctions.size() > 1)
+    {
+        driver::CompilationWorkerPool workers(workerCount);
+        for (std::size_t index = 0; index < hirFunctions.size(); ++index)
+        {
+            workers.submit([&, index](std::size_t) {
+                ProjectOopMirModel lowerer;
+                configureLowerer(lowerer);
+                loweredFunctions[index] = lowerFunction(
+                    lowerer, hirFunctions[index], loweringErrors[index]);
+            });
+        }
+        workers.wait();
+    }
+    else
+    {
+        for (std::size_t index = 0; index < hirFunctions.size(); ++index)
+            loweredFunctions[index] = lowerFunction(*this, hirFunctions[index], loweringErrors[index]);
+    }
+
+    functions_.reserve(hirFunctions.size());
+    for (std::size_t index = 0; index < hirFunctions.size(); ++index)
+    {
+        if (!loweringErrors[index].empty() || !loweredFunctions[index].has_value() ||
+            (loweredFunctions[index]->body == nullptr &&
+             !loweredFunctions[index]->isImportedC && !loweredFunctions[index]->isImportedNative))
+        {
+            error = loweringErrors[index].empty()
+                ? "Stage 34 failed to lower an OOP HIR function to MIR"
+                : std::move(loweringErrors[index]);
             return false;
         }
+        ProjectOopMirFunction function = std::move(*loweredFunctions[index]);
         if (!function.isLambda && !function.isSyntheticImplicitConstructor)
             functionByMember_[function.memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));

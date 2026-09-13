@@ -529,7 +529,8 @@ public:
         const ProjectInterfaceModel& interfaceModel,
         const ProjectDestructionModel& destructionModel,
         const ProjectOopHirModel& hirModel,
-        std::string& error);
+        std::string& error,
+        std::size_t workerCount = 1);
 
     std::span<const ProjectOopMirFunction> functions() const noexcept;
     std::span<const ProjectOopMirFieldInitializer> fieldInitializers() const noexcept;
