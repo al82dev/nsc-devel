@@ -41,6 +41,16 @@ std::string readFile(const std::filesystem::path& path)
         std::istreambuf_iterator<char>());
 }
 
+const LibraryMetadataMember* memberNamed(
+    const LibraryMetadata& metadata,
+    std::string_view name)
+{
+    const auto found = std::find_if(
+        metadata.members.begin(), metadata.members.end(),
+        [&](const LibraryMetadataMember& member) { return member.name == name; });
+    return found == metadata.members.end() ? nullptr : &*found;
+}
+
 void writeProject(
     const std::filesystem::path& directory,
     std::string_view projectName,
@@ -413,14 +423,14 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
     error.clear();
     tests.expect(codec.read(previousPath, previousDecoded, error),
         "the current reader decodes the immediate NSMETA 1.2 predecessor");
-    tests.expect(previousDecoded.members.size() == 2 &&
-            previousDecoded.members[0].parameters.size() == 1 &&
-            previousDecoded.members[0].parameters[0].defaultValueKind ==
+    const LibraryMetadataMember* previousCallable = memberNamed(previousDecoded, "Optional");
+    const LibraryMetadataMember* previousSentinel = memberNamed(previousDecoded, "AfterParameter");
+    tests.expect(previousDecoded.members.size() == 2 && previousCallable != nullptr &&
+            previousCallable->parameters.size() == 1 &&
+            previousCallable->parameters[0].defaultValueKind ==
                 nativesharp::interop::LibraryMetadataDefaultValueKind::None,
         "a 1.2 parameter has no invented default value");
-    tests.expect(previousDecoded.members.size() == 2 &&
-            previousDecoded.members[1].name == "AfterParameter" &&
-            previousDecoded.members[1].constantBits == 99U,
+    tests.expect(previousSentinel != nullptr && previousSentinel->constantBits == 99U,
         "the member after a 1.2 parameter record remains byte-aligned");
 
     // NSMETA 1.4 adds pass-kind after ownership and before the existing default
@@ -437,15 +447,18 @@ void testBackwardCompatibleRead(TestContext& tests, const std::filesystem::path&
                  "pass-kind byte");
     nativesharp::interop::LibraryMetadata passPreviousDecoded;
     error.clear();
-    tests.expect(codec.read(passPreviousPath, passPreviousDecoded, error) &&
-            passPreviousDecoded.members.size() == 2 &&
-            passPreviousDecoded.members[0].parameters.size() == 1,
+    const bool passPreviousRead = codec.read(passPreviousPath, passPreviousDecoded, error);
+    const LibraryMetadataMember* passCallable = memberNamed(passPreviousDecoded, "Optional");
+    const LibraryMetadataMember* passSentinel = memberNamed(passPreviousDecoded, "AfterParameter");
+    tests.expect(passPreviousRead && passPreviousDecoded.members.size() == 2 &&
+            passCallable != nullptr && passCallable->parameters.size() == 1,
         "the current reader decodes the immediate NSMETA 1.3 predecessor");
-    tests.expect(passPreviousDecoded.members[0].parameters[0].passKind ==
+    tests.expect(passCallable != nullptr && !passCallable->parameters.empty() &&
+            passCallable->parameters[0].passKind ==
             LibraryMetadataParameterPassKind::Value &&
-            passPreviousDecoded.members[0].parameters[0].defaultValueKind ==
+            passCallable->parameters[0].defaultValueKind ==
                 nativesharp::interop::LibraryMetadataDefaultValueKind::Integer &&
-            passPreviousDecoded.members[1].name == "AfterParameter",
+            passSentinel != nullptr,
                  "a 1.3 parameter invents no ref/out/in identity and leaves following "
                  "records aligned");
 

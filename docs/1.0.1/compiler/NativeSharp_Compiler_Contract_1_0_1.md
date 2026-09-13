@@ -349,6 +349,11 @@ Every `LibraryMetadataCodec::writeModel` operation shall pass through the same m
 producer supplies one fragment. Equivalent fragment sets must therefore produce byte-for-byte
 identical NSMETA payloads, hashes and ABI fingerprints independent of their arrival order.
 
+Backward-compatibility round trips shall inspect decoded records by canonical identity, not by the
+producer model's insertion position, because serialization deliberately canonicalizes order. A
+failed or incomplete decode must be reported without dereferencing absent records; malformed legacy
+metadata may fail, but the compatibility harness itself must never crash.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR
