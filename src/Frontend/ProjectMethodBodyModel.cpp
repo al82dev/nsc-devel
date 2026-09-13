@@ -5236,15 +5236,49 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 ? ProjectMemberModel::fixedArrayElementTypeKey(base.typeKey)
                 : std::nullopt;
             const bool rawPointerBase = ProjectTypeConversion::isPointer(base.typeKey);
-            if (base.valid && indices.size() == 1 && indices.front().valid &&
-                ProjectTypeConversion::isIntegral(indices.front().typeKey) &&
-                (fixedElementType.has_value() || rawPointerBase))
+            bool validFixedIndices = base.valid && fixedElementType.has_value() && !indices.empty();
+            std::string indexedType = base.typeKey;
+            if (validFixedIndices)
             {
-                result.typeKey = fixedElementType.has_value()
-                    ? *fixedElementType
+                for (std::size_t dimensionOrdinal = 0;
+                     dimensionOrdinal < indices.size(); ++dimensionOrdinal)
+                {
+                    const ExpressionResult& index = indices[dimensionOrdinal];
+                    const std::optional<std::string> element =
+                        ProjectMemberModel::fixedArrayElementTypeKey(indexedType);
+                    const std::optional<std::uint64_t> count =
+                        ProjectMemberModel::fixedArrayCount(indexedType);
+                    if (!index.valid || !ProjectTypeConversion::isIntegral(index.typeKey) ||
+                        !element.has_value() || !count.has_value())
+                    {
+                        validFixedIndices = false;
+                        break;
+                    }
+                    if (index.integerConstant.has_value() &&
+                        (index.integerConstant->isNegative || index.integerConstant->value >= *count))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                            diagnostics::DiagnosticSeverity::Error,
+                            expression->children().empty()
+                                ? expression->range()
+                                : expression->children()[dimensionOrdinal]->range(),
+                            "constant fixed-array index is outside [0, " +
+                                std::to_string(*count) + ")");
+                    }
+                    indexedType = *element;
+                }
+            }
+            const bool validPointerIndex = base.valid && rawPointerBase && indices.size() == 1 &&
+                indices.front().valid && ProjectTypeConversion::isIntegral(indices.front().typeKey);
+            if (validFixedIndices || validPointerIndex)
+            {
+                result.typeKey = validFixedIndices
+                    ? indexedType
                     : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
                 result.valid = true;
-                result.assignable = true;
+                result.assignable =
+                    !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();
                 MethodCoreBinding binding;
                 binding.kind = MethodCoreOperationKind::RawElement;
                 binding.syntax = expression;
@@ -5261,7 +5295,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     diagnostics::DiagnosticId::InvalidIndex,
                     diagnostics::DiagnosticSeverity::Error,
                     expression->range(),
-                    "index expression requires an indexer reference or a pointer with one integral index");
+                    "fixed-array indices must be integral and cannot exceed its rank; raw pointers require exactly one integral index");
             }
             break;
         }

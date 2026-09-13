@@ -12,6 +12,8 @@ empaqueta con NativeSharp 1.0.1.
   usando el mismo layout canónico que el ABI, los arreglos y los headers C.
 - Los arreglos multidimensionales fijos usan `T[d0, d1, ...]`, almacenamiento inline contiguo y
   orden row-major sin cabecera ni asignación de heap.
+- `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice
+  por el stride canónico de su dimensión.
 - `const string` es una constante de compilación utilizable en APIs y metadata.
 - Strings nativos conservan unión condicional, literales y préstamos en constructores.
 - Enums, conversiones numéricas y conversiones de usuario conservan identidad lógica y física.

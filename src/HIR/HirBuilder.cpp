@@ -648,6 +648,12 @@ HirNode* HirBuilder::lowerAddress(ast::AstNode* node)
                 return nullptr;
             }
 
+            std::vector<ast::AstNode*> indices;
+            if (!node->children().empty())
+                indices.assign(node->children().begin(), node->children().end());
+            else if (node->second() != nullptr)
+                indices.push_back(node->second());
+
             HirNode* base = nullptr;
             if (baseInfo->type->kind() == sema::TypeKind::Pointer ||
                 baseInfo->type->kind() == sema::TypeKind::StringLiteral)
@@ -659,18 +665,36 @@ HirNode* HirBuilder::lowerAddress(ast::AstNode* node)
                 base = lowerAddress(node->first());
             }
 
-            HirNode* index = lowerExpression(node->second());
-            if (base == nullptr || index == nullptr)
+            if (base == nullptr || indices.empty())
             {
                 return nullptr;
             }
 
-            HirNode* address = arena_.make(HirNodeKind::IndexAddress, node->range());
-            address->setType(types_.pointerTo(info->type));
-            address->setOperationType(baseInfo->type);
-            address->setRequiresBoundsCheck(info->requiresBoundsCheck);
-            address->setFirst(base);
-            address->setSecond(index);
+            sema::Type* dimensionType = baseInfo->type;
+            HirNode* address = nullptr;
+            for (ast::AstNode* indexSyntax : indices)
+            {
+                HirNode* index = lowerExpression(indexSyntax);
+                if (index == nullptr || dimensionType == nullptr ||
+                    (dimensionType->kind() != sema::TypeKind::Array &&
+                     dimensionType->kind() != sema::TypeKind::Pointer &&
+                     dimensionType->kind() != sema::TypeKind::StringLiteral))
+                {
+                    return nullptr;
+                }
+                sema::Type* elementType = dimensionType->kind() == sema::TypeKind::StringLiteral
+                    ? info->type : dimensionType->elementType();
+                address = arena_.make(HirNodeKind::IndexAddress, node->range());
+                address->setType(types_.pointerTo(elementType));
+                address->setOperationType(dimensionType);
+                address->setRequiresBoundsCheck(
+                    dimensionType->kind() == sema::TypeKind::Array ||
+                    dimensionType->kind() == sema::TypeKind::StringLiteral);
+                address->setFirst(base);
+                address->setSecond(index);
+                base = address;
+                dimensionType = elementType;
+            }
             return address;
         }
 

@@ -446,6 +446,14 @@ representación canónica equivale a un arreglo exterior de `d0` elementos, cada
 contiene la dimensión siguiente. Su tamaño es `sizeof(T) * d0 * d1 * ...`, comprobado contra
 overflow en cada nivel. La primera dimensión escrita es la exterior y la última es la contigua.
 
+La expresión `array[i0, i1, ...]` consume una dimensión fija por índice, de izquierda a derecha.
+Cada índice debe ser integral y se escala por el tamaño de la dimensión que queda debajo: en
+`T[rows, columns]`, `array[row, column]` desplaza primero `row * sizeof(T[columns])` y después
+`column * sizeof(T)`. La forma es equivalente en dirección y resultado a `array[row][column]`,
+pero conserva la declaración de rango en una sola expresión. Un índice constante fuera de la
+extensión correspondiente se rechaza durante compilación; los accesos dinámicos pertenecen al
+nivel raw y no insertan una comprobación de rango en ejecución.
+
 ### NS-LAYOUT-002 — Objetos y delegates
 
 El layout público de clases, descriptores, tablas de dispatch, interfaces y delegates está

@@ -3445,18 +3445,39 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     ProjectMemberModel::fixedArrayElementTypeKey(baseType->typeKey).has_value();
                 auto base = lowerExpression(baseSyntax, memberOrdinal, baseIsFixedArray, error);
                 if (base == nullptr) return nullptr;
-                const ast::AstNode* indexSyntax = !expression->children().empty()
-                    ? expression->children().front() : expression->second();
-                auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
-                if (index == nullptr) return nullptr;
-                auto address = makeNode(
-                    ProjectOopHirNodeKind::RawElementAddress, expression, core->elementTypeKey);
-                address->elementTypeKey = core->elementTypeKey;
-                address->children.push_back(std::move(base));
-                address->children.push_back(std::move(index));
-                if (addressContext) return address;
+                std::vector<const ast::AstNode*> indices;
+                if (!expression->children().empty())
+                    indices.assign(expression->children().begin(), expression->children().end());
+                else if (expression->second() != nullptr)
+                    indices.push_back(expression->second());
+
+                std::string indexedType = baseType != nullptr ? baseType->typeKey : std::string();
+                std::unique_ptr<ProjectOopHirNode> address;
+                for (const ast::AstNode* indexSyntax : indices)
+                {
+                    const std::optional<std::string> fixedElement = baseIsFixedArray
+                        ? ProjectMemberModel::fixedArrayElementTypeKey(indexedType)
+                        : std::optional<std::string>();
+                    const std::string elementType = fixedElement.has_value()
+                        ? *fixedElement : core->elementTypeKey;
+                    auto index = lowerExpression(indexSyntax, memberOrdinal, false, error);
+                    if (index == nullptr) return nullptr;
+                    address = makeNode(
+                        ProjectOopHirNodeKind::RawElementAddress, expression, elementType);
+                    address->elementTypeKey = elementType;
+                    address->children.push_back(std::move(base));
+                    address->children.push_back(std::move(index));
+                    base = std::move(address);
+                    indexedType = elementType;
+                }
+                if (base == nullptr)
+                {
+                    error = "fixed-array/raw-pointer index expression has no index";
+                    return nullptr;
+                }
+                if (addressContext) return base;
                 auto value = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, core->resultTypeKey);
-                value->children.push_back(std::move(address));
+                value->children.push_back(std::move(base));
                 return value;
             }
 

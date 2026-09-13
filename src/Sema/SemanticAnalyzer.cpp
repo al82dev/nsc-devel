@@ -1622,11 +1622,30 @@ ExpressionInfo SemanticAnalyzer::analyzeCall(ast::AstNode* node)
 ExpressionInfo SemanticAnalyzer::analyzeIndex(ast::AstNode* node)
 {
     ExpressionInfo base = analyzeExpression(node->first());
-    ExpressionInfo index = analyzeExpression(node->second());
-    if (!isInteger(index.type))
+    std::vector<std::pair<ast::AstNode*, ExpressionInfo>> indices;
+    if (!node->children().empty())
     {
+        indices.reserve(node->children().size());
+        for (ast::AstNode* syntax : node->children())
+        {
+            indices.emplace_back(syntax, analyzeExpression(syntax));
+        }
+    }
+    else if (node->second() != nullptr)
+    {
+        indices.emplace_back(node->second(), analyzeExpression(node->second()));
+    }
+    if (indices.empty())
+    {
+        report(node->range(), diagnostics::DiagnosticId::InvalidIndex,
+            "index expression requires at least one index");
+        return makeError(node);
+    }
+    for (const auto& [syntax, index] : indices)
+    {
+        if (isInteger(index.type)) continue;
         report(
-            node->second()->range(),
+            syntax->range(),
             diagnostics::DiagnosticId::InvalidIndex,
             "index expression must have a non-bool integer type");
         return makeError(node);
@@ -1634,23 +1653,76 @@ ExpressionInfo SemanticAnalyzer::analyzeIndex(ast::AstNode* node)
 
     Type* element = nullptr;
     bool fixedArray = false;
-    std::uint64_t count = 0;
     if (base.type->kind() == TypeKind::Array)
     {
-        element = base.type->elementType();
         fixedArray = true;
-        count = base.type->count();
+        Type* dimension = base.type;
+        for (const auto& [syntax, index] : indices)
+        {
+            if (dimension->kind() != TypeKind::Array)
+            {
+                report(
+                    syntax->range(),
+                    diagnostics::DiagnosticId::InvalidIndex,
+                    "fixed array index count exceeds its rank");
+                return makeError(node);
+            }
+            const std::uint64_t count = dimension->count();
+            if (index.isConstant)
+            {
+                const std::optional<std::int64_t> signedValue = constantAsSigned(index);
+                const std::optional<std::uint64_t> unsignedValue = constantAsUnsigned(index);
+                const bool negative = signedValue.has_value() && *signedValue < 0;
+                const bool tooLarge = unsignedValue.has_value() && *unsignedValue >= count;
+                if (negative || tooLarge)
+                {
+                    report(
+                        syntax->range(),
+                        diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                        "constant fixed-array index is outside [0, " + std::to_string(count) + ")");
+                }
+            }
+            dimension = dimension->elementType();
+        }
+        element = dimension;
     }
     else if (base.type->kind() == TypeKind::StringLiteral)
     {
+        if (indices.size() != 1)
+        {
+            report(node->range(), diagnostics::DiagnosticId::InvalidIndex,
+                "string indexing requires exactly one integral index");
+            return makeError(node);
+        }
         element = types_.builtin(TypeKind::Char);
         fixedArray = true;
-        count = base.type->count();
+        const ExpressionInfo& index = indices.front().second;
+        const std::uint64_t count = base.type->count();
+        if (index.isConstant)
+        {
+            const std::optional<std::int64_t> signedValue = constantAsSigned(index);
+            const std::optional<std::uint64_t> unsignedValue = constantAsUnsigned(index);
+            const bool negative = signedValue.has_value() && *signedValue < 0;
+            const bool tooLarge = unsignedValue.has_value() && *unsignedValue >= count;
+            if (negative || tooLarge)
+            {
+                report(
+                    indices.front().first->range(),
+                    diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                    "constant fixed-array index is outside [0, " + std::to_string(count) + ")");
+            }
+        }
     }
     else if (isPointer(base.type) &&
              base.type->elementType()->kind() != TypeKind::Void &&
              base.type->elementType()->isComplete())
     {
+        if (indices.size() != 1)
+        {
+            report(node->range(), diagnostics::DiagnosticId::InvalidIndex,
+                "pointer indexing requires exactly one integral index");
+            return makeError(node);
+        }
         element = base.type->elementType();
     }
     else
@@ -1668,21 +1740,6 @@ ExpressionInfo SemanticAnalyzer::analyzeIndex(ast::AstNode* node)
     result.modifiable = base.type->kind() != TypeKind::StringLiteral && element->kind() != TypeKind::Array;
     result.addressable = true;
     result.requiresBoundsCheck = fixedArray;
-
-    if (fixedArray && index.isConstant)
-    {
-        const std::optional<std::int64_t> signedValue = constantAsSigned(index);
-        const std::optional<std::uint64_t> unsignedValue = constantAsUnsigned(index);
-        const bool negative = signedValue.has_value() && *signedValue < 0;
-        const bool tooLarge = unsignedValue.has_value() && *unsignedValue >= count;
-        if (negative || tooLarge)
-        {
-            report(
-                node->second()->range(),
-                diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
-                "constant fixed-array index is outside [0, " + std::to_string(count) + ")");
-        }
-    }
 
     return record(node, result);
 }

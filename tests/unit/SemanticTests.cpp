@@ -213,6 +213,17 @@ int main()
         "fixed multidimensional arrays are accepted in rank notation");
     tests.expect(accepts("int[2][3] matrix; int Main() { return 0; }"),
         "nested fixed-array modifiers remain a valid equivalent type form");
+    tests.expect(accepts(
+        "int Main() { int[2,3] matrix; matrix[1,2] = 42; return matrix[1,2]; }"),
+        "multidimensional fixed arrays accept one integral index per dimension");
+    tests.expect(rejectsWith(
+        "int Main() { int[2,3] matrix; return matrix[2,0]; }",
+        DiagnosticId::ConstantIndexOutOfBounds),
+        "each multidimensional fixed-array index is checked against its own extent");
+    tests.expect(rejectsWith(
+        "int Main() { int[2,3] matrix; return matrix[0,0,0]; }",
+        DiagnosticId::InvalidIndex),
+        "multidimensional indexing rejects more indices than the fixed rank");
     tests.expect(rejectsWith("int[0] empty; int Main() { return 0; }", DiagnosticId::InvalidArrayCount),
         "fixed arrays require a positive constant count");
     tests.expect(rejectsWith("int[n] values; int n; int Main() { return 0; }", DiagnosticId::UnknownIdentifier),

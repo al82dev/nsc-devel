@@ -706,6 +706,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_fixed_multidimensional_array_tests)
     add_test(NAME nsc.language.fixed-multidimensional-arrays COMMAND nsc_fixed_multidimensional_array_tests)
 
+    add_executable(nsc_multidimensional_index_tests tests/unit/MultidimensionalIndexTests.cpp)
+    target_link_libraries(nsc_multidimensional_index_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_multidimensional_index_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_multidimensional_index_tests)
+    add_test(NAME nsc.language.multidimensional-indexing COMMAND nsc_multidimensional_index_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)

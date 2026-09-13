@@ -776,6 +776,23 @@ modificadores de layout `pack(N)`, `align(N)` y `at(N)` permiten expresar contra
 foráneos, pero también pueden producir accesos menos eficientes o layouts incorrectos si se usan
 por estética. Deben copiar una especificación ABI medida, no una intuición.
 
+Cada dimensión se indexa en el mismo orden en que se declara:
+
+```csharp
+int[3, 4] matrix;
+
+matrix[0, 0] = 10;
+matrix[1, 2] = 20;
+matrix[2, 3] = 12;
+
+int total = matrix[0, 0] + matrix[1, 2] + matrix[2, 3];
+```
+
+`matrix[row, column]` calcula la dirección con los strides del layout canónico. También se admite
+la forma encadenada `matrix[row][column]`; ambas designan el mismo slot. Como se trata del nivel
+raw, un índice variable no agrega una rama de bounds-check. Los índices constantes sí se validan
+contra la extensión concreta durante compilación.
+
 ## 12. Clases, invariantes y destrucción
 
 Una clase combina estado, operaciones e identidad. El constructor debe dejar cada instancia en un
