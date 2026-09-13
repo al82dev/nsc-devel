@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
+#include "nativesharp/Driver/CompilationWorkerPool.h"
 
 #include "nativesharp/AST/AstNodeKind.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -457,6 +458,54 @@ std::unique_ptr<ProjectOopHirNode> makeNode(
     node->typeKey = std::move(typeKey);
     return node;
 }
+
+void scanParallelOrdinals(
+    const ProjectOopHirNode* node,
+    std::size_t localFloor,
+    std::size_t cleanupFloor,
+    std::size_t& localCount,
+    std::size_t& cleanupCount,
+    std::size_t& regionCount)
+{
+    if (node == nullptr) return;
+    if (node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow)
+    {
+        if (node->localOrdinal.has_value() && *node->localOrdinal >= localFloor)
+            localCount = std::max(localCount, *node->localOrdinal - localFloor + 1U);
+        if (node->cleanupRegionOrdinal.has_value() && *node->cleanupRegionOrdinal >= cleanupFloor)
+            cleanupCount = std::max(
+                cleanupCount, *node->cleanupRegionOrdinal - cleanupFloor + 1U);
+    }
+    if (node->hirRegionOrdinal.has_value())
+        regionCount = std::max(regionCount, *node->hirRegionOrdinal + 1U);
+    for (const std::unique_ptr<ProjectOopHirNode>& child : node->children)
+        scanParallelOrdinals(
+            child.get(), localFloor, cleanupFloor, localCount, cleanupCount, regionCount);
+}
+
+void applyParallelOrdinalOffsets(
+    ProjectOopHirNode* node,
+    std::size_t localFloor,
+    std::size_t cleanupFloor,
+    std::size_t localOffset,
+    std::size_t cleanupOffset,
+    std::size_t regionOffset)
+{
+    if (node == nullptr) return;
+    if (node->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow)
+    {
+        if (node->localOrdinal.has_value() && *node->localOrdinal >= localFloor)
+            *node->localOrdinal += localOffset;
+        if (node->cleanupRegionOrdinal.has_value() && *node->cleanupRegionOrdinal >= cleanupFloor)
+            *node->cleanupRegionOrdinal += cleanupOffset;
+    }
+    if (node->hirRegionOrdinal.has_value()) *node->hirRegionOrdinal += regionOffset;
+    if (node->exceptionTargetRegionOrdinal.has_value())
+        *node->exceptionTargetRegionOrdinal += regionOffset;
+    for (const std::unique_ptr<ProjectOopHirNode>& child : node->children)
+        applyParallelOrdinalOffsets(
+            child.get(), localFloor, cleanupFloor, localOffset, cleanupOffset, regionOffset);
+}
 }
 
 const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
@@ -670,7 +719,35 @@ bool ProjectOopHirModel::build(
     const ProjectConstructionModel& constructionModel,
     const ProjectObjectLayoutModel& objectLayoutModel,
     std::string& error,
-    const ProjectGenericConstraintModel* genericConstraintModel)
+    const ProjectGenericConstraintModel* genericConstraintModel,
+    std::size_t workerCount)
+{
+    return buildImpl(
+        nameLookup,
+        memberModel,
+        inheritanceModel,
+        interfaceModel,
+        methodBodyModel,
+        constructionModel,
+        objectLayoutModel,
+        error,
+        genericConstraintModel,
+        workerCount,
+        std::nullopt);
+}
+
+bool ProjectOopHirModel::buildImpl(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectInheritanceModel& inheritanceModel,
+    const ProjectInterfaceModel& interfaceModel,
+    const ProjectMethodBodyModel& methodBodyModel,
+    const ProjectConstructionModel& constructionModel,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    std::string& error,
+    const ProjectGenericConstraintModel* genericConstraintModel,
+    std::size_t workerCount,
+    std::optional<std::size_t> memberFilter)
 {
     error.clear();
     genericConstraintModel_ = genericConstraintModel;
@@ -771,8 +848,91 @@ bool ProjectOopHirModel::build(
     }
 
     functionByMember_.resize(memberModel.members().size());
+    const bool regularFunctionsBuiltInParallel = workerCount > 1 && !memberFilter.has_value();
+    if (regularFunctionsBuiltInParallel)
+    {
+        struct RegularFunctionResult final
+        {
+            std::optional<ProjectOopHirFunction> function;
+            std::string error;
+            SourceRange errorRange;
+            bool success = false;
+        };
+        std::vector<RegularFunctionResult> results(memberModel.members().size());
+        driver::CompilationWorkerPool workers(workerCount);
+        for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+        {
+            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            if ((member.kind != ClassMemberKind::Method &&
+                 member.kind != ClassMemberKind::Constructor &&
+                 member.kind != ClassMemberKind::Destructor) || member.isAbstract)
+            {
+                results[memberOrdinal].success = true;
+                continue;
+            }
+            workers.submit([&, memberOrdinal](std::size_t) {
+                ProjectOopHirModel worker;
+                RegularFunctionResult& result = results[memberOrdinal];
+                result.success = worker.buildImpl(
+                    nameLookup,
+                    memberModel,
+                    inheritanceModel,
+                    interfaceModel,
+                    methodBodyModel,
+                    constructionModel,
+                    objectLayoutModel,
+                    result.error,
+                    genericConstraintModel,
+                    1,
+                    memberOrdinal);
+                result.errorRange = worker.lastErrorRange();
+                if (result.success && !worker.functions_.empty())
+                    result.function = std::move(worker.functions_.front());
+            });
+        }
+        workers.wait();
+        const std::size_t localFloor = methodBodyModel.locals().size();
+        const std::size_t cleanupFloor = methodBodyModel.cleanupRegions().size();
+        for (std::size_t memberOrdinal = 0; memberOrdinal < results.size(); ++memberOrdinal)
+        {
+            RegularFunctionResult& result = results[memberOrdinal];
+            if (!result.success)
+            {
+                error = std::move(result.error);
+                lastErrorRange_ = result.errorRange;
+                return false;
+            }
+            if (!result.function.has_value()) continue;
+            std::size_t localCount = 0;
+            std::size_t cleanupCount = 0;
+            std::size_t regionCount = 0;
+            scanParallelOrdinals(
+                result.function->body.get(),
+                localFloor,
+                cleanupFloor,
+                localCount,
+                cleanupCount,
+                regionCount);
+            applyParallelOrdinalOffsets(
+                result.function->body.get(),
+                localFloor,
+                cleanupFloor,
+                nextSyntheticLocalOrdinal_ - localFloor,
+                nextSyntheticCleanupRegionOrdinal_ - cleanupFloor,
+                nextHirRegionOrdinal_);
+            nextSyntheticLocalOrdinal_ += localCount;
+            nextSyntheticCleanupRegionOrdinal_ += cleanupCount;
+            nextHirRegionOrdinal_ += regionCount;
+            functionByMember_[memberOrdinal] = functions_.size();
+            functions_.push_back(std::move(*result.function));
+        }
+    }
+
+    if (!regularFunctionsBuiltInParallel)
+    {
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
     {
+        if (memberFilter.has_value() && *memberFilter != memberOrdinal) continue;
         const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
         if (member.kind != ClassMemberKind::Method && member.kind != ClassMemberKind::Constructor &&
             member.kind != ClassMemberKind::Destructor)
@@ -1126,6 +1286,13 @@ bool ProjectOopHirModel::build(
         }
         functionByMember_[memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));
+    }
+    }
+
+    if (memberFilter.has_value())
+    {
+        built_ = true;
+        return true;
     }
 
     // Stage 43 lowers every target-typed lambda as a synthetic native callable.  Capturing

@@ -485,7 +485,8 @@ public:
         const ProjectConstructionModel& constructionModel,
         const ProjectObjectLayoutModel& objectLayoutModel,
         std::string& error,
-        const ProjectGenericConstraintModel* genericConstraintModel = nullptr);
+        const ProjectGenericConstraintModel* genericConstraintModel = nullptr,
+        std::size_t workerCount = 1);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
@@ -497,6 +498,19 @@ public:
         const ClassMemberSymbol& member);
 
 private:
+    bool buildImpl(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectConstructionModel& constructionModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        std::string& error,
+        const ProjectGenericConstraintModel* genericConstraintModel,
+        std::size_t workerCount,
+        std::optional<std::size_t> memberFilter);
+
     std::unique_ptr<ProjectOopHirNode> lowerBlock(
         const ast::AstNode* block,
         std::size_t memberOrdinal,

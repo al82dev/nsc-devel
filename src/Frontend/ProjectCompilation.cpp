@@ -710,7 +710,8 @@ bool ProjectCompilation::compileProjectOopHir(
     oopHirModel_ = std::make_unique<ProjectOopHirModel>();
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
-            *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get()))
+            *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get(),
+            compilationJobs_))
     {
         return true;
     }

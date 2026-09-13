@@ -196,6 +196,19 @@ diagnostics shall be reduced by unit ordinal; pointer-to-binding maps shall be r
 global vector offsets. Serial and parallel builds shall expose identical namespace trees, named-type
 ordinals, bindings, expression bindings and diagnostics.
 
+## NSC-HIR-001 — Parallel deterministic callable HIR
+
+Eligible written, imported and precompiled callables shall be lowered independently through the
+bounded worker pool. Each task shall own its `ProjectOopHirModel` execution state, including cleanup
+stacks, exception-handler stacks, lambda context, temporary counters and error range. Shared name,
+member, inheritance, interface, body, construction and layout models are immutable task inputs.
+
+The coordinator shall consume callable results by member ordinal and publish the same function order
+as serial lowering. Per-task owned-temporary local/cleanup ordinals and HIR exception-region ordinals
+shall be rebased into deterministic global ranges before publication. The first failing member in
+logical order supplies the error and source range. Lambda callables, field initializers and implicit
+constructors remain a coordinator pass because they depend on the completed regular-function table.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR

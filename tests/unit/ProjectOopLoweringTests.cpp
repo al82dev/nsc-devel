@@ -289,6 +289,22 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
             mirDump.find("zero=true failure=null") != std::string::npos,
         "OOP MIR dump exposes header-adjusted field offsets and allocation contract");
 
+    ProjectCompilation parallelCompilation;
+    parallelCompilation.setCompilationJobs(4);
+    std::string parallelError;
+    const bool parallelOk = parallelCompilation.compileProjectOopHir(
+        directory / "Stage30Test.nsproj", parallelError);
+    tests.expect(parallelOk && parallelError.empty() && parallelCompilation.oopHirModel() != nullptr,
+        "four-worker per-function HIR lowering succeeds on the same project");
+    if (parallelCompilation.oopHirModel() != nullptr)
+    {
+        const std::string parallelHirDump =
+            nativesharp::frontend::ProjectOopHirModelDumper::dump(
+                *parallelCompilation.oopHirModel());
+        tests.expect(parallelHirDump == hirDump,
+            "parallel per-function HIR is exactly equivalent to serial HIR");
+    }
+
     nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<nativesharp::llvm_backend::LlvmModule> module = lowerer.lower(
         *compilation.nameLookup(), mir);

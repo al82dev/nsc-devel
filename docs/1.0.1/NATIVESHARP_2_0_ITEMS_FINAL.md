@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–254 completados; siguiente item 255
+**Progreso:** Tanda 1, items 246–255 completados; siguiente item 256
 
 ## Regla de ejecución
 
@@ -28,7 +28,7 @@
 7. **252 — ProjectReferences en paralelo / Parallel project references — COMPLETADO / COMPLETE**
 8. **253 — Lectura, lexer y parser en paralelo / Parallel reading, lexing, and parsing — COMPLETADO / COMPLETE**
 9. **254 — Índices y símbolos por archivo en paralelo / Parallel per-file symbol indexing — COMPLETADO / COMPLETE**
-10. **255 — Construcción HIR de funciones en paralelo / Parallel function HIR construction**
+10. **255 — Construcción HIR de funciones en paralelo / Parallel function HIR construction — COMPLETADO / COMPLETE**
 11. **256 — Construcción MIR de funciones en paralelo / Parallel function MIR construction**
 12. **257 — Partición del módulo en unidades de código / Module code partitioning**
 13. **258 — Generación LLVM/OBJ paralela / Parallel LLVM and object generation**
