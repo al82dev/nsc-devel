@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–250 completados; siguiente item 251
+**Progreso:** Tanda 1, items 246–251 completados; siguiente item 252
 
 ## Regla de ejecución
 
@@ -24,7 +24,7 @@
 3. **248 — Presupuesto de optimización O2 / O2 optimization budget — COMPLETADO / COMPLETE**
 4. **249 — Control `-j N` y núcleos reservados / Job and reserved-core controls — COMPLETADO / COMPLETE**
 5. **250 — Pool interno de workers del compilador / Internal compiler worker pool — COMPLETADO / COMPLETE**
-6. **251 — Scheduler determinista sobre el grafo existente / Deterministic graph scheduler**
+6. **251 — Scheduler determinista sobre el grafo existente / Deterministic graph scheduler — COMPLETADO / COMPLETE**
 7. **252 — ProjectReferences en paralelo / Parallel project references**
 8. **253 — Lectura, lexer y parser en paralelo / Parallel reading, lexing, and parsing**
 9. **254 — Índices y símbolos por archivo en paralelo / Parallel per-file symbol indexing**

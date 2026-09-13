@@ -149,6 +149,14 @@ then rethrow the failure with the lowest submission ordinal and leave the pool r
 task is rejected before queueing. This pool provides execution capacity only; dependency order and
 deterministic graph scheduling are a separate contract.
 
+## NSC-SCHED-001 — Deterministic dependency scheduling
+
+Compilation tasks shall receive monotonic ordinals and non-empty stable keys. Dependencies may only
+refer to earlier ordinals, rejecting self, forward and duplicate edges before execution. The
+scheduler shall run topological waves: ready nodes are submitted by stable key and then ordinal,
+and no dependent wave starts before every prerequisite in the previous waves completes. A task
+failure stops later waves and produces a compilation diagnostic instead of terminating a worker.
+
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 
 The textual OOP MIR dump shall identify its schema as `major.minor`. A consumer must not infer MIR
