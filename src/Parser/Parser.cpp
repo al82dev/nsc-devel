@@ -4385,6 +4385,7 @@ ast::AstNode* Parser::parseStatement()
     if (at(TokenKind::KwTry)) return parseTryStatement();
     if (at(TokenKind::KwThrow)) return parseThrowStatement();
     if (at(TokenKind::KwUsing)) return parseUsingStatement();
+    if (at(TokenKind::KwStaticAssert)) return parseStaticAssertStatement();
 
     // ID 131, la otra mitad. Al principio de una sentencia, `Caja<int>` puede empezar DOS cosas:
     // una declaracion (`Caja<int> c = ...`) o una expresion (`Caja<int>.Cuenta = 5;`). Las
@@ -4409,6 +4410,40 @@ ast::AstNode* Parser::parseStatement()
     statement->setFirst(expression);
     expect(TokenKind::Semicolon, "';'");
     statement->setRange(tokenRangeFrom(beginIndex));
+    return statement;
+}
+
+ast::AstNode* Parser::parseStaticAssertStatement()
+{
+    const std::size_t beginIndex = index_;
+    consume();
+    expect(TokenKind::LeftParen, "'('");
+    ast::AstNode* condition = parseExpression();
+
+    std::string message;
+    if (consumeIf(TokenKind::Comma))
+    {
+        if (at(TokenKind::StringLiteral))
+        {
+            message = std::get<std::string>(consume().value());
+        }
+        else
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "static_assert message must be a string literal");
+        }
+    }
+    expect(TokenKind::RightParen, "')'");
+    expect(TokenKind::Semicolon, "';'");
+
+    ast::AstNode* statement = arena_.make<ast::AstNode>(
+        ast::AstNodeKind::StaticAssertStatement,
+        tokenRangeFrom(beginIndex));
+    statement->setFirst(condition);
+    statement->setText(std::move(message));
     return statement;
 }
 

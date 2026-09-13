@@ -701,11 +701,45 @@ void SemanticAnalyzer::analyzeStatement(ast::AstNode* node)
         case ast::AstNodeKind::ReturnStatement:
             analyzeReturn(node);
             break;
+        case ast::AstNodeKind::StaticAssertStatement:
+            analyzeStaticAssert(node);
+            break;
         case ast::AstNodeKind::ExpressionStatement:
             analyzeExpression(node->first());
             break;
         default:
             break;
+    }
+}
+
+void SemanticAnalyzer::analyzeStaticAssert(ast::AstNode* node)
+{
+    ExpressionInfo condition = analyzeExpression(node->first());
+    if (condition.type->kind() != TypeKind::Bool && condition.type->kind() != TypeKind::Error)
+    {
+        report(
+            node->first()->range(),
+            diagnostics::DiagnosticId::InvalidCondition,
+            "static_assert condition must have type bool");
+        return;
+    }
+    if (condition.type->kind() == TypeKind::Error)
+    {
+        return;
+    }
+    if (!condition.isConstant || condition.constantValue.kind() != ConstantKind::Boolean)
+    {
+        report(
+            node->first()->range(),
+            diagnostics::DiagnosticId::ConstRequiresConstant,
+            "static_assert condition must be a compile-time constant");
+        return;
+    }
+    if (!condition.constantValue.boolean())
+    {
+        std::string message = "static assertion failed";
+        if (!node->text().empty()) message += ": " + node->text();
+        report(node->range(), diagnostics::DiagnosticId::StaticAssertionFailed, std::move(message));
     }
 }
 

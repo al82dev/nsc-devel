@@ -59,6 +59,7 @@ enum class AstNodeKind
     CatchClause,
     ThrowStatement,
     UsingStatement,
+    StaticAssertStatement,
     ExpressionStatement,
 
     IdentifierExpression,

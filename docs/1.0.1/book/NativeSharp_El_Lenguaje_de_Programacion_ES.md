@@ -1412,7 +1412,7 @@ const static readonly public internal protected private
 if else while do for switch case break continue return
 try catch finally throw
 struct class interface enum namespace using
-new delete stackalloc sizeof default
+new delete stackalloc sizeof alignof static_assert default
 extern export
 true false null this base
 virtual override abstract sealed
@@ -1465,6 +1465,35 @@ condicional; la mayoría de operadores binarios evalúa ambos.
 La división entera trunca conforme al signo de los operandos y rechaza división por cero en el
 contrato generado. Los shifts exigen un operando integral y una cuenta válida conforme a las reglas
 del tipo. Los operadores bit a bit sobre enums requieren compatibilidad con su representación.
+
+### 31.1 Aserciones de compilación
+
+`static_assert` fija una propiedad que debe seguir siendo cierta al cambiar tipos, layouts o
+constantes. Vive dentro de un bloque, no ejecuta código y acepta un mensaje literal opcional:
+
+```csharp
+public struct PacketHeader
+{
+    public uint Magic;
+    public ushort Version;
+    public ushort Flags;
+}
+
+public class PacketReader
+{
+    public static int ValidateAbi()
+    {
+        static_assert(sizeof(PacketHeader) == 8u, "PacketHeader must remain an 8-byte wire header");
+        static_assert(alignof(PacketHeader) == 4u, "PacketHeader alignment changed");
+        static_assert((1u << 15) == 32768u, "flag bit contract changed");
+        return 0;
+    }
+}
+```
+
+La condición debe ser `bool` y constante. `static_assert(variable == 4);` no es una comprobación
+dinámica y se rechaza; para esa intención use control de flujo normal. La comparación de tamaños
+usa literales `u` porque `sizeof` y `alignof` producen `nuint`.
 
 ## 32. Referencia del compilador
 

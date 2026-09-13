@@ -99,6 +99,7 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"stackalloc", TokenKind::KwStackalloc},
         {"sizeof", TokenKind::KwSizeof},
         {"alignof", TokenKind::KwAlignof},
+        {"static_assert", TokenKind::KwStaticAssert},
         {"default", TokenKind::KwDefault},
         {"extern", TokenKind::KwExtern},
         {"export", TokenKind::KwExport},

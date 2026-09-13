@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, items 246–264 completados; baseline de tanda pendiente
+**Progreso:** Tanda 1 cerrada y congelada en `nativesharp-2.0-tanda-01`; tanda 2 en ejecución
 
 ## Regla de ejecución
 
@@ -41,7 +41,7 @@
 
 ## Tanda 2 — Fundamentos del lenguaje
 
-20. **265 — `static_assert` / Static assertions**
+20. **265 — `static_assert` / Static assertions — COMPLETADO / COMPLETE**
 21. **266 — `offsetof` / Field offsets**
 22. **267 — Arreglos multidimensionales fijos `T[3, 4]` / Fixed multidimensional arrays**
 23. **268 — Indexado `array[i, j]` / Multidimensional indexing**

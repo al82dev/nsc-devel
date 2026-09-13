@@ -51,6 +51,7 @@ private:
 
     void analyzeBlock(ast::AstNode* node, bool createNestedScope);
     void analyzeStatement(ast::AstNode* node);
+    void analyzeStaticAssert(ast::AstNode* node);
     void analyzeVariable(ast::AstNode* node);
     void analyzeIf(ast::AstNode* node);
     void analyzeWhile(ast::AstNode* node);

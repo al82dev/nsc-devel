@@ -464,6 +464,20 @@ un major futuro o un contrato físico distinto se rechaza con causa precisa.
 
 ## 11. Tipos, genéricos y control estructurado
 
+### NS-CT-001 — Aserciones estáticas
+
+`static_assert(condición);` y `static_assert(condición, "mensaje");` son statements de tiempo de
+compilación válidos dentro de un bloque. La condición debe tener tipo `bool`, debe poder evaluarse
+por completo durante la compilación y debe resultar verdadera. Una condición falsa rechaza el
+programa e incorpora el literal opcional al diagnóstico; una condición dependiente de estado de
+ejecución también se rechaza.
+
+Las consultas `sizeof` y `alignof` dentro de una aserción se resuelven contra el modelo canónico de
+layout del target. La aserción no se convierte en HIR ejecutable, MIR ni código LLVM: no tiene costo
+ni efectos en tiempo de ejecución. Sus operandos se analizan para nombres y tipos, pero nunca se
+ejecutan. En comparaciones con `sizeof`/`alignof`, el literal debe respetar las conversiones
+numéricas ordinarias; por ejemplo, `sizeof(int) == 4u` compara `nuint` con un valor sin signo.
+
 ### NS-GEN-001 — Monomorfización
 
 Los genéricos se especializan estáticamente para argumentos concretos. No existe despacho genérico

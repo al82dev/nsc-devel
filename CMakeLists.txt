@@ -688,6 +688,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage37_static_initialization_tests)
     add_test(NAME nsc.stage37.static-initialization COMMAND nsc_stage37_static_initialization_tests)
 
+    add_executable(nsc_static_assert_tests tests/unit/StaticAssertTests.cpp)
+    target_link_libraries(nsc_static_assert_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_static_assert_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_static_assert_tests)
+    add_test(NAME nsc.language.static-assert COMMAND nsc_static_assert_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)

@@ -66,6 +66,7 @@ int Add(int a, int b)
 
 int Main()
 {
+    static_assert(sizeof(int) == 4u, "int ABI");
     int x = 1;
     int* p = &x;
     int[4] values;
@@ -114,6 +115,10 @@ int Main()
 
     const AstNode* mainFunction = findGlobal(root, AstNodeKind::FunctionDeclaration, "Main");
     tests.expect(mainFunction != nullptr && mainFunction->first() != nullptr, "Main has a parsed block body");
+    tests.expect(mainFunction != nullptr && mainFunction->first() != nullptr &&
+            !mainFunction->first()->children().empty() &&
+            mainFunction->first()->children().front()->kind() == AstNodeKind::StaticAssertStatement,
+        "static_assert is represented explicitly in the AST");
     tests.expect(mainFunction != nullptr && mainFunction->first()->children().size() >= 10,
         "Main body contains parsed statements");
 

@@ -55,6 +55,7 @@ enum class DiagnosticId
     BreakOutsideLoop,
     ContinueOutsideLoop,
     ConstRequiresConstant,
+    StaticAssertionFailed,
     GlobalRequiresConstant,
     InvalidArrayCount,
     InvalidEnumInitializer,

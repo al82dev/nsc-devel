@@ -89,7 +89,9 @@ block = "{", { statement }, "}" ;
 statement = block | variable-declaration | expression-statement | if-statement |
             while-statement | do-statement | for-statement | foreach-statement |
             switch-statement | "break", ";" | "continue", ";" | return-statement |
-            try-statement | throw-statement | using-statement | ";" ;
+            try-statement | throw-statement | using-statement | static-assert-statement | ";" ;
+static-assert-statement = "static_assert", "(", expression,
+                          [ ",", string-literal ], ")", ";" ;
 variable-declaration = [ "const" ], ( "var" | type ), identifier,
                        [ "=", expression | aggregate-initializer ], ";" ;
 expression-statement = expression, ";" ;
@@ -135,7 +137,8 @@ additive-expression = multiplicative-expression, { ( "+" | "-" ), multiplicative
 multiplicative-expression = unary-expression, { ( "*" | "/" | "%" ), unary-expression } ;
 unary-expression = postfix-expression | ( "+" | "-" | "!" | "~" | "++" | "--" | "move" ),
                    unary-expression | cast-expression | allocation-expression |
-                   "sizeof", "(", type, ")" | "default", [ "(", type, ")" ] |
+                   ( "sizeof" | "alignof" ), "(", type, ")" |
+                   "default", [ "(", type, ")" ] |
                    "delete", [ "[", "]" ], unary-expression |
                    "stackalloc", type, "[", expression, "]" ;
 cast-expression = "(", type, ")", unary-expression ;

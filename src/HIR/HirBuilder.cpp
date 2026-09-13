@@ -312,6 +312,9 @@ HirNode* HirBuilder::lowerStatement(ast::AstNode* node)
             return result->first() == nullptr ? nullptr : result;
         }
 
+        case ast::AstNodeKind::StaticAssertStatement:
+            return arena_.make(HirNodeKind::Block, node->range());
+
         default:
             return fail("unsupported statement AST node while building HIR");
     }

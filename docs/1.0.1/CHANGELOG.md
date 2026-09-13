@@ -6,6 +6,8 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Lenguaje y Core
 
+- `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
+  generar código de ejecución.
 - `const string` es una constante de compilación utilizable en APIs y metadata.
 - Strings nativos conservan unión condicional, literales y préstamos en constructores.
 - Enums, conversiones numéricas y conversiones de usuario conservan identidad lógica y física.

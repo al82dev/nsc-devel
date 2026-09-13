@@ -1949,6 +1949,20 @@ void ProjectMethodBodyModel::analyzeStatement(
             analyzeThrow(statement, methodMemberOrdinal, scopeOrdinal, diagnostics);
             ownershipFlowReachable_ = false;
             break;
+        case ast::AstNodeKind::StaticAssertStatement:
+        {
+            const ExpressionResult condition = analyzeExpression(
+                statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if (condition.valid && condition.typeKey != "builtin:bool")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidCondition,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->first()->range(),
+                    "static_assert condition must have type bool");
+            }
+            break;
+        }
         case ast::AstNodeKind::ExpressionStatement:
             analyzeExpression(statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             break;

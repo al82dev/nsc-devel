@@ -80,6 +80,20 @@ int main()
         "int Main() { int x = 1; const int y = x; return y; }",
         DiagnosticId::ConstRequiresConstant),
         "const local initializer must be constant");
+    tests.expect(accepts("int Main() { static_assert(sizeof(int) == 4u, \"int ABI\"); return 0; }"),
+        "true static assertion is accepted");
+    tests.expect(rejectsWith(
+        "int Main() { static_assert(false, \"deliberate\"); return 0; }",
+        DiagnosticId::StaticAssertionFailed),
+        "false static assertion uses its dedicated diagnostic");
+    tests.expect(rejectsWith(
+        "int Main() { int x = 1; static_assert(x == 1); return 0; }",
+        DiagnosticId::ConstRequiresConstant),
+        "runtime-dependent static assertion is rejected");
+    tests.expect(rejectsWith(
+        "int Main() { static_assert(1); return 0; }",
+        DiagnosticId::InvalidCondition),
+        "static assertion condition must have type bool");
 
     tests.expect(accepts("int Main() { nuint x = 0; if (x == 0u) { return 1; } return 0; }"),
         "uint and nuint use nuint as their common integral type");
