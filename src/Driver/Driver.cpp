@@ -100,9 +100,20 @@ struct DriverExecutionScope final
     ~DriverExecutionScope()
     {
         if (!reportTiming) return;
+        for (const auto& [phase, elapsed] : phaseTimings)
+        {
+            output << "timing phase=" << phase << " us="
+                   << std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()
+                   << '\n';
+        }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
         output << "timing total_ms=" << elapsed << '\n';
+    }
+    void recordPhase(std::string_view phase, std::chrono::nanoseconds elapsed)
+    {
+        if (!reportTiming) return;
+        phaseTimings.emplace_back(std::string(phase), elapsed);
     }
     bool expired() const noexcept
     {
@@ -111,10 +122,57 @@ struct DriverExecutionScope final
     std::ostream& output;
     std::chrono::steady_clock::time_point started;
     std::optional<std::chrono::steady_clock::time_point> deadline;
+    std::vector<std::pair<std::string, std::chrono::nanoseconds>> phaseTimings;
     bool reportTiming = false;
 };
 
 thread_local DriverExecutionScope* activeExecutionScope = nullptr;
+
+class DriverPhaseTimer final
+{
+public:
+    explicit DriverPhaseTimer(std::string_view phase)
+        : scope_(activeExecutionScope != nullptr && activeExecutionScope->reportTiming
+                     ? activeExecutionScope
+                     : nullptr),
+          phase_(phase),
+          started_(scope_ != nullptr ? std::chrono::steady_clock::now()
+                                     : std::chrono::steady_clock::time_point{}) {}
+
+    ~DriverPhaseTimer()
+    {
+        if (scope_ == nullptr) return;
+        scope_->recordPhase(phase_, std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - started_));
+    }
+
+private:
+    DriverExecutionScope* scope_;
+    std::string_view phase_;
+    std::chrono::steady_clock::time_point started_;
+};
+
+template <typename Callback>
+auto measureDriverPhase(std::string_view phase, Callback callback)
+{
+    const DriverPhaseTimer timing(phase);
+    return callback();
+}
+
+void configureProjectExecution(frontend::ProjectCompilation& compilation)
+{
+    compilation.setCancellationCheck([] {
+        return activeExecutionScope != nullptr && activeExecutionScope->expired();
+    });
+    if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
+    {
+        DriverExecutionScope* const scope = activeExecutionScope;
+        compilation.setPhaseTimingSink(
+            [scope](std::string_view phase, std::chrono::nanoseconds elapsed) {
+                scope->recordPhase(phase, elapsed);
+            });
+    }
+}
 
 struct LayoutRow
 {
@@ -3222,8 +3280,8 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --version\n\n"
            << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
               "compilation command.\n"
-           << "--time reports total wall time; --timeout-ms=N requests cooperative cancellation "
-              "at safe project phase boundaries.\n"
+           << "--time reports deterministic per-phase microseconds plus total wall time; "
+              "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
            << "NSC_LLD_LINK selects the PE linker; NSC_LLVM_LIB independently "
@@ -3615,11 +3673,12 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     }
 
     frontend::ProjectCompilation projectCompilation;
-    projectCompilation.setCancellationCheck([] {
-        return activeExecutionScope != nullptr && activeExecutionScope->expired();
-    });
+    configureProjectExecution(projectCompilation);
     std::string loadError;
-    if (!configurePrecompiledModules(std::filesystem::path(path), projectCompilation, loadError))
+    if (!measureDriverPhase("precompiled-metadata", [&] {
+            return configurePrecompiledModules(
+                std::filesystem::path(path), projectCompilation, loadError);
+        }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -3778,7 +3837,10 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
         projectCompilation.oopMirModel() != nullptr)
     {
         llvm_backend::ProjectOopLlvmLowerer lowerer;
-        oopLlvmModule = lowerer.lower(*projectCompilation.nameLookup(), *projectCompilation.oopMirModel());
+        oopLlvmModule = measureDriverPhase("llvm-lowering", [&] {
+            return lowerer.lower(
+                *projectCompilation.nameLookup(), *projectCompilation.oopMirModel());
+        });
         if (oopLlvmModule == nullptr)
         {
             error << "nsc: error: " << lowerer.error() << '\n';
@@ -3959,8 +4021,12 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
+    configureProjectExecution(compilation);
     std::string loadError;
-    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
+    if (!measureDriverPhase("precompiled-metadata", [&] {
+            return configurePrecompiledModules(
+                std::filesystem::path(inputPath), compilation, loadError);
+        }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -3988,9 +4054,11 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
-            *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel, debugPrefixMaps);
+        measureDriverPhase("llvm-lowering", [&] {
+            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+                *compilation.oopMirModel(), compilation.sourceManager(),
+                debugInformation, optimizationLevel, debugPrefixMaps);
+        });
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -3998,9 +4066,14 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     }
 
     std::string targetError;
-    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
-        llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, targetError);
-    if (targetMachine == nullptr || !targetMachine->configureModuleForTarget(*module, targetError))
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
+    const bool targetConfigured = measureDriverPhase("target-configuration", [&] {
+        targetMachine = llvm_backend::LlvmTargetMachine::createWindowsX64(
+            optimizationLevel, targetError);
+        return targetMachine != nullptr &&
+            targetMachine->configureModuleForTarget(*module, targetError);
+    });
+    if (!targetConfigured)
     {
         error << "nsc: error: " << targetError << '\n';
         return ExitCode::CompilationError;
@@ -4010,20 +4083,28 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     // LlvmOptimizer.h.
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation observation;
-    if (!optimizer.optimize(*module, *targetMachine, optimizationLevel, &observation, targetError))
+    if (!measureDriverPhase("llvm-optimization", [&] {
+            return optimizer.optimize(
+                *module, *targetMachine, optimizationLevel, &observation, targetError);
+        }))
     {
         error << "nsc: error: " << targetError << '\n';
         return ExitCode::CompilationError;
     }
 
     const std::filesystem::path destination = pathFromUtf8(outputPath);
-    if (!targetMachine->emit(*module, destination, llvm_backend::LlvmCodeGenFileType::Object, targetError))
+    if (!measureDriverPhase("object-emission", [&] {
+            return targetMachine->emit(
+                *module, destination, llvm_backend::LlvmCodeGenFileType::Object, targetError);
+        }))
     {
         error << "nsc: error: " << targetError << '\n';
         return ExitCode::CompilationError;
     }
     llvm_backend::CoffObjectVerifier verifier;
-    if (!verifier.verify(destination))
+    if (!measureDriverPhase("coff-verification", [&] {
+            return verifier.verify(destination);
+        }))
     {
         error << "nsc: error: Stage 44 emitted invalid COFF object: " << verifier.error() << '\n';
         return ExitCode::CompilationError;
@@ -4106,8 +4187,12 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
+    configureProjectExecution(compilation);
     std::string loadError;
-    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
+    if (!measureDriverPhase("precompiled-metadata", [&] {
+            return configurePrecompiledModules(
+                std::filesystem::path(inputPath), compilation, loadError);
+        }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -4165,9 +4250,11 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
-            *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel, debugPrefixMaps);
+        measureDriverPhase("llvm-lowering", [&] {
+            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+                *compilation.oopMirModel(), compilation.sourceManager(),
+                debugInformation, optimizationLevel, debugPrefixMaps);
+        });
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -4197,7 +4284,10 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
-    if (!builder.build(*module, destination, optimizationLevel, entryFunction->mangledName, buildError))
+    if (!measureDriverPhase("executable-build", [&] {
+            return builder.build(
+                *module, destination, optimizationLevel, entryFunction->mangledName, buildError);
+        }))
     {
         error << "nsc: error: OOP Windows executable generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
@@ -4250,8 +4340,12 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
+    configureProjectExecution(compilation);
     std::string loadError;
-    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
+    if (!measureDriverPhase("precompiled-metadata", [&] {
+            return configurePrecompiledModules(
+                std::filesystem::path(inputPath), compilation, loadError);
+        }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -4294,9 +4388,11 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
 
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
-            *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel, debugPrefixMaps);
+        measureDriverPhase("llvm-lowering", [&] {
+            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+                *compilation.oopMirModel(), compilation.sourceManager(),
+                debugInformation, optimizationLevel, debugPrefixMaps);
+        });
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -4314,7 +4410,9 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     builder.setExtraLinkLibraries(referencedLibraries);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
-    if (!builder.buildStatic(*module, destination, optimizationLevel, buildError))
+    if (!measureDriverPhase("static-library-build", [&] {
+            return builder.buildStatic(*module, destination, optimizationLevel, buildError);
+        }))
     {
         error << "nsc: error: NativeSharp static-library generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
@@ -4324,7 +4422,9 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     headerDestination.replace_extension(".h");
     interop::CHeaderGenerator headerGenerator;
     std::string headerError;
-    if (!headerGenerator.writeHeader(compilation, headerDestination, headerError))
+    if (!measureDriverPhase("host-header", [&] {
+            return headerGenerator.writeHeader(compilation, headerDestination, headerError);
+        }))
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
@@ -4336,7 +4436,9 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     metadataDestination.replace_extension(".nsmeta");
     interop::LibraryMetadataCodec metadataCodec;
     std::string metadataError;
-    if (!metadataCodec.write(compilation, metadataDestination, metadataError))
+    if (!measureDriverPhase("library-metadata", [&] {
+            return metadataCodec.write(compilation, metadataDestination, metadataError);
+        }))
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
@@ -4372,8 +4474,12 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
+    configureProjectExecution(compilation);
     std::string loadError;
-    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
+    if (!measureDriverPhase("precompiled-metadata", [&] {
+            return configurePrecompiledModules(
+                std::filesystem::path(inputPath), compilation, loadError);
+        }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -4496,9 +4602,11 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     }
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
-        lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
-            *compilation.oopMirModel(), compilation.sourceManager(),
-            debugInformation, optimizationLevel, debugPrefixMaps);
+        measureDriverPhase("llvm-lowering", [&] {
+            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+                *compilation.oopMirModel(), compilation.sourceManager(),
+                debugInformation, optimizationLevel, debugPrefixMaps);
+        });
     if (module == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';
@@ -4538,8 +4646,10 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
-    if (!builder.buildDynamic(*module, exportSymbols, destination, importLibrary,
-            optimizationLevel, debugInformation, buildError))
+    if (!measureDriverPhase("dynamic-library-build", [&] {
+            return builder.buildDynamic(*module, exportSymbols, destination, importLibrary,
+                optimizationLevel, debugInformation, buildError);
+        }))
     {
         error << "nsc: error: NativeSharp DLL generation failed: " << buildError << '\n';
         return ExitCode::CompilationError;
@@ -4558,7 +4668,9 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     headerDestination.replace_extension(".h");
     interop::CHeaderGenerator headerGenerator;
     std::string headerError;
-    if (!headerGenerator.writeHeader(compilation, headerDestination, headerError))
+    if (!measureDriverPhase("host-header", [&] {
+            return headerGenerator.writeHeader(compilation, headerDestination, headerError);
+        }))
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
@@ -4572,7 +4684,9 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     metadataDestination.replace_extension(".nsmeta");
     interop::LibraryMetadataCodec metadataCodec;
     std::string metadataError;
-    if (!metadataCodec.write(compilation, metadataDestination, metadataError))
+    if (!measureDriverPhase("library-metadata", [&] {
+            return metadataCodec.write(compilation, metadataDestination, metadataError);
+        }))
     {
         std::error_code removeError;
         std::filesystem::remove(destination, removeError);
@@ -4627,8 +4741,12 @@ ExitCode Driver::runProjectHostHeaderGeneration(
     std::string_view inputPath, std::string_view outputPath, std::ostream &output, std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
+    configureProjectExecution(compilation);
     std::string loadError;
-    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
+    if (!measureDriverPhase("precompiled-metadata", [&] {
+            return configurePrecompiledModules(
+                std::filesystem::path(inputPath), compilation, loadError);
+        }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -4662,7 +4780,9 @@ ExitCode Driver::runProjectHostHeaderGeneration(
     interop::CHeaderGenerator generator;
     std::string generationError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
-    if (!generator.writeHeader(compilation, destination, generationError))
+    if (!measureDriverPhase("host-header", [&] {
+            return generator.writeHeader(compilation, destination, generationError);
+        }))
     {
         error << "nsc: error: Stage 48.1 C header generation failed: " << generationError << '\n';
         return ExitCode::CompilationError;
@@ -4677,8 +4797,12 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
     std::string_view inputPath, std::string_view outputPath, std::ostream &output, std::ostream &error)
 {
     frontend::ProjectCompilation compilation;
+    configureProjectExecution(compilation);
     std::string loadError;
-    if (!configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError))
+    if (!measureDriverPhase("precompiled-metadata", [&] {
+            return configurePrecompiledModules(
+                std::filesystem::path(inputPath), compilation, loadError);
+        }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -4711,7 +4835,9 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(
     interop::LibraryMetadataCodec codec;
     std::string metadataError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
-    if (!codec.write(compilation, destination, metadataError))
+    if (!measureDriverPhase("library-metadata", [&] {
+            return codec.write(compilation, destination, metadataError);
+        }))
     {
         error << "nsc: error: Stage 48.2 metadata generation failed: " << metadataError << '\n';
         return ExitCode::CompilationError;

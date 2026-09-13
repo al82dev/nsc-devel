@@ -539,6 +539,52 @@ int main()
         std::ostringstream output;
         std::ostringstream error;
         const std::string path = oopProjectPath.string();
+        const std::vector<std::string_view> arguments = {
+            "--check-project-oop-mir", path, "--time"};
+        const ExitCode code = runDriver(arguments, output, error);
+        const std::string report = output.str();
+        const std::vector<std::string_view> expectedPhases = {
+            "precompiled-metadata",
+            "project-graph",
+            "syntax-lex",
+            "precompiled-syntax",
+            "syntax-parse",
+            "generics",
+            "names",
+            "members",
+            "inheritance",
+            "interfaces",
+            "generic-constraints",
+            "method-bodies",
+            "virtual-dispatch",
+            "destruction",
+            "construction",
+            "layout",
+            "oop-hir",
+            "oop-mir"};
+        std::size_t cursor = 0;
+        bool ordered = true;
+        for (std::string_view phase : expectedPhases)
+        {
+            const std::string marker = "timing phase=" + std::string(phase) + " us=";
+            const std::size_t found = report.find(marker, cursor);
+            if (found == std::string::npos)
+            {
+                ordered = false;
+                break;
+            }
+            cursor = found + marker.size();
+        }
+        const std::size_t total = report.find("timing total_ms=", cursor);
+        tests.expect(code == ExitCode::Success && ordered && total != std::string::npos,
+            "--time reports every project compilation phase in deterministic execution order");
+        tests.expect(error.str().empty(), "detailed project timing keeps stderr empty");
+    }
+
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::string path = oopProjectPath.string();
         const std::vector<std::string_view> arguments = {"--dump-project-oop-mir", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--dump-project-oop-mir exposes Stage 30 physical lowering decisions");

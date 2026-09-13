@@ -99,9 +99,17 @@ constraints, bodies, dispatch, destruction, construction, layout, HIR and MIR. C
 the next phase by name and returns a compilation failure. It does not interrupt LLVM or a linker
 inside a non-transactional call; the next safe boundary observes it.
 
-`--time` appends `timing total_ms=N` using a monotonic clock on every exit path. Neither option
-changes language semantics, optimization or artifact identity. The diagnostic limit and hostile
-input ceilings remain independent resource controls.
+`--time` reports every project phase that was entered as
+`timing phase=<stable-name> us=N`, in deterministic execution order, and finally appends
+`timing total_ms=N` on every exit path. Frontend phases include graph loading, source and
+precompiled syntax, generics, names, members, inheritance, interfaces, constraints, bodies,
+dispatch, destruction, construction, layout, HIR and MIR. Artifact-producing commands also name
+their LLVM, object, library, header and metadata work. Durations use a monotonic clock; phase names
+and ordering are stable diagnostic interfaces, while measured values are observational and do not
+participate in artifact identity.
+
+Neither timing nor cancellation changes language semantics, optimization or artifact identity. The
+diagnostic limit and hostile-input ceilings remain independent resource controls.
 
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 

@@ -21,20 +21,22 @@ línea que la documentación explica; no convierte por sí sola un build de desa
    baseline nuevo.
 2. [Roadmap hacia 2.0](ROADMAP_TO_2_0.md) gobierna los snapshots `1.0.1-dev-NNN`, el cierre de
    1.0.1, la evolución compatible de 1.x y la puerta explícita para cambios incompatibles 2.0.
-3. [Estado actual del lenguaje](CURRENT_STATE.md) resume la superficie disponible para escribir y
+3. [Items finales de NativeSharp 2.0](NATIVESHARP_2_0_ITEMS_FINAL.md) divide la implementación
+   pendiente en tandas y commits verificables, y conserva su progreso acumulativo.
+4. [Estado actual del lenguaje](CURRENT_STATE.md) resume la superficie disponible para escribir y
    portar aplicaciones nativas.
-4. [Especificación del lenguaje](language/NativeSharp_Language_Specification_1_0_1.md) es la
+5. [Especificación del lenguaje](language/NativeSharp_Language_Specification_1_0_1.md) es la
    autoridad normativa para sintaxis, tipos, ownership, excepciones, genéricos, ABI y ejecución.
-5. [Gramática](language/NativeSharp_Grammar_1_0_1.ebnf) define la superficie sintáctica completa.
-6. [Mapa de conformidad](language/NativeSharp_1_0_1_conformance.map) conecta cada cláusula con su
+6. [Gramática](language/NativeSharp_Grammar_1_0_1.ebnf) define la superficie sintáctica completa.
+7. [Mapa de conformidad](language/NativeSharp_1_0_1_conformance.map) conecta cada cláusula con su
    implementación y pruebas.
-7. [Contrato del compilador](compiler/NativeSharp_Compiler_Contract_1_0_1.md) define diagnósticos,
+8. [Contrato del compilador](compiler/NativeSharp_Compiler_Contract_1_0_1.md) define diagnósticos,
    artefactos, paquetes, compatibilidad y fallos controlados.
-8. [Contrato de depuración](debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md) gobierna CodeView,
+9. [Contrato de depuración](debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md) gobierna CodeView,
    PDB, líneas, variables, tipos, closures y excepciones nativas.
-9. [Referencia extensa en español](book/NativeSharp_El_Lenguaje_de_Programacion_ES.md) explica el
+10. [Referencia extensa en español](book/NativeSharp_El_Lenguaje_de_Programacion_ES.md) explica el
    lenguaje con programas sustanciales, modelos de costo y casos de uso.
-10. [Cambio desde 0.9](CHANGELOG.md) resume la evolución que originó esta edición.
+11. [Cambio desde 0.9](CHANGELOG.md) resume la evolución que originó esta edición.
 
 ## Qué documentación es actual y qué es histórica
 

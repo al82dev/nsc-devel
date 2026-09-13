@@ -18,6 +18,7 @@
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Source/SourceManager.h"
 
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -44,6 +45,8 @@ class ProjectCompilation final
 {
 public:
     void setCancellationCheck(std::function<bool()> check);
+    void setPhaseTimingSink(
+        std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
     bool setPrecompiledModules(
         std::vector<PrecompiledSyntaxModule> modules,
         std::string& error);
@@ -120,5 +123,6 @@ private:
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     std::function<bool()> cancellationCheck_;
+    std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
 };
 }

@@ -5,6 +5,7 @@
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Source/SourcePosition.h"
 
+#include <chrono>
 #include <set>
 #include <string>
 #include <utility>
@@ -17,6 +18,12 @@ void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
     cancellationCheck_ = std::move(check);
 }
 
+void ProjectCompilation::setPhaseTimingSink(
+    std::function<void(std::string_view, std::chrono::nanoseconds)> sink)
+{
+    phaseTimingSink_ = std::move(sink);
+}
+
 bool ProjectCompilation::cancellationRequested(std::string& loadError, std::string_view nextPhase) const
 {
     if (!cancellationCheck_ || !cancellationCheck_()) return false;
@@ -27,6 +34,28 @@ namespace
 {
 using lexer::Token;
 using lexer::TokenKind;
+
+class ProjectPhaseTimer final
+{
+public:
+    ProjectPhaseTimer(
+        const std::function<void(std::string_view, std::chrono::nanoseconds)>& sink,
+        std::string_view phase)
+        : sink_(sink), phase_(phase), started_(sink ? std::chrono::steady_clock::now()
+                                              : std::chrono::steady_clock::time_point{}) {}
+
+    ~ProjectPhaseTimer()
+    {
+        if (!sink_) return;
+        sink_(phase_, std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - started_));
+    }
+
+private:
+    const std::function<void(std::string_view, std::chrono::nanoseconds)>& sink_;
+    std::string_view phase_;
+    std::chrono::steady_clock::time_point started_;
+};
 
 std::string joinName(std::span<const std::string> prefix, std::string_view name)
 {
@@ -392,6 +421,7 @@ bool ProjectCompilation::compileProjectNames(
     }
     if (cancellationRequested(loadError, "names")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "names");
     nameLookup_ = std::make_unique<ProjectNameLookup>();
     return nameLookup_->build(*projectGraph_, units_, diagnostics_);
 }
@@ -406,6 +436,7 @@ bool ProjectCompilation::compileProjectGenerics(
     }
     if (cancellationRequested(loadError, "generics")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "generics");
     genericModel_ = std::make_unique<ProjectGenericModel>();
     std::vector<PrecompiledGenericSpecialization> precompiledSpecializations;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
@@ -429,6 +460,7 @@ bool ProjectCompilation::compileProjectMembers(
     }
     if (cancellationRequested(loadError, "members")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "members");
     memberModel_ = std::make_unique<ProjectMemberModel>();
     if (!memberModel_->build(*nameLookup_, units_, diagnostics_)) return false;
 
@@ -478,6 +510,7 @@ bool ProjectCompilation::compileProjectInheritance(
     }
     if (cancellationRequested(loadError, "inheritance")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "inheritance");
     inheritanceModel_ = std::make_unique<ProjectInheritanceModel>();
     return inheritanceModel_->build(*nameLookup_, diagnostics_);
 }
@@ -494,6 +527,7 @@ bool ProjectCompilation::compileProjectInheritance(
 // proyecto y devolvia rojo por errores ajenos al ID.
 bool ProjectCompilation::buildGenericConstraintModel()
 {
+    const ProjectPhaseTimer timing(phaseTimingSink_, "generic-constraints");
     genericConstraintModel_ = std::make_unique<ProjectGenericConstraintModel>();
     return genericConstraintModel_->build(
         *genericModel_, *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_,
@@ -531,6 +565,7 @@ bool ProjectCompilation::compileProjectMethodBodies(
     if (cancellationRequested(loadError, "method-bodies")) return false;
     buildGenericConstraintModel();
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "method-bodies");
     methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
     std::optional<std::size_t> publicSurfaceProjectOrdinal;
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr &&
@@ -553,6 +588,7 @@ bool ProjectCompilation::compileProjectInterfaces(
     }
     if (cancellationRequested(loadError, "interfaces")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "interfaces");
     interfaceModel_ = std::make_unique<ProjectInterfaceModel>();
     return interfaceModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
 }
@@ -567,6 +603,7 @@ bool ProjectCompilation::compileProjectVirtualDispatch(
     }
     if (cancellationRequested(loadError, "virtual-dispatch")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "virtual-dispatch");
     virtualDispatchModel_ = std::make_unique<ProjectVirtualDispatchModel>();
     return virtualDispatchModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
@@ -582,6 +619,7 @@ bool ProjectCompilation::compileProjectDestruction(
     }
     if (cancellationRequested(loadError, "destruction")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "destruction");
     destructionModel_ = std::make_unique<ProjectDestructionModel>();
     return destructionModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
@@ -597,6 +635,7 @@ bool ProjectCompilation::compileProjectConstructions(
     }
     if (cancellationRequested(loadError, "construction")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "construction");
     constructionModel_ = std::make_unique<ProjectConstructionModel>();
     return constructionModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_, units_, diagnostics_);
@@ -612,6 +651,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
     }
     if (cancellationRequested(loadError, "layout")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "layout");
     objectLayoutModel_ = std::make_unique<ProjectObjectLayoutModel>();
     return objectLayoutModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_);
@@ -627,6 +667,7 @@ bool ProjectCompilation::compileProjectOopHir(
     }
     if (cancellationRequested(loadError, "oop-hir")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "oop-hir");
     oopHirModel_ = std::make_unique<ProjectOopHirModel>();
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
@@ -670,6 +711,7 @@ bool ProjectCompilation::compileProjectOopMir(
     }
     if (cancellationRequested(loadError, "oop-mir")) return false;
 
+    const ProjectPhaseTimer timing(phaseTimingSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
     return oopMirModel_->build(
         *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_, *interfaceModel_,
@@ -692,7 +734,11 @@ bool ProjectCompilation::compileSyntaxCore(
     }
 
     compilation::ProjectGraphLoader loader;
-    std::optional<compilation::ProjectGraph> graph = loader.load(projectFile, loadError);
+    std::optional<compilation::ProjectGraph> graph;
+    {
+        const ProjectPhaseTimer timing(phaseTimingSink_, "project-graph");
+        graph = loader.load(projectFile, loadError);
+    }
     if (!graph.has_value())
     {
         return false;
@@ -712,42 +758,47 @@ bool ProjectCompilation::compileSyntaxCore(
         return false;
     }
     bool lexicalOk = true;
-    for (std::size_t projectOrdinal = 0;
-         projectOrdinal < projectGraph_->projects().size();
-         ++projectOrdinal)
     {
-        const compilation::Project& project = projectGraph_->projects()[projectOrdinal];
-        for (const compilation::ProjectSource& source : project.sourceSet().sources())
+        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-lex");
+        for (std::size_t projectOrdinal = 0;
+             projectOrdinal < projectGraph_->projects().size();
+             ++projectOrdinal)
         {
-            const std::optional<FileId> fileId = sourceManager_.loadFile(source.absolutePath, loadError);
-            if (!fileId.has_value())
+            const compilation::Project& project = projectGraph_->projects()[projectOrdinal];
+            for (const compilation::ProjectSource& source : project.sourceSet().sources())
             {
-                return false;
-            }
+                const std::optional<FileId> fileId = sourceManager_.loadFile(source.absolutePath, loadError);
+                if (!fileId.has_value())
+                {
+                    return false;
+                }
 
-            const source::SourceFile* sourceFile = sourceManager_.getFile(*fileId);
-            if (sourceFile == nullptr)
-            {
-                loadError = "internal error: loaded project source has no SourceFile slot";
-                return false;
-            }
+                const source::SourceFile* sourceFile = sourceManager_.getFile(*fileId);
+                if (sourceFile == nullptr)
+                {
+                    loadError = "internal error: loaded project source has no SourceFile slot";
+                    return false;
+                }
 
-            auto unit = std::make_unique<ProjectSyntaxUnit>(
-                projectOrdinal,
-                source.ordinal,
-                project.moduleName(),
-                *fileId);
-            if (!unit->lex(*sourceFile, diagnostics_))
-            {
-                lexicalOk = false;
+                auto unit = std::make_unique<ProjectSyntaxUnit>(
+                    projectOrdinal,
+                    source.ordinal,
+                    project.moduleName(),
+                    *fileId);
+                if (!unit->lex(*sourceFile, diagnostics_))
+                {
+                    lexicalOk = false;
+                }
+                units_.push_back(std::move(unit));
             }
-            units_.push_back(std::move(unit));
         }
     }
 
     std::set<std::string> materializedMetadata;
-    for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
+        const ProjectPhaseTimer timing(phaseTimingSink_, "precompiled-syntax");
+        for (const PrecompiledSyntaxModule& module : precompiledModules_)
+        {
         std::error_code metadataKeyError;
         std::string metadataKey = std::filesystem::weakly_canonical(
             module.metadataPath, metadataKeyError).generic_string();
@@ -810,24 +861,27 @@ bool ProjectCompilation::compileSyntaxCore(
             if (!templateUnit->lex(*templateSourceFile, diagnostics_)) lexicalOk = false;
             units_.push_back(std::move(templateUnit));
         }
+        }
     }
 
-    const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
-    bool syntaxOk = lexicalOk;
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
     {
-        if (!unit->isLexicallyValid())
+        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-parse");
+        const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
+        bool syntaxOk = lexicalOk;
+        for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
         {
-            syntaxOk = false;
-            continue;
+            if (!unit->isLexicallyValid())
+            {
+                syntaxOk = false;
+                continue;
+            }
+            if (!unit->parse(diagnostics_, knownTypeNames))
+            {
+                syntaxOk = false;
+            }
         }
-        if (!unit->parse(diagnostics_, knownTypeNames))
-        {
-            syntaxOk = false;
-        }
+        return syntaxOk && !diagnostics_.hasErrors();
     }
-
-    return syntaxOk && !diagnostics_.hasErrors();
 }
 
 const compilation::ProjectGraph* ProjectCompilation::projectGraph() const noexcept
