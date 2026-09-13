@@ -538,7 +538,46 @@ después de la construcción. `static` asocia el miembro al tipo, no a una insta
 inicialización estática es determinista y su guard es seguro ante concurrencia y reentrancia en la
 implementación actual.
 
-### 6.1 Asignación definida
+### 6.1 Valores declarados `readonly struct`
+
+Cuando todos los datos que forman un valor deben fijarse al construirlo, la restricción puede
+declararse sobre el struct completo:
+
+```csharp
+public readonly struct PixelCoordinate
+{
+    public readonly int X;
+    public readonly int Y;
+
+    // Es estado del tipo, no de cada coordenada; por eso no necesita readonly.
+    public static int Constructed;
+
+    public PixelCoordinate(int x, int y)
+    {
+        X = x;
+        Y = y;
+        Constructed = Constructed + 1;
+    }
+
+    public int LinearIndex(int width)
+    {
+        return Y * width + X;
+    }
+}
+```
+
+El constructor puede escribir `X` y `Y` porque inicializa el receptor actual. Después de esa
+frontera, ni un método del struct ni un consumidor externo pueden reasignarlos. El compilador exige
+que cada campo de instancia lleve también `readonly`: esto evita que el modificador del tipo sea
+una promesa decorativa mientras un campo permanezca mutable.
+
+La regla no afecta a `Constructed`, porque un campo estático no forma parte de una copia de
+`PixelCoordinate`. Tampoco cambia el layout: dos enteros siguen ocupando y cruzando el ABI como dos
+enteros. Lo que cambia es el conjunto de escrituras legales. Los receptores readonly y la
+protección contra mutaciones transitivas se tratan como un contrato adicional; declarar el tipo no
+inventa copias defensivas silenciosas en esta etapa.
+
+### 6.2 Asignación definida
 
 El análisis es sensible al control de flujo. En el siguiente método, `answer` está asignada en cada
 rama que llega al `return`:

@@ -344,7 +344,6 @@ int main()
     // Los modificadores que no significan nada en estas formas de tipo anidado.
     for (const char* source : {
              "class Outer { static struct Item { int a; } }\n",
-             "class Outer { readonly struct Item { int a; } }\n",
              "class Outer { const struct Item { int a; } }\n",
              "class Outer { virtual class Item { int a; } }\n",
              "class Outer { override class Item { int a; } }\n",
@@ -357,6 +356,22 @@ int main()
             std::string("nested type rejects an incompatible modifier: ") + source);
         tests.expect(hasDiagnostic(fixture, diagnostics::DiagnosticId::ExpectedDeclaration),
             std::string("the nested-type rejection is a declaration diagnostic: ") + source);
+    }
+
+    {
+        Fixture fixture;
+        parse(fixture, "class Outer { public readonly struct Item { public readonly int a; } }\n");
+        tests.expect(!fixture.diagnostics.hasErrors(),
+            "a nested struct accepts the readonly type modifier");
+        const ast::AstNode* outer = fixture.root != nullptr && !fixture.root->children().empty()
+            ? fixture.root->children()[0]
+            : nullptr;
+        const ast::AstNode* item = outer != nullptr && !outer->children().empty()
+            ? outer->children()[0]
+            : nullptr;
+        tests.expect(item != nullptr && item->kind() == AstNodeKind::StructDeclaration &&
+                item->hasModifier(TokenKind::KwReadonly),
+            "the nested readonly marker survives in the AST");
     }
 
     {

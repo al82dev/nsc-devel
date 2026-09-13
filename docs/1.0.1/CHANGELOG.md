@@ -14,6 +14,8 @@ empaqueta con NativeSharp 1.0.1.
   alineación final del agregado; el contrato se conserva en NSMETA y headers C.
 - `T[*]` declara una cola inline flexible como último campo de un struct; `sizeof` cubre sólo el
   encabezado, el indexado es raw y el header C publica `T field[]`.
+- `readonly struct` declara un valor inmutable después de construcción: todos sus campos de
+  instancia deben ser `readonly`, mientras que sus campos estáticos conservan reglas independientes.
 - Los arreglos multidimensionales fijos usan `T[d0, d1, ...]`, almacenamiento inline contiguo y
   orden row-major sin cabecera ni asignación de heap.
 - `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice

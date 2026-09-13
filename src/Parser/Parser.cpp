@@ -1271,6 +1271,7 @@ ast::AstNode* Parser::parseGlobalDeclaration()
     bool isAbstract = false;
     bool isSealed = false;
     bool isStatic = false;
+    bool isReadonlyType = false;
     // C2.2 "union and explicit layout": `pack(N)` and `align(N)` are contextual-keyword layout
     // modifiers on a struct/union declaration -- the NativeSharp spellings of C's
     // `#pragma pack(N)` and `__declspec(align(N))`. They are contextual (an ordinary identifier
@@ -1395,6 +1396,29 @@ ast::AstNode* Parser::parseGlobalDeclaration()
             {
                 accessibility = modifier.kind();
             }
+            continue;
+        }
+
+        const bool readonlyTypeModifier = at(TokenKind::KwReadonly) &&
+            (peek().kind() == TokenKind::KwStruct || peek().kind() == TokenKind::KwClass ||
+             peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
+             peek().kind() == TokenKind::KwDelegate || peek().kind() == TokenKind::KwPublic ||
+             peek().kind() == TokenKind::KwInternal || peek().kind() == TokenKind::KwBorrowed ||
+             (peek().kind() == TokenKind::Identifier &&
+              (peek().lexeme() == "pack" || peek().lexeme() == "align" ||
+               peek().lexeme() == "size" || peek().lexeme() == "union")));
+        if (readonlyTypeModifier)
+        {
+            const lexer::Token& modifier = consume();
+            if (isReadonlyType)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate readonly modifier on type declaration");
+            }
+            isReadonlyType = true;
             continue;
         }
 
@@ -1657,6 +1681,16 @@ ast::AstNode* Parser::parseGlobalDeclaration()
         synchronizeGlobal();
         return nullptr;
     }
+    else if (isReadonlyType)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "readonly must modify a non-union struct declaration");
+        synchronizeGlobal();
+        return nullptr;
+    }
     else if (accessibility != TokenKind::Invalid)
     {
         diagnostics_.report(
@@ -1696,6 +1730,22 @@ ast::AstNode* Parser::parseGlobalDeclaration()
                 diagnostics::DiagnosticSeverity::Error,
                 declaration->range(),
                 "'borrowed' declares a view type and applies only to struct declarations");
+        }
+        if (isReadonlyType)
+        {
+            if (declaration->kind() != ast::AstNodeKind::StructDeclaration ||
+                declaration->auxiliaryText().find("union") != std::string::npos)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    declaration->range(),
+                    "readonly applies only to non-union struct declarations");
+            }
+            else
+            {
+                declaration->addModifier(TokenKind::KwReadonly);
+            }
         }
         // C2.2: pack/align describe how an aggregate's FIELDS are placed, so they mean nothing on
         // a class (heap object with its own header), an interface or an enum. Refusing them there
@@ -2232,7 +2282,9 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
         refuse("partial", "only nested classes can be split into materialization parts");
     if (modifiers.isStatic && !nestedClass)
         refuse("static", "only a nested class can be static");
-    if (modifiers.isReadonly) refuse("readonly", "a type is not storage");
+    const bool nestedReadonlyStruct = modifiers.isReadonly && at(TokenKind::KwStruct);
+    if (modifiers.isReadonly && !nestedReadonlyStruct)
+        refuse("readonly", "only a non-union struct can be readonly");
     if (modifiers.isConst) refuse("const", "a type is not a value");
     if (modifiers.isVirtual) refuse("virtual", "a type is not dispatched");
     if (modifiers.isOverride) refuse("override", "a type does not override anything");
@@ -2311,6 +2363,10 @@ ast::AstNode* Parser::parseNestedTypeDeclaration(
     if (modifiers.isNew)
     {
         declaration->addModifier(TokenKind::KwNew);
+    }
+    if (nestedReadonlyStruct)
+    {
+        declaration->addModifier(TokenKind::KwReadonly);
     }
     if (modifiers.layoutPack.has_value() || modifiers.layoutAlign.has_value() ||
         modifiers.layoutSize.has_value())

@@ -730,6 +730,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_flexible_array_tests)
     add_test(NAME nsc.language.flexible-arrays COMMAND nsc_flexible_array_tests)
 
+    add_executable(nsc_readonly_struct_tests tests/unit/ReadonlyStructTests.cpp)
+    target_link_libraries(nsc_readonly_struct_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_readonly_struct_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_readonly_struct_tests)
+    add_test(NAME nsc.language.readonly-structs COMMAND nsc_readonly_struct_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)

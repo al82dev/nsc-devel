@@ -32,6 +32,11 @@ el offset y la alineación de `T`, pero no agrega un elemento a `sizeof(struct)`
 reserva el encabezado más los elementos y conserva explícitamente su cantidad. Sólo se admiten
 elementos de lifetime trivial; la forma no puede aparecer en clases, unions, locales ni firmas.
 
+`readonly struct` convierte la inmutabilidad posterior a construcción en propiedad del tipo. Cada
+campo de instancia debe declararse `readonly`; el constructor del propio struct puede inicializarlo,
+pero ningún método ordinario puede reasignarlo. Los campos estáticos no forman parte del valor y
+mantienen sus reglas normales. El modificador no cambia layout ni ABI y sobrevive en NSMETA.
+
 Los arreglos locales `T[length]` pueden tomar su longitud de una expresión integral evaluada al
 ejecutar la declaración. Su almacenamiento es contiguo, pertenece al frame actual y no requiere
 `new` ni `delete`. Esta forma no se extiende a campos, parámetros o retornos: esas posiciones forman

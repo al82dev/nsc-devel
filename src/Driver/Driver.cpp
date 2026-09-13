@@ -1706,6 +1706,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             // and `size` makes the consumer reject a declaration it cannot reproduce.
             generated << "pack(" << type.alignment << ") align(" << type.alignment << ") size(" << type.size
                       << ") ";
+            if ((type.flags & (1U << 6U)) != 0U) generated << "readonly ";
             if ((type.flags & (1U << 4U)) != 0U) generated << "borrowed ";
             generated << ((type.flags & (1U << 5U)) != 0U ? "union " : "struct ");
         }

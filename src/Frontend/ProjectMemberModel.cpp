@@ -1022,6 +1022,17 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.isNewSlot = memberNode->hasModifier(lexer::TokenKind::KwNew);
             symbol.isReadonly = symbol.kind == ClassMemberKind::Field &&
                 memberNode->hasModifier(lexer::TokenKind::KwReadonly);
+            if (type.syntax != nullptr &&
+                type.syntax->hasModifier(lexer::TokenKind::KwReadonly) &&
+                symbol.kind == ClassMemberKind::Field && !symbol.isStatic && !symbol.isReadonly)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "every instance field of readonly struct '" + type.identity.name() +
+                        "' must be declared readonly");
+            }
             // Bloque 1: a STATIC field cannot be `owned`, and this has to be said here rather than
             // left to fail downstream.
             //

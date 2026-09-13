@@ -434,6 +434,8 @@ std::uint16_t typeFlags(const frontend::NamedTypeDeclaration& type) noexcept
         flags |= 1U << 4U;
     if (type.syntax != nullptr && type.syntax->auxiliaryText().find("union") != std::string::npos)
         flags |= 1U << 5U;
+    if (type.syntax != nullptr && type.syntax->hasModifier(lexer::TokenKind::KwReadonly))
+        flags |= 1U << 6U;
     return flags;
 }
 

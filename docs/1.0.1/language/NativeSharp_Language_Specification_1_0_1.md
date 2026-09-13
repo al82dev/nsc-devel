@@ -122,6 +122,27 @@ que no pueda resolverse completamente durante la compilación se rechaza.
 La igualdad de nombres cortos no iguala tipos. La identidad canónica incluye namespace, anidamiento,
 módulo de origen y, cuando aplica, argumentos genéricos.
 
+### NS-TYPE-003 — Structs readonly
+
+`readonly struct` declara que el estado de instancia de un valor queda congelado después de su
+construcción. Todo campo de instancia declarado por el struct debe llevar `readonly`; un campo
+mutable hace inválida la declaración completa. Los campos estáticos no pertenecen al valor y se
+rigen por sus propios modificadores.
+
+El constructor del mismo struct puede asignar sus campos readonly mediante el receptor `this`
+actual. Una vez terminada la construcción, una asignación directa o mediante miembro se rechaza.
+Esta entrega no vuelve readonly el receptor de cada método automáticamente: ese contrato se define
+separadamente para permitir diagnosticar mutaciones transitivas sin alterar el ABI del valor.
+
+`readonly` como modificador de tipo sólo es válido en structs no-union, incluidos structs anidados.
+No cambia tamaño, alineación, orden de campos ni convención de llamada. NSMETA conserva la propiedad
+para que un consumidor reconstruya la misma restricción semántica.
+
+`readonly struct` declares that instance state is frozen after construction. Every instance field
+must be readonly, while static fields remain governed independently. The declaring constructor may
+initialize the current receiver; later assignments are rejected. The modifier is valid only for
+non-union structs, changes no ABI property, and is preserved in NSMETA.
+
 ### NS-MEMBER-001 — Miembros y modificadores
 
 Campos almacenan estado; métodos ejecutan cuerpos; propiedades e indexadores son pares de accessors;
