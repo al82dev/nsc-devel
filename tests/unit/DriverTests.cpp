@@ -148,8 +148,8 @@ int main()
                 output.str().find("requested-jobs: 8") != std::string::npos &&
                 output.str().find("reserved-cores: 2") != std::string::npos &&
                 output.str().find("effective-jobs: ") != std::string::npos &&
-                output.str().find("scheduler: sequential") != std::string::npos,
-            "the driver reports the resolved job policy before parallel scheduling exists");
+                output.str().find("scheduler: project-references") != std::string::npos,
+            "the driver reports parallel project-reference scheduling");
         tests.expect(error.str().empty(), "a valid job policy keeps stderr empty");
     }
 

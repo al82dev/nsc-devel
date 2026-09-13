@@ -44,6 +44,7 @@ struct PrecompiledSyntaxModule final
 class ProjectCompilation final
 {
 public:
+    void setCompilationJobs(std::size_t jobs) noexcept;
     void setCancellationCheck(std::function<bool()> check);
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
@@ -124,5 +125,6 @@ private:
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     std::function<bool()> cancellationCheck_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
+    std::size_t compilationJobs_ = 1;
 };
 }

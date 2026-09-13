@@ -1,10 +1,14 @@
 #include "nativesharp/Compilation/ProjectGraphDumper.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
+#include "nativesharp/Compilation/ProjectLoader.h"
 
 #include "../support/TestContext.h"
 
 #include <filesystem>
 #include <fstream>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -174,6 +178,67 @@ void testMissingTransitiveReference(TestContext& tests, const std::filesystem::p
         "missing transitive project preserves ProjectLoader diagnostic");
 }
 
+void testIndependentReferencesLoadConcurrentlyAndRemainDeterministic(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const std::filesystem::path left = root / "ParallelLeft";
+    const std::filesystem::path right = root / "ParallelRight";
+    const std::filesystem::path app = root / "ParallelApp";
+    writeProject(left, "Left.nsproj", "ParallelLeft");
+    writeProject(right, "Right.nsproj", "ParallelRight");
+    writeProject(
+        app,
+        "App.nsproj",
+        "ParallelApp",
+        "    <ProjectReference Include=\"../ParallelRight/Right.nsproj\" />\n"
+        "    <ProjectReference Include=\"../ParallelLeft/Left.nsproj\" />\n");
+
+    std::mutex mutex;
+    std::condition_variable bothStarted;
+    std::size_t activeChildren = 0;
+    std::size_t maximumActiveChildren = 0;
+    bool releaseChildren = false;
+    auto controlledLoad = [&](const std::filesystem::path& path, std::string& error) {
+        if (path.parent_path() == left || path.parent_path() == right)
+        {
+            std::unique_lock lock(mutex);
+            ++activeChildren;
+            maximumActiveChildren = std::max(maximumActiveChildren, activeChildren);
+            if (activeChildren == 2)
+            {
+                releaseChildren = true;
+                bothStarted.notify_all();
+            }
+            if (!bothStarted.wait_for(lock, std::chrono::seconds(2), [&] { return releaseChildren; }))
+            {
+                releaseChildren = true;
+                bothStarted.notify_all();
+            }
+            --activeChildren;
+        }
+        return nativesharp::compilation::ProjectLoader{}.load(path, error);
+    };
+
+    ProjectGraphLoader parallelLoader(2, controlledLoad);
+    std::string error;
+    const auto parallel = parallelLoader.load(app / "App.nsproj", error);
+    tests.expect(parallel.has_value(), "independent project references load in parallel");
+    tests.expect(maximumActiveChildren == 2,
+        "two independent project references execute concurrently in the bounded pool");
+
+    ProjectGraphLoader serialLoader(1);
+    const auto serial = serialLoader.load(app / "App.nsproj", error);
+    tests.expect(serial.has_value(), "the same graph loads with one worker");
+    if (!parallel.has_value() || !serial.has_value()) return;
+    std::ostringstream parallelDump;
+    std::ostringstream serialDump;
+    ProjectGraphDumper{}.dump(*parallel, parallelDump);
+    ProjectGraphDumper{}.dump(*serial, serialDump);
+    tests.expect(parallelDump.str() == serialDump.str(),
+        "parallel discovery preserves the exact serial project graph order");
+}
+
 void testPrecompiledOrderIsCanonical(TestContext& tests, const std::filesystem::path& root)
 {
     const auto app = root / "CanonicalPrecompiled";
@@ -215,6 +280,7 @@ int main()
     std::filesystem::create_directories(root, errorCode);
 
     testDependencyOrderAndDiamond(tests, root);
+    testIndependentReferencesLoadConcurrentlyAndRemainDeterministic(tests, root);
     testCycleDiagnostic(tests, root);
     testDuplicateModuleDiagnostic(tests, root);
     testMissingTransitiveReference(tests, root);

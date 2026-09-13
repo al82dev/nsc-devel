@@ -115,6 +115,8 @@ function(nsc_enable_warnings target_name)
 endfunction()
 
 add_library(nsc_compilation STATIC
+    src/Driver/CompilationJobPolicy.cpp
+    src/Driver/CompilationWorkerPool.cpp
     src/Compilation/SimpleXmlParser.cpp
     src/Compilation/GlobPattern.cpp
     src/Compilation/Project.cpp
@@ -363,9 +365,7 @@ nsc_enable_warnings(nsc_linker)
 
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
-    src/Driver/CompilationJobPolicy.cpp
     src/Driver/CompilationGraphScheduler.cpp
-    src/Driver/CompilationWorkerPool.cpp
     src/Driver/CompatibilityPolicy.cpp
     src/Driver/DiagnosticBundle.cpp
     src/Driver/Driver.cpp

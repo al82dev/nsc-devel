@@ -13,6 +13,11 @@
 
 namespace nativesharp::frontend
 {
+void ProjectCompilation::setCompilationJobs(std::size_t jobs) noexcept
+{
+    compilationJobs_ = std::max<std::size_t>(1, jobs);
+}
+
 void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
 {
     cancellationCheck_ = std::move(check);
@@ -733,7 +738,7 @@ bool ProjectCompilation::compileSyntaxCore(
         return false;
     }
 
-    compilation::ProjectGraphLoader loader;
+    compilation::ProjectGraphLoader loader(compilationJobs_);
     std::optional<compilation::ProjectGraph> graph;
     {
         const ProjectPhaseTimer timing(phaseTimingSink_, "project-graph");

@@ -192,6 +192,8 @@ auto measureDriverPhase(std::string_view phase, Callback callback)
 
 void configureProjectExecution(frontend::ProjectCompilation& compilation)
 {
+    const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
+    compilation.setCompilationJobs(jobs != nullptr ? jobs->effectiveJobs() : 1);
     compilation.setCancellationCheck([] {
         return activeExecutionScope != nullptr && activeExecutionScope->expired();
     });
@@ -2045,7 +2047,8 @@ bool buildPrecompiledGenericTemplateSource(
 bool configurePrecompiledModules(
     const std::filesystem::path &projectFile, frontend::ProjectCompilation &compilation, std::string &error)
 {
-    compilation::ProjectGraphLoader loader;
+    const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
+    compilation::ProjectGraphLoader loader(jobs != nullptr ? jobs->effectiveJobs() : 1);
     std::optional<compilation::ProjectGraph> graph = loader.load(projectFile, error);
     if (!graph.has_value()) return false;
 
@@ -2949,7 +2952,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << '\n'
                    << "reserved-cores: " << jobPolicy.reservedCores() << '\n'
                    << "effective-jobs: " << jobPolicy.effectiveJobs() << '\n'
-                   << "scheduler: sequential\n";
+                   << "scheduler: project-references\n";
             return ExitCode::Success;
         }
         if (argument == "--print-migration-baseline")
@@ -3790,7 +3793,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
 
     if (action == "--check-project-graph" || action == "--dump-project-graph")
     {
-        compilation::ProjectGraphLoader loader;
+        const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
+        compilation::ProjectGraphLoader loader(jobs != nullptr ? jobs->effectiveJobs() : 1);
         std::string loadError;
         const std::optional<compilation::ProjectGraph> graph = loader.load(std::filesystem::path(path), loadError);
         if (!graph.has_value())

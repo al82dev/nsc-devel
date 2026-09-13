@@ -133,9 +133,9 @@ one progress job. `-j N` and `-jN` accept 1 through 1,024 and cap requested comp
 available host capacity. Duplicate or malformed controls are command-line errors.
 
 `--print-job-policy` reports hardware threads, requested jobs, reserved cores, effective jobs and
-the current scheduler kind. Establishing the policy and pool does not claim that compilation phases
-are scheduled in parallel: until the deterministic graph scheduler is connected, the scheduler
-shall identify itself as `sequential`.
+the current scheduler kind. Once project-reference discovery uses the worker pool, the scheduler
+shall identify itself as `project-references`; this label does not claim that later compilation
+phases are parallel.
 
 ## NSC-WORKERS-001 — Internal compiler worker pool
 
@@ -156,6 +156,18 @@ refer to earlier ordinals, rejecting self, forward and duplicate edges before ex
 scheduler shall run topological waves: ready nodes are submitted by stable key and then ordinal,
 and no dependent wave starts before every prerequisite in the previous waves completes. A task
 failure stops later waves and produces a compilation diagnostic instead of terminating a worker.
+
+## NSC-GRAPH-002 — Parallel project-reference discovery
+
+Independent `ProjectReference` descriptors shall be loaded concurrently through the bounded
+compiler worker pool using the effective `-j` policy. Discovery proceeds in stable path-sorted
+frontiers. Worker completion order shall not affect duplicate-module diagnostics, cycle diagnostics,
+project ordinals, root placement or graph dumps. A one-worker and a many-worker load of the same
+unchanged project tree shall produce the same logical graph.
+
+The pool and job policy are linked from the compilation layer so graph loading can use the shared
+capacity without introducing a Frontend-to-Driver dependency cycle. Existing Driver-facing headers
+remain the compatibility surface for these internal facilities.
 
 ## NSC-BOUNDARY-001 — Versioned MIR and runtime boundaries
 

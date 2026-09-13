@@ -1,9 +1,13 @@
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 
 #include "nativesharp/Compilation/ProjectLoader.h"
+#include "nativesharp/Driver/CompilationWorkerPool.h"
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
+#include <map>
+#include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -21,10 +25,16 @@ enum class VisitState
 struct GraphLoadState final
 {
     std::unordered_map<std::string, VisitState> visits;
-    std::unordered_map<std::string, std::filesystem::path> moduleOwners;
     std::vector<std::filesystem::path> pathStack;
     std::vector<std::string> moduleStack;
     std::vector<Project> orderedProjects;
+};
+
+struct LoadedProject final
+{
+    std::filesystem::path path;
+    std::optional<Project> project;
+    std::string error;
 };
 
 std::string pathKey(const std::filesystem::path& path)
@@ -83,7 +93,7 @@ std::string cycleMessage(const GraphLoadState& state, const std::filesystem::pat
 
 bool visitProject(
     const std::filesystem::path& projectFile,
-    const ProjectLoader& loader,
+    const std::map<std::string, Project>& projects,
     GraphLoadState& state,
     std::string& error)
 {
@@ -100,29 +110,26 @@ bool visitProject(
         return false;
     }
 
-    std::string projectError;
-    std::optional<Project> project = loader.load(canonical, projectError);
-    if (!project.has_value())
+    const auto loaded = projects.find(key);
+    if (loaded == projects.end())
     {
-        error = projectError;
+        error = "internal error: discovered project was not loaded: '" +
+            canonical.generic_string() + "'";
         return false;
     }
-
-    const auto owner = state.moduleOwners.find(project->moduleName());
-    if (owner != state.moduleOwners.end() && pathKey(owner->second) != key)
-    {
-        error = "duplicate module name '" + project->moduleName() + "' in projects '" +
-            owner->second.generic_string() + "' and '" + project->projectFile().generic_string() + "'";
-        return false;
-    }
-    state.moduleOwners[project->moduleName()] = project->projectFile();
+    const Project& project = loaded->second;
     state.visits.emplace(key, VisitState::Visiting);
-    state.pathStack.push_back(project->projectFile());
-    state.moduleStack.push_back(project->moduleName());
+    state.pathStack.push_back(project.projectFile());
+    state.moduleStack.push_back(project.moduleName());
 
-    for (const std::filesystem::path& reference : project->projectReferences())
+    std::vector<std::filesystem::path> references(
+        project.projectReferences().begin(), project.projectReferences().end());
+    std::ranges::sort(references, {}, [](const std::filesystem::path& path) {
+        return pathKey(canonicalPath(path));
+    });
+    for (const std::filesystem::path& reference : references)
     {
-        if (!visitProject(reference, loader, state, error))
+        if (!visitProject(reference, projects, state, error))
         {
             return false;
         }
@@ -131,9 +138,23 @@ bool visitProject(
     state.pathStack.pop_back();
     state.moduleStack.pop_back();
     state.visits[key] = VisitState::Complete;
-    state.orderedProjects.push_back(std::move(*project));
+    state.orderedProjects.push_back(project);
     return true;
 }
+}
+
+ProjectGraphLoader::ProjectGraphLoader(
+    std::size_t workerCount,
+    ProjectLoadFunction projectLoader)
+    : workerCount_(std::max<std::size_t>(1, workerCount)),
+      projectLoader_(std::move(projectLoader))
+{
+    if (!projectLoader_)
+    {
+        projectLoader_ = [](const std::filesystem::path& path, std::string& error) {
+            return ProjectLoader{}.load(path, error);
+        };
+    }
 }
 
 std::optional<ProjectGraph> ProjectGraphLoader::load(
@@ -141,9 +162,76 @@ std::optional<ProjectGraph> ProjectGraphLoader::load(
     std::string& error) const
 {
     error.clear();
-    ProjectLoader loader;
+    const std::filesystem::path root = canonicalPath(rootProjectFile);
+    std::set<std::string> discovered;
+    discovered.insert(pathKey(root));
+    std::vector<std::filesystem::path> frontier = {root};
+    std::map<std::string, Project> projects;
+    std::map<std::string, std::filesystem::path> moduleOwners;
+    driver::CompilationWorkerPool pool(workerCount_);
+
+    while (!frontier.empty())
+    {
+        std::ranges::sort(frontier, {}, [](const std::filesystem::path& path) {
+            return pathKey(path);
+        });
+        std::vector<LoadedProject> loaded(frontier.size());
+        for (std::size_t index = 0; index < frontier.size(); ++index)
+        {
+            loaded[index].path = frontier[index];
+            pool.submit([&, index](std::size_t) {
+                loaded[index].project = projectLoader_(loaded[index].path, loaded[index].error);
+            });
+        }
+        try
+        {
+            pool.wait();
+        }
+        catch (const std::exception& exception)
+        {
+            error = "project reference loading failed: " + std::string(exception.what());
+            return std::nullopt;
+        }
+        catch (...)
+        {
+            error = "project reference loading failed with a non-standard exception";
+            return std::nullopt;
+        }
+
+        std::vector<std::filesystem::path> next;
+        for (LoadedProject& entry : loaded)
+        {
+            if (!entry.project.has_value())
+            {
+                error = entry.error;
+                return std::nullopt;
+            }
+            const std::string key = pathKey(entry.path);
+            const std::string& moduleName = entry.project->moduleName();
+            const auto owner = moduleOwners.find(moduleName);
+            if (owner != moduleOwners.end() && pathKey(owner->second) != key)
+            {
+                error = "duplicate module name '" + moduleName + "' in projects '" +
+                    owner->second.generic_string() + "' and '" +
+                    entry.project->projectFile().generic_string() + "'";
+                return std::nullopt;
+            }
+            moduleOwners[moduleName] = entry.project->projectFile();
+            for (const std::filesystem::path& reference : entry.project->projectReferences())
+            {
+                const std::filesystem::path canonicalReference = canonicalPath(reference);
+                if (discovered.insert(pathKey(canonicalReference)).second)
+                {
+                    next.push_back(canonicalReference);
+                }
+            }
+            projects.emplace(key, std::move(*entry.project));
+        }
+        frontier = std::move(next);
+    }
+
     GraphLoadState state;
-    if (!visitProject(rootProjectFile, loader, state, error))
+    if (!visitProject(root, projects, state, error))
     {
         return std::nullopt;
     }
