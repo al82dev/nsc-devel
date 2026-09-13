@@ -1227,6 +1227,19 @@ std::span<const MethodCoreBinding> ProjectMethodBodyModel::coreBindings() const 
     return coreBindings_;
 }
 
+const MethodVariableArrayIndexBinding* ProjectMethodBodyModel::variableArrayIndexBinding(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto found = std::find_if(
+        variableArrayIndexBindings_.begin(),
+        variableArrayIndexBindings_.end(),
+        [&](const MethodVariableArrayIndexBinding& binding)
+        {
+            return binding.syntax == syntax;
+        });
+    return found == variableArrayIndexBindings_.end() ? nullptr : &*found;
+}
+
 std::span<const MethodExceptionBinding> ProjectMethodBodyModel::exceptionBindings() const noexcept
 {
     return exceptionBindings_;
@@ -2663,6 +2676,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     bool isVariableLengthArray = false;
     std::string variableLengthArrayElementTypeKey;
     const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
+    std::vector<const ast::AstNode*> variableLengthArrayExtentSyntaxes;
 
     // NativeSharp 2.0 item 269 -- a non-constant array extent is meaningful only on a local
     // declaration: `T[length] values;` reserves raw, contiguous storage in the current stack
@@ -2676,34 +2690,52 @@ void ProjectMethodBodyModel::analyzeVariable(
     {
         const auto& modifiers = variable->typeSyntax()->modifiers();
         std::size_t fixedArrayModifierCount = 0;
-        const ast::TypeModifierSyntax* runtimeExtent = nullptr;
+        bool hasRuntimeExtent = false;
         for (const ast::TypeModifierSyntax& modifier : modifiers)
         {
             if (modifier.kind != ast::TypeModifierSyntaxKind::Array) continue;
             ++fixedArrayModifierCount;
             if (!ProjectMemberModel::evaluateConstantArrayCount(modifier.arrayCount).has_value())
-                runtimeExtent = &modifier;
+                hasRuntimeExtent = true;
         }
 
-        if (runtimeExtent != nullptr)
+        if (hasRuntimeExtent)
         {
-            const bool supportedShape = fixedArrayModifierCount == 1 &&
-                !modifiers.empty() && &modifiers.back() == runtimeExtent;
+            const bool supportedShape = fixedArrayModifierCount != 0 &&
+                modifiers.size() >= fixedArrayModifierCount &&
+                std::all_of(
+                    modifiers.end() - static_cast<std::ptrdiff_t>(fixedArrayModifierCount),
+                    modifiers.end(),
+                    [](const ast::TypeModifierSyntax& modifier)
+                    {
+                        return modifier.kind == ast::TypeModifierSyntaxKind::Array;
+                    });
             if (!supportedShape)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidArrayCount,
                     diagnostics::DiagnosticSeverity::Error,
                     variable->typeSyntax()->range(),
-                    "a local variable-length array currently requires exactly one outermost "
-                    "runtime dimension; multidimensional VLA syntax is introduced separately");
+                    "a local variable-length array requires its runtime dimensions to be the "
+                    "outermost type modifiers");
             }
             else
             {
                 const std::string declaredKey =
                     memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_);
-                const std::size_t extentStart = declaredKey.rfind('[');
-                if (extentStart == std::string::npos)
+                std::size_t elementEnd = declaredKey.size();
+                bool completeSuffix = true;
+                for (std::size_t dimension = 0; dimension < fixedArrayModifierCount; ++dimension)
+                {
+                    const std::size_t extentStart = declaredKey.rfind('[', elementEnd - 1);
+                    if (extentStart == std::string::npos)
+                    {
+                        completeSuffix = false;
+                        break;
+                    }
+                    elementEnd = extentStart;
+                }
+                if (!completeSuffix)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidType,
@@ -2713,23 +2745,31 @@ void ProjectMethodBodyModel::analyzeVariable(
                 }
                 else
                 {
-                    variableLengthArrayElementTypeKey = declaredKey.substr(0, extentStart);
-                    variableLengthArrayCountSyntax = runtimeExtent->arrayCount;
+                    variableLengthArrayElementTypeKey = declaredKey.substr(0, elementEnd);
+                    // Parser stores fixed-array modifiers inside-out so canonical layout is
+                    // nested correctly. Reverse them back here: runtime evaluation and row-major
+                    // indexing must follow the dimensions as the programmer wrote them.
+                    for (auto modifier = modifiers.rbegin(); modifier != modifiers.rend(); ++modifier)
+                    {
+                        if (modifier->kind != ast::TypeModifierSyntaxKind::Array) break;
+                        variableLengthArrayExtentSyntaxes.push_back(modifier->arrayCount);
+                    }
+                    variableLengthArrayCountSyntax = variableLengthArrayExtentSyntaxes.front();
                     isVariableLengthArray = true;
 
-                    const ExpressionResult count = analyzeExpression(
-                        variableLengthArrayCountSyntax,
-                        methodMemberOrdinal,
-                        scopeOrdinal,
-                        diagnostics);
-                    if (!count.valid || !ProjectTypeConversion::isIntegral(count.typeKey) ||
-                        count.typeKey == "builtin:bool")
+                    for (const ast::AstNode* extentSyntax : variableLengthArrayExtentSyntaxes)
                     {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::InvalidArrayCount,
-                            diagnostics::DiagnosticSeverity::Error,
-                            runtimeExtent->range,
-                            "a variable-length array requires an integral element count");
+                        const ExpressionResult count = analyzeExpression(
+                            extentSyntax, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                        if (!count.valid || !ProjectTypeConversion::isIntegral(count.typeKey) ||
+                            count.typeKey == "builtin:bool")
+                        {
+                            diagnostics.report(
+                                diagnostics::DiagnosticId::InvalidArrayCount,
+                                diagnostics::DiagnosticSeverity::Error,
+                                extentSyntax != nullptr ? extentSyntax->range() : variable->range(),
+                                "every variable-length array dimension must have an integral type");
+                        }
                     }
                     if (variableLengthArrayElementTypeKey == "builtin:void")
                     {
@@ -3105,6 +3145,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.isVariableLengthArray = isVariableLengthArray;
     local.variableLengthArrayElementTypeKey = variableLengthArrayElementTypeKey;
     local.variableLengthArrayCountSyntax = variableLengthArrayCountSyntax;
+    local.variableLengthArrayExtentSyntaxes = variableLengthArrayExtentSyntaxes;
     local.isConst = variable->flag();
     // El valor de un `const` entero, plegado aqui. Ver el comentario del campo: sirve para
     // contestar "¿el divisor es cero?" y para nada mas.
@@ -3169,6 +3210,34 @@ void ProjectMethodBodyModel::analyzeVariable(
         variable->text(),
         localOrdinal,
         variable->range()});
+
+    // Item 270: multidimensional extents are values, not aliases for their source expressions.
+    // Snapshot them in hidden nuint locals in source order so side effects happen once and later
+    // assignments to a variable used as an extent cannot silently reshape the array's strides.
+    if (isVariableLengthArray && variableLengthArrayExtentSyntaxes.size() > 1)
+    {
+        for (std::size_t dimension = 0;
+             dimension < variableLengthArrayExtentSyntaxes.size(); ++dimension)
+        {
+            MethodLocalSymbol extentLocal;
+            extentLocal.methodMemberOrdinal = methodMemberOrdinal;
+            extentLocal.scopeOrdinal = scopeOrdinal;
+            extentLocal.declarationOrdinal = scopes_[scopeOrdinal].localOrdinals.size();
+            extentLocal.fileId = locals_[localOrdinal].fileId;
+            extentLocal.range = variableLengthArrayExtentSyntaxes[dimension] != nullptr
+                ? variableLengthArrayExtentSyntaxes[dimension]->range() : variable->range();
+            extentLocal.syntax = variableLengthArrayExtentSyntaxes[dimension];
+            extentLocal.name = "__vla_extent_" + std::to_string(localOrdinal) + "_" +
+                std::to_string(dimension);
+            extentLocal.typeKey = "builtin:nuint";
+            extentLocal.lambdaOrdinal = currentLambdaOrdinal_;
+            const std::size_t extentOrdinal = locals_.size();
+            locals_.push_back(std::move(extentLocal));
+            scopes_[scopeOrdinal].localOrdinals.push_back(extentOrdinal);
+            assignedLocals_.insert(extentOrdinal);
+            locals_[localOrdinal].variableLengthArrayExtentLocalOrdinals.push_back(extentOrdinal);
+        }
+    }
     // C7 "definite assignment": a declaration with an initializer assigns the local, full stop.
     // Without one, only the types the analysis does not track (aggregates, which the backend
     // zeroes) start out assigned; everything else must be written before it is read. A local
@@ -5378,6 +5447,59 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     }
                     indexedType = *element;
                 }
+            }
+
+            const MethodLocalSymbol* variableArrayLocal = nullptr;
+            if (base.valid && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> baseName = lookupScopeName(
+                    scopeOrdinal, expression->first()->text());
+                if (baseName.has_value() && baseName->kind == ScopeNameKind::Local &&
+                    baseName->semanticOrdinal < locals_.size() &&
+                    locals_[baseName->semanticOrdinal].isVariableLengthArray)
+                {
+                    variableArrayLocal = &locals_[baseName->semanticOrdinal];
+                }
+            }
+
+            if (variableArrayLocal != nullptr &&
+                variableArrayLocal->variableLengthArrayExtentSyntaxes.size() > 1)
+            {
+                bool validIndices =
+                    indices.size() == variableArrayLocal->variableLengthArrayExtentSyntaxes.size();
+                for (const ExpressionResult& index : indices)
+                {
+                    validIndices = validIndices && index.valid &&
+                        ProjectTypeConversion::isIntegral(index.typeKey) &&
+                        index.typeKey != "builtin:bool";
+                }
+                if (!validIndices)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidIndex,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "multidimensional VLA indexing requires one integral index per dimension");
+                    break;
+                }
+
+                result.typeKey = variableArrayLocal->variableLengthArrayElementTypeKey;
+                result.valid = true;
+                result.assignable = true;
+                MethodCoreBinding binding;
+                binding.kind = MethodCoreOperationKind::RawElement;
+                binding.syntax = expression;
+                binding.methodMemberOrdinal = methodMemberOrdinal;
+                binding.scopeOrdinal = scopeOrdinal;
+                binding.resultTypeKey = result.typeKey;
+                binding.elementTypeKey = result.typeKey;
+                binding.assignable = true;
+                coreBindings_.push_back(std::move(binding));
+                variableArrayIndexBindings_.push_back(MethodVariableArrayIndexBinding{
+                    expression,
+                    variableArrayLocal->variableLengthArrayExtentLocalOrdinals});
+                break;
             }
             const bool validPointerIndex = base.valid && rawPointerBase && indices.size() == 1 &&
                 indices.front().valid && ProjectTypeConversion::isIntegral(indices.front().typeKey);

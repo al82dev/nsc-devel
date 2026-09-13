@@ -17,6 +17,8 @@ empaqueta con NativeSharp 1.0.1.
 - `T[length] local;` reserva un arreglo local de longitud evaluada en ejecución directamente en el
   frame de la función, sin `new`, `delete` ni cabecera de heap; los campos y firmas siguen exigiendo
   dimensiones contractuales.
+- `T[rows, columns] local;` compone dimensiones de ejecución en una sola reserva row-major; cada
+  extensión se evalúa una vez al declarar y conserva sus strides aunque cambien las variables fuente.
 - `const string` es una constante de compilación utilizable en APIs y metadata.
 - Strings nativos conservan unión condicional, literales y préstamos en constructores.
 - Enums, conversiones numéricas y conversiones de usuario conservan identidad lógica y física.

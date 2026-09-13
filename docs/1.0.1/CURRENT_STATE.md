@@ -26,6 +26,8 @@ Los arreglos locales `T[length]` pueden tomar su longitud de una expresión inte
 ejecutar la declaración. Su almacenamiento es contiguo, pertenece al frame actual y no requiere
 `new` ni `delete`. Esta forma no se extiende a campos, parámetros o retornos: esas posiciones forman
 parte de contratos de layout o ABI y conservan dimensiones constantes o tipos dinámicos explícitos.
+La forma admite varias dimensiones: `T[rows, columns]` captura cada extensión una sola vez y calcula
+direcciones row-major sobre una única reserva contigua.
 
 Los strings son objetos nativos. `const string` representa una constante de compilación; los
 literales, comparaciones y operaciones documentadas no dependen de `System.String` ni del CLR. Los

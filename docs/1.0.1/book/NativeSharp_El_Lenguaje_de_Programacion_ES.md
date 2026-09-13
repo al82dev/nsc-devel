@@ -825,6 +825,31 @@ bounds checks dinámicos y no puede devolverse ni sobrevivir al frame. La extens
 integral y el elemento debe tener lifetime trivial. Una dimensión constante, como `int[32]`, sigue
 siendo un fixed array inline; un campo o una firma no puede depender de una longitud de ejecución.
 
+También se admiten varias dimensiones de ejecución:
+
+```csharp
+public static void BuildTable(int rows, int columns)
+{
+    int[rows, columns] table;
+
+    int row = 0;
+    while (row < rows)
+    {
+        int column = 0;
+        while (column < columns)
+        {
+            table[row, column] = row * 100 + column;
+            column += 1;
+        }
+        row += 1;
+    }
+}
+```
+
+Las dimensiones se capturan una sola vez al declarar. La tabla es un único bloque row-major, no un
+array de filas: `table[row, column]` usa el número de columnas capturado como stride de la fila.
+Cambiar después la variable `columns` no reinterpreta ni redimensiona el almacenamiento existente.
+
 ## 12. Clases, invariantes y destrucción
 
 Una clase combina estado, operaciones e identidad. El constructor debe dejar cada instancia en un

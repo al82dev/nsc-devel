@@ -1998,15 +1998,85 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                     error = "NativeSharp 2.0 VLA local lost its element type or runtime extent";
                     return nullptr;
                 }
-                auto count = lowerExpression(
-                    local->variableLengthArrayCountSyntax, memberOrdinal, false, error);
-                if (count == nullptr) return nullptr;
+                std::unique_ptr<ProjectOopHirNode> count;
+                std::unique_ptr<ProjectOopHirNode> vlaBlock;
+                if (local->variableLengthArrayExtentSyntaxes.size() > 1)
+                {
+                    if (local->variableLengthArrayExtentLocalOrdinals.size() !=
+                        local->variableLengthArrayExtentSyntaxes.size())
+                    {
+                        error = "multidimensional VLA lost its captured extent locals";
+                        return nullptr;
+                    }
+                    vlaBlock = makeNode(ProjectOopHirNodeKind::Block, statement, "builtin:void");
+                    for (std::size_t dimension = 0;
+                         dimension < local->variableLengthArrayExtentSyntaxes.size(); ++dimension)
+                    {
+                        auto extent = lowerExpression(
+                            local->variableLengthArrayExtentSyntaxes[dimension],
+                            memberOrdinal,
+                            false,
+                            error);
+                        if (extent == nullptr) return nullptr;
+                        if (extent->typeKey != "builtin:nuint")
+                        {
+                            auto converted = makeNode(
+                                ProjectOopHirNodeKind::Conversion,
+                                local->variableLengthArrayExtentSyntaxes[dimension],
+                                "builtin:nuint");
+                            converted->children.push_back(std::move(extent));
+                            extent = std::move(converted);
+                        }
+
+                        const std::size_t extentOrdinal =
+                            local->variableLengthArrayExtentLocalOrdinals[dimension];
+                        auto extentDeclaration = makeNode(
+                            ProjectOopHirNodeKind::LocalDeclaration,
+                            local->variableLengthArrayExtentSyntaxes[dimension],
+                            "builtin:nuint");
+                        extentDeclaration->stringValue =
+                            methodBodyModel_->locals()[extentOrdinal].name;
+                        extentDeclaration->localOrdinal = extentOrdinal;
+                        extentDeclaration->children.push_back(std::move(extent));
+                        vlaBlock->children.push_back(std::move(extentDeclaration));
+
+                        auto extentValue = makeNode(
+                            ProjectOopHirNodeKind::LocalValue,
+                            local->variableLengthArrayExtentSyntaxes[dimension],
+                            "builtin:nuint");
+                        extentValue->localOrdinal = extentOrdinal;
+                        if (count == nullptr)
+                        {
+                            count = std::move(extentValue);
+                        }
+                        else
+                        {
+                            auto product = makeNode(
+                                ProjectOopHirNodeKind::Binary, statement, "builtin:nuint");
+                            product->operation = lexer::TokenKind::Star;
+                            product->children.push_back(std::move(count));
+                            product->children.push_back(std::move(extentValue));
+                            count = std::move(product);
+                        }
+                    }
+                }
+                else
+                {
+                    count = lowerExpression(
+                        local->variableLengthArrayCountSyntax, memberOrdinal, false, error);
+                    if (count == nullptr) return nullptr;
+                }
 
                 auto allocation = makeNode(
                     ProjectOopHirNodeKind::StackAllocation, statement, local->typeKey);
                 allocation->elementTypeKey = local->variableLengthArrayElementTypeKey;
                 allocation->children.push_back(std::move(count));
                 node->children.push_back(std::move(allocation));
+                if (vlaBlock != nullptr)
+                {
+                    vlaBlock->children.push_back(std::move(node));
+                    return vlaBlock;
+                }
             }
             else if (statement->first() != nullptr)
             {
@@ -3468,6 +3538,70 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     indices.assign(expression->children().begin(), expression->children().end());
                 else if (expression->second() != nullptr)
                     indices.push_back(expression->second());
+
+                const MethodVariableArrayIndexBinding* variableArrayIndex =
+                    methodBodyModel_ != nullptr
+                        ? methodBodyModel_->variableArrayIndexBinding(expression)
+                        : nullptr;
+                if (variableArrayIndex != nullptr)
+                {
+                    if (indices.size() != variableArrayIndex->extentLocalOrdinals.size())
+                    {
+                        error = "multidimensional VLA index lost its semantic rank";
+                        return nullptr;
+                    }
+                    std::unique_ptr<ProjectOopHirNode> linearIndex;
+                    for (std::size_t dimension = 0; dimension < indices.size(); ++dimension)
+                    {
+                        auto index = lowerExpression(indices[dimension], memberOrdinal, false, error);
+                        if (index == nullptr) return nullptr;
+                        if (index->typeKey != "builtin:nuint")
+                        {
+                            auto converted = makeNode(
+                                ProjectOopHirNodeKind::Conversion, indices[dimension], "builtin:nuint");
+                            converted->children.push_back(std::move(index));
+                            index = std::move(converted);
+                        }
+                        if (linearIndex == nullptr)
+                        {
+                            linearIndex = std::move(index);
+                            continue;
+                        }
+
+                        auto extent = makeNode(
+                            ProjectOopHirNodeKind::LocalValue,
+                            expression,
+                            "builtin:nuint");
+                        extent->localOrdinal =
+                            variableArrayIndex->extentLocalOrdinals[dimension];
+                        auto rowOffset = makeNode(
+                            ProjectOopHirNodeKind::Binary, expression, "builtin:nuint");
+                        rowOffset->operation = lexer::TokenKind::Star;
+                        rowOffset->children.push_back(std::move(linearIndex));
+                        rowOffset->children.push_back(std::move(extent));
+                        auto sum = makeNode(
+                            ProjectOopHirNodeKind::Binary, expression, "builtin:nuint");
+                        sum->operation = lexer::TokenKind::Plus;
+                        sum->children.push_back(std::move(rowOffset));
+                        sum->children.push_back(std::move(index));
+                        linearIndex = std::move(sum);
+                    }
+
+                    auto address = makeNode(
+                        ProjectOopHirNodeKind::RawElementAddress,
+                        expression,
+                        core->elementTypeKey);
+                    address->elementTypeKey = core->elementTypeKey;
+                    address->children.push_back(std::move(base));
+                    address->children.push_back(std::move(linearIndex));
+                    if (addressContext) return address;
+                    auto value = makeNode(
+                        ProjectOopHirNodeKind::PointerLoad,
+                        expression,
+                        core->resultTypeKey);
+                    value->children.push_back(std::move(address));
+                    return value;
+                }
 
                 std::string indexedType = baseType != nullptr ? baseType->typeKey : std::string();
                 std::unique_ptr<ProjectOopHirNode> address;

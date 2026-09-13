@@ -132,6 +132,66 @@ int main()
     }
 
     {
+        const auto directory = root / "Multidimensional";
+        writeProject(
+            directory,
+            "MultidimensionalVariableLength",
+            "public class Program { public static int Fill(int rows, int columns) { "
+            "int[rows, columns] matrix; columns = 1; "
+            "matrix[0, 0] = 1; matrix[rows - 1, 2] = 41; "
+            "return matrix[0, 0] + matrix[rows - 1, 2]; } }");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectOopMir(
+            directory / "MultidimensionalVariableLength.nsproj", error);
+        tests.expect(ok && error.empty(),
+            "a multidimensional VLA reaches OOP MIR with row-major indexing");
+        if (ok && compilation.methodBodyModel() != nullptr)
+        {
+            const auto locals = compilation.methodBodyModel()->locals();
+            tests.expect(locals.size() == 3 && locals[0].isVariableLengthArray &&
+                    locals[0].variableLengthArrayExtentSyntaxes.size() == 2 &&
+                    locals[0].variableLengthArrayExtentLocalOrdinals.size() == 2,
+                "two source-order extents are captured into two hidden locals");
+            tests.expect(locals.size() == 3 &&
+                    locals[locals[0].variableLengthArrayExtentLocalOrdinals[0]].typeKey ==
+                        "builtin:nuint" &&
+                    locals[locals[0].variableLengthArrayExtentLocalOrdinals[1]].typeKey ==
+                        "builtin:nuint",
+                "captured extents use pointer-width unsigned storage for size arithmetic");
+        }
+        std::size_t allocations = 0;
+        std::size_t addresses = 0;
+        if (ok && compilation.oopMirModel() != nullptr)
+        {
+            for (const auto& function : compilation.oopMirModel()->functions())
+            {
+                allocations += countNodes(function.body.get(), ProjectOopMirNodeKind::StackAllocation);
+                addresses += countNodes(function.body.get(), ProjectOopMirNodeKind::RawElementAddress);
+            }
+        }
+        tests.expect(allocations == 1,
+            "all VLA dimensions compose into one contiguous stack reservation");
+        tests.expect(addresses == 4,
+            "each multidimensional VLA read or write lowers to one flattened raw address");
+    }
+
+    {
+        const auto directory = root / "RankMismatch";
+        writeProject(
+            directory,
+            "VariableLengthRankMismatch",
+            "public class Program { public static int Main(int rows, int columns) { "
+            "int[rows, columns] matrix; return matrix[0]; } }");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectMethodBodies(
+            directory / "VariableLengthRankMismatch.nsproj", error);
+        tests.expect(!ok && hasDiagnostic(compilation, DiagnosticId::InvalidIndex),
+            "multidimensional VLA access requires exactly one index per dimension");
+    }
+
+    {
         const auto directory = root / "FieldRejected";
         writeProject(
             directory,

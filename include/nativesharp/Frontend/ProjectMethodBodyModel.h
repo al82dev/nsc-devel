@@ -70,6 +70,10 @@ struct MethodLocalSymbol final
     bool isVariableLengthArray = false;
     std::string variableLengthArrayElementTypeKey;
     const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
+    // Source-order dimensions for multidimensional VLAs plus the compiler-generated locals
+    // that snapshot each extent exactly once at the declaration.
+    std::vector<const ast::AstNode*> variableLengthArrayExtentSyntaxes;
+    std::vector<std::size_t> variableLengthArrayExtentLocalOrdinals;
     bool isConst = false;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //
@@ -958,6 +962,12 @@ struct MethodCoreBinding final
     std::optional<std::size_t> secondaryImplicitFieldMemberOrdinal;
 };
 
+struct MethodVariableArrayIndexBinding final
+{
+    const ast::AstNode* syntax = nullptr;
+    std::vector<std::size_t> extentLocalOrdinals;
+};
+
 
 
 enum class MethodLambdaCaptureKind
@@ -1142,6 +1152,8 @@ public:
     bool typeKeyIsOwnable(std::string_view typeKey) const noexcept;
     std::span<const MethodRuntimeTypeBinding> runtimeTypeBindings() const noexcept;
     std::span<const MethodCoreBinding> coreBindings() const noexcept;
+    const MethodVariableArrayIndexBinding* variableArrayIndexBinding(
+        const ast::AstNode* syntax) const noexcept;
     std::span<const MethodExceptionBinding> exceptionBindings() const noexcept;
     std::span<const MethodCleanupRegion> cleanupRegions() const noexcept;
     std::span<const MethodUsingBinding> usingBindings() const noexcept;
@@ -1738,6 +1750,7 @@ private:
     std::vector<MethodExpressionTypeBinding> expressionTypes_;
     std::vector<MethodRuntimeTypeBinding> runtimeTypeBindings_;
     std::vector<MethodCoreBinding> coreBindings_;
+    std::vector<MethodVariableArrayIndexBinding> variableArrayIndexBindings_;
     std::vector<MethodExceptionBinding> exceptionBindings_;
     std::vector<MethodCleanupRegion> cleanupRegions_;
     std::vector<MethodUsingBinding> usingBindings_;

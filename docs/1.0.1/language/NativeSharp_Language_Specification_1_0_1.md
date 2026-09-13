@@ -472,6 +472,19 @@ Una extensión constante conserva la semántica distinta del fixed array inline.
 `int[4] fixedValues;` es un valor fijo de 16 bytes, mientras `int[length] workingValues;` es una
 reserva realizada al ejecutar esa declaración. Ninguna de las dos formas crea un array administrado.
 
+### NS-ARRAY-004 — VLAs multidimensionales
+
+Una declaración local puede combinar dos o más extensiones, constantes o de ejecución, siempre que
+al menos una se evalúe en ejecución: `T[rows, columns] matrix;`. Las extensiones se evalúan una sola
+vez, de izquierda a derecha, al alcanzar la declaración. El compilador conserva esos valores; una
+asignación posterior a `rows` o `columns` no cambia el tamaño ni los strides de `matrix`.
+
+El almacenamiento es una sola reserva contigua row-major de
+`rows * columns * sizeof(T)` bytes. `matrix[row, column]` linealiza la posición como
+`row * capturedColumns + column`; para más dimensiones aplica
+`(((i0 * d1) + i1) * d2 + i2) ...`. La cantidad de índices debe coincidir con el rank y cada índice
+debe ser integral. No se crea un arreglo de punteros ni una reserva independiente por fila.
+
 ### NS-LAYOUT-002 — Objetos y delegates
 
 El layout público de clases, descriptores, tablas de dispatch, interfaces y delegates está
