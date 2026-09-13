@@ -9397,6 +9397,57 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     }
                 }
             }
+            // Item 307: static fences consume MemoryOrder during semantic analysis. The source
+            // argument never becomes a runtime integer; HIR carries only the validated ABI value.
+            if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicFence" &&
+                selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:void" &&
+                selectedMember.parameters.size() == 1 && inheritanceModel_ != nullptr &&
+                nameLookup_ != nullptr)
+            {
+                const std::optional<std::size_t> orderTypeOrdinal =
+                    inheritanceModel_->typeOrdinalForTypeKey(selectedMember.parameters[0].typeKey);
+                const bool isMemoryOrder = orderTypeOrdinal.has_value() &&
+                    *orderTypeOrdinal < nameLookup_->namedTypes().size() &&
+                    nameLookup_->namedTypes()[*orderTypeOrdinal].identity.fullyQualifiedName() ==
+                        "NativeSharp.Core.Threading.MemoryOrder";
+                std::optional<MethodCoreOperationKind> fenceKind;
+                if (isMemoryOrder && selectedMember.name == "Thread")
+                    fenceKind = MethodCoreOperationKind::AtomicThreadFence;
+                else if (isMemoryOrder && selectedMember.name == "Compiler")
+                    fenceKind = MethodCoreOperationKind::AtomicCompilerFence;
+                if (fenceKind.has_value())
+                {
+                    const ast::AstNode* orderSyntax = expression->children().empty()
+                        ? nullptr
+                        : expression->children()[0];
+                    const std::optional<ProjectIntegerValue> foldedOrder =
+                        foldIntegerConstant(orderSyntax, selectedMember.declaringTypeOrdinal);
+                    if (!foldedOrder.has_value())
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::ConstRequiresConstant,
+                            diagnostics::DiagnosticSeverity::Error,
+                            orderSyntax != nullptr ? orderSyntax->range() : expression->range(),
+                            "atomic fence order must be a compile-time MemoryOrder constant");
+                    }
+                    else if (foldedOrder->bits < 1U || foldedOrder->bits > 4U)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            orderSyntax != nullptr ? orderSyntax->range() : expression->range(),
+                            "atomic fence order must be Acquire, Release, AcquireRelease, or SequentiallyConsistent");
+                    }
+                    else
+                    {
+                        MethodCoreBinding binding{
+                            *fenceKind, expression, methodMemberOrdinal, scopeOrdinal,
+                            "builtin:void", "", false, std::nullopt, std::nullopt};
+                        binding.atomicMemoryOrder = static_cast<std::uint8_t>(foldedOrder->bits);
+                        coreBindings_.push_back(std::move(binding));
+                    }
+                }
+            }
             // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers privados y
             // estaticos. EXACTO mismo patron estructural que Thread arriba (Stage 54.1): un
             // HANDLE de Win32 guardado por valor como builtin:nint, ida y vuelta entre llamadas
@@ -13792,6 +13843,8 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::InterlockedAddInt64: return "interlocked-add-int64";
         case MethodCoreOperationKind::InterlockedExchangeInt64: return "interlocked-exchange-int64";
         case MethodCoreOperationKind::InterlockedCompareExchangeInt64: return "interlocked-compare-exchange-int64";
+        case MethodCoreOperationKind::AtomicThreadFence: return "atomic-thread-fence";
+        case MethodCoreOperationKind::AtomicCompilerFence: return "atomic-compiler-fence";
         case MethodCoreOperationKind::SimdFloat32x4Add: return "simd-float32x4-add";
         case MethodCoreOperationKind::SimdFloat32x4Subtract: return "simd-float32x4-subtract";
         case MethodCoreOperationKind::SimdFloat32x4Multiply: return "simd-float32x4-multiply";

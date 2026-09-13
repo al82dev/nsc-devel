@@ -15,6 +15,21 @@ namespace NativeSharp.Core.Threading
         SequentiallyConsistent = 4
     }
 
+    // Explicit compiler and hardware ordering barriers. Thread emits a process-wide CPU/compiler
+    // fence; Compiler constrains only the current thread and therefore acts as a compiler barrier.
+    // Relaxed is intentionally rejected because LLVM fences require an ordering with barrier
+    // semantics.
+    public static class AtomicFence
+    {
+        public static void Thread(MemoryOrder order)
+        {
+        }
+
+        public static void Compiler(MemoryOrder order)
+        {
+        }
+    }
+
     // NativeSharp.Core.Threading.AtomicInt32 / AtomicInt64 -- Stage 54.2 "Atomics".
     //
     // == Por que clases wrapper y NO "Interlocked.Increment(ref int location)" al estilo C# ==

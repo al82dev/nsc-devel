@@ -95,6 +95,11 @@ anchos. Se emiten como `atomicrmw` alineado y conservan sus contratos de valor n
 y fallo. Éxito admite los cinco valores; fallo sólo `Relaxed`, `Acquire` o
 `SequentiallyConsistent` y nunca puede ser más fuerte que éxito. Ambos son constantes de
 compilación y el backend emite `cmpxchg` alineado conservando el retorno del valor anterior.
+`AtomicFence.Thread(order)` publica fences de CPU/compilador con alcance entre hilos y
+`AtomicFence.Compiler(order)` usa alcance `singlethread` como barrera exclusiva del compilador.
+Ambos exigen Acquire, Release, AcquireRelease o SequentiallyConsistent constantes; Relaxed se
+rechaza y ningún fence convierte memoria ordinaria en atómica.
+
 
 
 

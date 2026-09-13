@@ -623,6 +623,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
         case ProjectOopMirNodeKind::CoreInterlockedExchangeInt64: return "core-interlocked-exchange-int64";
         case ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt64: return "core-interlocked-compare-exchange-int64";
+        case ProjectOopMirNodeKind::CoreAtomicThreadFence: return "core-atomic-thread-fence";
+        case ProjectOopMirNodeKind::CoreAtomicCompilerFence: return "core-atomic-compiler-fence";
         case ProjectOopMirNodeKind::CoreSimdFloat32x4Add: return "core-simd-float32x4-add";
         case ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract: return "core-simd-float32x4-subtract";
         case ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply: return "core-simd-float32x4-multiply";
@@ -1614,6 +1616,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64:
             result->kind = ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt64;
+            break;
+        case ProjectOopHirNodeKind::CoreAtomicThreadFence:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicThreadFence;
+            break;
+        case ProjectOopHirNodeKind::CoreAtomicCompilerFence:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicCompilerFence;
             break;
         case ProjectOopHirNodeKind::CoreSimdFloat32x4Add:
             result->kind = ProjectOopMirNodeKind::CoreSimdFloat32x4Add;

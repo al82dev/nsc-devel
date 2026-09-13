@@ -538,6 +538,24 @@ must be compile-time `MemoryOrder` constants. Success accepts all five public or
 accepts only Relaxed, Acquire, or SequentiallyConsistent and cannot be stronger than success.
 The operation always returns the old value and lowers to a naturally aligned `cmpxchg` with
 independent success and failure orderings.
+
+### NS-MEM-008 — Fences de hilo y compilador
+
+`AtomicFence.Thread(MemoryOrder)` emite un fence de alcance entre hilos: ordena accesos atómicos
+y memoria que el programa compone correctamente alrededor de la barrera, tanto ante el
+optimizador como ante el hardware. `AtomicFence.Compiler(MemoryOrder)` emite el mismo contrato con
+alcance LLVM `singlethread`; impide el movimiento correspondiente por el compilador sin imponer
+una barrera de comunicación entre núcleos.
+
+Ambas operaciones exigen una constante de compilación y aceptan `Acquire`, `Release`,
+`AcquireRelease` o `SequentiallyConsistent`. `Relaxed` se rechaza porque no expresa una barrera y
+LLVM no lo admite como orden de `fence`. Un fence no convierte accesos ordinarios en atómicos, no
+evita data races por sí solo y no reemplaza el ordenamiento de la operación que publica o consume.
+
+`AtomicFence.Thread` emits a system-scope LLVM fence for compiler and hardware ordering.
+`AtomicFence.Compiler` emits a `singlethread` fence that constrains compiler motion only. Both
+require a compile-time order and accept Acquire, Release, AcquireRelease, or
+SequentiallyConsistent; Relaxed is rejected. Fences do not make ordinary accesses atomic.
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

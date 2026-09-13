@@ -189,6 +189,8 @@ enum class ProjectOopMirNodeKind
     CoreInterlockedAddInt64,
     CoreInterlockedExchangeInt64,
     CoreInterlockedCompareExchangeInt64,
+    CoreAtomicThreadFence,
+    CoreAtomicCompilerFence,
     CoreSimdFloat32x4Add,
     CoreSimdFloat32x4Subtract,
     CoreSimdFloat32x4Multiply,

@@ -365,6 +365,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::InterlockedAddInt64:
     case MethodCoreOperationKind::InterlockedExchangeInt64:
     case MethodCoreOperationKind::InterlockedCompareExchangeInt64:
+    case MethodCoreOperationKind::AtomicThreadFence:
+    case MethodCoreOperationKind::AtomicCompilerFence:
     case MethodCoreOperationKind::MonitorEnter:
     case MethodCoreOperationKind::MonitorExit:
     case MethodCoreOperationKind::MonitorWait:
@@ -935,6 +937,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
         case ProjectOopHirNodeKind::CoreInterlockedExchangeInt64: return "core-interlocked-exchange-int64";
         case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64: return "core-interlocked-compare-exchange-int64";
+        case ProjectOopHirNodeKind::CoreAtomicThreadFence: return "core-atomic-thread-fence";
+        case ProjectOopHirNodeKind::CoreAtomicCompilerFence: return "core-atomic-compiler-fence";
         case ProjectOopHirNodeKind::CoreSimdFloat32x4Add: return "core-simd-float32x4-add";
         case ProjectOopHirNodeKind::CoreSimdFloat32x4Subtract: return "core-simd-float32x4-subtract";
         case ProjectOopHirNodeKind::CoreSimdFloat32x4Multiply: return "core-simd-float32x4-multiply";
@@ -4230,6 +4234,31 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 return node;
             }
+            // Item 307: AtomicFence has one syntactic argument, but that MemoryOrder was folded
+            // already and is metadata rather than an executable operand.
+            if (core != nullptr &&
+                (core->kind == MethodCoreOperationKind::AtomicThreadFence ||
+                 core->kind == MethodCoreOperationKind::AtomicCompilerFence))
+            {
+                if (addressContext)
+                {
+                    error = "AtomicFence result is not addressable";
+                    return nullptr;
+                }
+                if (!core->atomicMemoryOrder.has_value() || expression->children().size() != 1U)
+                {
+                    error = "AtomicFence requires exactly one validated compile-time MemoryOrder";
+                    return nullptr;
+                }
+                const ProjectOopHirNodeKind kind =
+                    core->kind == MethodCoreOperationKind::AtomicThreadFence
+                        ? ProjectOopHirNodeKind::CoreAtomicThreadFence
+                        : ProjectOopHirNodeKind::CoreAtomicCompilerFence;
+                auto node = makeNode(kind, expression, core->resultTypeKey);
+                node->integerValue = static_cast<std::uint64_t>(*core->atomicMemoryOrder) + 1U;
+                return node;
+            }
+
             // Stage 54.2 "Atomics" -- AtomicInt32/AtomicInt64's Increment/Decrement/Add/Exchange/
             // CompareExchange. Deliberately NOT part of the shared "String core operation" block
             // just above: that block's shape is "no receiver, every operand comes straight from

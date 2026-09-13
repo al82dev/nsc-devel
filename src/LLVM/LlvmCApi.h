@@ -945,6 +945,14 @@ LLVMValueRef LLVMBuildAtomicCmpXchg(
     LLVMAtomicOrdering successOrdering,
     LLVMAtomicOrdering failureOrdering,
     LLVMBool singleThread);
+// Item 307. `singleThread == 0` is a hardware/thread fence; `singleThread != 0` emits LLVM
+// `syncscope("singlethread")`, which constrains compiler motion without imposing inter-thread
+// hardware ordering.
+LLVMValueRef LLVMBuildFence(
+    LLVMBuilderRef builder,
+    LLVMAtomicOrdering ordering,
+    LLVMBool singleThread,
+    const char* name);
 // Stage 54.3 "Mutex" -- LLVMSetOrdering upgrades an ordinary (non-atomic) LLVMBuildLoad2/
 // LLVMBuildStore instruction into an atomic one with the given memory ordering, WITHOUT using
 // LLVMBuildAtomicRMW/LLVMBuildAtomicCmpXchg (there is no "plain atomic load"/"plain atomic store"

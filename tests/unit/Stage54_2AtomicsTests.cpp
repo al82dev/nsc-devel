@@ -169,6 +169,12 @@ namespace NativeSharp.Core.Threading
         SequentiallyConsistent = 4
     }
 
+    public static class AtomicFence
+    {
+        public static void Thread(MemoryOrder order) { }
+        public static void Compiler(MemoryOrder order) { }
+    }
+
     public class AtomicInt32
     {
         private int value_;
@@ -271,6 +277,14 @@ class Program
         r64 = a64.CompareExchange(16, 15, MemoryOrder.AcquireRelease, MemoryOrder.Relaxed);
         r64 = a64.CompareExchange(17, 16, MemoryOrder.SequentiallyConsistent, MemoryOrder.Acquire);
         r64 = a64.CompareExchange(18, 17, MemoryOrder.SequentiallyConsistent, MemoryOrder.Relaxed);
+        AtomicFence.Thread(MemoryOrder.Acquire);
+        AtomicFence.Thread(MemoryOrder.Release);
+        AtomicFence.Thread(MemoryOrder.AcquireRelease);
+        AtomicFence.Thread(MemoryOrder.SequentiallyConsistent);
+        AtomicFence.Compiler(MemoryOrder.Acquire);
+        AtomicFence.Compiler(MemoryOrder.Release);
+        AtomicFence.Compiler(MemoryOrder.AcquireRelease);
+        AtomicFence.Compiler(MemoryOrder.SequentiallyConsistent);
         return r64 + r32;
     }
 }
@@ -330,6 +344,13 @@ class Program
         "ordered CompareExchange emits independent acquire-release success and acquire failure orders");
     tests.expect(llvm.find("seq_cst seq_cst") != std::string::npos,
         "ordered CompareExchange preserves sequential consistency independently on success and failure");
+    tests.expect(llvm.find("fence acquire") != std::string::npos &&
+            llvm.find("fence release") != std::string::npos &&
+            llvm.find("fence acq_rel") != std::string::npos &&
+            llvm.find("fence seq_cst") != std::string::npos,
+        "AtomicFence.Thread emits all four meaningful process-wide LLVM fence orders");
+    tests.expect(llvm.find("syncscope(\"singlethread\")") != std::string::npos,
+        "AtomicFence.Compiler emits an LLVM single-thread compiler fence");
     // (`field.addr`), not some other addressing scheme -- proof that the synthetic FieldAddress
     // node this round introduces (see ProjectOopHirModel.cpp's dedicated Atomics block) is really
     // being used, and not silently bypassed.
@@ -351,6 +372,12 @@ namespace NativeSharp.Core.Threading
         AcquireRelease = 3,
         SequentiallyConsistent = 4,
         Invalid = 7
+    }
+
+    public static class AtomicFence
+    {
+        public static void Thread(MemoryOrder order) { }
+        public static void Compiler(MemoryOrder order) { }
     }
 
     public class AtomicInt32
@@ -380,6 +407,9 @@ class Program
         value.CompareExchange(2, 1, MemoryOrder.Invalid, MemoryOrder.Relaxed);
         value.CompareExchange(2, 1, dynamicOrder, MemoryOrder.Relaxed);
         value.Load(dynamicOrder);
+        AtomicFence.Thread(MemoryOrder.Relaxed);
+        AtomicFence.Thread(MemoryOrder.Invalid);
+        AtomicFence.Compiler(dynamicOrder);
         return 0;
     }
 }
@@ -420,6 +450,12 @@ class Program
     tests.expect(diagnostics.find(
         "atomic compare-exchange orders must be compile-time MemoryOrder constants") != std::string::npos,
         "ordered CompareExchange rejects runtime-selected ordering");
+    tests.expect(diagnostics.find(
+        "atomic fence order must be Acquire, Release, AcquireRelease, or SequentiallyConsistent") != std::string::npos,
+        "AtomicFence rejects Relaxed and values outside the public MemoryOrder ABI");
+    tests.expect(diagnostics.find(
+        "atomic fence order must be a compile-time MemoryOrder constant") != std::string::npos,
+        "AtomicFence rejects runtime-selected ordering");
 }
 // ---------------------------------------------------------------------------------------
 // 2. Runtime-module fixture: confirm the actual atomic HARDWARE instructions (not a Win32 call)

@@ -17,6 +17,10 @@ empaqueta con NativeSharp 1.0.1.
 - `CompareExchange` acepta órdenes independientes de éxito y fallo. El frontend rechaza órdenes
   de fallo Release/AcquireRelease o más fuertes que éxito; LLVM recibe ambos órdenes en un
   `cmpxchg` alineado y la API mantiene el retorno del valor anterior.
+- `AtomicFence.Thread` y `AtomicFence.Compiler` ofrecen fences explícitos entre hilos y de
+  compilador. Se emiten directamente como LLVM `fence` de alcance global o `singlethread`,
+  rechazan Relaxed y órdenes seleccionados en runtime.
+
 
 
 - La gramática 2.0 reconoce bloques `asm { ... }` dentro de funciones y métodos mediante un nodo

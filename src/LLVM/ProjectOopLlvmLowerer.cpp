@@ -7327,6 +7327,21 @@ private:
             // builtin:long* location -- and return a real i32/i64 result (the new value). No
             // dummy-i1 wrapping: unlike ThreadJoin/ThreadDetach above, these genuinely return a
             // meaningful value at the NativeSharp level too.
+            case frontend::ProjectOopMirNodeKind::CoreAtomicThreadFence:
+            case frontend::ProjectOopMirNodeKind::CoreAtomicCompilerFence:
+            {
+                if (!node->children.empty())
+                    return failValue(error, "AtomicFence cannot carry runtime operands");
+                const std::optional<LLVMAtomicOrdering> ordering =
+                    orderedAtomicRmwOrdering(node->integerValue);
+                if (!ordering.has_value() || *ordering == LLVMAtomicOrderingMonotonic)
+                    return failValue(error, "AtomicFence carries an invalid MemoryOrder");
+                const bool compilerOnly =
+                    node->kind == frontend::ProjectOopMirNodeKind::CoreAtomicCompilerFence;
+                LLVMBuildFence(builder_, *ordering, compilerOnly ? 1 : 0, "");
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+
             case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt32:
             {
                 if (node->integerValue != 0U)

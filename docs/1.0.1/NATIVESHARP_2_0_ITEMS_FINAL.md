@@ -92,7 +92,7 @@
 59. **304 — Load/store atómicos ordenados / Ordered atomic loads and stores — COMPLETADO / COMPLETE**
 60. **305 — Operaciones RMW ordenadas / Ordered read-modify-write operations — COMPLETADO / COMPLETE**
 61. **306 — Compare-exchange con órdenes de éxito y fallo / Ordered compare-exchange — COMPLETADO / COMPLETE**
-62. **307 — Fences de compilador y CPU / Compiler and CPU fences**
+62. **307 — Fences de compilador y CPU / Compiler and CPU fences — COMPLETADO / COMPLETE**
 63. **308 — Memoria `volatile` para MMIO / Volatile MMIO memory**
 64. **309 — Atomics de 64 bits / 64-bit atomics**
 65. **310 — Atomics de punteros / Pointer atomics**

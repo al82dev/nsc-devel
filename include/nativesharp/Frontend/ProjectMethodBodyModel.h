@@ -731,6 +731,10 @@ enum class MethodCoreOperationKind
     InterlockedAddInt64,
     InterlockedExchangeInt64,
     InterlockedCompareExchangeInt64,
+    // Item 307: explicit process-wide and compiler-only memory fences. Their MemoryOrder is
+    // consumed at compile time and carried as core-operation metadata.
+    AtomicThreadFence,
+    AtomicCompilerFence,
     // Entrega 228: primera familia SIMD deliberadamente pequena. Estas operaciones reconocen
     // exclusivamente NativeSharp.Core.Numerics.Float32x4 y conservan el struct publico como
     // contrato ABI; solamente la operacion aritmetica se convierte en un vector LLVM de 128 bits.

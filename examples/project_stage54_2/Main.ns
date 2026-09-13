@@ -207,6 +207,16 @@ class Program
         if (ordered64.CompareExchange(80000000000, 60000000001, MemoryOrder.SequentiallyConsistent, MemoryOrder.SequentiallyConsistent) != 70000000000) { return 55; }
         if (ordered64.Load(MemoryOrder.Relaxed) != 70000000000) { return 56; }
 
+        // ==== Seccion 10: fences de CPU y compilador ==========================================
+        AtomicFence.Thread(MemoryOrder.Acquire);
+        AtomicFence.Thread(MemoryOrder.Release);
+        AtomicFence.Thread(MemoryOrder.AcquireRelease);
+        AtomicFence.Thread(MemoryOrder.SequentiallyConsistent);
+        AtomicFence.Compiler(MemoryOrder.Acquire);
+        AtomicFence.Compiler(MemoryOrder.Release);
+        AtomicFence.Compiler(MemoryOrder.AcquireRelease);
+        AtomicFence.Compiler(MemoryOrder.SequentiallyConsistent);
+
         return 0;
     }
 }
