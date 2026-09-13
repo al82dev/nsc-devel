@@ -731,6 +731,14 @@ preferida: eleva su prioridad ante el modelo de costo, pero no exige que el call
 No es válido en fields, properties, eventos, tipos, constructores, destructores, imports ni métodos
 abstractos. Su presencia no elimina una definición fuera de línea requerida.
 
+El modificador `forceinline` puede aplicarse a un método concreto que declara cuerpo. Establece
+política obligatoria: toda llamada cuyo destino sea ese método y esté resuelta estáticamente debe
+expandirse, también en O0. No habilita inlining automático para otros métodos. Las ubicaciones sin
+cuerpo ordinario, la combinación con `inline` y un ciclo recursivo compuesto exclusivamente por
+métodos `forceinline` son errores, porque ninguna emisión podría cumplir esas promesas. El método
+conserva una definición fuera de línea cuando su visibilidad, exportación o toma de dirección la
+requieren.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su

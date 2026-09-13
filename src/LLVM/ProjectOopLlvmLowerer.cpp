@@ -2437,6 +2437,11 @@ private:
             {
                 applyFunctionAttribute(llvmFunction, "inlinehint");
             }
+            else if (function.inliningPolicy == frontend::InliningPolicy::Required &&
+                !function.isImportedC && !function.isImportedNative)
+            {
+                applyFunctionAttribute(llvmFunction, "alwaysinline");
+            }
             if (sretReturn)
             {
                 applySretAttributes(

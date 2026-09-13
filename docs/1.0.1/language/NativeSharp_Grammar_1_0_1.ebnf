@@ -39,7 +39,8 @@ type-member = { member-modifier },
 interface-member = [ ownership ], type,
                    ( identifier, "(", [ parameter-list ], ")", ";" |
                      identifier, accessor-body | "this", "[", parameter-list, "]", accessor-body ) ;
-member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" | "inline" ;
+member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" |
+                  "inline" | "forceinline" ;
 
 field-declaration = [ ownership ], type, identifier, [ "at", integer-literal ],
                     [ "=", expression | aggregate-initializer ], ";" ;

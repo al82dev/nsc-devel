@@ -71,6 +71,7 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"static", TokenKind::KwStatic},
         {"readonly", TokenKind::KwReadonly},
         {"inline", TokenKind::KwInline},
+        {"forceinline", TokenKind::KwForceInline},
         {"public", TokenKind::KwPublic},
         {"internal", TokenKind::KwInternal},
         {"protected", TokenKind::KwProtected},

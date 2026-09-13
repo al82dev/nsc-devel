@@ -1017,9 +1017,12 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.isConst = symbol.kind == ClassMemberKind::Field &&
                 memberNode->hasModifier(lexer::TokenKind::KwConst);
             symbol.inliningPolicy = symbol.kind == ClassMemberKind::Method &&
-                    memberNode->hasModifier(lexer::TokenKind::KwInline)
-                ? InliningPolicy::Preferred
-                : InliningPolicy::Automatic;
+                    memberNode->hasModifier(lexer::TokenKind::KwForceInline)
+                ? InliningPolicy::Required
+                : symbol.kind == ClassMemberKind::Method &&
+                        memberNode->hasModifier(lexer::TokenKind::KwInline)
+                    ? InliningPolicy::Preferred
+                    : InliningPolicy::Automatic;
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method) &&
                 (memberNode->hasModifier(lexer::TokenKind::KwStatic) || symbol.isConst);

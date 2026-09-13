@@ -2242,7 +2242,7 @@ ast::AstNode* Parser::parseInterfaceMember()
     {
         return parseMethodTail(
             returnType, name, accessibility,
-            false, false, false, false, true, false, false, false, false, beginIndex);
+            false, false, false, false, true, false, false, false, false, false, beginIndex);
     }
     if (at(TokenKind::LeftBrace))
     {
@@ -2429,6 +2429,7 @@ ast::AstNode* Parser::parseClassMember(
     bool isExported = false;
     bool isExternC = false;
     bool isInline = false;
+    bool isForceInline = false;
     bool isBorrowedView = false;
     std::optional<std::uint64_t> nestedLayoutPack;
     std::optional<std::uint64_t> nestedLayoutAlign;
@@ -2549,7 +2550,7 @@ ast::AstNode* Parser::parseClassMember(
               at(TokenKind::KwProtected) || at(TokenKind::KwPrivate) ||
               at(TokenKind::KwNew) || at(TokenKind::KwStatic) ||
               at(TokenKind::KwReadonly) || at(TokenKind::KwConst) ||
-              at(TokenKind::KwInline) ||
+              at(TokenKind::KwInline) || at(TokenKind::KwForceInline) ||
               at(TokenKind::KwVirtual) || at(TokenKind::KwOverride) ||
               at(TokenKind::KwAbstract) || at(TokenKind::KwSealed) ||
               at(TokenKind::KwExport) || at(TokenKind::KwExtern)))
@@ -2621,6 +2622,19 @@ ast::AstNode* Parser::parseClassMember(
                     "duplicate inline modifier on class member");
             }
             isInline = true;
+            continue;
+        }
+        if (modifier.kind() == TokenKind::KwForceInline)
+        {
+            if (isForceInline)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate forceinline modifier on class member");
+            }
+            isForceInline = true;
             continue;
         }
         if (modifier.kind() == TokenKind::KwConst)
@@ -2718,7 +2732,7 @@ ast::AstNode* Parser::parseClassMember(
             //       "succeeded".
             if ((at(TokenKind::Identifier) && current().lexeme() == "from") || at(TokenKind::LeftBrace))
             {
-                if (isInline)
+                if (isInline || isForceInline)
                 {
                     diagnostics_.report(
                         diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -2877,6 +2891,22 @@ ast::AstNode* Parser::parseClassMember(
             current().range(),
             "inline requires a method body and cannot modify an abstract method");
     }
+    if (isForceInline && isAbstract)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "forceinline requires a method body and cannot modify an abstract method");
+    }
+    if (isInline && isForceInline)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "inline and forceinline are contradictory inlining policies");
+    }
     if (isConst && (isReadonly || isStatic))
     {
         diagnostics_.report(
@@ -2896,7 +2926,8 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::Tilde))
     {
-        if (accessibility != TokenKind::Invalid || isNew || isStatic || isReadonly || isConst || isInline ||
+        if (accessibility != TokenKind::Invalid || isNew || isStatic || isReadonly || isConst ||
+            isInline || isForceInline ||
             isVirtual || isOverride || isAbstract || isSealed || isExported || isExternC)
         {
             diagnostics_.report(
@@ -2911,7 +2942,8 @@ ast::AstNode* Parser::parseClassMember(
     if (at(TokenKind::Identifier) && current().lexeme() == className &&
         peek().kind() == TokenKind::LeftParen)
     {
-        if (isNew || isVirtual || isOverride || isStatic || isReadonly || isConst || isInline || isAbstract || isSealed ||
+        if (isNew || isVirtual || isOverride || isStatic || isReadonly || isConst ||
+            isInline || isForceInline || isAbstract || isSealed ||
             isExported || isExternC)
         {
             diagnostics_.report(
@@ -2933,7 +2965,8 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isNew || isReadonly || isConst || isInline || isVirtual || isOverride || isAbstract || isSealed)
+        if (isNew || isReadonly || isConst || isInline || isForceInline ||
+            isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -2956,7 +2989,8 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isNew || isReadonly || isConst || isInline || isVirtual || isOverride || isAbstract || isSealed)
+        if (isNew || isReadonly || isConst || isInline || isForceInline ||
+            isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -2973,7 +3007,7 @@ ast::AstNode* Parser::parseClassMember(
     // literalmente lo unico que le pasaba a `class Outer { struct Item { } }`.
     if (atNestedTypeDeclaration())
     {
-        if (isInline)
+        if (isInline || isForceInline)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3026,7 +3060,8 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isReadonly || isConst || isInline || isVirtual || isOverride || isAbstract || isSealed)
+        if (isReadonly || isConst || isInline || isForceInline ||
+            isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3047,7 +3082,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isStatic || isConst || isInline || (isReadonly && !structContext))
+        if (isStatic || isConst || isInline || isForceInline || (isReadonly && !structContext))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3112,7 +3147,7 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* method = parseMethodTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
-            isExported, isExternC, isInline, beginIndex);
+            isExported, isExternC, isInline, isForceInline, beginIndex);
         if (isReadonly && structContext && !isStatic && method != nullptr)
             method->addModifier(TokenKind::KwReadonly);
         return method;
@@ -3128,7 +3163,7 @@ ast::AstNode* Parser::parseClassMember(
                 name.range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isConst || isInline || (isReadonly && (!structContext || isStatic)))
+        if (isConst || isInline || isForceInline || (isReadonly && (!structContext || isStatic)))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3184,7 +3219,7 @@ ast::AstNode* Parser::parseClassMember(
             name.range(),
             "virtual, override, abstract and sealed modifiers are valid only on instance methods in Stage 35");
     }
-    if (isInline)
+    if (isInline || isForceInline)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -4148,6 +4183,7 @@ ast::AstNode* Parser::parseMethodTail(
     bool isExported,
     bool isExternC,
     bool isInline,
+    bool isForceInline,
     std::size_t beginIndex)
 {
     ast::AstNode* method = arena_.make<ast::AstNode>(
@@ -4195,6 +4231,10 @@ ast::AstNode* Parser::parseMethodTail(
     if (isInline)
     {
         method->addModifier(TokenKind::KwInline);
+    }
+    if (isForceInline)
+    {
+        method->addModifier(TokenKind::KwForceInline);
     }
 
     parseGenericParameterList(method);

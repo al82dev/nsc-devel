@@ -16,6 +16,9 @@ empaqueta con NativeSharp 1.0.1.
 - `inline` puede marcar un método concreto con cuerpo. La preferencia sobrevive AST, modelo de
   miembros, HIR y MIR, se muestra en dumps y llega a LLVM como `inlinehint`; no convierte una
   sugerencia en obligación ni cambia el símbolo fuera de línea.
+- `forceinline` exige expandir llamadas estáticamente resueltas, llega a LLVM como `alwaysinline` y
+  activa la expansión obligatoria incluso en O0. Declaraciones sin cuerpo, políticas contradictorias
+  y ciclos recursivos compuestos sólo por métodos obligatorios producen un diagnóstico de fuente.
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union

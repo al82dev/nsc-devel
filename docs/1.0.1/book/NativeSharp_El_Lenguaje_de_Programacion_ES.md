@@ -1978,6 +1978,31 @@ preferencia mayor; si la expansión fuera ilegal o perjudicial, la llamada puede
 un field, property, tipo, import o contrato abstracto es un error porque allí no existe un cuerpo
 ordinario que esta preferencia pueda expandir.
 
+`forceinline` sí constituye una promesa verificable. Sirve para helpers pequeños donde conservar
+la llamada no es aceptable incluso en O0:
+
+```csharp
+public class BitPacking
+{
+    public static forceinline uint LowByte(uint value)
+    {
+        return value & 255u;
+    }
+
+    public static uint Decode(uint packed)
+    {
+        // Esta llamada debe desaparecer; O0 no activa inlining automático para las demás.
+        return LowByte(packed);
+    }
+}
+```
+
+La promesa sólo cubre destinos resueltos estáticamente y no elimina un símbolo fuera de línea que
+la ABI todavía necesite. Un método abstracto no tiene cuerpo que expandir. Dos métodos
+`forceinline` que se llaman formando un ciclo tampoco tienen una expansión finita; el compilador
+rechaza ambos casos en lugar de ignorar el modificador. Puede existir recursión a través de un
+método automático: ese método ordinario actúa como el límite de llamada que termina la expansión.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |

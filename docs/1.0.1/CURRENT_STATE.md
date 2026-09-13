@@ -92,6 +92,12 @@ Un método concreto puede declarar `inline`. El modificador expresa preferencia 
 No se admite en fields, properties, tipos, imports ni contratos abstractos. No elimina por sí mismo
 la definición fuera de línea ni cambia dispatch, ABI o ownership.
 
+`forceinline` eleva esa política a una obligación para llamadas con destino estáticamente resuelto.
+El backend la representa como `alwaysinline` y ejecuta la expansión obligatoria incluso en O0, sin
+habilitar por ello el inlining automático. Sólo se admite en métodos concretos con cuerpo. Una
+combinación con `inline`, un contrato abstracto o un ciclo formado exclusivamente por métodos
+`forceinline` se rechaza en la fuente en vez de degradar silenciosamente la promesa.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

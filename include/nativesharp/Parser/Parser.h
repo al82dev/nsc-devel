@@ -187,6 +187,7 @@ private:
         bool isExported,
         bool isExternC,
         bool isInline,
+        bool isForceInline,
         std::size_t beginIndex);
     ast::AstNode* parseEnumDeclaration();
     ast::AstNode* parseExternCDeclaration();

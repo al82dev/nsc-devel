@@ -558,3 +558,16 @@ The `inline` keyword shall bind to `InliningPolicy::Preferred` on a concrete ord
 remain explicit in member, HIR, and MIR dumps. LLVM lowering shall attach `inlinehint` to the
 definition. The modifier is invalid where no ordinary method body exists, and duplicate uses are a
 diagnostic. The hint shall not remove a required out-of-line symbol or override LLVM legality.
+
+## NSC-INLINE-004 — Required source modifier
+
+The `forceinline` keyword shall bind to `InliningPolicy::Required` on a concrete ordinary method and
+remain explicit through member, HIR, and MIR models. LLVM lowering shall attach `alwaysinline`, and
+the O0 pipeline shall run only the mandatory inliner needed to honor that attribute; automatic O0
+inlining remains disabled.
+
+The frontend shall reject placements without an ordinary body, duplicate or contradictory
+policies, and recursive cycles whose every participating callable is required-inline. Such cycles
+cannot satisfy every static call-site obligation and must not be silently emitted with residual
+calls. Public, exported, or address-taken functions retain any independently required out-of-line
+identity.

@@ -773,6 +773,66 @@ bool ProjectMethodBodyModel::build(
 
     verifyOutParameterAssignments(diagnostics);
 
+    // A required inlining contract cannot be honored by an all-required recursive cycle.  LLVM
+    // deliberately refuses to expand recursive alwaysinline call sites, so diagnose the source
+    // contract here instead of silently leaving a call behind.  Edges through an automatic or
+    // preferred method are not rejected: after expanding the required callee, that ordinary call
+    // remains a valid recursion boundary.
+    std::vector<std::vector<std::size_t>> requiredCallGraph(memberModel.members().size());
+    for (const MethodCallBinding& call : calls_)
+    {
+        if (call.resolution != MethodCallResolutionKind::Resolved ||
+            !call.selectedMemberOrdinal.has_value() ||
+            call.callerMethodMemberOrdinal >= memberModel.members().size() ||
+            *call.selectedMemberOrdinal >= memberModel.members().size())
+        {
+            continue;
+        }
+        const ClassMemberSymbol& caller = memberModel.members()[call.callerMethodMemberOrdinal];
+        const ClassMemberSymbol& callee = memberModel.members()[*call.selectedMemberOrdinal];
+        if (caller.inliningPolicy == InliningPolicy::Required &&
+            callee.inliningPolicy == InliningPolicy::Required)
+        {
+            requiredCallGraph[call.callerMethodMemberOrdinal].push_back(*call.selectedMemberOrdinal);
+        }
+    }
+    for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
+    {
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.inliningPolicy != InliningPolicy::Required || member.syntax == nullptr)
+        {
+            continue;
+        }
+        std::vector<std::size_t> pending(requiredCallGraph[memberOrdinal].begin(),
+                                         requiredCallGraph[memberOrdinal].end());
+        std::vector<bool> visited(memberModel.members().size(), false);
+        bool recursive = false;
+        while (!pending.empty() && !recursive)
+        {
+            const std::size_t candidate = pending.back();
+            pending.pop_back();
+            if (candidate == memberOrdinal)
+            {
+                recursive = true;
+                break;
+            }
+            if (candidate >= visited.size() || visited[candidate]) continue;
+            visited[candidate] = true;
+            pending.insert(pending.end(), requiredCallGraph[candidate].begin(),
+                           requiredCallGraph[candidate].end());
+        }
+        if (recursive)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                member.syntax->range(),
+                "forceinline method '" + member.name +
+                    "' participates in a recursive forceinline call cycle and cannot be "
+                    "expanded at every call site");
+        }
+    }
+
     built_ = true;
     return !diagnostics.hasErrors();
 }
