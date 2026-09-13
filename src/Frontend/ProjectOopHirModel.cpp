@@ -2729,18 +2729,63 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             error = "Stage 38 requires a resolved synthetic call binding";
             return nullptr;
         }
+        std::size_t selectedMemberOrdinal = *binding->selectedMemberOrdinal;
+        const ast::AstNode* receiverSyntax = binding->receiverSyntax;
+        std::string_view receiverTypeKey = binding->receiverTypeKey;
+        bool interfaceDispatch = binding->interfaceCall;
+
+        // An interface conversion whose operand is a freshly constructed concrete object has one
+        // exact dynamic type. Resolve its interface slot now so the ordinary direct-call path can
+        // honor the implementation's inlining policy. This is deliberately narrow: locals,
+        // parameters, fields, and arbitrary expressions still use runtime interface dispatch.
+        if (interfaceDispatch && interfaceModel_ != nullptr && memberModel_ != nullptr &&
+            binding->receiverTypeOrdinal.has_value() && receiverSyntax != nullptr &&
+            (receiverSyntax->kind() == ast::AstNodeKind::CastExpression ||
+             receiverSyntax->kind() == ast::AstNodeKind::SafeCastExpression) &&
+            receiverSyntax->first() != nullptr &&
+            (receiverSyntax->first()->kind() == ast::AstNodeKind::NewExpression ||
+             receiverSyntax->first()->kind() == ast::AstNodeKind::ObjectCreationExpression))
+        {
+            const MethodExpressionTypeBinding* concreteType = expressionType(receiverSyntax->first());
+            const std::optional<std::size_t> concreteTypeOrdinal = concreteType != nullptr
+                ? interfaceModel_->typeOrdinalForTypeKey(concreteType->typeKey)
+                : std::nullopt;
+            const ClassInterfaceTablePlan* plan = concreteTypeOrdinal.has_value()
+                ? interfaceModel_->tablePlan(*concreteTypeOrdinal, *binding->receiverTypeOrdinal)
+                : nullptr;
+            if (plan != nullptr)
+            {
+                const auto contract = std::find(
+                    plan->interfaceMethodMemberOrdinals.begin(),
+                    plan->interfaceMethodMemberOrdinals.end(),
+                    selectedMemberOrdinal);
+                if (contract != plan->interfaceMethodMemberOrdinals.end())
+                {
+                    const std::size_t slot = static_cast<std::size_t>(
+                        contract - plan->interfaceMethodMemberOrdinals.begin());
+                    if (slot < plan->implementationMemberOrdinals.size() &&
+                        plan->implementationMemberOrdinals[slot].has_value())
+                    {
+                        selectedMemberOrdinal = *plan->implementationMemberOrdinals[slot];
+                        receiverSyntax = receiverSyntax->first();
+                        receiverTypeKey = concreteType->typeKey;
+                        interfaceDispatch = false;
+                    }
+                }
+            }
+        }
         auto node = makeNode(
             binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
             expression,
             binding->resultTypeKey);
-        node->memberOrdinal = binding->selectedMemberOrdinal;
+        node->memberOrdinal = selectedMemberOrdinal;
         node->baseReceiver = binding->baseReceiver;
-        node->interfaceDispatch = binding->interfaceCall;
-        if (binding->interfaceCall) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
+        node->interfaceDispatch = interfaceDispatch;
+        if (interfaceDispatch) node->targetTypeOrdinal = binding->receiverTypeOrdinal;
         if (!binding->staticCall)
         {
             auto receiver = lowerReceiver(
-                binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
+                receiverSyntax, receiverTypeKey, memberOrdinal, error);
             if (receiver == nullptr) return nullptr;
             node->children.push_back(std::move(receiver));
         }
@@ -2759,18 +2804,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     std::move(argument), binding->selectedConversions[index], argumentSyntax);
             }
             argument = wrapCallArgumentBorrow(
-                std::move(argument), argumentSyntax, *binding->selectedMemberOrdinal, index,
+                std::move(argument), argumentSyntax, selectedMemberOrdinal, index,
                 hasOwnedTemporary);
             node->children.push_back(std::move(argument));
         }
         if (memberModel_ == nullptr ||
-            *binding->selectedMemberOrdinal >= memberModel_->members().size())
+            selectedMemberOrdinal >= memberModel_->members().size())
         {
             error = "NSC-LIMIT-020 selected call has no callable metadata";
             return nullptr;
         }
         const ClassMemberSymbol& selectedMember =
-            memberModel_->members()[*binding->selectedMemberOrdinal];
+            memberModel_->members()[selectedMemberOrdinal];
         for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
         {
             const std::size_t parameterIndex = argumentSyntaxes.size() + index;
@@ -4738,14 +4783,55 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 error = "Stage 34 requires a resolved Stage 27 method call";
                 return nullptr;
             }
+            std::size_t selectedMemberOrdinal = *binding->selectedMemberOrdinal;
+            const ast::AstNode* receiverSyntax = binding->receiverSyntax;
+            std::string_view receiverTypeKey = binding->receiverTypeKey;
+            bool interfaceDispatch = binding->interfaceCall;
+            if (interfaceDispatch && !binding->forwardedReceiver && interfaceModel_ != nullptr &&
+                memberModel_ != nullptr && binding->receiverTypeOrdinal.has_value() &&
+                receiverSyntax != nullptr &&
+                (receiverSyntax->kind() == ast::AstNodeKind::CastExpression ||
+                 receiverSyntax->kind() == ast::AstNodeKind::SafeCastExpression) &&
+                receiverSyntax->first() != nullptr &&
+                (receiverSyntax->first()->kind() == ast::AstNodeKind::NewExpression ||
+                 receiverSyntax->first()->kind() == ast::AstNodeKind::ObjectCreationExpression))
+            {
+                const MethodExpressionTypeBinding* concreteType = expressionType(receiverSyntax->first());
+                const std::optional<std::size_t> concreteTypeOrdinal = concreteType != nullptr
+                    ? interfaceModel_->typeOrdinalForTypeKey(concreteType->typeKey)
+                    : std::nullopt;
+                const ClassInterfaceTablePlan* plan = concreteTypeOrdinal.has_value()
+                    ? interfaceModel_->tablePlan(*concreteTypeOrdinal, *binding->receiverTypeOrdinal)
+                    : nullptr;
+                if (plan != nullptr)
+                {
+                    const auto contract = std::find(
+                        plan->interfaceMethodMemberOrdinals.begin(),
+                        plan->interfaceMethodMemberOrdinals.end(),
+                        selectedMemberOrdinal);
+                    if (contract != plan->interfaceMethodMemberOrdinals.end())
+                    {
+                        const std::size_t slot = static_cast<std::size_t>(
+                            contract - plan->interfaceMethodMemberOrdinals.begin());
+                        if (slot < plan->implementationMemberOrdinals.size() &&
+                            plan->implementationMemberOrdinals[slot].has_value())
+                        {
+                            selectedMemberOrdinal = *plan->implementationMemberOrdinals[slot];
+                            receiverSyntax = receiverSyntax->first();
+                            receiverTypeKey = concreteType->typeKey;
+                            interfaceDispatch = false;
+                        }
+                    }
+                }
+            }
             auto node = makeNode(
                 binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
                 expression,
                 binding->resultTypeKey);
-            node->memberOrdinal = binding->selectedMemberOrdinal;
+            node->memberOrdinal = selectedMemberOrdinal;
             node->baseReceiver = binding->baseReceiver;
-            node->interfaceDispatch = binding->interfaceCall;
-            if (binding->interfaceCall)
+            node->interfaceDispatch = interfaceDispatch;
+            if (interfaceDispatch)
             {
                 node->targetTypeOrdinal = binding->receiverTypeOrdinal;
             }
@@ -4767,7 +4853,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             else if (!binding->staticCall)
             {
                 auto receiver = lowerReceiver(
-                    binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
+                    receiverSyntax, receiverTypeKey, memberOrdinal, error);
                 if (receiver == nullptr)
                 {
                     return nullptr;
@@ -4798,19 +4884,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 const ast::AstNode* argumentSyntax = expression->children()[index];
                 argument = wrapCallArgumentBorrow(
-                    std::move(argument), argumentSyntax, *binding->selectedMemberOrdinal,
+                    std::move(argument), argumentSyntax, selectedMemberOrdinal,
                     parameterIndex, hasOwnedTemporary);
                 node->children.push_back(std::move(argument));
                 node->argumentParameterOrdinals.push_back(parameterIndex);
             }
             if (memberModel_ == nullptr ||
-                *binding->selectedMemberOrdinal >= memberModel_->members().size())
+                selectedMemberOrdinal >= memberModel_->members().size())
             {
                 error = "NSC-LIMIT-020 selected call has no callable metadata";
                 return nullptr;
             }
             const ClassMemberSymbol& selectedMember =
-                memberModel_->members()[*binding->selectedMemberOrdinal];
+                memberModel_->members()[selectedMemberOrdinal];
             for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
             {
                 if (index >= binding->selectedDefaultArgumentParameterOrdinals.size())

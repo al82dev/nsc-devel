@@ -108,6 +108,12 @@ tanto para especializaciones solicitadas con `<T>` como para las creadas por inf
 función física cerrada recibe exactamente la política de su plantilla: preferencia, obligación o
 prohibición, sin volver a decidirla a partir del nombre especializado.
 
+Los métodos concretos de structs participan en el mismo contrato sin boxing ni cambio de ABI. Para
+interfaces, el compilador devirtualiza únicamente una conversión cuyo operando es una construcción
+de clase fresca y exacta, usando la tabla semántica de implementación para seleccionar el callable.
+Parámetros, fields, locals y expresiones cuyo tipo dinámico no está demostrado conservan el lookup
+de interfaz en ejecución.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

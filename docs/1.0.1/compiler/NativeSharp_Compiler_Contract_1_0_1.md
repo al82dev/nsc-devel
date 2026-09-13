@@ -592,3 +592,15 @@ specialized spelling or cache reuse shall never reset it to `Automatic`.
 
 At O0, focused evidence shall distinguish all three explicit outcomes in one generic call graph:
 `Preferred` remains optional, `Required` expands, and `Forbidden` retains its call boundary.
+
+## NSC-INLINE-007 — Value receivers and proven interface targets
+
+Concrete struct methods shall carry inlining policy through their by-address receiver ABI without
+boxing or changing layout. Interface calls may become direct calls only after semantic proof of one
+exact dynamic class and one implementation slot. A direct interface conversion of a freshly
+constructed class is such a proof; the frontend shall resolve it through `ProjectInterfaceModel`
+and lower the selected implementation as an ordinary direct call.
+
+Interface parameters, fields, locals, and arbitrary expressions remain dynamically dispatched
+unless a separate exact-type proof exists. Merely marking one implementation `forceinline` shall
+never suppress a valid interface-map lookup for a polymorphic receiver.

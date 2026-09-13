@@ -2049,6 +2049,38 @@ Las dos llamadas reutilizan una especialización física canónica y esa funció
 `forceinline`. La misma regla se aplica a `inline` y `noinline`; inferir el argumento no produce una
 política distinta de escribirlo explícitamente.
 
+Un método de struct puede usar las mismas políticas. El receptor continúa siendo la dirección del
+valor; inlining no lo convierte en objeto ni introduce boxing. Las interfaces exigen una prueba más
+fuerte porque normalmente el destino depende del objeto en ejecución:
+
+```csharp
+public interface IValue { int Read(); }
+
+public class ConstantValue : IValue
+{
+    public forceinline int Read() { return 7; }
+}
+
+public class UseValue
+{
+    public static int Exact()
+    {
+        // La construcción demuestra el tipo dinámico y el slot se vuelve una llamada directa.
+        return ((IValue)new ConstantValue()).Read();
+    }
+
+    public static int Dynamic(IValue value)
+    {
+        // Puede llegar cualquier implementación: conserva el interface map.
+        return value.Read();
+    }
+}
+```
+
+El primer caso puede obedecer `forceinline` porque `new ConstantValue()` prueba un destino único. El
+segundo no puede hacerlo sin romper polimorfismo. Un modificador sobre una implementación jamás es
+por sí solo evidencia de que el receptor dinámico pertenece a esa clase.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |

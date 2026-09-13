@@ -750,6 +750,14 @@ especialización cerrada —creada por argumentos explícitos o por inferencia l
 política. La sustitución de tipos no puede convertir una preferencia en obligación, eliminar una
 prohibición ni tratar la especialización como un método automático.
 
+Los métodos de struct obedecen estas políticas sobre su receptor por dirección, sin boxing ni
+cambio de representación. Una llamada de interfaz puede tratarse como llamada concreta sólo si el
+compilador demuestra el tipo dinámico exacto del receptor. Esta edición reconoce la conversión
+directa de una construcción fresca, por ejemplo `((IValue)new Counter()).Read()`, y selecciona su
+implementación mediante la tabla semántica de la clase. Un parámetro, field, local u otra expresión
+potencialmente polimórfica conserva el dispatch de interfaz; una política de implementación no basta
+para eliminarlo.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su

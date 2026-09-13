@@ -25,6 +25,9 @@ empaqueta con NativeSharp 1.0.1.
 - Las especializaciones de métodos genéricos, explícitas o inferidas, conservan la política de
   inlining de la plantilla. En O0 una especialización `forceinline` se expande, una `inline` sigue
   siendo opcional y una `noinline` conserva el call site.
+- Los métodos de struct usan las mismas políticas sin boxing. Una llamada mediante interfaz se
+  devirtualiza sólo cuando el receptor es una construcción concreta fresca convertida explícitamente;
+  receptores polimórficos conservan el dispatch por interface map.
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union

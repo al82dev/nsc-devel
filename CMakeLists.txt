@@ -784,6 +784,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_generic_inlining_tests)
     add_test(NAME nsc.language.generic-inlining COMMAND nsc_generic_inlining_tests)
 
+    add_executable(nsc_struct_interface_inlining_tests tests/unit/StructInterfaceInliningTests.cpp)
+    target_link_libraries(nsc_struct_interface_inlining_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_struct_interface_inlining_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_struct_interface_inlining_tests)
+    add_test(NAME nsc.language.struct-interface-inlining COMMAND nsc_struct_interface_inlining_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)
