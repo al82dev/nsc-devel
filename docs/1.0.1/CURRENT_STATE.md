@@ -22,6 +22,11 @@ estáticos, propiedades, indexadores, operadores, conversiones de usuario, enums
 delegates, eventos, lambdas y closures. El flujo incluye condicionales, ciclos, `switch`, excepciones
 nativas, `finally`, `using`, RAII y destrucción determinista.
 
+El layout explícito admite `align(N)` tanto en el agregado como en un campo de instancia. En un
+campo actúa como alineación mínima, se aplica después de `pack(N)` y eleva también la alineación y
+el padding final del contenedor. `at(offset)` puede combinarse con ella sólo cuando el offset
+satisface la alineación declarada. El mismo contrato se publica en NSMETA y en headers C.
+
 Los arreglos locales `T[length]` pueden tomar su longitud de una expresión integral evaluada al
 ejecutar la declaración. Su almacenamiento es contiguo, pertenece al frame actual y no requiere
 `new` ni `delete`. Esta forma no se extiende a campos, parámetros o retornos: esas posiciones forman

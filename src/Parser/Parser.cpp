@@ -3027,13 +3027,19 @@ ast::AstNode* Parser::parseClassMember(std::string_view className, bool allowUnr
         name.range());
     field->setTypeSyntax(type);
     field->setText(std::string(name.lexeme()));
-    // C2.2: the explicit offset rides on the field's auxiliary text, which is where
-    // ProjectMemberModel reads it back. The other auxiliary-text producers for fields are
-    // compiler-generated backings ("property-backing:", "event-backing:"), which never take
-    // `at(N)`, so the prefixes cannot collide.
+    // Items 272: field layout modifiers ride on the field's auxiliary text, which is where
+    // ProjectMemberModel reads them back. `align(N)` is the same parsed modifier used by a nested
+    // type; reaching an ordinary field resolves the contextual ambiguity in favor of the field.
     if (explicitFieldOffset.has_value())
     {
         field->setAuxiliaryText("at:" + std::to_string(*explicitFieldOffset));
+    }
+    if (nestedLayoutAlign.has_value())
+    {
+        std::string metadata = field->auxiliaryText();
+        if (!metadata.empty()) metadata += ";";
+        metadata += "field-align:" + std::to_string(*nestedLayoutAlign);
+        field->setAuxiliaryText(std::move(metadata));
     }
     if (accessibility != TokenKind::Invalid)
     {

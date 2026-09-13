@@ -1086,6 +1086,22 @@ bool ProjectMemberModel::collectTypeMembers(
                     symbol.explicitFieldOffset.reset();
                 }
             }
+            if (const std::size_t marker = memberNode->auxiliaryText().find("field-align:");
+                marker != std::string::npos)
+            {
+                const std::size_t valueBegin = marker + std::string("field-align:").size();
+                symbol.explicitFieldAlignment =
+                    std::stoull(memberNode->auxiliaryText().substr(valueBegin));
+                if (symbol.kind != ClassMemberKind::Field || symbol.isStatic)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        symbol.range,
+                        "explicit field alignment applies only to an instance field");
+                    symbol.explicitFieldAlignment.reset();
+                }
+            }
 
             const std::string& metadata = memberNode->auxiliaryText();
             symbol.isCompilerGenerated = metadata.starts_with("property-backing:") ||

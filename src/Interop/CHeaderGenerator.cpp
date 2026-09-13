@@ -460,6 +460,10 @@ bool emitStruct(
             element.has_value() ? *element : field.declaredTypeKey, context, error);
         if (!error.empty()) return false;
         out << "    ";
+        if (field.explicitFieldAlignment.has_value())
+        {
+            out << "NS_ALIGNAS(" << *field.explicitFieldAlignment << ") ";
+        }
         if (pendingAlignment)
         {
             out << "NS_ALIGNAS(" << layout->minimumAlignment << ") ";

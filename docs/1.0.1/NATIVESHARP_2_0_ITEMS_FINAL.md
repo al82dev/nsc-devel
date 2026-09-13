@@ -48,7 +48,7 @@
 24. **269 — Arreglos locales variables `T[length]` / Variable-length local arrays — COMPLETADO / COMPLETE**
 25. **270 — VLAs multidimensionales `T[rows, columns]` / Multidimensional VLAs — COMPLETADO / COMPLETE**
 26. **271 — Seguridad, overflow y duración de VLAs / VLA safety, overflow, and lifetime — COMPLETADO / COMPLETE**
-27. **272 — Alineación explícita por campo / Explicit per-field alignment**
+27. **272 — Alineación explícita por campo / Explicit per-field alignment — COMPLETADO / COMPLETE**
 28. **273 — Almacenamiento trailing/flexible / Trailing and flexible storage**
 29. **274 — `readonly struct` / Readonly structures**
 30. **275 — Receptores readonly / Readonly receivers**

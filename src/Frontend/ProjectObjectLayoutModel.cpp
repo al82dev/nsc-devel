@@ -539,7 +539,8 @@ bool ProjectObjectLayoutModel::buildStructLayout(
             return false;
         }
         physicalFields.push_back(
-            target::StructFieldRequest{*fieldLayout, member.explicitFieldOffset});
+            target::StructFieldRequest{
+                *fieldLayout, member.explicitFieldOffset, member.explicitFieldAlignment});
         fieldMembers.push_back(memberOrdinal);
     }
 
@@ -702,7 +703,10 @@ bool ProjectObjectLayoutModel::buildClassLayout(
         {
             return false;
         }
-        const std::optional<std::uint64_t> alignedOffset = checkedAlignUp(offset, fieldLayout->alignment);
+        const std::uint64_t fieldAlignment = member.explicitFieldAlignment.has_value()
+            ? (std::max)(fieldLayout->alignment, *member.explicitFieldAlignment)
+            : fieldLayout->alignment;
+        const std::optional<std::uint64_t> alignedOffset = checkedAlignUp(offset, fieldAlignment);
         if (!alignedOffset.has_value())
         {
             diagnostics.report(
@@ -727,10 +731,10 @@ bool ProjectObjectLayoutModel::buildClassLayout(
             memberOrdinal,
             *alignedOffset,
             fieldLayout->size,
-            fieldLayout->alignment,
+            fieldAlignment,
             member.declaredTypeKey});
         offset = *afterField;
-        aggregateAlignment = std::max(aggregateAlignment, fieldLayout->alignment);
+        aggregateAlignment = std::max(aggregateAlignment, fieldAlignment);
     }
 
     const std::optional<std::uint64_t> finalSize = checkedAlignUp(offset, aggregateAlignment);

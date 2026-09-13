@@ -1773,7 +1773,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                     ? "__nsc_layout_property_" + std::to_string(fieldIndex)
                     : field.name.empty() ? "__nsc_layout_field_" + std::to_string(fieldIndex) : field.name;
                 generated << "    ";
-                if (type.kind == interop::LibraryMetadataTypeKind::Struct) generated << "at(" << field.offset << ") ";
+                if (type.kind == interop::LibraryMetadataTypeKind::Struct)
+                    generated << "at(" << field.offset << ") ";
+                generated << "align(" << field.alignment << ") ";
                 generated << (member == nullptr ? std::string_view("private")
                                                 : sourceAccessibility(member->accessibility))
                           << ' ';

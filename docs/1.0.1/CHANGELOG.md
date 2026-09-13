@@ -10,6 +10,8 @@ empaqueta con NativeSharp 1.0.1.
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union
   usando el mismo layout canónico que el ABI, los arreglos y los headers C.
+- `align(N)` puede aplicarse a un campo de instancia para elevar su alineación, su offset y la
+  alineación final del agregado; el contrato se conserva en NSMETA y headers C.
 - Los arreglos multidimensionales fijos usan `T[d0, d1, ...]`, almacenamiento inline contiguo y
   orden row-major sin cabecera ni asignación de heap.
 - `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice

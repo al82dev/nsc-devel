@@ -440,6 +440,19 @@ eleva la alineación del agregado; un offset explícito fija la posición y perm
 union, todos los campos no explícitos comienzan en cero y el tamaño cubre el miembro de mayor
 extensión. Los valores de `pack` y `align` deben ser potencias de dos válidas.
 
+### NS-LAYOUT-003 — Alineación explícita por campo
+
+`align(N)` aplicado a un campo de instancia establece una alineación mínima para ese campo. La
+alineación natural se limita primero mediante `pack(N)` y después se eleva, si es necesario, hasta
+`N`; por tanto, una alineación explícita no puede debilitar el requisito natural y puede superar el
+pack del contenedor. El offset automático se redondea a esa alineación, que también participa en la
+alineación y el padding final del agregado u objeto.
+
+`N` debe ser una potencia de dos positiva. Un campo estático no pertenece al layout de una instancia
+y no admite este modificador. Si el mismo campo declara `at(offset)`, el offset debe ser múltiplo de
+su alineación efectiva. NSMETA, el header C y el backend deben conservar el mismo valor; no es válido
+reconstruir un consumidor con una alineación menor aunque los offsets coincidan accidentalmente.
+
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su
 representación canónica equivale a un arreglo exterior de `d0` elementos, cada uno de los cuales

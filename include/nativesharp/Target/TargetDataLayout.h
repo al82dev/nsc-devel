@@ -70,7 +70,8 @@ struct StructLayout
 //
 // A field may also name its own byte offset (StructFieldRequest::explicitOffset), which is how
 // Win32's `INPUT` and every other hand-laid-out record is expressed. Overlap is not an error
-// there: overlapping IS the feature.
+// there: overlapping IS the feature. `minimumAlignment` is a field-local `align(N)`: it may raise
+// the post-pack alignment but never weakens the element type's natural requirement.
 struct StructLayoutOptions
 {
     bool isUnion = false;
@@ -82,6 +83,7 @@ struct StructFieldRequest
 {
     TypeLayout layout;
     std::optional<std::uint64_t> explicitOffset;
+    std::optional<std::uint64_t> minimumAlignment;
 };
 
 class TargetDataLayout final

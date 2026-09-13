@@ -195,6 +195,9 @@ struct ClassMemberSymbol final
     // `at(N)`, if it named one. Unset means "wherever the layout rule puts it", which is the
     // normal case for every field in the language.
     std::optional<std::uint64_t> explicitFieldOffset;
+    // `align(N)` on an instance field raises that field's placement alignment and therefore the
+    // containing aggregate's alignment. It is a minimum, never a request to weaken natural layout.
+    std::optional<std::uint64_t> explicitFieldAlignment;
 };
 
 struct PrecompiledMemberIdentity final

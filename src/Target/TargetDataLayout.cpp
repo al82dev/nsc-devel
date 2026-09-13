@@ -114,13 +114,21 @@ std::optional<StructLayout> TargetDataLayout::layoutStruct(
     {
         const TypeLayout field = request.layout;
         if (field.size == 0 || field.alignment == 0) return std::nullopt;
-        const std::uint64_t effectiveAlignment =
+        std::uint64_t effectiveAlignment =
             options.pack == 0 ? field.alignment : (std::min)(field.alignment, options.pack);
+        if (request.minimumAlignment.has_value())
+        {
+            const std::uint64_t requested = *request.minimumAlignment;
+            if (requested == 0 || (requested & (requested - 1)) != 0) return std::nullopt;
+            effectiveAlignment = (std::max)(effectiveAlignment, requested);
+        }
 
         std::uint64_t offset = 0;
         if (request.explicitOffset.has_value())
         {
             offset = *request.explicitOffset;
+            if (request.minimumAlignment.has_value() && offset % effectiveAlignment != 0)
+                return std::nullopt;
         }
         else if (!options.isUnion)
         {

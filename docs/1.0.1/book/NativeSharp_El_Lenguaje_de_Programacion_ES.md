@@ -776,6 +776,23 @@ modificadores de layout `pack(N)`, `align(N)` y `at(N)` permiten expresar contra
 foráneos, pero también pueden producir accesos menos eficientes o layouts incorrectos si se usan
 por estética. Deben copiar una especificación ABI medida, no una intuición.
 
+`align(N)` también puede preceder a un campo de instancia. En ese lugar eleva el requisito del
+campo, inserta el padding necesario antes de él y eleva la alineación final del contenedor:
+
+```csharp
+public struct CommandPacket
+{
+    public byte Kind;
+    public align(16) int Sequence;
+    public byte Flags;
+}
+```
+
+`Sequence` comienza en el offset 16 y el struct termina redondeado a 16 bytes. La regla se aplica
+después de `pack(N)`, porque una solicitud explícita de alineación no debe ser anulada por el pack.
+Si se combina con `at(N)`, el offset escrito debe respetar la alineación. No se admite en campos
+estáticos, que son globals y no forman parte del objeto.
+
 Cada dimensión se indexa en el mismo orden en que se declara:
 
 ```csharp
@@ -1475,8 +1492,8 @@ estable para recursos con identidad.
 ## 29. Layout explícito y contratos de frontera
 
 La tabla de tamaños del apéndice es el punto de partida, no el final. Un struct agrega padding entre
-campos y al final. `pack(N)` limita la alineación efectiva de cada campo; `align(N)` eleva la
-alineación del agregado; `at(N)` fija un offset. Una union superpone campos. Un array fijo se
+campos y al final. `pack(N)` limita la alineación natural efectiva; `align(N)` eleva la alineación
+del agregado o de un campo concreto; `at(N)` fija un offset. Una union superpone campos. Un array fijo se
 encuentra inline.
 
 Todo tipo expuesto debe responder:
