@@ -19,6 +19,9 @@ empaqueta con NativeSharp 1.0.1.
 - Los receptores readonly se aplican a parámetros `in`, campos readonly, miembros marcados
   `readonly` y todos los miembros de instancia de un `readonly struct`; permiten lectura pero no
   stores ni llamadas a miembros mutadores.
+- Los aliases de tipo pueden declarar parámetros (`using Buffer<T> = T*;`). Se expanden antes de
+  la monomorfización, aceptan composición, reordenamiento y repetición de argumentos, y no crean
+  una identidad nominal ni un símbolo ABI distintos del tipo subyacente.
 - Los arreglos multidimensionales fijos usan `T[d0, d1, ...]`, almacenamiento inline contiguo y
   orden row-major sin cabecera ni asignación de heap.
 - `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice

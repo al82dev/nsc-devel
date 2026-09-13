@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -219,7 +220,32 @@ private:
     {
         std::vector<std::string> importedNamespaces;
         std::unordered_map<std::string, std::string> aliases;
+        // Item 276. Type aliases have to disappear before generic templates are registered:
+        // otherwise `Alias<int>` is mistaken for a template identity of its own.  The declaration
+        // carries both the target syntax and its optional type-parameter list.
+        std::unordered_map<std::string, const ast::AstNode*> typeAliases;
+        std::unordered_set<std::string> typeParameters;
     };
+
+    bool expandAliasesInNode(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& namespaceName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics);
+
+    bool expandTypeAliases(
+        ProjectSyntaxUnit& unit,
+        ast::TypeSyntax* syntax,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::vector<std::string>& expansionStack);
+
+    ast::TypeSyntax* cloneAliasType(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        bool& ownershipConflict);
 
     void processNode(
         ProjectSyntaxUnit& unit,

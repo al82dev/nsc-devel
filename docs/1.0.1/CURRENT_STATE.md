@@ -63,6 +63,12 @@ Los genéricos se monomorfizan AOT. La identidad de una especialización cerrada
 su origen declarador; las interfaces, eventos, conversiones, constructores, destructores y miembros
 publicados deben conservar una identidad física utilizable cuando cruzan una biblioteca.
 
+Un alias de tipo puede parametrizarse: `using Pointer<T> = T*;` y
+`using PairOf<T> = Pair<T, T>;`. El compilador sustituye sus argumentos y expande cadenas antes de
+calcular especializaciones genéricas. El alias es transparente: layout, ownership, overloads,
+metadata y ABI observan exclusivamente el tipo expandido. Una aridad incorrecta o un ciclo se
+rechazan en compilación.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,

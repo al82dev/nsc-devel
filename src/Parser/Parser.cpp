@@ -1209,10 +1209,21 @@ ast::AstNode* Parser::parseUsingDirective()
     }
 
     const lexer::Token& first = current();
-    if (peek().kind() == TokenKind::Equal)
+    if (peek().kind() == TokenKind::Equal || peek().kind() == TokenKind::Less)
     {
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::UsingAliasDirective,
+            first.range());
+        node->setText(std::string(first.lexeme()));
         consume();
-        consume();
+        // Item 276. An alias may bind type parameters exactly where a generic declaration does:
+        // `using Buffer<T> = T*;`.  Keeping the parameters on the alias AST node lets the early
+        // generic pass erase the alias before it computes specialization identities.
+        if (!parseGenericParameterList(node) || !expect(TokenKind::Equal, "'=' after using alias"))
+        {
+            synchronizeGlobal();
+            return nullptr;
+        }
         // C3 "FFI aliases". The target used to be a qualified NAME and nothing else, which made
         // `using DWORD = uint;`, `using HANDLE = void*;` and `using Rgba = float[4];` unwritable
         // -- and those three are most of what a C header's typedefs actually say. It is now a
@@ -1228,16 +1239,13 @@ ast::AstNode* Parser::parseUsingDirective()
             return nullptr;
         }
         expect(TokenKind::Semicolon, "';'");
-        ast::AstNode* node = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::UsingAliasDirective,
-            tokenRangeFrom(beginIndex));
-        node->setText(std::string(first.lexeme()));
+        node->setRange(tokenRangeFrom(beginIndex));
         node->setTypeSyntax(target);
         // The statement parser decides "is `X y = ...;` a declaration?" from this set, so an
         // alias name has to be in it or `DWORD d = 42u;` parses as an expression and fails. Same
         // registration a struct/class/enum name gets when it is declared.
         knownTypeNames_.insert(std::string(first.lexeme()));
-        if (target->modifiers().empty() &&
+        if (node->genericParameters().empty() && target->modifiers().empty() &&
             target->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::None &&
             target->typeArguments().empty() && !lexer::isBuiltinTypeKeyword(target->baseTokenKind()))
         {

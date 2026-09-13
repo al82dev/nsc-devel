@@ -627,6 +627,29 @@ dinámico. La identidad de una especialización incluye la identidad canónica d
 conserva entre productor y consumidor. Constraints se comprueban en compilación y una
 especialización inválida se rechaza antes de emitir código.
 
+### NS-GEN-002 — Aliases genéricos transparentes
+
+Una directiva de alias de tipo puede declarar parámetros mediante
+`using Nombre<T0, ...> = Tipo;`. Cada uso debe proporcionar exactamente la aridad declarada. Los
+parámetros pueden aparecer en la base, argumentos genéricos, punteros y arreglos del tipo destino;
+también pueden repetirse o cambiar de posición. Un parámetro del alias oculta cualquier alias de
+igual nombre del scope exterior.
+
+La expansión ocurre antes de registrar plantillas y calcular especializaciones. Por tanto, un
+alias no declara un tipo nominal, no produce descriptor, layout, símbolo, template ni identidad
+ABI propios. `using Twice<T> = Pair<T, T>;` usado como `Twice<int>` es exactamente `Pair<int, int>`
+para resolución de miembros, overloads, ownership, NSMETA y generación de código.
+
+Las cadenas de aliases se expanden transitivamente en el scope de declaración. Los modificadores
+del destino quedan dentro de los escritos en el sitio de uso: si `Pointer<T>` significa `T*`,
+`Pointer<int>[]` significa un arreglo de punteros a `int`. Un ciclo directo o indirecto, una aridad
+incorrecta o qualifiers de ownership contradictorios rechazan el programa antes de HIR.
+
+A type alias may declare parameters with `using Name<T0, ...> = Type;`. Every use must provide the
+exact declared arity. Expansion precedes template registration and specialization, so aliases
+create no nominal, metadata, layout, template, or ABI identity. Alias chains are transitive;
+cycles, arity mismatches, and contradictory ownership qualifiers are compile-time errors.
+
 ### NS-OBJ-001 — Raíz de objetos sin boxing
 
 Las clases pueden compartir la raíz `NativeSharp.Core.Object` y su dispatch virtual. Los structs

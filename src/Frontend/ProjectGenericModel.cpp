@@ -234,6 +234,21 @@ bool ProjectGenericModel::build(
     if (built_) return !diagnostics.hasErrors();
     buildVisibility(graph);
 
+    // Item 276. Generic aliases are transparent source spellings, so erase them before collecting
+    // templates or dependency edges.  Doing it later would let `Alias<int>` acquire a bogus
+    // specialization identity and would leave aliases inside template bodies until after cloning.
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
+    {
+        if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
+        expandAliasesInNode(
+            *unitPtr, unitPtr->syntaxTree(), "", GenericLookupScope{}, diagnostics);
+    }
+    if (diagnostics.hasErrors())
+    {
+        built_ = true;
+        return false;
+    }
+
     for (const std::unique_ptr<ProjectSyntaxUnit>& unitPtr : units)
     {
         if (unitPtr == nullptr || unitPtr->syntaxTree() == nullptr) continue;
@@ -379,6 +394,218 @@ bool ProjectGenericModel::build(
 
     built_ = true;
     return !diagnostics.hasErrors();
+}
+
+ast::TypeSyntax* ProjectGenericModel::cloneAliasType(
+    ast::AstArena& arena,
+    const ast::TypeSyntax* source,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+    bool& ownershipConflict)
+{
+    if (source == nullptr) return nullptr;
+
+    ast::TypeSyntax* result = nullptr;
+    const auto substitution = substitutions.find(source->baseName());
+    if (substitution != substitutions.end() && source->typeArguments().empty())
+    {
+        result = cloneAliasType(arena, substitution->second, {}, ownershipConflict);
+    }
+    else
+    {
+        result = arena.make<ast::TypeSyntax>(
+            source->range(), source->baseTokenKind(), source->baseName());
+        for (const ast::TypeSyntax* argument : source->typeArguments())
+            result->addTypeArgument(
+                cloneAliasType(arena, argument, substitutions, ownershipConflict));
+        if (source->originProjectOrdinal().has_value())
+            result->setOriginProjectOrdinal(source->originProjectOrdinal().value());
+        if (source->originNamespace().has_value())
+            result->setOriginNamespace(source->originNamespace().value());
+    }
+
+    if (source->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None)
+    {
+        if (result->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None &&
+            result->ownershipQualifier() != source->ownershipQualifier())
+            ownershipConflict = true;
+        else
+            result->setOwnershipQualifier(source->ownershipQualifier());
+    }
+    for (const ast::TypeModifierSyntax& modifier : source->modifiers())
+    {
+        // Array extents are immutable expression syntax owned by the same source unit.  Alias
+        // substitution changes types, never value parameters, so sharing this pointer is exact.
+        result->addModifier(ast::TypeModifierSyntax{
+            modifier.kind, modifier.arrayCount, modifier.range});
+    }
+    return result;
+}
+
+bool ProjectGenericModel::expandTypeAliases(
+    ProjectSyntaxUnit& unit,
+    ast::TypeSyntax* syntax,
+    const GenericLookupScope& scope,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::vector<std::string>& expansionStack)
+{
+    if (syntax == nullptr) return true;
+    bool ok = true;
+    for (ast::TypeSyntax* argument : syntax->typeArguments())
+        ok = expandTypeAliases(unit, argument, scope, diagnostics, expansionStack) && ok;
+
+    if (lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) ||
+        scope.typeParameters.contains(syntax->baseName()))
+        return ok;
+
+    const auto found = scope.typeAliases.find(syntax->baseName());
+    if (found == scope.typeAliases.end() || found->second == nullptr) return ok;
+    const ast::AstNode* declaration = found->second;
+
+    if (std::find(expansionStack.begin(), expansionStack.end(), syntax->baseName()) !=
+        expansionStack.end())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidUsingTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "using alias '" + syntax->baseName() + "' expands cyclically");
+        return false;
+    }
+
+    if (syntax->typeArguments().size() != declaration->genericParameters().size())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidArgumentCount,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "type alias '" + declaration->text() + "' expects " +
+                std::to_string(declaration->genericParameters().size()) +
+                " type argument(s) but received " +
+                std::to_string(syntax->typeArguments().size()));
+        return false;
+    }
+
+    std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+    for (std::size_t index = 0; index < declaration->genericParameters().size(); ++index)
+        substitutions.emplace(declaration->genericParameters()[index], syntax->typeArguments()[index]);
+
+    expansionStack.push_back(syntax->baseName());
+    bool targetOwnershipConflict = false;
+    ast::TypeSyntax* expanded =
+        cloneAliasType(
+            unit.arena(), declaration->typeSyntax(), substitutions, targetOwnershipConflict);
+    if (targetOwnershipConflict)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "type alias '" + declaration->text() +
+                "' applies a conflicting ownership qualifier to a type argument");
+        expansionStack.pop_back();
+        return false;
+    }
+    ok = expandTypeAliases(unit, expanded, scope, diagnostics, expansionStack) && ok;
+    expansionStack.pop_back();
+    if (!ok || expanded == nullptr) return false;
+
+    const ast::OwnershipQualifierSyntaxKind writtenOwnership = syntax->ownershipQualifier();
+    const ast::OwnershipQualifierSyntaxKind targetOwnership = expanded->ownershipQualifier();
+    if (writtenOwnership != ast::OwnershipQualifierSyntaxKind::None &&
+        targetOwnership != ast::OwnershipQualifierSyntaxKind::None &&
+        writtenOwnership != targetOwnership)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "type alias '" + declaration->text() +
+                "' conflicts with the ownership qualifier written at its use site");
+        return false;
+    }
+
+    syntax->setBaseTokenKind(expanded->baseTokenKind());
+    syntax->setBaseName(expanded->baseName());
+    if (writtenOwnership == ast::OwnershipQualifierSyntaxKind::None)
+        syntax->setOwnershipQualifier(targetOwnership);
+    const std::vector<ast::TypeSyntax*> expandedArguments(
+        expanded->typeArguments().begin(), expanded->typeArguments().end());
+    syntax->clearTypeArguments();
+    for (ast::TypeSyntax* argument : expandedArguments) syntax->addTypeArgument(argument);
+    // Target/substituted modifiers are inside modifiers written on the alias use.  For example,
+    // `using P<T> = T*; P<int>[]` becomes `int*[]`.
+    syntax->prependModifiers(expanded->modifiers());
+    if (expanded->originProjectOrdinal().has_value())
+        syntax->setOriginProjectOrdinal(expanded->originProjectOrdinal().value());
+    if (expanded->originNamespace().has_value())
+        syntax->setOriginNamespace(expanded->originNamespace().value());
+    return true;
+}
+
+bool ProjectGenericModel::expandAliasesInNode(
+    ProjectSyntaxUnit& unit,
+    ast::AstNode* node,
+    const std::string& namespaceName,
+    const GenericLookupScope& scope,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (node == nullptr) return true;
+    std::string currentNamespace = namespaceName;
+    if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+        currentNamespace = namespaceAppend(namespaceName, node->text());
+
+    GenericLookupScope currentScope = scope;
+    for (const std::string& parameter : node->genericParameters())
+        currentScope.typeParameters.insert(parameter);
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr || child->kind() != ast::AstNodeKind::UsingAliasDirective) continue;
+        if (!child->genericParameters().empty() || child->auxiliaryText().empty())
+            currentScope.typeAliases[child->text()] = child;
+    }
+
+    bool ok = true;
+    // Normalize every alias target in its declaration scope first.  This makes a chained alias
+    // immune to a same-named alias that may shadow it only at a later use site.
+    for (const ast::AstNode* child : node->children())
+    {
+        if (child == nullptr || child->kind() != ast::AstNodeKind::UsingAliasDirective ||
+            child->typeSyntax() == nullptr ||
+            (child->genericParameters().empty() && !child->auxiliaryText().empty()))
+            continue;
+        GenericLookupScope aliasScope = currentScope;
+        for (const std::string& parameter : child->genericParameters())
+            aliasScope.typeParameters.insert(parameter);
+        std::vector<std::string> stack{child->text()};
+        ok = expandTypeAliases(
+                 unit, child->typeSyntax(), aliasScope, diagnostics, stack) && ok;
+    }
+
+    if (node->kind() != ast::AstNodeKind::UsingAliasDirective)
+    {
+        std::vector<std::string> stack;
+        ok = expandTypeAliases(unit, node->typeSyntax(), currentScope, diagnostics, stack) && ok;
+        for (ast::TypeSyntax* syntax : node->typeSyntaxes())
+        {
+            stack.clear();
+            ok = expandTypeAliases(unit, syntax, currentScope, diagnostics, stack) && ok;
+        }
+        for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+        {
+            for (ast::TypeSyntax* constraint : clause.typeConstraints)
+            {
+                stack.clear();
+                ok = expandTypeAliases(unit, constraint, currentScope, diagnostics, stack) && ok;
+            }
+        }
+    }
+
+    ok = expandAliasesInNode(unit, node->first(), currentNamespace, currentScope, diagnostics) && ok;
+    ok = expandAliasesInNode(unit, node->second(), currentNamespace, currentScope, diagnostics) && ok;
+    ok = expandAliasesInNode(unit, node->third(), currentNamespace, currentScope, diagnostics) && ok;
+    for (ast::AstNode* child : node->children())
+        ok = expandAliasesInNode(unit, child, currentNamespace, currentScope, diagnostics) && ok;
+    return ok;
 }
 
 std::span<const GenericTemplateRecord> ProjectGenericModel::templates() const noexcept
@@ -571,6 +798,11 @@ void ProjectGenericModel::processNode(
             }
         }
     }
+
+    // The declaration is a compile-time rewrite rule, not a use of its still-open target.  Its
+    // normalized target was handled by expandAliasesInNode; materializing it here would create
+    // e.g. Box<T> and leak the alias parameter T into the concrete program.
+    if (node->kind() == ast::AstNodeKind::UsingAliasDirective) return;
 
     const bool templateNode = isGenericTypeTemplateNode(node) || isGenericMethodTemplateNode(node);
     // Constraint types are declaration dependencies, not executable template-body syntax. Closed

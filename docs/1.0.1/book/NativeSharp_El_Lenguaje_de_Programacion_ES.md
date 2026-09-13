@@ -1359,6 +1359,59 @@ Las operaciones `owned T` y `move` funcionan también dentro de código genéric
 donde una implementación descuidada produciría dobles liberaciones. Por eso las colecciones se
 validan con argumentos de valor y de referencia.
 
+### 21.1 Aliases genéricos
+
+Un alias genérico nombra una forma de tipo repetida sin declarar un tipo nuevo. Es útil para
+expresar contratos de plataforma y combinaciones de contenedores sin envolver el valor ni añadir
+dispatch:
+
+```csharp
+public struct Pair<TLeft, TRight>
+{
+    public TLeft Left;
+    public TRight Right;
+}
+
+public class Box<T>
+{
+    public T Value;
+    public Box(T value) { Value = value; }
+}
+
+using Pointer<T> = T*;
+using Twice<T> = Pair<T, T>;
+using Flip<TLeft, TRight> = Pair<TRight, TLeft>;
+using BoxOf<T> = Box<T>;
+using Nested<T> = Box<Box<T>>;
+
+public class Work
+{
+    public static int Sum(Twice<int> pair)
+    {
+        Pointer<int> address = &pair.Left;
+        Flip<int, long> physical;
+        physical.Left = 40L;   // Left es long por la expansión Pair<long, int>.
+        physical.Right = *address;
+
+        BoxOf<int> one = new BoxOf<int>(physical.Right);
+        Nested<int> two = new Nested<int>(one);
+        return two.Value.Value + (int)physical.Left;
+    }
+}
+```
+
+`Twice<int>` no es un tercer tipo situado entre el programa y `Pair<int, int>`: es exactamente esa
+especialización. No tiene descriptor, layout, símbolos ni entrada NSMETA propios. Esto importa al
+publicar bibliotecas: cambiar sólo el nombre del alias no cambia el ABI, mientras que cambiar su
+destino sí puede cambiarlo.
+
+La cantidad de argumentos debe coincidir exactamente. Se permite repetirlos (`Pair<T, T>`),
+reordenarlos (`Pair<TRight, TLeft>`), anidarlos y usarlos bajo modificadores de puntero o arreglo.
+Las cadenas también son válidas, por ejemplo `using Handle<T> = Pointer<T>;`. El compilador las
+resuelve antes de monomorfizar, de modo que todas las escrituras equivalentes llegan a una sola
+especialización canónica. Un ciclo como `A<T> = B<T>` y `B<T> = A<T>` es un error, no un tipo
+recursivo; para recursión nominal se declara una clase o struct.
+
 ## 22. `var`, `foreach` y el protocolo enumerador
 
 `var` pide al compilador inferir el tipo estático del inicializador. No crea tipado dinámico. La
