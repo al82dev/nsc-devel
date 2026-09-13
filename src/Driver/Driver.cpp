@@ -1842,6 +1842,15 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 continue;
             }
             if (member->kind != kMethodKind) continue;
+            if (!member->inlineSourceText.empty())
+            {
+                // NSMETA 1.13 transports the producer's complete ordinary inline declaration.
+                // It must stay in this otherwise-precompiled type part so structs need no new
+                // partial-type syntax. ProjectMemberModel recognizes the inline modifier as the
+                // executable exception and analyzes this body in the consumer.
+                generated << "    " << member->inlineSourceText << '\n';
+                continue;
+            }
             std::string returnType;
             if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, returnType, error)) return false;
             constexpr std::uint32_t kStatic = 1U << 0U;
@@ -1897,6 +1906,10 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             if ((member->flags & kOverride) != 0U) generated << "override ";
             else if ((member->flags & kAbstract) != 0U) generated << "abstract ";
             else if ((member->flags & kVirtual) != 0U) generated << "virtual ";
+            const std::uint32_t inlining =
+                (member->flags & interop::kMetadataMemberInliningMask) >>
+                interop::kMetadataMemberInliningShift;
+            if (inlining == 3U) generated << "noinline ";
             generated << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
             if (!emitParameters(*member)) return false;
             // The empty body is an implementation detail of the generated syntax.

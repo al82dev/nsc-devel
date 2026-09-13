@@ -967,7 +967,15 @@ bool ProjectMemberModel::collectTypeMembers(
             symbol.range = memberNode->range();
             symbol.syntax = memberNode;
             symbol.sourcePath = part.sourcePath;
-            symbol.isPrecompiled = part.isPrecompiled;
+            // NSMETA 1.13 may place the producer's real `inline`/`forceinline` body in the
+            // synthetic API unit. Those methods are executable input owned by this consumer,
+            // unlike the empty declarations beside them. The source modifier is an explicit,
+            // format-stable discriminator and also carries the required optimization policy.
+            const bool transportedInlineBody =
+                part.isPrecompiled && memberNode->kind() == ast::AstNodeKind::MethodDeclaration &&
+                (memberNode->hasModifier(lexer::TokenKind::KwInline) ||
+                 memberNode->hasModifier(lexer::TokenKind::KwForceInline));
+            symbol.isPrecompiled = part.isPrecompiled && !transportedInlineBody;
             symbol.name = memberNode->text();
             symbol.declaredTypeSyntax = memberNode->typeSyntax();
             symbol.declaredTypeKey = symbol.kind == ClassMemberKind::Constructor

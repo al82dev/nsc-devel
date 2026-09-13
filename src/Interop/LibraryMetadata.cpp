@@ -463,6 +463,7 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.isImplicitUserConversion) flags |= 1U << 18U;
     if (member.isNewSlot) flags |= 1U << 19U;
     if (member.isImportedC) flags |= 1U << 20U;
+    flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
     return flags;
 }
 
@@ -796,9 +797,20 @@ bool buildMetadataModel(
         record.declaredOwnership = metadataOwnership(member.declaredOwnership);
         record.cAbiName = member.cAbiName;
         record.importDllName = member.importDllName;
-        if (const frontend::ProjectOopMirFunction* function = compilation.oopMirModel()->functionForMember(ordinal))
+        const frontend::ProjectOopMirFunction* function =
+            compilation.oopMirModel()->functionForMember(ordinal);
+        if (function != nullptr)
         {
             record.mangledName = function->mangledName;
+        }
+        if (metadata.formatMinor >= 13 && member.kind == frontend::ClassMemberKind::Method &&
+            member.syntax != nullptr && function != nullptr &&
+            function->genericSpecializationKey.empty() &&
+            (member.inliningPolicy == frontend::InliningPolicy::Preferred ||
+             member.inliningPolicy == frontend::InliningPolicy::Required))
+        {
+            record.inlineSourceText =
+                std::string(compilation.sourceManager().getText(member.syntax->range()));
         }
         const auto staticField = staticFields.find(ordinal);
         if (staticField != staticFields.end() && !staticField->second->isConst)
@@ -1296,6 +1308,7 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
         writer.u64(member.constantBits);
         if (metadata.formatMinor >= 9) writer.text(member.constantText);
         if (metadata.formatMinor >= 10) writer.text(member.importDllName);
+        if (metadata.formatMinor >= 13) writer.text(member.inlineSourceText);
     }
 
     writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
@@ -1499,7 +1512,8 @@ bool decodePayload(
         }
         if (!reader.u8(member.constantKind) || !reader.u64(member.constantBits) ||
             (metadata.formatMinor >= 9 && !reader.text(member.constantText)) ||
-            (metadata.formatMinor >= 10 && !reader.text(member.importDllName)))
+            (metadata.formatMinor >= 10 && !reader.text(member.importDllName)) ||
+            (metadata.formatMinor >= 13 && !reader.text(member.inlineSourceText)))
         {
             error = "truncated metadata constant record";
             return false;
@@ -1792,6 +1806,14 @@ bool LibraryMetadataCodec::writeModel(
             [&](const LibraryMetadataGenericSpecialization& specialization) {
                 return !publicTemplateKeys.contains(specialization.templateKey);
             });
+    }
+    if (metadata.formatMinor < 13)
+    {
+        for (LibraryMetadataMember& member : metadata.members)
+        {
+            member.flags &= ~kMetadataMemberInliningMask;
+            member.inlineSourceText.clear();
+        }
     }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
@@ -2385,6 +2407,26 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             std::string(kPreviousMetadataProducerRelease) + "', '" +
             std::string(kCompilerReleaseVersion) + "']";
         return false;
+    }
+    if (metadata.formatMinor >= 13)
+    {
+        constexpr std::uint8_t kMethodKind = 2U;
+        constexpr std::uint32_t kImportedC = 1U << 20U;
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            const std::uint32_t policy =
+                (member.flags & kMetadataMemberInliningMask) >> kMetadataMemberInliningShift;
+            if (!member.inlineSourceText.empty() &&
+                (member.kind != kMethodKind || (member.flags & kImportedC) != 0U ||
+                 (policy != static_cast<std::uint32_t>(frontend::InliningPolicy::Preferred) &&
+                  policy != static_cast<std::uint32_t>(frontend::InliningPolicy::Required))))
+            {
+                error = "metadata member '" + member.declaringTypeKey + "." +
+                    member.signatureKey +
+                    "' carries an inline body without a compatible inline policy";
+                return false;
+            }
+        }
     }
     return true;
 }

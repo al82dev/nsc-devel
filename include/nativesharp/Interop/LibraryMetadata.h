@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 13 (2026-09-13): los metodos inline ordinarios conservan politica y cuerpo fuente para
+// que un consumidor precompilado pueda analizarlos, emitirlos e inlinearlos localmente.
 // MINOR 12 (2026-09-11): el modulo enumera identidades nominales propiedad de otras
 // LibraryReference para validar la clausura completa antes de reconstruir su API.
 // MINOR 11 (2026-09-10): las plantillas reutilizables conservan su grafo de dependencias y la
@@ -40,7 +42,13 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 12;
+inline constexpr std::uint16_t kMetadataFormatMinor = 13;
+
+// Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
+// this layout public prevents the producer, source materializer, and host tooling from growing
+// separate magic shifts for the same metadata field.
+inline constexpr std::uint32_t kMetadataMemberInliningShift = 21U;
+inline constexpr std::uint32_t kMetadataMemberInliningMask = 3U << kMetadataMemberInliningShift;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una
@@ -170,6 +178,10 @@ struct LibraryMetadataMember final
     // NSMETA 1.10. DLL de origen para `extern C from`; vacia para imports estaticos y miembros
     // NativeSharp ordinarios. El bit ImportedC de flags distingue los dos ultimos casos.
     std::string importDllName;
+    // NSMETA 1.13. Declaracion completa, incluido el cuerpo, de un metodo ordinario `inline` o
+    // `forceinline`. Vacio para contratos, imports, miembros no inline y especializaciones cuya
+    // plantilla reutilizable ya viaja en `genericTemplates`.
+    std::string inlineSourceText;
 };
 
 struct LibraryMetadataGenericTemplate final

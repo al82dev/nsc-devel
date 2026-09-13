@@ -59,12 +59,12 @@ bool equalMember(const LibraryMetadataMember& left, const LibraryMetadataMember&
                left.name, left.signatureKey, left.declaredTypeKey,
                left.declaredOwnership, left.cAbiName, left.mangledName,
                left.constantKind, left.constantBits, left.constantText,
-               left.importDllName) ==
+               left.importDllName, left.inlineSourceText) ==
             std::tie(right.kind, right.accessibility, right.flags, right.declaringTypeKey,
                 right.name, right.signatureKey, right.declaredTypeKey,
                 right.declaredOwnership, right.cAbiName, right.mangledName,
                 right.constantKind, right.constantBits, right.constantText,
-                right.importDllName) &&
+                right.importDllName, right.inlineSourceText) &&
         vectorEqual(left.parameters, right.parameters, equalParameter);
 }
 

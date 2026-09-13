@@ -28,6 +28,9 @@ empaqueta con NativeSharp 1.0.1.
 - Los métodos de struct usan las mismas políticas sin boxing. Una llamada mediante interfaz se
   devirtualiza sólo cuando el receptor es una construcción concreta fresca convertida explícitamente;
   receptores polimórficos conservan el dispatch por interface map.
+- NSMETA 1.13 conserva la política y el cuerpo de métodos ordinarios `inline`/`forceinline` para
+  analizarlos e inlinearlos en consumidores `LibraryReference`. Las copias usan ODR/COMDAT por
+  símbolo; `noinline` cruza como restricción de la declaración sin duplicar el cuerpo.
 - `static_assert(condición[, "mensaje"])` certifica constantes y layouts dentro de bloques sin
   generar código de ejecución.
 - `offsetof(T, campo)` obtiene como `nuint` el desplazamiento físico de un campo de struct o union
@@ -68,7 +71,8 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Bibliotecas y DLLs
 
-- NSMETA avanzó a 1.12 y publica clausura nominal externa y templates transitivos.
+- NSMETA avanzó a 1.13 y publica clausura nominal externa, templates transitivos y cuerpos inline
+  ordinarios reutilizables.
 - Clases estáticas, interfaces, eventos, arreglos de tipos referencia y especializaciones genéricas
   cerradas sobreviven el consumo mediante `LibraryReference`.
 - Callables, constructores y destructores precompilados conservan nombres físicos enlazables.

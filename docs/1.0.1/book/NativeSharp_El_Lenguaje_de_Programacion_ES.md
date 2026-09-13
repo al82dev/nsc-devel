@@ -2081,6 +2081,51 @@ El primer caso puede obedecer `forceinline` porque `new ConstantValue()` prueba 
 segundo no puede hacerlo sin romper polimorfismo. Un modificador sobre una implementación jamás es
 por sí solo evidencia de que el receptor dinámico pertenece a esa clase.
 
+Las bibliotecas precompiladas conservan estas decisiones. Supóngase que `FastMath` se entrega como
+`FastMath.lib` y `FastMath.nsmeta`, sin sus fuentes:
+
+```csharp
+namespace FastMath
+{
+    public static class Integers
+    {
+        public static forceinline int ClampPositive(int value)
+        {
+            return value < 0 ? 0 : value;
+        }
+
+        public static noinline int ProfilingBoundary(int value)
+        {
+            return value + 1;
+        }
+    }
+}
+```
+
+Un consumidor con `LibraryReference` puede llamar ambos métodos. NSMETA 1.13 lleva el cuerpo de
+`ClampPositive`; el compilador lo vuelve a analizar bajo la identidad nominal de `FastMath`, emite
+una definición ODR compatible con la copia del productor y cumple `forceinline` también en O0. Para
+`ProfilingBoundary` sólo lleva firma, identidad física y política: el LLVM del consumidor declara
+el símbolo con `noinline` y el enlace obtiene la implementación de la biblioteca.
+
+```csharp
+using FastMath;
+
+class Program
+{
+    public static int Main()
+    {
+        int clamped = Integers.ClampPositive(-4);   // se expande a 0
+        int measured = Integers.ProfilingBoundary(clamped); // conserva call
+        return measured == 1 ? 0 : 1;
+    }
+}
+```
+
+Los métodos ordinarios de struct usan el mismo transporte: el receptor continúa siendo la
+dirección del valor, no una caja. Los genéricos no duplican el cuerpo en el registro del miembro;
+reutilizan la plantilla que NSMETA ya publica y adquieren la política al monomorfizarse.
+
 ## 33. Diferencias esenciales frente a C# y C++
 
 | Tema | NativeSharp | C# típico | C++ típico |

@@ -2430,6 +2430,15 @@ private:
                     // user implementations.
                     applyOdrDefinition(llvmFunction);
                 }
+                else if (ownsDefinition &&
+                    (function.inliningPolicy == frontend::InliningPolicy::Preferred ||
+                     function.inliningPolicy == frontend::InliningPolicy::Required))
+                {
+                    // A public inline body can be materialized by both its producer and any
+                    // NSMETA 1.13 consumer. They share one deterministic physical identity and
+                    // therefore require symbol-scoped ODR/COMDAT linkage, never two strong defs.
+                    applyOdrDefinition(llvmFunction);
+                }
             }
             applyUwtableAttribute(llvmFunction);
             if (function.inliningPolicy == frontend::InliningPolicy::Preferred &&
@@ -2443,8 +2452,11 @@ private:
                 applyFunctionAttribute(llvmFunction, "alwaysinline");
             }
             else if (function.inliningPolicy == frontend::InliningPolicy::Forbidden &&
-                !function.isImportedC && !function.isImportedNative)
+                !function.isImportedC)
             {
+                // A precompiled NativeSharp declaration owns no local body, but its producer's
+                // noinline contract still constrains every consumer call site. LLVM accepts the
+                // attribute on the declaration and preserves the external call boundary.
                 applyFunctionAttribute(llvmFunction, "noinline");
             }
             if (sretReturn)

@@ -758,6 +758,14 @@ implementación mediante la tabla semántica de la clase. Un parámetro, field, 
 potencialmente polimórfica conserva el dispatch de interfaz; una política de implementación no basta
 para eliminarlo.
 
+Las políticas explícitas forman parte del contrato precompilado. Un método ordinario público
+`inline` o `forceinline` conserva su declaración completa y su cuerpo en NSMETA, de modo que un
+proyecto que sólo posee `.nsmeta` y `.lib` puede analizarlo y expandirlo con el mismo significado.
+La copia emitida por el consumidor comparte identidad física ODR con el productor. `noinline` no
+transporta implementación: conserva el símbolo externo y aplica la prohibición a la declaración
+importada. Los métodos genéricos siguen transportándose como templates reutilizables y heredan la
+política al especializarse.
+
 ### NS-SIMD-001 — Vectores SIMD portables
 
 `NativeSharp.Core.Numerics.Float32x4` es un valor de 128 bits formado por cuatro `float`. Su

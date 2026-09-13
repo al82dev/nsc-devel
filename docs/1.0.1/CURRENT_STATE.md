@@ -114,6 +114,13 @@ de clase fresca y exacta, usando la tabla semántica de implementación para sel
 Parámetros, fields, locals y expresiones cuyo tipo dinámico no está demostrado conservan el lookup
 de interfaz en ejecución.
 
+Las políticas cruzan `LibraryReference`. NSMETA transporta la declaración y el cuerpo de métodos
+ordinarios `inline` y `forceinline`; el consumidor los analiza como código local reutilizable y
+emite una copia `weak_odr` con COMDAT por símbolo. `noinline` transporta sólo la política y conserva
+la llamada hacia la identidad física del productor. El mismo mecanismo cubre métodos estáticos,
+receptores de clase y receptores de struct; las plantillas genéricas continúan usando su clausura
+reutilizable especializada por el consumidor.
+
 ## Ownership y lifetime
 
 `owned` transfiere responsabilidad; `borrowed` concede acceso sin transferencia. Las salidas,
@@ -141,7 +148,7 @@ transporta directamente por valor. Las aplicaciones GUI pueden seleccionar
 
 Un producto precompilado combina `.lib`, `.nsmeta` y, para una biblioteca compartida, `.dll` más su
 import library. `LibraryReference` consume el contrato sin incorporar las fuentes del productor.
-NSMETA 1.12 conserva:
+NSMETA 1.13 conserva:
 
 - tipos, miembros, accesibilidad efectiva y nombres físicos;
 - constantes y valores necesarios para reconstruir la API;
@@ -149,6 +156,7 @@ NSMETA 1.12 conserva:
 - templates reutilizables y clausura transitiva privada;
 - especializaciones genéricas cerradas alcanzables;
 - dependencias nominales provenientes de otras bibliotecas;
+- política de inlining y cuerpos ordinarios reutilizables entre productor y consumidor;
 - requisitos de runtime seleccionados únicamente cuando un símbolo alcanzado los necesita.
 
 `--verify-library-artifacts` compara metadata, archivo COFF, import library y tabla de exportaciones.

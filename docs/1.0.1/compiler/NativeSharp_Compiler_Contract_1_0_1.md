@@ -604,3 +604,22 @@ and lower the selected implementation as an ordinary direct call.
 Interface parameters, fields, locals, and arbitrary expressions remain dynamically dispatched
 unless a separate exact-type proof exists. Merely marking one implementation `forceinline` shall
 never suppress a valid interface-map lookup for a polymorphic receiver.
+
+## NSC-INLINE-008 — Cross-library policy and reusable bodies
+
+NSMETA shall preserve the four-valued inlining policy of every published callable. For an ordinary
+non-generic `inline` or `forceinline` method, NSMETA 1.13 shall additionally preserve the complete
+authored declaration and body. A `LibraryReference` consumer shall analyze and lower that body in
+the producer's nominal module identity instead of treating it as an opaque native import. Static,
+class-instance, and struct-instance methods use the same rule.
+
+Producer and consumer copies of a transported body shall use the same physical name and
+symbol-scoped `weak_odr` COMDAT definition. This permits a static archive or import library to
+coexist with a consumer-materialized copy without duplicate strong definitions. `noinline` carries
+no body: its metadata policy shall attach `noinline` to the imported declaration and preserve the
+producer call boundary. Generic method bodies remain governed by their reusable template closure;
+specialization shall not create a second transport representation.
+
+Readers shall reject a transported body attached to a non-method, C import, or policy other than
+preferred/required. Writers targeting NSMETA 1.12 or older shall remove the policy bits and body
+payload rather than producing a down-level file containing semantics that version never defined.

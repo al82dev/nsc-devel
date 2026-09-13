@@ -64,7 +64,7 @@
 37. **282 — Modificador `noinline` / No-inline modifier — COMPLETADO / COMPLETE**
 38. **283 — Inlining de métodos genéricos / Generic method inlining — COMPLETADO / COMPLETE**
 39. **284 — Inlining de structs e interfaces / Struct and interface inlining — COMPLETADO / COMPLETE**
-40. **285 — Inlining entre bibliotecas precompiladas / Cross-library inlining**
+40. **285 — Inlining entre bibliotecas precompiladas / Cross-library inlining — COMPLETADO / COMPLETE**
 41. **286 — PDB y stepping de funciones inline / Inline PDB and stepping**
 
 ## Tanda 4 — Ensamblador integrado

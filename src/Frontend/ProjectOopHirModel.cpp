@@ -1307,6 +1307,10 @@ bool ProjectOopHirModel::buildImpl(
             imported.constructor = member.kind == ClassMemberKind::Constructor;
             imported.destructor = false;
             imported.isStatic = member.isStatic;
+            // NSMETA declarations carry optimization policy as part of their callable contract.
+            // In particular, `noinline` has no transported body but must still constrain calls
+            // emitted by this consumer.
+            imported.inliningPolicy = member.inliningPolicy;
             imported.isImportedNative = true;
             if (member.precompiledMangledName.empty())
             {

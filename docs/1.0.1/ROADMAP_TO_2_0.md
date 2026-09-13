@@ -98,7 +98,8 @@ historia, no una certificación nueva y no incluye archivos sin commit.
 
 - emisión de OBJ, EXE, `.lib`, DLL, import library, headers y NSMETA;
 - consumo por `ProjectReference` y `LibraryReference`;
-- NSMETA 1.12 con identidad física, accesibilidad efectiva, templates y clausura transitiva;
+- NSMETA 1.13 con identidad física, accesibilidad efectiva, templates, clausura transitiva y
+  cuerpos inline reutilizables;
 - verificación cruzada de metadata, COFF, import library y exportaciones PE;
 - identidad de build, instalación verificable, inventario criptográfico y actualización segura;
 - documentación 1.0.1 autocontenida e instalable.
