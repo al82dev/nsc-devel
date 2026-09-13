@@ -712,6 +712,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_multidimensional_index_tests)
     add_test(NAME nsc.language.multidimensional-indexing COMMAND nsc_multidimensional_index_tests)
 
+    add_executable(nsc_variable_length_array_tests tests/unit/VariableLengthArrayTests.cpp)
+    target_link_libraries(nsc_variable_length_array_tests PRIVATE nsc_frontend nsc_compilation)
+    target_compile_features(nsc_variable_length_array_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_variable_length_array_tests)
+    add_test(NAME nsc.language.variable-length-arrays COMMAND nsc_variable_length_array_tests)
+
     add_executable(nsc_stage35_recovery_tests tests/unit/Stage35RecoveryTests.cpp)
     target_link_libraries(nsc_stage35_recovery_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_stage35_recovery_tests PRIVATE cxx_std_20)

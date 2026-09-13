@@ -62,6 +62,14 @@ struct MethodLocalSymbol final
     const ast::AstNode* syntax = nullptr;
     std::string name;
     std::string typeKey;
+    // NativeSharp 2.0 item 269: `T[length] local;` is stack storage whose extent is
+    // evaluated when the declaration executes.  Downstream expression typing uses the
+    // pointer-shaped `typeKey`, while these two fields preserve the array declaration's
+    // element type and count expression so HIR can synthesize the existing stack-allocation
+    // operation without changing fields, parameters, or return types.
+    bool isVariableLengthArray = false;
+    std::string variableLengthArrayElementTypeKey;
+    const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
     bool isConst = false;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //

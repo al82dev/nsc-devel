@@ -1990,7 +1990,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                     return nullptr;
                 }
             }
-            if (statement->first() != nullptr)
+            if (local->isVariableLengthArray)
+            {
+                if (local->variableLengthArrayCountSyntax == nullptr ||
+                    local->variableLengthArrayElementTypeKey.empty())
+                {
+                    error = "NativeSharp 2.0 VLA local lost its element type or runtime extent";
+                    return nullptr;
+                }
+                auto count = lowerExpression(
+                    local->variableLengthArrayCountSyntax, memberOrdinal, false, error);
+                if (count == nullptr) return nullptr;
+
+                auto allocation = makeNode(
+                    ProjectOopHirNodeKind::StackAllocation, statement, local->typeKey);
+                allocation->elementTypeKey = local->variableLengthArrayElementTypeKey;
+                allocation->children.push_back(std::move(count));
+                node->children.push_back(std::move(allocation));
+            }
+            else if (statement->first() != nullptr)
             {
                 std::unique_ptr<ProjectOopHirNode> initializer = lowerExpression(
                     statement->first(), memberOrdinal, false, error);

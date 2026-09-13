@@ -454,6 +454,24 @@ pero conserva la declaración de rango en una sola expresión. Un índice consta
 extensión correspondiente se rechaza durante compilación; los accesos dinámicos pertenecen al
 nivel raw y no insertan una comprobación de rango en ejecución.
 
+### NS-ARRAY-003 — Arreglos locales de longitud variable
+
+Una declaración local `T[length] values;`, donde `length` no es una constante de compilación,
+evalúa `length` al alcanzar la declaración y reserva `length * sizeof(T)` bytes contiguos en el
+frame de la función. La reserva no tiene cabecera, no usa el heap y no requiere `delete`; deja de
+existir al retornar la función. Los accesos `values[index]` usan el stride canónico de `T` y
+pertenecen al mismo nivel raw que el indexado de punteros.
+
+La extensión debe tener tipo integral y el elemento debe tener tamaño y lifetime trivial: no puede
+ser `void`, declarar destructor ni contener ownership que la desaparición cruda del frame dejaría
+sin descargar. La declaración no admite inicializador agregado; sus elementos se inicializan de
+forma explícita. Esta sintaxis se permite sólo en variables locales. Campos, parámetros y retornos
+siguen siendo contratos de layout/ABI y no admiten una extensión calculada en ejecución.
+
+Una extensión constante conserva la semántica distinta del fixed array inline. Por tanto,
+`int[4] fixedValues;` es un valor fijo de 16 bytes, mientras `int[length] workingValues;` es una
+reserva realizada al ejecutar esa declaración. Ninguna de las dos formas crea un array administrado.
+
 ### NS-LAYOUT-002 — Objetos y delegates
 
 El layout público de clases, descriptores, tablas de dispatch, interfaces y delegates está

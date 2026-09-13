@@ -793,6 +793,38 @@ la forma encadenada `matrix[row][column]`; ambas designan el mismo slot. Como se
 raw, un índice variable no agrega una rama de bounds-check. Los índices constantes sí se validan
 contra la extensión concreta durante compilación.
 
+Cuando el tamaño sólo se conoce al ejecutar una función, la misma sintaxis de tipo permite un
+arreglo local de longitud variable:
+
+```csharp
+public static int SumWindow(int length)
+{
+    int[length] samples;
+
+    int i = 0;
+    while (i < length)
+    {
+        samples[i] = (i + 1) * 3;
+        i += 1;
+    }
+
+    int total = 0;
+    i = 0;
+    while (i < length)
+    {
+        total += samples[i];
+        i += 1;
+    }
+    return total;
+}
+```
+
+`samples` no llama al heap: la reserva ocurre en el frame al alcanzar la declaración y desaparece
+al retornar la función. Es almacenamiento raw contiguo, por lo que no posee `Length`, no agrega
+bounds checks dinámicos y no puede devolverse ni sobrevivir al frame. La extensión debe ser
+integral y el elemento debe tener lifetime trivial. Una dimensión constante, como `int[32]`, sigue
+siendo un fixed array inline; un campo o una firma no puede depender de una longitud de ejecución.
+
 ## 12. Clases, invariantes y destrucción
 
 Una clase combina estado, operaciones e identidad. El constructor debe dejar cada instancia en un
@@ -919,6 +951,8 @@ el centro de un modelo.
 Un puntero `T*` contiene una dirección. La aritmética, desreferencia y conversión de punteros deben
 reservarse para código de bajo nivel y fronteras ABI. `stackalloc` obtiene almacenamiento ligado al
 frame actual; devolver un puntero o vista a ese almacenamiento dejaría una dirección inválida.
+La declaración local `T[length] name;` ofrece el mismo almacenamiento de frame con sintaxis de
+arreglo y acceso `name[index]`, sin exigir que el programa declare manualmente un puntero.
 
 Un array dinámico `T[]` conoce su longitud y se crea con `new T[count]`. Se libera con `delete[]` si
 el dueño no está ligado por otra abstracción. El acceso usa bounds checks conforme a la operación

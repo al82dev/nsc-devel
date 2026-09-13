@@ -2660,9 +2660,115 @@ void ProjectMethodBodyModel::analyzeVariable(
         precomputedVarInitializer = std::move(varInit);
     }
 
+    bool isVariableLengthArray = false;
+    std::string variableLengthArrayElementTypeKey;
+    const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
+
+    // NativeSharp 2.0 item 269 -- a non-constant array extent is meaningful only on a local
+    // declaration: `T[length] values;` reserves raw, contiguous storage in the current stack
+    // frame.  Constant extents retain the fixed inline-array semantics implemented by item 267.
+    //
+    // Internally the local is pointer-shaped because the existing raw-indexing and stackalloc
+    // pipeline already define precisely the ABI we need.  The explicit VLA marker kept on the
+    // local prevents this representation choice from leaking into the source grammar or from
+    // enabling variable extents on fields and callable signatures.
+    if (!isVarInferred && variable->typeSyntax() != nullptr)
+    {
+        const auto& modifiers = variable->typeSyntax()->modifiers();
+        std::size_t fixedArrayModifierCount = 0;
+        const ast::TypeModifierSyntax* runtimeExtent = nullptr;
+        for (const ast::TypeModifierSyntax& modifier : modifiers)
+        {
+            if (modifier.kind != ast::TypeModifierSyntaxKind::Array) continue;
+            ++fixedArrayModifierCount;
+            if (!ProjectMemberModel::evaluateConstantArrayCount(modifier.arrayCount).has_value())
+                runtimeExtent = &modifier;
+        }
+
+        if (runtimeExtent != nullptr)
+        {
+            const bool supportedShape = fixedArrayModifierCount == 1 &&
+                !modifiers.empty() && &modifiers.back() == runtimeExtent;
+            if (!supportedShape)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidArrayCount,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->typeSyntax()->range(),
+                    "a local variable-length array currently requires exactly one outermost "
+                    "runtime dimension; multidimensional VLA syntax is introduced separately");
+            }
+            else
+            {
+                const std::string declaredKey =
+                    memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_);
+                const std::size_t extentStart = declaredKey.rfind('[');
+                if (extentStart == std::string::npos)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        variable->typeSyntax()->range(),
+                        "cannot determine the element type of the variable-length array");
+                }
+                else
+                {
+                    variableLengthArrayElementTypeKey = declaredKey.substr(0, extentStart);
+                    variableLengthArrayCountSyntax = runtimeExtent->arrayCount;
+                    isVariableLengthArray = true;
+
+                    const ExpressionResult count = analyzeExpression(
+                        variableLengthArrayCountSyntax,
+                        methodMemberOrdinal,
+                        scopeOrdinal,
+                        diagnostics);
+                    if (!count.valid || !ProjectTypeConversion::isIntegral(count.typeKey) ||
+                        count.typeKey == "builtin:bool")
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidArrayCount,
+                            diagnostics::DiagnosticSeverity::Error,
+                            runtimeExtent->range,
+                            "a variable-length array requires an integral element count");
+                    }
+                    if (variableLengthArrayElementTypeKey == "builtin:void")
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidStackalloc,
+                            diagnostics::DiagnosticSeverity::Error,
+                            variable->typeSyntax()->range(),
+                            "a variable-length array requires an element type with a size; void has none");
+                    }
+                    else if (!isErrorType(variableLengthArrayElementTypeKey) &&
+                        !elementTypeHasTrivialLifetime(variableLengthArrayElementTypeKey))
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidStackalloc,
+                            diagnostics::DiagnosticSeverity::Error,
+                            variable->typeSyntax()->range(),
+                            "a variable-length array requires an element type with no destructor "
+                            "and no owned fields; '" + variableLengthArrayElementTypeKey +
+                                "' owns a lifetime that raw stack storage cannot discharge");
+                    }
+                    if (variable->first() != nullptr)
+                    {
+                        diagnostics.report(
+                            diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error,
+                            variable->first()->range(),
+                            "a variable-length array declaration cannot have an initializer; "
+                            "initialize its elements explicitly");
+                    }
+                }
+            }
+        }
+    }
+
     const std::string typeKey = isVarInferred
         ? varInferredTypeKey
-        : memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_);
+        : (isVariableLengthArray
+            ? variableLengthArrayElementTypeKey + '*'
+            : memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_));
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
     // Bloque 1 item 1/6/7 fix -- `owned T x = ...` declares an OWNING local, exactly like
@@ -2996,6 +3102,9 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.syntax = variable;
     local.name = variable->text();
     local.typeKey = typeKey;
+    local.isVariableLengthArray = isVariableLengthArray;
+    local.variableLengthArrayElementTypeKey = variableLengthArrayElementTypeKey;
+    local.variableLengthArrayCountSyntax = variableLengthArrayCountSyntax;
     local.isConst = variable->flag();
     // El valor de un `const` entero, plegado aqui. Ver el comentario del campo: sirve para
     // contestar "¿el divisor es cero?" y para nada mas.
@@ -3065,7 +3174,8 @@ void ProjectMethodBodyModel::analyzeVariable(
     // zeroes) start out assigned; everything else must be written before it is read. A local
     // re-entering scope on a later loop iteration is re-declared through this same path, so its
     // assigned state is correctly reset rather than inherited from the previous iteration.
-    if (variable->first() != nullptr || !definiteAssignmentTracksLocal(localOrdinal))
+    if (variable->first() != nullptr || isVariableLengthArray ||
+        !definiteAssignmentTracksLocal(localOrdinal))
     {
         assignedLocals_.insert(localOrdinal);
     }

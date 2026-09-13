@@ -22,6 +22,11 @@ estáticos, propiedades, indexadores, operadores, conversiones de usuario, enums
 delegates, eventos, lambdas y closures. El flujo incluye condicionales, ciclos, `switch`, excepciones
 nativas, `finally`, `using`, RAII y destrucción determinista.
 
+Los arreglos locales `T[length]` pueden tomar su longitud de una expresión integral evaluada al
+ejecutar la declaración. Su almacenamiento es contiguo, pertenece al frame actual y no requiere
+`new` ni `delete`. Esta forma no se extiende a campos, parámetros o retornos: esas posiciones forman
+parte de contratos de layout o ABI y conservan dimensiones constantes o tipos dinámicos explícitos.
+
 Los strings son objetos nativos. `const string` representa una constante de compilación; los
 literales, comparaciones y operaciones documentadas no dependen de `System.String` ni del CLR. Los
 constructores pueden recibir préstamos de string conforme a las reglas de lifetime y escape.

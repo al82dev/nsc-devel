@@ -14,6 +14,9 @@ empaqueta con NativeSharp 1.0.1.
   orden row-major sin cabecera ni asignación de heap.
 - `array[i0, i1, ...]` accede directamente a arreglos fijos multidimensionales y escala cada índice
   por el stride canónico de su dimensión.
+- `T[length] local;` reserva un arreglo local de longitud evaluada en ejecución directamente en el
+  frame de la función, sin `new`, `delete` ni cabecera de heap; los campos y firmas siguen exigiendo
+  dimensiones contractuales.
 - `const string` es una constante de compilación utilizable en APIs y metadata.
 - Strings nativos conservan unión condicional, literales y préstamos en constructores.
 - Enums, conversiones numéricas y conversiones de usuario conservan identidad lógica y física.
