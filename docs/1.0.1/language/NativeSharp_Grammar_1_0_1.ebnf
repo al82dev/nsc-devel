@@ -83,7 +83,7 @@ type-primary = builtin-type | qualified-name, [ type-arguments ] ;
 builtin-type = "void" | "bool" | integral-type | "float" | "double" | "string" ;
 integral-type = "sbyte" | "byte" | "char" | "short" | "ushort" | "int" | "uint" |
                 "long" | "ulong" | "nint" | "nuint" ;
-array-rank = "[", { "," }, "]" | "[", expression, "]" ;
+array-rank = "[", { "," }, "]" | "[", expression, { ",", expression }, "]" ;
 
 block = "{", { statement }, "}" ;
 statement = block | variable-declaration | expression-statement | if-statement |

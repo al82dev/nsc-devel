@@ -209,8 +209,10 @@ int main()
         "void object declarations are rejected");
     tests.expect(accepts("void* p; int Main() { p = null; return 0; }"),
         "void pointers remain valid object-pointer values");
-    tests.expect(rejectsWith("int[2][3] matrix; int Main() { return 0; }", DiagnosticId::InvalidArrayCount),
-        "nested fixed arrays are rejected in NativeSharp 1.0.1");
+    tests.expect(accepts("int[2,3] matrix; int Main() { return 0; }"),
+        "fixed multidimensional arrays are accepted in rank notation");
+    tests.expect(accepts("int[2][3] matrix; int Main() { return 0; }"),
+        "nested fixed-array modifiers remain a valid equivalent type form");
     tests.expect(rejectsWith("int[0] empty; int Main() { return 0; }", DiagnosticId::InvalidArrayCount),
         "fixed arrays require a positive constant count");
     tests.expect(rejectsWith("int[n] values; int n; int Main() { return 0; }", DiagnosticId::UnknownIdentifier),

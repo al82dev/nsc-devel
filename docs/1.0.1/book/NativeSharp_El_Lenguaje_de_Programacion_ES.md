@@ -768,8 +768,11 @@ public align(16) struct Packet
 ```
 
 `union` coloca sus miembros en el mismo offset y toma el tamaño del miembro mayor, redondeado por
-alineación. `fixed T field[N]` inserta los elementos en el propio agregado; no guarda un puntero a
-otro bloque. Los modificadores de layout `pack(N)`, `align(N)` y `at(N)` permiten expresar contratos
+alineación. `T[N]` inserta los elementos en el propio agregado; no guarda un puntero a otro bloque.
+La forma multidimensional `T[rows, columns]` conserva ese almacenamiento inline, contiguo y
+row-major: primero se recorren las columnas de una fila y después la fila siguiente. Por ejemplo,
+`float[3, 4] transform;` ocupa exactamente doce `float`, sin cabecera ni asignación de heap. Los
+modificadores de layout `pack(N)`, `align(N)` y `at(N)` permiten expresar contratos
 foráneos, pero también pueden producir accesos menos eficientes o layouts incorrectos si se usan
 por estética. Deben copiar una especificación ABI medida, no una intuición.
 

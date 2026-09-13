@@ -169,7 +169,9 @@ obligación. `raii T[]` liga esa descarga al ámbito. La propiedad del buffer y 
 elemento se analizan por separado; mover un elemento no mueve el buffer.
 
 Un fixed array forma parte del valor que lo contiene y su cantidad es contractual. No puede
-degradarse a un puntero para cambiar layout o lifetime silenciosamente.
+degradarse a un puntero para cambiar layout o lifetime silenciosamente. La forma
+`T[d0, d1, ...]` declara dos o más dimensiones fijas; cada dimensión debe ser una expresión
+constante entera positiva.
 
 ### NS-CALL-001 — Paso de argumentos
 
@@ -439,7 +441,10 @@ union, todos los campos no explícitos comienzan en cero y el tamaño cubre el m
 extensión. Los valores de `pack` y `align` deben ser potencias de dos válidas.
 
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
-referencia ni lleva cabecera oculta.
+referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su
+representación canónica equivale a un arreglo exterior de `d0` elementos, cada uno de los cuales
+contiene la dimensión siguiente. Su tamaño es `sizeof(T) * d0 * d1 * ...`, comprobado contra
+overflow en cada nivel. La primera dimensión escrita es la exterior y la última es la contigua.
 
 ### NS-LAYOUT-002 — Objetos y delegates
 

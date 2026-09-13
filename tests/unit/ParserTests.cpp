@@ -194,6 +194,13 @@ int Main()
     tests.expect(expressionFormsOk,
         "new/delete, sizeof/alignof/offsetof, casts, prefix/postfix, dereference, and pointer-member forms parse");
 
+    frontend::FrontendCompilation multidimensionalFixedArray;
+    const bool multidimensionalFixedArrayOk = multidimensionalFixedArray.compileBuffer(
+        "fixed_multidimensional_array.ns",
+        "int Main() { int[3, 4] matrix; return (int)sizeof(matrix); }");
+    tests.expect(multidimensionalFixedArrayOk,
+        "fixed multidimensional array rank syntax parses as a type modifier");
+
     frontend::FrontendCompilation recovery;
     const bool recoveryOk = recovery.compileBuffer(
         "recovery.ns",

@@ -636,7 +636,27 @@ ast::TypeSyntax* Parser::parseType()
                 continue;
             }
 
-            ast::AstNode* count = parseExpression();
+            // Item 267: a multidimensional fixed array keeps the type-first NativeSharp
+            // spelling (`T[rows, columns]`) while lowering to the already canonical nested-array
+            // representation.  The first written dimension is the outermost one, so modifiers
+            // are appended in reverse: `int[3, 4]` becomes the canonical `int[4][3]`, i.e.
+            // `[3 x [4 x i32]]` in LLVM.  Keeping one representation means layout, sizeof,
+            // generic substitution and the C ABI do not need a parallel "matrix" type.
+            std::vector<ast::AstNode*> dimensions;
+            dimensions.push_back(parseExpression());
+            while (consumeIf(TokenKind::Comma))
+            {
+                if (at(TokenKind::RightBracket))
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedExpression,
+                        diagnostics::DiagnosticSeverity::Error,
+                        current().range(),
+                        "fixed multidimensional array requires an expression after ','");
+                    break;
+                }
+                dimensions.push_back(parseExpression());
+            }
             const SourceRange beforeRight = current().range();
             expect(TokenKind::RightBracket, "']'");
             SourceRange modifierRange = join(left, beforeRight);
@@ -644,10 +664,13 @@ ast::TypeSyntax* Parser::parseType()
             {
                 modifierRange = join(left, tokens_[index_ - 1].range());
             }
-            type->addModifier(ast::TypeModifierSyntax{
-                ast::TypeModifierSyntaxKind::Array,
-                count,
-                modifierRange});
+            for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+            {
+                type->addModifier(ast::TypeModifierSyntax{
+                    ast::TypeModifierSyntaxKind::Array,
+                    *dimension,
+                    modifierRange});
+            }
             completeRange = join(completeRange, modifierRange);
             continue;
         }

@@ -43,7 +43,7 @@
 
 20. **265 — `static_assert` / Static assertions — COMPLETADO / COMPLETE**
 21. **266 — `offsetof` / Field offsets — COMPLETADO / COMPLETE**
-22. **267 — Arreglos multidimensionales fijos `T[3, 4]` / Fixed multidimensional arrays**
+22. **267 — Arreglos multidimensionales fijos `T[3, 4]` / Fixed multidimensional arrays — COMPLETADO / COMPLETE**
 23. **268 — Indexado `array[i, j]` / Multidimensional indexing**
 24. **269 — Arreglos locales variables `T[length]` / Variable-length local arrays**
 25. **270 — VLAs multidimensionales `T[rows, columns]` / Multidimensional VLAs**

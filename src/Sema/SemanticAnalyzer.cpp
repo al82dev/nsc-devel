@@ -2067,12 +2067,12 @@ Type* SemanticAnalyzer::resolveType(ast::TypeSyntax* syntax)
             continue;
         }
 
-        if (type->kind() == TypeKind::Void || type->kind() == TypeKind::Array || !type->isComplete())
+        if (type->kind() == TypeKind::Void || !type->isComplete())
         {
             report(
                 modifier.range,
                 diagnostics::DiagnosticId::InvalidArrayCount,
-                "fixed array element type must be complete, non-void and non-array in NativeSharp 1.0.1");
+                "fixed array element type must be complete and non-void in NativeSharp 1.0.1");
             type = types_.builtin(TypeKind::Error);
             continue;
         }
