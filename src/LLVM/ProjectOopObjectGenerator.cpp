@@ -106,9 +106,15 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
 {
     error.clear();
     workerCount = std::max<std::size_t>(1, workerCount);
+    const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
 
     ProjectOopCodePartition partition;
-    if (!partition.build(mirModel, workerCount, error)) return nullptr;
+    if (!partition.build(
+            mirModel, workerCount, error,
+            cache != nullptr && cache->enabled()
+                ? ProjectOopCodePartitionPolicy::StableIncremental
+                : ProjectOopCodePartitionPolicy::Balanced))
+        return nullptr;
     const bool usePartitions = workerCount > 1 && partition.units().size() > 1;
     const std::size_t moduleCount = usePartitions ? partition.units().size() + 1 : 1;
     std::vector<std::unique_ptr<LlvmModule>> modules(moduleCount);
@@ -226,7 +232,6 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::vector<std::string> emissionErrors(moduleCount);
     std::vector<std::uint8_t> cacheHits(moduleCount, 0);
     std::vector<std::uint8_t> cacheMisses(moduleCount, 0);
-    const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
     const auto emitModule = [&](std::size_t ordinal) {
         std::string cacheKey;
         if (cache != nullptr && cache->enabled())

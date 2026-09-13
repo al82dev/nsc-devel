@@ -166,6 +166,20 @@ pass the ordinary AMD64 COFF verifier before emission is skipped. Missing, incom
 corrupt or non-COFF entries are misses and are rebuilt. A verified miss may be stored for later use.
 Parallel units keep independent hit/miss slots, and product output reports their totals.
 
+## NSC-CACHE-002 — Precise incremental invalidation
+
+When the verified object cache is enabled, project OOP code partitioning shall derive each
+function's bucket exclusively from its physical function identity and the resolved code-unit count.
+Function body size, estimated lowering cost, traversal timing and worker completion order shall not
+change that assignment. Empty buckets may be omitted, but surviving bucket ordinals and stable keys
+shall not be renumbered.
+
+A body-only edit that preserves public and coordinator state shall invalidate only the code bucket
+containing that function. The coordinator and unrelated code buckets shall remain eligible for
+verified cache hits. Changes to signatures, global coordination state, target policy or the resolved
+code-unit count may invalidate the affected coordinator or partition identities. When the artifact
+cache is disabled, the ordinary balanced partition policy remains in effect.
+
 ## NSC-WORKERS-001 — Internal compiler worker pool
 
 The internal worker pool shall own a fixed number of joinable threads resolved from the active job

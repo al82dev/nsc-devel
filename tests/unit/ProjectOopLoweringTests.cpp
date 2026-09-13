@@ -22,6 +22,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace
 {
@@ -673,6 +674,113 @@ void testAggregateCallableBoundary(TestContext& tests, const std::filesystem::pa
             "the Large return travels through an sret([12 x i8]) slot, not a direct value");
     }
 }
+
+void testPreciseIncrementalInvalidation(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto firstDirectory = root / "IncrementalFirst";
+    const auto changedDirectory = root / "IncrementalChanged";
+    writeProject(firstDirectory, "IncrementalCache");
+    writeProject(changedDirectory, "IncrementalCache");
+    const std::string commonPrefix = R"NS(
+public class Work
+{
+    public static int Alpha() { return 1; }
+    public static int Beta() { return 2; }
+    public static int Gamma() { return 3; }
+    public static int Delta() { return 4; }
+    public static int Epsilon() { return 5; }
+    public static int Zeta() { return 6; }
+)NS";
+    writeFile(firstDirectory / "Work.ns", commonPrefix +
+        "    public static int Changed() { return 7; }\n}\n");
+    writeFile(changedDirectory / "Work.ns", commonPrefix +
+        "    public static int Changed() { return 700; }\n}\n");
+
+    ProjectCompilation first;
+    first.setCompilationJobs(4);
+    ProjectCompilation changed;
+    changed.setCompilationJobs(4);
+    std::string error;
+    const bool firstOk = first.compileProjectOopMir(
+        firstDirectory / "IncrementalCache.nsproj", error);
+    std::string changedError;
+    const bool changedOk = changed.compileProjectOopMir(
+        changedDirectory / "IncrementalCache.nsproj", changedError);
+    tests.expect(firstOk && changedOk,
+        "body-only incremental fixtures both produce OOP MIR (" + error + changedError + ")");
+    if (!firstOk || !changedOk || first.oopMirModel() == nullptr ||
+        changed.oopMirModel() == nullptr)
+        return;
+
+    nativesharp::llvm_backend::ProjectOopCodePartition firstPartition;
+    nativesharp::llvm_backend::ProjectOopCodePartition changedPartition;
+    error.clear();
+    const bool firstPartitionOk = firstPartition.build(
+        *first.oopMirModel(), 4, error,
+        nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::StableIncremental);
+    changedError.clear();
+    const bool changedPartitionOk = changedPartition.build(
+        *changed.oopMirModel(), 4, changedError,
+        nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::StableIncremental);
+    tests.expect(firstPartitionOk && changedPartitionOk,
+        "stable incremental partitions build for both revisions (" + error + changedError + ")");
+
+    std::unordered_map<std::string, std::size_t> firstBuckets;
+    const auto firstFunctions = first.oopMirModel()->functions();
+    for (std::size_t ordinal = 0; ordinal < firstFunctions.size(); ++ordinal)
+    {
+        const auto bucket = firstPartition.unitForFunction(ordinal);
+        if (bucket.has_value()) firstBuckets.emplace(firstFunctions[ordinal].mangledName, *bucket);
+    }
+    bool stableAssignments = firstFunctions.size() == changed.oopMirModel()->functions().size();
+    const auto changedFunctions = changed.oopMirModel()->functions();
+    for (std::size_t ordinal = 0; stableAssignments && ordinal < changedFunctions.size(); ++ordinal)
+    {
+        const auto bucket = changedPartition.unitForFunction(ordinal);
+        const auto expected = firstBuckets.find(changedFunctions[ordinal].mangledName);
+        stableAssignments = bucket.has_value() && expected != firstBuckets.end() &&
+            *bucket == expected->second;
+    }
+    tests.expect(stableAssignments,
+        "body changes preserve every physical function-to-bucket assignment");
+
+    nativesharp::llvm_backend::CompilationArtifactCache cache;
+    cache.setRoot(root / "incremental-object-cache");
+    cache.setToolchainIdentity("precise-invalidation-test");
+    nativesharp::llvm_backend::CompilationArtifactCacheScope cacheScope(cache);
+    nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+    error.clear();
+    auto firstBundle = generator.generate(
+        *first.nameLookup(), *first.memberModel(), *first.oopMirModel(),
+        first.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+        nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, error);
+    tests.expect(firstBundle != nullptr && firstBundle->cacheHitCount() == 0 &&
+            firstBundle->cacheMissCount() == firstBundle->objectFiles().size(),
+        "cold incremental build emits and stores every code unit (" + error + ")");
+    if (firstBundle == nullptr) return;
+
+    changedError.clear();
+    auto changedBundle = generator.generate(
+        *changed.nameLookup(), *changed.memberModel(), *changed.oopMirModel(),
+        changed.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+        nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, changedError);
+    tests.expect(changedBundle != nullptr && changedBundle->cacheMissCount() == 1 &&
+            changedBundle->cacheHitCount() + changedBundle->cacheMissCount() ==
+                changedBundle->objectFiles().size(),
+        "one body edit invalidates exactly its code bucket while reusing coordinator and peers (" +
+            changedError + ")");
+    if (changedBundle == nullptr) return;
+
+    changedError.clear();
+    auto repeatedBundle = generator.generate(
+        *changed.nameLookup(), *changed.memberModel(), *changed.oopMirModel(),
+        changed.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+        nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, changedError);
+    tests.expect(repeatedBundle != nullptr && repeatedBundle->cacheMissCount() == 0 &&
+            repeatedBundle->cacheHitCount() == repeatedBundle->objectFiles().size(),
+        "unchanged incremental rebuild restores every unit after the precise miss (" +
+            changedError + ")");
+}
 }
 
 int main()
@@ -688,6 +796,7 @@ int main()
     testDeallocationContract(tests, root);
     testAggregateCallableBoundary(tests, root);
     testNarrowSignedEnumNameLowering(tests, root);
+    testPreciseIncrementalInvalidation(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);
     return tests.result();

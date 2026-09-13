@@ -33,12 +33,24 @@ std::string codeUnitKey(std::size_t ordinal)
     stream << "code-" << std::setw(4) << std::setfill('0') << ordinal;
     return stream.str();
 }
+
+std::uint64_t stableNameHash(std::string_view name) noexcept
+{
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (const char character : name)
+    {
+        hash ^= static_cast<std::uint64_t>(static_cast<unsigned char>(character));
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
 }
 
 bool ProjectOopCodePartition::build(
     const frontend::ProjectOopMirModel& mirModel,
     std::size_t requestedUnitCount,
-    std::string& error)
+    std::string& error,
+    ProjectOopCodePartitionPolicy policy)
 {
     error.clear();
     if (built_)
@@ -85,24 +97,46 @@ bool ProjectOopCodePartition::build(
     for (std::size_t ordinal = 0; ordinal < unitCount; ++ordinal)
         units_.push_back(ProjectOopCodeUnit{ordinal, codeUnitKey(ordinal), 0, {}});
 
-    // Longest-processing-time partitioning gives useful balance while remaining fully stable:
-    // cost, physical name and original ordinal are all canonical MIR properties.
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
-        if (left.cost != right.cost) return left.cost > right.cost;
-        if (left.stableName != right.stableName) return left.stableName < right.stableName;
-        return left.functionOrdinal < right.functionOrdinal;
-    });
-    for (const Candidate& candidate : candidates)
+    if (policy == ProjectOopCodePartitionPolicy::StableIncremental)
     {
-        const auto selected = std::min_element(
-            units_.begin(), units_.end(), [](const ProjectOopCodeUnit& left,
-                                            const ProjectOopCodeUnit& right) {
-                if (left.estimatedCost != right.estimatedCost)
-                    return left.estimatedCost < right.estimatedCost;
-                return left.ordinal < right.ordinal;
-            });
-        selected->estimatedCost = saturatedAdd(selected->estimatedCost, candidate.cost);
-        selected->functionOrdinals.push_back(candidate.functionOrdinal);
+        // Identity hashing keeps a body-only edit in the same bucket. Empty buckets are omitted
+        // without renumbering surviving keys, so unrelated object-cache identities stay stable.
+        std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
+            if (left.stableName != right.stableName) return left.stableName < right.stableName;
+            return left.functionOrdinal < right.functionOrdinal;
+        });
+        for (const Candidate& candidate : candidates)
+        {
+            const std::size_t bucket = static_cast<std::size_t>(
+                stableNameHash(candidate.stableName) % unitCount);
+            units_[bucket].estimatedCost = saturatedAdd(units_[bucket].estimatedCost, candidate.cost);
+            units_[bucket].functionOrdinals.push_back(candidate.functionOrdinal);
+        }
+        std::erase_if(units_, [](const ProjectOopCodeUnit& unit) {
+            return unit.functionOrdinals.empty();
+        });
+    }
+    else
+    {
+        // Longest-processing-time partitioning gives useful balance while remaining fully stable:
+        // cost, physical name and original ordinal are all canonical MIR properties.
+        std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
+            if (left.cost != right.cost) return left.cost > right.cost;
+            if (left.stableName != right.stableName) return left.stableName < right.stableName;
+            return left.functionOrdinal < right.functionOrdinal;
+        });
+        for (const Candidate& candidate : candidates)
+        {
+            const auto selected = std::min_element(
+                units_.begin(), units_.end(), [](const ProjectOopCodeUnit& left,
+                                                const ProjectOopCodeUnit& right) {
+                    if (left.estimatedCost != right.estimatedCost)
+                        return left.estimatedCost < right.estimatedCost;
+                    return left.ordinal < right.ordinal;
+                });
+            selected->estimatedCost = saturatedAdd(selected->estimatedCost, candidate.cost);
+            selected->functionOrdinals.push_back(candidate.functionOrdinal);
+        }
     }
 
     for (ProjectOopCodeUnit& unit : units_)

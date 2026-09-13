@@ -14,6 +14,12 @@ class ProjectOopMirModel;
 
 namespace nativesharp::llvm_backend
 {
+enum class ProjectOopCodePartitionPolicy
+{
+    Balanced,
+    StableIncremental
+};
+
 struct ProjectOopCodeUnit final
 {
     std::size_t ordinal = 0;
@@ -28,7 +34,8 @@ public:
     bool build(
         const frontend::ProjectOopMirModel& mirModel,
         std::size_t requestedUnitCount,
-        std::string& error);
+        std::string& error,
+        ProjectOopCodePartitionPolicy policy = ProjectOopCodePartitionPolicy::Balanced);
 
     std::span<const ProjectOopCodeUnit> units() const noexcept;
     std::optional<std::size_t> unitForFunction(std::size_t functionOrdinal) const noexcept;
