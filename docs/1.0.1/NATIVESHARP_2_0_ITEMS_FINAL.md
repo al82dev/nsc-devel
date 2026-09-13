@@ -6,7 +6,7 @@
 
 **Objetivo:** cerrar la evolución técnica necesaria antes de promover NativeSharp 2.0
 
-**Progreso:** Tanda 1, item 246 completado; siguiente item 247
+**Progreso:** Tanda 1, items 246–247 completados; siguiente item 248
 
 ## Regla de ejecución
 
@@ -14,13 +14,13 @@
 - Cada commit incluirá implementación, pruebas dirigidas y un Markdown bilingüe de ingeniería.
 - Después de cada commit se reconstruirá el compilador desde cero.
 - No se ejecutará el baseline completo durante las entregas intermedias.
-- El baseline completo queda reservado para el cierre de NativeSharp 2.0.
+- Se ejecuta exactamente un baseline al final de cada tanda: 16 baselines en total.
 - Los números siguientes son identificadores de planificación; todavía no representan commits creados.
 
 ## Tanda 1 — Acelerar el ciclo de desarrollo
 
 1. **246 — Perfil detallado de compilación / Detailed compilation profiling — COMPLETADO / COMPLETE**
-2. **247 — Eliminar trabajo innecesario en O0 / Remove unnecessary O0 work**
+2. **247 — Eliminar trabajo innecesario en O0 / Remove unnecessary O0 work — COMPLETADO / COMPLETE**
 3. **248 — Presupuesto de optimización O2 / O2 optimization budget**
 4. **249 — Control `-j N` y núcleos reservados / Job and reserved-core controls**
 5. **250 — Pool interno de workers del compilador / Internal compiler worker pool**

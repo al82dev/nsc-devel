@@ -10,6 +10,10 @@ namespace nativesharp::llvm_backend
 class LlvmModule;
 class LlvmTargetMachine;
 
+// O0 is verified at the optimizer boundary; optimized pipelines additionally verify after each
+// pass so a transformation failure can still name its last completed pass.
+bool llvmVerifyEachPassRequired(LlvmOptimizationLevel level) noexcept;
+
 class LlvmOptimizer final
 {
 public:

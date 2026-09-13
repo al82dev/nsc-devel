@@ -18,8 +18,16 @@ int runCompiler(int argc, char** argv)
     };
     const bool traceWorker = std::any_of(argv + 1, argv + argc, isTraceWorkerArgument);
 
+    std::vector<std::string_view> arguments;
+    arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0U);
+    for (int index = 1; index < argc; ++index)
+    {
+        if (isTraceWorkerArgument(argv[index])) continue;
+        arguments.emplace_back(argv[index]);
+    }
+
 #if defined(_WIN32)
-    if (!traceWorker)
+    if (!traceWorker && nativesharp::llvm_backend::llvmProcessTraceRequired(arguments))
     {
         nativesharp::llvm_backend::LlvmTraceChildResult child;
         if (nativesharp::llvm_backend::runCurrentExecutableWithCapturedStandardError(
@@ -62,20 +70,11 @@ int runCompiler(int argc, char** argv)
         std::cerr << "nsc: warning: LLVM trace supervisor unavailable: "
                   << child.launchError << '\n';
     }
-    else
+    else if (traceWorker)
     {
         nativesharp::llvm_backend::setLlvmProcessTraceActive(true);
     }
 #endif
-
-    std::vector<std::string_view> arguments;
-    arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0U);
-
-    for (int index = 1; index < argc; ++index)
-    {
-        if (isTraceWorkerArgument(argv[index])) continue;
-        arguments.emplace_back(argv[index]);
-    }
 
     const nativesharp::driver::Driver driver;
     const nativesharp::ExitCode exitCode = driver.run(arguments, std::cout, std::cerr);

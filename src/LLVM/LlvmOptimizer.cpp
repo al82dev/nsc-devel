@@ -25,6 +25,11 @@
 
 namespace nativesharp::llvm_backend
 {
+bool llvmVerifyEachPassRequired(LlvmOptimizationLevel level) noexcept
+{
+    return level != LlvmOptimizationLevel::O0;
+}
+
 namespace
 {
 // Bug B-001 fix (EH+RAII reuse-after-catch SIGSEGV/access-violation crash) -- see
@@ -243,7 +248,13 @@ bool LlvmOptimizer::optimize(
         error = "LLVMCreatePassBuilderOptions failed";
         return false;
     }
-    llvm_api::LLVMPassBuilderOptionsSetVerifyEach(options, 1);
+    // O0 already verifies the complete module immediately before and after the pipeline. Asking
+    // LLVM to verify after every individual O0 pass repeats the same whole-module walk without
+    // improving the release boundary: any invalid result is still rejected before emission. The
+    // optimized pipelines retain verify-each because their transformations are substantially
+    // broader and the failing pass is valuable diagnostic evidence.
+    llvm_api::LLVMPassBuilderOptionsSetVerifyEach(
+        options, llvmVerifyEachPassRequired(level) ? 1 : 0);
     // En Windows sólo se enciende dentro del hijo cuya stderr fue fijada por CreateProcess. Hacerlo
     // en el proceso padre produciria un registro que nadie puede capturar: LLVM-C.dll lleva su
     // propio CRT. En POSIX se conserva la captura temporal dentro del proceso.

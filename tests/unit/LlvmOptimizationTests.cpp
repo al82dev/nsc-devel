@@ -30,6 +30,8 @@ using nativesharp::llvm_backend::kLlvmProcessTraceEnd;
 using nativesharp::llvm_backend::kLlvmStandardErrorProbe;
 using nativesharp::llvm_backend::LlvmOptimizationObservation;
 using nativesharp::llvm_backend::LlvmOptimizer;
+using nativesharp::llvm_backend::llvmProcessTraceRequired;
+using nativesharp::llvm_backend::llvmVerifyEachPassRequired;
 using nativesharp::llvm_backend::observeLlvmPassLog;
 using nativesharp::llvm_backend::LlvmTargetMachine;
 
@@ -135,6 +137,28 @@ int main(int argc, char** argv)
         "O2 selects the LLVM default O2 pipeline");
     tests.expect(llvmOptimizationPipelineName(LlvmOptimizationLevel::O3) == "default<O3>",
         "O3 selects the LLVM default O3 pipeline");
+
+    tests.expect(!llvmProcessTraceRequired(std::array<std::string_view, 1>{"--version"}),
+        "non-compilation commands do not launch the LLVM trace supervisor");
+    tests.expect(!llvmProcessTraceRequired(
+            std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O0"}),
+        "explicit O0 compilation does not launch the LLVM trace supervisor");
+    tests.expect(!llvmProcessTraceRequired(
+            std::array<std::string_view, 1>{"--emit-project-oop-obj"}),
+        "the default O0 compilation does not launch the LLVM trace supervisor");
+    tests.expect(llvmProcessTraceRequired(
+            std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O1"}) &&
+            llvmProcessTraceRequired(
+                std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O2"}) &&
+            llvmProcessTraceRequired(
+                std::array<std::string_view, 2>{"--emit-project-oop-obj", "-O3"}),
+        "optimized compilation levels retain full LLVM process tracing");
+    tests.expect(!llvmVerifyEachPassRequired(LlvmOptimizationLevel::O0),
+        "O0 relies on optimizer boundary verification instead of verifying after every pass");
+    tests.expect(llvmVerifyEachPassRequired(LlvmOptimizationLevel::O1) &&
+            llvmVerifyEachPassRequired(LlvmOptimizationLevel::O2) &&
+            llvmVerifyEachPassRequired(LlvmOptimizationLevel::O3),
+        "optimized pipelines retain verification after every pass");
 
     constexpr std::array<LlvmOptimizationLevel, 4> levels = {
         LlvmOptimizationLevel::O0,

@@ -78,6 +78,15 @@ bool llvmProcessTraceActive() noexcept
     return processTraceActive.load(std::memory_order_relaxed);
 }
 
+bool llvmProcessTraceRequired(std::span<const std::string_view> arguments) noexcept
+{
+    for (const std::string_view argument : arguments)
+    {
+        if (argument == "-O1" || argument == "-O2" || argument == "-O3") return true;
+    }
+    return false;
+}
+
 bool runCurrentExecutableWithCapturedStandardError(
     std::string_view childArgument,
     LlvmTraceChildResult& result)

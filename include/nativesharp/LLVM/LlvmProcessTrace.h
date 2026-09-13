@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -26,6 +27,10 @@ bool runCurrentExecutableWithCapturedStandardError(
 // la escritura delimitada del registro de pases.
 inline constexpr std::string_view kLlvmTraceWorkerArgument =
     "--nsc-internal-llvm-trace-worker";
+
+// O0 keeps structural optimization observations but does not pay for a second process and LLVM's
+// verbose pass log. Optimized pipelines retain the full last-pass capture used on failures.
+bool llvmProcessTraceRequired(std::span<const std::string_view> arguments) noexcept;
 
 void setLlvmProcessTraceActive(bool active) noexcept;
 bool llvmProcessTraceActive() noexcept;
