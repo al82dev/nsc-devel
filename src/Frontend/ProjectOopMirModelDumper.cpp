@@ -82,6 +82,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         output << " ordinal=" << node->integerValue << " name=" << node->stringValue
                << " category=" << node->elementTypeKey
                << " preserve=" << (node->booleanValue ? "true" : "false");
+    if (node->referenceLocal) output << " reference-local=true";
     if (node->volatileAccess) output << " volatile=true";
     if (node->kind == ProjectOopMirNodeKind::ClosureCaptureLoad)
         output << " capture=#" << node->immediate;

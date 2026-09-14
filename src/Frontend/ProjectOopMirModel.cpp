@@ -1273,6 +1273,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->integerValue = node->integerValue;
     result->floatingValue = node->floatingValue;
     result->booleanValue = node->booleanValue;
+    result->referenceLocal = node->referenceLocal;
     result->volatileAccess = node->volatileAccess;
     result->baseReceiver = node->baseReceiver;
     result->targetIsInterface = node->targetIsInterface;

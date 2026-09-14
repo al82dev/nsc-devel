@@ -1995,6 +1995,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             }
             auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
             node->stringValue = local->name;
+            node->referenceLocal = local->isReference;
             const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());
             node->localOrdinal = localIndex;
             if (local->isRaii)
@@ -2092,17 +2093,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             else if (statement->first() != nullptr)
             {
                 std::unique_ptr<ProjectOopHirNode> initializer = lowerExpression(
-                    statement->first(), memberOrdinal, false, error);
+                    statement->first(), memberOrdinal, local->isReference, error);
                 if (initializer == nullptr)
                 {
                     return nullptr;
                 }
-                const ProjectImplicitConversion conversion = classifyImplicit(
-                    initializer->typeKey,
-                    local->typeKey,
-                    expressionType(statement->first()) != nullptr
-                        ? expressionType(statement->first())->integerConstant
-                        : std::nullopt);
+                const ProjectImplicitConversion conversion = local->isReference
+                    ? ProjectImplicitConversion{
+                        ProjectConversionKind::Identity, 0, local->typeKey, local->typeKey,
+                        std::nullopt}
+                    : classifyImplicit(
+                        initializer->typeKey,
+                        local->typeKey,
+                        expressionType(statement->first()) != nullptr
+                            ? expressionType(statement->first())->integerConstant
+                            : std::nullopt);
                 if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
                 {
                     initializer = wrapImplicitConversion(std::move(initializer), conversion, statement->first());
@@ -3125,6 +3130,27 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             }
             if (binding->kind == MethodNameBindingKind::Local)
             {
+                const MethodLocalSymbol* local = binding->localOrdinal.has_value() &&
+                        *binding->localOrdinal < methodBodyModel_->locals().size()
+                    ? &methodBodyModel_->locals()[*binding->localOrdinal]
+                    : nullptr;
+                if (local != nullptr && local->isReference)
+                {
+                    // The reference local's slot stores a pointer. Address context consumes that
+                    // pointer directly; value context loads through it once more.
+                    auto pointer = makeNode(
+                        ProjectOopHirNodeKind::LocalValue,
+                        expression,
+                        binding->typeKey + "*");
+                    pointer->localOrdinal = binding->localOrdinal;
+                    if (addressContext) return pointer;
+                    auto value = makeNode(
+                        ProjectOopHirNodeKind::PointerLoad,
+                        expression,
+                        binding->typeKey);
+                    value->children.push_back(std::move(pointer));
+                    return value;
+                }
                 auto node = makeNode(
                     addressContext ? ProjectOopHirNodeKind::LocalAddress : ProjectOopHirNodeKind::LocalValue,
                     expression,

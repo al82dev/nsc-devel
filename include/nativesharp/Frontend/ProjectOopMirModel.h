@@ -319,6 +319,8 @@ struct ProjectOopMirNode final
     std::uint64_t integerValue = 0;
     double floatingValue = 0.0;
     bool booleanValue = false;
+    // Item 312. Mirrors ProjectOopHirNode::referenceLocal for backend slot materialization.
+    bool referenceLocal = false;
     // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.
     bool volatileAccess = false;
     bool allocationFailureReturnsNull = false;

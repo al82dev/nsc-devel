@@ -66,6 +66,7 @@ void ProjectMethodBodyModelDumper::dump(
                << " scope=" << local.scopeOrdinal
                << " name=" << local.name
                << " type=" << local.typeKey
+               << " ref=" << (local.isReference ? "true" : "false")
                << " const=" << (local.isConst ? "true" : "false")
                << " raii=" << (local.isRaii ? "true" : "false")
                << " ownership=" << sema::ownershipKindName(local.ownership);

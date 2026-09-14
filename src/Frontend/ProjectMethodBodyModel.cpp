@@ -2773,6 +2773,8 @@ void ProjectMethodBodyModel::analyzeVariable(
         return;
     }
 
+    const bool isReferenceLocal = variable->auxiliaryText() == "local:ref";
+
     // `var`: the parser bypasses parseType() entirely for this keyword and hands us a marker
     // TypeSyntax (baseTokenKind() == TokenKind::KwVar) instead -- see Parser::parseVariableDeclaration.
     // Infer the real typeKey from the initializer's own resolved type, analyzed here (before any
@@ -2786,6 +2788,15 @@ void ProjectMethodBodyModel::analyzeVariable(
     std::string varInferredTypeKey;
     if (isVarInferred)
     {
+        if (isReferenceLocal)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->range(),
+                "reference locals require an explicit element type; 'ref var' is not supported");
+            return;
+        }
         if (variable->first() == nullptr)
         {
             diagnostics.report(
@@ -3021,6 +3032,24 @@ void ProjectMethodBodyModel::analyzeVariable(
     std::optional<MethodLocalBorrowBinding> pendingLocalBorrow;
     const bool raiiOwnsNativeArrayBuffer =
         variable->hasModifier(TokenKind::KwRaii) && ProjectTypeConversion::isNativeArray(typeKey);
+    if (isReferenceLocal &&
+        (variable->flag() || variable->hasModifier(TokenKind::KwRaii) ||
+         declaredOwnership != sema::OwnershipKind::None))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "a reference local cannot be const, raii, owned, or borrowed; it aliases mutable storage without ownership");
+    }
+    if (isReferenceLocal && variable->first() == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "reference local requires an initializer naming mutable addressable storage");
+    }
     if (isRaii && !isReferenceTypeKey(typeKey) && typeKey != "builtin:string" && !managedDelegate &&
         !raiiOwnsNativeArrayBuffer)
     {
@@ -3133,7 +3162,27 @@ void ProjectMethodBodyModel::analyzeVariable(
                 variable->first()->range(),
                 "RAII ownership cannot be copied or borrowed; initialize with new, null, move(other), or an owned-returning call");
         }
-        if (initializer.valid)
+        if (isReferenceLocal && initializer.valid)
+        {
+            if (!initializer.addressable || !initializer.assignable)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->first()->range(),
+                    "reference-local initializer must be a mutable addressable storage location");
+            }
+            if (initializer.typeKey != typeKey)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->first()->range(),
+                    "reference-local initializer type '" + initializer.typeKey +
+                        "' must exactly match declared type '" + typeKey + "'");
+            }
+        }
+        else if (initializer.valid)
         {
             const ProjectImplicitConversion conversion = classifyImplicit(
                 initializer.typeKey,
@@ -3310,6 +3359,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.syntax = variable;
     local.name = variable->text();
     local.typeKey = typeKey;
+    local.isReference = isReferenceLocal;
     local.isVariableLengthArray = isVariableLengthArray;
     local.variableLengthArrayElementTypeKey = variableLengthArrayElementTypeKey;
     local.variableLengthArrayCountSyntax = variableLengthArrayCountSyntax;
@@ -12793,6 +12843,16 @@ bool ProjectMethodBodyModel::collectLambdaCaptures(
                             "' cannot be captured by a lambda because the delegate may outlive the owner"
                         : "borrowed local '" + local.name +
                             "' cannot be captured by a lambda because the delegate may outlive its source owner");
+                safe = false;
+            }
+            if (local.isReference)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    name.syntax->range(),
+                    "reference local '" + local.name +
+                        "' cannot be captured by a lambda because the delegate may outlive the referenced storage");
                 safe = false;
             }
             MethodLambdaCapture captureDescription{

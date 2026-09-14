@@ -59,6 +59,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->kind == ProjectOopHirNodeKind::IntegerConstant) output << " value=" << node->integerValue;
     if (node->kind == ProjectOopHirNodeKind::FloatingConstant) output << " value=" << node->floatingValue;
     if (node->kind == ProjectOopHirNodeKind::BooleanConstant) output << " value=" << (node->booleanValue ? "true" : "false");
+    if (node->referenceLocal) output << " reference-local=true";
     if (node->volatileAccess) output << " volatile=true";
     if (!node->elementTypeKey.empty()) output << " element=" << node->elementTypeKey;
     if (node->kind == ProjectOopHirNodeKind::StringLiteral) output << " bytes=" << node->stringValue.size();

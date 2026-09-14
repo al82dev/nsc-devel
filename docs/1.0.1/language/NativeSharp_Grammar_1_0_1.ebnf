@@ -105,15 +105,19 @@ asm-output-operand = unary-expression, [ ":", string-literal ] ;
 asm-input-operand = expression, [ ":", string-literal ] ;
 asm-clobber-clause = "clobber", "(", string-literal,
                      { ",", string-literal }, ")" ;
-variable-declaration = [ "const" ], ( "var" | type ), identifier,
+variable-declaration = reference-local-declaration |
+                       [ "const" ], ( "var" | type ), identifier,
                        [ "=", expression | aggregate-initializer ], ";" ;
+reference-local-declaration = "ref", type, identifier, "=", "ref", expression, ";" ;
 expression-statement = expression, ";" ;
 if-statement = "if", "(", expression, ")", block, [ "else", ( block | if-statement ) ] ;
 while-statement = "while", "(", expression, ")", block ;
 do-statement = "do", block, "while", "(", expression, ")", ";" ;
 for-statement = "for", "(", [ variable-declaration-no-semi | expression ], ";",
                 [ expression ], ";", [ expression ], ")", block ;
-variable-declaration-no-semi = [ "const" ], ( "var" | type ), identifier, [ "=", expression ] ;
+variable-declaration-no-semi = reference-local-declaration-no-semi |
+                               [ "const" ], ( "var" | type ), identifier, [ "=", expression ] ;
+reference-local-declaration-no-semi = "ref", type, identifier, "=", "ref", expression ;
 foreach-statement = "foreach", "(", [ "const" ], ( "var" | type ), identifier,
                     "in", expression, ")", block ;
 switch-statement = "switch", "(", expression, ")", "{", { switch-section }, "}" ;

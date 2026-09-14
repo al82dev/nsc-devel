@@ -347,6 +347,13 @@ bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
 bool Parser::looksLikeVariableDeclaration() const noexcept
 {
     std::size_t cursor = index_;
+    // NativeSharp 2.0 item 312: `ref` is contextual and introduces a reference-local
+    // declaration only when a real type follows it. Skip it for the ordinary type/name lookahead.
+    if (cursor < tokens_.size() && tokens_[cursor].kind() == TokenKind::Identifier &&
+        tokens_[cursor].lexeme() == "ref")
+    {
+        ++cursor;
+    }
     if (!canStartTypeAt(cursor))
     {
         return false;
@@ -4778,6 +4785,9 @@ ast::AstNode* Parser::parseStatement()
     // pedia un nombre de variable, y el error era "expected variable name, found '.'": un
     // diagnostico que no menciona ni genericos ni miembros estaticos y manda a mirar donde no es.
     if (at(TokenKind::KwRaii) || at(TokenKind::KwConst) || at(TokenKind::KwVar) ||
+        (atContextualKeyword("ref") &&
+         (canStartTypeAt(index_ + 1) || peek().kind() == TokenKind::KwVar ||
+          peek().kind() == TokenKind::KwConst || peek().kind() == TokenKind::KwRaii)) ||
         (looksLikeVariableDeclaration() && !looksLikeClosedGenericTypeReference()))
     {
         return parseVariableDeclaration(true);
@@ -5371,6 +5381,10 @@ std::string Parser::parseInlineAssemblyConstraint(
 ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
 {
     const std::size_t beginIndex = index_;
+    const bool isReferenceLocal = atContextualKeyword("ref") &&
+        (canStartTypeAt(index_ + 1) || peek().kind() == TokenKind::KwVar ||
+         peek().kind() == TokenKind::KwConst || peek().kind() == TokenKind::KwRaii);
+    if (isReferenceLocal) consume();
     const bool isRaii = consumeIf(TokenKind::KwRaii);
     const bool isConst = consumeIf(TokenKind::KwConst);
     if (isRaii && isConst)
@@ -5417,13 +5431,28 @@ ast::AstNode* Parser::parseVariableDeclaration(bool expectSemicolon)
     variable->setText(std::string(name.lexeme()));
     variable->setFlag(isConst);
     if (isRaii) variable->addModifier(TokenKind::KwRaii);
+    if (isReferenceLocal) variable->setAuxiliaryText("local:ref");
 
     if (consumeIf(TokenKind::Equal))
     {
+        if (isReferenceLocal)
+        {
+            // Reference creation stays explicit at both ends. Semantic analysis validates that
+            // the following expression is exact-type, mutable, addressable storage.
+            expectContextualKeyword("ref", "'ref' before the reference-local initializer");
+        }
         // C7 "aggregate initializer": `V v = {1, 2};`. A brace can only start an initializer
         // here, so there is nothing to disambiguate against a block statement.
         variable->setFirst(
             at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
+    }
+    else if (isReferenceLocal)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedToken,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "reference-local declaration requires '= ref <storage>'");
     }
     else if (isConst)
     {

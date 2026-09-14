@@ -225,6 +225,27 @@ de definite assignment cuando el callee satisface el contrato.
 Ownership es una dimensión adicional: `ref`, `out` e `in` no conceden por sí solos propiedad ni
 autorizan conservar un préstamo.
 
+### NS-REF-001 — Variables locales por referencia
+
+Una variable local por referencia se declara `ref T alias = ref ubicación;`. Tanto el declarador
+como el inicializador escriben `ref`; el tipo `T` es explícito. La ubicación debe ser un lvalue
+mutable y direccionable de tipo exactamente `T`: no se crea un temporal, no se aplica una
+conversión implícita y una property con setter no se convierte en almacenamiento direccionable.
+
+El local conserva una dirección no propietaria. Leer `alias` lee la ubicación original; asignarle,
+incrementarlo o pasarlo otra vez como `ref` opera sobre esa misma ubicación. Encadenar otro local
+`ref` conserva identidad, no copia el valor. El alias no prolonga el lifetime, no transfiere
+ownership y no puede combinarse con `const`, `raii`, `owned` o `borrowed`.
+
+En esta entrega un local `ref` no puede capturarse en una lambda, porque el delegate podría
+sobrevivir al almacenamiento referenciado. Los retornos por referencia y el análisis general de
+escapes se definen en entregas posteriores; su ausencia no permite escapar un alias local.
+
+A reference local is declared as `ref T alias = ref location;`. The location must be mutable,
+addressable storage of exactly `T`. Reads, writes, increments, and forwarded `ref` arguments use
+the original storage. The alias neither owns nor extends its lifetime, and lambda capture is
+rejected until the reference-escape contract is available.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

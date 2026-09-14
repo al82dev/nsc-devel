@@ -246,6 +246,10 @@ El estado global propietario no se inventa mediante `static owned`: la ausencia 
 global honesta hace que esa forma permanezca fuera del contrato. Las bibliotecas y aplicaciones
 deben elegir un propietario con lifetime explícito.
 
+Los locales `ref` proporcionan alias mutables de tipo exacto sobre almacenamiento direccionable.
+No copian el valor, no adquieren ownership ni extienden el lifetime; sus usos leen, escriben y
+reenvían la ubicación original. Hasta cerrar el análisis de escapes, no pueden capturarse en lambdas.
+
 ## Interop y ABI
 
 El target contractual usa el ABI Microsoft x64. NativeSharp expresa `extern C`, imports desde DLL,

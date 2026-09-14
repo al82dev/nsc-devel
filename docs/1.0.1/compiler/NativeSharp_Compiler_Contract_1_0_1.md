@@ -739,6 +739,29 @@ Focused O0 evidence shall exercise all three location families, legacy and order
 successful and failed compare-exchange, pointer identity and null, static ref-address lowering,
 invalid orders, missing `ref`, verifier-ready LLVM, linking, and execution.
 
+## NSC-REF-001 — Reference-local representation and lowering
+
+The parser shall recognize `ref T name = ref expression;` as a local declaration while preserving
+`ref` as a contextual identifier in every non-declaration shape. Both `ref` spellings and an
+explicit type are mandatory. `const`, `raii`, `owned`, and `borrowed` shall not combine with a
+reference local.
+
+Semantic analysis shall retain `T` as the local's logical expression type and separately mark the
+local as reference storage. The initializer must be a mutable addressable location of exactly `T`;
+implicit numeric, pointer, reference, and user-defined conversions are forbidden. Literals,
+temporaries, readonly locations, and properties shall not be materialized into hidden storage.
+
+HIR and MIR shall carry an explicit reference-local flag on the declaration. LLVM shall allocate a
+pointer-sized slot holding the source address. An address-context use shall load and forward that
+pointer; a value-context use shall additionally load through it. Assignment, increment, field or
+element aliasing, alias chaining, and forwarding to a `ref` parameter must therefore observe one
+underlying location without a new runtime helper or ownership operation.
+
+Capturing a reference local in a lambda shall be rejected until escape and lifetime analysis can
+prove the delegate cannot outlive the referenced storage. Focused O0 evidence shall cover semantic,
+HIR, MIR, verifier-ready LLVM, linking, real execution, exact-type diagnostics, mutable
+addressability, explicit syntax, and capture rejection.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

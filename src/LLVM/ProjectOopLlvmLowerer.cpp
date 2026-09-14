@@ -1453,10 +1453,14 @@ private:
         if (node->syntax == nullptr || !node->syntax->range().isValid()) return true;
         const SourceRange range = node->syntax->range();
         LLVMMetadataRef file = debugFile(range.begin());
-        const std::string_view typeKey = node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
-                node->kind == frontend::ProjectOopMirNodeKind::CatchRegion
-            ? std::string_view(node->elementTypeKey)
-            : std::string_view(node->typeKey);
+        const std::string referenceTypeKey =
+            node->referenceLocal ? node->typeKey + "*" : std::string{};
+        const std::string_view typeKey = node->referenceLocal
+            ? std::string_view(referenceTypeKey)
+            : (node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
+               node->kind == frontend::ProjectOopMirNodeKind::CatchRegion
+                ? std::string_view(node->elementTypeKey)
+                : std::string_view(node->typeKey));
         LLVMMetadataRef type = debugType(typeKey);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
@@ -4205,7 +4209,12 @@ private:
                      node->kind == frontend::ProjectOopMirNodeKind::CatchRegion)
                     ? node->elementTypeKey
                     : node->typeKey;
-                LLVMTypeRef type = llvmType(typeKey, error);
+                const std::string storageTypeKey =
+                    node->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                        node->referenceLocal
+                    ? typeKey + "*"
+                    : typeKey;
+                LLVMTypeRef type = llvmType(storageTypeKey, error);
                 if (type == nullptr) return;
                 const bool captured = currentMirFunction_ != nullptr && std::ranges::find(
                     currentMirFunction_->capturedLocalOrdinals,
@@ -4231,7 +4240,9 @@ private:
                 // An indirect-struct carrier is [N x i8], whose alloca defaults to align 1 --
                 // but member accesses through the slot do naturally-aligned typed loads and
                 // stores, so the slot must carry the struct layout's real alignment.
-                const unsigned structAlignment = structAlignmentFor(typeKey);
+                const unsigned structAlignment = node->referenceLocal
+                    ? 8U
+                    : structAlignmentFor(typeKey);
                 if (!captured && structAlignment > 1U) LLVMSetAlignment(slot, structAlignment);
                 localStorage_[*node->localOrdinal] = slot;
             }

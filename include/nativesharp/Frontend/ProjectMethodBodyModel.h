@@ -78,6 +78,9 @@ struct MethodLocalSymbol final
     // Set on the VLA itself and on local pointer aliases derived from it. This provenance is
     // consumed by return, assignment, and lambda-capture checks so frame storage cannot escape.
     std::optional<std::size_t> variableLengthArrayRootLocalOrdinal;
+    // NativeSharp 2.0 item 312. typeKey is the logical element type; the physical local slot
+    // stores an address to another exact-type, mutable location.
+    bool isReference = false;
     bool isConst = false;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //

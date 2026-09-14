@@ -20,6 +20,10 @@ empaqueta con NativeSharp 1.0.1.
   ubicaciones `ref int` y `ref long`, y Load/Store/Exchange/CompareExchange sobre `ref void*`.
   Las formas legacy/ordenadas reutilizan el lowering atómico existente, conservan retornos y
   ownership, y evalúan la dirección una sola vez.
+- Los locales `ref T alias = ref ubicación;` crean alias no propietarios de storage mutable y
+  direccionable con tipo exacto. Lecturas, escrituras, incrementos, encadenamiento y reenvío `ref`
+  conservan la misma ubicación; temporales, readonly, conversiones y capturas por lambda se
+  rechazan.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.
