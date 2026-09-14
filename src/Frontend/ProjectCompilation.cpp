@@ -6,6 +6,7 @@
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Source/SourcePosition.h"
 
+#include <atomic>
 #include <chrono>
 #include <exception>
 #include <set>
@@ -32,6 +33,11 @@ void ProjectCompilation::setPhaseTimingSink(
     phaseTimingSink_ = std::move(sink);
 }
 
+void ProjectCompilation::setProgressSink(std::function<void(std::string_view)> sink)
+{
+    progressSink_ = std::move(sink);
+}
+
 bool ProjectCompilation::cancellationRequested(std::string& loadError, std::string_view nextPhase) const
 {
     if (!cancellationCheck_ || !cancellationCheck_()) return false;
@@ -47,23 +53,57 @@ class ProjectPhaseTimer final
 {
 public:
     ProjectPhaseTimer(
-        const std::function<void(std::string_view, std::chrono::nanoseconds)>& sink,
+        const std::function<void(std::string_view, std::chrono::nanoseconds)>& timingSink,
+        const std::function<void(std::string_view)>& progressSink,
         std::string_view phase)
-        : sink_(sink), phase_(phase), started_(sink ? std::chrono::steady_clock::now()
-                                              : std::chrono::steady_clock::time_point{}) {}
+        : timingSink_(timingSink), progressSink_(progressSink), phase_(phase),
+          started_(timingSink || progressSink ? std::chrono::steady_clock::now()
+                                              : std::chrono::steady_clock::time_point{})
+    {
+        if (progressSink_)
+        {
+            const std::string message = "phase=" + std::string(phase_) + " state=begin";
+            progressSink_(message);
+        }
+    }
 
     ~ProjectPhaseTimer()
     {
-        if (!sink_) return;
-        sink_(phase_, std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - started_));
+        if (!timingSink_ && !progressSink_) return;
+        const std::chrono::nanoseconds elapsed =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - started_);
+        if (timingSink_) timingSink_(phase_, elapsed);
+        if (progressSink_)
+        {
+            const std::string message = "phase=" + std::string(phase_) +
+                " state=end elapsed_ms=" +
+                std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    elapsed).count());
+            progressSink_(message);
+        }
     }
 
 private:
-    const std::function<void(std::string_view, std::chrono::nanoseconds)>& sink_;
+    const std::function<void(std::string_view, std::chrono::nanoseconds)>& timingSink_;
+    const std::function<void(std::string_view)>& progressSink_;
     std::string_view phase_;
     std::chrono::steady_clock::time_point started_;
 };
+
+void reportSourceProgress(
+    const std::function<void(std::string_view)>& sink,
+    std::string_view phase,
+    const std::filesystem::path& path,
+    std::size_t completed,
+    std::size_t total)
+{
+    if (!sink) return;
+    const std::string message = "phase=" + std::string(phase) + " file=\"" +
+        path.generic_string() + "\" completed=" + std::to_string(completed) +
+        " total=" + std::to_string(total);
+    sink(message);
+}
 
 bool waitForSyntaxWorkers(
     driver::CompilationWorkerPool& pool,
@@ -450,7 +490,7 @@ bool ProjectCompilation::compileProjectNames(
     }
     if (cancellationRequested(loadError, "names")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "names");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
     nameLookup_ = std::make_unique<ProjectNameLookup>();
     return nameLookup_->build(*projectGraph_, units_, diagnostics_, compilationJobs_);
 }
@@ -465,7 +505,7 @@ bool ProjectCompilation::compileProjectGenerics(
     }
     if (cancellationRequested(loadError, "generics")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "generics");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "generics");
     genericModel_ = std::make_unique<ProjectGenericModel>();
     std::vector<PrecompiledGenericSpecialization> precompiledSpecializations;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
@@ -489,7 +529,7 @@ bool ProjectCompilation::compileProjectMembers(
     }
     if (cancellationRequested(loadError, "members")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "members");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "members");
     memberModel_ = std::make_unique<ProjectMemberModel>();
     if (!memberModel_->build(*nameLookup_, units_, diagnostics_)) return false;
 
@@ -539,7 +579,7 @@ bool ProjectCompilation::compileProjectInheritance(
     }
     if (cancellationRequested(loadError, "inheritance")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "inheritance");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "inheritance");
     inheritanceModel_ = std::make_unique<ProjectInheritanceModel>();
     return inheritanceModel_->build(*nameLookup_, diagnostics_);
 }
@@ -556,7 +596,7 @@ bool ProjectCompilation::compileProjectInheritance(
 // proyecto y devolvia rojo por errores ajenos al ID.
 bool ProjectCompilation::buildGenericConstraintModel()
 {
-    const ProjectPhaseTimer timing(phaseTimingSink_, "generic-constraints");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "generic-constraints");
     genericConstraintModel_ = std::make_unique<ProjectGenericConstraintModel>();
     return genericConstraintModel_->build(
         *genericModel_, *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_,
@@ -594,7 +634,7 @@ bool ProjectCompilation::compileProjectMethodBodies(
     if (cancellationRequested(loadError, "method-bodies")) return false;
     buildGenericConstraintModel();
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "method-bodies");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "method-bodies");
     methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
     std::optional<std::size_t> publicSurfaceProjectOrdinal;
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr &&
@@ -617,7 +657,7 @@ bool ProjectCompilation::compileProjectInterfaces(
     }
     if (cancellationRequested(loadError, "interfaces")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "interfaces");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "interfaces");
     interfaceModel_ = std::make_unique<ProjectInterfaceModel>();
     return interfaceModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
 }
@@ -632,7 +672,7 @@ bool ProjectCompilation::compileProjectVirtualDispatch(
     }
     if (cancellationRequested(loadError, "virtual-dispatch")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "virtual-dispatch");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "virtual-dispatch");
     virtualDispatchModel_ = std::make_unique<ProjectVirtualDispatchModel>();
     return virtualDispatchModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
@@ -648,7 +688,7 @@ bool ProjectCompilation::compileProjectDestruction(
     }
     if (cancellationRequested(loadError, "destruction")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "destruction");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "destruction");
     destructionModel_ = std::make_unique<ProjectDestructionModel>();
     return destructionModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
@@ -664,7 +704,7 @@ bool ProjectCompilation::compileProjectConstructions(
     }
     if (cancellationRequested(loadError, "construction")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "construction");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "construction");
     constructionModel_ = std::make_unique<ProjectConstructionModel>();
     return constructionModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_, units_, diagnostics_);
@@ -680,7 +720,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
     }
     if (cancellationRequested(loadError, "layout")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "layout");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "layout");
     objectLayoutModel_ = std::make_unique<ProjectObjectLayoutModel>();
     return objectLayoutModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_);
@@ -696,7 +736,7 @@ bool ProjectCompilation::compileProjectOopHir(
     }
     if (cancellationRequested(loadError, "oop-hir")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "oop-hir");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-hir");
     oopHirModel_ = std::make_unique<ProjectOopHirModel>();
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
@@ -741,7 +781,7 @@ bool ProjectCompilation::compileProjectOopMir(
     }
     if (cancellationRequested(loadError, "oop-mir")) return false;
 
-    const ProjectPhaseTimer timing(phaseTimingSink_, "oop-mir");
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>();
     return oopMirModel_->build(
         *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_, *interfaceModel_,
@@ -766,7 +806,7 @@ bool ProjectCompilation::compileSyntaxCore(
     compilation::ProjectGraphLoader loader(compilationJobs_);
     std::optional<compilation::ProjectGraph> graph;
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, "project-graph");
+        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "project-graph");
         graph = loader.load(projectFile, loadError);
     }
     if (!graph.has_value())
@@ -816,12 +856,16 @@ bool ProjectCompilation::compileSyntaxCore(
     }
 
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-read");
+        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-read");
+        std::atomic_size_t completed = 0;
         for (std::size_t index = 0; index < sourceReads.size(); ++index)
         {
             syntaxWorkers.submit([&, index](std::size_t) {
                 sourceReads[index].buffer = source::SourceManager::readFileBuffer(
                     sourceReads[index].path, sourceReads[index].error);
+                reportSourceProgress(progressSink_, "syntax-read", sourceReads[index].path,
+                    completed.fetch_add(1, std::memory_order_relaxed) + 1U,
+                    sourceReads.size());
             });
         }
         if (!waitForSyntaxWorkers(syntaxWorkers, "source reading", loadError)) return false;
@@ -843,7 +887,7 @@ bool ProjectCompilation::compileSyntaxCore(
 
     std::set<std::string> materializedMetadata;
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, "precompiled-syntax");
+        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "precompiled-syntax");
         for (const PrecompiledSyntaxModule& module : precompiledModules_)
         {
         std::error_code metadataKeyError;
@@ -911,7 +955,8 @@ bool ProjectCompilation::compileSyntaxCore(
 
     bool lexicalOk = true;
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-lex");
+        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-lex");
+        std::atomic_size_t completed = 0;
         std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
         localDiagnostics.reserve(units_.size());
         for (std::size_t index = 0; index < units_.size(); ++index)
@@ -925,6 +970,9 @@ bool ProjectCompilation::compileSyntaxCore(
                     throw std::logic_error("syntax unit has no SourceFile slot");
                 }
                 units_[index]->lex(*sourceFile, localDiagnostics[index]);
+                reportSourceProgress(progressSink_, "syntax-lex",
+                    sourceFile->path(),
+                    completed.fetch_add(1, std::memory_order_relaxed) + 1U, units_.size());
             });
         }
         if (!waitForSyntaxWorkers(syntaxWorkers, "lexing", loadError)) return false;
@@ -936,8 +984,9 @@ bool ProjectCompilation::compileSyntaxCore(
     }
 
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, "syntax-parse");
+        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-parse");
         const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
+        std::atomic_size_t parseCompleted = 0;
         bool syntaxOk = lexicalOk;
         std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
         localDiagnostics.reserve(units_.size());
@@ -947,6 +996,10 @@ bool ProjectCompilation::compileSyntaxCore(
             if (!units_[index]->isLexicallyValid()) continue;
             syntaxWorkers.submit([&, index](std::size_t) {
                 units_[index]->parse(localDiagnostics[index], knownTypeNames);
+                reportSourceProgress(progressSink_, "syntax-parse",
+                    std::filesystem::path(sourceManager_.getPath(
+                        SourceLocation(units_[index]->fileId(), 0U))),
+                    parseCompleted.fetch_add(1, std::memory_order_relaxed) + 1U, units_.size());
             });
         }
         if (!waitForSyntaxWorkers(syntaxWorkers, "parsing", loadError)) return false;

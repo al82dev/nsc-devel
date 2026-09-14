@@ -48,6 +48,7 @@ public:
     void setCancellationCheck(std::function<bool()> check);
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
+    void setProgressSink(std::function<void(std::string_view)> sink);
     bool setPrecompiledModules(
         std::vector<PrecompiledSyntaxModule> modules,
         std::string& error);
@@ -125,6 +126,7 @@ private:
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     std::function<bool()> cancellationCheck_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
+    std::function<void(std::string_view)> progressSink_;
     std::size_t compilationJobs_ = 1;
 };
 }

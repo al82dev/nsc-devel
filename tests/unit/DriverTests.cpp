@@ -70,6 +70,8 @@ int main()
         tests.expect(output.str().find("-j N") != std::string::npos &&
                 output.str().find("--reserve-cores=N") != std::string::npos,
             "help documents compiler job and reserved-core controls");
+        tests.expect(output.str().find("--progress") != std::string::npos,
+            "help documents streaming compilation progress");
         tests.expect(error.str().empty(), "help path keeps stderr empty");
     }
 
@@ -662,6 +664,30 @@ int main()
         tests.expect(code == ExitCode::Success && ordered && total != std::string::npos,
             "--time reports every project compilation phase in deterministic execution order");
         tests.expect(error.str().empty(), "detailed project timing keeps stderr empty");
+    }
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::string path = oopProjectPath.string();
+        const std::vector<std::string_view> arguments = {
+            "--check-project-oop-mir", path, "--progress", "-j2"};
+        const ExitCode code = runDriver(arguments, output, error);
+        const std::string report = output.str();
+        const std::size_t graphBegin =
+            report.find("progress phase=project-graph state=begin");
+        const std::size_t readFile =
+            report.find("progress phase=syntax-read file=\"");
+        const std::size_t mirEnd =
+            report.find("progress phase=oop-mir state=end elapsed_ms=");
+        tests.expect(code == ExitCode::Success &&
+                graphBegin != std::string::npos &&
+                readFile != std::string::npos &&
+                mirEnd != std::string::npos &&
+                graphBegin < readFile && readFile < mirEnd,
+            "--progress streams phase and source activity during project compilation");
+        tests.expect(report.find("timing total_ms=") == std::string::npos,
+            "--progress does not enable the end-of-process timing report");
+        tests.expect(error.str().empty(), "streaming project progress keeps stderr empty");
     }
 
     {

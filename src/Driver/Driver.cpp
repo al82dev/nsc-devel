@@ -83,6 +83,7 @@
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <ostream>
 #include <set>
@@ -142,6 +143,13 @@ struct DriverExecutionScope final
             std::chrono::steady_clock::now() - started).count();
         output << "timing total_ms=" << elapsed << '\n';
     }
+    void writeProgress(std::string_view message)
+    {
+        if (!reportProgress) return;
+        const std::lock_guard<std::mutex> lock(progressMutex);
+        output << "progress " << message << '\n';
+        output.flush();
+    }
     void recordPhase(std::string_view phase, std::chrono::nanoseconds elapsed)
     {
         if (!reportTiming) return;
@@ -154,10 +162,12 @@ struct DriverExecutionScope final
     std::ostream& output;
     std::ostream& error;
     std::chrono::steady_clock::time_point started;
+    std::mutex progressMutex;
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::vector<std::pair<std::string, std::chrono::nanoseconds>> phaseTimings;
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
     bool reportTiming = false;
+    bool reportProgress = false;
 };
 
 thread_local DriverExecutionScope* activeExecutionScope = nullptr;
@@ -166,18 +176,26 @@ class DriverPhaseTimer final
 {
 public:
     explicit DriverPhaseTimer(std::string_view phase)
-        : scope_(activeExecutionScope != nullptr && activeExecutionScope->reportTiming
+        : scope_(activeExecutionScope != nullptr &&
+                         (activeExecutionScope->reportTiming || activeExecutionScope->reportProgress)
                      ? activeExecutionScope
                      : nullptr),
           phase_(phase),
           started_(scope_ != nullptr ? std::chrono::steady_clock::now()
-                                     : std::chrono::steady_clock::time_point{}) {}
+                                     : std::chrono::steady_clock::time_point{})
+    {
+        if (scope_ != nullptr)
+            scope_->writeProgress("phase=" + std::string(phase_) + " state=begin");
+    }
 
     ~DriverPhaseTimer()
     {
         if (scope_ == nullptr) return;
-        scope_->recordPhase(phase_, std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - started_));
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - started_);
+        scope_->recordPhase(phase_, elapsed);
+        scope_->writeProgress("phase=" + std::string(phase_) + " state=end elapsed_ms=" +
+            std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()));
     }
 
 private:
@@ -207,6 +225,13 @@ void configureProjectExecution(frontend::ProjectCompilation& compilation)
             [scope](std::string_view phase, std::chrono::nanoseconds elapsed) {
                 scope->recordPhase(phase, elapsed);
             });
+    }
+    if (activeExecutionScope != nullptr && activeExecutionScope->reportProgress)
+    {
+        DriverExecutionScope* const scope = activeExecutionScope;
+        compilation.setProgressSink([scope](std::string_view message) {
+            scope->writeProgress(message);
+        });
     }
 }
 
@@ -2701,6 +2726,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             executionScope.reportTiming = true;
             continue;
         }
+        if (argument == "--progress")
+        {
+            executionScope.reportProgress = true;
+            continue;
+        }
         if (argument == "--llvm-pass-trace")
         {
             continue;
@@ -3548,6 +3578,8 @@ void Driver::printHelp(std::ostream &output)
               "compilation command.\n"
            << "--time reports deterministic per-phase microseconds plus total wall time; "
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
+           << "--progress streams and flushes phase boundaries plus source read, lex and parse "
+              "completion so long-running builds remain observable.\n"
            << "--o2-budget-ms=N sets the advisory cumulative LLVM O2 budget; exceeding it warns "
               "without changing the artifact or exit code.\n"
            << "--llvm-pass-trace enables the expensive full LLVM pass log and verify-each "
