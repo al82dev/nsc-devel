@@ -342,6 +342,57 @@ class Runner
         "a typed-only catch continues unwinding to the caller when its RTTI filter rejects the exception");
 }
 
+void testNestedFinallyKeepsUnmatchedCleanupTraversalStable(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto directory = root / "NestedFinallyUnmatched";
+    writeProject(directory, "NestedFinallyUnmatched", R"NS(
+namespace NativeSharp.Core { public class Exception { } }
+using NativeSharp.Core;
+class RaisedProblem : Exception { }
+class OtherProblem : Exception { }
+class Runner
+{
+    public static int Run()
+    {
+        try
+        {
+            try
+            {
+                RaisedProblem problem = new RaisedProblem();
+                throw problem;
+            }
+            catch (OtherProblem other)
+            {
+                return 1;
+            }
+        }
+        finally
+        {
+            try { int first = 2; }
+            finally { int second = 3; }
+        }
+        return 0;
+    }
+}
+)NS");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok =
+        compilation.compileProjectOopMir(directory / "NestedFinallyUnmatched.nsproj", error);
+    tests.expect(ok, "nested finally/unmatched typed catch sample reaches OOP MIR");
+    if (!ok || compilation.oopMirModel() == nullptr || compilation.nameLookup() == nullptr) return;
+    ProjectOopLlvmLowerer lowerer;
+    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+    tests.expect(module != nullptr && lowerer.error().empty(),
+        "nested finally lowering does not invalidate the unmatched cleanup traversal");
+    if (module == nullptr) return;
+    std::string verifyError;
+    tests.expect(module->verify(verifyError), "nested finally/unmatched typed catch LLVM verifies");
+}
+
 void testSemanticOrderingGuardsRemain(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "BadOrdering";
@@ -382,6 +433,7 @@ int main()
 
     testTypedCatchRttiLowering(tests, root);
     testTypedOnlyCatchPropagatesOnMismatch(tests, root);
+    testNestedFinallyKeepsUnmatchedCleanupTraversalStable(tests, root);
     testSemanticOrderingGuardsRemain(tests, root);
 
     std::filesystem::remove_all(root, ignored);

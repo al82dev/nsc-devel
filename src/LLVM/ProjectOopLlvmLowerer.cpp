@@ -6028,9 +6028,15 @@ private:
             // this path too. activeCleanupRegions_ still holds this try's own `finally` region here
             // (it is popped further below), which is correct: a `finally` must run before an
             // unmatched exception leaves its try.
+            // Snapshot the path before lowering any cleanup. A finally body can contain another
+            // cleanup region, and lowering that nested region grows activeCleanupRegions_. Walking
+            // the live vector with reverse iterators would then retain an iterator across a
+            // possible reallocation (debug MSVC diagnoses this as "can't decrement invalidated
+            // vector iterator"; release builds have undefined behaviour).
             LLVMPositionBuilderAtEnd(builder_, unmatchedBlock);
-            for (auto ordinal = activeCleanupRegions_.rbegin();
-                 ordinal != activeCleanupRegions_.rend(); ++ordinal)
+            const std::vector<std::size_t> unmatchedCleanupPath = activeCleanupRegions_;
+            for (auto ordinal = unmatchedCleanupPath.rbegin();
+                 ordinal != unmatchedCleanupPath.rend(); ++ordinal)
             {
                 if (!emitCleanupAction(*ordinal, error))
                 {
