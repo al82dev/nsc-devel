@@ -476,6 +476,161 @@ std::string signatureForMember(
     return members[*ordinal].signatureKey;
 }
 
+struct TemplateSourceReplacement final
+{
+    std::size_t begin = 0;
+    std::size_t end = 0;
+    std::string text;
+};
+
+std::string sourceNameForTemplateType(std::string_view writtenTypeKey)
+{
+    const std::string typeKey = metadataBaseTypeKey(std::string(writtenTypeKey));
+    if (!typeKey.starts_with("type:")) return {};
+    const std::string_view identity(typeKey.data() + 5U, typeKey.size() - 5U);
+    const std::size_t moduleSeparator = identity.find("::");
+    if (moduleSeparator == std::string_view::npos || moduleSeparator == 0U) return {};
+    const std::string_view moduleName = identity.substr(0, moduleSeparator);
+    const std::string_view name = identity.substr(moduleSeparator + 2U);
+    std::string sourceName;
+    sourceName.reserve(moduleName.size() + name.size() + 2U);
+    sourceName += moduleName;
+    sourceName += "::";
+    for (std::size_t index = 0; index < name.size(); ++index)
+    {
+        if (name[index] == static_cast<char>(0x60))
+        {
+            while (index + 1U < name.size() &&
+                   std::isdigit(static_cast<unsigned char>(name[index + 1U])) != 0)
+            {
+                ++index;
+            }
+            continue;
+        }
+        sourceName.push_back(name[index] == '+' ? '.' : name[index]);
+    }
+    return sourceName;
+}
+
+bool rangeIsInside(SourceRange inner, SourceRange outer) noexcept
+{
+    return inner.isValid() && outer.isValid() &&
+        inner.begin().fileId() == outer.begin().fileId() &&
+        inner.begin().offset() >= outer.begin().offset() &&
+        inner.end().offset() <= outer.end().offset();
+}
+
+bool materializeGenericTemplateSource(
+    const frontend::ProjectCompilation& compilation,
+    const frontend::GenericTemplateRecord& generic,
+    std::string& source,
+    std::unordered_set<std::string>& externalTypeKeys,
+    std::string& error)
+{
+    const SourceRange rootRange = generic.syntax->range();
+    source = std::string(compilation.sourceManager().getText(rootRange));
+    std::vector<TemplateSourceReplacement> replacements;
+    const auto appendReplacement = [&](SourceRange range,
+                                       std::size_t localBegin,
+                                       std::size_t localEnd,
+                                       std::string text) -> bool
+    {
+        if (!rangeIsInside(range, rootRange) || localBegin >= localEnd ||
+            localEnd > range.end().offset() - range.begin().offset())
+        {
+            error = "cannot canonicalize an external type reference in reusable template '" +
+                generic.canonicalKey + "'";
+            return false;
+        }
+        replacements.push_back({
+            static_cast<std::size_t>(range.begin().offset() - rootRange.begin().offset()) + localBegin,
+            static_cast<std::size_t>(range.begin().offset() - rootRange.begin().offset()) + localEnd,
+            std::move(text)});
+        return true;
+    };
+    // Generic declarations are removed from the ordinary NameLookup input before this late
+    // metadata phase. ProjectGenericModel therefore records these references while the original
+    // using/alias scope still exists; consume that semantic record instead of guessing from the
+    // source spelling after name lookup has discarded the declaration.
+    for (const frontend::GenericTemplateExternalTypeReference& reference :
+         generic.externalTypeReferences)
+    {
+        const std::string typeKey = metadataBaseTypeKey(reference.typeKey);
+        const std::size_t moduleSeparator = typeKey.find("::", 5U);
+        const std::string sourceType = sourceNameForTemplateType(typeKey);
+        if (moduleSeparator == std::string::npos || sourceType.empty())
+        {
+            error = "reusable template '" + generic.canonicalKey +
+                "' records malformed external type key '" + reference.typeKey + "'";
+            return false;
+        }
+        if (typeKey.find(static_cast<char>(0x60), moduleSeparator + 2U) == std::string::npos)
+            externalTypeKeys.insert(typeKey);
+
+        const SourceRange typeRange = reference.range;
+        const std::string_view written = compilation.sourceManager().getText(typeRange);
+        std::size_t baseBegin = 0;
+        while (baseBegin < written.size() &&
+               std::isspace(static_cast<unsigned char>(written[baseBegin])) != 0)
+        {
+            ++baseBegin;
+        }
+        for (const std::string_view qualifier :
+             {std::string_view("owned"), std::string_view("borrowed")})
+        {
+            if (written.substr(baseBegin).starts_with(qualifier) &&
+                baseBegin + qualifier.size() < written.size() &&
+                std::isspace(static_cast<unsigned char>(
+                    written[baseBegin + qualifier.size()])) != 0)
+            {
+                baseBegin += qualifier.size();
+                while (baseBegin < written.size() &&
+                       std::isspace(static_cast<unsigned char>(written[baseBegin])) != 0)
+                {
+                    ++baseBegin;
+                }
+                break;
+            }
+        }
+        std::size_t baseEnd = baseBegin;
+        while (baseEnd < written.size())
+        {
+            const unsigned char character = static_cast<unsigned char>(written[baseEnd]);
+            if (std::isalnum(character) == 0 && character != '_' &&
+                character != '.' && character != ':')
+            {
+                break;
+            }
+            ++baseEnd;
+        }
+        if (!appendReplacement(typeRange, baseBegin, baseEnd, sourceType)) return false;
+    }
+
+    std::sort(replacements.begin(), replacements.end(), [](const auto& left, const auto& right) {
+        if (left.begin != right.begin) return left.begin > right.begin;
+        return left.end > right.end;
+    });
+    replacements.erase(
+        std::unique(replacements.begin(), replacements.end(), [](const auto& left, const auto& right) {
+            return left.begin == right.begin && left.end == right.end && left.text == right.text;
+        }),
+        replacements.end());
+    std::size_t nextBegin = source.size();
+    for (const TemplateSourceReplacement& replacement : replacements)
+    {
+        if (replacement.end > nextBegin)
+        {
+            error = "overlapping canonical type references in reusable template '" +
+                generic.canonicalKey + "'";
+            return false;
+        }
+        source.replace(
+            replacement.begin, replacement.end - replacement.begin, replacement.text);
+        nextBegin = replacement.begin;
+    }
+    return true;
+}
+
 bool buildMetadataModel(
     const frontend::ProjectCompilation& compilation,
     LibraryMetadata& metadata,
@@ -888,6 +1043,7 @@ bool buildMetadataModel(
         }
         return false;
     }
+    std::unordered_set<std::string> templateExternalTypeKeys;
 
     for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
     {
@@ -989,7 +1145,11 @@ bool buildMetadataModel(
         record.ownerName = generic.ownerName;
         record.name = generic.name;
         record.parameters = generic.parameters;
-        record.sourceText = std::string(compilation.sourceManager().getText(generic.syntax->range()));
+        if (!materializeGenericTemplateSource(
+                compilation, generic, record.sourceText, templateExternalTypeKeys, error))
+        {
+            return false;
+        }
         record.dependencies = generic.dependencies;
         rootTemplateKeys.insert(record.canonicalKey);
         metadata.genericTemplates.push_back(std::move(record));
@@ -1046,7 +1206,8 @@ bool buildMetadataModel(
             }
         }
     }
-    std::unordered_set<std::string> externalTypeKeys;
+    std::unordered_set<std::string> externalTypeKeys(
+        templateExternalTypeKeys.begin(), templateExternalTypeKeys.end());
     std::unordered_set<std::string> emittedSpecializedTypeKeys;
     for (const frontend::GenericSpecializationRecord& specialization : compilation.genericModel()->specializations())
     {

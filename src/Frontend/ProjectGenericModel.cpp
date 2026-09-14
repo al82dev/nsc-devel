@@ -319,6 +319,24 @@ bool ProjectGenericModel::build(
                 state.record.unresolvedDependencies.begin(),
                 state.record.unresolvedDependencies.end()),
             state.record.unresolvedDependencies.end());
+        std::sort(
+            state.record.externalTypeReferences.begin(),
+            state.record.externalTypeReferences.end(),
+            [](const auto& left, const auto& right) {
+                if (left.range.begin().offset() != right.range.begin().offset())
+                    return left.range.begin().offset() < right.range.begin().offset();
+                return left.typeKey < right.typeKey;
+            });
+        state.record.externalTypeReferences.erase(
+            std::unique(
+                state.record.externalTypeReferences.begin(),
+                state.record.externalTypeReferences.end(),
+                [](const auto& left, const auto& right) {
+                    return left.range.begin() == right.range.begin() &&
+                        left.range.end() == right.range.end() &&
+                        left.typeKey == right.typeKey;
+                }),
+            state.record.externalTypeReferences.end());
     }
 
     // LA DETECCION DE DUPLICADOS ES SOLO PARA TIPOS, desde el 2026-09-03.
@@ -2514,10 +2532,20 @@ void ProjectGenericModel::collectTypeDependency(
     const GenericLookupScope& scope)
 {
     if (syntax == nullptr) return;
-    static_cast<void>(scope);
     for (const ast::TypeSyntax* argument : syntax->typeArguments())
         collectTypeDependency(root, unit, argument, namespaceName, scope);
-    if (syntax->typeArguments().empty()) return;
+    if (syntax->typeArguments().empty())
+    {
+        if (const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
+                syntax, unit.projectOrdinal(), namespaceName, scope);
+            declaration != nullptr &&
+            !declaration->identityKey.starts_with(root.record.moduleName + "::"))
+        {
+            root.record.externalTypeReferences.push_back(
+                {syntax->range(), "type:" + declaration->identityKey});
+        }
+        return;
+    }
 
     TemplateState* target = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
@@ -2530,6 +2558,12 @@ void ProjectGenericModel::collectTypeDependency(
         root.record.unresolvedDependencies.push_back(
             "generic type '" + syntax->baseName() + "<...>'");
         return;
+    }
+    if (target->record.moduleName != root.record.moduleName)
+    {
+        root.record.externalTypeReferences.push_back({
+            syntax->range(),
+            "type:" + target->record.canonicalKey});
     }
     root.record.dependencies.push_back(target->record.canonicalKey);
 }

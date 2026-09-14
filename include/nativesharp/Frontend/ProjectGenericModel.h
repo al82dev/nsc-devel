@@ -39,6 +39,13 @@ enum class GenericTemplateAccessibility
     Internal,
     Public
 };
+struct GenericTemplateExternalTypeReference final
+{
+    SourceRange range;
+    // Canonical named identity, including its owning module. Modifiers are not part of this key;
+    // the original template source keeps pointer/array syntax around the rewritten base name.
+    std::string typeKey;
+};
 
 struct GenericTemplateRecord final
 {
@@ -67,6 +74,11 @@ struct GenericTemplateRecord final
     // these edges to compute the reusable fixed-point closure; NSMETA persists them so artifact
     // verification can prove that every same-module dependency is present.
     std::vector<std::string> dependencies;
+    // Ordinary named types reached from this template through its original using/alias scope.
+    // These references let NSMETA make the declaration self-contained instead of depending on
+    // source-level using directives that are intentionally not transported with a template body.
+    std::vector<GenericTemplateExternalTypeReference> externalTypeReferences;
+
     // Explicit generic uses that could not be resolved while inspecting the template. They are
     // harmless in an unreachable private template, but make a public reusable closure invalid.
     std::vector<std::string> unresolvedDependencies;
