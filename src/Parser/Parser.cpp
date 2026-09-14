@@ -308,6 +308,18 @@ bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
     std::string candidate(token.lexeme());
     std::size_t cursor = tokenIndex + 1;
     bool qualified = false;
+    bool moduleQualified = false;
+    if (cursor + 2 < tokens_.size() &&
+        tokens_[cursor].kind() == TokenKind::Colon &&
+        tokens_[cursor + 1].kind() == TokenKind::Colon &&
+        tokens_[cursor + 2].kind() == TokenKind::Identifier)
+    {
+        candidate += "::";
+        candidate += tokens_[cursor + 2].lexeme();
+        cursor += 3;
+        qualified = true;
+        moduleQualified = true;
+    }
     while (cursor + 1 < tokens_.size() &&
            tokens_[cursor].kind() == TokenKind::Dot &&
            tokens_[cursor + 1].kind() == TokenKind::Identifier)
@@ -320,7 +332,7 @@ bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
 
     if (qualified)
     {
-        return knownTypeNames_.contains(candidate);
+        return moduleQualified || knownTypeNames_.contains(candidate);
     }
     return knownTypeNames_.contains(candidate);
 }
@@ -353,6 +365,13 @@ bool Parser::looksLikeVariableDeclaration() const noexcept
     if (tokens_[cursor].kind() == TokenKind::Identifier)
     {
         ++cursor;
+        if (cursor + 2 < tokens_.size() &&
+            tokens_[cursor].kind() == TokenKind::Colon &&
+            tokens_[cursor + 1].kind() == TokenKind::Colon &&
+            tokens_[cursor + 2].kind() == TokenKind::Identifier)
+        {
+            cursor += 3;
+        }
         while (cursor + 1 < tokens_.size() &&
                tokens_[cursor].kind() == TokenKind::Dot &&
                tokens_[cursor + 1].kind() == TokenKind::Identifier)
@@ -459,6 +478,13 @@ bool Parser::looksLikeParenthesizedType() const noexcept
     if (tokens_[cursor].kind() == TokenKind::Identifier)
     {
         ++cursor;
+        if (cursor + 2 < tokens_.size() &&
+            tokens_[cursor].kind() == TokenKind::Colon &&
+            tokens_[cursor + 1].kind() == TokenKind::Colon &&
+            tokens_[cursor + 2].kind() == TokenKind::Identifier)
+        {
+            cursor += 3;
+        }
         while (cursor + 1 < tokens_.size() &&
                tokens_[cursor].kind() == TokenKind::Dot &&
                tokens_[cursor + 1].kind() == TokenKind::Identifier)
@@ -524,6 +550,21 @@ bool Parser::parseQualifiedName(std::string& name, SourceRange& range)
     const SourceRange start = current().range();
     SourceRange end = start;
     name = std::string(consume().lexeme());
+    if (at(TokenKind::Colon) && peek().kind() == TokenKind::Colon)
+    {
+        consume();
+        consume();
+        if (!at(TokenKind::Identifier))
+        {
+            expect(TokenKind::Identifier, "type name after module qualifier '::'");
+            range = join(start, end);
+            return false;
+        }
+        const lexer::Token& segment = consume();
+        name += "::";
+        name += segment.lexeme();
+        end = segment.range();
+    }
     while (consumeIf(TokenKind::Dot))
     {
         if (!at(TokenKind::Identifier))

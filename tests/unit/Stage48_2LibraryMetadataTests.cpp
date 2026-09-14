@@ -1871,6 +1871,99 @@ namespace PublicReferenceArraySurface
                  "NSMETA publication and DLL exports agree for arrays of public reference types (" +
                      error + ")");
 }
+void testPrecompiledStoreGenericKeepsModuleQualifier(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const auto store = root / "ModuleQualifiedStore";
+    writeFile(store / "ModuleQualifiedStore.nsproj",
+        "<Project><PropertyGroup><Name>ModuleQualifiedStore</Name><OutputType>StaticLibrary</OutputType>"
+        "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(store / "Store.ns", R"NS(
+namespace NativeSharp.Core
+{
+    public struct Span<T>
+    {
+        public T Value;
+    }
+
+    public struct ReadOnlySpan<T>
+    {
+        public T Value;
+    }
+}
+)NS");
+
+    const auto producer = root / "ModuleQualifiedProducer";
+    writeFile(producer / "ModuleQualifiedProducer.nsproj",
+        "<Project><PropertyGroup><Name>ModuleQualifiedProducer</Name><OutputType>StaticLibrary</OutputType>"
+        "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
+        "<ProjectReference Include=\"" + (store / "ModuleQualifiedStore.nsproj").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(producer / "Producer.ns", R"NS(
+namespace Foundation.Binary
+{
+    public class BinaryReader
+    {
+        public static byte Read(NativeSharp.Core.ReadOnlySpan<byte> source)
+        {
+            return source.Value;
+        }
+
+        public static void Write(NativeSharp.Core.Span<byte> destination, byte value)
+        {
+            destination.Value = value;
+        }
+    }
+}
+)NS");
+
+    std::string output;
+    std::string error;
+    const std::string producerProject = (producer / "ModuleQualifiedProducer.nsproj").string();
+    const std::string producerLibrary = (producer / "ModuleQualifiedProducer.lib").string();
+    const std::array<std::string_view, 5> producerArgs = {
+        "-O0", "--emit-project-oop-lib", producerProject, "-o", producerLibrary};
+    tests.expect(runDriver(producerArgs, output, error) == ExitCode::Success,
+        "producer emits O0 metadata whose public surface uses two store-owned generic types (" +
+            error + ")");
+
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    error.clear();
+    const bool read = codec.read(producer / "ModuleQualifiedProducer.nsmeta", metadata, error);
+    tests.expect(read, "producer metadata with store-owned generic types can be decoded (" + error + ")");
+    const bool keepsStoreTemplateIdentity = std::ranges::any_of(
+        metadata.genericSpecializations, [](const auto& specialization) {
+            return specialization.templateKey ==
+                       "ModuleQualifiedStore::NativeSharp.Core.ReadOnlySpan`1" ||
+                   specialization.templateKey ==
+                       "ModuleQualifiedStore::NativeSharp.Core.Span`1";
+        });
+    tests.expect(read && keepsStoreTemplateIdentity,
+        "NSMETA keeps the canonical store module on closed generic template identities");
+
+    const auto consumer = root / "ModuleQualifiedConsumer";
+    writeFile(consumer / "ModuleQualifiedConsumer.nsproj",
+        "<Project><PropertyGroup><Name>ModuleQualifiedConsumer</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" />"
+        "<ProjectReference Include=\"" + (store / "ModuleQualifiedStore.nsproj").generic_string() +
+        "\" />"
+        "<LibraryReference Include=\"" + (producer / "ModuleQualifiedProducer.lib").generic_string() +
+        "\" Metadata=\"" + (producer / "ModuleQualifiedProducer.nsmeta").generic_string() +
+        "\" /></ItemGroup></Project>");
+    writeFile(consumer / "Program.ns",
+        "class Program { public static int Main() { return 0; } }");
+
+    const std::string consumerProject = (consumer / "ModuleQualifiedConsumer.nsproj").string();
+    const std::array<std::string_view, 2> consumerArgs = {
+        "--check-project-oop-hir", consumerProject};
+    output.clear();
+    error.clear();
+    tests.expect(runDriver(consumerArgs, output, error) == ExitCode::Success,
+        "LibraryReference public source resolves store generics by their NSMETA module identity (" +
+            error + ")");
+}
 }
 
 int main()
@@ -1897,6 +1990,7 @@ int main()
     testPublicFieldInsideInternalTypeIsNotRequired(tests, root);
     testPrivateStaticFieldIsNotPublished(tests, root);
     testPublicInterfaceSignaturesMatchDllExports(tests, root);
+    testPrecompiledStoreGenericKeepsModuleQualifier(tests, root);
     testPublicReferenceArraysMatchDllExports(tests, root);
 
     std::filesystem::remove_all(root, cleanupError);

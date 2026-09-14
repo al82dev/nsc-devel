@@ -1547,6 +1547,30 @@ ProjectGenericModel::TemplateState* ProjectGenericModel::resolveTypeTemplate(
     std::string_view writtenName,
     std::size_t arity)
 {
+    const std::size_t moduleSeparator = writtenName.find("::");
+    if (moduleSeparator != std::string_view::npos)
+    {
+        const std::string_view requestedModule = writtenName.substr(0, moduleSeparator);
+        const std::string_view requestedType = writtenName.substr(moduleSeparator + 2U);
+        if (requestedModule.empty() || requestedType.empty()) return nullptr;
+
+        TemplateState* exact = nullptr;
+        for (TemplateState& state : templateStates_)
+        {
+            if (state.record.kind == GenericTemplateKind::Method ||
+                state.record.moduleName != requestedModule ||
+                (arity != std::numeric_limits<std::size_t>::max() &&
+                 state.record.parameters.size() != arity))
+                continue;
+            const std::string candidate =
+                qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
+            if (candidate != requestedType) continue;
+            if (exact != nullptr) return nullptr;
+            exact = &state;
+        }
+        return exact;
+    }
+
     TemplateState* fallback = nullptr;
     const std::string qualified = qualifiedName(namespaceName, writtenName);
     for (TemplateState& state : templateStates_)

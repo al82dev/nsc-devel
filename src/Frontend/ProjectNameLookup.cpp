@@ -1399,6 +1399,29 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
     const LookupEnvironment& environment,
     const std::string& writtenName) const
 {
+    const std::size_t moduleSeparator = writtenName.find("::");
+    if (moduleSeparator != std::string::npos)
+    {
+        const std::string_view requestedModule(writtenName.data(), moduleSeparator);
+        const std::string requestedType = writtenName.substr(moduleSeparator + 2U);
+        if (requestedModule.empty() || requestedType.empty()) return {};
+
+        std::vector<std::size_t> found;
+        for (std::size_t ordinal = 0; ordinal < modules_.size(); ++ordinal)
+        {
+            if (modules_[ordinal] == nullptr || modules_[ordinal]->moduleName() != requestedModule)
+                continue;
+            const std::optional<std::size_t> target = findTypeInModule(ordinal, requestedType);
+            if (!target.has_value()) continue;
+            if (ordinal == projectOrdinal || typeIsPubliclyVisible(*target))
+            {
+                const std::array<std::size_t, 1> single{*target};
+                appendUnique(found, single);
+            }
+        }
+        return found;
+    }
+
     const std::vector<std::string> nameSegments = splitQualifiedName(writtenName);
     if (nameSegments.empty() || projectOrdinal >= typesByModule_.size())
     {

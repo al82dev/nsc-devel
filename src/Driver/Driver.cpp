@@ -546,7 +546,26 @@ bool sourceTypeForMetadataKey(
             return true;
         }
     }
-    return sourceTypeForMetadataKey(typeKey, sourceType, error);
+    if (!sourceTypeForMetadataKey(typeKey, sourceType, error)) return false;
+
+    // A canonical NSMETA key owns more identity than its C#-style namespace spelling:
+    // `type:Module::Namespace.Type`. The public-source bridge used to discard `Module::`, which
+    // is harmless only while exactly one visible module declares that name. Store templates are
+    // commonly visible both from their source ProjectReference and from a LibraryReference's
+    // materialized template closure, so the unqualified spelling can bind to two templates. Keep
+    // the module for every external named type; declarations owned by this metadata module remain
+    // ordinary source names so their reconstructed bodies can refer to one another naturally.
+    if (baseTypeKey.starts_with("type:"))
+    {
+        const std::string_view identity(baseTypeKey.data() + 5U, baseTypeKey.size() - 5U);
+        const std::size_t moduleSeparator = identity.find("::");
+        if (moduleSeparator != std::string_view::npos &&
+            identity.substr(0, moduleSeparator) != metadata.moduleName)
+        {
+            sourceType.insert(0, std::string(identity.substr(0, moduleSeparator)) + "::");
+        }
+    }
+    return true;
 }
 
 bool sourceTypeForGenericSpecialization(
@@ -579,8 +598,11 @@ bool sourceTypeForGenericSpecialization(
         return false;
     }
 
+    const std::string_view templateModule(specialization.templateKey.data(), moduleSeparator);
     sourceType = specialization.templateKey.substr(moduleSeparator + 2U, arity - (moduleSeparator + 2U));
     std::replace(sourceType.begin(), sourceType.end(), '+', '.');
+    if (templateModule != metadata.moduleName)
+        sourceType.insert(0, std::string(templateModule) + "::");
     sourceType.push_back('<');
     for (std::size_t index = 0; index < specialization.typeArguments.size(); ++index)
     {
