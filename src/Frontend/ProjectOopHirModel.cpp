@@ -1324,6 +1324,7 @@ bool ProjectOopHirModel::buildImpl(
             imported.constructor = member.kind == ClassMemberKind::Constructor;
             imported.destructor = false;
             imported.isStatic = member.isStatic;
+            imported.referenceReturn = member.isReferenceReturn;
             // NSMETA declarations carry optimization policy as part of their callable contract.
             // In particular, `noinline` has no transported body but must still constrain calls
             // emitted by this consumer.
@@ -1403,6 +1404,7 @@ bool ProjectOopHirModel::buildImpl(
         function.constructor = member.kind == ClassMemberKind::Constructor;
         function.destructor = member.kind == ClassMemberKind::Destructor;
         function.isStatic = member.isStatic;
+        function.referenceReturn = member.isReferenceReturn;
         function.inliningPolicy = member.inliningPolicy;
         function.isExportedC = member.isExportedC;
         function.cAbiName = member.cAbiName;
@@ -2494,18 +2496,20 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             attachStructuredExit(*node);
             if (statement->first() != nullptr)
             {
-                auto value = lowerExpression(statement->first(), memberOrdinal, false, error);
-                if (value == nullptr)
-                {
-                    return nullptr;
-                }
                 if (memberModel_ == nullptr || memberOrdinal >= memberModel_->members().size())
                 {
                     error = "Stage 34 return refers to invalid callable member";
                     return nullptr;
                 }
                 const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-                if (member.kind == ClassMemberKind::Method && member.declaredTypeKey != "builtin:void")
+                auto value = lowerExpression(
+                    statement->first(), memberOrdinal, member.isReferenceReturn, error);
+                if (value == nullptr)
+                {
+                    return nullptr;
+                }
+                if (member.kind == ClassMemberKind::Method && member.declaredTypeKey != "builtin:void" &&
+                    !member.isReferenceReturn)
                 {
                     const MethodExpressionTypeBinding* type = expressionType(statement->first());
                     const ProjectImplicitConversion conversion = classifyImplicit(
@@ -2929,7 +2933,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             if (argument == nullptr) return nullptr;
             node->children.push_back(std::move(argument));
         }
-        return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
+        node->referenceResult = selectedMember.isReferenceReturn;
+        auto loweredCall = wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
+        if (!selectedMember.isReferenceReturn || addressContext) return loweredCall;
+        auto load = makeNode(ProjectOopHirNodeKind::PointerLoad, expression, selectedMember.declaredTypeKey);
+        load->children.push_back(std::move(loweredCall));
+        return load;
     };
 
     const auto lowerEventBacking = [&](
@@ -4957,11 +4966,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(argument));
                 return node;
             }
-            if (addressContext)
-            {
-                error = "Stage 40 struct instance receiver must be an addressable local, parameter or field; temporary struct values are not addressable in Stage 40";
-                return nullptr;
-            }
             const MethodCallBinding* binding = callBinding(expression);
             if (binding == nullptr || !binding->selectedMemberOrdinal.has_value())
             {
@@ -5104,7 +5108,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(argument));
                 node->argumentParameterOrdinals.push_back(parameterIndex);
             }
-            return wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
+            if (addressContext && !selectedMember.isReferenceReturn)
+            {
+                error = "call result is not addressable unless the selected method returns ref";
+                return nullptr;
+            }
+            node->referenceResult = selectedMember.isReferenceReturn;
+            auto loweredCall = wrapFullExpressionCleanup(std::move(node), expression, hasOwnedTemporary);
+            if (!selectedMember.isReferenceReturn || addressContext) return loweredCall;
+            auto load = makeNode(
+                ProjectOopHirNodeKind::PointerLoad, expression, selectedMember.declaredTypeKey);
+            load->children.push_back(std::move(loweredCall));
+            return load;
         }
 
         // CC1 fase 4B -- `stackalloc T[n]`. Un alloca de arreglo y nada mas: sin cabecera de

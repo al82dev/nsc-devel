@@ -2125,6 +2125,7 @@ ast::AstNode* ProjectGenericModel::cloneNode(
     result->setAuxiliaryText(source->auxiliaryText());
     result->setTokenKind(source->tokenKind());
     result->setFlag(source->flag());
+    result->setReference(source->isReference());
     result->setIntegerValue(source->integerValue());
     result->setFloatingValue(source->floatingValue());
     // A scalar `new T` inside a generic template allocates one raw storage slot whose element

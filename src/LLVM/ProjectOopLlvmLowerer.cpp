@@ -793,7 +793,8 @@ private:
             displayName += ".lambda#" + std::to_string(function.lambdaOrdinal.value_or(0));
         std::vector<LLVMMetadataRef> signatureTypes;
         signatureTypes.reserve(function.parameterTypeKeys.size() + 1);
-        signatureTypes.push_back(debugType(function.returnTypeKey));
+        signatureTypes.push_back(debugType(
+            function.referenceReturn ? function.returnTypeKey + "*" : function.returnTypeKey));
         for (const std::string& parameterType : function.parameterTypeKeys)
             signatureTypes.push_back(debugType(parameterType));
         LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
@@ -2446,10 +2447,13 @@ private:
             // instance methods the sret slot sits AFTER `this` (RCX = this, RDX = sret) --
             // confirmed against clang's own C++ output, where member functions carry
             // (ptr this, ptr sret) in that order.
-            const bool sretReturn = isIndirectStructTypeKey(function.returnTypeKey);
-            LLVMTypeRef returnType = sretReturn
-                ? LLVMVoidTypeInContext(context_)
-                : llvmType(function.returnTypeKey, error);
+            const bool sretReturn = !function.referenceReturn &&
+                isIndirectStructTypeKey(function.returnTypeKey);
+            LLVMTypeRef returnType = function.referenceReturn
+                ? LLVMPointerTypeInContext(context_, 0)
+                : sretReturn
+                    ? LLVMVoidTypeInContext(context_)
+                    : llvmType(function.returnTypeKey, error);
             if (returnType == nullptr)
             {
                 return false;
@@ -3455,7 +3459,8 @@ private:
             }
             if (subprogram != nullptr) LLVMSetSubprogram(thunk, subprogram);
         }
-        const bool sretReturn = isIndirectStructTypeKey(mirFunction->returnTypeKey);
+        const bool sretReturn = !mirFunction->referenceReturn &&
+            isIndirectStructTypeKey(mirFunction->returnTypeKey);
         if (sretReturn)
         {
             applySretAttributes(
@@ -3666,7 +3671,8 @@ private:
         // `this`), a leading sret pointer when the return travels indirectly, then one parameter
         // per declared parameter. Forwarding every one of them unchanged forwards the ABI
         // unchanged.
-        const bool sretReturn = isIndirectStructTypeKey(function.returnTypeKey);
+        const bool sretReturn = !function.referenceReturn &&
+            isIndirectStructTypeKey(function.returnTypeKey);
         const unsigned parameterCount = static_cast<unsigned>(
             function.parameterTypeKeys.size() + (sretReturn ? 1U : 0U));
         std::vector<LLVMValueRef> forwarded(parameterCount);
@@ -4057,7 +4063,8 @@ private:
         LLVMBasicBlockRef entry = appendBlock("entry");
         LLVMPositionBuilderAtEnd(builder_, entry);
         constructionThisOverride_ = nullptr;
-        const bool sretReturn = isIndirectStructTypeKey(function.returnTypeKey);
+        const bool sretReturn = !function.referenceReturn &&
+            isIndirectStructTypeKey(function.returnTypeKey);
         const unsigned implicitLead = function.isStatic ? 0U : 1U;
         // Regular parameters sit after `this`/the closure environment AND after the sret slot
         // when the function returns an indirect struct.
@@ -4170,7 +4177,9 @@ private:
         if (!function.constructor && function.returnTypeKey != "builtin:void" &&
             hasExceptionalControl)
         {
-            LLVMTypeRef returnType = llvmType(function.returnTypeKey, error);
+            LLVMTypeRef returnType = function.referenceReturn
+                ? LLVMPointerTypeInContext(context_, 0)
+                : llvmType(function.returnTypeKey, error);
             if (returnType == nullptr) return false;
             returnStorage_ = LLVMBuildAlloca(builder_, returnType, "eh.return.addr");
             const unsigned returnAlignment = structAlignmentFor(function.returnTypeKey);
@@ -5185,7 +5194,9 @@ private:
             }
             else
             {
-                LLVMTypeRef returnType = llvmType(currentMirFunction_->returnTypeKey, error);
+                LLVMTypeRef returnType = currentMirFunction_->referenceReturn
+                    ? LLVMPointerTypeInContext(context_, 0)
+                    : llvmType(currentMirFunction_->returnTypeKey, error);
                 if (returnType == nullptr)
                 {
                     restoreState();
@@ -10678,7 +10689,7 @@ private:
         // right after the receiver; indirect struct arguments travel as pointers to per-call
         // copies. Mirrors the signature built in declareFunctions -- and clang's own output.
         LLVMValueRef sretSlot = nullptr;
-        if (isIndirectStructTypeKey(node->typeKey))
+        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
@@ -10783,7 +10794,7 @@ private:
         arguments.reserve(node->children.size() + 1);
         // Win64 aggregate ABI -- see lowerCall; for a static callee the sret slot leads.
         LLVMValueRef sretSlot = nullptr;
-        if (isIndirectStructTypeKey(node->typeKey))
+        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
@@ -10872,7 +10883,7 @@ private:
         // declareFunctions gave every override: sret slot after the receiver, pointer-typed
         // indirect struct parameters.
         LLVMValueRef sretSlot = nullptr;
-        if (isIndirectStructTypeKey(node->typeKey))
+        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
@@ -10904,9 +10915,11 @@ private:
             arguments.push_back(sourceArguments[source]);
             parameterTypes.push_back(sourceParameterTypes[source]);
         }
-        LLVMTypeRef returnType = sretSlot != nullptr
-            ? LLVMVoidTypeInContext(context_)
-            : llvmType(node->typeKey, error);
+        LLVMTypeRef returnType = node->referenceResult
+            ? ptr
+            : sretSlot != nullptr
+                ? LLVMVoidTypeInContext(context_)
+                : llvmType(node->typeKey, error);
         if (returnType == nullptr)
         {
             return nullptr;
@@ -11042,7 +11055,7 @@ private:
         // Win64 aggregate ABI -- same reconstruction rule as lowerVirtualCall: the callee type
         // must match what declareFunctions gave every implementation.
         LLVMValueRef sretSlot = nullptr;
-        if (isIndirectStructTypeKey(node->typeKey))
+        if (!node->referenceResult && isIndirectStructTypeKey(node->typeKey))
         {
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (carrier == nullptr) return nullptr;
@@ -11074,9 +11087,11 @@ private:
             arguments.push_back(sourceArguments[source]);
             parameterTypes.push_back(sourceParameterTypes[source]);
         }
-        LLVMTypeRef returnType = sretSlot != nullptr
-            ? LLVMVoidTypeInContext(context_)
-            : llvmType(node->typeKey, error);
+        LLVMTypeRef returnType = node->referenceResult
+            ? ptr
+            : sretSlot != nullptr
+                ? LLVMVoidTypeInContext(context_)
+                : llvmType(node->typeKey, error);
         if (returnType == nullptr)
         {
             return nullptr;

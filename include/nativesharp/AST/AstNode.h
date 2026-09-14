@@ -100,6 +100,12 @@ public:
     bool flag() const noexcept;
     void setFlag(bool value) noexcept;
 
+    // Item 313. Separate from flag(): function declarations already use that bit for
+    // external-only state, while ref-return declarations and `return ref` need an orthogonal
+    // contextual marker that survives generic cloning.
+    bool isReference() const noexcept;
+    void setReference(bool value) noexcept;
+
     std::uint64_t integerValue() const noexcept;
     void setIntegerValue(std::uint64_t value) noexcept;
 
@@ -123,6 +129,7 @@ private:
     AstNode* third_ = nullptr;
     std::vector<AstNode*> children_;
     bool flag_ = false;
+    bool reference_ = false;
     std::uint64_t integerValue_ = 0;
     double floatingValue_ = 0.0;
 };

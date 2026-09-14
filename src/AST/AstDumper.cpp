@@ -79,6 +79,10 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
     {
         output << " flag=true";
     }
+    if (node->isReference())
+    {
+        output << " ref=true";
+    }
 
     output << '\n';
 

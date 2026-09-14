@@ -230,13 +230,14 @@ bool ProjectVirtualDispatchModel::buildClass(
                 ok = false;
                 continue;
             }
-            if (baseMethod.declaredTypeKey != method.declaredTypeKey)
+            if (baseMethod.declaredTypeKey != method.declaredTypeKey ||
+                baseMethod.isReferenceReturn != method.isReferenceReturn)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOverride,
                     diagnostics::DiagnosticSeverity::Error,
                     method.range,
-                    "Macro A requires an override to preserve the exact return type of the base virtual method");
+                    "Macro A requires an override to preserve the exact return type and ref-return mode of the base virtual method");
                 ok = false;
                 continue;
             }

@@ -465,6 +465,7 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.isImportedC) flags |= 1U << 20U;
     flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
     if (member.isVolatile) flags |= kMetadataMemberVolatile;
+    if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
     return flags;
 }
 
@@ -1985,6 +1986,11 @@ bool LibraryMetadataCodec::writeModel(
             for (LibraryMetadataField& field : type.fields)
                 field.flags &= ~kMetadataMemberVolatile;
     }
+    if (metadata.formatMinor < 15)
+    {
+        for (LibraryMetadataMember& member : metadata.members)
+            member.flags &= ~kMetadataMemberReferenceReturn;
+    }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -2607,6 +2613,20 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             {
                 error = "metadata member '" + member.declaringTypeKey + "." +
                     member.signatureKey + "' carries volatile on a non-field member";
+                return false;
+            }
+        }
+    }
+    if (metadata.formatMinor >= 15)
+    {
+        constexpr std::uint8_t kMethodKind = 2U;
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if ((member.flags & kMetadataMemberReferenceReturn) != 0U &&
+                member.kind != kMethodKind)
+            {
+                error = "metadata member '" + member.declaringTypeKey + "." +
+                    member.signatureKey + "' carries ref-return on a non-method member";
                 return false;
             }
         }

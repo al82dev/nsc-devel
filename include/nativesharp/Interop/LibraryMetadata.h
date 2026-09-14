@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 15 (2026-09-14): los metodos publicos con retorno ref conservan su categoria de resultado
+// y su portador ABI de direccion al reconstruirse desde una LibraryReference.
 // MINOR 14 (2026-09-14): los campos publicos volatile conservan el contrato de acceso observable
 // para que un consumidor LibraryReference no los degrade a accesos ordinarios.
 // MINOR 13 (2026-09-13): los metodos inline ordinarios conservan politica y cuerpo fuente para
@@ -44,7 +46,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 14;
+inline constexpr std::uint16_t kMetadataFormatMinor = 15;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -54,6 +56,9 @@ inline constexpr std::uint32_t kMetadataMemberInliningMask = 3U << kMetadataMemb
 // Item 308. Bit 23 is preserved in both member and layout-field flags so public volatile storage
 // reconstructs with the same observable-access contract in a LibraryReference consumer.
 inline constexpr std::uint32_t kMetadataMemberVolatile = 1U << 23U;
+// Item 313. Bit 24 belongs only to callable member records. The semantic type key stays T while
+// this bit says that the NativeSharp ABI physically returns a T* alias.
+inline constexpr std::uint32_t kMetadataMemberReferenceReturn = 1U << 24U;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una

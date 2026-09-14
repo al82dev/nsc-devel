@@ -762,6 +762,26 @@ prove the delegate cannot outlive the referenced storage. Focused O0 evidence sh
 HIR, MIR, verifier-ready LLVM, linking, real execution, exact-type diagnostics, mutable
 addressability, explicit syntax, and capture rejection.
 
+## NSC-REF-002 — Reference-return ABI and lowering
+
+The parser shall recognize `ref` before an ordinary method or function return type and after
+`return`, while retaining it as a contextual identifier elsewhere. Semantic analysis shall require
+`return ref` in a ref-returning callable and mutable addressable storage of the exact declared type.
+It shall reject ordinary frame locals, value and `in` parameters, temporaries, ownership-qualified
+returns, lambdas, and `extern C` reference-return boundaries.
+
+Calls to ref-returning functions shall be addressable and assignable. HIR and MIR shall carry
+explicit facts for both the callable ABI and each call result. LLVM shall physically return `ptr`;
+address contexts shall preserve it and value contexts shall load through it. Direct static,
+instance, virtual, and interface calls shall use the same rule without `sret` substitution.
+
+Override and interface matching shall include the ref-return mode as well as exact logical type.
+NSMETA 1.15 shall encode the mode on public methods, strip it when deliberately emitting an older
+minor, reconstruct it for `LibraryReference`, and retain the producer's physical symbol identity.
+Focused O0 evidence shall cover reads, writes, forwarding, virtual/interface dispatch, diagnostics,
+verifier-ready LLVM, linking, execution, metadata round-trip, downlevel stripping, and a real
+producer/consumer archive boundary.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

@@ -3806,6 +3806,17 @@ void ProjectMethodBodyModel::analyzeReturn(
 
     if (currentLambdaOrdinal_.has_value())
     {
+        if (statement->isReference())
+        {
+            if (statement->first() != nullptr)
+                analyzeExpression(statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "lambda ref returns are not part of the item 313 callable contract");
+            return;
+        }
         const std::string expected = currentLambdaReturnTypeKey_;
         if (expected == "builtin:void")
         {
@@ -3916,6 +3927,82 @@ void ProjectMethodBodyModel::analyzeReturn(
             diagnostics::DiagnosticSeverity::Error,
             statement->range(),
             "non-void instance method must return a value");
+        return;
+    }
+
+    if (statement->isReference() && !method->isReferenceReturn)
+    {
+        analyzeExpression(statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->range(),
+            "return ref is valid only inside a ref-returning method");
+        return;
+    }
+
+    if (method->isReferenceReturn)
+    {
+        const ExpressionResult value = analyzeExpression(
+            statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        if (!statement->isReference())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->range(),
+                "ref-returning method must return an alias with 'return ref expression;'");
+            return;
+        }
+        if (!value.valid) return;
+        if (value.typeKey != method->declaredTypeKey)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "ref return requires exact type identity; expression has '" + value.typeKey +
+                    "' but method returns ref '" + method->declaredTypeKey + "'");
+            return;
+        }
+        if (!value.addressable || !value.assignable)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "ref return requires a mutable addressable storage location");
+            return;
+        }
+
+        if (statement->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const std::optional<ScopeName> returnedName =
+                lookupScopeName(scopeOrdinal, statement->first()->text());
+            if (returnedName.has_value() && returnedName->kind == ScopeNameKind::Local &&
+                (returnedName->semanticOrdinal >= locals_.size() ||
+                 !locals_[returnedName->semanticOrdinal].isReference))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->first()->range(),
+                    "ref return cannot expose storage owned by the current stack frame");
+                return;
+            }
+            if (returnedName.has_value() && returnedName->kind == ScopeNameKind::Parameter &&
+                (returnedName->semanticOrdinal >= method->parameters.size() ||
+                 (method->parameters[returnedName->semanticOrdinal].passKind != ParameterPassKind::Ref &&
+                  method->parameters[returnedName->semanticOrdinal].passKind != ParameterPassKind::Out)))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidReturn,
+                    diagnostics::DiagnosticSeverity::Error,
+                    statement->first()->range(),
+                    "ref return cannot expose a by-value or readonly parameter");
+                return;
+            }
+        }
         return;
     }
 
@@ -8454,6 +8541,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
         call.resultTypeKey = selectedMember.declaredTypeKey;
         result.ownership = selectedMember.declaredOwnership;
+        result.assignable = selectedMember.isReferenceReturn;
+        result.addressable = selectedMember.isReferenceReturn;
             result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
             // An owned return crosses the call boundary without a named owner. It is therefore a
             // fresh owner in the caller, just like `new T(...)`, and may participate in the

@@ -326,7 +326,8 @@ bool ProjectInterfaceModel::visitInterface(
             else
             {
                 const ClassMemberSymbol& previous = memberModel_->members()[found->second];
-                if (previous.declaredTypeKey != method.declaredTypeKey)
+                if (previous.declaredTypeKey != method.declaredTypeKey ||
+                    previous.isReferenceReturn != method.isReferenceReturn)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOverride,
@@ -371,7 +372,8 @@ bool ProjectInterfaceModel::visitInterface(
         if (found != signatureOwner.end())
         {
             const ClassMemberSymbol& previous = memberModel_->members()[found->second];
-            if (previous.declaredTypeKey != method.declaredTypeKey)
+            if (previous.declaredTypeKey != method.declaredTypeKey ||
+                previous.isReferenceReturn != method.isReferenceReturn)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOverride,
@@ -515,7 +517,8 @@ std::optional<std::size_t> ProjectInterfaceModel::findImplementation(
                 continue;
             }
             if (candidate.isStatic || candidate.accessibility != ClassMemberAccessibility::Public ||
-                candidate.declaredTypeKey != interfaceMethod.declaredTypeKey || candidate.isAbstract)
+                candidate.declaredTypeKey != interfaceMethod.declaredTypeKey ||
+                candidate.isReferenceReturn != interfaceMethod.isReferenceReturn || candidate.isAbstract)
             {
                 return std::nullopt;
             }

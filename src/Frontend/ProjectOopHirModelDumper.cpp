@@ -60,6 +60,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
     if (node->kind == ProjectOopHirNodeKind::FloatingConstant) output << " value=" << node->floatingValue;
     if (node->kind == ProjectOopHirNodeKind::BooleanConstant) output << " value=" << (node->booleanValue ? "true" : "false");
     if (node->referenceLocal) output << " reference-local=true";
+    if (node->referenceResult) output << " reference-result=true";
     if (node->volatileAccess) output << " volatile=true";
     if (!node->elementTypeKey.empty()) output << " element=" << node->elementTypeKey;
     if (node->kind == ProjectOopHirNodeKind::StringLiteral) output << " bytes=" << node->stringValue.size();
@@ -97,6 +98,7 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
                << (function.isExportedC ? " export-c=" + function.cAbiName : "")
                << (function.isImportedNative ? " import-native" : "")
                << " return=" << function.returnTypeKey
+               << " ref-return=" << (function.referenceReturn ? "true" : "false")
                << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
                << " params=" << function.parameterTypeKeys.size()
                << " locals=" << function.localOrdinals.size()

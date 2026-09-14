@@ -1959,6 +1959,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 (member->flags & interop::kMetadataMemberInliningMask) >>
                 interop::kMetadataMemberInliningShift;
             if (inlining == 3U) generated << "noinline ";
+            if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
             generated << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
             if (!emitParameters(*member)) return false;
             // The empty body is an implementation detail of the generated syntax.

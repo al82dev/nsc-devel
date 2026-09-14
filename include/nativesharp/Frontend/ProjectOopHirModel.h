@@ -425,6 +425,9 @@ struct ProjectOopHirNode final
     // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather
     // than a value of typeKey.
     bool referenceLocal = false;
+    // Item 313. A call with this bit produces an address although typeKey names the referent.
+    // Value contexts add PointerLoad; address contexts preserve the call itself.
+    bool referenceResult = false;
     // Item 308. Set on field value/address nodes and propagated to the store that consumes an
     // address. It means LLVM volatile memory access, never atomic synchronization.
     bool volatileAccess = false;
@@ -459,6 +462,7 @@ struct ProjectOopHirFunction final
     bool constructor = false;
     bool destructor = false;
     bool isStatic = false;
+    bool referenceReturn = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body

@@ -968,6 +968,7 @@ bool ProjectOopMirModel::build(
         function.constructor = source.constructor;
         function.destructor = source.destructor;
         function.isStatic = source.isStatic;
+        function.referenceReturn = source.referenceReturn;
         function.inliningPolicy = source.inliningPolicy;
         function.isExportedC = source.isExportedC;
         function.isImportedC = source.isImportedC;
@@ -1274,6 +1275,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->floatingValue = node->floatingValue;
     result->booleanValue = node->booleanValue;
     result->referenceLocal = node->referenceLocal;
+    result->referenceResult = node->referenceResult;
     result->volatileAccess = node->volatileAccess;
     result->baseReceiver = node->baseReceiver;
     result->targetIsInterface = node->targetIsInterface;

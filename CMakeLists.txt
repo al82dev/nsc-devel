@@ -1748,6 +1748,15 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item312_reference_locals_tests)
     add_test(NAME nsc.item312.reference-locals COMMAND nsc_item312_reference_locals_tests)
+
+    # NativeSharp 2.0 item 313: address-preserving ref returns and ref-return call lvalues.
+    add_executable(nsc_item313_reference_returns_tests tests/unit/Item313ReferenceReturnsTests.cpp)
+    target_link_libraries(nsc_item313_reference_returns_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item313_reference_returns_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item313_reference_returns_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item313_reference_returns_tests)
+    add_test(NAME nsc.item313.reference-returns COMMAND nsc_item313_reference_returns_tests)
     # for the two pre-existing, compiler-wide cctor-guard bugs this round found and fixed (a
     # cross-thread TOCTOU race and a same-thread self-deadlock introduced by that race's fix -- see
     # tests/unit/Stage54_3MutexTests.cpp's header comment for the full rationale).

@@ -55,6 +55,8 @@ void AstNode::addChild(AstNode* node) { children_.push_back(node); }
 const std::vector<AstNode*>& AstNode::children() const noexcept { return children_; }
 bool AstNode::flag() const noexcept { return flag_; }
 void AstNode::setFlag(bool value) noexcept { flag_ = value; }
+bool AstNode::isReference() const noexcept { return reference_; }
+void AstNode::setReference(bool value) noexcept { reference_ = value; }
 std::uint64_t AstNode::integerValue() const noexcept { return integerValue_; }
 void AstNode::setIntegerValue(std::uint64_t value) noexcept { integerValue_ = value; }
 double AstNode::floatingValue() const noexcept { return floatingValue_; }

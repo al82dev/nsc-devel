@@ -122,6 +122,12 @@ tiene forma legacy `seq_cst` y forma ordenada. La dirección del `ref` se evalú
 a los mismos nodos HIR/MIR/LLVM que los wrappers, sin asignación, transferencia de ownership,
 aritmética implícita de punteros ni helpers adicionales.
 
+Los métodos y funciones pueden devolver una ubicación mutable con `ref T` y `return ref`. La
+llamada resultante es un lvalue: en contexto de valor carga a través de la dirección y en contexto
+de asignación o reenvío conserva la misma ubicación. El tipo y el modo `ref` deben coincidir
+exactamente en overrides e interfaces. No se permite exponer un local ordinario del frame ni un
+parámetro por valor/`in`; el alias no transfiere ownership ni extiende lifetime.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros
@@ -266,7 +272,7 @@ transporta directamente por valor. Las aplicaciones GUI pueden seleccionar
 
 Un producto precompilado combina `.lib`, `.nsmeta` y, para una biblioteca compartida, `.dll` más su
 import library. `LibraryReference` consume el contrato sin incorporar las fuentes del productor.
-NSMETA 1.14 conserva:
+NSMETA 1.15 conserva:
 
 - tipos, miembros, accesibilidad efectiva y nombres físicos;
 - constantes y valores necesarios para reconstruir la API;
@@ -276,6 +282,7 @@ NSMETA 1.14 conserva:
 - dependencias nominales provenientes de otras bibliotecas;
 - política de inlining y cuerpos ordinarios reutilizables entre productor y consumidor;
 - campos públicos `volatile` y el mismo modificador en su layout físico;
+- retornos `ref` públicos y su ABI física de puntero;
 - requisitos de runtime seleccionados únicamente cuando un símbolo alcanzado los necesita.
 
 `--verify-library-artifacts` compara metadata, archivo COFF, import library y tabla de exportaciones.

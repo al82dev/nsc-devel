@@ -101,7 +101,7 @@
 ## Tanda 6 — Referencias, placement y heap
 
 67. **312 — Variables locales `ref` / Reference locals — COMPLETADO / COMPLETE**
-68. **313 — Retornos `ref` / Reference returns**
+68. **313 — Retornos `ref` / Reference returns — COMPLETADO / COMPLETE**
 69. **314 — Indexadores `ref` / Reference-returning indexers**
 70. **315 — Analizador unificado de escapes / Unified escape analysis**
 71. **316 — Análisis de duración de referencias / Reference lifetime analysis**

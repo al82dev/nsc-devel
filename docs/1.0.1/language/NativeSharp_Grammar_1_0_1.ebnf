@@ -36,7 +36,7 @@ type-member = { member-modifier },
               ( field-declaration | method-declaration | constructor-declaration |
                 destructor-declaration | property-declaration | indexer-declaration |
                 operator-declaration | conversion-declaration | event-declaration ) ;
-interface-member = [ ownership ], type,
+interface-member = [ "ref" ], [ ownership ], type,
                    ( identifier, "(", [ parameter-list ], ")", ";" |
                      identifier, accessor-body | "this", "[", parameter-list, "]", accessor-body ) ;
 member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" |
@@ -44,13 +44,13 @@ member-modifier = declaration-modifier | "virtual" | "override" | "new" | "exter
 
 field-declaration = [ ownership ], type, identifier, [ "at", integer-literal ],
                     [ "=", expression | aggregate-initializer ], ";" ;
-method-declaration = [ ownership ], type, identifier, [ type-parameters ],
+method-declaration = [ "ref" ], [ ownership ], type, identifier, [ type-parameters ],
                      "(", [ parameter-list ], ")", { constraint-clause },
                      ( block | "=>", expression, ";" | ";" ) ;
-function-declaration = [ ownership ], type, identifier, [ type-parameters ],
+function-declaration = [ "ref" ], [ ownership ], type, identifier, [ type-parameters ],
                        "(", [ parameter-list ], ")", { constraint-clause },
                        ( block | ";" ) ;
-function-or-global = [ ownership ], type, identifier,
+function-or-global = [ "ref" ], [ ownership ], type, identifier,
                      ( "(", [ parameter-list ], ")", { constraint-clause }, block |
                        [ "=", expression ], ";" ) ;
 constructor-declaration = identifier, "(", [ parameter-list ], ")",
@@ -122,7 +122,7 @@ foreach-statement = "foreach", "(", [ "const" ], ( "var" | type ), identifier,
                     "in", expression, ")", block ;
 switch-statement = "switch", "(", expression, ")", "{", { switch-section }, "}" ;
 switch-section = ( "case", expression | "default" ), ":", { statement } ;
-return-statement = "return", [ expression ], ";" ;
+return-statement = "return", [ "ref" ], [ expression ], ";" ;
 try-statement = "try", block, ( catch-clause, { catch-clause }, [ "finally", block ] |
                                "finally", block ) ;
 catch-clause = "catch", [ "(", type, identifier, ")" ], block ;

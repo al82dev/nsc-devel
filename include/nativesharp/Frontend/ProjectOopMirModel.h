@@ -321,6 +321,8 @@ struct ProjectOopMirNode final
     bool booleanValue = false;
     // Item 312. Mirrors ProjectOopHirNode::referenceLocal for backend slot materialization.
     bool referenceLocal = false;
+    // Item 313. Mirrors ProjectOopHirNode::referenceResult for physical call ABI selection.
+    bool referenceResult = false;
     // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.
     bool volatileAccess = false;
     bool allocationFailureReturnsNull = false;
@@ -516,6 +518,7 @@ struct ProjectOopMirFunction final
     bool constructor = false;
     bool destructor = false;
     bool isStatic = false;
+    bool referenceReturn = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     bool isImportedC = false;

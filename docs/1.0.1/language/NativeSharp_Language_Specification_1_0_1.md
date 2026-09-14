@@ -238,13 +238,37 @@ incrementarlo o pasarlo otra vez como `ref` opera sobre esa misma ubicación. En
 ownership y no puede combinarse con `const`, `raii`, `owned` o `borrowed`.
 
 En esta entrega un local `ref` no puede capturarse en una lambda, porque el delegate podría
-sobrevivir al almacenamiento referenciado. Los retornos por referencia y el análisis general de
-escapes se definen en entregas posteriores; su ausencia no permite escapar un alias local.
+sobrevivir al almacenamiento referenciado. Un retorno `ref` puede reenviarlo conforme a
+NS-REF-002; el análisis unificado de procedencia y duración se completa en las entregas 315–316.
 
 A reference local is declared as `ref T alias = ref location;`. The location must be mutable,
 addressable storage of exactly `T`. Reads, writes, increments, and forwarded `ref` arguments use
 the original storage. The alias neither owns nor extends its lifetime, and lambda capture is
 rejected until the reference-escape contract is available.
+
+### NS-REF-002 — Retornos por referencia
+
+Un método o función declara `ref T Nombre(...)` y devuelve una ubicación mediante
+`return ref expresión;`. La expresión debe ser storage mutable y direccionable de tipo exactamente
+`T`; no se materializan temporales ni se aplican conversiones implícitas. Un método `ref` exige la
+forma `return ref`, y ésta se rechaza dentro de un método ordinario.
+
+Se pueden devolver fields, parámetros `ref`/`out`, locales `ref` y resultados de otra llamada
+`ref`. No se pueden exponer un local ordinario del frame, un parámetro por valor o `in`, un literal
+ni una property. El resultado de la llamada es un lvalue: leerlo carga el valor apuntado; asignarle
+o usarlo para inicializar otro local `ref` conserva la dirección original.
+
+El modo de retorno forma parte de la firma virtual y de interfaz. Overrides e implementaciones
+deben preservar tanto el tipo exacto como `ref`. El alias no adquiere ownership ni prolonga la
+duración de la ubicación. Lambdas y fronteras `extern C` no publican retornos `ref` en esta entrega.
+NSMETA 1.15 conserva el modo para que un `LibraryReference` use la misma ABI física `ptr`.
+
+A `ref T` method or function returns mutable, exactly typed storage with `return ref expression;`.
+The call result remains an lvalue: value contexts load through its address, while assignment and
+reference-local initialization preserve that address. Ordinary stack locals, value/`in`
+parameters, temporaries, lambdas, and `extern C` boundaries cannot expose reference returns.
+Virtual/interface matching includes the ref-return mode, and NSMETA 1.15 transports it across
+precompiled-library boundaries without transferring ownership or extending lifetime.
 
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 

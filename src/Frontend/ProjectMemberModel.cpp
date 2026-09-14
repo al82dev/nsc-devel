@@ -1009,6 +1009,24 @@ bool ProjectMemberModel::collectTypeMembers(
                 (symbol.kind == ClassMemberKind::Constructor || symbol.kind == ClassMemberKind::Destructor)
                 ? sema::OwnershipKind::None
                 : ownershipKindFromSyntax(memberNode->typeSyntax());
+            symbol.isReferenceReturn = symbol.kind == ClassMemberKind::Method && memberNode->isReference();
+            if (symbol.isReferenceReturn && symbol.declaredTypeKey == "builtin:void")
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "ref-returning method '" + symbol.name + "' cannot return void");
+            }
+            if (symbol.isReferenceReturn && symbol.declaredOwnership != sema::OwnershipKind::None)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "ref-returning method '" + symbol.name +
+                        "' cannot combine ref with owned or borrowed return ownership");
+            }
             if (symbol.kind == ClassMemberKind::Field &&
                 symbol.declaredOwnership == sema::OwnershipKind::Borrowed)
             {
@@ -1157,6 +1175,14 @@ bool ProjectMemberModel::collectTypeMembers(
                 symbol.cAbiName = symbol.name;
             }
             symbol.isExportedC = symbol.isExported && symbol.isExternC;
+            if (symbol.isReferenceReturn && (symbol.isExportedC || symbol.isImportedC))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "ref returns are a NativeSharp ABI contract and cannot cross an extern C boundary");
+            }
             if (symbol.isExportedC) symbol.cAbiName = symbol.name;
 
             // C2.2 "union and explicit layout": `at(N)` on a field. Only an INSTANCE field of a

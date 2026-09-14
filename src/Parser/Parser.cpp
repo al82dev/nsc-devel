@@ -2276,6 +2276,9 @@ ast::AstNode* Parser::parseInterfaceMember()
         }
     }
 
+    const bool isReferenceReturn = atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
+    if (isReferenceReturn) consume();
+
     // A generic parameter is intentionally not a globally known type name. As in class members,
     // accept an identifier-shaped type here and let name lookup decide whether it names this
     // interface's parameter or is genuinely unknown.
@@ -2293,6 +2296,14 @@ ast::AstNode* Parser::parseInterfaceMember()
 
     if (at(TokenKind::KwThis))
     {
+        if (isReferenceReturn)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "reference-returning indexers are introduced by item 314");
+        }
         return parseIndexerTail(
             returnType, accessibility, false, false, false, true, false, beginIndex, true);
     }
@@ -2306,12 +2317,22 @@ ast::AstNode* Parser::parseInterfaceMember()
     const lexer::Token& name = consume();
     if (at(TokenKind::LeftParen) || at(TokenKind::Less))
     {
-        return parseMethodTail(
+        ast::AstNode* method = parseMethodTail(
             returnType, name, accessibility,
             false, false, false, false, true, false, false, false, false, false, false, beginIndex);
+        if (method != nullptr) method->setReference(isReferenceReturn);
+        return method;
     }
     if (at(TokenKind::LeftBrace))
     {
+        if (isReferenceReturn)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                name.range(),
+                "ref return is valid only on a method in item 313");
+        }
         return parsePropertyTail(
             returnType, name, accessibility,
             false, false, false, false, true, false, beginIndex, true);
@@ -3158,6 +3179,9 @@ ast::AstNode* Parser::parseClassMember(
             beginIndex);
     }
 
+    const bool isReferenceReturn = atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
+    if (isReferenceReturn) consume();
+
     if (!canStartType(current()) && !at(TokenKind::Identifier))
     {
         diagnostics_.report(
@@ -3173,6 +3197,14 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::KwOperator))
     {
+        if (isReferenceReturn)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "ref return is valid only on an ordinary method in item 313");
+        }
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -3195,6 +3227,14 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::KwThis))
     {
+        if (isReferenceReturn)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "reference-returning indexers are introduced by item 314");
+        }
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -3272,11 +3312,20 @@ ast::AstNode* Parser::parseClassMember(
             isExported, isExternC, isInline, isForceInline, isNoInline, beginIndex);
         if (isReadonly && structContext && !isStatic && method != nullptr)
             method->addModifier(TokenKind::KwReadonly);
+        if (method != nullptr) method->setReference(isReferenceReturn);
         return method;
     }
 
     if (at(TokenKind::LeftBrace))
     {
+        if (isReferenceReturn)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                name.range(),
+                "ref return is valid only on an ordinary method in item 313");
+        }
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -3332,6 +3381,14 @@ ast::AstNode* Parser::parseClassMember(
             diagnostics::DiagnosticSeverity::Error,
             name.range(),
             "export extern C is valid only on ordinary static methods in Stage 47");
+    }
+    if (isReferenceReturn)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            name.range(),
+            "ref return is valid only on a method, not a field");
     }
 
     if (isVirtual || isOverride || isAbstract || isSealed)
@@ -4559,6 +4616,8 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
 {
     const std::size_t beginIndex = index_;
     const bool isConst = consumeIf(TokenKind::KwConst);
+    const bool isReferenceReturn = !isConst && atContextualKeyword("ref") && canStartTypeAt(index_ + 1);
+    if (isReferenceReturn) consume();
     ast::TypeSyntax* type = parseType();
 
     if (!at(TokenKind::Identifier))
@@ -4571,7 +4630,18 @@ ast::AstNode* Parser::parseFunctionOrGlobalVariable()
     const lexer::Token& name = consume();
     if (!isConst && (at(TokenKind::LeftParen) || at(TokenKind::Less)))
     {
-        return parseFunctionTail(type, name, false);
+        ast::AstNode* function = parseFunctionTail(type, name, false);
+        if (function != nullptr) function->setReference(isReferenceReturn);
+        return function;
+    }
+
+    if (isReferenceReturn)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            name.range(),
+            "ref return is valid only on a function, not a global variable");
     }
 
     ast::AstNode* global = arena_.make<ast::AstNode>(
@@ -6105,6 +6175,8 @@ ast::AstNode* Parser::parseReturnStatement()
 {
     const std::size_t beginIndex = index_;
     consume();
+    const bool isReferenceReturn = atContextualKeyword("ref") && peek().kind() != TokenKind::Semicolon;
+    if (isReferenceReturn) consume();
     ast::AstNode* value = nullptr;
     if (!at(TokenKind::Semicolon))
     {
@@ -6114,6 +6186,7 @@ ast::AstNode* Parser::parseReturnStatement()
 
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::ReturnStatement, tokenRangeFrom(beginIndex));
     node->setFirst(value);
+    node->setReference(isReferenceReturn);
     return node;
 }
 

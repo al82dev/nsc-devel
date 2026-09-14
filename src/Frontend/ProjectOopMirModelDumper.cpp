@@ -83,6 +83,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
                << " category=" << node->elementTypeKey
                << " preserve=" << (node->booleanValue ? "true" : "false");
     if (node->referenceLocal) output << " reference-local=true";
+    if (node->referenceResult) output << " reference-result=true";
     if (node->volatileAccess) output << " volatile=true";
     if (node->kind == ProjectOopMirNodeKind::ClosureCaptureLoad)
         output << " capture=#" << node->immediate;
@@ -125,6 +126,7 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
         for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
             output << ",p" << index << ':' << function.parameterTypeKeys[index];
         output << ") -> " << function.returnTypeKey
+               << " ref-return=" << (function.referenceReturn ? "true" : "false")
                << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
                << (function.constructor ? " constructor" : function.destructor ? " destructor" : function.isLambda ? " lambda-body" : " method");
         if (function.isLambda)

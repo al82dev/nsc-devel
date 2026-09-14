@@ -24,6 +24,9 @@ empaqueta con NativeSharp 1.0.1.
   direccionable con tipo exacto. Lecturas, escrituras, incrementos, encadenamiento y reenvío `ref`
   conservan la misma ubicación; temporales, readonly, conversiones y capturas por lambda se
   rechazan.
+- Los métodos y funciones `ref T` devuelven storage mutable con `return ref`; sus llamadas son
+  lvalues que conservan la dirección en asignaciones, reenvíos y dispatch virtual/interfaz.
+  NSMETA 1.15 transporta el modo y la ABI de puntero entre bibliotecas precompiladas.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

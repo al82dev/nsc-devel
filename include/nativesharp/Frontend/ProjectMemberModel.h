@@ -118,6 +118,9 @@ struct ClassMemberSymbol final
     bool isStatic = false;
     bool isNewSlot = false;
     bool isReadonly = false;
+    // Item 313. declaredTypeKey remains the referent T; this bit makes the callable result an
+    // lvalue and changes only its physical ABI carrier to T*.
+    bool isReferenceReturn = false;
     // Item 308. A volatile field is an observable memory location: every load/store survives
     // optimization, but it gains neither atomicity nor inter-thread ordering.
     bool isVolatile = false;
