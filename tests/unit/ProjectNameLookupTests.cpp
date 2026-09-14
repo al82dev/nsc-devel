@@ -181,6 +181,61 @@ void testNamespaceUsingAndAlias(TestContext& tests, const std::filesystem::path&
         "parallel declaration and binding indexes exactly match serial name lookup");
 }
 
+void testSourceLessFacadePreservesDependencyOwnership(
+    TestContext& tests,
+    const std::filesystem::path& root)
+{
+    const std::filesystem::path package = root / "FacadePackage";
+    const std::filesystem::path facade = root / "Facade";
+    const std::filesystem::path consumer = root / "FacadeConsumer";
+
+    writeFile(
+        package / "Types.ns",
+        "namespace SharedFacade; public struct T { int Value; }\n");
+    writeFile(
+        package / "A.nsproj",
+        "<Project><PropertyGroup><Name>AMod</Name><OutputType>Library</OutputType>"
+        "</PropertyGroup><ItemGroup><Compile Include=\"Types.ns\" /></ItemGroup></Project>\n");
+    writeFile(
+        facade / "U.nsproj",
+        "<Project><PropertyGroup><Name>UMod</Name><OutputType>Library</OutputType>"
+        "</PropertyGroup><ItemGroup><ProjectReference Include=\"../FacadePackage/A.nsproj\" />"
+        "</ItemGroup></Project>\n");
+    writeFile(
+        consumer / "C.nsproj",
+        "<Project><PropertyGroup><Name>CMod</Name><OutputType>Exe</OutputType>"
+        "</PropertyGroup><ItemGroup><ProjectReference Include=\"../Facade/U.nsproj\" />"
+        "</ItemGroup></Project>\n");
+    writeFile(
+        consumer / "Main.ns",
+        "using SharedFacade; struct Holder { T Value; } int Main() { return 0; }\n");
+
+    ProjectCompilation compilation;
+    std::string error;
+    const bool ok = compilation.compileProjectOopMir(consumer / "C.nsproj", error);
+    tests.expect(ok && error.empty() && !compilation.diagnostics().hasErrors(),
+        "a source-less facade exposes dependency types without ambiguity");
+    if (compilation.projectGraph() != nullptr)
+    {
+        const auto projects = compilation.projectGraph()->projects();
+        tests.expect(projects.size() == 3 && projects[0].moduleName() == "AMod" &&
+                projects[0].sourceSet().sources().size() == 1 &&
+                projects[1].moduleName() == "UMod" &&
+                projects[1].sourceSet().sources().empty(),
+            "the facade remains an empty module and the dependency retains source ownership");
+    }
+    if (compilation.nameLookup() != nullptr)
+    {
+        const ProjectNameLookup& lookup = *compilation.nameLookup();
+        tests.expect(findType(lookup, "AMod::SharedFacade.T") != nullptr &&
+                findType(lookup, "UMod::SharedFacade.T") == nullptr,
+            "the facade does not redeclare its dependency type");
+        tests.expect(resolvedBindingCount(
+                lookup, "T", "AMod::SharedFacade.T") == 1,
+            "the consumer resolves the dependency type exactly once through the facade");
+    }
+}
+
 void testTransitiveVisibility(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path core = root / "TransitiveCore";
@@ -878,6 +933,7 @@ int main()
 
     testNamespaceUsingAndAlias(tests, root);
     testTransitiveVisibility(tests, root);
+    testSourceLessFacadePreservesDependencyOwnership(tests, root);
     testSiblingIsolation(tests, root);
     testAmbiguousReferencedType(tests, root);
     testCurrentModuleShadowsDependency(tests, root);

@@ -71,13 +71,13 @@ bool ProjectSourceSet::add(const std::filesystem::path& sourcePath, std::string&
     return true;
 }
 
-bool ProjectSourceSet::finalize(std::string& error)
+bool ProjectSourceSet::finalize(std::string& error, bool allowEmpty)
 {
     if (finalized_)
     {
         return true;
     }
-    if (sources_.empty())
+    if (sources_.empty() && !allowEmpty)
     {
         error = "a NativeSharp project must contain at least one .ns source";
         return false;

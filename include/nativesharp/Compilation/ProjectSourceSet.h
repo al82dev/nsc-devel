@@ -20,7 +20,7 @@ public:
     explicit ProjectSourceSet(std::filesystem::path projectDirectory);
 
     bool add(const std::filesystem::path& sourcePath, std::string& error);
-    bool finalize(std::string& error);
+    bool finalize(std::string& error, bool allowEmpty = false);
 
     const std::filesystem::path& projectDirectory() const noexcept;
     std::span<const ProjectSource> sources() const noexcept;

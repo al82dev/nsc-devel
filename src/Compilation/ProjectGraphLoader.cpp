@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -141,6 +142,67 @@ bool visitProject(
     state.orderedProjects.push_back(project);
     return true;
 }
+bool normalizeTransitiveSourceOwnership(
+    std::vector<Project>& projects,
+    std::string& error)
+{
+    std::unordered_map<std::string, std::size_t> projectByPath;
+    for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
+    {
+        projectByPath.emplace(pathKey(canonicalPath(projects[ordinal].projectFile())), ordinal);
+    }
+
+    std::vector<std::unordered_set<std::string>> visibleSources;
+    visibleSources.reserve(projects.size());
+    std::vector<Project> normalized;
+    normalized.reserve(projects.size());
+
+    for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
+    {
+        const Project& project = projects[ordinal];
+        std::unordered_set<std::string> dependencySources;
+        for (const std::filesystem::path& reference : project.projectReferences())
+        {
+            const auto dependency = projectByPath.find(pathKey(canonicalPath(reference)));
+            if (dependency == projectByPath.end() || dependency->second >= ordinal)
+            {
+                error = "internal error: project source ownership requires topological references";
+                return false;
+            }
+            dependencySources.insert(
+                visibleSources[dependency->second].begin(),
+                visibleSources[dependency->second].end());
+        }
+
+        ProjectSourceSet ownSources(project.sourceSet().projectDirectory());
+        for (const ProjectSource& source : project.sourceSet().sources())
+        {
+            const std::string sourceKey = pathKey(canonicalPath(source.absolutePath));
+            if (dependencySources.contains(sourceKey)) continue;
+            if (!ownSources.add(source.absolutePath, error)) return false;
+        }
+        if (!ownSources.finalize(error, true)) return false;
+
+        std::unordered_set<std::string> closure = std::move(dependencySources);
+        for (const ProjectSource& source : ownSources.sources())
+            closure.insert(pathKey(canonicalPath(source.absolutePath)));
+        visibleSources.push_back(std::move(closure));
+
+        normalized.emplace_back(
+            project.projectFile(),
+            project.moduleName(),
+            project.outputKind(),
+            std::move(ownSources),
+            std::vector<std::filesystem::path>(
+                project.projectReferences().begin(), project.projectReferences().end()),
+            std::vector<LibraryReference>(
+                project.libraryReferences().begin(), project.libraryReferences().end()));
+    }
+
+    projects = std::move(normalized);
+    return true;
+}
+
 }
 
 ProjectGraphLoader::ProjectGraphLoader(
@@ -241,6 +303,11 @@ std::optional<ProjectGraph> ProjectGraphLoader::load(
         error = "project graph contains no projects";
         return std::nullopt;
     }
+    if (!normalizeTransitiveSourceOwnership(state.orderedProjects, error))
+    {
+        return std::nullopt;
+    }
+
 
     const std::filesystem::path canonicalRoot = state.orderedProjects.back().projectFile();
     return ProjectGraph(canonicalRoot, std::move(state.orderedProjects));

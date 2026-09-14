@@ -565,7 +565,7 @@ std::optional<Project> ProjectLoader::load(
             return std::nullopt;
         }
     }
-    if (!sourceSet.finalize(error))
+    if (!sourceSet.finalize(error, !descriptor.projectReferences.empty()))
     {
         return std::nullopt;
     }
