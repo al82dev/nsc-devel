@@ -115,6 +115,13 @@ forma legacy `seq_cst` como con órdenes explícitos. Conserva identidad y `null
 dirección anterior en Exchange/CAS y emite atomics LLVM de tipo `ptr` alineados a ocho bytes sin
 round-trip entero ni helper externo. El lifetime del pointee permanece a cargo del programa.
 
+`Interlocked` publica la misma maquinaria atómica sobre almacenamiento existente mediante
+`ref int`, `ref long` y `ref void*`. Los enteros cubren Load, Store, Increment, Decrement, Add,
+Exchange y CompareExchange; punteros cubren Load, Store, Exchange y CompareExchange. Cada familia
+tiene forma legacy `seq_cst` y forma ordenada. La dirección del `ref` se evalúa una sola vez y llega
+a los mismos nodos HIR/MIR/LLVM que los wrappers, sin asignación, transferencia de ownership,
+aritmética implícita de punteros ni helpers adicionales.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

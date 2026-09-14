@@ -715,6 +715,30 @@ Focused O0 evidence shall cover legacy and ordered overloads, all five public or
 null, pointer identity, successful and failed compare-exchange, invalid-order diagnostics,
 verifier-ready LLVM, natural alignment, linking, and execution.
 
+## NSC-MEM-012 — Public Interlocked API
+
+The compiler shall recognize only the exact public static
+`NativeSharp.Core.Threading.Interlocked` signatures whose first parameter is `ref int`,
+`ref long`, or `ref void*`. The first argument shall lower as the address of the caller's
+addressable storage and shall be evaluated exactly once.
+
+Interlocked shall reuse the existing integer and pointer atomic core operations. The frontend shall
+not synthesize a wrapper object or private field, and MIR/LLVM shall not contain a second atomic
+implementation selected only because the source call was static.
+
+Legacy overloads shall retain sequential consistency. Ordered overloads shall fold `MemoryOrder`
+at compile time and enforce the existing load, store, RMW, and independent CAS success/failure
+rules before LLVM emission. Omitting `ref`, passing non-addressable storage, selecting an order at
+runtime, or using an illegal order shall be rejected with a source diagnostic.
+
+The integer overloads shall preserve their existing width, alignment, wrapping, and return
+contracts. Pointer overloads shall remain pointer-typed and naturally aligned without ownership,
+pointer arithmetic, integer round-trips, Win32 imports, or external atomic helpers.
+
+Focused O0 evidence shall exercise all three location families, legacy and ordered operations,
+successful and failed compare-exchange, pointer identity and null, static ref-address lowering,
+invalid orders, missing `ref`, verifier-ready LLVM, linking, and execution.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

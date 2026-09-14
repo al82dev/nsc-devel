@@ -649,6 +649,38 @@ and compare-exchange return the previous address, including the observed address
 Windows x64 lowers naturally aligned pointer operations directly, without integer round-trips or
 external atomic helpers.
 
+### NS-MEM-012 — API pública `Interlocked`
+
+`NativeSharp.Core.Threading.Interlocked` opera atómicamente sobre almacenamiento existente mediante
+un primer parámetro `ref int`, `ref long` o `ref void*`. La referencia identifica la ubicación; la
+API no copia el valor, no asigna almacenamiento y no adquiere ownership.
+
+Para `int` y `long` se publican Load, Store, Increment, Decrement, Add, Exchange y CompareExchange.
+Para `void*` se publican Load, Store, Exchange y CompareExchange; no existe aritmética implícita de
+punteros. Increment, Decrement y Add devuelven el valor nuevo. Exchange y CompareExchange devuelven
+el valor anterior, incluido el valor observado cuando CAS falla.
+
+Cada operación tiene una forma legacy secuencialmente consistente y una forma con orden explícito.
+Load, Store, RMW y CAS obedecen exactamente la matriz NS-MEM-005 a NS-MEM-007. Los órdenes son
+constantes de compilación; CompareExchange recibe órdenes independientes de éxito y fallo.
+
+La llamada debe escribir `ref` explícitamente y la ubicación debe ser modificable y vivir durante
+la operación. `Interlocked` no convierte una referencia prestada en propiedad, no prolonga el
+lifetime de un pointee y no vuelve atómicos los accesos ordinarios hechos fuera de esta API.
+
+`NativeSharp.Core.Threading.Interlocked` atomically operates on existing storage through a first
+`ref int`, `ref long`, or `ref void*` parameter. The reference identifies the location; the API
+neither copies nor allocates storage and acquires no ownership.
+
+Int and long provide Load, Store, Increment, Decrement, Add, Exchange, and CompareExchange. Pointer
+storage provides Load, Store, Exchange, and CompareExchange without implicit pointer arithmetic.
+Increment, Decrement, and Add return the new value. Exchange and CompareExchange return the old
+value, including the observed value after a failed CAS.
+
+Every operation has a legacy sequentially-consistent form and an explicitly ordered form governed
+by NS-MEM-005 through NS-MEM-007. The call site must spell `ref`, the location must be mutable and
+live for the operation, and neither the reference nor a pointee acquires or extends ownership.
+
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

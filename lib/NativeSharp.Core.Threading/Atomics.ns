@@ -32,54 +32,11 @@ namespace NativeSharp.Core.Threading
 
     // NativeSharp.Core.Threading.AtomicInt32 / AtomicInt64 -- Stage 54.2 "Atomics".
     //
-    // == Por que clases wrapper y NO "Interlocked.Increment(ref int location)" al estilo C# ==
-    //
-    // El diseno ORIGINAL de esta ronda era calcar System.Threading.Interlocked de C# casi al pie
-    // de la letra: una clase de utilidad con metodos estaticos que reciben la ubicacion por
-    // referencia (`Interlocked.Increment(ref int location)`), sustituyendo `ref` por el sistema
-    // de PUNTEROS CRUDOS que NativeSharp ya tiene desde bastante antes de Stage 54
-    // (`int* p = &x;`) -- `Interlocked.Increment(&contador)` en vez de `Interlocked.
-    // Increment(ref contador)`. Ese diseno se descarto DURANTE la implementacion, al confirmar
-    // (con un programa de prueba minimo que fallo con un error de compilacion muy especifico) que
-    // la tuberia OOP moderna de este compilador -- la que usan TODAS las stages desde 41 en
-    // adelante, incluida esta -- simplemente no baja los operadores `&` (direccion-de) ni `*`
-    // (dereferencia) EN ABSOLUTO: ver el caso `UnaryExpression` en ProjectOopHirModel.cpp, que
-    // devuelve el error "Stage 34 OOP lowering keeps raw pointer address/dereference in the
-    // procedural backend boundary" para CUALQUIER uso de esos dos operadores, sin importar sobre
-    // que esten aplicados (un local, un campo, un elemento de arreglo). Es un limite deliberado y
-    // duro de esta tuberia, no un bug ni una limitacion de esta ronda en particular -- esos
-    // operadores existen en el compilador (el analizador sintactico y semantico los aceptan, y
-    // hay tests que lo confirman) pero pertenecen a una tuberia de codegen MAS VIEJA
-    // ("procedural", pre-Stage-35) que Stage 54 nunca toca. Esto vuelve inviable, para siempre en
-    // el estado actual del compilador, cualquier API publica que le exija a codigo NativeSharp
-    // moderno escribir `&algo`.
-    //
-    // El diseno NUEVO evita esa operacion por completo, cambiando la forma de la API en vez de
-    // pelear contra el limite: cada operacion atomica es un METODO DE INSTANCIA que opera
-    // implicitamente sobre el campo privado `value_` DEL RECEPTOR (`contador.Increment()`, nunca
-    // sobre un puntero explicito). El precedente real mas cercano no es ya System.Threading.
-    // Interlocked de C#, sino java.util.concurrent.atomic.AtomicInteger/AtomicLong de Java: un
-    // lenguaje que TAMPOCO expone punteros/`ref` al programador para este tipo de API, y resuelve
-    // el mismo problema exactamente asi, con una clase wrapper por cada ancho.
-    //
-    // == Como el compilador logra esto SIN el operador `&` ==
-    //
-    // El truco: el operador `&` esta bloqueado para codigo NativeSharp fuente, pero el propio
-    // compilador (el C++ de ProjectMethodBodyModel.cpp/ProjectOopHirModel.cpp) puede seguir
-    // construyendo una direccion de campo libremente -- es exactamente lo que YA hace, puertas
-    // adentro, cada vez que baja una ASIGNACION a un campo (`this.value_ = x;` necesita la
-    // DIRECCION de value_ para poder escribir ahi, no su valor). Ese mecanismo interno
-    // (`ProjectOopHirNodeKind::FieldAddress`, ver ProjectOopHirModel.cpp/ProjectOopMirModel.cpp/
-    // ProjectOopLlvmLowerer.cpp) no tiene relacion ninguna con el operador `&` de NativeSharp --
-    // es un nodo de HIR/MIR interno que cualquier parte del compilador puede construir a mano.
-    // El reconocimiento de estas diez operaciones (ProjectMethodBodyModel.cpp) resuelve, una sola
-    // vez, el ordinal del campo `value_` dentro de la clase declarante; la bajada a HIR
-    // (ProjectOopHirModel.cpp) arma un nodo FieldAddress sintetico usando ese ordinal y el
-    // receptor de la llamada (`contador` en `contador.Increment()`) como unico hijo -- ver el
-    // comentario de MethodCoreBinding::implicitFieldMemberOrdinal en ProjectMethodBodyModel.h
-    // para el detalle completo. Ni HIR->MIR ni la bajada a LLVM necesitaron NINGUN codigo extra
-    // para esta pieza: a esas etapas, el nodo sintetico es indistinguible de un acceso a campo
-    // real -- solo se reusa maquinaria que Stage 29/34 ya tenian.
+    // The wrapper types remain the convenient API for an atomic value owned by an object.
+    // Item 311 also publishes Interlocked below for atomically updating existing addressable
+    // storage through true NativeSharp `ref` parameters. The two surfaces intentionally share
+    // one compiler lowering: wrappers synthesize the address of `value_`; Interlocked receives
+    // that address as its first argument.
     //
     // == Contrato de valores de retorno (identico al System.Threading.Interlocked real de C#) ==
     //
@@ -342,6 +299,193 @@ namespace NativeSharp.Core.Threading
 
         public void* CompareExchange(
             void* value, void* comparand, MemoryOrder successOrder, MemoryOrder failureOrder)
+        {
+            return null;
+        }
+    }
+
+    // Static atomic operations over existing storage. `ref` preserves the source location's
+    // identity and lifetime; these methods neither allocate nor take ownership. Legacy overloads
+    // are sequentially consistent. Ordered overloads use MemoryOrder directly, including distinct
+    // success/failure orders for compare-exchange.
+    public static class Interlocked
+    {
+        public static int Load(ref int location)
+        {
+            return 0;
+        }
+
+        public static int Load(ref int location, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static void Store(ref int location, int value)
+        {
+        }
+
+        public static void Store(ref int location, int value, MemoryOrder order)
+        {
+        }
+
+        public static int Increment(ref int location)
+        {
+            return 0;
+        }
+
+        public static int Increment(ref int location, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static int Decrement(ref int location)
+        {
+            return 0;
+        }
+
+        public static int Decrement(ref int location, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static int Add(ref int location, int value)
+        {
+            return 0;
+        }
+
+        public static int Add(ref int location, int value, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static int Exchange(ref int location, int value)
+        {
+            return 0;
+        }
+
+        public static int Exchange(ref int location, int value, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static int CompareExchange(ref int location, int value, int comparand)
+        {
+            return 0;
+        }
+
+        public static int CompareExchange(
+            ref int location, int value, int comparand,
+            MemoryOrder successOrder, MemoryOrder failureOrder)
+        {
+            return 0;
+        }
+
+        public static long Load(ref long location)
+        {
+            return 0;
+        }
+
+        public static long Load(ref long location, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static void Store(ref long location, long value)
+        {
+        }
+
+        public static void Store(ref long location, long value, MemoryOrder order)
+        {
+        }
+
+        public static long Increment(ref long location)
+        {
+            return 0;
+        }
+
+        public static long Increment(ref long location, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static long Decrement(ref long location)
+        {
+            return 0;
+        }
+
+        public static long Decrement(ref long location, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static long Add(ref long location, long value)
+        {
+            return 0;
+        }
+
+        public static long Add(ref long location, long value, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static long Exchange(ref long location, long value)
+        {
+            return 0;
+        }
+
+        public static long Exchange(ref long location, long value, MemoryOrder order)
+        {
+            return 0;
+        }
+
+        public static long CompareExchange(ref long location, long value, long comparand)
+        {
+            return 0;
+        }
+
+        public static long CompareExchange(
+            ref long location, long value, long comparand,
+            MemoryOrder successOrder, MemoryOrder failureOrder)
+        {
+            return 0;
+        }
+
+        public static void* Load(ref void* location)
+        {
+            return null;
+        }
+
+        public static void* Load(ref void* location, MemoryOrder order)
+        {
+            return null;
+        }
+
+        public static void Store(ref void* location, void* value)
+        {
+        }
+
+        public static void Store(ref void* location, void* value, MemoryOrder order)
+        {
+        }
+
+        public static void* Exchange(ref void* location, void* value)
+        {
+            return null;
+        }
+
+        public static void* Exchange(ref void* location, void* value, MemoryOrder order)
+        {
+            return null;
+        }
+
+        public static void* CompareExchange(ref void* location, void* value, void* comparand)
+        {
+            return null;
+        }
+
+        public static void* CompareExchange(
+            ref void* location, void* value, void* comparand,
+            MemoryOrder successOrder, MemoryOrder failureOrder)
         {
             return null;
         }

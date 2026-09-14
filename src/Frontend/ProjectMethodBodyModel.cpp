@@ -9127,37 +9127,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
-            // Stage 54.2 "Atomics" -- NativeSharp.Core.Threading.AtomicInt32/AtomicInt64. Diez
-            // metodos DE INSTANCIA (a diferencia del diseno original de esta ronda, que planeaba
-            // metodos estaticos con un parametro `int*`/`long*` calcado de C#'s
-            // System.Threading.Interlocked -- descartado durante la implementacion al confirmar
-            // que la tuberia OOP de este compilador NO baja los operadores `&`/`*` en absoluto,
-            // ver ProjectOopHirModel.cpp's UnaryExpression case: "Stage 34 OOP lowering keeps raw
-            // pointer address/dereference in the procedural backend boundary" -- un limite
-            // deliberado y duro, no un bug, que hace inviable cualquier API que le exija al
-            // codigo NativeSharp escribir `&algo`). El nuevo diseno evita esa operacion por
-            // completo: cada metodo opera implicitamente sobre el campo privado `value_` DEL
-            // RECEPTOR (`contador.Increment()`, nunca `Interlocked.Increment(&contador)`) --
-            // mismo espiritu que java.util.concurrent.atomic.AtomicInteger/AtomicLong, el
-            // precedente real mas cercano para un lenguaje sin `ref`/punteros expuestos al
-            // programador para este tipo de API. Cinco operaciones (Increment/Decrement/Add/
-            // Exchange/CompareExchange) x dos anchos (Int32/Int64, dos clases separadas en vez de
-            // un solo parametro de ancho variable). Reconocidas por clase+nombre+firma exacta,
-            // igual que siempre; la unica diferencia real es que ADEMAS de fijar el
-            // MethodCoreOperationKind, este bloque resuelve el ordinal del campo `value_` DENTRO
-            // del tipo declarante (buscandolo por nombre en memberModel_->members()) y lo guarda
-            // en MethodCoreBinding::implicitFieldMemberOrdinal -- HIR lowering
-            // (ProjectOopHirModel.cpp) lo usa para construir el nodo FieldAddress sintetico que
-            // reemplaza el operando `&value_` que el usuario NUNCA escribe.
-            if ((declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt32" ||
-                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt64" ||
-                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicPointer") &&
-                !selectedMember.isStatic)
+            // Stage 54.2/Item 311 atomics. Recognition is deliberately exact by declaring type,
+            // name, parameter mode, value type, result type, and MemoryOrder position.
+            //
+            // Wrapper calls operate on their receiver's private `value_` field. This block resolves
+            // that field once and stores its ordinal in implicitFieldMemberOrdinal, allowing HIR to
+            // synthesize a FieldAddress without exposing implementation storage.
+            //
+            // Public Interlocked calls are static and begin with a true `ref int`, `ref long`, or
+            // `ref void*` parameter. For those bindings implicitFieldMemberOrdinal stays empty:
+            // HIR consumes the already-address-valued first argument as the location. Both source
+            // shapes reuse the same MethodCoreOperationKind identities and all later lowering.
+            const std::string atomicDeclaringType = declaringType.identity.fullyQualifiedName();
+            const bool atomicWrapper =
+                atomicDeclaringType == "NativeSharp.Core.Threading.AtomicInt32" ||
+                atomicDeclaringType == "NativeSharp.Core.Threading.AtomicInt64" ||
+                atomicDeclaringType == "NativeSharp.Core.Threading.AtomicPointer";
+            const bool publicInterlocked =
+                atomicDeclaringType == "NativeSharp.Core.Threading.Interlocked" &&
+                selectedMember.isStatic && !selectedMember.parameters.empty() &&
+                selectedMember.parameters[0].passKind == ParameterPassKind::Ref &&
+                (selectedMember.parameters[0].pointeeTypeKey == "builtin:int" ||
+                 selectedMember.parameters[0].pointeeTypeKey == "builtin:long" ||
+                 selectedMember.parameters[0].pointeeTypeKey == "builtin:void*");
+            if ((atomicWrapper && !selectedMember.isStatic) || publicInterlocked)
             {
-                const bool isInt32 =
-                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt32";
-                const bool isPointer =
-                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicPointer";
+                const std::size_t parameterOffset = publicInterlocked ? 1U : 0U;
+                const std::string locationValueType = publicInterlocked
+                    ? selectedMember.parameters[0].pointeeTypeKey
+                    : atomicDeclaringType == "NativeSharp.Core.Threading.AtomicInt32"
+                        ? "builtin:int" : atomicDeclaringType == "NativeSharp.Core.Threading.AtomicPointer"
+                            ? "builtin:void*" : "builtin:long";
+                const bool isInt32 = locationValueType == "builtin:int";
+                const bool isPointer = locationValueType == "builtin:void*";
                 const std::string valueTypeKey =
                     isInt32 ? "builtin:int" : isPointer ? "builtin:void*" : "builtin:long";
                 const auto isMemoryOrderType = [&](const std::string& typeKey)
@@ -9170,35 +9172,35 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             "NativeSharp.Core.Threading.MemoryOrder";
                 };
                 const bool orderedLoad = selectedMember.name == "Load" &&
-                    selectedMember.parameters.size() == 1 &&
-                    isMemoryOrderType(selectedMember.parameters[0].typeKey) &&
+                    selectedMember.parameters.size() == parameterOffset + 1U &&
+                    isMemoryOrderType(selectedMember.parameters[parameterOffset].typeKey) &&
                     selectedMember.declaredTypeKey == valueTypeKey;
                 const bool orderedStore = selectedMember.name == "Store" &&
-                    selectedMember.parameters.size() == 2 &&
-                    selectedMember.parameters[0].typeKey == valueTypeKey &&
-                    isMemoryOrderType(selectedMember.parameters[1].typeKey) &&
+                    selectedMember.parameters.size() == parameterOffset + 2U &&
+                    selectedMember.parameters[parameterOffset].typeKey == valueTypeKey &&
+                    isMemoryOrderType(selectedMember.parameters[parameterOffset + 1U].typeKey) &&
                     selectedMember.declaredTypeKey == "builtin:void";
                 const bool orderedUnaryRmw =
                     (selectedMember.name == "Increment" || selectedMember.name == "Decrement") &&
-                    selectedMember.parameters.size() == 1 &&
-                    isMemoryOrderType(selectedMember.parameters[0].typeKey) &&
+                    selectedMember.parameters.size() == parameterOffset + 1U &&
+                    isMemoryOrderType(selectedMember.parameters[parameterOffset].typeKey) &&
                     selectedMember.declaredTypeKey == valueTypeKey;
                 const bool orderedValueRmw =
                     (selectedMember.name == "Add" || selectedMember.name == "Exchange") &&
-                    selectedMember.parameters.size() == 2 &&
-                    selectedMember.parameters[0].typeKey == valueTypeKey &&
-                    isMemoryOrderType(selectedMember.parameters[1].typeKey) &&
+                    selectedMember.parameters.size() == parameterOffset + 2U &&
+                    selectedMember.parameters[parameterOffset].typeKey == valueTypeKey &&
+                    isMemoryOrderType(selectedMember.parameters[parameterOffset + 1U].typeKey) &&
                     selectedMember.declaredTypeKey == valueTypeKey;
                 const bool orderedRmw = orderedUnaryRmw || orderedValueRmw;
                 const bool orderedCompareExchange = selectedMember.name == "CompareExchange" &&
-                    selectedMember.parameters.size() == 4 &&
-                    selectedMember.parameters[0].typeKey == valueTypeKey &&
-                    selectedMember.parameters[1].typeKey == valueTypeKey &&
-                    isMemoryOrderType(selectedMember.parameters[2].typeKey) &&
-                    isMemoryOrderType(selectedMember.parameters[3].typeKey) &&
+                    selectedMember.parameters.size() == parameterOffset + 4U &&
+                    selectedMember.parameters[parameterOffset].typeKey == valueTypeKey &&
+                    selectedMember.parameters[parameterOffset + 1U].typeKey == valueTypeKey &&
+                    isMemoryOrderType(selectedMember.parameters[parameterOffset + 2U].typeKey) &&
+                    isMemoryOrderType(selectedMember.parameters[parameterOffset + 3U].typeKey) &&
                     selectedMember.declaredTypeKey == valueTypeKey;
                 std::optional<MethodCoreOperationKind> atomicKind;
-                if ((selectedMember.name == "Load" && selectedMember.parameters.empty() &&
+                if ((selectedMember.name == "Load" && selectedMember.parameters.size() == parameterOffset &&
                         selectedMember.declaredTypeKey == valueTypeKey) || orderedLoad)
                 {
                     atomicKind = isPointer
@@ -9207,8 +9209,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                                   : MethodCoreOperationKind::AtomicLoadInt64;
                 }
                 else if ((selectedMember.name == "Store" &&
-                    selectedMember.parameters.size() == 1 &&
-                    selectedMember.parameters[0].typeKey == valueTypeKey &&
+                    selectedMember.parameters.size() == parameterOffset + 1U &&
+                    selectedMember.parameters[parameterOffset].typeKey == valueTypeKey &&
                     selectedMember.declaredTypeKey == "builtin:void") || orderedStore)
                 {
                     atomicKind = isPointer
@@ -9217,7 +9219,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                                   : MethodCoreOperationKind::AtomicStoreInt64;
                 }
                 else if (!isPointer &&
-                    ((selectedMember.name == "Increment" && selectedMember.parameters.empty() &&
+                    ((selectedMember.name == "Increment" && selectedMember.parameters.size() == parameterOffset &&
                     selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Increment")))
                 {
                     atomicKind = isInt32
@@ -9225,7 +9227,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         : MethodCoreOperationKind::InterlockedIncrementInt64;
                 }
                 else if (!isPointer &&
-                    ((selectedMember.name == "Decrement" && selectedMember.parameters.empty() &&
+                    ((selectedMember.name == "Decrement" && selectedMember.parameters.size() == parameterOffset &&
                     selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Decrement")))
                 {
                     atomicKind = isInt32
@@ -9233,8 +9235,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         : MethodCoreOperationKind::InterlockedDecrementInt64;
                 }
                 else if (!isPointer &&
-                    ((selectedMember.name == "Add" && selectedMember.parameters.size() == 1 &&
-                    selectedMember.parameters[0].typeKey == valueTypeKey &&
+                    ((selectedMember.name == "Add" && selectedMember.parameters.size() == parameterOffset + 1U &&
+                    selectedMember.parameters[parameterOffset].typeKey == valueTypeKey &&
                     selectedMember.declaredTypeKey == valueTypeKey) ||
                     (orderedRmw && selectedMember.name == "Add")))
                 {
@@ -9242,8 +9244,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         ? MethodCoreOperationKind::InterlockedAddInt32
                         : MethodCoreOperationKind::InterlockedAddInt64;
                 }
-                else if ((selectedMember.name == "Exchange" && selectedMember.parameters.size() == 1 &&
-                    selectedMember.parameters[0].typeKey == valueTypeKey &&
+                else if ((selectedMember.name == "Exchange" && selectedMember.parameters.size() == parameterOffset + 1U &&
+                    selectedMember.parameters[parameterOffset].typeKey == valueTypeKey &&
                     selectedMember.declaredTypeKey == valueTypeKey) ||
                     (orderedRmw && selectedMember.name == "Exchange"))
                 {
@@ -9252,9 +9254,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         : isInt32 ? MethodCoreOperationKind::InterlockedExchangeInt32
                                   : MethodCoreOperationKind::InterlockedExchangeInt64;
                 }
-                else if ((selectedMember.name == "CompareExchange" && selectedMember.parameters.size() == 2 &&
-                    selectedMember.parameters[0].typeKey == valueTypeKey &&
-                    selectedMember.parameters[1].typeKey == valueTypeKey &&
+                else if ((selectedMember.name == "CompareExchange" && selectedMember.parameters.size() == parameterOffset + 2U &&
+                    selectedMember.parameters[parameterOffset].typeKey == valueTypeKey &&
+                    selectedMember.parameters[parameterOffset + 1U].typeKey == valueTypeKey &&
                     selectedMember.declaredTypeKey == valueTypeKey) || orderedCompareExchange)
                 {
                     atomicKind = isPointer
@@ -9266,11 +9268,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 std::optional<std::uint8_t> atomicFailureMemoryOrder;
                 if (atomicKind.has_value() && orderedCompareExchange)
                 {
-                    const ast::AstNode* successSyntax = expression->children().size() >= 3
-                        ? expression->children()[2]
+                    const ast::AstNode* successSyntax = expression->children().size() >= parameterOffset + 3U
+                        ? expression->children()[parameterOffset + 2U]
                         : nullptr;
-                    const ast::AstNode* failureSyntax = expression->children().size() >= 4
-                        ? expression->children()[3]
+                    const ast::AstNode* failureSyntax = expression->children().size() >= parameterOffset + 4U
+                        ? expression->children()[parameterOffset + 3U]
                         : nullptr;
                     const std::optional<ProjectIntegerValue> foldedSuccess =
                         foldIntegerConstant(successSyntax, selectedMember.declaringTypeOrdinal);
@@ -9376,22 +9378,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         }
                     }
                 }
-                if (atomicKind.has_value() && memberModel_ != nullptr)
+                if (atomicKind.has_value())
                 {
                     std::optional<std::size_t> valueFieldOrdinal;
-                    for (std::size_t candidateOrdinal = 0;
-                        candidateOrdinal < memberModel_->members().size(); ++candidateOrdinal)
+                    if (atomicWrapper && memberModel_ != nullptr)
                     {
-                        const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-                        if (candidate.kind == ClassMemberKind::Field &&
-                            candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal &&
-                            candidate.name == "value_")
+                        for (std::size_t candidateOrdinal = 0;
+                            candidateOrdinal < memberModel_->members().size(); ++candidateOrdinal)
                         {
-                            valueFieldOrdinal = candidateOrdinal;
-                            break;
+                            const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
+                            if (candidate.kind == ClassMemberKind::Field &&
+                                candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal &&
+                                candidate.name == "value_")
+                            {
+                                valueFieldOrdinal = candidateOrdinal;
+                                break;
+                            }
                         }
                     }
-                    if (valueFieldOrdinal.has_value())
+                    if (publicInterlocked || valueFieldOrdinal.has_value())
                     {
                         MethodCoreBinding binding{
                             *atomicKind,
@@ -9403,7 +9408,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                             false, std::nullopt, std::nullopt};
                         binding.atomicMemoryOrder = atomicMemoryOrder;
                         binding.atomicFailureMemoryOrder = atomicFailureMemoryOrder;
-                        binding.implicitFieldMemberOrdinal = valueFieldOrdinal;
+                        if (valueFieldOrdinal.has_value())
+                            binding.implicitFieldMemberOrdinal = valueFieldOrdinal;
                         coreBindings_.push_back(std::move(binding));
                     }
                 }

@@ -4273,18 +4273,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 return node;
             }
 
-            // Stage 54.2 "Atomics" -- AtomicInt32/AtomicInt64's Increment/Decrement/Add/Exchange/
-            // CompareExchange. Deliberately NOT part of the shared "String core operation" block
-            // just above: that block's shape is "no receiver, every operand comes straight from
-            // the call's own AST argument list" -- these ten operations have a REAL receiver
-            // (the AtomicInt32/AtomicInt64 instance the method was called on, e.g. `contador` in
-            // `contador.Increment()`) and their FIRST logical operand (the atomic location) is
-            // never written by the caller at all -- it is the address of the receiver's own
-            // private `value_` field, synthesized here as a ProjectOopHirNodeKind::FieldAddress
-            // node built by hand (see MethodCoreBinding::implicitFieldMemberOrdinal in
-            // ProjectMethodBodyModel.h for the full rationale: NativeSharp's OOP pipeline has no
-            // support for the `&` operator at all, so no NativeSharp source expression could ever
-            // produce this operand even if the API wanted the caller to write it).
+            // Stage 54.2/Item 311 atomics have one of two source-level locations. The wrapper API
+            // (AtomicInt32/AtomicInt64/AtomicPointer) supplies a receiver and HIR synthesizes the
+            // address of its private `value_` field. The public Interlocked API supplies an
+            // explicit first `ref T` argument, whose parsed address-of expression lowers directly
+            // to the location pointer. Both forms deliberately converge here on the same core HIR
+            // nodes, so MIR and LLVM have one ordering/ABI implementation.
             if (core != nullptr &&
                 (core->kind == MethodCoreOperationKind::AtomicLoadInt32 ||
                  core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
@@ -4310,28 +4304,39 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "Stage 54.2 Atomic operation result is not addressable";
                     return nullptr;
                 }
-                if (!core->implicitFieldMemberOrdinal.has_value())
-                {
-                    error = "Stage 54.2 Atomic core operation is missing its implicit field member ordinal";
-                    return nullptr;
-                }
                 const MethodCallBinding* call = callBinding(expression);
-                if (call == nullptr || call->receiverSyntax == nullptr)
+                if (call == nullptr)
                 {
-                    error = "Stage 54.2 Atomic core operation requires a resolved receiver";
+                    error = "Stage 54.2 Atomic core operation requires a resolved call";
                     return nullptr;
                 }
-                auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
-                if (receiver == nullptr) return nullptr;
-
-                // The synthetic "&this.value_" stand-in -- same FieldAddress node kind, same
-                // memberOrdinal + one-receiver-child shape as an ordinary field access lowered in
-                // address context (see lowerEventBacking above for the closest existing
-                // precedent). HIR->MIR conversion and LLVM lowering handle it with zero extra
-                // code: to those later stages this is indistinguishable from a real one.
-                auto location = makeNode(ProjectOopHirNodeKind::FieldAddress, expression, core->elementTypeKey);
-                location->memberOrdinal = *core->implicitFieldMemberOrdinal;
-                location->children.push_back(std::move(receiver));
+                const bool explicitLocation = !core->implicitFieldMemberOrdinal.has_value();
+                const std::size_t argumentOffset = explicitLocation ? 1U : 0U;
+                std::unique_ptr<ProjectOopHirNode> location;
+                if (explicitLocation)
+                {
+                    if (!call->staticCall || expression->children().empty())
+                    {
+                        error = "Stage 54.2 Interlocked operation requires an explicit ref location";
+                        return nullptr;
+                    }
+                    location = lowerExpression(expression->children().front(), memberOrdinal, false, error);
+                    if (location == nullptr) return nullptr;
+                }
+                else
+                {
+                    if (call->receiverSyntax == nullptr)
+                    {
+                        error = "Stage 54.2 Atomic wrapper operation requires a resolved receiver";
+                        return nullptr;
+                    }
+                    auto receiver = lowerExpression(call->receiverSyntax, memberOrdinal, false, error);
+                    if (receiver == nullptr) return nullptr;
+                    location = makeNode(
+                        ProjectOopHirNodeKind::FieldAddress, expression, core->elementTypeKey);
+                    location->memberOrdinal = *core->implicitFieldMemberOrdinal;
+                    location->children.push_back(std::move(receiver));
+                }
 
                 std::size_t expectedValueArguments = 0U;
                 if (core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
@@ -4351,7 +4356,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 {
                     expectedValueArguments = 2U;
                 }
-                const std::size_t expectedExplicitArguments = expectedValueArguments +
+                const std::size_t expectedExplicitArguments = argumentOffset + expectedValueArguments +
                     (core->atomicMemoryOrder.has_value() ? 1U : 0U) +
                     (core->atomicFailureMemoryOrder.has_value() ? 1U : 0U);
                 if (expression->children().size() != expectedExplicitArguments)
@@ -4398,13 +4403,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 node->children.push_back(std::move(location));
                 for (std::size_t index = 0; index < expectedValueArguments; ++index)
                 {
-                    const ast::AstNode* argumentSyntax = expression->children()[index];
+                    const std::size_t sourceIndex = argumentOffset + index;
+                    const ast::AstNode* argumentSyntax = expression->children()[sourceIndex];
                     auto argument = lowerExpression(argumentSyntax, memberOrdinal, false, error);
                     if (argument == nullptr) return nullptr;
-                    if (index < call->selectedConversions.size() &&
-                        call->selectedConversions[index].kind != ProjectConversionKind::Identity)
+                    if (sourceIndex < call->selectedConversions.size() &&
+                        call->selectedConversions[sourceIndex].kind != ProjectConversionKind::Identity)
                     {
-                        argument = wrapImplicitConversion(std::move(argument), call->selectedConversions[index], argumentSyntax);
+                        argument = wrapImplicitConversion(
+                            std::move(argument), call->selectedConversions[sourceIndex], argumentSyntax);
                     }
                     node->children.push_back(std::move(argument));
                 }
