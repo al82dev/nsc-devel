@@ -294,4 +294,56 @@ namespace NativeSharp.Core.Threading
             return 0;
         }
     }
+
+    // Atomic location for non-owning native addresses. Pointer arithmetic is deliberately absent:
+    // publishing a different address is an Exchange/CompareExchange operation, never an atomic
+    // increment measured in an implicit element size.
+    public class AtomicPointer
+    {
+        private void* value_;
+
+        public AtomicPointer(void* initialValue)
+        {
+            value_ = initialValue;
+        }
+
+        public void* Load()
+        {
+            return null;
+        }
+
+        public void* Load(MemoryOrder order)
+        {
+            return null;
+        }
+
+        public void Store(void* value)
+        {
+        }
+
+        public void Store(void* value, MemoryOrder order)
+        {
+        }
+
+        public void* Exchange(void* value)
+        {
+            return null;
+        }
+
+        public void* Exchange(void* value, MemoryOrder order)
+        {
+            return null;
+        }
+
+        public void* CompareExchange(void* value, void* comparand)
+        {
+            return null;
+        }
+
+        public void* CompareExchange(
+            void* value, void* comparand, MemoryOrder successOrder, MemoryOrder failureOrder)
+        {
+            return null;
+        }
+    }
 }

@@ -7784,6 +7784,89 @@ private:
                     interlockedCompareExchangeInt64FunctionType_, interlockedCompareExchangeInt64Function_, args, 3, "interlocked.cmpxchg.i64");
             }
 
+            case frontend::ProjectOopMirNodeKind::CoreAtomicLoadPointer:
+            {
+                if (node->children.size() != 1)
+                    return failValue(error, "AtomicPointer.Load requires one pointer-location argument");
+                LLVMValueRef location = lowerExpression(node->children.front().get(), error);
+                if (location == nullptr) return nullptr;
+                const LLVMAtomicOrdering ordering = node->integerValue == 0U
+                    ? LLVMAtomicOrderingSequentiallyConsistent
+                    : orderedAtomicLoadOrdering(node->integerValue).value_or(LLVMAtomicOrderingNotAtomic);
+                if (ordering == LLVMAtomicOrderingNotAtomic)
+                    return failValue(error, "AtomicPointer.Load carries an invalid MemoryOrder");
+                LLVMTypeRef pointerType = llvmType("builtin:void*", error);
+                if (pointerType == nullptr) return nullptr;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, pointerType, location, "atomic.load.pointer");
+                LLVMSetOrdering(load, ordering);
+                LLVMSetAlignment(load, 8U);
+                return load;
+            }
+            case frontend::ProjectOopMirNodeKind::CoreAtomicStorePointer:
+            {
+                if (node->children.size() != 2)
+                    return failValue(error, "AtomicPointer.Store requires pointer-location and value arguments");
+                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                if (location == nullptr) return nullptr;
+                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                if (value == nullptr) return nullptr;
+                const LLVMAtomicOrdering ordering = node->integerValue == 0U
+                    ? LLVMAtomicOrderingSequentiallyConsistent
+                    : orderedAtomicStoreOrdering(node->integerValue).value_or(LLVMAtomicOrderingNotAtomic);
+                if (ordering == LLVMAtomicOrderingNotAtomic)
+                    return failValue(error, "AtomicPointer.Store carries an invalid MemoryOrder");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, location);
+                LLVMSetOrdering(store, ordering);
+                LLVMSetAlignment(store, 8U);
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::CoreInterlockedExchangePointer:
+            {
+                if (node->children.size() != 2)
+                    return failValue(error, "AtomicPointer.Exchange requires pointer-location and value arguments");
+                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                if (location == nullptr) return nullptr;
+                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                if (value == nullptr) return nullptr;
+                const LLVMAtomicOrdering ordering = node->integerValue == 0U
+                    ? LLVMAtomicOrderingSequentiallyConsistent
+                    : orderedAtomicRmwOrdering(node->integerValue).value_or(LLVMAtomicOrderingNotAtomic);
+                if (ordering == LLVMAtomicOrderingNotAtomic)
+                    return failValue(error, "AtomicPointer.Exchange carries an invalid MemoryOrder");
+                return buildOrderedAtomicRmw(
+                    builder_, LLVMAtomicRMWBinOpXchg, location, value, ordering, 8U,
+                    false, "atomic.exchange.pointer");
+            }
+            case frontend::ProjectOopMirNodeKind::CoreInterlockedCompareExchangePointer:
+            {
+                if (node->children.size() != 3)
+                    return failValue(
+                        error, "AtomicPointer.CompareExchange requires pointer-location, value, and comparand arguments");
+                LLVMAtomicOrdering successOrder = LLVMAtomicOrderingSequentiallyConsistent;
+                LLVMAtomicOrdering failureOrder = LLVMAtomicOrderingSequentiallyConsistent;
+                if (node->integerValue != 0U)
+                {
+                    const std::optional<LLVMAtomicOrdering> orderedSuccess =
+                        orderedAtomicRmwOrdering(node->integerValue & 0xffU);
+                    const std::optional<LLVMAtomicOrdering> orderedFailure =
+                        orderedAtomicLoadOrdering((node->integerValue >> 8U) & 0xffU);
+                    if (!orderedSuccess.has_value() || !orderedFailure.has_value())
+                        return failValue(
+                            error, "AtomicPointer.CompareExchange carries invalid MemoryOrder metadata");
+                    successOrder = *orderedSuccess;
+                    failureOrder = *orderedFailure;
+                }
+                LLVMValueRef location = lowerExpression(node->children[0].get(), error);
+                if (location == nullptr) return nullptr;
+                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMValueRef comparand = lowerExpression(node->children[2].get(), error);
+                if (comparand == nullptr) return nullptr;
+                return buildOrderedAtomicCompareExchange(
+                    builder_, location, value, comparand, successOrder, failureOrder, 8U,
+                    "atomic.compare_exchange.pointer");
+            }
+
             // Stage 54.3 "Mutex". MutexCreate takes ZERO operands (the first zero-operand core
             // operation in the project) and returns the real, meaningful i64 HANDLE (as nint) --
             // no dummy-i1 wrapping, same discipline as CoreThreadCreate above.

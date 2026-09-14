@@ -1701,6 +1701,15 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item309_atomic_int64_tests)
     add_test(NAME nsc.item309.atomic-int64 COMMAND nsc_item309_atomic_int64_tests)
+
+    # NativeSharp 2.0 item 310: native pointer-sized atomics over non-owning void* values.
+    add_executable(nsc_item310_atomic_pointer_tests tests/unit/Item310AtomicPointerTests.cpp)
+    target_link_libraries(nsc_item310_atomic_pointer_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item310_atomic_pointer_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item310_atomic_pointer_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item310_atomic_pointer_tests)
+    add_test(NAME nsc.item310.atomic-pointer COMMAND nsc_item310_atomic_pointer_tests)
     # for the two pre-existing, compiler-wide cctor-guard bugs this round found and fixed (a
     # cross-thread TOCTOU race and a same-thread self-deadlock introduced by that race's fix -- see
     # tests/unit/Stage54_3MutexTests.cpp's header comment for the full rationale).

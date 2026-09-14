@@ -9150,12 +9150,16 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             // (ProjectOopHirModel.cpp) lo usa para construir el nodo FieldAddress sintetico que
             // reemplaza el operando `&value_` que el usuario NUNCA escribe.
             if ((declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt32" ||
-                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt64") &&
+                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt64" ||
+                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicPointer") &&
                 !selectedMember.isStatic)
             {
                 const bool isInt32 =
                     declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicInt32";
-                const std::string valueTypeKey = isInt32 ? "builtin:int" : "builtin:long";
+                const bool isPointer =
+                    declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicPointer";
+                const std::string valueTypeKey =
+                    isInt32 ? "builtin:int" : isPointer ? "builtin:void*" : "builtin:long";
                 const auto isMemoryOrderType = [&](const std::string& typeKey)
                 {
                     if (inheritanceModel_ == nullptr || nameLookup_ == nullptr) return false;
@@ -9197,37 +9201,42 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 if ((selectedMember.name == "Load" && selectedMember.parameters.empty() &&
                         selectedMember.declaredTypeKey == valueTypeKey) || orderedLoad)
                 {
-                    atomicKind = isInt32
-                        ? MethodCoreOperationKind::AtomicLoadInt32
-                        : MethodCoreOperationKind::AtomicLoadInt64;
+                    atomicKind = isPointer
+                        ? MethodCoreOperationKind::AtomicLoadPointer
+                        : isInt32 ? MethodCoreOperationKind::AtomicLoadInt32
+                                  : MethodCoreOperationKind::AtomicLoadInt64;
                 }
                 else if ((selectedMember.name == "Store" &&
                     selectedMember.parameters.size() == 1 &&
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
                     selectedMember.declaredTypeKey == "builtin:void") || orderedStore)
                 {
-                    atomicKind = isInt32
-                        ? MethodCoreOperationKind::AtomicStoreInt32
-                        : MethodCoreOperationKind::AtomicStoreInt64;
+                    atomicKind = isPointer
+                        ? MethodCoreOperationKind::AtomicStorePointer
+                        : isInt32 ? MethodCoreOperationKind::AtomicStoreInt32
+                                  : MethodCoreOperationKind::AtomicStoreInt64;
                 }
-                else if ((selectedMember.name == "Increment" && selectedMember.parameters.empty() &&
-                    selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Increment"))
+                else if (!isPointer &&
+                    ((selectedMember.name == "Increment" && selectedMember.parameters.empty() &&
+                    selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Increment")))
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedIncrementInt32
                         : MethodCoreOperationKind::InterlockedIncrementInt64;
                 }
-                else if ((selectedMember.name == "Decrement" && selectedMember.parameters.empty() &&
-                    selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Decrement"))
+                else if (!isPointer &&
+                    ((selectedMember.name == "Decrement" && selectedMember.parameters.empty() &&
+                    selectedMember.declaredTypeKey == valueTypeKey) || (orderedRmw && selectedMember.name == "Decrement")))
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedDecrementInt32
                         : MethodCoreOperationKind::InterlockedDecrementInt64;
                 }
-                else if ((selectedMember.name == "Add" && selectedMember.parameters.size() == 1 &&
+                else if (!isPointer &&
+                    ((selectedMember.name == "Add" && selectedMember.parameters.size() == 1 &&
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
                     selectedMember.declaredTypeKey == valueTypeKey) ||
-                    (orderedRmw && selectedMember.name == "Add"))
+                    (orderedRmw && selectedMember.name == "Add")))
                 {
                     atomicKind = isInt32
                         ? MethodCoreOperationKind::InterlockedAddInt32
@@ -9238,18 +9247,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     selectedMember.declaredTypeKey == valueTypeKey) ||
                     (orderedRmw && selectedMember.name == "Exchange"))
                 {
-                    atomicKind = isInt32
-                        ? MethodCoreOperationKind::InterlockedExchangeInt32
-                        : MethodCoreOperationKind::InterlockedExchangeInt64;
+                    atomicKind = isPointer
+                        ? MethodCoreOperationKind::InterlockedExchangePointer
+                        : isInt32 ? MethodCoreOperationKind::InterlockedExchangeInt32
+                                  : MethodCoreOperationKind::InterlockedExchangeInt64;
                 }
                 else if ((selectedMember.name == "CompareExchange" && selectedMember.parameters.size() == 2 &&
                     selectedMember.parameters[0].typeKey == valueTypeKey &&
                     selectedMember.parameters[1].typeKey == valueTypeKey &&
                     selectedMember.declaredTypeKey == valueTypeKey) || orderedCompareExchange)
                 {
-                    atomicKind = isInt32
-                        ? MethodCoreOperationKind::InterlockedCompareExchangeInt32
-                        : MethodCoreOperationKind::InterlockedCompareExchangeInt64;
+                    atomicKind = isPointer
+                        ? MethodCoreOperationKind::InterlockedCompareExchangePointer
+                        : isInt32 ? MethodCoreOperationKind::InterlockedCompareExchangeInt32
+                                  : MethodCoreOperationKind::InterlockedCompareExchangeInt64;
                 }
                 std::optional<std::uint8_t> atomicMemoryOrder;
                 std::optional<std::uint8_t> atomicFailureMemoryOrder;
@@ -13843,6 +13854,10 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::InterlockedAddInt64: return "interlocked-add-int64";
         case MethodCoreOperationKind::InterlockedExchangeInt64: return "interlocked-exchange-int64";
         case MethodCoreOperationKind::InterlockedCompareExchangeInt64: return "interlocked-compare-exchange-int64";
+        case MethodCoreOperationKind::AtomicLoadPointer: return "atomic-load-pointer";
+        case MethodCoreOperationKind::AtomicStorePointer: return "atomic-store-pointer";
+        case MethodCoreOperationKind::InterlockedExchangePointer: return "interlocked-exchange-pointer";
+        case MethodCoreOperationKind::InterlockedCompareExchangePointer: return "interlocked-compare-exchange-pointer";
         case MethodCoreOperationKind::AtomicThreadFence: return "atomic-thread-fence";
         case MethodCoreOperationKind::AtomicCompilerFence: return "atomic-compiler-fence";
         case MethodCoreOperationKind::SimdFloat32x4Add: return "simd-float32x4-add";

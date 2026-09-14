@@ -623,6 +623,10 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
         case ProjectOopMirNodeKind::CoreInterlockedExchangeInt64: return "core-interlocked-exchange-int64";
         case ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt64: return "core-interlocked-compare-exchange-int64";
+        case ProjectOopMirNodeKind::CoreAtomicLoadPointer: return "core-atomic-load-pointer";
+        case ProjectOopMirNodeKind::CoreAtomicStorePointer: return "core-atomic-store-pointer";
+        case ProjectOopMirNodeKind::CoreInterlockedExchangePointer: return "core-interlocked-exchange-pointer";
+        case ProjectOopMirNodeKind::CoreInterlockedCompareExchangePointer: return "core-interlocked-compare-exchange-pointer";
         case ProjectOopMirNodeKind::CoreAtomicThreadFence: return "core-atomic-thread-fence";
         case ProjectOopMirNodeKind::CoreAtomicCompilerFence: return "core-atomic-compiler-fence";
         case ProjectOopMirNodeKind::CoreSimdFloat32x4Add: return "core-simd-float32x4-add";
@@ -1618,6 +1622,18 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64:
             result->kind = ProjectOopMirNodeKind::CoreInterlockedCompareExchangeInt64;
+            break;
+        case ProjectOopHirNodeKind::CoreAtomicLoadPointer:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicLoadPointer;
+            break;
+        case ProjectOopHirNodeKind::CoreAtomicStorePointer:
+            result->kind = ProjectOopMirNodeKind::CoreAtomicStorePointer;
+            break;
+        case ProjectOopHirNodeKind::CoreInterlockedExchangePointer:
+            result->kind = ProjectOopMirNodeKind::CoreInterlockedExchangePointer;
+            break;
+        case ProjectOopHirNodeKind::CoreInterlockedCompareExchangePointer:
+            result->kind = ProjectOopMirNodeKind::CoreInterlockedCompareExchangePointer;
             break;
         case ProjectOopHirNodeKind::CoreAtomicThreadFence:
             result->kind = ProjectOopMirNodeKind::CoreAtomicThreadFence;

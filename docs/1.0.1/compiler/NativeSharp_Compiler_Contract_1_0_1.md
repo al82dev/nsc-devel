@@ -689,6 +689,32 @@ negative operands, successful and failed compare-exchange, all five public order
 legacy and ordered overloads. This clause certifies the existing implementation; it does not create
 a duplicate 64-bit atomic surface.
 
+## NSC-MEM-011 — Native pointer atomics
+
+The compiler shall recognize the exact `NativeSharp.Core.Threading.AtomicPointer` Load, Store,
+Exchange, and CompareExchange signatures over `builtin:void*`. It shall synthesize the address of
+the receiver's private `value_` field once, retain a pointer type through HIR and MIR, and lower the
+operation without converting the published address to an integer carrier.
+
+Legacy overloads shall use sequential consistency. Ordered overloads shall consume compile-time
+`MemoryOrder` constants and apply the same legality matrix as integer atomics. A runtime-selected
+order, Release load, Acquire store, Release/AcquireRelease failure order, or failure order stronger
+than success shall be diagnosed before LLVM emission.
+
+On the Windows x64 contractual target, pointer load/store shall become LLVM atomic pointer
+instructions, exchange shall become pointer `atomicrmw xchg`, and compare-exchange shall become
+pointer `cmpxchg`. Each instruction shall declare alignment 8. Exchange and compare-exchange shall
+return the old pointer; a failed compare-exchange shall leave storage unchanged and return the
+observed pointer.
+
+No operation shall infer pointer arithmetic or pointee ownership. Null shall remain a valid value.
+Lowering shall require neither `ptrtoint`/`inttoptr` round-trips, Kernel32 pointer-interlocked
+exports, nor an external `__atomic_*` helper library.
+
+Focused O0 evidence shall cover legacy and ordered overloads, all five public orders where legal,
+null, pointer identity, successful and failed compare-exchange, invalid-order diagnostics,
+verifier-ready LLVM, natural alignment, linking, and execution.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

@@ -365,6 +365,10 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     case MethodCoreOperationKind::InterlockedAddInt64:
     case MethodCoreOperationKind::InterlockedExchangeInt64:
     case MethodCoreOperationKind::InterlockedCompareExchangeInt64:
+    case MethodCoreOperationKind::AtomicLoadPointer:
+    case MethodCoreOperationKind::AtomicStorePointer:
+    case MethodCoreOperationKind::InterlockedExchangePointer:
+    case MethodCoreOperationKind::InterlockedCompareExchangePointer:
     case MethodCoreOperationKind::AtomicThreadFence:
     case MethodCoreOperationKind::AtomicCompilerFence:
     case MethodCoreOperationKind::MonitorEnter:
@@ -937,6 +941,10 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
         case ProjectOopHirNodeKind::CoreInterlockedExchangeInt64: return "core-interlocked-exchange-int64";
         case ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64: return "core-interlocked-compare-exchange-int64";
+        case ProjectOopHirNodeKind::CoreAtomicLoadPointer: return "core-atomic-load-pointer";
+        case ProjectOopHirNodeKind::CoreAtomicStorePointer: return "core-atomic-store-pointer";
+        case ProjectOopHirNodeKind::CoreInterlockedExchangePointer: return "core-interlocked-exchange-pointer";
+        case ProjectOopHirNodeKind::CoreInterlockedCompareExchangePointer: return "core-interlocked-compare-exchange-pointer";
         case ProjectOopHirNodeKind::CoreAtomicThreadFence: return "core-atomic-thread-fence";
         case ProjectOopHirNodeKind::CoreAtomicCompilerFence: return "core-atomic-compiler-fence";
         case ProjectOopHirNodeKind::CoreSimdFloat32x4Add: return "core-simd-float32x4-add";
@@ -4291,7 +4299,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                  core->kind == MethodCoreOperationKind::InterlockedDecrementInt64 ||
                  core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
                  core->kind == MethodCoreOperationKind::InterlockedExchangeInt64 ||
-                 core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64))
+                 core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64 ||
+                 core->kind == MethodCoreOperationKind::AtomicLoadPointer ||
+                 core->kind == MethodCoreOperationKind::AtomicStorePointer ||
+                 core->kind == MethodCoreOperationKind::InterlockedExchangePointer ||
+                 core->kind == MethodCoreOperationKind::InterlockedCompareExchangePointer))
             {
                 if (addressContext)
                 {
@@ -4324,15 +4336,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 std::size_t expectedValueArguments = 0U;
                 if (core->kind == MethodCoreOperationKind::AtomicStoreInt32 ||
                     core->kind == MethodCoreOperationKind::AtomicStoreInt64 ||
+                    core->kind == MethodCoreOperationKind::AtomicStorePointer ||
                     core->kind == MethodCoreOperationKind::InterlockedAddInt32 ||
                     core->kind == MethodCoreOperationKind::InterlockedAddInt64 ||
                     core->kind == MethodCoreOperationKind::InterlockedExchangeInt32 ||
-                    core->kind == MethodCoreOperationKind::InterlockedExchangeInt64)
+                    core->kind == MethodCoreOperationKind::InterlockedExchangeInt64 ||
+                    core->kind == MethodCoreOperationKind::InterlockedExchangePointer)
                 {
                     expectedValueArguments = 1U;
                 }
                 else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt32 ||
-                    core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64)
+                    core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64 ||
+                    core->kind == MethodCoreOperationKind::InterlockedCompareExchangePointer)
                 {
                     expectedValueArguments = 2U;
                 }
@@ -4360,6 +4375,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 else if (core->kind == MethodCoreOperationKind::InterlockedAddInt64) kind = ProjectOopHirNodeKind::CoreInterlockedAddInt64;
                 else if (core->kind == MethodCoreOperationKind::InterlockedExchangeInt64) kind = ProjectOopHirNodeKind::CoreInterlockedExchangeInt64;
                 else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangeInt64) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangeInt64;
+                else if (core->kind == MethodCoreOperationKind::AtomicLoadPointer) kind = ProjectOopHirNodeKind::CoreAtomicLoadPointer;
+                else if (core->kind == MethodCoreOperationKind::AtomicStorePointer) kind = ProjectOopHirNodeKind::CoreAtomicStorePointer;
+                else if (core->kind == MethodCoreOperationKind::InterlockedExchangePointer) kind = ProjectOopHirNodeKind::CoreInterlockedExchangePointer;
+                else if (core->kind == MethodCoreOperationKind::InterlockedCompareExchangePointer) kind = ProjectOopHirNodeKind::CoreInterlockedCompareExchangePointer;
 
                 auto node = makeNode(kind, expression, core->resultTypeKey);
                 if (core->atomicMemoryOrder.has_value())

@@ -621,6 +621,34 @@ including a failed comparison. Legacy operations remain sequentially consistent 
 overloads retain the NS-MEM-005 through NS-MEM-007 rules. Windows x64 lowering uses native i64
 LLVM atomics with no external `__atomic_*` fallback.
 
+### NS-MEM-011 — Atomics nativos de punteros
+
+`AtomicPointer` almacena un `void*` nativo no propietario y ofrece `Load`, `Store`, `Exchange` y
+`CompareExchange`. `null` es un valor ordinario de la operación. Reemplazar un puntero no destruye,
+libera ni transfiere el objeto apuntado: el programa conserva toda responsabilidad de lifetime.
+
+Las sobrecargas sin `MemoryOrder` son secuencialmente consistentes. Las sobrecargas ordenadas
+aplican NS-MEM-005 a NS-MEM-007: Load admite Relaxed/Acquire/SequentiallyConsistent; Store admite
+Relaxed/Release/SequentiallyConsistent; Exchange admite los cinco órdenes; CompareExchange separa
+éxito y fallo y conserva la matriz legal de órdenes.
+
+`Exchange` y `CompareExchange` devuelven la dirección anterior. Un compare-exchange fallido
+devuelve la dirección observada y no cambia la ubicación. La API no ofrece incremento, suma ni
+otra aritmética atómica: una dirección publicada cambia únicamente mediante Store, Exchange o CAS,
+sin inventar un tamaño de elemento para `void*`.
+
+En Windows x64, la ubicación interna usa alineación natural de ocho bytes y se baja directamente a
+`load atomic ptr`, `store atomic ptr`, `atomicrmw xchg ptr` y `cmpxchg ptr`. El contrato conserva el
+tipo puntero; no exige una conversión `ptrtoint`/`inttoptr`, imports Win32 ni helpers `__atomic_*`.
+
+`AtomicPointer` stores a non-owning native `void*` and provides Load, Store, Exchange, and
+CompareExchange. Null is an ordinary value. Replacing a pointer neither destroys nor transfers the
+pointee; lifetime remains the program's responsibility. Legacy overloads are sequentially
+consistent, while ordered overloads use the NS-MEM-005 through NS-MEM-007 legality rules. Exchange
+and compare-exchange return the previous address, including the observed address on a failed CAS.
+Windows x64 lowers naturally aligned pointer operations directly, without integer round-trips or
+external atomic helpers.
+
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

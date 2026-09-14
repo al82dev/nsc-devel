@@ -110,6 +110,11 @@ alineación natural de ocho bytes, operaciones legacy `seq_cst`, sobrecargas con
 y valores de retorno nuevo/anterior según la operación. Windows x64 usa instrucciones LLVM i64
 nativas y no requiere exports `Interlocked*64` de Kernel32 ni una biblioteca `__atomic_*`.
 
+`AtomicPointer` ofrece Load, Store, Exchange y CompareExchange de `void*` no propietario, tanto en
+forma legacy `seq_cst` como con órdenes explícitos. Conserva identidad y `null`, devuelve la
+dirección anterior en Exchange/CAS y emite atomics LLVM de tipo `ptr` alineados a ocho bytes sin
+round-trip entero ni helper externo. El lifetime del pointee permanece a cargo del programa.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

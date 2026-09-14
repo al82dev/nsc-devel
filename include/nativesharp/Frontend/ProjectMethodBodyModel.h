@@ -731,6 +731,10 @@ enum class MethodCoreOperationKind
     InterlockedAddInt64,
     InterlockedExchangeInt64,
     InterlockedCompareExchangeInt64,
+    AtomicLoadPointer,
+    AtomicStorePointer,
+    InterlockedExchangePointer,
+    InterlockedCompareExchangePointer,
     // Item 307: explicit process-wide and compiler-only memory fences. Their MemoryOrder is
     // consumed at compile time and carried as core-operation metadata.
     AtomicThreadFence,

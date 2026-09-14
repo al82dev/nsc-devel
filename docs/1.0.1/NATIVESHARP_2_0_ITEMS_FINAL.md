@@ -95,7 +95,7 @@
 62. **307 — Fences de compilador y CPU / Compiler and CPU fences — COMPLETADO / COMPLETE**
 63. **308 — Memoria `volatile` para MMIO / Volatile MMIO memory — COMPLETADO / COMPLETE**
 64. **309 — Atomics de 64 bits / 64-bit atomics — COMPLETADO / COMPLETE**
-65. **310 — Atomics de punteros / Pointer atomics**
+65. **310 — Atomics de punteros / Pointer atomics — COMPLETADO / COMPLETE**
 66. **311 — API pública `Interlocked` / Public Interlocked API**
 
 ## Tanda 6 — Referencias, placement y heap

@@ -12,6 +12,9 @@ empaqueta con NativeSharp 1.0.1.
 - `AtomicInt64` queda certificado para todo el rango signed de 64 bits, overflow definido,
   alineación 8, formas legacy/ordenadas y retornos exactos. El target Windows x64 emite atomics i64
   nativos sin exports `Interlocked*64` ni fallback `__atomic_*`.
+- `AtomicPointer` publica Load/Store/Exchange/CompareExchange sobre `void*` no propietario. Conserva
+  identidad y `null`, aplica órdenes explícitos, emite atomics LLVM `ptr` alineados a ocho bytes y
+  no usa conversiones a entero, imports Win32 ni helpers externos.
 
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
