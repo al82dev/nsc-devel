@@ -1690,6 +1690,17 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.item308.volatile-mmio COMMAND nsc_item308_volatile_mmio_tests)
 
     # Stage 54.3 "Mutex" -- same extra rigor as Stage 54.1/54.2, PLUS dedicated regression coverage
+
+    # NativeSharp 2.0 item 309: the existing AtomicInt64 implementation predates this roadmap.
+    # This focused O0 target certifies full-width boundaries, native i64 instructions, alignment,
+    # return contracts, and the absence of an external libatomic fallback.
+    add_executable(nsc_item309_atomic_int64_tests tests/unit/Item309AtomicInt64Tests.cpp)
+    target_link_libraries(nsc_item309_atomic_int64_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item309_atomic_int64_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item309_atomic_int64_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item309_atomic_int64_tests)
+    add_test(NAME nsc.item309.atomic-int64 COMMAND nsc_item309_atomic_int64_tests)
     # for the two pre-existing, compiler-wide cctor-guard bugs this round found and fixed (a
     # cross-thread TOCTOU race and a same-thread self-deadlock introduced by that race's fix -- see
     # tests/unit/Stage54_3MutexTests.cpp's header comment for the full rationale).

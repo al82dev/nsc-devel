@@ -596,6 +596,31 @@ not atomic synchronization, publication, mutual exclusion, or an implicit fence.
 aggregate storage, ownership-bearing fields, readonly/const combinations, and non-field members
 are rejected.
 
+### NS-MEM-010 — Atomics nativos de 64 bits
+
+`AtomicInt64` opera sobre los 64 bits completos de `long` con alineación natural de ocho bytes.
+Ofrece `Load`, `Store`, `Increment`, `Decrement`, `Add`, `Exchange` y `CompareExchange`, tanto en
+sus formas históricas secuencialmente consistentes como en las sobrecargas ordenadas definidas por
+NS-MEM-005 a NS-MEM-007.
+
+Las operaciones aritméticas conservan el overflow definido del entero NativeSharp: incrementar
+`long.MaxValue` produce `long.MinValue` sin truncar a 32 bits ni introducir comportamiento
+indefinido. Increment, Decrement y Add devuelven el valor nuevo; Exchange y CompareExchange
+devuelven el anterior, incluso cuando la comparación falla. Los órdenes no cambian esos contratos
+de valor.
+
+En el target Windows x64 contractual, el backend emite instrucciones LLVM i64 nativas alineadas.
+La implementación no depende de una DLL `Interlocked*64` ni de helpers externos `__atomic_*`.
+`AtomicInt64` ya existía antes del roadmap 2.0; el ítem 309 formaliza y certifica su cobertura
+completa en vez de publicar un segundo tipo equivalente.
+
+`AtomicInt64` operates on the complete 64-bit `long` representation with natural eight-byte
+alignment. Arithmetic follows NativeSharp's defined wrapping integer behavior. Increment,
+Decrement, and Add return the new value; Exchange and CompareExchange return the old value,
+including a failed comparison. Legacy operations remain sequentially consistent and ordered
+overloads retain the NS-MEM-005 through NS-MEM-007 rules. Windows x64 lowering uses native i64
+LLVM atomics with no external `__atomic_*` fallback.
+
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

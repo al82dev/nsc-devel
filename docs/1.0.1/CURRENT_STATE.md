@@ -105,9 +105,10 @@ lectura y escritura directa, incluidos ambos lados de una operación compuesta, 
 acceso volatile. El modificador no implica atomicidad, publicación ni fence y se rechaza en tipos
 managed/agregados, ownership, `readonly`, `const` y miembros que no sean campos. NSMETA 1.14
 conserva este contrato para consumidores precompilados.
-
-
-
+`AtomicInt64` queda certificado sobre los 64 bits completos de `long`: overflow definido,
+alineación natural de ocho bytes, operaciones legacy `seq_cst`, sobrecargas con los cinco órdenes
+y valores de retorno nuevo/anterior según la operación. Windows x64 usa instrucciones LLVM i64
+nativas y no requiere exports `Interlocked*64` de Kernel32 ni una biblioteca `__atomic_*`.
 
 ## Superficie del lenguaje
 

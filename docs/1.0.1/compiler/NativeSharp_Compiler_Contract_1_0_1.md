@@ -667,6 +667,28 @@ and compound reads/writes, verifier-clean LLVM IR, metadata round-trip and down-
 It shall also prove the absence of atomic instructions and fences and diagnose invalid types and
 modifier placement.
 
+## NSC-MEM-010 — Native 64-bit atomic certification
+
+Every `AtomicInt64` core binding shall retain `builtin:long` for its storage, operands, result, and
+constants. Ordered load/store shall emit LLVM i64 atomic instructions; ordered increment,
+decrement, add, and exchange shall emit i64 `atomicrmw`; compare-exchange shall emit i64 `cmpxchg`.
+Each instruction shall declare natural alignment 8.
+
+Legacy overloads shall preserve sequential consistency through the existing runtime hooks. The
+Windows x64 runtime shall implement those hooks with native LLVM atomic operations rather than
+requiring non-existent Kernel32 `Interlocked*64` exports or an external `__atomic_*` library.
+
+Lowering shall preserve NativeSharp's defined two's-complement wrap at the signed 64-bit boundary.
+It shall preserve the API return contract independently of memory order: increment/decrement/add
+return the new value, while exchange and compare-exchange return the previous value. A failed
+compare-exchange returns the observed value and leaves storage unchanged.
+
+Focused O0 evidence shall inspect verifier-ready LLVM for i64 width, all operation families,
+eight-byte alignment, and absence of external atomic helpers. It shall execute boundary values,
+negative operands, successful and failed compare-exchange, all five public orderings, and both
+legacy and ordered overloads. This clause certifies the existing implementation; it does not create
+a duplicate 64-bit atomic surface.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

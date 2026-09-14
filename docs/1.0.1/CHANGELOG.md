@@ -9,6 +9,9 @@ empaqueta con NativeSharp 1.0.1.
   convertirlos en operaciones atómicas ni insertar fences. La semántica atraviesa HIR/MIR/LLVM y
   NSMETA 1.14, incluidos campos de instancia, estáticos y asignaciones compuestas; tipos managed,
   agregados, ownership y colocaciones no-field se rechazan.
+- `AtomicInt64` queda certificado para todo el rango signed de 64 bits, overflow definido,
+  alineación 8, formas legacy/ordenadas y retornos exactos. El target Windows x64 emite atomics i64
+  nativos sin exports `Interlocked*64` ni fallback `__atomic_*`.
 
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin

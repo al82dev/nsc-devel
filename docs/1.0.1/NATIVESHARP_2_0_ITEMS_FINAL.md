@@ -94,7 +94,7 @@
 61. **306 — Compare-exchange con órdenes de éxito y fallo / Ordered compare-exchange — COMPLETADO / COMPLETE**
 62. **307 — Fences de compilador y CPU / Compiler and CPU fences — COMPLETADO / COMPLETE**
 63. **308 — Memoria `volatile` para MMIO / Volatile MMIO memory — COMPLETADO / COMPLETE**
-64. **309 — Atomics de 64 bits / 64-bit atomics**
+64. **309 — Atomics de 64 bits / 64-bit atomics — COMPLETADO / COMPLETE**
 65. **310 — Atomics de punteros / Pointer atomics**
 66. **311 — API pública `Interlocked` / Public Interlocked API**
 
