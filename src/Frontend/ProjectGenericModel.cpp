@@ -2276,6 +2276,33 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
     {
         return nullptr;
     }
+    // Module-qualified names are an exact identity request, not a namespace-relative spelling. The
+    // ordinary ProjectNameLookup already honors this form, and generic specialization must do so
+    // before it builds its cache key. Otherwise a reconstructed type such as
+    // Provider::Contracts.Value falls back to a source-origin spelling and produces a different
+    // closed generic name from the producer that published it.
+    const std::string& writtenName = syntax->baseName();
+    if (const std::size_t moduleSeparator = writtenName.find("::");
+        moduleSeparator != std::string::npos)
+    {
+        const std::string_view requestedModule(writtenName.data(), moduleSeparator);
+        const std::string_view requestedType(
+            writtenName.data() + moduleSeparator + 2U,
+            writtenName.size() - moduleSeparator - 2U);
+        if (requestedModule.empty() || requestedType.empty()) return nullptr;
+
+        const DeclaredTypeIdentity* exact = nullptr;
+        for (const DeclaredTypeIdentity& declaration : declaredTypeIdentities_)
+        {
+            if (declaration.sourceName != requestedType ||
+                !declaration.identityKey.starts_with(std::string(requestedModule) + "::") ||
+                (declaration.projectOrdinal != projectOrdinal && !declaration.isPublic))
+                continue;
+            if (exact != nullptr) return nullptr;
+            exact = &declaration;
+        }
+        return exact;
+    }
 
     projectOrdinal = syntax->originProjectOrdinal().value_or(projectOrdinal);
     const std::string effectiveNamespace = syntax->originNamespace().has_value()
