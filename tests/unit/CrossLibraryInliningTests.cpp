@@ -121,8 +121,10 @@ namespace CrossLibrary
     LibraryMetadataCodec codec;
     error.clear();
     const bool metadataRead = codec.read(producer / "InlineProducer.nsmeta", metadata, error);
-    tests.expect(metadataRead && metadata.formatMinor == 13U,
-        "producer writes the NSMETA 1.13 cross-library inline contract (" + error + ")");
+    tests.expect(metadataRead &&
+                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+                     metadata.formatMinor >= 13U,
+        "producer writes the current NSMETA cross-library inline contract (" + error + ")");
     const auto* required = findMember(metadata, "Required");
     const auto* preferred = findMember(metadata, "Preferred");
     const auto* boundary = findMember(metadata, "Boundary");

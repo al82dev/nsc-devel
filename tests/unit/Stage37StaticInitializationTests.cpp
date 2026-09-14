@@ -207,9 +207,9 @@ void testMemberFlagsAndStaticAbi(TestContext& tests, const std::filesystem::path
         "HIR dumper exposes the static callable ABI instead of claiming this:first");
     tests.expect(mirDump.find("abi=(static,p0:builtin:int)") != std::string::npos,
         "MIR dumper exposes the static method ABI explicitly");
-    tests.expect(mirDump.find("readonly=true const=false") != std::string::npos &&
+    tests.expect(mirDump.find("readonly=true volatile=false const=false") != std::string::npos &&
             mirDump.find("const=true constant=true value=5") != std::string::npos,
-        "MIR dump exposes readonly and compile-time const storage facts");
+        "MIR dump exposes readonly, volatile, and compile-time const storage facts");
 }
 
 void testConstEvaluation(TestContext& tests, const std::filesystem::path& root)
