@@ -38,6 +38,7 @@ void ProjectMemberModelDumper::dump(
                    << " declaration-ordinal=" << member.declarationOrdinal
                    << " static=" << (member.isStatic ? "true" : "false")
                    << " readonly=" << (member.isReadonly ? "true" : "false")
+                   << " volatile=" << (member.isVolatile ? "true" : "false")
                    << " const=" << (member.isConst ? "true" : "false");
             if (member.kind == ClassMemberKind::Method || member.kind == ClassMemberKind::Constructor ||
                 member.kind == ClassMemberKind::Destructor)

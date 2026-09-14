@@ -5,6 +5,10 @@ permanecen en `mkdown/`; aquí sólo se conserva el resultado que afecta cómo s
 empaqueta con NativeSharp 1.0.1.
 
 ## Lenguaje y Core
+- `volatile` marca campos escalares, enum o puntero crudo para accesos MMIO observables sin
+  convertirlos en operaciones atómicas ni insertar fences. La semántica atraviesa HIR/MIR/LLVM y
+  NSMETA 1.14, incluidos campos de instancia, estáticos y asignaciones compuestas; tipos managed,
+  agregados, ownership y colocaciones no-field se rechazan.
 
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
@@ -132,8 +136,8 @@ empaqueta con NativeSharp 1.0.1.
 
 ## Bibliotecas y DLLs
 
-- NSMETA avanzó a 1.13 y publica clausura nominal externa, templates transitivos y cuerpos inline
-  ordinarios reutilizables.
+- NSMETA avanzó a 1.14 y publica clausura nominal externa, templates transitivos, cuerpos inline
+  ordinarios reutilizables y campos volatile sin perder su contrato observable.
 - Clases estáticas, interfaces, eventos, arreglos de tipos referencia y especializaciones genéricas
   cerradas sobreviven el consumo mediante `LibraryReference`.
 - Callables, constructores y destructores precompilados conservan nombres físicos enlazables.

@@ -82,6 +82,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         output << " ordinal=" << node->integerValue << " name=" << node->stringValue
                << " category=" << node->elementTypeKey
                << " preserve=" << (node->booleanValue ? "true" : "false");
+    if (node->volatileAccess) output << " volatile=true";
     if (node->kind == ProjectOopMirNodeKind::ClosureCaptureLoad)
         output << " capture=#" << node->immediate;
     if (node->kind == ProjectOopMirNodeKind::LambdaCreate)
@@ -145,6 +146,7 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " name=" << field.name
                << " value-type=" << field.typeKey
                << " readonly=" << (field.isReadonly ? "true" : "false")
+               << " volatile=" << (field.isVolatile ? "true" : "false")
                << " const=" << (field.isConst ? "true" : "false")
                << " constant=" << (field.hasConstantInitializer ? "true" : "false");
         if (field.hasConstantInitializer)

@@ -1785,6 +1785,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                           << ' ';
                 if ((field.flags & (1U << 1U)) != 0U || (type.flags & (1U << 6U)) != 0U)
                     generated << "readonly ";
+                if ((field.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
                 generated << ownershipPrefix(field.ownership) << fieldType << ' ' << fieldName << ";\n";
             }
         }
@@ -1814,6 +1815,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 {
                     generated << "    " << sourceAccessibility(member->accessibility) << " static ";
                     if ((member->flags & (1U << 1U)) != 0U) generated << "readonly ";
+                    if ((member->flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
                     generated << fieldType << ' ' << member->name << ";\n";
                 }
                 continue;

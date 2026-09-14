@@ -35,6 +35,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwConst);
         NS_TOKEN_CASE(KwStatic);
         NS_TOKEN_CASE(KwReadonly);
+        NS_TOKEN_CASE(KwVolatile);
         NS_TOKEN_CASE(KwInline);
         NS_TOKEN_CASE(KwForceInline);
         NS_TOKEN_CASE(KwNoInline);

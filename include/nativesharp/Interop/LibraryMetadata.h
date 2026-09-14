@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 14 (2026-09-14): los campos publicos volatile conservan el contrato de acceso observable
+// para que un consumidor LibraryReference no los degrade a accesos ordinarios.
 // MINOR 13 (2026-09-13): los metodos inline ordinarios conservan politica y cuerpo fuente para
 // que un consumidor precompilado pueda analizarlos, emitirlos e inlinearlos localmente.
 // MINOR 12 (2026-09-11): el modulo enumera identidades nominales propiedad de otras
@@ -42,13 +44,16 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 13;
+inline constexpr std::uint16_t kMetadataFormatMinor = 14;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
 // separate magic shifts for the same metadata field.
 inline constexpr std::uint32_t kMetadataMemberInliningShift = 21U;
 inline constexpr std::uint32_t kMetadataMemberInliningMask = 3U << kMetadataMemberInliningShift;
+// Item 308. Bit 23 is preserved in both member and layout-field flags so public volatile storage
+// reconstructs with the same observable-access contract in a LibraryReference consumer.
+inline constexpr std::uint32_t kMetadataMemberVolatile = 1U << 23U;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una

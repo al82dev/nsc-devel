@@ -70,6 +70,7 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"const", TokenKind::KwConst},
         {"static", TokenKind::KwStatic},
         {"readonly", TokenKind::KwReadonly},
+        {"volatile", TokenKind::KwVolatile},
         {"inline", TokenKind::KwInline},
         {"forceinline", TokenKind::KwForceInline},
         {"noinline", TokenKind::KwNoInline},

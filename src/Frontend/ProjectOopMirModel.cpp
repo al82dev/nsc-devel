@@ -1093,6 +1093,7 @@ bool ProjectOopMirModel::build(
                 field.name,
                 field.declaredTypeKey,
                 field.isReadonly,
+                field.isVolatile,
                 field.isConst,
                 field.isPrecompiled,
                 genericSpecializationKeyForType(nameLookup, field.declaringTypeOrdinal),
@@ -1268,6 +1269,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->integerValue = node->integerValue;
     result->floatingValue = node->floatingValue;
     result->booleanValue = node->booleanValue;
+    result->volatileAccess = node->volatileAccess;
     result->baseReceiver = node->baseReceiver;
     result->targetIsInterface = node->targetIsInterface;
     result->dynamicDestruction = node->dynamicDestruction;

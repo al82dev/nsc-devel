@@ -2439,6 +2439,7 @@ ast::AstNode* Parser::parseClassMember(
     bool isNew = false;
     bool isStatic = false;
     bool isReadonly = false;
+    bool isVolatile = false;
     bool isConst = false;
     bool isVirtual = false;
     bool isOverride = false;
@@ -2569,6 +2570,7 @@ ast::AstNode* Parser::parseClassMember(
               at(TokenKind::KwProtected) || at(TokenKind::KwPrivate) ||
               at(TokenKind::KwNew) || at(TokenKind::KwStatic) ||
               at(TokenKind::KwReadonly) || at(TokenKind::KwConst) ||
+              at(TokenKind::KwVolatile) ||
               at(TokenKind::KwInline) || at(TokenKind::KwForceInline) ||
               at(TokenKind::KwNoInline) ||
               at(TokenKind::KwVirtual) || at(TokenKind::KwOverride) ||
@@ -2629,6 +2631,19 @@ ast::AstNode* Parser::parseClassMember(
                     "duplicate readonly modifier on class member");
             }
             isReadonly = true;
+            continue;
+        }
+        if (modifier.kind() == TokenKind::KwVolatile)
+        {
+            if (isVolatile)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate volatile modifier on class member");
+            }
+            isVolatile = true;
             continue;
         }
         if (modifier.kind() == TokenKind::KwInline)
@@ -2940,6 +2955,14 @@ ast::AstNode* Parser::parseClassMember(
             current().range(),
             "noinline requires a method body and cannot modify an abstract method");
     }
+    if (isVolatile && isReadonly)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "a field cannot be both volatile and readonly");
+    }
     if ((static_cast<unsigned>(isInline) + static_cast<unsigned>(isForceInline) +
          static_cast<unsigned>(isNoInline)) > 1U)
     {
@@ -2949,13 +2972,13 @@ ast::AstNode* Parser::parseClassMember(
             current().range(),
             "inline, forceinline, and noinline are contradictory inlining policies");
     }
-    if (isConst && (isReadonly || isStatic))
+    if (isConst && (isReadonly || isStatic || isVolatile))
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
             diagnostics::DiagnosticSeverity::Error,
             current().range(),
-            "const already has static immutable semantics; do not combine const with static or readonly");
+            "const already has static immutable semantics; do not combine const with static, readonly, or volatile");
     }
     if (isExported != isExternC)
     {
@@ -2968,7 +2991,7 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::Tilde))
     {
-        if (accessibility != TokenKind::Invalid || isNew || isStatic || isReadonly || isConst ||
+        if (accessibility != TokenKind::Invalid || isNew || isStatic || isReadonly || isVolatile || isConst ||
             isInline || isForceInline || isNoInline ||
             isVirtual || isOverride || isAbstract || isSealed || isExported || isExternC)
         {
@@ -2984,7 +3007,7 @@ ast::AstNode* Parser::parseClassMember(
     if (at(TokenKind::Identifier) && current().lexeme() == className &&
         peek().kind() == TokenKind::LeftParen)
     {
-        if (isNew || isVirtual || isOverride || isStatic || isReadonly || isConst ||
+        if (isNew || isVirtual || isOverride || isStatic || isReadonly || isVolatile || isConst ||
             isInline || isForceInline || isNoInline || isAbstract || isSealed ||
             isExported || isExternC)
         {
@@ -2992,7 +3015,7 @@ ast::AstNode* Parser::parseClassMember(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "constructors cannot be static, readonly, const, virtual, override, abstract or sealed in Stage 35");
+                "constructors cannot be static, readonly, volatile, const, virtual, override, abstract or sealed");
         }
         return parseConstructorTail(className, accessibility, beginIndex);
     }
@@ -3007,14 +3030,14 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isNew || isReadonly || isConst || isInline || isForceInline || isNoInline ||
+        if (isNew || isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline ||
             isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "conversion operators cannot be readonly, const, virtual, override, abstract or sealed");
+                "conversion operators cannot be readonly, volatile, const, virtual, override, abstract or sealed");
         }
         const bool implicitConversion = at(TokenKind::KwImplicit);
         return parseConversionOperatorTail(
@@ -3031,14 +3054,14 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isNew || isReadonly || isConst || isInline || isForceInline || isNoInline ||
+        if (isNew || isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline ||
             isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "Stage 42 events support accessibility and optional static only");
+                "events support accessibility and optional static only; volatile applies only to fields");
         }
         return parseEventTail(accessibility, isNew, isStatic, beginIndex);
     }
@@ -3049,6 +3072,14 @@ ast::AstNode* Parser::parseClassMember(
     // literalmente lo unico que le pasaba a `class Outer { struct Item { } }`.
     if (atNestedTypeDeclaration())
     {
+        if (isVolatile)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "volatile applies only to fields, not nested types");
+        }
         if (isInline || isForceInline || isNoInline)
         {
             diagnostics_.report(
@@ -3102,14 +3133,14 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isReadonly || isConst || isInline || isForceInline || isNoInline ||
+        if (isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline ||
             isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "user-defined operators cannot be readonly, const, virtual, override, abstract or sealed");
+                "user-defined operators cannot be readonly, volatile, const, virtual, override, abstract or sealed");
         }
         return parseOperatorTail(type, accessibility, isStatic, beginIndex);
     }
@@ -3124,7 +3155,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isStatic || isConst || isInline || isForceInline || isNoInline ||
+        if (isStatic || isVolatile || isConst || isInline || isForceInline || isNoInline ||
             (isReadonly && !structContext))
         {
             diagnostics_.report(
@@ -3132,7 +3163,7 @@ ast::AstNode* Parser::parseClassMember(
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
                 "indexers are instance members; readonly is valid only for a struct indexer and "
-                "static or const are never valid here");
+                "static, volatile, or const are never valid here");
         }
         ast::AstNode* indexer = parseIndexerTail(
             type, accessibility, isNew, isVirtual, isOverride, isAbstract, isSealed,
@@ -3180,13 +3211,13 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::LeftParen) || at(TokenKind::Less))
     {
-        if (isConst || (isReadonly && (!structContext || isStatic)))
+        if (isVolatile || isConst || (isReadonly && (!structContext || isStatic)))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 name.range(),
-                "readonly is valid only on an instance struct method; const remains valid only on fields");
+                "readonly is valid only on an instance struct method; const and volatile are field-only");
         }
         ast::AstNode* method = parseMethodTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
@@ -3206,14 +3237,14 @@ ast::AstNode* Parser::parseClassMember(
                 name.range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isConst || isInline || isForceInline || isNoInline ||
+        if (isVolatile || isConst || isInline || isForceInline || isNoInline ||
             (isReadonly && (!structContext || isStatic)))
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 name.range(),
-                "readonly is valid only on an instance struct property; const and inline are not property modifiers");
+                "readonly is valid only on an instance struct property; const, volatile, and inline are not property modifiers");
         }
         ast::AstNode* property = parsePropertyTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
@@ -3304,6 +3335,10 @@ ast::AstNode* Parser::parseClassMember(
     {
         field->setTokenKind(accessibility);
         field->addModifier(accessibility);
+    }
+    if (isVolatile)
+    {
+        field->addModifier(TokenKind::KwVolatile);
     }
     if (isStatic)
     {

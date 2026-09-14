@@ -1678,6 +1678,17 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_stage54_2_atomics_tests)
     add_test(NAME nsc.stage54-2.atomics COMMAND nsc_stage54_2_atomics_tests)
 
+    # NativeSharp 2.0 item 308: field-level volatile memory for MMIO. This focused O0 test
+    # deliberately proves that volatile accesses are emitted without acquiring atomic/fence
+    # semantics; synchronization remains the responsibility of the Stage 54.2 primitives.
+    add_executable(nsc_item308_volatile_mmio_tests tests/unit/Item308VolatileMmioTests.cpp)
+    target_link_libraries(nsc_item308_volatile_mmio_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item308_volatile_mmio_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item308_volatile_mmio_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item308_volatile_mmio_tests)
+    add_test(NAME nsc.item308.volatile-mmio COMMAND nsc_item308_volatile_mmio_tests)
+
     # Stage 54.3 "Mutex" -- same extra rigor as Stage 54.1/54.2, PLUS dedicated regression coverage
     # for the two pre-existing, compiler-wide cctor-guard bugs this round found and fixed (a
     # cross-thread TOCTOU race and a same-thread self-deadlock introduced by that race's fix -- see

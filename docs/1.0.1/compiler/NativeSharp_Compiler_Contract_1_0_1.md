@@ -638,6 +638,35 @@ location. Preferred calls that remain unexpanded and forbidden calls shall retai
 procedure records. Products without required-inline callables keep the existing partitioned O0
 path; this restriction shall not globally disable parallel code generation.
 
+
+## NSC-MEM-009 — Volatile MMIO field lowering
+
+The lexer and parser shall recognize `volatile` as a field-only modifier. Member analysis shall
+accept instance and static fields only when their type is a non-owning native scalar, enum, or raw
+pointer. It shall reject aggregate and managed-reference types, ownership-bearing storage,
+readonly/const combinations, duplicate modifiers, and placement on any non-field declaration.
+
+The volatile bit shall be carried explicitly by the member model, HIR address/load nodes, MIR
+address/load nodes, and static-field records. Dumps shall expose the bit. A later stage shall never
+re-infer volatility from source spelling or from a type name.
+
+Every direct field load and every store whose target is a volatile field shall call the LLVM C API
+volatile marker on the exact load/store instruction. Compound assignment and increment/decrement
+shall mark both the read and the write while evaluating the address once. Ordinary neighboring
+storage must remain ordinary. This contract does not authorize `atomic`, `atomicrmw`, `cmpxchg`,
+`fence`, or a runtime helper.
+
+NSMETA 1.14 shall preserve the bit on both the public member record and its physical layout-field
+record. Public-source reconstruction shall reproduce the modifier for instance and static fields,
+so a `LibraryReference` consumer emits the same access contract. A requested NSMETA 1.13 or older
+artifact shall strip the bit rather than attach undefined semantics to a historical version, and
+the current verifier shall reject a volatile bit attached to a non-field member.
+
+Focused O0 evidence shall cover instance and static scalar fields, pointer-member syntax, ordinary
+and compound reads/writes, verifier-clean LLVM IR, metadata round-trip and down-level stripping.
+It shall also prove the absence of atomic instructions and fences and diagnose invalid types and
+modifier placement.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

@@ -464,6 +464,7 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.isNewSlot) flags |= 1U << 19U;
     if (member.isImportedC) flags |= 1U << 20U;
     flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
+    if (member.isVolatile) flags |= kMetadataMemberVolatile;
     return flags;
 }
 
@@ -1815,6 +1816,14 @@ bool LibraryMetadataCodec::writeModel(
             member.inlineSourceText.clear();
         }
     }
+    if (metadata.formatMinor < 14)
+    {
+        for (LibraryMetadataMember& member : metadata.members)
+            member.flags &= ~kMetadataMemberVolatile;
+        for (LibraryMetadataType& type : metadata.types)
+            for (LibraryMetadataField& field : type.fields)
+                field.flags &= ~kMetadataMemberVolatile;
+    }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -2424,6 +2433,19 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 error = "metadata member '" + member.declaringTypeKey + "." +
                     member.signatureKey +
                     "' carries an inline body without a compatible inline policy";
+                return false;
+            }
+        }
+    }
+    if (metadata.formatMinor >= 14)
+    {
+        constexpr std::uint8_t kFieldKind = 0U;
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if ((member.flags & kMetadataMemberVolatile) != 0U && member.kind != kFieldKind)
+            {
+                error = "metadata member '" + member.declaringTypeKey + "." +
+                    member.signatureKey + "' carries volatile on a non-field member";
                 return false;
             }
         }

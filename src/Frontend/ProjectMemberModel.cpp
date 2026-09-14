@@ -149,6 +149,28 @@ bool isStage47CAbiType(
     return false;
 }
 
+// Item 308. MMIO accesses are intentionally limited to one native scalar transaction. Aggregates,
+// managed arrays, strings, and object/delegate references would make "one volatile access"
+// ambiguous because their value copy or lifetime machinery may require several memory operations.
+bool isVolatileFieldType(
+    std::string_view typeKey,
+    const ProjectNameLookup& nameLookup) noexcept
+{
+    if (typeKey == "builtin:bool" || typeKey == "builtin:sbyte" ||
+        typeKey == "builtin:byte" || typeKey == "builtin:char" ||
+        typeKey == "builtin:short" || typeKey == "builtin:ushort" ||
+        typeKey == "builtin:int" || typeKey == "builtin:uint" ||
+        typeKey == "builtin:long" || typeKey == "builtin:ulong" ||
+        typeKey == "builtin:nint" || typeKey == "builtin:nuint" ||
+        typeKey == "builtin:float" || typeKey == "builtin:double" ||
+        (!typeKey.empty() && typeKey.back() == '*'))
+    {
+        return true;
+    }
+    const NamedTypeDeclaration* named = namedTypeForKey(typeKey, nameLookup);
+    return named != nullptr && named->kind == NamedTypeDeclarationKind::Enum;
+}
+
 ClassMemberAccessibility memberAccessibility(const ast::AstNode* node) noexcept
 {
     if (node == nullptr)
@@ -1048,6 +1070,28 @@ bool ProjectMemberModel::collectTypeMembers(
                  (memberNode->hasModifier(lexer::TokenKind::KwReadonly) || readonlyPropertyBacking)) ||
                 (symbol.kind == ClassMemberKind::Method && !symbol.isStatic &&
                  (memberNode->hasModifier(lexer::TokenKind::KwReadonly) || readonlyDeclaringStruct));
+            symbol.isVolatile = symbol.kind == ClassMemberKind::Field &&
+                memberNode->hasModifier(lexer::TokenKind::KwVolatile);
+            if (symbol.isVolatile &&
+                (!isVolatileFieldType(symbol.declaredTypeKey, nameLookup) ||
+                 symbol.declaredOwnership != sema::OwnershipKind::None))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "volatile field '" + symbol.name +
+                        "' must be a non-owning native scalar, enum, or raw pointer; volatile "
+                        "does not define aggregate-copy or managed-reference semantics");
+            }
+            if (symbol.isVolatile && (symbol.isReadonly || symbol.isConst))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "volatile field '" + symbol.name + "' cannot also be readonly or const");
+            }
             if (type.syntax != nullptr &&
                 type.syntax->hasModifier(lexer::TokenKind::KwReadonly) &&
                 symbol.kind == ClassMemberKind::Field && !symbol.isStatic && !symbol.isReadonly)

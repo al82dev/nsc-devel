@@ -556,6 +556,46 @@ evita data races por sí solo y no reemplaza el ordenamiento de la operación qu
 `AtomicFence.Compiler` emits a `singlethread` fence that constrains compiler motion only. Both
 require a compile-time order and accept Acquire, Release, AcquireRelease, or
 SequentiallyConsistent; Relaxed is rejected. Fences do not make ordinary accesses atomic.
+
+### NS-MEM-009 — Memoria volatile para MMIO
+
+El modificador `volatile` puede aplicarse a campos de instancia o estáticos cuyo tipo sea un
+escalar nativo, un enum o un puntero crudo no-owning. Cada lectura y escritura directa de ese
+campo es un acceso observable: el backend debe emitir una carga o almacén LLVM `volatile`, incluso
+en una asignación compuesta. Los campos vecinos sin el modificador conservan accesos ordinarios.
+
+```csharp
+public struct DeviceRegisters
+{
+    public volatile uint Status;
+    public volatile ushort Control;
+    public uint Reserved;
+}
+
+public static void Acknowledge(DeviceRegisters* registers)
+{
+    uint observed = registers->Status;
+    registers->Control = 1;
+}
+```
+
+`volatile` evita que el compilador elimine, fusione o sustituya esos accesos por una observación
+no realizada sobre la ubicación declarada. No garantiza atomicidad, exclusión mutua, publicación
+entre hilos ni ordenamiento adicional del hardware, y no inserta fences. Los protocolos entre
+hilos deben usar las operaciones atómicas y barreras explícitas de NS-MEM-004 a NS-MEM-008.
+
+No se admite en campos `owned`, strings, arrays, clases, structs agregados ni delegates, porque una
+copia o transición de ownership puede requerir varias operaciones físicas y no constituye una
+transacción MMIO escalar. Tampoco puede combinarse con `readonly` o `const`, ni modificar métodos,
+propiedades, eventos, indexadores, constructores u otros tipos anidados.
+
+The `volatile` modifier applies to instance or static fields of non-owning native scalar, enum, or
+raw-pointer type. Every direct read and write lowers to an LLVM volatile access, including both
+sides of a compound update. Volatile makes the declared access observable to the compiler; it is
+not atomic synchronization, publication, mutual exclusion, or an implicit fence. Managed or
+aggregate storage, ownership-bearing fields, readonly/const combinations, and non-field members
+are rejected.
+
 ## 10. Layout y ABI
 
 ### NS-LAYOUT-001 — Agregados

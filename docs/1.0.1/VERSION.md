@@ -10,7 +10,7 @@
 | Stage interno | `67` | Marcador interno de cobertura del pipeline; no sustituye SemVer. |
 | Target | `x86_64-pc-windows-msvc` | Único target contractual actual. |
 | LLVM soportado | `23.x` | Línea de backend cargable aceptada por el compilador. |
-| NSMETA escrito | `1.13` | Formato actual; conserva política y cuerpo de métodos inline reutilizables. |
+| NSMETA escrito | `1.14` | Formato actual; conserva cuerpos inline y campos públicos `volatile`. |
 | Native ABI | `1.0` | Contrato físico de símbolos y datos públicos. |
 | Runtime ABI | `1.0` | Contrato de interoperación con el runtime nativo. |
 

@@ -418,6 +418,9 @@ struct ProjectOopHirNode final
     std::uint64_t integerValue = 0;
     double floatingValue = 0.0;
     bool booleanValue = false;
+    // Item 308. Set on field value/address nodes and propagated to the store that consumes an
+    // address. It means LLVM volatile memory access, never atomic synchronization.
+    bool volatileAccess = false;
     bool baseReceiver = false;
     bool interfaceDispatch = false;
     bool targetIsInterface = false;

@@ -686,6 +686,10 @@ void LLVMAddCallSiteAttribute(LLVMValueRef call, LLVMAttributeIndex index, LLVMA
 //    emitted at the call site would re-allocate on every loop iteration and grow the stack
 //    without bound.
 void LLVMSetAlignment(LLVMValueRef value, unsigned bytes);
+// Item 308. Marks a load/store as an observable volatile access. This affects optimization only;
+// atomic ordering and synchronization remain separate APIs and contracts.
+void LLVMSetVolatile(LLVMValueRef memoryAccessInstruction, LLVMBool isVolatile);
+
 LLVMBasicBlockRef LLVMGetEntryBasicBlock(LLVMValueRef function);
 LLVMValueRef LLVMGetFirstInstruction(LLVMBasicBlockRef block);
 void LLVMPositionBuilderBefore(LLVMBuilderRef builder, LLVMValueRef instruction);

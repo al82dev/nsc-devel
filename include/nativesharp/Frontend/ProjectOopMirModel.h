@@ -315,6 +315,8 @@ struct ProjectOopMirNode final
     std::uint64_t integerValue = 0;
     double floatingValue = 0.0;
     bool booleanValue = false;
+    // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.
+    bool volatileAccess = false;
     bool allocationFailureReturnsNull = false;
     bool zeroInitialize = false;
     bool baseReceiver = false;
@@ -380,6 +382,7 @@ struct ProjectOopMirStaticField final
     std::string name;
     std::string typeKey;
     bool isReadonly = false;
+    bool isVolatile = false;
     bool isConst = false;
     bool isImported = false;
     std::string genericSpecializationKey;

@@ -6647,6 +6647,7 @@ private:
                 LLVMTypeRef targetType = llvmType(node->typeKey, error);
                 if (targetType == nullptr) return nullptr;
                 LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+                if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
 
                 // El operando derecho se baja UNA SOLA VEZ, en la rama que le toca. Bajarlo antes
                 // del `if` y ademas dentro de normalizeNativeIndex lo evaluaria dos veces, que es
@@ -6688,7 +6689,8 @@ private:
                         node->operation, previous, operand, node->typeKey, error);
                 }
                 if (updated == nullptr) return nullptr;
-                LLVMBuildStore(builder_, updated, address);
+                LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+                if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
                 // `x++` VALE EL VALOR ANTIGUO; `++x` y `x += e` valen el nuevo. Un solo bit de
                 // diferencia porque todo lo anterior es identico.
                 return node->booleanValue ? previous : updated;
@@ -6798,15 +6800,19 @@ private:
             {
                 LLVMValueRef address = fieldAddress(node, error);
                 LLVMTypeRef type = llvmType(node->typeKey, error);
-                return address != nullptr && type != nullptr ? LLVMBuildLoad2(builder_, type, address, "field.load") : nullptr;
+                if (address == nullptr || type == nullptr) return nullptr;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
+                if (node->volatileAccess) LLVMSetVolatile(load, 1);
+                return load;
             }
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
             {
                 LLVMValueRef address = staticFieldAddress(node, error);
                 LLVMTypeRef type = llvmType(node->typeKey, error);
-                return address != nullptr && type != nullptr
-                    ? LLVMBuildLoad2(builder_, type, address, "static.field.load")
-                    : nullptr;
+                if (address == nullptr || type == nullptr) return nullptr;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "static.field.load");
+                if (node->volatileAccess) LLVMSetVolatile(load, 1);
+                return load;
             }
             case frontend::ProjectOopMirNodeKind::ParameterAddress:
                 return node->parameterOrdinal.has_value() ? parameterStorage_[*node->parameterOrdinal] : nullptr;
@@ -8249,7 +8255,8 @@ private:
                     LLVMBuildBr(builder_, readyBlock);
                     LLVMPositionBuilderAtEnd(builder_, readyBlock);
                 }
-                LLVMBuildStore(builder_, value, address);
+                LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+                if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
                 return value;
             }
             case frontend::ProjectOopMirNodeKind::Convert:

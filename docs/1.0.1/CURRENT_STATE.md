@@ -100,6 +100,12 @@ compilación y el backend emite `cmpxchg` alineado conservando el retorno del va
 Ambos exigen Acquire, Release, AcquireRelease o SequentiallyConsistent constantes; Relaxed se
 rechaza y ningún fence convierte memoria ordinaria en atómica.
 
+Los campos escalares, enum o puntero crudo pueden declararse `volatile` para registros MMIO. Cada
+lectura y escritura directa, incluidos ambos lados de una operación compuesta, llega a LLVM como
+acceso volatile. El modificador no implica atomicidad, publicación ni fence y se rechaza en tipos
+managed/agregados, ownership, `readonly`, `const` y miembros que no sean campos. NSMETA 1.14
+conserva este contrato para consumidores precompilados.
+
 
 
 
@@ -243,7 +249,7 @@ transporta directamente por valor. Las aplicaciones GUI pueden seleccionar
 
 Un producto precompilado combina `.lib`, `.nsmeta` y, para una biblioteca compartida, `.dll` más su
 import library. `LibraryReference` consume el contrato sin incorporar las fuentes del productor.
-NSMETA 1.13 conserva:
+NSMETA 1.14 conserva:
 
 - tipos, miembros, accesibilidad efectiva y nombres físicos;
 - constantes y valores necesarios para reconstruir la API;
@@ -252,6 +258,7 @@ NSMETA 1.13 conserva:
 - especializaciones genéricas cerradas alcanzables;
 - dependencias nominales provenientes de otras bibliotecas;
 - política de inlining y cuerpos ordinarios reutilizables entre productor y consumidor;
+- campos públicos `volatile` y el mismo modificador en su layout físico;
 - requisitos de runtime seleccionados únicamente cuando un símbolo alcanzado los necesita.
 
 `--verify-library-artifacts` compara metadata, archivo COFF, import library y tabla de exportaciones.

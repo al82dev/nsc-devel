@@ -3145,6 +3145,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     expression,
                     binding->typeKey);
                 node->memberOrdinal = binding->candidateMemberOrdinals.front();
+                node->volatileAccess = memberModel_ != nullptr &&
+                    *node->memberOrdinal < memberModel_->members().size() &&
+                    memberModel_->members()[*node->memberOrdinal].isVolatile;
                 node->baseReceiver = binding->baseReceiver;
                 node->children.push_back(std::move(receiver));
                 return node;
@@ -3162,6 +3165,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     expression,
                     binding->typeKey);
                 node->memberOrdinal = binding->candidateMemberOrdinals.front();
+                node->volatileAccess = memberModel_ != nullptr &&
+                    *node->memberOrdinal < memberModel_->members().size() &&
+                    memberModel_->members()[*node->memberOrdinal].isVolatile;
                 return node;
             }
             if (binding->kind == MethodNameBindingKind::TypeReference)
@@ -5858,6 +5864,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitial
 
     auto target = makeNode(ProjectOopHirNodeKind::FieldAddress, field.syntax, field.declaredTypeKey);
     target->memberOrdinal = fieldMemberOrdinal;
+    target->volatileAccess = field.isVolatile;
     target->children.push_back(makeNode(
         ProjectOopHirNodeKind::ThisValue,
         field.syntax,
