@@ -1165,6 +1165,18 @@ downlevel. Generated C/C++ headers shall identify the function pointer through `
 Certification shall execute at least six floating arguments at O0 and O2 so register placement is
 observed rather than inferred only from IR text.
 
+## NSC-ABI-005 — Vector and HVA values at a vectorcall boundary
+
+The compiler shall classify `NativeSharp.Core.Numerics.Float32x4` as a direct `<4 x float>` value
+at a vectorcall boundary. A sequential, unpacked aggregate of one to four consecutive
+`Float32x4` fields shall be represented as a homogeneous LLVM vector struct and carry the Win64
+`inreg` parameter contract. Both categories shall return directly rather than through sret.
+
+This classification is boundary-specific. Ordinary NativeSharp bodies and ordinary Win64 calls
+shall retain the stable aggregate carrier and pointer/sret ABI. The generated exception boundary
+thunk shall bridge both parameter and return representations, while union, explicit-layout,
+packed, mixed-field, or more-than-four-member aggregates shall not be promoted to HVA.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

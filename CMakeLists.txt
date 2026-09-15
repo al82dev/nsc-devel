@@ -927,6 +927,16 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item344_vectorcall_tests)
     add_test(NAME nsc.item344.vectorcall COMMAND nsc_item344_vectorcall_tests)
+    add_executable(
+        nsc_item345_vectorcall_hva_tests
+        tests/unit/Item345VectorCallHvaTests.cpp)
+    target_link_libraries(nsc_item345_vectorcall_hva_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item345_vectorcall_hva_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item345_vectorcall_hva_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_item345_vectorcall_hva_tests)
+    add_test(NAME nsc.item345.vectorcall-hva COMMAND nsc_item345_vectorcall_hva_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

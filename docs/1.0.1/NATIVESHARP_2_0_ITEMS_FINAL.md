@@ -139,7 +139,7 @@
 97. **342 — Matriz ABI de structs y agregados / Struct and aggregate ABI matrix — COMPLETADO / COMPLETE**
 98. **343 — ABI de callbacks y parámetros de salida / Callback and output-parameter ABI — COMPLETADO / COMPLETE**
 99. **344 — `vectorcall` / Vectorcall — COMPLETADO / COMPLETE**
-100. **345 — HVA y retornos vectoriales / Homogeneous vector aggregates**
+100. **345 — HVA y retornos vectoriales / Homogeneous vector aggregates — COMPLETADO / COMPLETE**
 101. **346 — Segundo target guiado por consumidor real / Consumer-driven additional target**
 
 ## Tanda 9 — SIMD y CPU

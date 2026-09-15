@@ -3469,18 +3469,6 @@ private:
         {
             return failValue(error, "C1.3 callback boundary needs the SEH personality and filter");
         }
-        LLVMTypeRef thunkType = found->second.functionType;
-        const std::string thunkName = targetName +
-            (vectorCall ? "__vectorcall_boundary" : "__c_boundary");
-        LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
-        if (thunk == nullptr)
-        {
-            return failValue(error, "C1.3 failed to declare the callback boundary thunk for " + targetName);
-        }
-        if (vectorCall) LLVMSetFunctionCallConv(thunk, LLVMX86VectorCallCallConv);
-        applyUwtableAttribute(thunk);
-        // Whatever ABI attributes the target's declaration carries (an sret return, above all)
-        // must be reproduced on the thunk, because the thunk is what C sees.
         const frontend::ProjectOopMirFunction* mirFunction = nullptr;
         for (const frontend::ProjectOopMirFunction& candidate : mirModel_.functions())
         {
@@ -3490,6 +3478,50 @@ private:
         {
             return failValue(error, "C1.3 callback boundary lost the target's MIR record: " + targetName);
         }
+
+        // Item 345: the NativeSharp body deliberately keeps the stable aggregate carrier used by
+        // every ordinary call.  A vectorcall boundary is different: Float32x4 and an HVA of one
+        // to four Float32x4 fields travel as LLVM vectors / homogeneous vector structs.  Build the
+        // public thunk type from those rules instead of reusing the body's ordinary Win64 type.
+        const bool internalSretReturn = !mirFunction->referenceReturn &&
+            isIndirectStructTypeKey(mirFunction->returnTypeKey);
+        LLVMTypeRef vectorReturnType = vectorCall
+            ? vectorCallAbiType(mirFunction->returnTypeKey) : nullptr;
+        const bool externalSretReturn = internalSretReturn && vectorReturnType == nullptr;
+        LLVMTypeRef externalReturnType = externalSretReturn
+            ? LLVMVoidTypeInContext(context_)
+            : (vectorReturnType != nullptr
+                ? vectorReturnType : llvmType(mirFunction->returnTypeKey, error));
+        if (externalReturnType == nullptr) return nullptr;
+        std::vector<LLVMTypeRef> externalParameterTypes;
+        externalParameterTypes.reserve(mirFunction->parameterTypeKeys.size() + 2U);
+        if (externalSretReturn)
+            externalParameterTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+        if (!mirFunction->isStatic)
+            externalParameterTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+        for (const std::string& typeKey : mirFunction->parameterTypeKeys)
+        {
+            LLVMTypeRef type = vectorCall ? vectorCallAbiType(typeKey) : nullptr;
+            if (type == nullptr) type = abiParameterType(typeKey, error);
+            if (type == nullptr || type == LLVMVoidTypeInContext(context_))
+                return failValue(error, "C1.3 callback boundary has invalid parameter type '" + typeKey + "'");
+            externalParameterTypes.push_back(type);
+        }
+        LLVMTypeRef thunkType = LLVMFunctionType(
+            externalReturnType,
+            externalParameterTypes.empty() ? nullptr : externalParameterTypes.data(),
+            static_cast<unsigned>(externalParameterTypes.size()), 0);
+        const std::string thunkName = targetName +
+            (vectorCall ? "__vectorcall_boundary" : "__c_boundary");
+        LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
+        if (thunk == nullptr)
+        {
+            return failValue(error, "C1.3 failed to declare the callback boundary thunk for " + targetName);
+        }
+        if (vectorCall) LLVMSetFunctionCallConv(thunk, LLVMX86VectorCallCallConv);
+        applyUwtableAttribute(thunk);
+        // Whatever ABI attributes the external declaration carries (sret or HVA inreg) must be
+        // reproduced on the thunk, because the thunk is what native code sees.
         LLVMMetadataRef subprogram = nullptr;
         if (defineBody)
         {
@@ -3502,14 +3534,28 @@ private:
             }
             if (subprogram != nullptr) LLVMSetSubprogram(thunk, subprogram);
         }
-        const bool sretReturn = !mirFunction->referenceReturn &&
-            isIndirectStructTypeKey(mirFunction->returnTypeKey);
-        if (sretReturn)
+        if (externalSretReturn)
         {
             applySretAttributes(
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddAttributeAtIndex(thunk, index, attribute); },
                 0U, mirFunction->returnTypeKey);
+        }
+        if (vectorCall)
+        {
+            unsigned externalPosition = externalSretReturn ? 1U : 0U;
+            if (!mirFunction->isStatic) ++externalPosition;
+            for (const std::string& typeKey : mirFunction->parameterTypeKeys)
+            {
+                if (vectorCallHvaArity(typeKey) != 0U)
+                {
+                    applyInRegAttribute(
+                        [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                        { LLVMAddAttributeAtIndex(thunk, index, attribute); },
+                        externalPosition);
+                }
+                ++externalPosition;
+            }
         }
         if (!defineBody)
         {
@@ -3530,19 +3576,45 @@ private:
         LLVMBasicBlockRef returnBlock = appendBlock("boundary.return");
         LLVMBasicBlockRef unwindBlock = appendBlock("boundary.unwind");
         LLVMPositionBuilderAtEnd(builder_, entryBlock);
-        const unsigned parameterCount = static_cast<unsigned>(
-            mirFunction->parameterTypeKeys.size() + (sretReturn ? 1U : 0U) +
-            (mirFunction->isStatic ? 0U : 1U));
-        std::vector<LLVMValueRef> forwarded(parameterCount);
-        for (unsigned index = 0; index < parameterCount; ++index)
+        std::vector<LLVMValueRef> forwarded;
+        forwarded.reserve(mirFunction->parameterTypeKeys.size() + 2U);
+        unsigned externalIndex = 0U;
+        LLVMValueRef internalSretSlot = nullptr;
+        if (internalSretReturn)
         {
-            forwarded[index] = LLVMGetParam(thunk, index);
+            if (externalSretReturn)
+            {
+                internalSretSlot = LLVMGetParam(thunk, externalIndex++);
+            }
+            else
+            {
+                LLVMTypeRef carrier = llvmType(mirFunction->returnTypeKey, error);
+                if (carrier == nullptr) return nullptr;
+                internalSretSlot = entryBlockAlloca(
+                    carrier, structAlignmentFor(mirFunction->returnTypeKey), "vectorcall.sret.bridge");
+            }
+            forwarded.push_back(internalSretSlot);
         }
-        const bool returnsVoid = sretReturn || mirFunction->returnTypeKey == "builtin:void";
+        if (!mirFunction->isStatic)
+            forwarded.push_back(LLVMGetParam(thunk, externalIndex++));
+        for (const std::string& typeKey : mirFunction->parameterTypeKeys)
+        {
+            LLVMValueRef value = LLVMGetParam(thunk, externalIndex++);
+            if (vectorCall && vectorCallAbiType(typeKey) != nullptr)
+            {
+                value = vectorCallAbiToCarrier(value, typeKey, error);
+                if (value == nullptr) return nullptr;
+                value = wrapIndirectArgument(value, typeKey, error);
+                if (value == nullptr) return nullptr;
+            }
+            forwarded.push_back(value);
+        }
+        const bool internalReturnsVoid = internalSretReturn ||
+            mirFunction->returnTypeKey == "builtin:void";
         LLVMValueRef result = LLVMBuildInvoke2(
-            builder_, thunkType, found->second.function,
-            forwarded.empty() ? nullptr : forwarded.data(), parameterCount,
-            returnBlock, unwindBlock, returnsVoid ? "" : "boundary.result");
+            builder_, found->second.functionType, found->second.function,
+            forwarded.empty() ? nullptr : forwarded.data(), static_cast<unsigned>(forwarded.size()),
+            returnBlock, unwindBlock, internalReturnsVoid ? "" : "boundary.result");
         if (result == nullptr)
         {
             currentFunction_ = savedFunction;
@@ -3550,7 +3622,7 @@ private:
             if (savedBlock != nullptr) LLVMPositionBuilderAtEnd(builder_, savedBlock);
             return failValue(error, "C1.3 failed to emit the guarded callback invoke");
         }
-        if (sretReturn)
+        if (internalSretReturn)
         {
             applySretAttributes(
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
@@ -3559,8 +3631,20 @@ private:
         }
 
         LLVMPositionBuilderAtEnd(builder_, returnBlock);
-        if (returnsVoid) { LLVMBuildRetVoid(builder_); }
-        else { LLVMBuildRet(builder_, result); }
+        if (vectorReturnType != nullptr)
+        {
+            LLVMValueRef externalResult = LLVMBuildLoad2(
+                builder_, vectorReturnType, internalSretSlot, "vectorcall.return.bridge");
+            LLVMBuildRet(builder_, externalResult);
+        }
+        else if (externalSretReturn || mirFunction->returnTypeKey == "builtin:void")
+        {
+            LLVMBuildRetVoid(builder_);
+        }
+        else
+        {
+            LLVMBuildRet(builder_, result);
+        }
 
         LLVMPositionBuilderAtEnd(builder_, unwindBlock);
         if (!emitCallbackBoundaryHandler(error))
@@ -9360,11 +9444,11 @@ private:
         functionPointer = checkedReceiver(functionPointer, error);
         if (functionPointer == nullptr) return nullptr;
 
-        // Win64 aggregate ABI at the C-function-pointer boundary: identical rules to every
-        // other call -- indirect parameters as pointers (already wrapped by the invoker),
-        // indirect return through a leading sret slot. This is what makes an extern C delegate
-        // interchangeable with a function pointer an MSVC-compiled host produced.
-        const bool sretReturn = isIndirectStructTypeKey(returnTypeKey);
+        // Ordinary extern-C delegates use the normal Win64 aggregate ABI.  Item 345 specializes
+        // the vectorcall boundary: Float32x4 and HVAs are direct vector-shaped values, including
+        // returns, while every other aggregate keeps the established pointer/sret contract.
+        LLVMTypeRef vectorReturnType = vectorCall ? vectorCallAbiType(returnTypeKey) : nullptr;
+        const bool sretReturn = isIndirectStructTypeKey(returnTypeKey) && vectorReturnType == nullptr;
         LLVMValueRef sretSlot = nullptr;
         if (sretReturn)
         {
@@ -9374,14 +9458,15 @@ private:
         }
         LLVMTypeRef returnType = sretReturn
             ? LLVMVoidTypeInContext(context_)
-            : llvmType(returnTypeKey, error);
+            : (vectorReturnType != nullptr ? vectorReturnType : llvmType(returnTypeKey, error));
         if (returnType == nullptr) return nullptr;
         std::vector<LLVMTypeRef> parameterTypes;
         parameterTypes.reserve(argumentTypeKeys.size() + 1);
         if (sretReturn) parameterTypes.push_back(LLVMPointerTypeInContext(context_, 0));
         for (const std::string& typeKey : argumentTypeKeys)
         {
-            LLVMTypeRef type = abiParameterType(typeKey, error);
+            LLVMTypeRef type = vectorCall ? vectorCallAbiType(typeKey) : nullptr;
+            if (type == nullptr) type = abiParameterType(typeKey, error);
             if (type == nullptr || type == LLVMVoidTypeInContext(context_))
                 return failValue(error, "Stage 47 extern C delegate has invalid parameter type '" + typeKey + "'");
             parameterTypes.push_back(type);
@@ -9392,13 +9477,37 @@ private:
         std::vector<LLVMValueRef> callArguments;
         callArguments.reserve(argumentValues.size() + 1);
         if (sretSlot != nullptr) callArguments.push_back(sretSlot);
-        callArguments.insert(callArguments.end(), argumentValues.begin(), argumentValues.end());
+        for (std::size_t index = 0; index < argumentValues.size(); ++index)
+        {
+            LLVMValueRef value = argumentValues[index];
+            if (vectorCall && vectorCallAbiType(argumentTypeKeys[index]) != nullptr)
+            {
+                value = carrierToVectorCallAbi(value, argumentTypeKeys[index], error);
+                if (value == nullptr) return nullptr;
+            }
+            callArguments.push_back(value);
+        }
         LLVMValueRef call = LLVMBuildCall2(
             builder_, functionType, functionPointer,
             callArguments.empty() ? nullptr : callArguments.data(),
             static_cast<unsigned>(callArguments.size()),
             returnType == LLVMVoidTypeInContext(context_) ? "" : "cabi.callback.result");
         if (vectorCall) LLVMSetInstructionCallConv(call, LLVMX86VectorCallCallConv);
+        if (vectorCall)
+        {
+            unsigned callPosition = sretReturn ? 1U : 0U;
+            for (const std::string& typeKey : argumentTypeKeys)
+            {
+                if (vectorCallHvaArity(typeKey) != 0U)
+                {
+                    applyInRegAttribute(
+                        [&](LLVMAttributeIndex attributeIndex, LLVMAttributeRef attribute)
+                        { LLVMAddCallSiteAttribute(call, attributeIndex, attribute); },
+                        callPosition);
+                }
+                ++callPosition;
+            }
+        }
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -9409,6 +9518,8 @@ private:
             if (carrier == nullptr) return nullptr;
             return LLVMBuildLoad2(builder_, carrier, sretSlot, "abi.sret.load");
         }
+        if (vectorReturnType != nullptr)
+            return vectorCallAbiToCarrier(call, returnTypeKey, error);
         return call;
     }
 
@@ -9418,6 +9529,8 @@ private:
             return failValue(error, "Stage 42 delegate invocation has invalid MIR children");
         LLVMValueRef delegateValue = lowerExpression(node->children.front().get(), error);
         if (delegateValue == nullptr) return nullptr;
+        const bool externC = isExternCDelegateType(node->elementTypeKey);
+        const bool vectorCall = externC && isVectorCallDelegateType(node->elementTypeKey);
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(node->argumentCount);
         for (std::size_t index = 1; index < node->children.size(); ++index)
@@ -9431,16 +9544,21 @@ private:
             // 5 at -O2, for a fixture whose answer is 4).
             if (index - 1 < node->argumentTypeKeys.size())
             {
-                value = wrapIndirectArgument(value, node->argumentTypeKeys[index - 1], error);
+                const std::string& typeKey = node->argumentTypeKeys[index - 1];
+                // A vectorcall vector/HVA remains a carrier until emitExternCDelegateCall turns
+                // it into the direct external ABI value.  All other aggregates keep the normal
+                // per-call pointer copy.
+                if (!vectorCall || vectorCallAbiType(typeKey) == nullptr)
+                    value = wrapIndirectArgument(value, typeKey, error);
                 if (value == nullptr) return nullptr;
             }
             arguments.push_back(value);
         }
-        if (isExternCDelegateType(node->elementTypeKey))
+        if (externC)
         {
             return emitExternCDelegateCall(
                 delegateValue, arguments, node->argumentTypeKeys, node->typeKey,
-                isVectorCallDelegateType(node->elementTypeKey), error);
+                vectorCall, error);
         }
         return emitDelegateCall(delegateValue, arguments, node->argumentTypeKeys, node->typeKey, error);
     }
@@ -12321,6 +12439,93 @@ private:
     bool requiresOwnedDestruction(std::string_view typeKey) const noexcept
     {
         return typeKey == "builtin:string" || isClassReference(typeKey) || isDelegateReference(typeKey);
+    }
+
+    bool isFloat32x4TypeKey(std::string_view typeKey) const noexcept
+    {
+        if (!typeKey.starts_with("type:")) return false;
+        const std::string_view identityKey = typeKey.substr(5);
+        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
+        {
+            if (type.identity.key() != identityKey) continue;
+            return type.kind == frontend::NamedTypeDeclarationKind::Struct &&
+                type.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.Float32x4";
+        }
+        return false;
+    }
+
+    // Microsoft x64 vectorcall recognizes an HVA only when the complete value is one to four
+    // consecutive, identical vector members.  NativeSharp's first calculation vector is
+    // Float32x4, so this deliberately does not promote an arbitrary 16-byte storage struct merely
+    // because it happens to contain four floats.  Union/explicit/packed layouts are also excluded:
+    // their byte compatibility does not make them homogeneous vector aggregates.
+    unsigned vectorCallHvaArity(std::string_view typeKey) const noexcept
+    {
+        if (isFloat32x4TypeKey(typeKey)) return 0U;
+        const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
+        if (layout == nullptr || layout->isUnion || layout->hasExplicitFieldOffsets ||
+            layout->pack != 0U || layout->fields.empty() || layout->fields.size() > 4U ||
+            layout->size != layout->fields.size() * 16U)
+        {
+            return 0U;
+        }
+        for (std::size_t index = 0; index < layout->fields.size(); ++index)
+        {
+            const frontend::ObjectFieldLayout& field = layout->fields[index];
+            if (!isFloat32x4TypeKey(field.typeKey) || field.offset != index * 16U ||
+                field.size != 16U || field.bitOffset.has_value() || field.bitWidth.has_value())
+            {
+                return 0U;
+            }
+        }
+        return static_cast<unsigned>(layout->fields.size());
+    }
+
+    LLVMTypeRef vectorCallAbiType(std::string_view typeKey) const noexcept
+    {
+        LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
+        if (isFloat32x4TypeKey(typeKey)) return vectorType;
+        const unsigned arity = vectorCallHvaArity(typeKey);
+        if (arity == 0U) return nullptr;
+        std::vector<LLVMTypeRef> elements(arity, vectorType);
+        return LLVMStructTypeInContext(context_, elements.data(), arity, 0);
+    }
+
+    LLVMValueRef carrierToVectorCallAbi(
+        LLVMValueRef value, std::string_view typeKey, std::string& error)
+    {
+        LLVMTypeRef carrier = llvmType(typeKey, error);
+        LLVMTypeRef abiType = vectorCallAbiType(typeKey);
+        if (carrier == nullptr || abiType == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "vectorcall.carrier.to.abi");
+        LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+        LLVMSetAlignment(store, 16U);
+        LLVMValueRef load = LLVMBuildLoad2(builder_, abiType, slot, "vectorcall.abi.value");
+        LLVMSetAlignment(load, 16U);
+        return load;
+    }
+
+    LLVMValueRef vectorCallAbiToCarrier(
+        LLVMValueRef value, std::string_view typeKey, std::string& error)
+    {
+        LLVMTypeRef carrier = llvmType(typeKey, error);
+        LLVMTypeRef abiType = vectorCallAbiType(typeKey);
+        if (carrier == nullptr || abiType == nullptr) return nullptr;
+        LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "vectorcall.abi.to.carrier");
+        LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+        LLVMSetAlignment(store, 16U);
+        LLVMValueRef load = LLVMBuildLoad2(builder_, carrier, slot, "vectorcall.carrier.value");
+        LLVMSetAlignment(load, 16U);
+        return load;
+    }
+
+    template <typename AddAttribute>
+    void applyInRegAttribute(AddAttribute&& addAttribute, unsigned parameterPosition)
+    {
+        const unsigned inregKind = LLVMGetEnumAttributeKindForName("inreg", 5);
+        addAttribute(
+            parameterPosition + 1U,
+            LLVMCreateEnumAttribute(context_, inregKind, 0));
     }
 
     // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). True for a struct

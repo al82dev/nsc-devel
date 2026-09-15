@@ -524,6 +524,17 @@ vectorcall delegate` keeps the same environment and exception-boundary rules, bu
 invokes the function pointer with the Microsoft x64 `vectorcall` convention. The convention is
 part of the nominal type and NSMETA; it is never inferred from parameter types.
 
+En esa frontera, `NativeSharp.Core.Numerics.Float32x4` se pasa y retorna directamente como vector
+de cuatro `float`. Un struct secuencial, no empaquetado, formado exclusivamente por uno a cuatro
+campos `Float32x4` consecutivos es un HVA y también se pasa y retorna directamente; cualquier otro
+agregado conserva las reglas Win64 ordinarias de puntero/sret. El cuerpo NativeSharp mantiene su
+carrier agregado estable y el thunk realiza la conversión. / At that boundary,
+`NativeSharp.Core.Numerics.Float32x4` is passed and returned directly as a four-float vector. A
+sequential, unpacked struct made exclusively of one to four consecutive `Float32x4` fields is an
+HVA and is also passed and returned directly; every other aggregate keeps the ordinary Win64
+pointer/sret rules. The NativeSharp body retains its stable aggregate carrier and the thunk bridges
+the representations.
+
 Un evento controla la lista de invocación mediante sus operaciones admitidas; no cambia el lifetime
 de un delegate de manera implícita. Copiar, almacenar o transferir un delegate debe respetar la
 propiedad publicada por su tipo y por la operación.

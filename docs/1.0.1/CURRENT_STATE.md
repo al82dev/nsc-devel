@@ -336,7 +336,9 @@ El target contractual usa el ABI Microsoft x64. NativeSharp expresa `extern C`, 
 exports C, callbacks, punteros crudos, structs por valor, parámetros `ref/out/in`, uniones, arrays de
 tamaño fijo y handles tipados. Las llamadas por vtable se construyen con punteros y delegates
 `extern C`; `extern vectorcall delegate` añade la convención Microsoft x64 para APIs que la
-requieren. No se requiere un sistema de tipos COM integrado al compilador.
+requieren. `Float32x4` y los HVA secuenciales de uno a cuatro `Float32x4` cruzan esa frontera en
+forma vectorial directa, incluidos los retornos; los demás agregados conservan puntero/sret. No se
+requiere un sistema de tipos COM integrado al compilador.
 
 Los delegates que cruzan una frontera C usan una representación y una barrera de excepciones
 definidas. Los eventos reutilizan esa ABI, incluido el paso indirecto de agregados que Win64 no
