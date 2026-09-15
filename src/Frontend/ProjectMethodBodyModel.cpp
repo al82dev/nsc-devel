@@ -5820,6 +5820,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                         result.typeKey = *element;
                         result.valid = true;
                         result.assignable = true;
+                        // An array element is real mutable storage. Item 329 made addressability
+                        // explicit so bit fields could reject `&field`; preserve the long-standing
+                        // `&array[index]` raw-pointer boundary as a separate property.
+                        result.addressable = true;
                         coreBindings_.push_back(MethodCoreBinding{
                             MethodCoreOperationKind::ArrayElement,
                             expression,

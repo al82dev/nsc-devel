@@ -261,6 +261,31 @@ public struct Bits { public uint Value : 3; }
 public class Api { public static uint* Address(Bits* value) { return &value->Value; } }
 )NS", "bit fields have no address");
 
+    const auto addressableArray = root / "addressable-array-element";
+    writeProject(addressableArray, "AddressableArrayElement", R"NS(
+public class Program
+{
+    public static int Main()
+    {
+        byte[] values = new byte[1];
+        values[0] = 42;
+        byte* first = &values[0];
+        int result = first[0] == 42 ? 0 : 1;
+        delete[] values;
+        return result;
+    }
+}
+)NS");
+    const std::string addressableArrayProject =
+        (addressableArray / "AddressableArrayElement.nsproj").string();
+    const std::array<std::string_view, 2> addressableArrayArguments = {
+        "--check-project-oop-hir", addressableArrayProject};
+    output.clear();
+    error.clear();
+    tests.expect(
+        runDriver(addressableArrayArguments, output, error) == ExitCode::Success,
+        "native array elements remain addressable after the bit-field guard (" + error + ")");
+
     const auto producer = root / "producer";
     writeProject(producer, "BitFieldProducer", R"NS(
 namespace Shared
