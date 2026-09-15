@@ -776,6 +776,11 @@ enum class MethodCoreOperationKind
     SimdFloat32x4Add,
     SimdFloat32x4Subtract,
     SimdFloat32x4Multiply,
+    // Item 347: signed integer vectors keep ordinary struct carriers at public boundaries and
+    // use native 128-bit LLVM integer vectors for arithmetic inside the compiler.
+    SimdInt128Add,
+    SimdInt128Subtract,
+    SimdInt128Multiply,
     // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers PRIVADOS Y
     // ESTATICOS, EXACTO mismo patron estructural que los tres helpers de Thread arriba (Stage
     // 54.1): un HANDLE de Win32 guardado como builtin:nint, creado por MutexCreate y consumido

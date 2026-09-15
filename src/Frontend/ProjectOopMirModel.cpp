@@ -635,6 +635,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreSimdFloat32x4Add: return "core-simd-float32x4-add";
         case ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract: return "core-simd-float32x4-subtract";
         case ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply: return "core-simd-float32x4-multiply";
+        case ProjectOopMirNodeKind::CoreSimdInt128Add: return "core-simd-int128-add";
+        case ProjectOopMirNodeKind::CoreSimdInt128Subtract: return "core-simd-int128-subtract";
+        case ProjectOopMirNodeKind::CoreSimdInt128Multiply: return "core-simd-int128-multiply";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1665,6 +1668,15 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreSimdFloat32x4Multiply:
             result->kind = ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdInt128Add:
+            result->kind = ProjectOopMirNodeKind::CoreSimdInt128Add;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdInt128Subtract:
+            result->kind = ProjectOopMirNodeKind::CoreSimdInt128Subtract;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdInt128Multiply:
+            result->kind = ProjectOopMirNodeKind::CoreSimdInt128Multiply;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;

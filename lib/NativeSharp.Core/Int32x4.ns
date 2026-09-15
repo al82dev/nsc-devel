@@ -1,0 +1,27 @@
+namespace NativeSharp.Core.Numerics
+{
+    // Signed four-lane 128-bit SIMD value. Public storage stays an ordinary sequential struct;
+    // exact arithmetic calls are replaced with native vector instructions by the compiler.
+    public struct Int32x4
+    {
+        public int X;
+        public int Y;
+        public int Z;
+        public int W;
+
+        public static Int32x4 Add(Int32x4 left, Int32x4 right)
+        {
+            return default(Int32x4);
+        }
+
+        public static Int32x4 Subtract(Int32x4 left, Int32x4 right)
+        {
+            return default(Int32x4);
+        }
+
+        public static Int32x4 Multiply(Int32x4 left, Int32x4 right)
+        {
+            return default(Int32x4);
+        }
+    }
+}

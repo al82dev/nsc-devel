@@ -7672,6 +7672,52 @@ private:
                 LLVMBuildStore(builder_, vectorResult, resultSlot);
                 return LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.result");
             }
+            case frontend::ProjectOopMirNodeKind::CoreSimdInt128Add:
+            case frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract:
+            case frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply:
+            {
+                if (node->children.size() != 2)
+                    return failValue(error, "128-bit integer SIMD operation requires two operands");
+                LLVMValueRef left = lowerExpression(node->children[0].get(), error);
+                if (left == nullptr) return nullptr;
+                LLVMValueRef right = lowerExpression(node->children[1].get(), error);
+                if (right == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                const unsigned laneBits = integerSimd128LaneBits(node->typeKey);
+                if (laneBits == 0U)
+                    return failValue(error, "integer SIMD intrinsic carries an unsupported type");
+                LLVMTypeRef elementType = laneBits == 32U
+                    ? LLVMInt32TypeInContext(context_)
+                    : LLVMInt64TypeInContext(context_);
+                LLVMTypeRef vectorType = LLVMVectorType(elementType, 128U / laneBits);
+                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 16U, "simd.int.left.addr");
+                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 16U, "simd.int.right.addr");
+                LLVMValueRef leftStore = LLVMBuildStore(builder_, left, leftSlot);
+                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
+                LLVMSetAlignment(leftStore, 16U);
+                LLVMSetAlignment(rightStore, 16U);
+                LLVMValueRef leftVector =
+                    LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.int.left");
+                LLVMValueRef rightVector =
+                    LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.int.right");
+                LLVMSetAlignment(leftVector, 16U);
+                LLVMSetAlignment(rightVector, 16U);
+                LLVMValueRef vectorResult = nullptr;
+                if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Add)
+                    vectorResult = LLVMBuildAdd(builder_, leftVector, rightVector, "simd.int.add");
+                else if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract)
+                    vectorResult = LLVMBuildSub(builder_, leftVector, rightVector, "simd.int.subtract");
+                else
+                    vectorResult = LLVMBuildMul(builder_, leftVector, rightVector, "simd.int.multiply");
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "simd.int.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, 16U);
+                LLVMValueRef result =
+                    LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.int.result");
+                LLVMSetAlignment(result, 16U);
+                return result;
+            }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
             {
                 if (node->integerValue != 0U)
@@ -12452,6 +12498,23 @@ private:
                 type.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.Float32x4";
         }
         return false;
+    }
+
+    unsigned integerSimd128LaneBits(std::string_view typeKey) const noexcept
+    {
+        if (!typeKey.starts_with("type:")) return 0U;
+        const std::string_view identityKey = typeKey.substr(5);
+        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
+        {
+            if (type.identity.key() != identityKey ||
+                type.kind != frontend::NamedTypeDeclarationKind::Struct)
+                continue;
+            const std::string name = type.identity.fullyQualifiedName();
+            if (name == "NativeSharp.Core.Numerics.Int32x4") return 32U;
+            if (name == "NativeSharp.Core.Numerics.Int64x2") return 64U;
+            return 0U;
+        }
+        return 0U;
     }
 
     // Microsoft x64 vectorcall recognizes an HVA only when the complete value is one to four

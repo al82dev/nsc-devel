@@ -206,6 +206,9 @@ enum class ProjectOopMirNodeKind
     CoreSimdFloat32x4Add,
     CoreSimdFloat32x4Subtract,
     CoreSimdFloat32x4Multiply,
+    CoreSimdInt128Add,
+    CoreSimdInt128Subtract,
+    CoreSimdInt128Multiply,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,

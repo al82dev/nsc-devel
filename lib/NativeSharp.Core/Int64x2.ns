@@ -1,0 +1,24 @@
+namespace NativeSharp.Core.Numerics
+{
+    // Signed two-lane 128-bit SIMD value with the same stable carrier policy as Int32x4.
+    public struct Int64x2
+    {
+        public long X;
+        public long Y;
+
+        public static Int64x2 Add(Int64x2 left, Int64x2 right)
+        {
+            return default(Int64x2);
+        }
+
+        public static Int64x2 Subtract(Int64x2 left, Int64x2 right)
+        {
+            return default(Int64x2);
+        }
+
+        public static Int64x2 Multiply(Int64x2 left, Int64x2 right)
+        {
+            return default(Int64x2);
+        }
+    }
+}
