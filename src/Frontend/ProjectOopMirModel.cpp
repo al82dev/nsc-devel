@@ -661,6 +661,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreBitRotateLeft: return "core-bit-rotate-left";
         case ProjectOopMirNodeKind::CoreBitRotateRight: return "core-bit-rotate-right";
         case ProjectOopMirNodeKind::CoreBitByteSwap: return "core-bit-byte-swap";
+        case ProjectOopMirNodeKind::CoreCpuPrefetchRead: return "core-cpu-prefetch-read";
+        case ProjectOopMirNodeKind::CoreCpuPause: return "core-cpu-pause";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1769,6 +1771,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreBitByteSwap:
             result->kind = ProjectOopMirNodeKind::CoreBitByteSwap;
+            break;
+        case ProjectOopHirNodeKind::CoreCpuPrefetchRead:
+            result->kind = ProjectOopMirNodeKind::CoreCpuPrefetchRead;
+            break;
+        case ProjectOopHirNodeKind::CoreCpuPause:
+            result->kind = ProjectOopMirNodeKind::CoreCpuPause;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;

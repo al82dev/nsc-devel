@@ -9319,6 +9319,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         scopeOrdinal, selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
                         false, std::nullopt, std::nullopt});
             }
+            if (declaringType.identity.fullyQualifiedName() ==
+                    "NativeSharp.Core.Runtime.CompilerServices.HardwareIntrinsics" &&
+                selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:void")
+            {
+                std::optional<MethodCoreOperationKind> hardwareKind;
+                if (selectedMember.name == "PrefetchRead" && selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == "builtin:void*")
+                    hardwareKind = MethodCoreOperationKind::CpuPrefetchRead;
+                else if (selectedMember.name == "Pause" && selectedMember.parameters.empty())
+                    hardwareKind = MethodCoreOperationKind::CpuPause;
+                if (hardwareKind.has_value())
+                    coreBindings_.push_back(MethodCoreBinding{*hardwareKind, expression, methodMemberOrdinal,
+                        scopeOrdinal, selectedMember.declaredTypeKey,
+                        selectedMember.parameters.empty() ? std::string{} : selectedMember.parameters[0].typeKey,
+                        false, std::nullopt, std::nullopt});
+            }
             if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.BitOperations" &&
                 selectedMember.isStatic &&
                 (selectedMember.declaredTypeKey == "builtin:uint" || selectedMember.declaredTypeKey == "builtin:ulong"))
@@ -14738,6 +14754,8 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::BitRotateLeft: return "bit-rotate-left";
         case MethodCoreOperationKind::BitRotateRight: return "bit-rotate-right";
         case MethodCoreOperationKind::BitByteSwap: return "bit-byte-swap";
+        case MethodCoreOperationKind::CpuPrefetchRead: return "cpu-prefetch-read";
+        case MethodCoreOperationKind::CpuPause: return "cpu-pause";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

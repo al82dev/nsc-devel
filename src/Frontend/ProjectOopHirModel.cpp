@@ -144,6 +144,10 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreBitRotateRight};
     case MethodCoreOperationKind::BitByteSwap:
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreBitByteSwap};
+    case MethodCoreOperationKind::CpuPrefetchRead:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreCpuPrefetchRead};
+    case MethodCoreOperationKind::CpuPause:
+        return StringCallLowering{0U, ProjectOopHirNodeKind::CoreCpuPause};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -1097,6 +1101,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreBitRotateLeft: return "core-bit-rotate-left";
         case ProjectOopHirNodeKind::CoreBitRotateRight: return "core-bit-rotate-right";
         case ProjectOopHirNodeKind::CoreBitByteSwap: return "core-bit-byte-swap";
+        case ProjectOopHirNodeKind::CoreCpuPrefetchRead: return "core-cpu-prefetch-read";
+        case ProjectOopHirNodeKind::CoreCpuPause: return "core-cpu-pause";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

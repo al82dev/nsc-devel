@@ -7815,6 +7815,31 @@ private:
                 LLVMSetAlignment(result, 16U);
                 return result;
             }
+            case frontend::ProjectOopMirNodeKind::CoreCpuPrefetchRead:
+            {
+                if (node->children.size() != 1)
+                    return failValue(error, "PrefetchRead requires one pointer operand");
+                LLVMValueRef address = lowerExpression(node->children.front().get(), error);
+                if (address == nullptr) return nullptr;
+                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+                LLVMTypeRef parameters[] = {LLVMPointerTypeInContext(context_, 0), i32, i32, i32};
+                LLVMTypeRef type = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters, 4U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.prefetch.p0");
+                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, "llvm.prefetch.p0", type);
+                LLVMValueRef arguments[] = {address, LLVMConstInt(i32, 0, 0),
+                    LLVMConstInt(i32, 3, 0), LLVMConstInt(i32, 1, 0)};
+                LLVMBuildCall2(builder_, type, intrinsic, arguments, 4U, "");
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
+            case frontend::ProjectOopMirNodeKind::CoreCpuPause:
+            {
+                if (!node->children.empty()) return failValue(error, "Pause cannot have operands");
+                LLVMTypeRef type = LLVMFunctionType(LLVMVoidTypeInContext(context_), nullptr, 0U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.x86.sse2.pause");
+                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, "llvm.x86.sse2.pause", type);
+                LLVMBuildCall2(builder_, type, intrinsic, nullptr, 0U, "");
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
             case frontend::ProjectOopMirNodeKind::CoreBitRotateLeft:
             case frontend::ProjectOopMirNodeKind::CoreBitRotateRight:
             case frontend::ProjectOopMirNodeKind::CoreBitByteSwap:

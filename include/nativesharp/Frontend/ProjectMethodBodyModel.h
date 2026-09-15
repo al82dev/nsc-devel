@@ -809,6 +809,8 @@ enum class MethodCoreOperationKind
     BitRotateLeft,
     BitRotateRight,
     BitByteSwap,
+    CpuPrefetchRead,
+    CpuPause,
     // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers PRIVADOS Y
     // ESTATICOS, EXACTO mismo patron estructural que los tres helpers de Thread arriba (Stage
     // 54.1): un HANDLE de Win32 guardado como builtin:nint, creado por MutexCreate y consumido

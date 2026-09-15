@@ -232,6 +232,8 @@ enum class ProjectOopMirNodeKind
     CoreBitRotateLeft,
     CoreBitRotateRight,
     CoreBitByteSwap,
+    CoreCpuPrefetchRead,
+    CoreCpuPause,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,

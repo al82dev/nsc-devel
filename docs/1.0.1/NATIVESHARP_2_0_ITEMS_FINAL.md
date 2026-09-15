@@ -158,7 +158,7 @@
 113. **358 — Sqrt, rsqrt y FMA / Vector sqrt, rsqrt, and FMA — COMPLETADO / COMPLETE**
 114. **359 — Popcount, CLZ y CTZ / Bit-count intrinsics — COMPLETADO / COMPLETE**
 115. **360 — Rotaciones y byte swap / Rotate and byte-swap intrinsics — COMPLETADO / COMPLETE**
-116. **361 — Prefetch y pause / Prefetch and pause intrinsics**
+116. **361 — Prefetch y pause / Prefetch and pause intrinsics — COMPLETADO / COMPLETE**
 117. **362 — Contador de tiempo de CPU / CPU timestamp counter**
 118. **363 — Selección y fallback de features de CPU / CPU feature selection and fallback**
 
