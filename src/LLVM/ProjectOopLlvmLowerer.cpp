@@ -7812,6 +7812,49 @@ private:
                 LLVMSetAlignment(result, 32U);
                 return result;
             }
+            case frontend::ProjectOopMirNodeKind::CoreSimdLoadAligned128:
+            {
+                if (node->children.size() != 1)
+                    return failValue(error, "aligned SIMD load requires one pointer operand");
+                LLVMValueRef source = lowerExpression(node->children.front().get(), error);
+                if (source == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMTypeRef vectorType =
+                    LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
+                LLVMValueRef vector =
+                    LLVMBuildLoad2(builder_, vectorType, source, "simd.load.aligned");
+                LLVMSetAlignment(vector, 16U);
+                LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.load.carrier.addr");
+                LLVMValueRef store = LLVMBuildStore(builder_, vector, slot);
+                LLVMSetAlignment(store, 16U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, slot, "simd.load.carrier");
+                LLVMSetAlignment(result, 16U);
+                return result;
+            }
+            case frontend::ProjectOopMirNodeKind::CoreSimdStoreAligned128:
+            {
+                if (node->children.size() != 2)
+                    return failValue(error, "aligned SIMD store requires pointer and value operands");
+                LLVMValueRef destination = lowerExpression(node->children[0].get(), error);
+                if (destination == nullptr) return nullptr;
+                LLVMValueRef value = lowerExpression(node->children[1].get(), error);
+                if (value == nullptr) return nullptr;
+                const std::string& valueTypeKey = node->children[1]->typeKey;
+                LLVMTypeRef carrier = llvmType(valueTypeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMTypeRef vectorType =
+                    LLVMVectorType(LLVMInt32TypeInContext(context_), 4U);
+                LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.store.carrier.addr");
+                LLVMValueRef carrierStore = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(carrierStore, 16U);
+                LLVMValueRef vector =
+                    LLVMBuildLoad2(builder_, vectorType, slot, "simd.store.vector");
+                LLVMSetAlignment(vector, 16U);
+                LLVMValueRef store = LLVMBuildStore(builder_, vector, destination);
+                LLVMSetAlignment(store, 16U);
+                return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+            }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
             {
                 if (node->integerValue != 0U)

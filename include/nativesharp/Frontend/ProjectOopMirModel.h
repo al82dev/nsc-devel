@@ -215,6 +215,8 @@ enum class ProjectOopMirNodeKind
     CoreSimdInt256Add,
     CoreSimdInt256Subtract,
     CoreSimdInt256Multiply,
+    CoreSimdLoadAligned128,
+    CoreSimdStoreAligned128,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,

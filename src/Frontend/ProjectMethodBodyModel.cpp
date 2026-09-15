@@ -9196,6 +9196,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            if (integerVectorName == "NativeSharp.Core.Numerics.Int32x4" &&
+                selectedMember.isStatic)
+            {
+                std::optional<MethodCoreOperationKind> memoryKind;
+                if (selectedMember.name == "LoadAligned" &&
+                    selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey + "*")
+                {
+                    memoryKind = MethodCoreOperationKind::SimdLoadAligned128;
+                }
+                else if (selectedMember.name == "StoreAligned" &&
+                    selectedMember.declaredTypeKey == "builtin:void" &&
+                    selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey ==
+                        selectedMember.parameters[1].typeKey + "*")
+                {
+                    memoryKind = MethodCoreOperationKind::SimdStoreAligned128;
+                }
+                if (memoryKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *memoryKind, expression, methodMemberOrdinal, scopeOrdinal,
+                        selectedMember.declaredTypeKey,
+                        selectedMember.parameters.front().typeKey,
+                        false, std::nullopt, std::nullopt});
+                }
+            }
             // Item 348: the 256-bit floating family uses the same exact-signature gate as the
             // earlier SIMD families while retaining distinct MIR operations for FP semantics.
             const std::string floatingVector256Name =
@@ -14579,6 +14606,8 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::SimdInt256Add: return "simd-int256-add";
         case MethodCoreOperationKind::SimdInt256Subtract: return "simd-int256-subtract";
         case MethodCoreOperationKind::SimdInt256Multiply: return "simd-int256-multiply";
+        case MethodCoreOperationKind::SimdLoadAligned128: return "simd-load-aligned-128";
+        case MethodCoreOperationKind::SimdStoreAligned128: return "simd-store-aligned-128";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

@@ -110,6 +110,10 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdInt256Subtract};
     case MethodCoreOperationKind::SimdInt256Multiply:
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdInt256Multiply};
+    case MethodCoreOperationKind::SimdLoadAligned128:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSimdLoadAligned128};
+    case MethodCoreOperationKind::SimdStoreAligned128:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdStoreAligned128};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -1046,6 +1050,8 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreSimdInt256Add: return "core-simd-int256-add";
         case ProjectOopHirNodeKind::CoreSimdInt256Subtract: return "core-simd-int256-subtract";
         case ProjectOopHirNodeKind::CoreSimdInt256Multiply: return "core-simd-int256-multiply";
+        case ProjectOopHirNodeKind::CoreSimdLoadAligned128: return "core-simd-load-aligned-128";
+        case ProjectOopHirNodeKind::CoreSimdStoreAligned128: return "core-simd-store-aligned-128";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

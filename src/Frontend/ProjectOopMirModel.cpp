@@ -644,6 +644,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreSimdInt256Add: return "core-simd-int256-add";
         case ProjectOopMirNodeKind::CoreSimdInt256Subtract: return "core-simd-int256-subtract";
         case ProjectOopMirNodeKind::CoreSimdInt256Multiply: return "core-simd-int256-multiply";
+        case ProjectOopMirNodeKind::CoreSimdLoadAligned128: return "core-simd-load-aligned-128";
+        case ProjectOopMirNodeKind::CoreSimdStoreAligned128: return "core-simd-store-aligned-128";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1701,6 +1703,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreSimdInt256Multiply:
             result->kind = ProjectOopMirNodeKind::CoreSimdInt256Multiply;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdLoadAligned128:
+            result->kind = ProjectOopMirNodeKind::CoreSimdLoadAligned128;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdStoreAligned128:
+            result->kind = ProjectOopMirNodeKind::CoreSimdStoreAligned128;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;

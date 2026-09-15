@@ -23,5 +23,16 @@ namespace NativeSharp.Core.Numerics
         {
             return default(Int32x4);
         }
+
+        // The caller guarantees a 16-byte aligned address.
+        public static Int32x4 LoadAligned(Int32x4* source)
+        {
+            return default(Int32x4);
+        }
+
+        // The caller guarantees a 16-byte aligned address.
+        public static void StoreAligned(Int32x4* destination, Int32x4 value)
+        {
+        }
     }
 }
