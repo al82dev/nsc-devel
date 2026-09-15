@@ -1429,7 +1429,13 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
         return true;
     };
     const auto emitParameters = [&](const interop::LibraryMetadataMember &member) -> bool {
-        return emitParameterRange(member, member.parameters.size());
+        if (!emitParameterRange(member, member.parameters.size())) return false;
+        if ((member.flags & interop::kMetadataMemberVariadic) != 0U)
+        {
+            if (!member.parameters.empty()) generated << ", ";
+            generated << "...";
+        }
+        return true;
     };
 
     struct AccessorContract final

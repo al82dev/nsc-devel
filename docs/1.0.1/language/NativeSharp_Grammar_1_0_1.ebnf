@@ -27,8 +27,13 @@ enum-member = identifier, [ "=", expression ] ;
 delegate-declaration = "delegate", [ ownership ], type, identifier, [ type-parameters ],
                        "(", [ parameter-list ], ")", { constraint-clause }, ";" ;
 extern-c-declaration = [ "public" | "internal" ], "extern", "C",
-                       ( delegate-declaration | function-declaration |
-                         "{", { function-declaration }, "}" ) ;
+                       ( delegate-declaration | extern-c-function-declaration |
+                         "{", { extern-c-function-declaration }, "}" ) ;
+extern-c-function-declaration = [ ownership ], type, identifier,
+                                "(", [ c-parameter-list ], ")", ";" ;
+extern-c-import-block = "extern", "C", [ "from", string-literal ],
+                        "{", { [ "public" | "internal" | "protected" | "private" ],
+                               extern-c-function-declaration }, "}" ;
 
 type-body = "{", { type-member | declaration }, "}" ;
 interface-body = "{", { interface-member }, "}" ;
@@ -36,7 +41,7 @@ type-member = { member-modifier },
               ( field-declaration | method-declaration | constructor-declaration |
                 destructor-declaration | property-declaration | indexer-declaration |
                 operator-declaration | conversion-declaration | event-declaration |
-                anonymous-struct-field | anonymous-union-field ) ;
+                anonymous-struct-field | anonymous-union-field | extern-c-import-block ) ;
 interface-member = { "public" | "abstract" | "noheap" }, [ "ref" ], [ ownership ], type, identifier,
                    "(", [ parameter-list ], ")", ";" |
                    [ ownership ], type, identifier, accessor-body |
@@ -81,6 +86,7 @@ constraint-clause = "where", identifier, ":", constraint, { ",", constraint } ;
 constraint = "class" | type ;
 base-list = ":", type, { ",", type } ;
 parameter-list = parameter, { ",", parameter } ;
+c-parameter-list = parameter, { ",", parameter }, [ ",", "..." ] ;
 parameter = [ ownership ], [ "ref" | "out" | "in" ], type, identifier,
             [ "=", literal | "null" | "default" ] ;
 argument-list = argument, { ",", argument } ;

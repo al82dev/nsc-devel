@@ -141,6 +141,8 @@ struct ClassMemberSymbol final
     bool isExported = false;
     bool isExternC = false;
     bool isExportedC = false;
+    // Item 331. The declaration has one or more fixed C parameters followed by `...`.
+    bool isVariadic = false;
     // Interop Foundation: true for a function declared inside `extern C from "<dll>" { ... }` --
     // a body-less static member whose C symbol is `name` and whose import library is derived
     // from `importDllName` at link time. The compiler knows no API by name; only this shape.

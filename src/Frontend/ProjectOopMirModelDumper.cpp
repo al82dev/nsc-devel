@@ -146,6 +146,7 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " abi=(" << (function.isLambda && function.hasClosureEnvironment
                     ? "closure-env:first" : function.isStatic ? "static" : "this:first")
                << (function.isExportedC ? " export-c=" + function.cAbiName : "");
+        if (function.isVariadic) output << " variadic";
         if (function.isImportedNative) output << " import-native";
         for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
             output << ",p" << index << ':' << function.parameterTypeKeys[index];

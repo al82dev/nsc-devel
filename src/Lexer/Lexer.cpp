@@ -738,6 +738,12 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
         case '?':
             return makeToken(TokenKind::Question, begin);
         case '.':
+            if (current() == '.' && peek() == '.')
+            {
+                advance();
+                advance();
+                return makeToken(TokenKind::Ellipsis, begin);
+            }
             return makeToken(TokenKind::Dot, begin);
         case '~':
             return makeToken(TokenKind::Tilde, begin);

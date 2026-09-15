@@ -105,9 +105,11 @@ historia, no una certificación nueva y no incluye archivos sin commit.
 - sintaxis, layout y acceso MSVC de bitfields nombrados, sin nombre y de ancho cero, incluidos
   cambios de unidad, barreras, `pack`, structs, clases, unions, máscaras de lectura/escritura y
   extensión de signo; las variantes `volatile` acceden a la unidad completa sin atomics ni fences;
-- NSMETA 1.18 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
+- declaraciones C variádicas con ellipsis terminal, identidad estable y frontera de llamada
+  explícita hasta incorporar las promociones C;
+- NSMETA 1.19 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
   cuerpos inline reutilizables, campos volatile, retornos `ref`, contratos `noheap` y carriers
-  anónimos y coordenadas físicas de bitfields preservados;
+  anónimos, coordenadas físicas de bitfields y firmas C variádicas preservados;
 - verificación cruzada de metadata, COFF, import library y exportaciones PE;
 - identidad de build, instalación verificable, inventario criptográfico y actualización segura;
 - documentación 1.0.1 autocontenida e instalable.

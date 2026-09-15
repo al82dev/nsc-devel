@@ -106,6 +106,11 @@ public:
     bool isReference() const noexcept;
     void setReference(bool value) noexcept;
 
+    // Item 331. True only for a C declaration whose fixed parameter list ends in `...`.
+    // This is separate from flag(): function declarations already use that bit for external-only.
+    bool isVariadic() const noexcept;
+    void setVariadic(bool value) noexcept;
+
     std::uint64_t integerValue() const noexcept;
     void setIntegerValue(std::uint64_t value) noexcept;
 
@@ -130,6 +135,7 @@ private:
     std::vector<AstNode*> children_;
     bool flag_ = false;
     bool reference_ = false;
+    bool variadic_ = false;
     std::uint64_t integerValue_ = 0;
     double floatingValue_ = 0.0;
 };

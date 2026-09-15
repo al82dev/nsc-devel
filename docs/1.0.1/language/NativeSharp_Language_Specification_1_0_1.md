@@ -1216,6 +1216,24 @@ y superficie de símbolos. Un consumidor debe validar esos valores antes de mate
 enlazar. Formatos históricos sólo se aceptan conforme a una regla explícita de minor compatible;
 un major futuro o un contrato físico distinto se rechaza con causa precisa.
 
+### NS-ABI-003 — Declaraciones C variádicas
+
+Una importación sin cuerpo `extern C` puede declarar `...` como último elemento de su lista, después
+de uno o más parámetros fijos: `int Printf(char* formato, ...);`. El ellipsis no es un parámetro,
+no tiene nombre ni tipo y forma parte de la identidad de la firma. No se admite al principio, en
+posición intermedia, en métodos NativeSharp con cuerpo ni en exports implementados por NativeSharp.
+
+La declaración produce una función C/LLVM variádica con el prefijo fijo escrito. NSMETA 1.19
+conserva la marca, por lo que una `LibraryReference` reconstruye exactamente la misma declaración.
+El punto 331 sólo define y transporta el contrato; una llamada se rechaza hasta que NS-ABI-004
+defina las promociones de argumentos del punto 332.
+
+A body-less `extern C` import may end its parameter list with `...` after one or more fixed
+parameters. The ellipsis is not a named or typed parameter and participates in signature identity.
+It is invalid first, in the middle, in NativeSharp method bodies or on NativeSharp-defined exports.
+The declaration lowers to an LLVM variadic function and NSMETA 1.19 preserves it. Calls remain an
+explicit item-332 boundary until their C argument promotions are defined.
+
 ## 11. Tipos, genéricos y control estructurado
 
 ### NS-CT-001 — Aserciones estáticas

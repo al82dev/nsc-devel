@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 19 (2026-09-15): las declaraciones C variadicas conservan el marcador `...` para que
+// LibraryReference reconstruya la misma firma importada.
 // MINOR 18 (2026-09-15): los bitfields conservan unidad, offset de bit y ancho para reproducir
 // el layout MSVC en headers y LibraryReference.
 // MINOR 17 (2026-09-15): los campos portadores de agregados anonimos conservan su marca para
@@ -51,7 +53,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 18;
+inline constexpr std::uint16_t kMetadataFormatMinor = 19;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -75,6 +77,8 @@ inline constexpr std::uint32_t kMetadataFieldAnonymousCarrier = 1U << 26U;
 // coordinates; the flags distinguish a named bit-field from an unnamed padding declaration.
 inline constexpr std::uint32_t kMetadataFieldBitField = 1U << 27U;
 inline constexpr std::uint32_t kMetadataFieldUnnamedBitField = 1U << 28U;
+// Item 331. Bit 29 belongs only to imported-C method records and preserves the terminal `...`.
+inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una

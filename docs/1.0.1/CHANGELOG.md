@@ -75,6 +75,10 @@ empaqueta con NativeSharp 1.0.1.
   Dirección, `ref` y `offsetof` permanecen prohibidos. Los bitfields `volatile` hacen cada lectura
   y cada read-modify-write sobre la unidad completa mediante accesos LLVM `volatile`, sin volverla
   atómica ni insertar fences, también al reconstruirse desde `LibraryReference`.
+- Las importaciones `extern C` aceptan un `...` terminal después de al menos un parámetro fijo.
+  La marca forma parte de la identidad de la declaración, llega hasta una función LLVM variádica y
+  se conserva en NSMETA 1.19 y `LibraryReference`. Las llamadas permanecen en la frontera explícita
+  del punto 332, donde se incorporan las promociones C.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

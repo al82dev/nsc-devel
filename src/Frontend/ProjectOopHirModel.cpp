@@ -1431,6 +1431,7 @@ bool ProjectOopHirModel::buildImpl(
             imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
             imported.isStatic = true;
             imported.isImportedC = true;
+            imported.isVariadic = member.isVariadic;
             imported.importDllName = member.importDllName;
             imported.importRequiresRuntimeBinding = member.importRequiresRuntimeBinding;
             imported.cAbiName = member.name;

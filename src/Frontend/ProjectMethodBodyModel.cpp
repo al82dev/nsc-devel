@@ -8845,6 +8845,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        if (selectedMember.isVariadic)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "calls to variadic C declarations belong to item 332");
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
         if (callee.readonlyReceiver && selectedMember.declaringTypeIsStruct &&
             !selectedMember.isStatic && !selectedMember.isReadonly)
         {

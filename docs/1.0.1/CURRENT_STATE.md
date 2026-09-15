@@ -186,6 +186,12 @@ memoria de `asm`. Un bitfield `volatile` carga y almacena como `volatile` la uni
 las escrituras conservan los bits vecinos mediante read-modify-write, sin semántica atómica ni
 fences, y la marca se conserva en tipos importados por `LibraryReference`.
 
+Una importación `extern C` puede terminar su lista de parámetros con `...`, siempre después de al
+menos un parámetro fijo. El lexer conserva el ellipsis como un token, el modelo lo incorpora a la
+identidad de la firma y HIR/MIR/LLVM mantienen la declaración variádica sin inventar parámetros.
+NSMETA 1.19 transporta la marca y `LibraryReference` reconstruye el mismo contrato. Esta etapa no
+habilita todavía llamadas: sus promociones de argumentos pertenecen al punto 332.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

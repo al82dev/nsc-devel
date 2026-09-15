@@ -472,6 +472,7 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.isVolatile) flags |= kMetadataMemberVolatile;
     if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
     if (member.isNoHeap) flags |= kMetadataMemberNoHeap;
+    if (member.isVariadic) flags |= kMetadataMemberVariadic;
     return flags;
 }
 
@@ -2037,6 +2038,17 @@ bool LibraryMetadataCodec::writeModel(
             }
         }
     }
+    if (metadata.formatMinor < 19)
+    {
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if ((member.flags & kMetadataMemberVariadic) != 0U)
+            {
+                error = "NativeSharp metadata before 1.19 cannot represent a variadic C declaration";
+                return false;
+            }
+        }
+    }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -2697,6 +2709,26 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
             {
                 error = "metadata member '" + member.declaringTypeKey + "." +
                     member.signatureKey + "' carries noheap outside a method or constructor";
+                return false;
+            }
+        }
+    }
+    if (metadata.formatMinor >= 19)
+    {
+        constexpr std::uint8_t kMethodKind = 2U;
+        constexpr std::uint32_t kExternC = 1U << 8U;
+        constexpr std::uint32_t kImportedC = 1U << 20U;
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if ((member.flags & kMetadataMemberVariadic) != 0U &&
+                (member.kind != kMethodKind ||
+                 (member.flags & kExternC) == 0U ||
+                 (member.flags & kImportedC) == 0U ||
+                 member.parameters.empty()))
+            {
+                error = "metadata member '" + member.declaringTypeKey + "." +
+                    member.signatureKey +
+                    "' carries variadic outside an imported C method with fixed parameters";
                 return false;
             }
         }

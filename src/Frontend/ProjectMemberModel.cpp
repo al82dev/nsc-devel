@@ -457,6 +457,7 @@ bool ProjectMemberModel::build(
                 key += parameter.typeKey;
                 key += ',';
             }
+            if (member.isVariadic) key += "...";
             key += ')';
             return key;
         };
@@ -1209,6 +1210,7 @@ bool ProjectMemberModel::collectTypeMembers(
                 memberNode->hasModifier(lexer::TokenKind::KwExport);
             symbol.isExternC = symbol.kind == ClassMemberKind::Method &&
                 memberNode->hasModifier(lexer::TokenKind::KwExtern);
+            symbol.isVariadic = symbol.kind == ClassMemberKind::Method && memberNode->isVariadic();
             // Interop Foundation: a member born inside `extern C from "<dll>" { ... }` is an
             // IMPORTED C function -- the class-side face of a symbol that lives in an external
             // DLL. Its C symbol is the member name verbatim; the (dll, symbol) pair flows to the
@@ -1221,6 +1223,14 @@ bool ProjectMemberModel::collectTypeMembers(
                 symbol.cAbiName = symbol.name;
             }
             symbol.isExportedC = symbol.isExported && symbol.isExternC;
+            if (symbol.isVariadic && !symbol.isImportedC)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidExternCSignature,
+                    diagnostics::DiagnosticSeverity::Error,
+                    symbol.range,
+                    "a variadic callable must be a body-less extern C import declaration");
+            }
             if (symbol.isReferenceReturn && (symbol.isExportedC || symbol.isImportedC))
             {
                 diagnostics.report(
@@ -1558,6 +1568,10 @@ bool ProjectMemberModel::collectTypeMembers(
                     symbol.signatureKey += symbol.parameters[parameterIndex].typeKey;
                 }
                 symbol.signatureKey.push_back(')');
+                if (symbol.isVariadic)
+                {
+                    symbol.signatureKey.insert(symbol.signatureKey.size() - 1, ",...");
+                }
                 // Unlike an ordinary method, a conversion operator is identified by its
                 // source AND target types. Multiple conversions may therefore share
                 // `op_Implicit(Source)` while producing distinct target types.

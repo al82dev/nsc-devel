@@ -2481,7 +2481,7 @@ private:
                 returnType,
                 parameters.empty() ? nullptr : parameters.data(),
                 static_cast<unsigned>(parameters.size()),
-                0);
+                function.isVariadic ? 1 : 0);
             // C1.2 "import identity": the same triple (library, symbol, signature) may be
             // DECLARED more than once -- two classes may each wrap `kernel32!GetCurrentProcessId`,
             // and the frontend accepts that because it is ONE import, not a conflict. One import

@@ -978,6 +978,7 @@ bool ProjectOopMirModel::build(
         function.inliningPolicy = source.inliningPolicy;
         function.isExportedC = source.isExportedC;
         function.isImportedC = source.isImportedC;
+        function.isVariadic = source.isVariadic;
         function.isImportedNative = source.isImportedNative;
         function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
         function.importDllName = source.importDllName;

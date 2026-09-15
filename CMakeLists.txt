@@ -793,6 +793,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item330.volatile-bitfields
         COMMAND nsc_item330_volatile_bitfield_tests)
+    add_executable(
+        nsc_item331_variadic_c_declaration_tests
+        tests/unit/Item331VariadicCDeclarationTests.cpp)
+    target_link_libraries(nsc_item331_variadic_c_declaration_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item331_variadic_c_declaration_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item331_variadic_c_declaration_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item331_variadic_c_declaration_tests)
+    add_test(
+        NAME nsc.item331.variadic-c-declarations
+        COMMAND nsc_item331_variadic_c_declaration_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

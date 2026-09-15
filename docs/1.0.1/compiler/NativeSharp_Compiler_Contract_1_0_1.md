@@ -1110,6 +1110,20 @@ fences. O0 and O2 shall preserve the volatile operations. NSMETA 1.18 reconstruc
 the existing volatile member flag with the stored bit coordinates so local, ProjectReference and
 LibraryReference declarations lower identically. MIR remains schema 1.7 and no ABI version changes.
 
+## NSC-ABI-001 — Variadic C declaration preservation
+
+The lexer shall recognize `...` by maximal munch without changing one- or two-dot tokenization.
+The parser shall accept it only as the terminal marker of a body-less imported `extern C`
+declaration with at least one fixed parameter. The AST and member model shall retain an independent
+variadic bit, and the signature key and imported-C conflict identity shall distinguish fixed and
+variadic declarations of the same external symbol.
+
+HIR and MIR shall carry the bit on the body-less import and LLVM shall declare the function with
+the written fixed prefix followed by varargs. NSMETA 1.19 shall preserve the bit and generated
+`LibraryReference` source shall reconstruct the ellipsis. A pre-1.19 downlevel shall fail rather
+than erase it. Calls shall report the item-332 boundary until C default argument promotions exist;
+item 331 must not lower an unpromoted variadic call.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

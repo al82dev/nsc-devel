@@ -112,6 +112,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(Colon);
         NS_TOKEN_CASE(Question);
         NS_TOKEN_CASE(Dot);
+        NS_TOKEN_CASE(Ellipsis);
         NS_TOKEN_CASE(Arrow);
         NS_TOKEN_CASE(FatArrow);
         NS_TOKEN_CASE(Plus);

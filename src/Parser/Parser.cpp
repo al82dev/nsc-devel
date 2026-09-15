@@ -2944,15 +2944,36 @@ ast::AstNode* Parser::parseClassMember(
                     imported->addModifier(TokenKind::KwStatic);
                     imported->addModifier(TokenKind::KwExtern);
                     expect(TokenKind::LeftParen, "'('");
+                    bool sawFixedParameter = false;
+                    bool variadic = false;
                     if (!at(TokenKind::RightParen))
                     {
                         while (true)
                         {
+                            if (at(TokenKind::Ellipsis))
+                            {
+                                if (!sawFixedParameter)
+                                {
+                                    diagnostics_.report(
+                                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                                        diagnostics::DiagnosticSeverity::Error,
+                                        current().range(),
+                                        "a variadic C declaration requires at least one fixed parameter before '...'");
+                                }
+                                consume();
+                                variadic = true;
+                                break;
+                            }
                             ast::AstNode* parameter = parseParameter();
-                            if (parameter != nullptr) imported->addChild(parameter);
+                            if (parameter != nullptr)
+                            {
+                                imported->addChild(parameter);
+                                sawFixedParameter = true;
+                            }
                             if (!consumeIf(TokenKind::Comma)) break;
                         }
                     }
+                    imported->setVariadic(variadic);
                     expect(TokenKind::RightParen, "')'");
                     expect(TokenKind::Semicolon, "';' (imported C functions have no body)");
                     imported->setRange(tokenRangeFrom(entryBegin));
@@ -4936,14 +4957,31 @@ ast::AstNode* Parser::parseFunctionTail(
     parseGenericParameterList(function);
 
     expect(TokenKind::LeftParen, "'('");
+    bool sawFixedParameter = false;
+    bool variadic = false;
     if (!at(TokenKind::RightParen))
     {
         while (true)
         {
+            if (at(TokenKind::Ellipsis))
+            {
+                if (!sawFixedParameter)
+                {
+                    diagnostics_.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        current().range(),
+                        "a variadic C declaration requires at least one fixed parameter before '...'");
+                }
+                consume();
+                variadic = true;
+                break;
+            }
             ast::AstNode* parameter = parseParameter();
             if (parameter != nullptr)
             {
                 function->addChild(parameter);
+                sawFixedParameter = true;
             }
             if (!consumeIf(TokenKind::Comma))
             {
@@ -4951,7 +4989,16 @@ ast::AstNode* Parser::parseFunctionTail(
             }
         }
     }
+    function->setVariadic(variadic);
     expect(TokenKind::RightParen, "')'");
+    if (variadic && !externalOnly)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            function->range(),
+            "'...' is valid only in a body-less extern C declaration");
+    }
     // NSC-LIMIT-007: igual que un metodo -- despues de los parametros, antes del cuerpo o del ';'.
     parseGenericConstraintClauses(function);
     // ...SALVO QUE UNA FUNCION GLOBAL GENERICA NO SE MATERIALIZA.

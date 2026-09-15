@@ -127,6 +127,7 @@ enum class TokenKind
     // Conditional expression `c ? a : b`. The only place `?` appears in the grammar.
     Question,
     Dot,
+    Ellipsis,
     Arrow,
     FatArrow,
 

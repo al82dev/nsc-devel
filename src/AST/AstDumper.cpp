@@ -83,6 +83,10 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
     {
         output << " ref=true";
     }
+    if (node->isVariadic())
+    {
+        output << " variadic=true";
+    }
 
     output << '\n';
 

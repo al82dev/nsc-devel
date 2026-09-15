@@ -104,6 +104,7 @@ std::string ProjectOopHirModelDumper::dump(const ProjectOopHirModel& model)
                << " inlining=" << inliningPolicyName(function.inliningPolicy)
                << " noheap=" << (function.isNoHeap ? "true" : "false")
                << (function.isExportedC ? " export-c=" + function.cAbiName : "")
+               << (function.isVariadic ? " variadic" : "")
                << (function.isImportedNative ? " import-native" : "")
                << " return=" << function.returnTypeKey
                << " ref-return=" << (function.referenceReturn ? "true" : "false")
