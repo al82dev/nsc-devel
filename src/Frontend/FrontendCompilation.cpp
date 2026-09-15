@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/FrontendCompilation.h"
+#include "nativesharp/Frontend/ComptimeEngine.h"
 
 #include "nativesharp/Lexer/Lexer.h"
 #include "nativesharp/CFG/CfgBuilder.h"
@@ -34,12 +35,18 @@ bool FrontendCompilation::compileFile(
     std::string& loadError,
     bool requireMain)
 {
-    const std::optional<FileId> fileId = sourceManager_.loadFile(path, loadError);
-    if (!fileId.has_value())
+    std::optional<std::string> buffer = source::SourceManager::readFileBuffer(path, loadError);
+    if (!buffer.has_value())
     {
         return false;
     }
-    return run(*fileId, requireMain);
+    ComptimeResult comptime = ComptimeEngine().execute(*buffer);
+    if (!comptime.success)
+    {
+        loadError = comptime.error;
+        return false;
+    }
+    return run(sourceManager_.addBuffer(path, std::move(comptime.source)), requireMain);
 }
 
 bool FrontendCompilation::compileBuffer(
@@ -47,7 +54,9 @@ bool FrontendCompilation::compileBuffer(
     std::string buffer,
     bool requireMain)
 {
-    return run(sourceManager_.addBuffer(std::move(path), std::move(buffer)), requireMain);
+    ComptimeResult comptime = ComptimeEngine().execute(buffer);
+    if (!comptime.success) return false;
+    return run(sourceManager_.addBuffer(std::move(path), std::move(comptime.source)), requireMain);
 }
 
 const source::SourceManager& FrontendCompilation::sourceManager() const noexcept { return sourceManager_; }

@@ -235,6 +235,7 @@ add_library(nsc_frontend STATIC
     src/Passes/OptimizationDumper.cpp
     src/Passes/PassPipelineDumper.cpp
     src/Frontend/FrontendCompilation.cpp
+    src/Frontend/ComptimeEngine.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
     src/Frontend/QualifiedNameLadder.cpp
@@ -1201,6 +1202,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item376_worker_fp_initialization_tests)
     add_test(NAME nsc.item376.worker-fp-initialization
         COMMAND nsc_item376_worker_fp_initialization_tests)
+
+    add_executable(nsc_item385_comptime_core_tests tests/unit/Item385ComptimeCoreTests.cpp)
+    target_link_libraries(nsc_item385_comptime_core_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_item385_comptime_core_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item385_comptime_core_tests)
+    add_test(NAME nsc.item385.comptime-core COMMAND nsc_item385_comptime_core_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

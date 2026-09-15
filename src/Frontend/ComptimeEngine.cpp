@@ -1,0 +1,331 @@
+#include "nativesharp/Frontend/ComptimeEngine.h"
+
+#include <charconv>
+#include <cctype>
+#include <limits>
+#include <optional>
+
+namespace nativesharp::frontend
+{
+namespace
+{
+bool identifierByte(char value) noexcept
+{
+    const unsigned char byte = static_cast<unsigned char>(value);
+    return std::isalnum(byte) != 0 || value == '_';
+}
+
+class IntegerExpression final
+{
+public:
+    explicit IntegerExpression(std::string_view text) : text_(text) {}
+
+    std::optional<std::int64_t> evaluate(std::string& error)
+    {
+        const auto value = parseBitwiseOr(error);
+        skipSpace();
+        if (value.has_value() && cursor_ != text_.size())
+        {
+            error = "unexpected token in #run expression at byte " + std::to_string(cursor_);
+            return std::nullopt;
+        }
+        return value;
+    }
+
+private:
+    void skipSpace()
+    {
+        while (cursor_ < text_.size() &&
+               std::isspace(static_cast<unsigned char>(text_[cursor_])) != 0)
+            ++cursor_;
+    }
+
+    bool take(std::string_view token)
+    {
+        skipSpace();
+        if (text_.substr(cursor_, token.size()) != token) return false;
+        cursor_ += token.size();
+        return true;
+    }
+
+    std::optional<std::int64_t> parsePrimary(std::string& error)
+    {
+        skipSpace();
+        if (take("("))
+        {
+            auto value = parseBitwiseOr(error);
+            if (!value.has_value() || !take(")"))
+            {
+                if (error.empty()) error = "expected ')' in #run expression";
+                return std::nullopt;
+            }
+            return value;
+        }
+        const std::size_t begin = cursor_;
+        int base = 10;
+        if (cursor_ + 2 <= text_.size() && text_[cursor_] == '0' &&
+            (text_[cursor_ + 1] == 'x' || text_[cursor_ + 1] == 'X'))
+        {
+            base = 16;
+            cursor_ += 2;
+        }
+        const std::size_t digits = cursor_;
+        while (cursor_ < text_.size() &&
+               (std::isalnum(static_cast<unsigned char>(text_[cursor_])) != 0 ||
+                text_[cursor_] == '_'))
+            ++cursor_;
+        if (cursor_ == digits)
+        {
+            error = "expected integer expression after #run(";
+            return std::nullopt;
+        }
+        std::string clean;
+        for (char value : text_.substr(digits, cursor_ - digits))
+            if (value != '_') clean.push_back(value);
+        std::uint64_t parsed = 0;
+        const auto converted = std::from_chars(clean.data(), clean.data() + clean.size(), parsed, base);
+        if (converted.ec != std::errc{} || converted.ptr != clean.data() + clean.size() ||
+            parsed > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+        {
+            error = "invalid signed 64-bit integer in #run expression at byte " +
+                std::to_string(begin);
+            return std::nullopt;
+        }
+        return static_cast<std::int64_t>(parsed);
+    }
+
+    std::optional<std::int64_t> parseUnary(std::string& error)
+    {
+        if (take("+")) return parseUnary(error);
+        if (take("-"))
+        {
+            auto value = parseUnary(error);
+            if (!value.has_value()) return std::nullopt;
+            if (*value == std::numeric_limits<std::int64_t>::min())
+            {
+                error = "signed overflow in #run unary '-'";
+                return std::nullopt;
+            }
+            return -*value;
+        }
+        if (take("~"))
+        {
+            auto value = parseUnary(error);
+            return value.has_value() ? std::optional<std::int64_t>(~*value) : std::nullopt;
+        }
+        return parsePrimary(error);
+    }
+
+    std::optional<std::int64_t> parseMultiply(std::string& error)
+    {
+        auto left = parseUnary(error);
+        while (left.has_value())
+        {
+            char op = 0;
+            if (take("*")) op = '*';
+            else if (take("/")) op = '/';
+            else if (take("%")) op = '%';
+            else break;
+            auto right = parseUnary(error);
+            if (!right.has_value()) return std::nullopt;
+            if ((op == '/' || op == '%') && *right == 0)
+            {
+                error = "division by zero in #run expression";
+                return std::nullopt;
+            }
+            if ((op == '/' || op == '%') &&
+                *left == std::numeric_limits<std::int64_t>::min() && *right == -1)
+            {
+                error = "signed overflow in #run expression";
+                return std::nullopt;
+            }
+            if (op == '*')
+            {
+                std::int64_t product = 0;
+                if (!__builtin_mul_overflow(*left, *right, &product)) left = product;
+                else { error = "signed overflow in #run expression"; return std::nullopt; }
+            }
+            else if (op == '/') left = *left / *right;
+            else left = *left % *right;
+        }
+        return left;
+    }
+
+    std::optional<std::int64_t> parseAdd(std::string& error)
+    {
+        auto left = parseMultiply(error);
+        while (left.has_value())
+        {
+            char op = 0;
+            if (take("+")) op = '+';
+            else if (take("-")) op = '-';
+            else break;
+            auto right = parseMultiply(error);
+            if (!right.has_value()) return std::nullopt;
+            std::int64_t result = 0;
+            const bool overflow = op == '+' ? __builtin_add_overflow(*left, *right, &result)
+                                            : __builtin_sub_overflow(*left, *right, &result);
+            if (overflow) { error = "signed overflow in #run expression"; return std::nullopt; }
+            left = result;
+        }
+        return left;
+    }
+
+    std::optional<std::int64_t> parseShift(std::string& error)
+    {
+        auto left = parseAdd(error);
+        while (left.has_value())
+        {
+            bool rightShift = false;
+            if (take("<<")) {}
+            else if (take(">>")) rightShift = true;
+            else break;
+            auto right = parseAdd(error);
+            if (!right.has_value()) return std::nullopt;
+            if (*right < 0 || *right >= 64)
+            {
+                error = "shift count outside 0..63 in #run expression";
+                return std::nullopt;
+            }
+            const auto bits = static_cast<std::uint64_t>(*left);
+            left = static_cast<std::int64_t>(rightShift ? bits >> *right : bits << *right);
+        }
+        return left;
+    }
+
+    std::optional<std::int64_t> parseBitwiseAnd(std::string& error)
+    {
+        auto value = parseShift(error);
+        while (value.has_value() && take("&"))
+        {
+            auto right = parseShift(error);
+            if (!right.has_value()) return std::nullopt;
+            value = *value & *right;
+        }
+        return value;
+    }
+
+    std::optional<std::int64_t> parseBitwiseXor(std::string& error)
+    {
+        auto value = parseBitwiseAnd(error);
+        while (value.has_value() && take("^"))
+        {
+            auto right = parseBitwiseAnd(error);
+            if (!right.has_value()) return std::nullopt;
+            value = *value ^ *right;
+        }
+        return value;
+    }
+
+    std::optional<std::int64_t> parseBitwiseOr(std::string& error)
+    {
+        auto value = parseBitwiseXor(error);
+        while (value.has_value() && take("|"))
+        {
+            auto right = parseBitwiseXor(error);
+            if (!right.has_value()) return std::nullopt;
+            value = *value | *right;
+        }
+        return value;
+    }
+
+    std::string_view text_;
+    std::size_t cursor_ = 0;
+};
+
+bool startsWord(std::string_view source, std::size_t offset, std::string_view word)
+{
+    if (source.substr(offset, word.size()) != word) return false;
+    if (offset != 0 && identifierByte(source[offset - 1])) return false;
+    const std::size_t after = offset + word.size();
+    return after >= source.size() || !identifierByte(source[after]);
+}
+}
+
+ComptimeResult ComptimeEngine::execute(std::string_view source) const
+{
+    ComptimeResult result;
+    result.source.assign(source);
+    enum class Scan { Code, LineComment, BlockComment, String, Character } state = Scan::Code;
+    bool escaped = false;
+    for (std::size_t cursor = 0; cursor < source.size(); ++cursor)
+    {
+        const char current = source[cursor];
+        const char next = cursor + 1 < source.size() ? source[cursor + 1] : '\0';
+        if (state == Scan::LineComment)
+        {
+            if (current == '\n') state = Scan::Code;
+            continue;
+        }
+        if (state == Scan::BlockComment)
+        {
+            if (current == '*' && next == '/') { state = Scan::Code; ++cursor; }
+            continue;
+        }
+        if (state == Scan::String || state == Scan::Character)
+        {
+            if (escaped) { escaped = false; continue; }
+            if (current == '\\') { escaped = true; continue; }
+            if ((state == Scan::String && current == '"') ||
+                (state == Scan::Character && current == '\'')) state = Scan::Code;
+            continue;
+        }
+        if (current == '/' && next == '/') { state = Scan::LineComment; ++cursor; continue; }
+        if (current == '/' && next == '*') { state = Scan::BlockComment; ++cursor; continue; }
+        if (current == '"') { state = Scan::String; continue; }
+        if (current == '\'') { state = Scan::Character; continue; }
+        if (startsWord(source, cursor, "comptime"))
+        {
+            result.source.replace(cursor, 8, 8, ' ');
+            cursor += 7;
+            continue;
+        }
+        if (source.substr(cursor, 4) != "#run" ||
+            (cursor != 0 && identifierByte(source[cursor - 1]))) continue;
+        std::size_t open = cursor + 4;
+        while (open < source.size() &&
+               std::isspace(static_cast<unsigned char>(source[open])) != 0) ++open;
+        if (open == source.size() || source[open] != '(')
+        {
+            result.error = "expected '(' after #run at byte " + std::to_string(cursor);
+            return result;
+        }
+        std::size_t close = open + 1;
+        unsigned depth = 1;
+        for (; close < source.size() && depth != 0; ++close)
+        {
+            if (source[close] == '(') ++depth;
+            else if (source[close] == ')') --depth;
+        }
+        if (depth != 0)
+        {
+            result.error = "unterminated #run expression at byte " + std::to_string(cursor);
+            return result;
+        }
+        const std::size_t end = close;
+        std::string error;
+        IntegerExpression evaluator(source.substr(open + 1, end - open - 2));
+        const auto value = evaluator.evaluate(error);
+        if (!value.has_value())
+        {
+            result.error = error + " (directive at byte " + std::to_string(cursor) + ")";
+            return result;
+        }
+        const std::string replacement = std::to_string(*value);
+        const std::size_t length = end - cursor;
+        if (replacement.size() > length)
+        {
+            result.error = "#run result does not fit its source span at byte " +
+                std::to_string(cursor);
+            return result;
+        }
+        std::string padded = replacement;
+        padded.append(length - replacement.size(), ' ');
+        result.source.replace(cursor, length, padded);
+        result.evaluations.push_back({cursor, length, *value});
+        cursor = end - 1;
+    }
+    result.success = true;
+    return result;
+}
+}

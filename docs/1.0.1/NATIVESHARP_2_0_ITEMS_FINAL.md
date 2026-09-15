@@ -194,7 +194,7 @@
 
 ## Tanda 13 — `comptime`
 
-140. **385 — Núcleo `comptime/#run` / Compile-time execution core**
+140. **385 — Núcleo `comptime/#run` / Compile-time execution core — COMPLETADO / COMPLETE**
 141. **386 — Límites y aislamiento de comptime / Compile-time execution sandbox**
 142. **387 — Dependencias y cache de comptime / Compile-time dependency caching**
 143. **388 — Reproducibilidad de comptime / Reproducible compile-time execution**

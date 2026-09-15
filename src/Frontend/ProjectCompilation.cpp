@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ComptimeEngine.h"
 
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
@@ -876,7 +877,14 @@ bool ProjectCompilation::compileSyntaxCore(
                 loadError = read.error;
                 return false;
             }
-            const FileId fileId = sourceManager_.addBuffer(read.path, std::move(*read.buffer));
+            ComptimeResult comptime = ComptimeEngine().execute(*read.buffer);
+            if (!comptime.success)
+            {
+                loadError = read.path.generic_string() + ": " + comptime.error;
+                return false;
+            }
+            const FileId fileId = sourceManager_.addBuffer(
+                read.path, std::move(comptime.source));
             units_.push_back(std::make_unique<ProjectSyntaxUnit>(
                 read.projectOrdinal,
                 read.sourceOrdinal,
