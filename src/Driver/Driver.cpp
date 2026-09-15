@@ -3386,6 +3386,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentCompatibilityPolicy();
             return ExitCode::Success;
         }
+        if (argument == "--print-compatibility-matrix")
+        {
+            output << currentCompatibilityMatrix();
+            return ExitCode::Success;
+        }
         if (argument == "--print-job-policy")
         {
             output << "hardware-threads: " << jobPolicy.hardwareThreads() << '\n'
@@ -3468,6 +3473,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "compatibility policy verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-compatibility-matrix")
+        {
+            std::string matrixError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeCompatibilityMatrix(destination, matrixError))
+            {
+                error << "nsc: error: " << matrixError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "compatibility matrix written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-compatibility-matrix")
+        {
+            std::string matrixError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyCompatibilityMatrix(source, matrixError))
+            {
+                error << "nsc: error: " << matrixError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "compatibility matrix verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--check-compiler-compatibility")

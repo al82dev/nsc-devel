@@ -205,7 +205,7 @@
 145. **390 — LTO / Link-time optimization — COMPLETADO / COMPLETE**
 146. **391 — ThinLTO / Thin link-time optimization — COMPLETADO / COMPLETE**
 147. **392 — Enlace incremental / Incremental linking — COMPLETADO / COMPLETE**
-148. **393 — Matriz N-1/N de compatibilidad / N-1 and N compatibility matrix**
+148. **393 — Matriz N-1/N de compatibilidad / N-1 and N compatibility matrix — COMPLETADO / COMPLETE**
 
 ## Tanda 15 — Arquitectura interna 2.0
 

@@ -10,6 +10,7 @@
 #include <array>
 #include <charconv>
 #include <fstream>
+#include <iterator>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -200,5 +201,97 @@ bool checkCompilerCompatibility(std::string_view requiredVersion, std::string &e
     explanation = "compiler " + std::string(kCompilerReleaseVersion) +
                   (compatible ? " satisfies " : " does not satisfy ") + std::string(requiredVersion);
     return compatible;
+}
+
+std::string currentCompatibilityMatrix()
+{
+    using namespace interop;
+    SemanticVersion current;
+    if (!parseSemanticVersion(kCompilerReleaseVersion, current)) return {};
+    SemanticVersion previous = current;
+    if (previous.patch > 0U) --previous.patch;
+    else if (previous.minor > 0U) --previous.minor;
+    else if (previous.major > 0U) --previous.major;
+    const std::string previousCompiler = std::to_string(previous.major) + "." +
+        std::to_string(previous.minor) + "." + std::to_string(previous.patch);
+    const unsigned previousMetadataMinor = kMetadataFormatMinor == 0U ? 0U : kMetadataFormatMinor - 1U;
+    const unsigned previousNativeAbiMinor = kNativeAbiMinor == 0U ? 0U : kNativeAbiMinor - 1U;
+    const unsigned previousRuntimeAbiMinor = kRuntimeAbiMinor == 0U ? 0U : kRuntimeAbiMinor - 1U;
+
+    std::string matrix = "NSCOMPAT-MATRIX " +
+        std::to_string(kCompatibilityMatrixFormatVersion) + "\n";
+    matrix += "compiler.N=" + std::string(kCompilerReleaseVersion) + "\n";
+    matrix += "compiler.N-1=" + previousCompiler + "\n";
+    matrix += "nsmeta.N=" + std::to_string(kMetadataFormatMajor) + "." +
+        std::to_string(kMetadataFormatMinor) + "\n";
+    matrix += "nsmeta.N-1=" + std::to_string(kMetadataFormatMajor) + "." +
+        std::to_string(previousMetadataMinor) + "\n";
+    matrix += "native-abi.N=" + std::to_string(kNativeAbiMajor) + "." +
+        std::to_string(kNativeAbiMinor) + "\n";
+    matrix += "native-abi.N-1=" + std::to_string(kNativeAbiMajor) + "." +
+        std::to_string(previousNativeAbiMinor) + "\n";
+    matrix += "runtime-abi.N=" + std::to_string(kRuntimeAbiMajor) + "." +
+        std::to_string(kRuntimeAbiMinor) + "\n";
+    matrix += "runtime-abi.N-1=" + std::to_string(kRuntimeAbiMajor) + "." +
+        std::to_string(previousRuntimeAbiMinor) + "\n";
+    for (const std::string_view surface : {
+             std::string_view("compiler"), std::string_view("nsmeta"),
+             std::string_view("native-abi"), std::string_view("runtime-abi")})
+    {
+        matrix += "row=" + std::string(surface) + "|consumer:N|producer:N-1|accept\n";
+        matrix += "row=" + std::string(surface) + "|consumer:N|producer:N|accept\n";
+        matrix += "row=" + std::string(surface) + "|consumer:N-1|producer:N|reject\n";
+    }
+    return matrix;
+}
+
+bool writeCompatibilityMatrix(const std::filesystem::path& destination, std::string& error)
+{
+    error.clear();
+    if (destination.empty())
+    {
+        error = "compatibility matrix destination is empty";
+        return false;
+    }
+    std::error_code filesystemError;
+    if (!destination.parent_path().empty())
+        std::filesystem::create_directories(destination.parent_path(), filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot create compatibility matrix directory: " + filesystemError.message();
+        return false;
+    }
+    std::ofstream stream(destination, std::ios::binary | std::ios::trunc);
+    const std::string matrix = currentCompatibilityMatrix();
+    if (!stream || !(stream.write(matrix.data(), static_cast<std::streamsize>(matrix.size()))))
+    {
+        error = "cannot write compatibility matrix '" + destination.string() + "'";
+        return false;
+    }
+    return true;
+}
+
+bool verifyCompatibilityMatrix(const std::filesystem::path& source, std::string& error)
+{
+    error.clear();
+    std::ifstream stream(source, std::ios::binary);
+    if (!stream)
+    {
+        error = "cannot open compatibility matrix '" + source.string() + "'";
+        return false;
+    }
+    const std::string actual((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    if (stream.bad())
+    {
+        error = "cannot read compatibility matrix '" + source.string() + "'";
+        return false;
+    }
+    const std::string expected = currentCompatibilityMatrix();
+    if (actual != expected)
+    {
+        error = "compatibility matrix does not match the certified N-1/N policy";
+        return false;
+    }
+    return true;
 }
 } // namespace nativesharp::driver
