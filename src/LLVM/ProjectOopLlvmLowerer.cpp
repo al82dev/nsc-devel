@@ -14,6 +14,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/FloatingPointMode.h"
 #include "nativesharp/LLVM/LlvmVersion.h"
 #include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -249,6 +250,13 @@ constexpr const char* kMoveFileFunctionName = "__nativesharp_move_file";
 bool isFloating(std::string_view type) noexcept
 {
     return type == "builtin:float" || type == "builtin:double";
+}
+
+LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction) noexcept
+{
+    if (instruction != nullptr && activeFloatingPointMode() == FloatingPointMode::Fast)
+        LLVMSetFastMathFlags(instruction, LLVMFastMathFast);
+    return instruction;
 }
 
 // LA TERCERA Y LA CUARTA COPIA de la tabla de tipos enteros, encontradas al arreglar la division
@@ -7676,6 +7684,7 @@ private:
                     vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.subtract");
                 else
                     vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
+                vectorResult = applyFloatingPointMode(vectorResult);
                 LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "simd.result.addr");
                 LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
                 LLVMSetAlignment(resultStore, alignment);
@@ -7802,6 +7811,7 @@ private:
                             one = LLVMConstReal(LLVMFloatTypeInContext(context_), 1.0);
                         vectorResult = LLVMBuildFDiv(
                             builder_, LLVMConstVector(ones, 4U), squareRoot, "simd.rsqrt");
+                        vectorResult = applyFloatingPointMode(vectorResult);
                     }
                     else
                     {
@@ -7985,6 +7995,7 @@ private:
                     vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.fp256.subtract");
                 else
                     vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.fp256.multiply");
+                vectorResult = applyFloatingPointMode(vectorResult);
                 LLVMValueRef resultSlot =
                     entryBlockAlloca(carrier, 32U, "simd.fp256.result.addr");
                 LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
@@ -11229,20 +11240,23 @@ private:
         if (isComparison(operation))
         {
             return floating
-                ? LLVMBuildFCmp(builder_, floatingPredicate(operation), left, right, "fcmp")
+                ? applyFloatingPointMode(LLVMBuildFCmp(
+                    builder_, floatingPredicate(operation), left, right, "fcmp"))
                 : LLVMBuildICmp(builder_, integerPredicate(operation, isSignedInteger(operandType)), left, right, "icmp");
         }
         if (floating)
         {
+            LLVMValueRef result = nullptr;
             switch (operation)
             {
-                case lexer::TokenKind::Plus: return LLVMBuildFAdd(builder_, left, right, "fadd");
-                case lexer::TokenKind::Minus: return LLVMBuildFSub(builder_, left, right, "fsub");
-                case lexer::TokenKind::Star: return LLVMBuildFMul(builder_, left, right, "fmul");
-                case lexer::TokenKind::Slash: return LLVMBuildFDiv(builder_, left, right, "fdiv");
-                case lexer::TokenKind::Percent: return LLVMBuildFRem(builder_, left, right, "frem");
+                case lexer::TokenKind::Plus: result = LLVMBuildFAdd(builder_, left, right, "fadd"); break;
+                case lexer::TokenKind::Minus: result = LLVMBuildFSub(builder_, left, right, "fsub"); break;
+                case lexer::TokenKind::Star: result = LLVMBuildFMul(builder_, left, right, "fmul"); break;
+                case lexer::TokenKind::Slash: result = LLVMBuildFDiv(builder_, left, right, "fdiv"); break;
+                case lexer::TokenKind::Percent: result = LLVMBuildFRem(builder_, left, right, "frem"); break;
                 default: return failValue(error, "unsupported floating binary operation in Stage 34");
             }
+            return applyFloatingPointMode(result);
         }
         switch (operation)
         {

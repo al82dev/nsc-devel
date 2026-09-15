@@ -327,6 +327,7 @@ endif()
 add_library(nsc_llvm STATIC
     src/LLVM/CompilationArtifactCache.cpp
     src/LLVM/DebugInformationKind.cpp
+    src/LLVM/FloatingPointMode.cpp
     src/LLVM/LlvmModule.cpp
     src/LLVM/LlvmVersion.cpp
     src/LLVM/LlvmOptimizationLevel.cpp
@@ -1091,6 +1092,13 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_item363_cpu_feature_selection_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_item363_cpu_feature_selection_tests)
     add_test(NAME nsc.item363.cpu-feature-selection COMMAND nsc_item363_cpu_feature_selection_tests)
+
+    add_executable(nsc_item364_floating_point_mode_tests tests/unit/Item364FloatingPointModeTests.cpp)
+    target_link_libraries(nsc_item364_floating_point_mode_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item364_floating_point_mode_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item364_floating_point_mode_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_item364_floating_point_mode_tests)
+    add_test(NAME nsc.item364.floating-point-modes COMMAND nsc_item364_floating_point_mode_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

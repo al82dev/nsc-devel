@@ -42,6 +42,7 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
+#include "nativesharp/LLVM/FloatingPointMode.h"
 #include "nativesharp/LLVM/LlvmLowerer.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
@@ -2791,6 +2792,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     llvm_backend::CompilationArtifactCache artifactCache;
     artifactCache.setToolchainIdentity(std::string(kCompilerBuildId));
     llvm_backend::CompilationArtifactCacheScope artifactCacheScope(artifactCache);
+    llvm_backend::FloatingPointModeScope floatingPointModeScope;
     DriverExecutionScope* previousScope = activeExecutionScope;
     activeExecutionScope = &executionScope;
     struct RestoreScope final
@@ -2812,6 +2814,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool jobCountSeen = false;
     bool reservedCoresSeen = false;
     bool artifactCacheSeen = false;
+    llvm_backend::FloatingPointMode floatingPointMode = llvm_backend::FloatingPointMode::Precise;
+    bool floatingPointModeSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
     std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
@@ -2840,6 +2844,26 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (argument == "--llvm-pass-trace")
         {
+            continue;
+        }
+        static constexpr std::string_view floatingPointModePrefix = "--fp-mode=";
+        if (argument.starts_with(floatingPointModePrefix))
+        {
+            if (floatingPointModeSeen)
+            {
+                error << "nsc: error: duplicate floating-point mode\n";
+                return ExitCode::CommandLineError;
+            }
+            floatingPointModeSeen = true;
+            const std::optional<llvm_backend::FloatingPointMode> parsed =
+                llvm_backend::parseFloatingPointMode(argument.substr(floatingPointModePrefix.size()));
+            if (!parsed.has_value())
+            {
+                error << "nsc: error: unsupported floating-point mode '" << argument
+                      << "'; expected --fp-mode=precise, fast, or deterministic\n";
+                return ExitCode::CommandLineError;
+            }
+            floatingPointMode = *parsed;
             continue;
         }
         static constexpr std::string_view compilationProfilePrefix = "--profile=";
@@ -3102,6 +3126,10 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             : std::nullopt);
     optimizationLevel = profileSettings.optimizationLevel;
     debugInformation = profileSettings.debugInformation;
+    floatingPointModeScope.set(floatingPointMode);
+
+    if (floatingPointModeSeen)
+        output << "floating-point-mode: " << llvm_backend::floatingPointModeName(floatingPointMode) << '\n';
 
     if (normalizedArguments.empty())
     {
@@ -3683,6 +3711,8 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --version\n\n"
            << "Optimization flags -O0, -O1, -O2 and -O3 may appear anywhere in a "
               "compilation command.\n"
+           << "--fp-mode=precise|fast|deterministic selects the floating-point IR contract; "
+              "precise is the default and fast is explicit opt-in.\n"
            << "--time reports deterministic per-phase microseconds plus total wall time; "
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
            << "--progress streams and flushes phase boundaries plus source read, lex and parse "

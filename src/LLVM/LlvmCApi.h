@@ -702,6 +702,22 @@ void LLVMSetAlignment(LLVMValueRef value, unsigned bytes);
 // atomic ordering and synchronization remain separate APIs and contracts.
 void LLVMSetVolatile(LLVMValueRef memoryAccessInstruction, LLVMBool isVolatile);
 
+enum LLVMFastMathFlags
+{
+    LLVMFastMathNone = 0,
+    LLVMFastMathAllowReassoc = 1 << 0,
+    LLVMFastMathNoNaNs = 1 << 1,
+    LLVMFastMathNoInfs = 1 << 2,
+    LLVMFastMathNoSignedZeros = 1 << 3,
+    LLVMFastMathAllowReciprocal = 1 << 4,
+    LLVMFastMathAllowContract = 1 << 5,
+    LLVMFastMathApproxFunc = 1 << 6,
+    LLVMFastMathFast = LLVMFastMathAllowReassoc | LLVMFastMathNoNaNs | LLVMFastMathNoInfs |
+        LLVMFastMathNoSignedZeros | LLVMFastMathAllowReciprocal | LLVMFastMathAllowContract |
+        LLVMFastMathApproxFunc
+};
+void LLVMSetFastMathFlags(LLVMValueRef floatingPointInstruction, LLVMFastMathFlags flags);
+
 LLVMBasicBlockRef LLVMGetEntryBasicBlock(LLVMValueRef function);
 LLVMValueRef LLVMGetFirstInstruction(LLVMBasicBlockRef block);
 void LLVMPositionBuilderBefore(LLVMBuilderRef builder, LLVMValueRef instruction);

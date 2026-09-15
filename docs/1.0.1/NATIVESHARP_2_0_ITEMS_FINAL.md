@@ -164,7 +164,7 @@
 
 ## Tanda 10 — Floating-point determinista
 
-119. **364 — Modos `precise`, `fast` y `deterministic` / Floating-point modes**
+119. **364 — Modos `precise`, `fast` y `deterministic` / Floating-point modes — COMPLETADO / COMPLETE**
 120. **365 — Política de contracción FMA / FMA contraction policy**
 121. **366 — Control de rounding / Rounding control**
 122. **367 — Control FTZ y DAZ / FTZ and DAZ control**
