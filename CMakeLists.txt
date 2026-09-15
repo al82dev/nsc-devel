@@ -957,6 +957,18 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item347.integer-vector-128
         COMMAND nsc_item347_integer_vector_128_tests)
+    add_executable(
+        nsc_item348_floating_vector_256_tests
+        tests/unit/Item348FloatingVector256Tests.cpp)
+    target_link_libraries(nsc_item348_floating_vector_256_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item348_floating_vector_256_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item348_floating_vector_256_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_item348_floating_vector_256_tests)
+    add_test(
+        NAME nsc.item348.floating-vector-256
+        COMMAND nsc_item348_floating_vector_256_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

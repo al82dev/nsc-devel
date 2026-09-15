@@ -7718,6 +7718,53 @@ private:
                 LLVMSetAlignment(result, 16U);
                 return result;
             }
+            case frontend::ProjectOopMirNodeKind::CoreSimdFloat256Add:
+            case frontend::ProjectOopMirNodeKind::CoreSimdFloat256Subtract:
+            case frontend::ProjectOopMirNodeKind::CoreSimdFloat256Multiply:
+            {
+                if (node->children.size() != 2)
+                    return failValue(error, "256-bit floating SIMD operation requires two operands");
+                LLVMValueRef left = lowerExpression(node->children[0].get(), error);
+                if (left == nullptr) return nullptr;
+                LLVMValueRef right = lowerExpression(node->children[1].get(), error);
+                if (right == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                const unsigned laneBits = floatingSimd256LaneBits(node->typeKey);
+                if (laneBits == 0U)
+                    return failValue(error, "floating SIMD intrinsic carries an unsupported type");
+                LLVMTypeRef elementType = laneBits == 32U
+                    ? LLVMFloatTypeInContext(context_)
+                    : LLVMDoubleTypeInContext(context_);
+                LLVMTypeRef vectorType = LLVMVectorType(elementType, 256U / laneBits);
+                LLVMValueRef leftSlot = entryBlockAlloca(carrier, 32U, "simd.fp256.left.addr");
+                LLVMValueRef rightSlot = entryBlockAlloca(carrier, 32U, "simd.fp256.right.addr");
+                LLVMValueRef leftStore = LLVMBuildStore(builder_, left, leftSlot);
+                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
+                LLVMSetAlignment(leftStore, 32U);
+                LLVMSetAlignment(rightStore, 32U);
+                LLVMValueRef leftVector =
+                    LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.fp256.left");
+                LLVMValueRef rightVector =
+                    LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.fp256.right");
+                LLVMSetAlignment(leftVector, 32U);
+                LLVMSetAlignment(rightVector, 32U);
+                LLVMValueRef vectorResult = nullptr;
+                if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Add)
+                    vectorResult = LLVMBuildFAdd(builder_, leftVector, rightVector, "simd.fp256.add");
+                else if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat256Subtract)
+                    vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.fp256.subtract");
+                else
+                    vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.fp256.multiply");
+                LLVMValueRef resultSlot =
+                    entryBlockAlloca(carrier, 32U, "simd.fp256.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, 32U);
+                LLVMValueRef result =
+                    LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.fp256.result");
+                LLVMSetAlignment(result, 32U);
+                return result;
+            }
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
             {
                 if (node->integerValue != 0U)
@@ -12512,6 +12559,23 @@ private:
             const std::string name = type.identity.fullyQualifiedName();
             if (name == "NativeSharp.Core.Numerics.Int32x4") return 32U;
             if (name == "NativeSharp.Core.Numerics.Int64x2") return 64U;
+            return 0U;
+        }
+        return 0U;
+    }
+
+    unsigned floatingSimd256LaneBits(std::string_view typeKey) const noexcept
+    {
+        if (!typeKey.starts_with("type:")) return 0U;
+        const std::string_view identityKey = typeKey.substr(5);
+        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
+        {
+            if (type.identity.key() != identityKey ||
+                type.kind != frontend::NamedTypeDeclarationKind::Struct)
+                continue;
+            const std::string name = type.identity.fullyQualifiedName();
+            if (name == "NativeSharp.Core.Numerics.Float32x8") return 32U;
+            if (name == "NativeSharp.Core.Numerics.Float64x4") return 64U;
             return 0U;
         }
         return 0U;

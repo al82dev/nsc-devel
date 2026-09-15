@@ -9196,6 +9196,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            // Item 348: the 256-bit floating family uses the same exact-signature gate as the
+            // earlier SIMD families while retaining distinct MIR operations for FP semantics.
+            const std::string floatingVector256Name =
+                declaringType.identity.fullyQualifiedName();
+            if ((floatingVector256Name == "NativeSharp.Core.Numerics.Float32x8" ||
+                    floatingVector256Name == "NativeSharp.Core.Numerics.Float64x4") &&
+                selectedMember.isStatic && selectedMember.parameters.size() == 2 &&
+                selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&
+                selectedMember.parameters[1].typeKey == selectedMember.declaredTypeKey)
+            {
+                std::optional<MethodCoreOperationKind> simdKind;
+                if (selectedMember.name == "Add")
+                    simdKind = MethodCoreOperationKind::SimdFloat256Add;
+                else if (selectedMember.name == "Subtract")
+                    simdKind = MethodCoreOperationKind::SimdFloat256Subtract;
+                else if (selectedMember.name == "Multiply")
+                    simdKind = MethodCoreOperationKind::SimdFloat256Multiply;
+                if (simdKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *simdKind, expression, methodMemberOrdinal, scopeOrdinal,
+                        selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
+                        false, std::nullopt, std::nullopt});
+                }
+            }
             // SHR-022. Las cuatro salidas de consola. La firma es identica en las cuatro
             // --estatica, void, un solo `string`-- asi que lo unico que las separa es el nombre, y
             // por eso la tabla es de nombre a operacion en vez de cuatro `if` copiados.
@@ -14525,6 +14550,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::SimdInt128Add: return "simd-int128-add";
         case MethodCoreOperationKind::SimdInt128Subtract: return "simd-int128-subtract";
         case MethodCoreOperationKind::SimdInt128Multiply: return "simd-int128-multiply";
+        case MethodCoreOperationKind::SimdFloat256Add: return "simd-float256-add";
+        case MethodCoreOperationKind::SimdFloat256Subtract: return "simd-float256-subtract";
+        case MethodCoreOperationKind::SimdFloat256Multiply: return "simd-float256-multiply";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

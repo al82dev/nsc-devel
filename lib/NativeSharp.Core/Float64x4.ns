@@ -1,0 +1,26 @@
+namespace NativeSharp.Core.Numerics
+{
+    // Four double-precision lanes in a stable sequential 32-byte carrier.
+    public struct Float64x4
+    {
+        public double X;
+        public double Y;
+        public double Z;
+        public double W;
+
+        public static Float64x4 Add(Float64x4 left, Float64x4 right)
+        {
+            return default(Float64x4);
+        }
+
+        public static Float64x4 Subtract(Float64x4 left, Float64x4 right)
+        {
+            return default(Float64x4);
+        }
+
+        public static Float64x4 Multiply(Float64x4 left, Float64x4 right)
+        {
+            return default(Float64x4);
+        }
+    }
+}
