@@ -1285,6 +1285,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->typeKey = node->typeKey;
     result->elementTypeKey = node->elementTypeKey;
     result->stringValue = node->stringValue;
+    result->debugDisplayName = node->debugDisplayName;
     result->operation = node->operation;
     result->memberOrdinal = node->memberOrdinal;
     result->secondaryMemberOrdinal = node->secondaryMemberOrdinal;
@@ -1320,6 +1321,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->referenceResult = node->referenceResult;
     result->ownership = node->ownership;
     result->automaticDestruction = node->automaticDestruction;
+    result->variableLengthArray = node->variableLengthArray;
+    result->variableLengthArrayRank = node->variableLengthArrayRank;
+    result->placementConstructed = node->placementConstructed;
     result->stackPromotedObject = node->stackPromotedObject;
     result->volatileAccess = node->volatileAccess;
     result->baseReceiver = node->baseReceiver;

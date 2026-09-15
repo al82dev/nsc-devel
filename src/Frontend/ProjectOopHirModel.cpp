@@ -2296,6 +2296,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                     error = "NativeSharp 2.0 VLA local lost its element type or runtime extent";
                     return nullptr;
                 }
+                node->variableLengthArray = true;
+                node->variableLengthArrayRank =
+                    std::max<std::size_t>(1, local->variableLengthArrayExtentSyntaxes.size());
+                node->elementTypeKey = local->variableLengthArrayElementTypeKey;
                 std::unique_ptr<ProjectOopHirNode> count;
                 std::vector<std::unique_ptr<ProjectOopHirNode>> allocationCounts;
                 std::unique_ptr<ProjectOopHirNode> vlaBlock;
@@ -2327,6 +2331,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                             extentType);
                         extentDeclaration->stringValue =
                             methodBodyModel_->locals()[extentOrdinal].name;
+                        extentDeclaration->debugDisplayName = local->name + ".Length[" +
+                            std::to_string(dimension) + "]";
                         extentDeclaration->localOrdinal = extentOrdinal;
                         extentDeclaration->children.push_back(std::move(extent));
                         vlaBlock->children.push_back(std::move(extentDeclaration));
@@ -2373,6 +2379,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 {
                     return nullptr;
                 }
+                node->placementConstructed =
+                    initializer->kind == ProjectOopHirNodeKind::PlacementConstruction;
                 const ProjectImplicitConversion conversion = local->isReference
                     ? ProjectImplicitConversion{
                         ProjectConversionKind::Identity, 0, local->typeKey, local->typeKey,

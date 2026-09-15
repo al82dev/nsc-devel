@@ -170,6 +170,11 @@ if(NOT pdb_result EQUAL 0 OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`managedDelegate`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`functionPointer`[\n\r ]+type=[^\n]*int \(int\)\*" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`nativeHandle`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`vlaValues`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`vlaValues\.Length.0.`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`vlaValues\.Length.1.`" OR
+   NOT pdb_dump MATCHES "placement DebugExtreme\.PlacementCell" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`placedCell`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`consumed`" OR
    NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`seed`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`interfaceView`" OR

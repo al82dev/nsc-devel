@@ -1169,6 +1169,111 @@ private:
         return debugType(typeKey);
     }
 
+    LLVMMetadataRef debugVariableLengthArrayType(
+        std::string_view elementTypeKey,
+        std::size_t rank)
+    {
+        const std::string cacheKey = "vla:" + std::string(elementTypeKey) + ":" +
+            std::to_string(rank);
+        if (const auto cached = debugTypes_.find(cacheKey); cached != debugTypes_.end())
+            return cached->second;
+        LLVMMetadataRef element = debugType(elementTypeKey);
+        if (element == nullptr) return nullptr;
+        const std::size_t actualRank = std::max<std::size_t>(1, rank);
+        for (std::size_t dimension = 0; dimension < actualRank; ++dimension)
+        {
+            LLVMMetadataRef subrange = LLVMDIBuilderGetOrCreateSubrange(debugBuilder_, 0, 0);
+            element = subrange != nullptr
+                ? LLVMDIBuilderCreateArrayType(debugBuilder_, 0, 8, element, &subrange, 1)
+                : nullptr;
+            if (element == nullptr) return nullptr;
+        }
+        LLVMMetadataRef pointer = LLVMDIBuilderCreatePointerType(
+            debugBuilder_, element, 64, 64, 0, nullptr, 0);
+        if (pointer != nullptr) debugTypes_.emplace(cacheKey, pointer);
+        return pointer;
+    }
+
+    LLVMMetadataRef debugPlacementType(std::string_view typeKey)
+    {
+        std::string baseKey(typeKey);
+        if (!baseKey.empty() && baseKey.back() == '*') baseKey.pop_back();
+        const frontend::NamedTypeDeclaration* named = debugNamedType(baseKey);
+        if (named == nullptr) return debugType(typeKey);
+        const std::string cacheKey = "placement:" + baseKey;
+        if (const auto cached = debugTypes_.find(cacheKey); cached != debugTypes_.end())
+            return cached->second;
+
+        LLVMMetadataRef physical = debugType(baseKey);
+        LLVMMetadataRef base = physical;
+        std::uint64_t size = 0;
+        std::uint32_t alignment = 8;
+        if (named->kind == frontend::NamedTypeDeclarationKind::Class)
+        {
+            if (const auto found = debugPointeeTypes_.find(baseKey);
+                found != debugPointeeTypes_.end())
+                base = found->second;
+            if (const frontend::ProjectOopMirClassLayout* layout = classLayout(baseKey);
+                layout != nullptr)
+            {
+                size = layout->size * 8;
+                alignment = static_cast<std::uint32_t>(layout->alignment * 8);
+            }
+        }
+        else if (const frontend::ProjectOopMirStructLayout* layout = structLayout(baseKey);
+                 layout != nullptr)
+        {
+            size = layout->size * 8;
+            alignment = static_cast<std::uint32_t>(layout->alignment * 8);
+        }
+        if (base == nullptr) return debugType(typeKey);
+
+        const std::string name = "placement " + debugNamedDisplayName(*named);
+        const std::string uniqueId = "nativesharp:debug:" + cacheKey;
+        LLVMMetadataRef temporary = LLVMDIBuilderCreateReplaceableCompositeType(
+            debugBuilder_, LLVMDWARFTagStructureType, name.data(), name.size(),
+            debugCompileUnit_, debugFile(named->range.begin()), 0, 0, size, alignment,
+            LLVMDIFlagArtificial, uniqueId.data(), uniqueId.size());
+        if (temporary == nullptr) return debugType(typeKey);
+
+        LLVMMetadataRef complete = nullptr;
+        if (named->kind == frontend::NamedTypeDeclarationKind::Class)
+        {
+            LLVMMetadataRef inheritance = LLVMDIBuilderCreateInheritance(
+                debugBuilder_, temporary, base, 0, 0, LLVMDIFlagPublic);
+            LLVMMetadataRef elements[] = {inheritance};
+            complete = inheritance != nullptr
+                ? LLVMDIBuilderCreateClassType(
+                    debugBuilder_, debugCompileUnit_, name.data(), name.size(),
+                    debugFile(named->range.begin()), 0, size, alignment, 0,
+                    LLVMDIFlagArtificial, base, elements, 1, nullptr, nullptr,
+                    uniqueId.data(), uniqueId.size())
+                : nullptr;
+        }
+        else
+        {
+            static constexpr std::string_view valueName = "Value";
+            LLVMMetadataRef member = LLVMDIBuilderCreateMemberType(
+                debugBuilder_, temporary, valueName.data(), valueName.size(),
+                debugFile(named->range.begin()), 0, size, alignment, 0,
+                static_cast<LLVMDIFlags>(LLVMDIFlagPublic | LLVMDIFlagArtificial), base);
+            LLVMMetadataRef elements[] = {member};
+            complete = member != nullptr
+                ? LLVMDIBuilderCreateStructType(
+                    debugBuilder_, debugCompileUnit_, name.data(), name.size(),
+                    debugFile(named->range.begin()), 0, size, alignment,
+                    LLVMDIFlagArtificial, nullptr, elements, 1, 0, nullptr,
+                    uniqueId.data(), uniqueId.size())
+                : nullptr;
+        }
+        if (complete == nullptr) return debugType(typeKey);
+        LLVMMetadataReplaceAllUsesWith(temporary, complete);
+        LLVMMetadataRef pointer = LLVMDIBuilderCreatePointerType(
+            debugBuilder_, complete, 64, 64, 0, name.data(), name.size());
+        if (pointer != nullptr) debugTypes_.emplace(cacheKey, pointer);
+        return pointer != nullptr ? pointer : debugType(typeKey);
+    }
+
     LLVMMetadataRef debugDelegateFunctionPointer(
         std::string_view typeKey,
         const frontend::NamedTypeDeclaration& named)
@@ -1689,29 +1794,39 @@ private:
             node->ownership != sema::OwnershipKind::None
             ? node->ownership
             : node->objectLifetimeOwnership;
-        LLVMMetadataRef type = debugOwnership == sema::OwnershipKind::None &&
-                !node->automaticDestruction
-            ? debugNamedValueType(typeKey, node->stringValue)
-            : debugOwnershipType(
-                typeKey, debugOwnership, node->automaticDestruction, range);
+        LLVMMetadataRef type = node->variableLengthArray
+            ? debugVariableLengthArrayType(
+                node->elementTypeKey, node->variableLengthArrayRank)
+            : node->placementConstructed
+                ? debugPlacementType(typeKey)
+                : debugOwnership == sema::OwnershipKind::None &&
+                        !node->automaticDestruction
+                    ? debugNamedValueType(typeKey, node->stringValue)
+                    : debugOwnershipType(
+                        typeKey, debugOwnership, node->automaticDestruction, range);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         LLVMMetadataRef scope = currentDebugScope_ != nullptr
             ? currentDebugScope_
             : currentDebugSubprogram_;
+        const std::string_view debugName = node->debugDisplayName.empty()
+            ? std::string_view(node->stringValue)
+            : std::string_view(node->debugDisplayName);
         LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
-            debugBuilder_, scope, node->stringValue.data(),
-            node->stringValue.size(), file, position.line, type, 1, LLVMDIFlagZero,
+            debugBuilder_, scope, debugName.data(),
+            debugName.size(), file, position.line, type, 1, LLVMDIFlagZero,
             0);
         LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
         LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
             context_, position.line, position.column, scope, nullptr);
         if (variable == nullptr || expression == nullptr || location == nullptr)
-            return fail(error, "failed to create debug metadata for local '" + node->stringValue + "'");
+            return fail(error, "failed to create debug metadata for local '" +
+                std::string(debugName) + "'");
         if (LLVMDIBuilderInsertDeclareRecordAtEnd(
                 debugBuilder_, storage, variable, expression, location,
                 LLVMGetInsertBlock(builder_)) == nullptr)
-            return fail(error, "failed to emit debug storage for local '" + node->stringValue + "'");
+            return fail(error, "failed to emit debug storage for local '" +
+                std::string(debugName) + "'");
         return true;
     }
 

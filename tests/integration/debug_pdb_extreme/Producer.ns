@@ -20,6 +20,16 @@ namespace DebugExtreme
         }
     }
 
+    public struct PlacementCell
+    {
+        public int Value;
+
+        public PlacementCell(int value)
+        {
+            Value = value;
+        }
+    }
+
     public class Box<T>
     {
         public T Value;
@@ -111,6 +121,15 @@ namespace DebugExtreme
             int nativeResult = functionPointer(20);
             delete managedDelegate;
             return managedResult - nativeResult + (int)nativeHandle;
+        }
+
+        public static int InspectStorage(int rows, int columns)
+        {
+            int[rows, columns] vlaValues;
+            vlaValues[1, 1] = 21;
+            PlacementCell* cellStorage = stackalloc PlacementCell[1];
+            PlacementCell* placedCell = new (cellStorage) PlacementCell(21);
+            return vlaValues[1, 1] - placedCell->Value;
         }
     }
 }

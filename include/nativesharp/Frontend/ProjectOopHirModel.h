@@ -423,6 +423,9 @@ struct ProjectOopHirNode final
     std::string typeKey;
     std::string elementTypeKey;
     std::string stringValue;
+    // Item 381. Late debug lowering needs the source shape that the pointer-shaped internal VLA
+    // representation and placement result would otherwise erase.
+    std::string debugDisplayName;
     lexer::TokenKind operation = lexer::TokenKind::Invalid;
     std::optional<std::size_t> memberOrdinal;
     // Stage 54.4 "Condition Variables" -- set ONLY on a CoreMonitorWait node, alongside
@@ -478,6 +481,9 @@ struct ProjectOopHirNode final
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
     // Item 378. Distinguishes a scope-bound RAII owner from a manually managed owner in PDB.
     bool automaticDestruction = false;
+    bool variableLengthArray = false;
+    std::size_t variableLengthArrayRank = 0;
+    bool placementConstructed = false;
     // Item 323. Set on a proven-nonescaping RAII class local and its ObjectConstruction child.
     // The object lifetime remains owned, but its backing bytes belong to the current stack frame.
     bool stackPromotedObject = false;
