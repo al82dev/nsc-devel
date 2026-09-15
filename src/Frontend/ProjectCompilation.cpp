@@ -11,6 +11,7 @@
 #include <chrono>
 #include <exception>
 #include <set>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -858,6 +859,7 @@ bool ProjectCompilation::compileSyntaxCore(
 
     {
         const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-read");
+        const auto comptimeCache = std::make_shared<ComptimeCache>();
         std::atomic_size_t completed = 0;
         for (std::size_t index = 0; index < sourceReads.size(); ++index)
         {
@@ -877,7 +879,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 loadError = read.error;
                 return false;
             }
-            ComptimeResult comptime = ComptimeEngine().execute(*read.buffer);
+            ComptimeResult comptime = ComptimeEngine({}, comptimeCache).execute(*read.buffer);
             if (!comptime.success)
             {
                 loadError = read.path.generic_string() + ": " + comptime.error;

@@ -196,7 +196,7 @@
 
 140. **385 — Núcleo `comptime/#run` / Compile-time execution core — COMPLETADO / COMPLETE**
 141. **386 — Límites y aislamiento de comptime / Compile-time execution sandbox — COMPLETADO / COMPLETE**
-142. **387 — Dependencias y cache de comptime / Compile-time dependency caching**
+142. **387 — Dependencias y cache de comptime / Compile-time dependency caching — COMPLETADO / COMPLETE**
 143. **388 — Reproducibilidad de comptime / Reproducible compile-time execution**
 
 ## Tanda 14 — Robustez avanzada

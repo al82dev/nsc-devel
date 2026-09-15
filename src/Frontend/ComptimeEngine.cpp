@@ -1,9 +1,12 @@
 #include "nativesharp/Frontend/ComptimeEngine.h"
+#include "nativesharp/Basic/Sha256.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cctype>
 #include <limits>
 #include <optional>
+#include <span>
 
 namespace nativesharp::frontend
 {
@@ -284,9 +287,42 @@ bool startsWord(std::string_view source, std::size_t offset, std::string_view wo
     const std::size_t after = offset + word.size();
     return after >= source.size() || !identifierByte(source[after]);
 }
+
+std::string comptimeCacheKey(std::string_view expression)
+{
+    std::string payload = "nativesharp-comptime-expression-v1\n";
+    payload.append(expression);
+    const auto bytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
 }
 
-ComptimeEngine::ComptimeEngine(ComptimeLimits limits) noexcept : limits_(limits) {}
+std::optional<ComptimeCache::Entry> ComptimeCache::find(std::string_view key) const
+{
+    std::lock_guard lock(mutex_);
+    const auto found = entries_.find(std::string(key));
+    return found == entries_.end() ? std::nullopt : std::optional<Entry>(found->second);
+}
+
+void ComptimeCache::store(std::string key, Entry entry)
+{
+    std::lock_guard lock(mutex_);
+    entries_.insert_or_assign(std::move(key), entry);
+}
+
+std::size_t ComptimeCache::size() const
+{
+    std::lock_guard lock(mutex_);
+    return entries_.size();
+}
+
+ComptimeEngine::ComptimeEngine(
+    ComptimeLimits limits,
+    std::shared_ptr<ComptimeCache> cache) noexcept
+    : limits_(limits), cache_(std::move(cache))
+{
+}
 
 ComptimeResult ComptimeEngine::execute(std::string_view source) const
 {
@@ -359,10 +395,41 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
             return result;
         }
         const std::size_t end = close;
+        const std::string_view expression = source.substr(open + 1, end - open - 2);
+        const std::string dependencyDigest = comptimeCacheKey(expression);
+        result.dependencies.push_back({
+            "source-expression",
+            "#run@" + std::to_string(cursor),
+            dependencyDigest});
         std::string error;
-        IntegerExpression evaluator(source.substr(open + 1, end - open - 2),
-            limits_.maximumSteps, limits_.maximumNesting, result.executedSteps);
-        const auto value = evaluator.evaluate(error);
+        std::optional<std::int64_t> value;
+        bool cacheHit = false;
+        if (cache_)
+        {
+            if (const auto cached = cache_->find(dependencyDigest); cached.has_value())
+            {
+                if (cached->executedSteps > limits_.maximumSteps -
+                    std::min(result.executedSteps, limits_.maximumSteps))
+                {
+                    result.error = "comptime step budget exceeded";
+                    return result;
+                }
+                result.executedSteps += cached->executedSteps;
+                value = cached->value;
+                cacheHit = true;
+                ++result.cacheHits;
+            }
+        }
+        if (!value.has_value())
+        {
+            const std::size_t stepsBefore = result.executedSteps;
+            IntegerExpression evaluator(expression,
+                limits_.maximumSteps, limits_.maximumNesting, result.executedSteps);
+            value = evaluator.evaluate(error);
+            ++result.cacheMisses;
+            if (value.has_value() && cache_)
+                cache_->store(dependencyDigest, {*value, result.executedSteps - stepsBefore});
+        }
         if (!value.has_value())
         {
             result.error = error + " (directive at byte " + std::to_string(cursor) + ")";
@@ -379,7 +446,7 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         std::string padded = replacement;
         padded.append(length - replacement.size(), ' ');
         result.source.replace(cursor, length, padded);
-        result.evaluations.push_back({cursor, length, *value});
+        result.evaluations.push_back({cursor, length, *value, dependencyDigest, cacheHit});
         cursor = end - 1;
     }
     result.success = true;
