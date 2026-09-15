@@ -974,6 +974,26 @@ the post-HIR proof declines it, the existing direct `ObjectConstruction` heap di
 mandatory. This compiler transformation changes no parser surface, NSMETA, class layout, Object
 ABI, Runtime ABI, bindings, or runtime implementation.
 
+## NSC-LAYOUT-002 — Anonymous struct fields
+
+The parser shall recognize `struct { members } name;` in a class or struct member position without
+requiring or manufacturing a source-level type name. It shall retain one compiler-generated nested
+`StructDeclaration` with a deterministic identity derived from file identity and source offset, ordinary body
+members as children, and the containing `FieldDeclaration` on a separate AST edge. The field name
+shall remain mandatory; an omitted declarator shall diagnose the item-326 boundary rather than
+silently promote members.
+
+Name lookup shall predeclare the synthesized struct through the existing nested-type path. Member
+collection shall assign body members only to that synthesized type and the carrier field only to
+the containing type. Duplicate checking, accessibility, canonical type keys, layout, member access,
+HIR, MIR and LLVM shall then use their ordinary named-struct machinery; no parallel anonymous type
+category or runtime representation is permitted.
+
+Layout modifiers before `struct` shall apply to the embedded value layout, while an explicit field
+offset applies to the carrier. Recursive anonymous structs shall remain structurally distinct.
+The value shall occupy inline storage and shall introduce no descriptor, allocation, ownership,
+Object ABI, Runtime ABI or MIR-schema change.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

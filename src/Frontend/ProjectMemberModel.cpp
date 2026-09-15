@@ -215,6 +215,16 @@ void appendExpandedMemberNodes(
     {
         return;
     }
+    // Item 324. The direct node is the compiler-generated nested layout type. Its first edge is
+    // the field that belongs to the containing type; children are the fields of the anonymous
+    // struct itself and are collected only when that synthesized type gets its own member pass.
+    if (node->kind() == ast::AstNodeKind::StructDeclaration &&
+        node->auxiliaryText().starts_with("anonymous-struct") &&
+        node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::FieldDeclaration)
+    {
+        output.push_back(node->first());
+        return;
+    }
     // NSC-LIMIT-009. UN TIPO ANIDADO NO ES UN MIEMBRO EJECUTABLE, y se dice aqui en vez de
     // dejar que caiga por el final de la funcion sin coincidir con ninguna rama.
     //
@@ -895,6 +905,12 @@ bool ProjectMemberModel::collectTypeMembers(
         std::vector<const ast::AstNode*> expandedMembers;
         for (const ast::AstNode* directMember : part.syntax->children())
         {
+            const ast::AstNode* declaredMember =
+                directMember != nullptr && directMember->kind() == ast::AstNodeKind::StructDeclaration &&
+                    directMember->auxiliaryText().starts_with("anonymous-struct") &&
+                    directMember->first() != nullptr
+                ? directMember->first()
+                : directMember;
             if (directMember != nullptr && directMember->kind() == ast::AstNodeKind::MethodDeclaration &&
                 !directMember->genericParameters().empty() &&
                 (directMember->hasModifier(lexer::TokenKind::KwExport) ||
@@ -906,10 +922,10 @@ bool ProjectMemberModel::collectTypeMembers(
                     directMember->range(),
                     "Stage 47 export extern C does not expose generic methods or members of generic types");
             }
-            if (directMember != nullptr && directMember->kind() == ast::AstNodeKind::PropertyDeclaration)
+            if (declaredMember != nullptr && declaredMember->kind() == ast::AstNodeKind::PropertyDeclaration)
             {
-                const auto ordinary = ordinaryDeclarations.find(directMember->text());
-                const auto previousProperty = propertyDeclarations.find(directMember->text());
+                const auto ordinary = ordinaryDeclarations.find(declaredMember->text());
+                const auto previousProperty = propertyDeclarations.find(declaredMember->text());
                 if (ordinary != ordinaryDeclarations.end() || previousProperty != propertyDeclarations.end())
                 {
                     const ast::AstNode* previous = ordinary != ordinaryDeclarations.end()
@@ -917,8 +933,8 @@ bool ProjectMemberModel::collectTypeMembers(
                     diagnostics.report(
                         diagnostics::DiagnosticId::DuplicateSymbol,
                         diagnostics::DiagnosticSeverity::Error,
-                        directMember->range(),
-                        "property name '" + directMember->text() + "' conflicts with an existing member in type '" +
+                        declaredMember->range(),
+                        "property name '" + declaredMember->text() + "' conflicts with an existing member in type '" +
                             type.identity.fullyQualifiedName() + "'");
                     if (previous != nullptr)
                     {
@@ -931,24 +947,24 @@ bool ProjectMemberModel::collectTypeMembers(
                 }
                 else
                 {
-                    propertyDeclarations.emplace(directMember->text(), directMember);
+                    propertyDeclarations.emplace(declaredMember->text(), declaredMember);
                 }
             }
-            else if (directMember != nullptr &&
-                     (directMember->kind() == ast::AstNodeKind::FieldDeclaration ||
-                      directMember->kind() == ast::AstNodeKind::EventDeclaration ||
-                      directMember->kind() == ast::AstNodeKind::MethodDeclaration))
+            else if (declaredMember != nullptr &&
+                     (declaredMember->kind() == ast::AstNodeKind::FieldDeclaration ||
+                      declaredMember->kind() == ast::AstNodeKind::EventDeclaration ||
+                      declaredMember->kind() == ast::AstNodeKind::MethodDeclaration))
             {
-                if (propertyDeclarations.contains(directMember->text()))
+                if (propertyDeclarations.contains(declaredMember->text()))
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::DuplicateSymbol,
                         diagnostics::DiagnosticSeverity::Error,
-                        directMember->range(),
-                        "member name '" + directMember->text() + "' conflicts with an existing property in type '" +
+                        declaredMember->range(),
+                        "member name '" + declaredMember->text() + "' conflicts with an existing property in type '" +
                             type.identity.fullyQualifiedName() + "'");
                 }
-                ordinaryDeclarations.emplace(directMember->text(), directMember);
+                ordinaryDeclarations.emplace(declaredMember->text(), declaredMember);
             }
             appendExpandedMemberNodes(directMember, expandedMembers);
         }

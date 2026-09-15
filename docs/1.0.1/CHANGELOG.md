@@ -55,6 +55,9 @@ empaqueta con NativeSharp 1.0.1.
   campos `owned`, y sólo admite lectura o escritura directa de fields. HIR/MIR 1.6 publica la
   promoción, LLVM reserva el objeto una vez en la entrada y el cleanup destruye sin liberar. Una
   identidad observable, llamada, alias, captura, retorno o constructor no trivial conserva heap.
+- `struct { ... } Campo;` declara un struct anónimo inline conservando un campo contenedor normal.
+  El cuerpo tiene layout propio, puede anidarse, acepta `pack/align/size` y se accede mediante
+  `objeto.Campo.Miembro`; la promoción sin nombre permanece reservada para el punto 326.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

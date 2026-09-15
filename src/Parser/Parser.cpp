@@ -1959,6 +1959,16 @@ ast::AstNode* Parser::parseStructDeclaration(StructLayoutForm form, bool isBorro
     // entre los parametros genericos y el cuerpo.
     parseGenericConstraintClauses(node);
 
+    return parseStructBody(node, structName, beginIndex);
+}
+
+ast::AstNode* Parser::parseStructBody(
+    ast::AstNode* node,
+    std::string_view structName,
+    std::size_t beginIndex)
+{
+    if (node == nullptr) return nullptr;
+
     if (!expect(TokenKind::LeftBrace, "'{'") )
     {
         synchronizeGlobal();
@@ -3154,6 +3164,109 @@ ast::AstNode* Parser::parseClassMember(
                 "events support accessibility and optional static only; volatile applies only to fields");
         }
         return parseEventTail(accessibility, isNew, isStatic, beginIndex);
+    }
+
+    // Item 324. `struct { ... } field;` is one source declaration with two semantic identities:
+    // an inline value type that owns the physical layout, and an ordinary field in the containing
+    // type. Keep the synthesized declaration as the direct child so name lookup can predeclare it
+    // exactly like every other nested struct. Its first() edge carries the outer field; the actual
+    // anonymous-struct members remain children(), so collecting the synthesized type cannot
+    // accidentally give it a recursive field of its own.
+    if (at(TokenKind::KwStruct) && peek().kind() == TokenKind::LeftBrace)
+    {
+        const lexer::Token& structKeyword = consume();
+        const std::string synthesizedName =
+            "__nsc_anonymous_struct_f" +
+            std::to_string(structKeyword.range().begin().fileId().value()) + "_" +
+            std::to_string(structKeyword.range().begin().offset());
+        knownTypeNames_.insert(synthesizedName);
+
+        if (isPartial || isVirtual || isOverride || isAbstract || isSealed ||
+            isExported || isExternC || isInline || isForceInline || isNoInline || isNoHeap ||
+            isBorrowedView)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                structKeyword.range(),
+                "an anonymous struct field accepts field accessibility, new, static, readonly, "
+                "volatile, const and layout modifiers only");
+        }
+        if (structContext && accessibility == TokenKind::KwProtected)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                structKeyword.range(),
+                "a struct member cannot be protected: structs are not inheritable");
+        }
+
+        ast::AstNode* declaration = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::StructDeclaration, structKeyword.range());
+        declaration->setText(synthesizedName);
+        declaration->setAuxiliaryText("anonymous-struct");
+        // A public carrier needs its synthesized layout type to cross the same module boundary.
+        // For private/internal carriers the matching accessibility also keeps the implementation
+        // detail no more visible than the field that names it.
+        if (accessibility != TokenKind::Invalid) declaration->setTokenKind(accessibility);
+        const auto appendLayout = [&](std::string_view name, const std::optional<std::uint64_t> value)
+        {
+            if (!value.has_value()) return;
+            std::string markers = declaration->auxiliaryText();
+            markers += "," + std::string(name) + "=" + std::to_string(*value);
+            declaration->setAuxiliaryText(std::move(markers));
+        };
+        appendLayout("pack", nestedLayoutPack);
+        appendLayout("align", nestedLayoutAlign);
+        appendLayout("size", nestedLayoutSize);
+        parseStructBody(declaration, synthesizedName, beginIndex);
+
+        if (!at(TokenKind::Identifier))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                current().range(),
+                "item 324 anonymous struct requires a field name after '}'; unnamed member "
+                "promotion is introduced by item 326");
+            synchronizeStatement();
+            return declaration;
+        }
+
+        const lexer::Token& name = consume();
+        ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
+            structKeyword.range(), TokenKind::Identifier, synthesizedName);
+        ast::AstNode* field = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::FieldDeclaration, name.range());
+        field->setTypeSyntax(type);
+        field->setText(std::string(name.lexeme()));
+        if (explicitFieldOffset.has_value())
+            field->setAuxiliaryText("at:" + std::to_string(*explicitFieldOffset));
+        if (accessibility != TokenKind::Invalid)
+        {
+            field->setTokenKind(accessibility);
+            field->addModifier(accessibility);
+        }
+        if (isVolatile) field->addModifier(TokenKind::KwVolatile);
+        if (isStatic) field->addModifier(TokenKind::KwStatic);
+        if (isNew) field->addModifier(TokenKind::KwNew);
+        if (isReadonly) field->addModifier(TokenKind::KwReadonly);
+        if (isConst) field->addModifier(TokenKind::KwConst);
+        if (consumeIf(TokenKind::Equal))
+            field->setFirst(at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
+        else if (isConst)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                name.range(),
+                "const field requires an initializer");
+        }
+        expect(TokenKind::Semicolon, "';'");
+        field->setRange(tokenRangeFrom(beginIndex));
+        declaration->setFirst(field);
+        declaration->setRange(tokenRangeFrom(beginIndex));
+        return declaration;
     }
 
     // NSC-LIMIT-009. UN TIPO ANIDADO. Va antes de la guarda de abajo porque `class`, `struct`,

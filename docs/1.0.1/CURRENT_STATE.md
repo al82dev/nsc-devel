@@ -158,6 +158,12 @@ moverla, capturarla, retornarla o reasignarla conserva la asignación de heap. U
 también satisface `noheap`; HIR/MIR 1.6 muestran `stack-promoted=true`, LLVM reserva los bytes una
 vez en la entrada de la función y RAII usa destrucción object-only sin liberar el frame.
 
+Los miembros pueden declarar `struct { ... } Campo;`. El compilador crea una identidad anidada
+determinista sólo para sus modelos internos, mantiene `Campo` como field ordinario del contenedor y
+calcula el cuerpo como valor inline. Los accesos conservan la calificación
+`contenedor.Campo.Miembro`; no hay promoción implícita antes del punto 326. El cuerpo admite
+anidamiento recursivo y los modificadores de layout del agregado sin cambios de runtime ni ABI.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

@@ -963,6 +963,25 @@ y no admite este modificador. Si el mismo campo declara `at(offset)`, el offset 
 su alineación efectiva. NSMETA, el header C y el backend deben conservar el mismo valor; no es válido
 reconstruir un consumidor con una alineación menor aunque los offsets coincidan accidentalmente.
 
+### NS-LAYOUT-004 — Structs anónimos con campo contenedor
+
+La forma `struct { miembros } nombre;` declara dentro de una clase o struct un valor inline cuyo
+tipo no tiene nombre fuente y un campo contenedor llamado `nombre`. Los miembros pertenecen al
+valor anónimo: se acceden como `objeto.nombre.miembro`; no se promueven al contenedor. Omitir
+`nombre` es un error hasta que el punto 326 defina la promoción de miembros anónimos.
+
+El cuerpo acepta las mismas declaraciones y puede contener recursivamente otro struct anónimo.
+Su layout usa las reglas ordinarias de struct. `pack(N)`, `align(N)` y `size(N)` escritos antes de
+`struct` describen el tipo embebido; `at(N)` describe la posición de su campo contenedor. La
+accesibilidad y los demás modificadores de field se aplican al contenedor y conservan las
+restricciones existentes: por ejemplo, un agregado no se vuelve un acceso `volatile` escalar.
+
+The form `struct { members } name;` declares an inline value with no source-level type name plus a
+containing field named `name`. Members remain qualified through that field and are not promoted.
+The body follows ordinary struct layout, may nest recursively, and participates in the containing
+aggregate exactly like a named struct field. A field name is mandatory until anonymous-member
+promotion is introduced by item 326.
+
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su
 representación canónica equivale a un arreglo exterior de `d0` elementos, cada uno de los cuales
