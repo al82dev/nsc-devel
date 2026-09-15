@@ -262,7 +262,7 @@ LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction, bool contractable 
         flags &= ~static_cast<unsigned>(LLVMFastMathAllowContract);
     else if (contractable)
         flags |= static_cast<unsigned>(LLVMFastMathAllowContract);
-    if (flags != 0U)
+    if (flags != 0U && LLVMCanValueUseFastMathFlags(instruction) != 0)
         LLVMSetFastMathFlags(instruction, static_cast<LLVMFastMathFlags>(flags));
     return instruction;
 }
@@ -13295,6 +13295,7 @@ private:
     void applyDenormalFloatingPointAttribute(LLVMValueRef function)
     {
         if (function == nullptr || context_ == nullptr) return;
+        if (activeFloatingPointDenormalMode() == FloatingPointDenormalMode::Preserve) return;
         LLVMDenormalModeKind output = LLVMDenormalModeKindIEEE;
         LLVMDenormalModeKind input = LLVMDenormalModeKindIEEE;
         switch (activeFloatingPointDenormalMode())

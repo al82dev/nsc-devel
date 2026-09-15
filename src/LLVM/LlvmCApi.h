@@ -744,6 +744,7 @@ enum LLVMFastMathFlags
         LLVMFastMathApproxFunc
 };
 void LLVMSetFastMathFlags(LLVMValueRef floatingPointInstruction, LLVMFastMathFlags flags);
+LLVMBool LLVMCanValueUseFastMathFlags(LLVMValueRef instruction);
 
 LLVMBasicBlockRef LLVMGetEntryBasicBlock(LLVMValueRef function);
 LLVMValueRef LLVMGetFirstInstruction(LLVMBasicBlockRef block);
