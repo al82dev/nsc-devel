@@ -1,8 +1,13 @@
 namespace DebugExtreme
 {
     using NativeSharp.Core.Numerics;
+    using NativeSharp.Core.Diagnostics;
     public delegate int Transform(int value);
     public extern C delegate int NativeTransform(int value);
+
+    public class StackProblem : NativeSharp.Core.Exception
+    {
+    }
 
     public interface ICounter
     {
@@ -70,6 +75,54 @@ namespace DebugExtreme
         public static int Increment(int value)
         {
             return value + 1;
+        }
+
+        public static int CaptureCallbackFrames(int baseline)
+        {
+            return Debug.CaptureStackFrameCount() - baseline;
+        }
+
+        public static int InspectCallbackStack(int baseline)
+        {
+            NativeTransform callback = CaptureCallbackFrames;
+            int additionalFrames = callback(baseline);
+            if (additionalFrames <= 0)
+            {
+                return 1;
+            }
+            return 0;
+        }
+
+        public static int ThrowFromProducer(int value)
+        {
+            if (value == 21)
+            {
+                throw new StackProblem();
+            }
+            return value;
+        }
+
+        public static int InspectSehStack(int baseline)
+        {
+            int result = 0;
+            try
+            {
+                result = ThrowFromProducer(21);
+            }
+            catch (StackProblem problem)
+            {
+                int caughtFrames = Debug.CaptureStackFrameCount();
+                if (caughtFrames <= baseline)
+                {
+                    return 1;
+                }
+                result = 21;
+            }
+            finally
+            {
+                result = result + 0;
+            }
+            return result - 21;
         }
 
         public static int Invoke(Transform transform, int value)

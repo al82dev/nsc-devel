@@ -2548,6 +2548,7 @@ if(NSC_BUILD_TESTS)
             "-DLLVM_READOBJ=${NSC_LLVM_READOBJ_EXECUTABLE}"
             "-DDEBUG_EXTREME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/debug_pdb_extreme"
             "-DDEBUG_CORE_PROJECT=${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/NativeSharp.Core.nsproj"
+            "-DDEBUG_DIAGNOSTICS_PROJECT=${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj"
             "-DDEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpExtremeDebugO0.cmake")
 

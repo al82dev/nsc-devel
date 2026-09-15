@@ -1,6 +1,7 @@
 namespace DebugExtremeConsumer
 {
     using DebugExtreme;
+    using NativeSharp.Core.Diagnostics;
 
     public static class Program
     {
@@ -21,10 +22,13 @@ namespace DebugExtremeConsumer
             int simd = ProducerApi.InspectSimd();
             int callable = ProducerApi.InspectCallables();
             int storage = ProducerApi.InspectStorage(2, 2);
+            int baselineFrames = Debug.CaptureStackFrameCount();
+            int callbackWalk = ProducerApi.InspectCallbackStack(baselineFrames);
+            int sehWalk = ProducerApi.InspectSehStack(baselineFrames);
             Box<int> box = new Box<int>(consumed);
             int answer = ProducerApi.ReadBox(box);
             delete box;
-            return answer + dispatched - consumed + simd + callable + storage;
+            return answer + dispatched - consumed + simd + callable + storage + callbackWalk + sehWalk;
         }
     }
 }
