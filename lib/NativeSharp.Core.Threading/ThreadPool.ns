@@ -1,15 +1,18 @@
 namespace NativeSharp.Core.Threading
 {
-    // Item 371. A fixed-size native worker pool. Work is represented by the already-proven
-    // ThreadStart delegate and executed outside the queue monitor, so producers and workers only
-    // hold the lock while changing bounded FIFO state.
+    // Item 371/374. A fixed-size native worker pool with one bounded FIFO per worker. Work is
+    // represented by the already-proven ThreadStart delegate and executed outside the queue
+    // monitor, so producers and workers only hold the lock while changing queue state.
     public class ThreadPool
     {
         private owned Thread[] workers_;
-        private owned ThreadStart[] queue_;
+        private owned ThreadStart[] queues_;
+        private owned int[] heads_;
+        private owned int[] counts_;
         private owned Monitor gate_;
-        private int head_;
-        private int count_;
+        private int queueCapacity_;
+        private int nextQueue_;
+        private int startedWorkers_;
         private int pending_;
         private bool stopping_;
 
@@ -21,10 +24,13 @@ namespace NativeSharp.Core.Threading
             if (actualCapacity < 1) { actualCapacity = 1; }
 
             workers_ = new Thread[actualWorkers];
-            queue_ = new ThreadStart[actualCapacity];
+            queues_ = new ThreadStart[actualWorkers * actualCapacity];
+            heads_ = new int[actualWorkers];
+            counts_ = new int[actualWorkers];
             gate_ = new Monitor();
-            head_ = 0;
-            count_ = 0;
+            queueCapacity_ = actualCapacity;
+            nextQueue_ = 0;
+            startedWorkers_ = 0;
             pending_ = 0;
             stopping_ = false;
 
@@ -44,28 +50,73 @@ namespace NativeSharp.Core.Threading
 
         public int QueueCapacity()
         {
-            return queue_.Length;
+            return queueCapacity_;
+        }
+
+        public int WorkerQueueCount()
+        {
+            return workers_.Length;
         }
 
         // The delegate is borrowed until it runs, matching Thread(ThreadStart). Callers keep it
-        // alive through WaitIdle/Shutdown; the pool owns only its queue storage.
+        // alive through WaitIdle/Shutdown. Ordinary submissions are distributed round-robin,
+        // skipping queues that are currently full.
         public bool Queue(ThreadStart work)
         {
             gate_.Enter();
-            if (stopping_ || count_ == queue_.Length)
+            if (stopping_)
             {
                 gate_.Exit();
                 return false;
             }
 
-            int tail = head_ + count_;
-            if (tail >= queue_.Length) { tail = tail - queue_.Length; }
-            queue_[tail] = work;
-            count_ = count_ + 1;
-            pending_ = pending_ + 1;
-            gate_.Pulse();
+            int checkedQueues = 0;
+            int target = nextQueue_;
+            while (checkedQueues < workers_.Length && counts_[target] == queueCapacity_)
+            {
+                target = target + 1;
+                if (target == workers_.Length) { target = 0; }
+                checkedQueues = checkedQueues + 1;
+            }
+            if (checkedQueues == workers_.Length)
+            {
+                gate_.Exit();
+                return false;
+            }
+
+            EnqueueLocked(target, work);
+            nextQueue_ = target + 1;
+            if (nextQueue_ == workers_.Length) { nextQueue_ = 0; }
+            gate_.PulseAll();
             gate_.Exit();
             return true;
+        }
+
+        // Directed submission is useful for affinity-sensitive work and makes each worker queue
+        // an explicit API surface. A worker never consumes another queue until item 375 enables
+        // work stealing.
+        public bool QueueOnWorker(int workerIndex, ThreadStart work)
+        {
+            if (workerIndex < 0 || workerIndex >= workers_.Length) { return false; }
+            gate_.Enter();
+            if (stopping_ || counts_[workerIndex] == queueCapacity_)
+            {
+                gate_.Exit();
+                return false;
+            }
+            EnqueueLocked(workerIndex, work);
+            gate_.PulseAll();
+            gate_.Exit();
+            return true;
+        }
+
+        private void EnqueueLocked(int workerIndex, ThreadStart work)
+        {
+            int tail = heads_[workerIndex] + counts_[workerIndex];
+            if (tail >= queueCapacity_) { tail = tail - queueCapacity_; }
+            queues_[workerIndex * queueCapacity_ + tail] = work;
+            counts_[workerIndex] = counts_[workerIndex] + 1;
+            pending_ = pending_ + 1;
         }
 
         public void WaitIdle()
@@ -95,23 +146,29 @@ namespace NativeSharp.Core.Threading
 
         private void WorkerLoop()
         {
+            gate_.Enter();
+            int workerIndex = startedWorkers_;
+            startedWorkers_ = startedWorkers_ + 1;
+            gate_.Exit();
+
             while (true)
             {
                 gate_.Enter();
-                while (count_ == 0 && !stopping_)
+                while (counts_[workerIndex] == 0 && !stopping_)
                 {
                     gate_.Wait(-1);
                 }
-                if (count_ == 0 && stopping_)
+                if (counts_[workerIndex] == 0 && stopping_)
                 {
                     gate_.Exit();
                     return;
                 }
 
-                ThreadStart work = queue_[head_];
-                head_ = head_ + 1;
-                if (head_ == queue_.Length) { head_ = 0; }
-                count_ = count_ - 1;
+                int slot = workerIndex * queueCapacity_ + heads_[workerIndex];
+                ThreadStart work = queues_[slot];
+                heads_[workerIndex] = heads_[workerIndex] + 1;
+                if (heads_[workerIndex] == queueCapacity_) { heads_[workerIndex] = 0; }
+                counts_[workerIndex] = counts_[workerIndex] - 1;
                 gate_.Exit();
 
                 work();
@@ -133,7 +190,9 @@ namespace NativeSharp.Core.Threading
                 i = i + 1;
             }
             delete[] workers_;
-            delete[] queue_;
+            delete[] queues_;
+            delete[] heads_;
+            delete[] counts_;
         }
     }
 }

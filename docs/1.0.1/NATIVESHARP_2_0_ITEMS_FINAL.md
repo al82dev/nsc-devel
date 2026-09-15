@@ -177,7 +177,7 @@
 126. **371 — Thread pool nativo / Native thread pool — COMPLETADO / COMPLETE**
 127. **372 — Jobs tipados / Typed jobs — COMPLETADO / COMPLETE**
 128. **373 — Dependencias y cancelación de jobs / Job dependencies and cancellation — COMPLETADO / COMPLETE**
-129. **374 — Colas por worker / Per-worker queues**
+129. **374 — Colas por worker / Per-worker queues — COMPLETADO / COMPLETE**
 130. **375 — Work stealing / Work stealing**
 131. **376 — Estado floating-point de workers / Worker floating-point initialization**
 
