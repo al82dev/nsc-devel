@@ -64,6 +64,7 @@ struct ComptimeResult final
     std::size_t executedSteps = 0;
     std::size_t cacheHits = 0;
     std::size_t cacheMisses = 0;
+    std::string reproducibilityDigest;
 };
 
 // Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual

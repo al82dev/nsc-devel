@@ -1221,6 +1221,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item387_comptime_cache_tests)
     add_test(NAME nsc.item387.comptime-cache COMMAND nsc_item387_comptime_cache_tests)
 
+    add_executable(nsc_item388_comptime_reproducibility_tests
+        tests/unit/Item388ComptimeReproducibilityTests.cpp)
+    target_link_libraries(nsc_item388_comptime_reproducibility_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_item388_comptime_reproducibility_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item388_comptime_reproducibility_tests)
+    add_test(NAME nsc.item388.comptime-reproducibility
+        COMMAND nsc_item388_comptime_reproducibility_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)

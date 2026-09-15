@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <charconv>
-#include <cctype>
 #include <limits>
 #include <optional>
 #include <span>
@@ -12,10 +11,21 @@ namespace nativesharp::frontend
 {
 namespace
 {
+bool asciiSpace(char value) noexcept
+{
+    return value == ' ' || value == '\t' || value == '\r' || value == '\n' ||
+        value == '\f' || value == '\v';
+}
+
+bool asciiDigit(char value) noexcept { return value >= '0' && value <= '9'; }
+bool asciiAlpha(char value) noexcept
+{
+    return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z');
+}
+bool asciiAlnum(char value) noexcept { return asciiAlpha(value) || asciiDigit(value); }
 bool identifierByte(char value) noexcept
 {
-    const unsigned char byte = static_cast<unsigned char>(value);
-    return std::isalnum(byte) != 0 || value == '_';
+    return asciiAlnum(value) || value == '_';
 }
 
 class IntegerExpression final
@@ -56,8 +66,7 @@ private:
 
     void skipSpace()
     {
-        while (cursor_ < text_.size() &&
-               std::isspace(static_cast<unsigned char>(text_[cursor_])) != 0)
+        while (cursor_ < text_.size() && asciiSpace(text_[cursor_]))
             ++cursor_;
     }
 
@@ -92,7 +101,7 @@ private:
         }
         const std::size_t begin = cursor_;
         if (cursor_ < text_.size() &&
-            (std::isalpha(static_cast<unsigned char>(text_[cursor_])) != 0 ||
+            (asciiAlpha(text_[cursor_]) ||
              text_[cursor_] == '_'))
         {
             error = "comptime sandbox forbids identifiers, calls, FFI, and host access";
@@ -107,7 +116,7 @@ private:
         }
         const std::size_t digits = cursor_;
         while (cursor_ < text_.size() &&
-               (std::isalnum(static_cast<unsigned char>(text_[cursor_])) != 0 ||
+               (asciiAlnum(text_[cursor_]) ||
                 text_[cursor_] == '_'))
             ++cursor_;
         if (cursor_ == digits)
@@ -296,6 +305,23 @@ std::string comptimeCacheKey(std::string_view expression)
         reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
     return basic::sha256Hex(basic::sha256(bytes));
 }
+
+std::string reproducibilityDigestOf(const ComptimeResult& result)
+{
+    std::string payload = "nativesharp-comptime-result-v1\n";
+    payload.append(result.source);
+    payload.push_back('\n');
+    for (std::size_t index = 0; index < result.dependencies.size(); ++index)
+    {
+        const ComptimeDependency& dependency = result.dependencies[index];
+        payload.append(dependency.kind).push_back(':');
+        payload.append(dependency.digest).push_back(':');
+        payload.append(std::to_string(result.evaluations[index].value)).push_back('\n');
+    }
+    const auto bytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
 }
 
 std::optional<ComptimeCache::Entry> ComptimeCache::find(std::string_view key) const
@@ -375,8 +401,7 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
             return result;
         }
         std::size_t open = cursor + 4;
-        while (open < source.size() &&
-               std::isspace(static_cast<unsigned char>(source[open])) != 0) ++open;
+        while (open < source.size() && asciiSpace(source[open])) ++open;
         if (open == source.size() || source[open] != '(')
         {
             result.error = "expected '(' after #run at byte " + std::to_string(cursor);
@@ -450,6 +475,7 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         cursor = end - 1;
     }
     result.success = true;
+    result.reproducibilityDigest = reproducibilityDigestOf(result);
     return result;
 }
 }
