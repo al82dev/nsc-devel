@@ -8,5 +8,11 @@ namespace NativeSharp.Core.Numerics
         public static ulong LeadingZeroCount(ulong value) { return 0ul; }
         public static uint TrailingZeroCount(uint value) { return 0u; }
         public static ulong TrailingZeroCount(ulong value) { return 0ul; }
+        public static uint RotateLeft(uint value, uint offset) { return 0u; }
+        public static ulong RotateLeft(ulong value, ulong offset) { return 0ul; }
+        public static uint RotateRight(uint value, uint offset) { return 0u; }
+        public static ulong RotateRight(ulong value, ulong offset) { return 0ul; }
+        public static uint ReverseEndianness(uint value) { return 0u; }
+        public static ulong ReverseEndianness(ulong value) { return 0ul; }
     }
 }

@@ -658,6 +658,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreBitPopulationCount: return "core-bit-popcount";
         case ProjectOopMirNodeKind::CoreBitLeadingZeroCount: return "core-bit-clz";
         case ProjectOopMirNodeKind::CoreBitTrailingZeroCount: return "core-bit-ctz";
+        case ProjectOopMirNodeKind::CoreBitRotateLeft: return "core-bit-rotate-left";
+        case ProjectOopMirNodeKind::CoreBitRotateRight: return "core-bit-rotate-right";
+        case ProjectOopMirNodeKind::CoreBitByteSwap: return "core-bit-byte-swap";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1757,6 +1760,15 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreBitTrailingZeroCount:
             result->kind = ProjectOopMirNodeKind::CoreBitTrailingZeroCount;
+            break;
+        case ProjectOopHirNodeKind::CoreBitRotateLeft:
+            result->kind = ProjectOopMirNodeKind::CoreBitRotateLeft;
+            break;
+        case ProjectOopHirNodeKind::CoreBitRotateRight:
+            result->kind = ProjectOopMirNodeKind::CoreBitRotateRight;
+            break;
+        case ProjectOopHirNodeKind::CoreBitByteSwap:
+            result->kind = ProjectOopMirNodeKind::CoreBitByteSwap;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;

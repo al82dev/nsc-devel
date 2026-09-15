@@ -9319,6 +9319,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         scopeOrdinal, selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
                         false, std::nullopt, std::nullopt});
             }
+            if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.BitOperations" &&
+                selectedMember.isStatic &&
+                (selectedMember.declaredTypeKey == "builtin:uint" || selectedMember.declaredTypeKey == "builtin:ulong"))
+            {
+                std::optional<MethodCoreOperationKind> rotateKind;
+                if ((selectedMember.name == "RotateLeft" || selectedMember.name == "RotateRight") &&
+                    selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&
+                    selectedMember.parameters[1].typeKey == selectedMember.declaredTypeKey)
+                    rotateKind = selectedMember.name == "RotateLeft"
+                        ? MethodCoreOperationKind::BitRotateLeft : MethodCoreOperationKind::BitRotateRight;
+                else if (selectedMember.name == "ReverseEndianness" && selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey)
+                    rotateKind = MethodCoreOperationKind::BitByteSwap;
+                if (rotateKind.has_value())
+                    coreBindings_.push_back(MethodCoreBinding{*rotateKind, expression, methodMemberOrdinal,
+                        scopeOrdinal, selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
+                        false, std::nullopt, std::nullopt});
+            }
             // Item 348: the 256-bit floating family uses the same exact-signature gate as the
             // earlier SIMD families while retaining distinct MIR operations for FP semantics.
             const std::string floatingVector256Name =
@@ -14716,6 +14735,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::BitPopulationCount: return "bit-popcount";
         case MethodCoreOperationKind::BitLeadingZeroCount: return "bit-clz";
         case MethodCoreOperationKind::BitTrailingZeroCount: return "bit-ctz";
+        case MethodCoreOperationKind::BitRotateLeft: return "bit-rotate-left";
+        case MethodCoreOperationKind::BitRotateRight: return "bit-rotate-right";
+        case MethodCoreOperationKind::BitByteSwap: return "bit-byte-swap";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

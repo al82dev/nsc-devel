@@ -229,6 +229,9 @@ enum class ProjectOopMirNodeKind
     CoreBitPopulationCount,
     CoreBitLeadingZeroCount,
     CoreBitTrailingZeroCount,
+    CoreBitRotateLeft,
+    CoreBitRotateRight,
+    CoreBitByteSwap,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,

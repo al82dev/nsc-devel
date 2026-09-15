@@ -138,6 +138,12 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreBitLeadingZeroCount};
     case MethodCoreOperationKind::BitTrailingZeroCount:
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreBitTrailingZeroCount};
+    case MethodCoreOperationKind::BitRotateLeft:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreBitRotateLeft};
+    case MethodCoreOperationKind::BitRotateRight:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreBitRotateRight};
+    case MethodCoreOperationKind::BitByteSwap:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreBitByteSwap};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -1088,6 +1094,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreBitPopulationCount: return "core-bit-popcount";
         case ProjectOopHirNodeKind::CoreBitLeadingZeroCount: return "core-bit-clz";
         case ProjectOopHirNodeKind::CoreBitTrailingZeroCount: return "core-bit-ctz";
+        case ProjectOopHirNodeKind::CoreBitRotateLeft: return "core-bit-rotate-left";
+        case ProjectOopHirNodeKind::CoreBitRotateRight: return "core-bit-rotate-right";
+        case ProjectOopHirNodeKind::CoreBitByteSwap: return "core-bit-byte-swap";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

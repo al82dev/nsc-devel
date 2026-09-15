@@ -7815,6 +7815,31 @@ private:
                 LLVMSetAlignment(result, 16U);
                 return result;
             }
+            case frontend::ProjectOopMirNodeKind::CoreBitRotateLeft:
+            case frontend::ProjectOopMirNodeKind::CoreBitRotateRight:
+            case frontend::ProjectOopMirNodeKind::CoreBitByteSwap:
+            {
+                const bool byteSwap = node->kind == frontend::ProjectOopMirNodeKind::CoreBitByteSwap;
+                if (node->children.size() != (byteSwap ? 1U : 2U))
+                    return failValue(error, "rotate/byte-swap intrinsic has invalid operands");
+                LLVMValueRef value = lowerExpression(node->children[0].get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMValueRef offset = byteSwap ? nullptr : lowerExpression(node->children[1].get(), error);
+                if (!byteSwap && offset == nullptr) return nullptr;
+                LLVMTypeRef integerType = llvmType(node->typeKey, error);
+                if (integerType == nullptr) return nullptr;
+                const bool wide = node->typeKey == "builtin:ulong";
+                const char* operation = byteSwap ? "bswap" :
+                    node->kind == frontend::ProjectOopMirNodeKind::CoreBitRotateLeft ? "fshl" : "fshr";
+                const std::string intrinsicName = std::string("llvm.") + operation + (wide ? ".i64" : ".i32");
+                LLVMTypeRef parameters[3] = {integerType, integerType, integerType};
+                LLVMTypeRef intrinsicType = LLVMFunctionType(integerType, parameters, byteSwap ? 1U : 3U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, intrinsicName.c_str());
+                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, intrinsicName.c_str(), intrinsicType);
+                LLVMValueRef arguments[3] = {value, value, offset};
+                return LLVMBuildCall2(builder_, intrinsicType, intrinsic, arguments, byteSwap ? 1U : 3U,
+                    byteSwap ? "bit.byte.swap" : "bit.rotate");
+            }
             case frontend::ProjectOopMirNodeKind::CoreBitPopulationCount:
             case frontend::ProjectOopMirNodeKind::CoreBitLeadingZeroCount:
             case frontend::ProjectOopMirNodeKind::CoreBitTrailingZeroCount:
