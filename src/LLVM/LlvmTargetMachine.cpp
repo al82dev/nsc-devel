@@ -57,10 +57,16 @@ LlvmTargetMachine::LlvmTargetMachine(
     void* targetMachine,
     std::string triple,
     std::string dataLayout,
+    std::string cpuName,
+    std::string featureString,
+    bool usedCpuFeatureFallback,
     LlvmOptimizationLevel optimizationLevel) noexcept
     : targetMachine_(targetMachine),
       triple_(std::move(triple)),
       dataLayout_(std::move(dataLayout)),
+      cpuName_(std::move(cpuName)),
+      featureString_(std::move(featureString)),
+      usedCpuFeatureFallback_(usedCpuFeatureFallback),
       optimizationLevel_(optimizationLevel)
 {
 }
@@ -84,6 +90,15 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsX64(
     std::string& error)
 {
     return createWindows(target::TargetInfo::WindowsX64(), level, error);
+}
+
+std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsX64(
+    LlvmOptimizationLevel level,
+    target::CpuFeatureLevel preferred,
+    target::CpuFeatureLevel available,
+    std::string& error)
+{
+    return createWindows(target::TargetInfo::WindowsX64(preferred, available), level, error);
 }
 
 std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsArm64(std::string& error)
@@ -134,11 +149,13 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindows(
         llvm_api::LLVMDisposeMessage(message);
     }
 
+    const std::string cpuName(targetInfo.llvmCpuName());
+    const std::string featureString(targetInfo.llvmFeatureString());
     llvm_api::LLVMTargetMachineRef machine = llvm_api::LLVMCreateTargetMachine(
         target,
         triple.c_str(),
-        "generic",
-        "",
+        cpuName.c_str(),
+        featureString.c_str(),
         codeGenerationLevel(level),
         llvm_api::LLVMRelocDefault,
         llvm_api::LLVMCodeModelDefault);
@@ -170,7 +187,9 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindows(
     std::string dataLayout(layoutText);
     llvm_api::LLVMDisposeMessage(layoutText);
     return std::unique_ptr<LlvmTargetMachine>(
-        new LlvmTargetMachine(machine, triple, std::move(dataLayout), level));
+        new LlvmTargetMachine(
+            machine, triple, std::move(dataLayout), cpuName, featureString,
+            targetInfo.usedCpuFeatureFallback(), level));
 }
 
 const std::string& LlvmTargetMachine::triple() const noexcept
@@ -283,5 +302,20 @@ bool LlvmTargetMachine::emit(
     }
     error = "LLVM target emission exhausted its transient output-lock retry budget";
     return false;
+}
+
+const std::string& LlvmTargetMachine::cpuName() const noexcept
+{
+    return cpuName_;
+}
+
+const std::string& LlvmTargetMachine::featureString() const noexcept
+{
+    return featureString_;
+}
+
+bool LlvmTargetMachine::usedCpuFeatureFallback() const noexcept
+{
+    return usedCpuFeatureFallback_;
 }
 }

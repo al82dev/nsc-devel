@@ -8,6 +8,7 @@
 
 namespace nativesharp::target
 {
+enum class CpuFeatureLevel;
 class TargetInfo;
 }
 
@@ -33,6 +34,11 @@ public:
     static std::unique_ptr<LlvmTargetMachine> createWindowsX64(
         LlvmOptimizationLevel level,
         std::string& error);
+    static std::unique_ptr<LlvmTargetMachine> createWindowsX64(
+        LlvmOptimizationLevel level,
+        target::CpuFeatureLevel preferred,
+        target::CpuFeatureLevel available,
+        std::string& error);
     static std::unique_ptr<LlvmTargetMachine> createWindowsArm64(std::string& error);
     static std::unique_ptr<LlvmTargetMachine> createWindowsArm64(
         LlvmOptimizationLevel level,
@@ -40,6 +46,9 @@ public:
 
     const std::string& triple() const noexcept;
     const std::string& dataLayout() const noexcept;
+    const std::string& cpuName() const noexcept;
+    const std::string& featureString() const noexcept;
+    bool usedCpuFeatureFallback() const noexcept;
     LlvmOptimizationLevel optimizationLevel() const noexcept;
 
     bool configureModuleForTarget(LlvmModule& module, std::string& error) const;
@@ -57,6 +66,9 @@ private:
         void* targetMachine,
         std::string triple,
         std::string dataLayout,
+        std::string cpuName,
+        std::string featureString,
+        bool usedCpuFeatureFallback,
         LlvmOptimizationLevel optimizationLevel) noexcept;
 
     static std::unique_ptr<LlvmTargetMachine> createWindows(
@@ -67,6 +79,9 @@ private:
     void* targetMachine_ = nullptr;
     std::string triple_;
     std::string dataLayout_;
+    std::string cpuName_;
+    std::string featureString_;
+    bool usedCpuFeatureFallback_ = false;
     LlvmOptimizationLevel optimizationLevel_ = LlvmOptimizationLevel::O0;
 };
 }

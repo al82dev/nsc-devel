@@ -8,10 +8,14 @@ namespace nativesharp::target
 TargetInfo::TargetInfo(
     Architecture architecture,
     OperatingSystem operatingSystem,
-    ObjectFormat objectFormat) noexcept
+    ObjectFormat objectFormat,
+    CpuFeatureLevel requestedCpuFeatureLevel,
+    CpuFeatureLevel cpuFeatureLevel) noexcept
     : architecture_(architecture),
       operatingSystem_(operatingSystem),
-      objectFormat_(objectFormat)
+      objectFormat_(objectFormat),
+      requestedCpuFeatureLevel_(requestedCpuFeatureLevel),
+      cpuFeatureLevel_(cpuFeatureLevel)
 {
 }
 
@@ -21,6 +25,20 @@ TargetInfo TargetInfo::WindowsX64()
         Architecture::X86_64,
         OperatingSystem::Windows,
         ObjectFormat::COFF);
+}
+
+TargetInfo TargetInfo::WindowsX64(CpuFeatureLevel preferred, CpuFeatureLevel available)
+{
+    const auto rank = [](CpuFeatureLevel level) noexcept {
+        return static_cast<unsigned>(level);
+    };
+    const CpuFeatureLevel selected = rank(preferred) <= rank(available) ? preferred : available;
+    return TargetInfo(
+        Architecture::X86_64,
+        OperatingSystem::Windows,
+        ObjectFormat::COFF,
+        preferred,
+        selected);
 }
 
 TargetInfo TargetInfo::WindowsArm64()
@@ -75,15 +93,75 @@ std::string_view TargetInfo::abiName() const noexcept
 
 std::string_view TargetInfo::cpuBaselineName() const noexcept
 {
-    return architecture_ == Architecture::Arm64 ? "armv8-a" : "x86-64-v1";
+    if (architecture_ == Architecture::Arm64) return "armv8-a";
+    switch (cpuFeatureLevel_)
+    {
+        case CpuFeatureLevel::Baseline:
+            return "x86-64-v1";
+        case CpuFeatureLevel::X86_64_V2:
+            return "x86-64-v2";
+        case CpuFeatureLevel::X86_64_V3:
+            return "x86-64-v3";
+        case CpuFeatureLevel::X86_64_V4:
+            return "x86-64-v4";
+    }
+    return {};
+}
+
+std::string_view TargetInfo::llvmCpuName() const noexcept
+{
+    if (architecture_ == Architecture::Arm64) return "generic";
+    return cpuFeatureLevel_ == CpuFeatureLevel::Baseline ? "x86-64" : cpuBaselineName();
+}
+
+std::string_view TargetInfo::llvmFeatureString() const noexcept
+{
+    if (architecture_ == Architecture::Arm64) return "+neon,+fp-armv8";
+    switch (cpuFeatureLevel_)
+    {
+        case CpuFeatureLevel::Baseline:
+            return "+sse,+sse2";
+        case CpuFeatureLevel::X86_64_V2:
+            return "+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt";
+        case CpuFeatureLevel::X86_64_V3:
+            return "+avx,+avx2,+bmi,+bmi2,+f16c,+fma,+lzcnt,+movbe,+xsave";
+        case CpuFeatureLevel::X86_64_V4:
+            return "+avx512f,+avx512bw,+avx512cd,+avx512dq,+avx512vl";
+    }
+    return {};
+}
+
+CpuFeatureLevel TargetInfo::requestedCpuFeatureLevel() const noexcept
+{
+    return requestedCpuFeatureLevel_;
+}
+
+CpuFeatureLevel TargetInfo::cpuFeatureLevel() const noexcept
+{
+    return cpuFeatureLevel_;
+}
+
+bool TargetInfo::usedCpuFeatureFallback() const noexcept
+{
+    return requestedCpuFeatureLevel_ != cpuFeatureLevel_;
 }
 
 bool TargetInfo::supportsCpuFeature(std::string_view feature) const noexcept
 {
     if (architecture_ == Architecture::Arm64)
         return feature.empty() || feature == "neon" || feature == "fp-armv8";
-    return feature.empty() || feature == "x87" || feature == "mmx" ||
-        feature == "sse" || feature == "sse2";
+    if (feature.empty() || feature == "x87" || feature == "mmx" ||
+        feature == "sse" || feature == "sse2") return true;
+    if (cpuFeatureLevel_ == CpuFeatureLevel::Baseline) return false;
+    if (feature == "sse3" || feature == "ssse3" || feature == "sse4.1" ||
+        feature == "sse4.2" || feature == "popcnt") return true;
+    if (cpuFeatureLevel_ == CpuFeatureLevel::X86_64_V2) return false;
+    if (feature == "avx" || feature == "avx2" || feature == "bmi" ||
+        feature == "bmi2" || feature == "f16c" || feature == "fma" ||
+        feature == "lzcnt" || feature == "movbe" || feature == "xsave") return true;
+    if (cpuFeatureLevel_ == CpuFeatureLevel::X86_64_V3) return false;
+    return feature == "avx512f" || feature == "avx512bw" ||
+        feature == "avx512cd" || feature == "avx512dq" || feature == "avx512vl";
 }
 
 bool TargetInfo::isAssemblyRegister(std::string_view name) const noexcept
