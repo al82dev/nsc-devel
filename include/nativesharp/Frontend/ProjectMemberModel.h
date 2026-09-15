@@ -125,6 +125,12 @@ struct ClassMemberSymbol final
     // optimization, but it gains neither atomicity nor inter-thread ordering.
     bool isVolatile = false;
     bool isConst = false;
+    // Item 327. Bit-field syntax retains the width expression without assigning physical bit
+    // offsets yet. Unnamed fields use an unreachable compiler-generated identity until item 328
+    // groups them into MSVC storage units.
+    bool isBitField = false;
+    bool isUnnamedBitField = false;
+    const ast::AstNode* bitWidthSyntax = nullptr;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     // Item 321. The callable body may not contain an operation that allocates heap storage.
     bool isNoHeap = false;

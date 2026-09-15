@@ -1271,7 +1271,11 @@ bool ProjectMemberModel::collectTypeMembers(
             const std::string& metadata = memberNode->auxiliaryText();
             symbol.isCompilerGenerated = metadata.starts_with("property-backing:") ||
                 metadata.starts_with("event-backing:") ||
-                metadata.find("anonymous-member-carrier") != std::string::npos;
+                metadata.find("anonymous-member-carrier") != std::string::npos ||
+                metadata.find("bitfield-unnamed") != std::string::npos;
+            symbol.isBitField = metadata.find("bitfield") != std::string::npos;
+            symbol.isUnnamedBitField = metadata.find("bitfield-unnamed") != std::string::npos;
+            symbol.bitWidthSyntax = symbol.isBitField ? memberNode->second() : nullptr;
             symbol.isEvent = symbol.kind == ClassMemberKind::Event;
             symbol.isEventBacking = metadata.starts_with("event-backing:");
             symbol.isPropertyAccessor = metadata.starts_with("property:get:") ||

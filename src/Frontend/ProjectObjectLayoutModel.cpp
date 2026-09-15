@@ -590,6 +590,16 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         if (memberOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
+        if (member.isBitField)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                member.range,
+                "bit-field physical layout belongs to item 328");
+            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+            return false;
+        }
         const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(
             member.declaredTypeSyntax, diagnostics, member.range);
         if (!fieldLayout.has_value())
@@ -785,6 +795,16 @@ bool ProjectObjectLayoutModel::buildClassLayout(
         if (member.kind != ClassMemberKind::Field || member.isStatic)
         {
             continue;
+        }
+
+        if (member.isBitField)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                member.range,
+                "bit-field physical layout belongs to item 328");
+            return false;
         }
 
         if (ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey).has_value())

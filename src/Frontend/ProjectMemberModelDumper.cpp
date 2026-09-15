@@ -53,6 +53,12 @@ void ProjectMemberModelDumper::dump(
                        << " abstract=" << (member.isAbstract ? "true" : "false")
                        << " sealed=" << (member.isSealed ? "true" : "false");
             }
+            if (member.isBitField)
+            {
+                output << " bit-field=true"
+                       << " unnamed=" << (member.isUnnamedBitField ? "true" : "false")
+                       << " width-syntax=" << (member.bitWidthSyntax != nullptr ? "present" : "missing");
+            }
             output << " source=" << member.sourcePath << '\n';
 
             for (const MethodParameterSymbol& parameter : member.parameters)

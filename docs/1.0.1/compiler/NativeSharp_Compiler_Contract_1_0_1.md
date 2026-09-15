@@ -1032,6 +1032,21 @@ anonymous carriers and its source materializer shall recursively reconstruct the
 `LibraryReference`. Writing minor 1.16 or earlier shall clear this unsupported marker. This feature
 changes neither MIR 1.6, Object ABI 2, Runtime ABI nor runtime ownership.
 
+## NSC-LAYOUT-005 — Bit-field syntax boundary
+
+The parser shall accept `type name : width;` and `type : width;` as field declarations. It shall
+retain the complete width expression on `FieldDeclaration::second()`, independently from the
+ordinary initializer edge, mark the node as a bit field, and synthesize a deterministic unreachable
+name for unnamed declarations. Assignment expressions used as initializers shall diagnose rather
+than become widths. Bit fields may carry accessibility and `volatile`; storage, callable, explicit
+byte-layout and type-layout modifiers shall diagnose at this boundary.
+
+The member model shall preserve `isBitField`, `isUnnamedBitField` and the width syntax pointer while
+keeping unnamed identities compiler-generated. Until NSC-LAYOUT-006 implements MSVC storage units,
+both struct and class layout shall reject such a member with the explicit item-328 boundary. No
+pipeline may silently allocate the declared integer type as an ordinary full-width field. Item 327
+changes no ABI schema, metadata format, generated header, runtime or binding.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

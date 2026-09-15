@@ -3352,6 +3352,62 @@ ast::AstNode* Parser::parseClassMember(
 
     ast::TypeSyntax* type = parseType();
 
+    // Item 327. C permits an unnamed bit-field declarator (`uint : 0;`) to reserve or terminate
+    // a storage unit. Give it an unreachable deterministic internal name so the ordinary member
+    // pipeline can retain declaration order, while keeping the width expression on second().
+    // Item 328 owns physical placement; this item only establishes lossless source syntax.
+    if (at(TokenKind::Colon))
+    {
+        const lexer::Token& colon = consume();
+        ast::AstNode* width = parseExpression();
+        if (width != nullptr && width->kind() == ast::AstNodeKind::AssignmentExpression)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                width->range(),
+                "bit-field width cannot contain an assignment or initializer");
+        }
+        ast::AstNode* field = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::FieldDeclaration,
+            colon.range());
+        field->setTypeSyntax(type);
+        field->setText("__nsc_unnamed_bitfield_f" +
+            std::to_string(colon.range().begin().fileId().value()) + "_" +
+            std::to_string(colon.range().begin().offset()));
+        field->setAuxiliaryText("bitfield;bitfield-unnamed");
+        field->setSecond(width);
+        if (isInvalidVoidObjectType(type))
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                type->range(),
+                "bit-field cannot have object type 'void'");
+        }
+        if (accessibility != TokenKind::Invalid)
+        {
+            field->setTokenKind(accessibility);
+            field->addModifier(accessibility);
+        }
+        if (isVolatile) field->addModifier(TokenKind::KwVolatile);
+        if (isStatic || isNew || isReadonly || isConst || isReferenceReturn ||
+            isVirtual || isOverride || isAbstract || isSealed || isExported || isExternC ||
+            isInline || isForceInline || isNoInline || isNoHeap ||
+            isPartial || isBorrowedView || explicitFieldOffset.has_value() ||
+            nestedLayoutPack.has_value() || nestedLayoutAlign.has_value() || nestedLayoutSize.has_value())
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                colon.range(),
+                "an unnamed bit-field accepts accessibility and optional volatile only");
+        }
+        expect(TokenKind::Semicolon, "';'");
+        field->setRange(tokenRangeFrom(beginIndex));
+        return field;
+    }
+
     if (at(TokenKind::KwOperator))
     {
         if (isReferenceReturn)
@@ -3571,6 +3627,31 @@ ast::AstNode* Parser::parseClassMember(
         name.range());
     field->setTypeSyntax(type);
     field->setText(std::string(name.lexeme()));
+    ast::AstNode* bitWidth = nullptr;
+    if (consumeIf(TokenKind::Colon))
+    {
+        bitWidth = parseExpression();
+        if (bitWidth != nullptr && bitWidth->kind() == ast::AstNodeKind::AssignmentExpression)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                bitWidth->range(),
+                "bit-field width cannot contain an assignment or initializer");
+        }
+        field->setSecond(bitWidth);
+        field->setAuxiliaryText("bitfield");
+        if (isStatic || isNew || isReadonly || isConst || isReferenceReturn ||
+            isPartial || isBorrowedView || explicitFieldOffset.has_value() ||
+            nestedLayoutPack.has_value() || nestedLayoutAlign.has_value() || nestedLayoutSize.has_value())
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                name.range(),
+                "a bit-field accepts accessibility and optional volatile only");
+        }
+    }
     // Items 272: field layout modifiers ride on the field's auxiliary text, which is where
     // ProjectMemberModel reads them back. `align(N)` is the same parsed modifier used by a nested
     // type; reaching an ordinary field resolves the contextual ambiguity in favor of the field.
@@ -3611,13 +3692,13 @@ ast::AstNode* Parser::parseClassMember(
         field->addModifier(TokenKind::KwConst);
     }
 
-    if (consumeIf(TokenKind::Equal))
+    if (bitWidth == nullptr && consumeIf(TokenKind::Equal))
     {
         // C7 "aggregate initializer": a field takes the same braced form a local does, for the
         // same reason -- it has a declared type to be filled against.
         field->setFirst(at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
     }
-    else if (isConst)
+    else if (bitWidth == nullptr && isConst)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,

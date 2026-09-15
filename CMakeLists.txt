@@ -749,6 +749,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item326.anonymous-member-promotion
         COMMAND nsc_item326_anonymous_member_promotion_tests)
+    add_executable(
+        nsc_item327_bitfield_syntax_tests
+        tests/unit/Item327BitFieldSyntaxTests.cpp)
+    target_link_libraries(nsc_item327_bitfield_syntax_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item327_bitfield_syntax_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item327_bitfield_syntax_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item327_bitfield_syntax_tests)
+    add_test(
+        NAME nsc.item327.bitfield-syntax
+        COMMAND nsc_item327_bitfield_syntax_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

@@ -171,6 +171,11 @@ estado de alternativa activa; con campo explícito el acceso sigue calificado co
 `contenedor.Campo.Miembro`, y sin campo explícito sus alternativas se promueven. Puede anidarse con
 structs anónimos y conserva un único carrier físico por agregado.
 
+Los fields aceptan la sintaxis C `tipo nombre : ancho;` y la variante sin nombre
+`tipo : ancho;`, incluido ancho cero. El AST y el modelo de miembros conservan el ancho como una
+expresión separada. El punto 327 no asigna todavía almacenamiento: solicitar layout diagnostica la
+frontera explícita del punto 328 en vez de degradar el bitfield a un entero ordinario.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

@@ -1020,6 +1020,25 @@ storage, and rejects direct or promoted name conflicts. Effective accessibility 
 intersection along the carrier path. Member access and `offsetof` use the accumulated physical
 offset; C/MSVC headers and NSMETA 1.17 preserve the same source and cross-module contract.
 
+### NS-LAYOUT-007 — Sintaxis de bitfields
+
+La declaración `tipo nombre : ancho;` introduce un bitfield nombrado. La forma `tipo : ancho;`
+introduce un bitfield sin nombre, incluida la forma de ancho cero. `ancho` es una expresión AST
+separada del inicializador de un field y la declaración no admite `= valor`. En esta etapa sólo se
+aceptan accesibilidad y `volatile`; `static`, `new`, `readonly`, `const`, `at`, `align`, `pack`,
+`size`, modificadores de callable y `borrowedview` se diagnostican.
+
+El punto 327 conserva sintaxis, orden de declaración, identidad interna determinista para las formas
+sin nombre y la expresión completa del ancho. No asigna unidad, offset ni máscara: el layout MSVC
+pertenece al punto 328, el acceso al 329 y la semántica observable de `volatile` al 330. Hasta
+completar el punto 328, solicitar layout físico produce un diagnóstico explícito y nunca trata el
+bitfield como un field entero ordinario.
+
+`type name : width;` declares a named bit field and `type : width;` an unnamed one, including the
+zero-width form. The width is retained on a dedicated AST edge and cannot be a field initializer.
+Item 327 deliberately stops before physical placement: MSVC storage units belong to item 328,
+loads/stores to item 329, and volatile access semantics to item 330.
+
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su
 representación canónica equivale a un arreglo exterior de `d0` elementos, cada uno de los cuales

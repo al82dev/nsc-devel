@@ -44,8 +44,10 @@ interface-member = { "public" | "abstract" | "noheap" }, [ "ref" ], [ ownership 
 member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" |
                   "inline" | "forceinline" | "noinline" | "noheap" ;
 
-field-declaration = [ ownership ], type, identifier, [ "at", integer-literal ],
-                    [ "=", expression | aggregate-initializer ], ";" ;
+field-declaration = [ ownership ], type,
+                    ( identifier, [ "at", integer-literal ],
+                      [ "=", expression | aggregate-initializer ] |
+                      [ identifier ], ":", expression ), ";" ;
 anonymous-struct-field = "struct", type-body,
                          [ identifier, [ "=", expression | aggregate-initializer ] ], ";" ;
 anonymous-union-field = "union", type-body,
