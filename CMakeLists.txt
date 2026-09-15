@@ -330,6 +330,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/DebugInformationKind.cpp
     src/LLVM/FloatingPointMode.cpp
     src/LLVM/LlvmModule.cpp
+    src/LLVM/LlvmNativeSanitizer.cpp
     src/LLVM/LlvmVersion.cpp
     src/LLVM/LlvmOptimizationLevel.cpp
     src/LLVM/LlvmOptimizationObservation.cpp
@@ -2510,6 +2511,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_llvm_optimization_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_llvm_optimization_tests)
     add_test(NAME nsc.llvm-optimization COMMAND nsc_llvm_optimization_tests)
+
+    add_executable(nsc_item389_native_sanitizer_tests tests/unit/Item389NativeSanitizerTests.cpp)
+    target_link_libraries(nsc_item389_native_sanitizer_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item389_native_sanitizer_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item389_native_sanitizer_tests)
+    add_test(NAME nsc.item389-native-sanitizer COMMAND nsc_item389_native_sanitizer_tests)
 
     add_executable(nsc_windows_runtime_tests tests/unit/WindowsRuntimeTests.cpp)
     target_link_libraries(nsc_windows_runtime_tests PRIVATE nsc_runtime nsc_llvm nsc_frontend nsc_target)

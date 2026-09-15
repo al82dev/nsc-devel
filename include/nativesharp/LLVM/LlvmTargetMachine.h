@@ -15,6 +15,7 @@ class TargetInfo;
 namespace nativesharp::llvm_backend
 {
 class LlvmModule;
+class LlvmNativeSanitizer;
 class LlvmOptimizer;
 
 enum class LlvmCodeGenFileType
@@ -61,6 +62,7 @@ public:
 
 private:
     friend class LlvmOptimizer;
+    friend class LlvmNativeSanitizer;
 
     LlvmTargetMachine(
         void* targetMachine,

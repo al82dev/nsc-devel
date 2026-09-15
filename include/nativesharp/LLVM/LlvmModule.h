@@ -10,6 +10,7 @@ class WindowsRuntimeBuilder;
 namespace nativesharp::llvm_backend
 {
 class LlvmLowerer;
+class LlvmNativeSanitizer;
 class ProjectOopLlvmLowerer;
 class LlvmOptimizer;
 class LlvmTargetMachine;
@@ -26,6 +27,7 @@ public:
 
 private:
     friend class LlvmLowerer;
+    friend class LlvmNativeSanitizer;
     friend class ProjectOopLlvmLowerer;
     friend class LlvmOptimizer;
     friend class LlvmTargetMachine;

@@ -201,7 +201,7 @@
 
 ## Tanda 14 — Robustez avanzada
 
-144. **389 — Sanitizers nativos / Native sanitizers**
+144. **389 — Sanitizers nativos / Native sanitizers — COMPLETADO / COMPLETE**
 145. **390 — LTO / Link-time optimization**
 146. **391 — ThinLTO / Thin link-time optimization**
 147. **392 — Enlace incremental / Incremental linking**
