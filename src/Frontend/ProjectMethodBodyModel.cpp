@@ -6270,6 +6270,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 result.ownershipFreshOwner = result.valid && typeKeyIsOwnable(objectType);
             }
             break;
+        case ast::AstNodeKind::PlacementConstructionExpression:
+            analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            for (const ast::AstNode* argument : expression->children())
+            {
+                analyzeExpression(
+                    argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                    /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+            }
+            diagnostics.report(
+                diagnostics::DiagnosticId::PlacementConstructionNotAvailable,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "placement construction syntax is recognized but is not executable until item 318 lowering");
+            break;
         case ast::AstNodeKind::NewExpression:
         case ast::AstNodeKind::StackallocExpression:
             if (memberModel_ != nullptr && nameLookup_ != nullptr)

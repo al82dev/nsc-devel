@@ -35,6 +35,9 @@ empaqueta con NativeSharp 1.0.1.
 - Cada alias `ref` conserva además su región léxica máxima. Locales y VLAs no pueden adquirir una
   duración mayor que su scope de origen; parámetros del llamador permanecen válidos dentro del
   método, sin cambios de ownership, metadata, runtime ni ABI.
+- La gramática reconoce `new (storage) T(args)` como construcción placement con destino, tipo y
+  argumentos separados en AST. Hasta completar su lowering en el punto 318, el compilador emite
+  un diagnóstico de fuente explícito y no genera HIR.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

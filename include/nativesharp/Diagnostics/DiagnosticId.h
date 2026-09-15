@@ -70,6 +70,7 @@ enum class DiagnosticId
     InvalidInlineAssemblyTarget,
     InvalidInlineAssemblyPlaceholder,
     InlineAssemblyNotAvailable,
+    PlacementConstructionNotAvailable,
     ConstantEvaluationTrap,
     MissingMain,
     InvalidMainSignature,

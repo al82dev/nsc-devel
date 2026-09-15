@@ -113,6 +113,9 @@ enum class AstNodeKind
     DefaultValueExpression,
     NewExpression,
     ObjectCreationExpression,
+    // Item 317. `new (storage) T(args)` names storage separately from constructor arguments.
+    // Physical construction into that address is introduced by item 318.
+    PlacementConstructionExpression,
     DeleteExpression,
     StackallocExpression,
     MoveExpression,

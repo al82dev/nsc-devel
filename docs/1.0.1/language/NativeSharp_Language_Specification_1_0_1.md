@@ -326,6 +326,25 @@ preserving operations never widen it. Ordinary locals and VLAs are bounded by th
 scope; caller-owned `ref`/`out` storage spans the method. Reference returns remain an external sink
 and therefore reject all current-frame regions. This rule changes neither ownership nor ABI.
 
+### NS-PLACEMENT-001 — Sintaxis de construcción en storage existente
+
+La forma `new (storage) T(argumentos)` solicita construir un valor de tipo `T` en una dirección
+aportada por el programa. Los paréntesis alrededor de `storage` y la lista de argumentos del
+constructor son obligatorios, incluso cuando ésta queda vacía. Esto mantiene la forma distinta de
+`new T(args)`, `new T[count]` y `new T`.
+
+`storage` es una expresión completa y se conserva separada de los argumentos, que mantienen su
+orden y sus modos `ref`/`out`/`in`. En el punto 317 la forma tiene contrato exclusivamente
+sintáctico: se reconoce y representa de manera estable, pero cualquier intento de compilarla
+produce un diagnóstico de fuente antes de HIR. Las reglas de tipo, alineación, evaluación única,
+constructor, resultado y efectos físicos pertenecen al lowering del punto 318.
+
+The spelling `new (storage) T(arguments)` reserves placement construction into program-supplied
+storage. Parentheses around the storage expression and an explicit constructor argument list are
+mandatory. The AST retains storage separately from ordered call arguments. Item 317 defines this
+grammar boundary only; compilation diagnoses the expression before HIR until item 318 supplies its
+semantic and lowering contract.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

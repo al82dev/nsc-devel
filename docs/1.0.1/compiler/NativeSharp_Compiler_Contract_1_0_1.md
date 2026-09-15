@@ -836,6 +836,20 @@ rejection of nested locals, struct reference indexers and VLA aliases. Existing 
 reference-indexer, VLA, borrow and view suites shall remain green. The analysis shall add no runtime
 helper, ownership operation, metadata field or ABI change.
 
+## NSC-PLACEMENT-001 — Placement-construction syntax boundary
+
+The parser shall recognize `new (storage) T(arguments)` as a dedicated
+`PlacementConstructionExpression`. Its first operand shall retain the complete storage expression,
+its type syntax shall retain `T`, and its children shall retain constructor arguments in source
+order, including argument names and pass modes. Both parenthesized groups are mandatory.
+
+The new form shall not alter the established AST identity of ordinary object, array, or raw-storage
+allocation. Until item 318 defines semantic binding and lowering, both frontend pipelines shall
+emit `PlacementConstructionNotAvailable` as a source diagnostic and shall not reach HIR, allocate
+memory, call a constructor or silently erase the expression. Focused evidence shall cover the AST
+shape, a compound destination expression, ordinary-`new` non-regression, missing argument-list
+rejection and the explicit pre-lowering boundary.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

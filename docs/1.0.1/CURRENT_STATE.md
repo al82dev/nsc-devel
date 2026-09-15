@@ -143,6 +143,11 @@ un alias debe estar contenido en esa región y el dump de cuerpos publica `max-s
 `alias-scope` para auditoría. La comprobación es enteramente estática: no añade metadata, helpers,
 ownership ni cambios ABI.
 
+La forma `new (storage) T(args)` posee ya una frontera sintáctica propia. El AST conserva la
+expresión de destino, el tipo y los argumentos sin confundirla con asignación ordinaria, arrays o
+`new T`; su uso todavía se rechaza explícitamente antes de HIR porque la validación y el lowering
+físico corresponden al punto 318.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

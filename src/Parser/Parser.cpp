@@ -6767,6 +6767,37 @@ ast::AstNode* Parser::parseUnaryExpression()
     if (at(TokenKind::KwNew))
     {
         const SourceRange start = consume().range();
+
+        // Item 317: placement construction follows the conventional unambiguous spelling
+        // `new (storage) T(args)`. The placement expression is kept in first(), independently
+        // from the ordered constructor arguments in children(), so item 318 can guarantee its
+        // single evaluation without recovering structure from tokens.
+        if (consumeIf(TokenKind::LeftParen))
+        {
+            ast::AstNode* storage = parseExpression();
+            expect(TokenKind::RightParen, "')' after placement storage");
+            ast::TypeSyntax* type = parseAllocationElementType();
+            ast::AstNode* creation = arena_.make<ast::AstNode>(
+                ast::AstNodeKind::PlacementConstructionExpression,
+                start);
+            creation->setFirst(storage);
+            creation->setTypeSyntax(type);
+            if (expect(TokenKind::LeftParen, "'(' after placement construction type"))
+            {
+                if (!at(TokenKind::RightParen))
+                {
+                    while (true)
+                    {
+                        creation->addChild(parseArgument());
+                        if (!consumeIf(TokenKind::Comma)) break;
+                    }
+                }
+                expect(TokenKind::RightParen, "')' after placement constructor arguments");
+            }
+            creation->setRange(SourceRange(start.begin(), tokens_[index_ - 1].range().end()));
+            return creation;
+        }
+
         ast::TypeSyntax* type = parseAllocationElementType();
         if (consumeIf(TokenKind::LeftParen))
         {

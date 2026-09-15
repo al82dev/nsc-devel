@@ -646,6 +646,10 @@ if(NSC_BUILD_TESTS)
     nsc_add_unit_test(nsc_class_declaration_tests tests/unit/ClassDeclarationTests.cpp nsc.class-declarations)
     nsc_add_unit_test(nsc_class_member_syntax_tests tests/unit/ClassMemberSyntaxTests.cpp nsc.class-member-syntax)
     nsc_add_unit_test(nsc_constructor_syntax_tests tests/unit/ConstructorSyntaxTests.cpp nsc.constructor-syntax)
+    nsc_add_unit_test(
+        nsc_item317_placement_construction_syntax_tests
+        tests/unit/Item317PlacementConstructionSyntaxTests.cpp
+        nsc.item317.placement-construction-syntax)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

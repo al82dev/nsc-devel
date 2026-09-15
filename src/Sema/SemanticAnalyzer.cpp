@@ -1016,6 +1016,14 @@ ExpressionInfo SemanticAnalyzer::analyzeExpression(ast::AstNode* node, bool allo
             return analyzeOffsetof(node);
         case ast::AstNodeKind::NewExpression:
             return analyzeNew(node);
+        case ast::AstNodeKind::PlacementConstructionExpression:
+            analyzeExpression(node->first());
+            for (ast::AstNode* argument : node->children()) analyzeExpression(argument);
+            report(
+                node->range(),
+                diagnostics::DiagnosticId::PlacementConstructionNotAvailable,
+                "placement construction syntax is recognized but is not executable until item 318 lowering");
+            return makeError(node);
         case ast::AstNodeKind::DeleteExpression:
             return analyzeDelete(node);
         case ast::AstNodeKind::StackallocExpression:
