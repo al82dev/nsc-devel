@@ -1576,6 +1576,12 @@ class PipelineWorker(QObject):
             "ctest",
             "--test-dir",
             str(self._test_build_dir(linker)),
+            # CTest defaults to interactive crash handling on Windows.  Set this explicitly even
+            # though the builder process also installs SEM_NOGPFAULTERRORBOX: CTest can otherwise
+            # let Windows Error Reporting display a modal dialog for a crashing test and stall the
+            # unattended baseline until somebody dismisses it.
+            "--interactive-debug-mode",
+            "0",
             "--output-on-failure",
             # Una corrida que no ejecuta ninguna prueba no es una corrida verde. Sin esto ctest
             # sale con 0 cuando el filtro no casa nada, que es como «No tests were found!!!» acabo
