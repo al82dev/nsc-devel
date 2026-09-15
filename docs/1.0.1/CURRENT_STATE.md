@@ -293,7 +293,7 @@ transporta directamente por valor. Las aplicaciones GUI pueden seleccionar
 
 Un producto precompilado combina `.lib`, `.nsmeta` y, para una biblioteca compartida, `.dll` más su
 import library. `LibraryReference` consume el contrato sin incorporar las fuentes del productor.
-NSMETA 1.15 conserva:
+NSMETA 1.16 conserva:
 
 - tipos, miembros, accesibilidad efectiva y nombres físicos;
 - constantes y valores necesarios para reconstruir la API;
@@ -304,6 +304,7 @@ NSMETA 1.15 conserva:
 - política de inlining y cuerpos ordinarios reutilizables entre productor y consumidor;
 - campos públicos `volatile` y el mismo modificador en su layout físico;
 - retornos `ref` públicos y su ABI física de puntero;
+- contratos `noheap` públicos de métodos y constructores;
 - requisitos de runtime seleccionados únicamente cuando un símbolo alcanzado los necesita.
 
 `--verify-library-artifacts` compara metadata, archivo COFF, import library y tabla de exportaciones.

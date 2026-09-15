@@ -318,8 +318,10 @@ namespace CrossRef
                 metadataReferenceReturn = true;
         }
     }
-    tests.expect(metadataRead && metadata.formatMinor == 15U && metadataReferenceReturn,
-        "NSMETA 1.15 preserves the public ref-return bit (" + metadataError + ")");
+    tests.expect(metadataRead &&
+                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor &&
+                     metadataReferenceReturn,
+        "current NSMETA preserves the public ref-return bit (" + metadataError + ")");
     if (metadataRead)
     {
         metadata.formatMinor = 14U;

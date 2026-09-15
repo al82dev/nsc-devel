@@ -336,6 +336,12 @@ bool ProjectInterfaceModel::visitInterface(
                         "interface inherits incompatible return types for method '" + method.signatureKey + "'");
                     ok = false;
                 }
+                else if (!previous.isNoHeap && method.isNoHeap)
+                {
+                    std::ranges::replace(
+                        info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);
+                    found->second = memberOrdinal;
+                }
             }
         }
     }
@@ -381,6 +387,22 @@ bool ProjectInterfaceModel::visitInterface(
                     method.range,
                     "interface method '" + method.signatureKey + "' conflicts with an inherited return type");
                 ok = false;
+            }
+            if (previous.isNoHeap && !method.isNoHeap)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOverride,
+                    diagnostics::DiagnosticSeverity::Error,
+                    method.range,
+                    "interface method '" + method.signatureKey +
+                        "' cannot drop the inherited noheap contract");
+                ok = false;
+            }
+            else if (!previous.isNoHeap && method.isNoHeap)
+            {
+                std::ranges::replace(
+                    info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);
+                found->second = memberOrdinal;
             }
             // Redeclaring an identical inherited contract does not allocate another interface slot.
             continue;
@@ -480,6 +502,18 @@ bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagn
                 const ClassMemberSymbol& interfaceMethod = memberModel_->members()[interfaceMethodOrdinal];
                 const std::optional<std::size_t> implementation = findImplementation(classOrdinal, interfaceMethod);
                 plan.implementationMemberOrdinals.push_back(implementation);
+                if (implementation.has_value() && interfaceMethod.isNoHeap &&
+                    !memberModel_->members()[*implementation].isNoHeap)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOverride,
+                        diagnostics::DiagnosticSeverity::Error,
+                        memberModel_->members()[*implementation].range,
+                        "method '" + memberModel_->members()[*implementation].signatureKey +
+                            "' cannot implement noheap interface contract '" +
+                            interfaceMethod.signatureKey + "' without noheap");
+                    ok = false;
+                }
                 if (!implementation.has_value() && !type.isAbstract)
                 {
                     diagnostics.report(

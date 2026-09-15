@@ -3098,7 +3098,7 @@ ast::AstNode* Parser::parseClassMember(
         peek().kind() == TokenKind::LeftParen)
     {
         if (isNew || isVirtual || isOverride || isStatic || isReadonly || isVolatile || isConst ||
-            isInline || isForceInline || isNoInline || isNoHeap || isAbstract || isSealed ||
+            isInline || isForceInline || isNoInline || isAbstract || isSealed ||
             isExported || isExternC)
         {
             diagnostics_.report(
@@ -3107,7 +3107,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "constructors cannot be static, readonly, volatile, const, virtual, override, abstract or sealed");
         }
-        return parseConstructorTail(className, accessibility, beginIndex);
+        return parseConstructorTail(className, accessibility, isNoHeap, beginIndex);
     }
 
     if (at(TokenKind::KwImplicit) || at(TokenKind::KwExplicit))
@@ -4286,6 +4286,7 @@ ast::AstNode* Parser::parseDestructorTail(
 ast::AstNode* Parser::parseConstructorTail(
     std::string_view className,
     TokenKind accessibility,
+    bool isNoHeap,
     std::size_t beginIndex)
 {
     const lexer::Token& name = consume();
@@ -4297,6 +4298,10 @@ ast::AstNode* Parser::parseConstructorTail(
     {
         constructor->setTokenKind(accessibility);
         constructor->addModifier(accessibility);
+    }
+    if (isNoHeap)
+    {
+        constructor->addModifier(TokenKind::KwNoHeap);
     }
 
     expect(TokenKind::LeftParen, "'('");

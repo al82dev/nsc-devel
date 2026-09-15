@@ -1738,6 +1738,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 std::string returnType;
                 if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, returnType, error)) return false;
                 generated << "    public ";
+                if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
                 if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
                 generated << ownershipPrefix(member->declaredOwnership) << returnType << ' '
                           << member->name << '(';
@@ -1895,7 +1896,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             }
             if (member->kind == kConstructorKind)
             {
-                generated << "    " << sourceAccessibility(member->accessibility) << ' ' << typeName << '(';
+                generated << "    " << sourceAccessibility(member->accessibility) << ' ';
+                if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
+                generated << typeName << '(';
                 if (!emitParameters(*member)) return false;
                 generated << ") { }\n";
                 continue;
@@ -1969,6 +1972,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 (member->flags & interop::kMetadataMemberInliningMask) >>
                 interop::kMetadataMemberInliningShift;
             if (inlining == 3U) generated << "noinline ";
+            if ((member->flags & interop::kMetadataMemberNoHeap) != 0U) generated << "noheap ";
             if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
             generated << ownershipPrefix(member->declaredOwnership) << returnType << ' ' << member->name << '(';
             if (!emitParameters(*member)) return false;

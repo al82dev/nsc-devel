@@ -1074,7 +1074,8 @@ bool ProjectMemberModel::collectTypeMembers(
                         memberNode->hasModifier(lexer::TokenKind::KwInline)
                     ? InliningPolicy::Preferred
                     : InliningPolicy::Automatic;
-            symbol.isNoHeap = symbol.kind == ClassMemberKind::Method &&
+            symbol.isNoHeap = (symbol.kind == ClassMemberKind::Method ||
+                               symbol.kind == ClassMemberKind::Constructor) &&
                 memberNode->hasModifier(lexer::TokenKind::KwNoHeap);
             symbol.isStatic = (symbol.kind == ClassMemberKind::Field || symbol.kind == ClassMemberKind::Event ||
                 symbol.kind == ClassMemberKind::Method) &&

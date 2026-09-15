@@ -36,7 +36,7 @@ type-member = { member-modifier },
               ( field-declaration | method-declaration | constructor-declaration |
                 destructor-declaration | property-declaration | indexer-declaration |
                 operator-declaration | conversion-declaration | event-declaration ) ;
-interface-member = [ "ref" ], [ ownership ], type, identifier,
+interface-member = { "public" | "abstract" | "noheap" }, [ "ref" ], [ ownership ], type, identifier,
                    "(", [ parameter-list ], ")", ";" |
                    [ ownership ], type, identifier, accessor-body |
                    [ "ref" ], [ ownership ], type, "this", "[", parameter-list, "]", accessor-body ;

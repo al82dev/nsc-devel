@@ -110,7 +110,7 @@
 74. **319 — Destrucción explícita sin liberar almacenamiento / Explicit destruction without deallocation — COMPLETADO / COMPLETE**
 75. **320 — Separar propiedad del objeto y almacenamiento / Separate object and storage ownership — COMPLETADO / COMPLETE**
 76. **321 — Contextos `noheap` / No-heap contexts — COMPLETADO / COMPLETE**
-77. **322 — Propagación de contratos `noheap` / No-heap contract propagation**
+77. **322 — Propagación de contratos `noheap` / No-heap contract propagation — COMPLETADO / COMPLETE**
 78. **323 — Escape analysis de clases hacia stack / Stack allocation of nonescaping classes**
 
 ## Tanda 7 — Layout C y MSVC

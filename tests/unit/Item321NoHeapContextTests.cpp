@@ -78,7 +78,7 @@ int main()
 
     const auto validRoot = root / "valid";
     writeProject(validRoot, R"NS(
-public struct Cell { public int Value; }
+public struct Cell { public int Value; public noheap Cell() { } }
 
 public class Program
 {

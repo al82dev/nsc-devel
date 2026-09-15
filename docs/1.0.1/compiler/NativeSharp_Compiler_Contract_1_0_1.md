@@ -911,7 +911,7 @@ contract adds no runtime or Object ABI field and does not make supplied storage 
 ## NSC-NOHEAP-001 — Direct no-heap contexts
 
 The lexer shall reserve `noheap`; the parser shall accept it once on an ordinary class or struct
-method and on an interface method contract, and reject duplicate or non-method placement. The
+method, constructor, and interface method contract, and reject duplicate or other placement. The
 project member model and its audit dump shall preserve `isNoHeap` independently from inlining,
 ownership, ABI and accessibility.
 
@@ -925,6 +925,25 @@ operation at the original expression range.
 This item establishes the local body boundary only. Call-graph propagation, override/interface
 compatibility and precompiled transport belong to NSC-NOHEAP-002/item 322. No runtime, NSMETA or
 Object ABI change is introduced here.
+
+## NSC-NOHEAP-002 — Verifiable no-heap call graph
+
+The parser and member model shall accept `noheap` on ordinary methods, interface method contracts,
+and constructors. HIR construction shall require every statically selected call or constructor
+reached from a `noheap` callable to carry the same flag. Placement and value construction shall
+require an explicit selected `noheap` constructor; an implicit default has no effect contract and
+shall be rejected. Constructor initializers and synthesized instance-field initializers execute in
+the constructor's effect context and shall be checked there.
+
+Virtual dispatch shall reject an override that drops an inherited `noheap` guarantee. Interface
+planning shall reject an implementation or redeclaration that weakens a `noheap` method contract.
+Delegate and event invocation from `noheap` shall be rejected until their type signatures acquire
+an effect channel; target uncertainty may not be treated as proof.
+
+HIR and MIR functions shall expose the flag and MIR schema minor shall be 1.5. NSMETA 1.16 shall
+encode the flag on public method and constructor records, validate its callable-only placement,
+reconstruct it in a `LibraryReference`, and strip it when intentionally writing 1.15 or older.
+This additive semantic contract changes neither native ABI, Object ABI, layout nor runtime symbols.
 
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 

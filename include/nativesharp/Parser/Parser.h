@@ -174,6 +174,7 @@ private:
     ast::AstNode* parseConstructorTail(
         std::string_view className,
         lexer::TokenKind accessibility,
+        bool isNoHeap,
         std::size_t beginIndex);
     ast::AstNode* parseMethodTail(
         ast::TypeSyntax* returnType,

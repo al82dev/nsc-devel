@@ -203,6 +203,17 @@ bool ProjectVirtualDispatchModel::buildClass(
                 continue;
             }
             const ClassMemberSymbol& baseMethod = memberModel_->members()[*inherited];
+            if (baseMethod.isNoHeap && !method.isNoHeap)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOverride,
+                    diagnostics::DiagnosticSeverity::Error,
+                    method.range,
+                    "override method '" + method.signatureKey +
+                        "' cannot drop the inherited noheap contract");
+                ok = false;
+                continue;
+            }
             if (baseMethod.isSealed)
             {
                 diagnostics.report(

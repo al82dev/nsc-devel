@@ -410,7 +410,7 @@ the object obligation, whereas `delete` discharges the dynamic object and its al
 
 ### NS-NOHEAP-001 — Contextos sin asignación de heap
 
-`noheap` puede modificar un método ordinario y declara que su cuerpo no crea almacenamiento en el
+`noheap` puede modificar un método ordinario o constructor y declara que su cuerpo no crea almacenamiento en el
 heap. Dentro de ese contexto siguen permitidos valores, `stackalloc`, placement construction sobre
 storage suministrado y `destroy`, porque ninguno adquiere una asignación del heap. Se rechazan
 `new C(...)` de clase, raw `new`, arreglos nativos con `new`, concatenación o construcción de
@@ -426,6 +426,30 @@ Stack allocation, supplied-storage placement construction and object-only destru
 valid. Class, raw and native-array allocation, allocating string operations, delegate or lambda
 creation, and event subscription are rejected at their source expression. Item 322 propagates the
 contract across calls.
+
+### NS-NOHEAP-002 — Propagación del contrato sin heap
+
+`noheap` puede modificar métodos ordinarios, contratos de método de interfaz y constructores. Un
+callable `noheap` sólo puede invocar directamente otro callable que también lo declare. Esto
+incluye operadores, accessors y constructores seleccionados: placement construction no asigna el
+storage, pero sólo es admisible si el constructor explícito ejecutado es `noheap`. Un constructor
+implícito no expresa la garantía y por ello no satisface este contrato.
+
+La garantía se conserva bajo dispatch. Un override de un método `noheap` y la implementación de un
+método de interfaz `noheap` deben declararla también. Una llamada mediante delegate o evento se
+rechaza desde un contexto `noheap`, porque la firma actual de esos tipos no tiene un canal para
+transportar el efecto. Los inicializadores de campo y de constructor ejecutados por un constructor
+`noheap` forman parte de su cuerpo efectivo y obedecen las mismas reglas.
+
+NSMETA 1.16 transporta `noheap` en métodos y constructores públicos y lo elimina al emitir
+deliberadamente 1.15 o anterior. La propiedad no cambia el ABI nativo, el layout ni el runtime; HIR
+y MIR 1.5 la exponen para auditoría y optimización sin reinterpretarla.
+
+The `noheap` effect propagates through direct calls, constructors, virtual overrides, interface
+implementations, and precompiled references. Every reachable callable must carry the same
+contract. Indirect delegate/event targets and implicit constructors are rejected because they do
+not provide a verifiable no-heap guarantee. Field and constructor initializers are part of the
+effective constructor body. NSMETA 1.16 and MIR 1.5 preserve the contract without changing ABI.
 
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 

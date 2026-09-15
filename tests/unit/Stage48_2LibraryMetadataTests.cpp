@@ -1332,7 +1332,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                              " golden remains readable (" + error + ")");
             error.clear();
             const bool goldenCompatible = goldenRead && codec.verifyCurrentCompiler(golden, error);
-            if (minor >= 8)
+            if (minor >= 8 && minor < 15)
             {
                 tests.expect(!goldenCompatible &&
                                  error.find("object ABI expected 2, found 1") != std::string::npos,

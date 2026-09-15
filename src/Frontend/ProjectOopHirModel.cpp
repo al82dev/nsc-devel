@@ -1327,6 +1327,7 @@ bool ProjectOopHirModel::buildImpl(
             imported.destructor = false;
             imported.isStatic = member.isStatic;
             imported.referenceReturn = member.isReferenceReturn;
+            imported.isNoHeap = member.isNoHeap;
             // NSMETA declarations carry optimization policy as part of their callable contract.
             // In particular, `noinline` has no transported body but must still constrain calls
             // emitted by this consumer.
@@ -1407,6 +1408,7 @@ bool ProjectOopHirModel::buildImpl(
         function.destructor = member.kind == ClassMemberKind::Destructor;
         function.isStatic = member.isStatic;
         function.referenceReturn = member.isReferenceReturn;
+        function.isNoHeap = member.isNoHeap;
         function.inliningPolicy = member.inliningPolicy;
         function.isExportedC = member.isExportedC;
         function.cAbiName = member.cAbiName;
@@ -1487,6 +1489,27 @@ bool ProjectOopHirModel::buildImpl(
             std::vector<std::unique_ptr<ProjectOopHirNode>> prefix;
             const ConstructorInitializerBinding* initializerBinding =
                 constructionModel.constructorInitializerBindingForMember(memberOrdinal);
+            if (member.isNoHeap && initializerBinding != nullptr &&
+                (initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit ||
+                 initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedImplicitDefault))
+            {
+                if (!initializerBinding->selectedEntryConstructorMemberOrdinal.has_value() ||
+                    *initializerBinding->selectedEntryConstructorMemberOrdinal >= memberModel.members().size())
+                {
+                    error = "noheap constructor '" + member.signatureKey +
+                        "' cannot call an implicit constructor without a noheap contract";
+                    return false;
+                }
+                const ClassMemberSymbol& selectedConstructor = memberModel.members()[
+                    *initializerBinding->selectedEntryConstructorMemberOrdinal];
+                if (!selectedConstructor.isNoHeap)
+                {
+                    error = "noheap constructor '" + member.signatureKey +
+                        "' cannot call non-noheap constructor '" +
+                        selectedConstructor.signatureKey + "'";
+                    return false;
+                }
+            }
             if (initializerBinding != nullptr &&
                 (initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedExplicit ||
                  initializerBinding->resolution == ConstructorInitializerResolutionKind::ResolvedImplicitDefault) &&
@@ -1595,14 +1618,15 @@ bool ProjectOopHirModel::buildImpl(
                              *initializerBinding->targetTypeOrdinal,
                              initializerBinding->selectedEntryConstructorMemberOrdinal))
                     {
-                        appendInstanceFieldInitializers(typeOrdinal, prefix, error);
+                        appendInstanceFieldInitializers(typeOrdinal, prefix, error, memberOrdinal);
                         if (!error.empty())
                         {
                             return false;
                         }
                     }
                 }
-                appendInstanceFieldInitializers(member.declaringTypeOrdinal, prefix, error);
+                appendInstanceFieldInitializers(
+                    member.declaringTypeOrdinal, prefix, error, memberOrdinal);
                 if (!error.empty())
                 {
                     return false;
@@ -2745,6 +2769,58 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             "' cannot contain direct heap allocation '" +
             std::string(projectOopHirNodeKindName(lowered->kind)) + "'";
         lowered.reset();
+    }
+    if (lowered != nullptr && memberModel_ != nullptr &&
+        memberOrdinal < memberModel_->members().size() &&
+        memberModel_->members()[memberOrdinal].isNoHeap)
+    {
+        const ClassMemberSymbol& caller = memberModel_->members()[memberOrdinal];
+        const MethodCallBinding* call = callBinding(expression);
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            call->selectedMemberOrdinal.has_value() &&
+            *call->selectedMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
+            if (!callee.isNoHeap)
+            {
+                error = "noheap callable '" + caller.signatureKey +
+                    "' cannot call non-noheap callable '" + callee.signatureKey + "'";
+                lowered.reset();
+            }
+        }
+        if (lowered != nullptr &&
+            (lowered->kind == ProjectOopHirNodeKind::DelegateInvoke ||
+             lowered->kind == ProjectOopHirNodeKind::EventInvoke))
+        {
+            error = "noheap callable '" + caller.signatureKey +
+                "' cannot invoke an indirect target without a noheap contract";
+            lowered.reset();
+        }
+        if (lowered != nullptr &&
+            (lowered->kind == ProjectOopHirNodeKind::PlacementConstruction ||
+             lowered->kind == ProjectOopHirNodeKind::ValueConstruction))
+        {
+            const ObjectConstructionBinding* binding = constructionBinding(expression);
+            if (binding == nullptr || !binding->selectedConstructorMemberOrdinal.has_value() ||
+                *binding->selectedConstructorMemberOrdinal >= memberModel_->members().size())
+            {
+                error = "noheap callable '" + caller.signatureKey +
+                    "' cannot invoke an implicit constructor without a noheap contract";
+                lowered.reset();
+            }
+            else
+            {
+                const ClassMemberSymbol& constructor = memberModel_->members()[
+                    *binding->selectedConstructorMemberOrdinal];
+                if (!constructor.isNoHeap)
+                {
+                    error = "noheap callable '" + caller.signatureKey +
+                        "' cannot call non-noheap constructor '" +
+                        constructor.signatureKey + "'";
+                    lowered.reset();
+                }
+            }
+        }
     }
     // Solo se apunta si NO hay nada apuntado: asi gana el nodo mas interno, que es el que de
     // verdad fallo, y no la expresion que lo contiene.
@@ -5427,7 +5503,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                          binding->implicitDefaultBaseConstructorMemberOrdinal))
                 {
                     std::vector<std::unique_ptr<ProjectOopHirNode>> initializers;
-                    appendInstanceFieldInitializers(typeOrdinal, initializers, error);
+                    appendInstanceFieldInitializers(
+                        typeOrdinal, initializers, error, memberOrdinal);
                     if (!error.empty())
                     {
                         return nullptr;
@@ -6016,6 +6093,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDefaultArgument(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitialization(
     std::size_t fieldMemberOrdinal,
+    std::optional<std::size_t> callerMemberOrdinal,
     std::string& error)
 {
     if (memberModel_ == nullptr || inheritanceModel_ == nullptr ||
@@ -6040,7 +6118,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitial
         field.syntax,
         inheritanceModel_->typeKeyForOrdinal(field.declaringTypeOrdinal)));
 
-    auto value = lowerExpression(field.syntax->first(), fieldMemberOrdinal, false, error);
+    auto value = lowerExpression(
+        field.syntax->first(), callerMemberOrdinal.value_or(fieldMemberOrdinal), false, error);
     if (value == nullptr)
     {
         return nullptr;
@@ -6070,7 +6149,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInstanceFieldInitial
 void ProjectOopHirModel::appendInstanceFieldInitializers(
     std::size_t typeOrdinal,
     std::vector<std::unique_ptr<ProjectOopHirNode>>& output,
-    std::string& error)
+    std::string& error,
+    std::optional<std::size_t> callerMemberOrdinal)
 {
     if (memberModel_ == nullptr)
     {
@@ -6089,7 +6169,8 @@ void ProjectOopHirModel::appendInstanceFieldInitializers(
         {
             continue;
         }
-        auto initializer = lowerInstanceFieldInitialization(memberOrdinal, error);
+        auto initializer = lowerInstanceFieldInitialization(
+            memberOrdinal, callerMemberOrdinal, error);
         if (initializer == nullptr)
         {
             return;

@@ -472,6 +472,7 @@ struct ProjectOopHirFunction final
     bool destructor = false;
     bool isStatic = false;
     bool referenceReturn = false;
+    bool isNoHeap = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body
@@ -633,11 +634,13 @@ private:
         std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerInstanceFieldInitialization(
         std::size_t fieldMemberOrdinal,
+        std::optional<std::size_t> callerMemberOrdinal,
         std::string& error);
     void appendInstanceFieldInitializers(
         std::size_t typeOrdinal,
         std::vector<std::unique_ptr<ProjectOopHirNode>>& output,
-        std::string& error);
+        std::string& error,
+        std::optional<std::size_t> callerMemberOrdinal = std::nullopt);
     std::vector<std::size_t> implicitInitializerTypes(
         std::size_t targetTypeOrdinal,
         std::optional<std::size_t> entryConstructorMemberOrdinal) const;

@@ -466,6 +466,7 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
     if (member.isVolatile) flags |= kMetadataMemberVolatile;
     if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
+    if (member.isNoHeap) flags |= kMetadataMemberNoHeap;
     return flags;
 }
 
@@ -1991,6 +1992,11 @@ bool LibraryMetadataCodec::writeModel(
         for (LibraryMetadataMember& member : metadata.members)
             member.flags &= ~kMetadataMemberReferenceReturn;
     }
+    if (metadata.formatMinor < 16)
+    {
+        for (LibraryMetadataMember& member : metadata.members)
+            member.flags &= ~kMetadataMemberNoHeap;
+    }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
     const std::vector<std::uint8_t> payload = encodePayload(metadata);
@@ -2636,6 +2642,21 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
                 error = "metadata member '" + member.declaringTypeKey + "." +
                     member.signatureKey + "' carries ref-return outside an ordinary method or "
                     "indexer getter";
+                return false;
+            }
+        }
+    }
+    if (metadata.formatMinor >= 16)
+    {
+        constexpr std::uint8_t kMethodKind = 2U;
+        constexpr std::uint8_t kConstructorKind = 3U;
+        for (const LibraryMetadataMember& member : metadata.members)
+        {
+            if ((member.flags & kMetadataMemberNoHeap) != 0U &&
+                member.kind != kMethodKind && member.kind != kConstructorKind)
+            {
+                error = "metadata member '" + member.declaringTypeKey + "." +
+                    member.signatureKey + "' carries noheap outside a method or constructor";
                 return false;
             }
         }
