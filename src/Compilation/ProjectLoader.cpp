@@ -717,6 +717,19 @@ std::optional<Project> ProjectLoader::load(
             error = sdkError;
             return std::nullopt;
         }
+        for (const SdkLibraryDependency& dependency : manifest->libraries)
+        {
+            const std::filesystem::path libraryPath =
+                manifest->manifestPath.parent_path() / dependency.relativePath;
+            std::error_code dependencyError;
+            if (!std::filesystem::is_regular_file(libraryPath, dependencyError))
+            {
+                error = "NSC-SDK-004: SDK '" + manifest->name +
+                    "' required library '" + dependency.name + "' is missing: '" +
+                    libraryPath.string() + "'";
+                return std::nullopt;
+            }
+        }
         const std::string key = pathKey(manifest->manifestPath);
         if (std::find(sdkReferenceKeys.begin(), sdkReferenceKeys.end(), key) != sdkReferenceKeys.end())
         {

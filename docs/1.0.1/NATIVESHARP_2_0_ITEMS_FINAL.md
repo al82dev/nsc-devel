@@ -131,7 +131,7 @@
 89. **334 — Formato declarativo de SDK / Declarative SDK format — COMPLETADO / COMPLETE**
 90. **335 — Mapeo de headers, tipos, campos y defines / Header, type, field, and define mapping — COMPLETADO / COMPLETE**
 91. **336 — Selección por arquitectura y versión / Architecture and version selection — COMPLETADO / COMPLETE**
-92. **337 — Diagnósticos de SDK y librerías faltantes / SDK and missing-library diagnostics**
+92. **337 — Diagnósticos de SDK y librerías faltantes / SDK and missing-library diagnostics — COMPLETADO / COMPLETE**
 93. **338 — Consumo COM mediante vtables crudas / Raw-vtable COM consumption**
 94. **339 — Producción de vtables COM / COM vtable production**
 95. **340 — Function pointers y delegates para COM / COM function pointers and delegates**

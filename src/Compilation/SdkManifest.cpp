@@ -249,6 +249,47 @@ bool parseTargets(const SimpleXmlElement& targets, SdkManifest& manifest, std::s
     });
     return true;
 }
+
+bool parseLibraries(const SimpleXmlElement& libraries, SdkManifest& manifest, std::string& error)
+{
+    if (!libraries.attributes.empty() || !trim(libraries.text).empty())
+    {
+        error = "SDK Libraries does not accept attributes or text";
+        return false;
+    }
+    std::unordered_set<std::string> names;
+    for (const SimpleXmlElement& library : libraries.children)
+    {
+        if (library.name != "Library" || !library.children.empty() || !trim(library.text).empty())
+        {
+            error = "SDK Libraries accepts only empty Library elements";
+            return false;
+        }
+        if (!hasOnlyAttributes(library, {"Name", "Path"}, error)) return false;
+        std::string name;
+        std::string pathText;
+        if (!requireAttribute(library, "Name", name, error) ||
+            !requireAttribute(library, "Path", pathText, error)) return false;
+        const std::filesystem::path path(pathText);
+        if (!isIdentifier(name) || path.is_absolute() || path.extension() != ".lib" ||
+            std::find(path.begin(), path.end(), "..") != path.end())
+        {
+            error = "SDK Library requires an identifier and a relative .lib path without traversal";
+            return false;
+        }
+        if (!names.insert(name).second)
+        {
+            error = "duplicate SDK Library name '" + name + "'";
+            return false;
+        }
+        manifest.libraries.push_back(SdkLibraryDependency{name, path.lexically_normal()});
+    }
+    std::sort(manifest.libraries.begin(), manifest.libraries.end(), [](const auto& left, const auto& right)
+    {
+        return left.name < right.name;
+    });
+    return true;
+}
 }
 
 std::optional<SdkManifest> SdkManifestLoader::load(
@@ -261,7 +302,7 @@ std::optional<SdkManifest> SdkManifestLoader::load(
         std::filesystem::weakly_canonical(manifestPath, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(canonical))
     {
-        error = "SDK manifest does not exist or is not a regular file: '" +
+        error = "NSC-SDK-001: SDK manifest does not exist or is not a regular file: '" +
             manifestPath.string() + "'";
         return std::nullopt;
     }
@@ -346,6 +387,7 @@ std::optional<SdkManifest> SdkManifestLoader::load(
     manifest.formatVersion = parsedVersion;
     bool sawMappings = false;
     bool sawTargets = false;
+    bool sawLibraries = false;
     for (const SimpleXmlElement& child : root.children)
     {
         if (child.name == "Mappings")
@@ -371,6 +413,20 @@ std::optional<SdkManifest> SdkManifestLoader::load(
             }
             sawTargets = true;
             if (!parseTargets(child, manifest, error))
+            {
+                error = canonical.string() + ": " + error;
+                return std::nullopt;
+            }
+        }
+        else if (child.name == "Libraries")
+        {
+            if (sawLibraries)
+            {
+                error = canonical.string() + ": SDK Libraries is declared more than once";
+                return std::nullopt;
+            }
+            sawLibraries = true;
+            if (!parseLibraries(child, manifest, error))
             {
                 error = canonical.string() + ": " + error;
                 return std::nullopt;
@@ -411,7 +467,7 @@ const SdkTargetVariant* SdkTargetSelector::select(
     }
     if (selected == nullptr)
     {
-        error = "SDK '" + manifest.name + "' has no target for architecture '" +
+        error = "NSC-SDK-003: SDK '" + manifest.name + "' has no target for architecture '" +
             std::string(architecture) + "' and version '" + std::string(version) + "'";
     }
     return selected;

@@ -43,6 +43,12 @@ struct SdkTargetVariant final
     std::string maximumVersion;
 };
 
+struct SdkLibraryDependency final
+{
+    std::string name;
+    std::filesystem::path relativePath;
+};
+
 struct SdkManifest final
 {
     std::filesystem::path manifestPath;
@@ -53,6 +59,7 @@ struct SdkManifest final
     std::vector<SdkFieldMapping> fields;
     std::vector<SdkDefineMapping> defines;
     std::vector<SdkTargetVariant> targets;
+    std::vector<SdkLibraryDependency> libraries;
 };
 
 class SdkTargetSelector final
