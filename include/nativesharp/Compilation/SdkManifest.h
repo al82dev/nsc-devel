@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace nativesharp::compilation
@@ -35,6 +36,13 @@ struct SdkDefineMapping final
     std::string value;
 };
 
+struct SdkTargetVariant final
+{
+    std::string architecture;
+    std::string minimumVersion;
+    std::string maximumVersion;
+};
+
 struct SdkManifest final
 {
     std::filesystem::path manifestPath;
@@ -44,6 +52,17 @@ struct SdkManifest final
     std::vector<SdkTypeMapping> types;
     std::vector<SdkFieldMapping> fields;
     std::vector<SdkDefineMapping> defines;
+    std::vector<SdkTargetVariant> targets;
+};
+
+class SdkTargetSelector final
+{
+public:
+    const SdkTargetVariant* select(
+        const SdkManifest& manifest,
+        std::string_view architecture,
+        std::string_view version,
+        std::string& error) const;
 };
 
 class SdkManifestLoader final

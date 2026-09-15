@@ -9,6 +9,7 @@
 #include <string_view>
 #include <system_error>
 #include <unordered_set>
+#include <vector>
 
 namespace nativesharp::compilation
 {
@@ -160,6 +161,94 @@ bool parseMappings(const SimpleXmlElement& mappings, SdkManifest& manifest, std:
     }
     return true;
 }
+
+bool parseVersion(std::string_view text, std::vector<std::uint32_t>& parts)
+{
+    parts.clear();
+    std::size_t begin = 0;
+    while (begin <= text.size())
+    {
+        const std::size_t end = text.find('.', begin);
+        const std::string_view part = text.substr(
+            begin, end == std::string_view::npos ? text.size() - begin : end - begin);
+        if (part.empty()) return false;
+        std::uint32_t value = 0;
+        const auto parsed = std::from_chars(part.data(), part.data() + part.size(), value);
+        if (parsed.ec != std::errc{} || parsed.ptr != part.data() + part.size()) return false;
+        parts.push_back(value);
+        if (parts.size() > 8U) return false;
+        if (end == std::string_view::npos) break;
+        begin = end + 1;
+    }
+    while (parts.size() > 1U && parts.back() == 0U) parts.pop_back();
+    return !parts.empty();
+}
+
+int compareVersions(std::string_view left, std::string_view right)
+{
+    std::vector<std::uint32_t> leftParts;
+    std::vector<std::uint32_t> rightParts;
+    static_cast<void>(parseVersion(left, leftParts));
+    static_cast<void>(parseVersion(right, rightParts));
+    const std::size_t count = std::max(leftParts.size(), rightParts.size());
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const std::uint32_t leftValue = index < leftParts.size() ? leftParts[index] : 0U;
+        const std::uint32_t rightValue = index < rightParts.size() ? rightParts[index] : 0U;
+        if (leftValue < rightValue) return -1;
+        if (leftValue > rightValue) return 1;
+    }
+    return 0;
+}
+
+bool parseTargets(const SimpleXmlElement& targets, SdkManifest& manifest, std::string& error)
+{
+    if (!targets.attributes.empty() || !trim(targets.text).empty())
+    {
+        error = "SDK Targets does not accept attributes or text";
+        return false;
+    }
+    for (const SimpleXmlElement& target : targets.children)
+    {
+        if (target.name != "Target" || !target.children.empty() || !trim(target.text).empty())
+        {
+            error = "SDK Targets accepts only empty Target elements";
+            return false;
+        }
+        if (!hasOnlyAttributes(target, {"Architecture", "MinVersion", "MaxVersion"}, error))
+            return false;
+        std::string architecture;
+        std::string minimum;
+        std::string maximum;
+        if (!requireAttribute(target, "Architecture", architecture, error) ||
+            !requireAttribute(target, "MinVersion", minimum, error) ||
+            !requireAttribute(target, "MaxVersion", maximum, error)) return false;
+        std::vector<std::uint32_t> parts;
+        if (!isIdentifier(architecture) || !parseVersion(minimum, parts) ||
+            !parseVersion(maximum, parts) || compareVersions(minimum, maximum) > 0)
+        {
+            error = "SDK Target has invalid architecture or version range";
+            return false;
+        }
+        for (const SdkTargetVariant& existing : manifest.targets)
+        {
+            if (existing.architecture == architecture &&
+                compareVersions(minimum, existing.maximumVersion) <= 0 &&
+                compareVersions(existing.minimumVersion, maximum) <= 0)
+            {
+                error = "SDK Target ranges overlap for architecture '" + architecture + "'";
+                return false;
+            }
+        }
+        manifest.targets.push_back(SdkTargetVariant{architecture, minimum, maximum});
+    }
+    std::sort(manifest.targets.begin(), manifest.targets.end(), [](const auto& left, const auto& right)
+    {
+        if (left.architecture != right.architecture) return left.architecture < right.architecture;
+        return compareVersions(left.minimumVersion, right.minimumVersion) < 0;
+    });
+    return true;
+}
 }
 
 std::optional<SdkManifest> SdkManifestLoader::load(
@@ -256,25 +345,75 @@ std::optional<SdkManifest> SdkManifestLoader::load(
     manifest.name = trim(*name);
     manifest.formatVersion = parsedVersion;
     bool sawMappings = false;
+    bool sawTargets = false;
     for (const SimpleXmlElement& child : root.children)
     {
-        if (child.name != "Mappings")
+        if (child.name == "Mappings")
+        {
+            if (sawMappings)
+            {
+                error = canonical.string() + ": SDK Mappings is declared more than once";
+                return std::nullopt;
+            }
+            sawMappings = true;
+            if (!parseMappings(child, manifest, error))
+            {
+                error = canonical.string() + ": " + error;
+                return std::nullopt;
+            }
+        }
+        else if (child.name == "Targets")
+        {
+            if (sawTargets)
+            {
+                error = canonical.string() + ": SDK Targets is declared more than once";
+                return std::nullopt;
+            }
+            sawTargets = true;
+            if (!parseTargets(child, manifest, error))
+            {
+                error = canonical.string() + ": " + error;
+                return std::nullopt;
+            }
+        }
+        else
         {
             error = canonical.string() + ": unsupported NativeSharpSdk child '" + child.name + "'";
             return std::nullopt;
         }
-        if (sawMappings)
-        {
-            error = canonical.string() + ": SDK Mappings is declared more than once";
-            return std::nullopt;
-        }
-        sawMappings = true;
-        if (!parseMappings(child, manifest, error))
-        {
-            error = canonical.string() + ": " + error;
-            return std::nullopt;
-        }
     }
     return manifest;
+}
+
+const SdkTargetVariant* SdkTargetSelector::select(
+    const SdkManifest& manifest,
+    std::string_view architecture,
+    std::string_view version,
+    std::string& error) const
+{
+    error.clear();
+    std::vector<std::uint32_t> parts;
+    if (!isIdentifier(architecture) || !parseVersion(version, parts))
+    {
+        error = "invalid SDK target architecture or version";
+        return nullptr;
+    }
+    const SdkTargetVariant* selected = nullptr;
+    for (const SdkTargetVariant& target : manifest.targets)
+    {
+        if (target.architecture == architecture &&
+            compareVersions(version, target.minimumVersion) >= 0 &&
+            compareVersions(version, target.maximumVersion) <= 0)
+        {
+            selected = &target;
+            break;
+        }
+    }
+    if (selected == nullptr)
+    {
+        error = "SDK '" + manifest.name + "' has no target for architecture '" +
+            std::string(architecture) + "' and version '" + std::string(version) + "'";
+    }
+    return selected;
 }
 }

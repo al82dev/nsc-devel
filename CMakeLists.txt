@@ -834,6 +834,15 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item335.sdk-mapping
         COMMAND nsc_item335_sdk_mapping_tests)
+    add_executable(
+        nsc_item336_sdk_target_selection_tests
+        tests/unit/Item336SdkTargetSelectionTests.cpp)
+    target_link_libraries(nsc_item336_sdk_target_selection_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_item336_sdk_target_selection_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item336_sdk_target_selection_tests)
+    add_test(
+        NAME nsc.item336.sdk-target-selection
+        COMMAND nsc_item336_sdk_target_selection_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
