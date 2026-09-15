@@ -69,7 +69,9 @@ void ProjectMethodBodyModelDumper::dump(
                << " ref=" << (local.isReference ? "true" : "false")
                << " const=" << (local.isConst ? "true" : "false")
                << " raii=" << (local.isRaii ? "true" : "false")
-               << " ownership=" << sema::ownershipKindName(local.ownership);
+               << " ownership=" << sema::ownershipKindName(local.ownership)
+               << " object-ownership=" << sema::ownershipKindName(local.objectLifetimeOwnership)
+               << " storage-ownership=" << sema::ownershipKindName(local.storageOwnership);
         if (local.isReference)
         {
             output << " escape-origin=";

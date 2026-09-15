@@ -117,6 +117,9 @@ struct MethodLocalSymbol final
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
+    // Item 320. A placement result owns object destruction while borrowing supplied bytes.
+    sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
+    sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
     std::optional<std::size_t> localBorrowBindingOrdinal;
     std::optional<std::size_t> lambdaOrdinal;
     std::optional<std::size_t> lambdaParameterOrdinal;
@@ -262,6 +265,9 @@ struct MethodExpressionTypeBinding final
     // from the final syntax shape because an owned field and an element of an owned backing array
     // reach the same address-based store through different AST nodes.
     bool ownsStorageDestination = false;
+    // Item 320. Logical object lifetime and backing-storage lifetime are distinct contracts.
+    sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
+    sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
 };
 
 enum class MethodRuntimeTypeOperationKind
@@ -1291,6 +1297,8 @@ private:
         std::optional<std::size_t> ownershipSourceLocalOrdinal;
         std::optional<std::size_t> ownershipSourceParameterOrdinal;
         bool ownsStorageDestination = false;
+        sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
+        sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
         std::optional<std::size_t> borrowedLocalOrdinal;
         const ast::AstNode* receiverSyntax = nullptr;
         std::string receiverTypeKey;

@@ -80,6 +80,10 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
         output << " destruction=" << (node->dynamicDestruction ? "dynamic-descriptor" : "direct-free");
     if (node->kind == ProjectOopHirNodeKind::ObjectDestruction)
         output << " destruction=" << (node->dynamicDestruction ? "dynamic-object-only" : "trivial-object");
+    if (node->objectLifetimeOwnership != sema::OwnershipKind::None ||
+        node->storageOwnership != sema::OwnershipKind::None)
+        output << " object-ownership=" << sema::ownershipKindName(node->objectLifetimeOwnership)
+               << " storage-ownership=" << sema::ownershipKindName(node->storageOwnership);
     output << '\n';
     for (const auto& child : node->children)
     {

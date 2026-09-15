@@ -890,6 +890,24 @@ Focused O0 evidence shall cover dynamic derived/base order, reusable caller stor
 and raw-class-pointer operands, trivial struct lifetime termination, HIR/MIR/LLVM identities, and
 invalid scalar, primitive-pointer, and RAII operands.
 
+## NSC-PLACEMENT-004 — Independent object and storage ownership
+
+Project semantic analysis shall attach separate `object-lifetime ownership` and `storage ownership`
+facts to expression results and local symbols. Ordinary class construction shall be `owned/owned`;
+placement construction shall be `owned/borrowed`; stack allocation, native array allocation and raw
+allocation shall be `none/owned`. Local propagation, address-preserving explicit casts, safe casts,
+moves, parameters and declared-ownership call results shall retain the applicable pair.
+
+HIR and MIR shall carry the pair explicitly on lifetime-relevant nodes and local declarations.
+Object-only destruction shall be `owned/borrowed`; dynamic deletion shall be `owned/owned`; raw
+storage release shall carry storage ownership without manufacturing object ownership. The MIR
+schema minor shall advance to 1.4 so late consumers can reject an older representation instead of
+silently merging the two obligations. Audit dumps shall expose both axes by stable names.
+
+Focused O0 evidence shall cover stack storage, cast provenance, placement construction, ordinary
+heap construction, object-only destruction, full deletion and semantic/HIR/MIR preservation. This
+contract adds no runtime or Object ABI field and does not make supplied storage owned by placement.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

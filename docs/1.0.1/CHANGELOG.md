@@ -43,6 +43,9 @@ empaqueta con NativeSharp 1.0.1.
 - `destroy objeto` ejecuta la cadena dinámica completa de destructores y campos `owned` sin liberar
   el storage exterior, que puede reutilizarse mediante placement construction. El descriptor añade
   una entrada separada y el contrato Object ABI pasa a versión 2.
+- El modelo semántico, HIR y MIR separa propiedad del lifetime del objeto y propiedad del storage:
+  heap es `owned/owned`, placement es `owned/borrowed` y asignación cruda es `none/owned`.
+  `destroy` descarga sólo el objeto; `delete` conserva su contrato de objeto más asignación.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

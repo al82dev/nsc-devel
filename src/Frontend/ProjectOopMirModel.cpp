@@ -1284,6 +1284,8 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->targetIsInterface = node->targetIsInterface;
     result->dynamicDestruction = node->dynamicDestruction;
     result->valueTypeNoOpDeletion = node->valueTypeNoOpDeletion;
+    result->objectLifetimeOwnership = node->objectLifetimeOwnership;
+    result->storageOwnership = node->storageOwnership;
     result->catchAll = node->catchAll;
     result->interfaceCleanupDispatch = node->interfaceCleanupDispatch;
     result->argumentCount = node->argumentCount;

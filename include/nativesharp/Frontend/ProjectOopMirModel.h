@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 3;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 4;
 
 enum class ProjectOopMirNodeKind
 {
@@ -335,6 +335,8 @@ struct ProjectOopMirNode final
     bool targetIsInterface = false;
     bool dynamicDestruction = false;
     bool valueTypeNoOpDeletion = false;
+    sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
+    sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
     bool catchAll = false;
     bool interfaceCleanupDispatch = false;
     // Item 300: explicit optimization contract for InlineAssembly. These are derived once from

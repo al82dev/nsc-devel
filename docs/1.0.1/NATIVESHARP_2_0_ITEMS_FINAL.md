@@ -108,7 +108,7 @@
 72. **317 — Sintaxis de placement construction / Placement construction syntax — COMPLETADO / COMPLETE**
 73. **318 — Lowering de placement construction / Placement construction lowering — COMPLETADO / COMPLETE**
 74. **319 — Destrucción explícita sin liberar almacenamiento / Explicit destruction without deallocation — COMPLETADO / COMPLETE**
-75. **320 — Separar propiedad del objeto y almacenamiento / Separate object and storage ownership**
+75. **320 — Separar propiedad del objeto y almacenamiento / Separate object and storage ownership — COMPLETADO / COMPLETE**
 76. **321 — Contextos `noheap` / No-heap contexts**
 77. **322 — Propagación de contratos `noheap` / No-heap contract propagation**
 78. **323 — Escape analysis de clases hacia stack / Stack allocation of nonescaping classes**

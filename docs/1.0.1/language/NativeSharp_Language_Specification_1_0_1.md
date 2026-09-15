@@ -389,6 +389,25 @@ their existing owner's cleanup obligation and therefore cannot be explicitly des
 destroyed object may not be used again until placement construction begins a new lifetime in the
 same storage.
 
+### NS-PLACEMENT-004 — Propiedad independiente de objeto y storage
+
+Toda expresión que crea o transporta un objeto conserva dos contratos independientes: quién debe
+terminar el lifetime lógico del objeto y quién debe liberar o terminar el lifetime de los bytes que
+lo alojan. Un `new T()` de clase produce `owned/owned`; `new (storage) T()` produce
+`owned/borrowed`; `stackalloc`, `new T[count]` nativo y `new T*` crudo producen
+`none/owned`. Conversiones explícitas que sólo reinterpretan la dirección conservan ambos ejes.
+
+`destroy` descarga exclusivamente la obligación `owned` del objeto y conserva storage prestado;
+`delete` descarga el objeto dinámico, cuando existe, y el storage poseído. Estos ejes son
+información semántica de lifetime y no cambian el tipo superficial ni las reglas existentes de
+`owned`, `borrowed` o `raii` en parámetros y locales.
+
+Every value that creates or carries an object records two independent contracts: logical object
+lifetime ownership and backing-storage ownership. Ordinary class construction is `owned/owned`,
+placement construction is `owned/borrowed`, and raw or stack allocation is `none/owned` until an
+object lifetime begins there. Address-preserving casts retain both axes. `destroy` discharges only
+the object obligation, whereas `delete` discharges the dynamic object and its allocation.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

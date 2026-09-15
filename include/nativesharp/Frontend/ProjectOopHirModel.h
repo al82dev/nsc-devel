@@ -442,6 +442,9 @@ struct ProjectOopHirNode final
     bool targetIsInterface = false;
     bool dynamicDestruction = false;
     bool valueTypeNoOpDeletion = false;
+    // Item 320. Independent lifetime domains; placement is owned/borrowed, heap new owned/owned.
+    sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
+    sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
     bool catchAll = false;
     bool interfaceCleanupDispatch = false;
     std::size_t argumentCount = 0;

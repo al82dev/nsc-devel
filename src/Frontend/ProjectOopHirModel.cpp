@@ -2000,6 +2000,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
             node->stringValue = local->name;
             node->referenceLocal = local->isReference;
+            node->objectLifetimeOwnership = local->objectLifetimeOwnership;
+            node->storageOwnership = local->storageOwnership;
             const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());
             node->localOrdinal = localIndex;
             if (local->isRaii)
@@ -5306,6 +5308,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     ? binding->targetTypeKey + "*"
                     : binding->targetTypeKey);
             node->constructionOrdinal = ordinal;
+            if (placement)
+            {
+                node->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                node->storageOwnership = sema::OwnershipKind::Borrowed;
+            }
+            else if (!binding->targetIsStruct)
+            {
+                node->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                node->storageOwnership = sema::OwnershipKind::Owned;
+            }
             node->targetTypeOrdinal = binding->targetTypeOrdinal;
             node->memberOrdinal = binding->selectedConstructorMemberOrdinal.has_value()
                 ? binding->selectedConstructorMemberOrdinal
@@ -5438,6 +5450,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 if (operand == nullptr) return nullptr;
                 auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");
                 node->dynamicDestruction = false;
+                node->storageOwnership = sema::OwnershipKind::Owned;
                 node->children.push_back(std::move(operand));
                 return node;
             }
@@ -5472,6 +5485,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");
             node->dynamicDestruction = isReferenceType(operandType->typeKey) && !nativeString;
             node->valueTypeNoOpDeletion = !deletable;
+            if (!node->valueTypeNoOpDeletion)
+            {
+                node->objectLifetimeOwnership = node->dynamicDestruction
+                    ? sema::OwnershipKind::Owned : sema::OwnershipKind::None;
+                node->storageOwnership = sema::OwnershipKind::Owned;
+            }
             // Deleting a directly addressable reference element is an ownership operation on the
             // slot, not merely on a copied pointer.  Carry its address and type so LLVM can load
             // and clear it before destruction.  This prevents a later release-before-store from
@@ -5505,6 +5524,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 ProjectOopHirNodeKind::ObjectDestruction, expression, "builtin:void");
             node->dynamicDestruction = dynamicDestruction;
             node->elementTypeKey = operandType->typeKey;
+            node->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+            node->storageOwnership = sema::OwnershipKind::Borrowed;
             node->children.push_back(std::move(operand));
             return node;
         }

@@ -3224,6 +3224,8 @@ void ProjectMethodBodyModel::analyzeVariable(
             variable->range(),
             "borrowed local requires an initializer naming a live owner or borrow");
     }
+    sema::OwnershipKind pendingObjectLifetimeOwnership = sema::OwnershipKind::None;
+    sema::OwnershipKind pendingStorageOwnership = sema::OwnershipKind::None;
     if (variable->first() != nullptr)
     {
         ExpressionResult initializer;
@@ -3497,6 +3499,8 @@ void ProjectMethodBodyModel::analyzeVariable(
                 }
             }
         }
+        pendingObjectLifetimeOwnership = initializer.objectLifetimeOwnership;
+        pendingStorageOwnership = initializer.storageOwnership;
     }
 
     const std::optional<ScopeName> sameScope = lookupScopeNameInScope(scopeOrdinal, variable->text());
@@ -3553,6 +3557,8 @@ void ProjectMethodBodyModel::analyzeVariable(
     }
     local.isRaii = isRaii;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
+    local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
+    local.storageOwnership = pendingStorageOwnership;
     if (pendingLocalBorrow.has_value())
     {
         local.localBorrowBindingOrdinal = localBorrowBindings_.size();
@@ -5320,6 +5326,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 invalidateHistoricalBorrowsOfOwnerLocal(source->semanticOrdinal);
                 result.typeKey = local.typeKey;
                 result.ownershipSourceLocalOrdinal = source->semanticOrdinal;
+                result.objectLifetimeOwnership = local.objectLifetimeOwnership;
+                result.storageOwnership = local.storageOwnership;
             }
             else
             {
@@ -5393,6 +5401,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 invalidateHistoricalBorrowsOfOwnedParameter(source->semanticOrdinal);
                 result.typeKey = parameter.typeKey;
                 result.ownershipSourceParameterOrdinal = source->semanticOrdinal;
+                result.objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                result.storageOwnership = sema::OwnershipKind::Owned;
             }
 
             result.valid = true;
@@ -5598,6 +5608,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 ? "builtin:bool"
                 : targetTypeKey;
             result.valid = true;
+            if (expression->kind() == ast::AstNodeKind::SafeCastExpression)
+            {
+                result.objectLifetimeOwnership = operand.objectLifetimeOwnership;
+                result.storageOwnership = operand.storageOwnership;
+            }
             runtimeTypeBindings_.push_back(MethodRuntimeTypeBinding{
                 expression->kind() == ast::AstNodeKind::TypeTestExpression
                     ? MethodRuntimeTypeOperationKind::TypeTest
@@ -5619,6 +5634,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 result.typeKey = memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
                 result.valid = operand.valid && !isErrorType(result.typeKey);
+                result.objectLifetimeOwnership = operand.objectLifetimeOwnership;
+                result.storageOwnership = operand.storageOwnership;
                 if (result.valid && inheritanceModel_ != nullptr)
                 {
                     const ProjectConversionClassifier classifier(
@@ -6268,6 +6285,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 // el tercer estado, que solo relaja el contrato de un parametro `owned`. Un
                 // parametro sin calificador sigue viendo exactamente lo que veia antes.
                 result.ownershipFreshOwner = result.valid && typeKeyIsOwnable(objectType);
+                if (result.valid)
+                {
+                    result.objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                    result.storageOwnership = sema::OwnershipKind::Owned;
+                }
             }
             break;
         case ast::AstNodeKind::PlacementConstructionExpression:
@@ -6327,6 +6349,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     : requiredStorageType;
                 result.valid = constructible && storageValid && argumentsValid &&
                     !isErrorType(targetType);
+                if (result.valid)
+                {
+                    result.objectLifetimeOwnership = sema::OwnershipKind::Owned;
+                    result.storageOwnership = sema::OwnershipKind::Borrowed;
+                }
             }
             break;
         case ast::AstNodeKind::NewExpression:
@@ -6399,6 +6426,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     result.typeKey = element + "[]";
                     result.valid = !isErrorType(element) && element != "builtin:void" &&
                         countValid && elementsValid;
+                    if (result.valid) result.storageOwnership = sema::OwnershipKind::Owned;
                     if (result.valid)
                     {
                         coreBindings_.push_back(MethodCoreBinding{
@@ -6588,6 +6616,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
                 result.typeKey = element + '*';
                 result.valid = allocationValid;
+                if (result.valid) result.storageOwnership = sema::OwnershipKind::Owned;
 
                 if (allocationValid && (isStackalloc || isRawNew))
                 {
@@ -6817,6 +6846,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
                 }
                 result.typeKey = local.typeKey;
                 result.valid = true;
+                result.objectLifetimeOwnership = local.objectLifetimeOwnership;
+                result.storageOwnership = local.storageOwnership;
                 if (local.isRaii)
                 {
                     result.ownership = sema::OwnershipKind::Owned;
@@ -6933,6 +6964,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
             result.typeKey = byReferenceParameter ? parameter.pointeeTypeKey : parameter.typeKey;
             result.valid = true;
             result.ownership = parameter.ownership;
+            result.objectLifetimeOwnership = parameter.ownership;
+            result.storageOwnership = parameter.ownership;
             if (parameter.ownership != sema::OwnershipKind::None)
             {
                 result.ownershipSourceParameterOrdinal = scopeName->semanticOrdinal;
@@ -8844,6 +8877,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
         }
         call.resultTypeKey = selectedMember.declaredTypeKey;
         result.ownership = selectedMember.declaredOwnership;
+        if (selectedMember.declaredOwnership != sema::OwnershipKind::None)
+        {
+            result.objectLifetimeOwnership = selectedMember.declaredOwnership;
+            result.storageOwnership = selectedMember.declaredOwnership;
+        }
         result.assignable = selectedMember.isReferenceReturn;
         result.addressable = selectedMember.isReferenceReturn;
             result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
@@ -14050,6 +14088,8 @@ void ProjectMethodBodyModel::recordExpressionType(
     binding.ownershipSourceLocalOrdinal = result.ownershipSourceLocalOrdinal;
     binding.ownershipSourceParameterOrdinal = result.ownershipSourceParameterOrdinal;
     binding.ownsStorageDestination = result.ownsStorageDestination;
+    binding.objectLifetimeOwnership = result.objectLifetimeOwnership;
+    binding.storageOwnership = result.storageOwnership;
     expressionTypes_.push_back(std::move(binding));
 }
 
