@@ -1,0 +1,78 @@
+namespace NativeSharp.Core
+{
+    // Platform-independent scalar transcendentals. These routines intentionally use only the
+    // language's basic arithmetic so --fp-mode=deterministic can lower every step to constrained
+    // LLVM operations instead of delegating results to the host C runtime.
+    public class DeterministicMath
+    {
+        public static double Sin(double value)
+        {
+            double pi = (double)3.14159265358979323846264338327950288;
+            double tau = (double)6.28318530717958647692528676655900576;
+            long turns = (long)(value / tau);
+            double x = value - (double)turns * tau;
+            if (x > pi) { x = x - tau; }
+            if (x < -pi) { x = x + tau; }
+            if (x > pi / (double)2) { x = pi - x; }
+            if (x < -pi / (double)2) { x = -pi - x; }
+            double x2 = x * x;
+            // Horner form of the fixed odd Taylor polynomial through x^13.
+            double p = (double)1 / (double)6227020800;
+            p = (double)(-1) / (double)39916800 + x2 * p;
+            p = (double)1 / (double)362880 + x2 * p;
+            p = (double)(-1) / (double)5040 + x2 * p;
+            p = (double)1 / (double)120 + x2 * p;
+            p = (double)(-1) / (double)6 + x2 * p;
+            return x + x * x2 * p;
+        }
+
+        public static double Cos(double value)
+        {
+            return Sin(value + (double)1.57079632679489661923132169163975144);
+        }
+
+        public static double Exp(double value)
+        {
+            if (value > (double)709) { return (double)1.7976931348623157E308; }
+            if (value < (double)(-745)) { return (double)0; }
+            double ln2 = (double)0.693147180559945309417232121458176568;
+            int exponent = (int)(value / ln2);
+            double remainder = value - (double)exponent * ln2;
+            double term = (double)1;
+            double result = (double)1;
+            int i = 1;
+            while (i <= 14)
+            {
+                term = term * remainder / (double)i;
+                result = result + term;
+                i = i + 1;
+            }
+            while (exponent > 0) { result = result * (double)2; exponent = exponent - 1; }
+            while (exponent < 0) { result = result / (double)2; exponent = exponent + 1; }
+            return result;
+        }
+
+        public static double Log(double value)
+        {
+            if (value < (double)0) { return (double)0 / (double)0; }
+            if (value == (double)0) { return (double)(-1) / (double)0; }
+            double x = value;
+            int exponent = 0;
+            while (x >= (double)2) { x = x / (double)2; exponent = exponent + 1; }
+            while (x < (double)1) { x = x * (double)2; exponent = exponent - 1; }
+            double z = (x - (double)1) / (x + (double)1);
+            double z2 = z * z;
+            double term = z;
+            double sum = term;
+            int denominator = 3;
+            while (denominator <= 31)
+            {
+                term = term * z2;
+                sum = sum + term / (double)denominator;
+                denominator = denominator + 2;
+            }
+            return (double)2 * sum + (double)exponent *
+                (double)0.693147180559945309417232121458176568;
+        }
+    }
+}
