@@ -64,6 +64,13 @@ namespace NativeSharp.Core.Threading
             handle_ = EventCreate(manualReset, initialState);
         }
 
+        // Item 370. Processes using the same name observe the same kernel event. The reset mode
+        // and initial state belong to the first creator; later constructors open that object.
+        public Event(bool manualReset, bool initialState, string name)
+        {
+            handle_ = EventCreateNamed(manualReset, initialState, name);
+        }
+
         // Señala el evento -- ver el comentario de cabecera de la clase para el efecto exacto
         // segun `manualReset`. BOOL de Win32 descartado, mismo "unchecked failure" que
         // Mutex.Unlock()/Semaphore.Release().
@@ -99,6 +106,11 @@ namespace NativeSharp.Core.Threading
         // ProjectMethodBodyModel.h), mismo mecanismo "helpers privados y estaticos" que Mutex/
         // Semaphore ya establecen. Los cuerpos de abajo son placeholders -- nunca se ejecutan.
         private static nint EventCreate(bool manualReset, bool initialState)
+        {
+            return 0;
+        }
+
+        private static nint EventCreateNamed(bool manualReset, bool initialState, string name)
         {
             return 0;
         }

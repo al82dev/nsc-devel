@@ -269,6 +269,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     // ThreadJoin/ThreadDetach above, no receiver, same shared machinery.
     case MethodCoreOperationKind::MutexCreate:
         return StringCallLowering{0U, ProjectOopHirNodeKind::CoreMutexCreate};
+    case MethodCoreOperationKind::MutexCreateNamed:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreMutexCreateNamed};
     // Stage 54.3: MutexLock/MutexUnlock/MutexClose (one builtin:nint HANDLE
     // operand each). MutexCreate is NOT here on purpose -- see the `expected = 0U`
     // branch above.
@@ -286,6 +288,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
     // HANDLE) -- mismo bucket "expected=1U" que MutexLock/MutexUnlock/MutexClose.
     case MethodCoreOperationKind::SemaphoreCreate:
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSemaphoreCreate};
+    case MethodCoreOperationKind::SemaphoreCreateNamed:
+        return StringCallLowering{3U, ProjectOopHirNodeKind::CoreSemaphoreCreateNamed};
     case MethodCoreOperationKind::SemaphoreWait:
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSemaphoreWait};
     // Stage 54.5: SemaphoreRelease/SemaphoreClose/EventSet/EventReset/EventClose
@@ -299,6 +303,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSemaphoreClose};
     case MethodCoreOperationKind::EventCreate:
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreEventCreate};
+    case MethodCoreOperationKind::EventCreateNamed:
+        return StringCallLowering{3U, ProjectOopHirNodeKind::CoreEventCreateNamed};
     case MethodCoreOperationKind::EventSet:
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreEventSet};
     case MethodCoreOperationKind::EventReset:
@@ -1107,6 +1113,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreCpuPause: return "core-cpu-pause";
         case ProjectOopHirNodeKind::CoreCpuReadTimestamp: return "core-cpu-read-timestamp";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
+        case ProjectOopHirNodeKind::CoreMutexCreateNamed: return "core-mutex-create-named";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
         case ProjectOopHirNodeKind::CoreMutexClose: return "core-mutex-close";
@@ -1116,10 +1123,12 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreMonitorPulse: return "core-monitor-pulse";
         case ProjectOopHirNodeKind::CoreMonitorPulseAll: return "core-monitor-pulse-all";
         case ProjectOopHirNodeKind::CoreSemaphoreCreate: return "core-semaphore-create";
+        case ProjectOopHirNodeKind::CoreSemaphoreCreateNamed: return "core-semaphore-create-named";
         case ProjectOopHirNodeKind::CoreSemaphoreWait: return "core-semaphore-wait";
         case ProjectOopHirNodeKind::CoreSemaphoreRelease: return "core-semaphore-release";
         case ProjectOopHirNodeKind::CoreSemaphoreClose: return "core-semaphore-close";
         case ProjectOopHirNodeKind::CoreEventCreate: return "core-event-create";
+        case ProjectOopHirNodeKind::CoreEventCreateNamed: return "core-event-create-named";
         case ProjectOopHirNodeKind::CoreEventSet: return "core-event-set";
         case ProjectOopHirNodeKind::CoreEventReset: return "core-event-reset";
         case ProjectOopHirNodeKind::CoreEventWait: return "core-event-wait";

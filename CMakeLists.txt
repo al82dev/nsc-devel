@@ -1134,6 +1134,17 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item369_deterministic_math_tests)
     add_test(NAME nsc.item369.deterministic-math COMMAND nsc_item369_deterministic_math_tests)
 
+    add_executable(nsc_item370_named_cross_process_sync_tests
+        tests/unit/Item370NamedCrossProcessSynchronizationTests.cpp)
+    target_link_libraries(nsc_item370_named_cross_process_sync_tests PRIVATE nsc_driver nsc_runtime)
+    target_compile_features(nsc_item370_named_cross_process_sync_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item370_named_cross_process_sync_tests PRIVATE
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item370_named_cross_process_sync_tests)
+    add_test(NAME nsc.item370.named-cross-process-sync
+        COMMAND nsc_item370_named_cross_process_sync_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)

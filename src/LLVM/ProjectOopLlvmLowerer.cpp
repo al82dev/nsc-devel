@@ -187,6 +187,7 @@ constexpr const char* kInterlockedCompareExchangeInt64FunctionName = "__nativesh
 // MutexLock/MutexUnlock/MutexClose return void at the NativeSharp level, so they DO need the
 // dummy-i1 pattern, same as ThreadJoin/ThreadDetach.
 constexpr const char* kMutexCreateFunctionName = "__nativesharp_mutex_create";
+constexpr const char* kMutexCreateNamedFunctionName = "__nativesharp_mutex_create_named";
 constexpr const char* kMutexLockFunctionName = "__nativesharp_mutex_lock";
 constexpr const char* kMutexUnlockFunctionName = "__nativesharp_mutex_unlock";
 constexpr const char* kMutexCloseFunctionName = "__nativesharp_mutex_close";
@@ -207,10 +208,12 @@ constexpr const char* kMonitorWaitFunctionName = "__nativesharp_monitor_wait";
 // comment in WindowsRuntimeBuilder.cpp for why. Release/Close/Set/Reset all return void at the
 // NativeSharp level (dummy-i1 pattern again); Create returns a real builtin:nint HANDLE.
 constexpr const char* kSemaphoreCreateFunctionName = "__nativesharp_semaphore_create";
+constexpr const char* kSemaphoreCreateNamedFunctionName = "__nativesharp_semaphore_create_named";
 constexpr const char* kWaitForHandleTimeoutFunctionName = "__nativesharp_wait_for_handle_timeout";
 constexpr const char* kSemaphoreReleaseFunctionName = "__nativesharp_semaphore_release";
 constexpr const char* kSemaphoreCloseFunctionName = "__nativesharp_semaphore_close";
 constexpr const char* kEventCreateFunctionName = "__nativesharp_event_create";
+constexpr const char* kEventCreateNamedFunctionName = "__nativesharp_event_create_named";
 constexpr const char* kEventSetFunctionName = "__nativesharp_event_set";
 constexpr const char* kEventResetFunctionName = "__nativesharp_event_reset";
 constexpr const char* kEventCloseFunctionName = "__nativesharp_event_close";
@@ -1813,6 +1816,10 @@ private:
         // synthesized by the lowering case block" pattern as ThreadJoin/ThreadDetach.
         mutexCreateFunctionType_ = LLVMFunctionType(i64, nullptr, 0, 0);
         mutexCreateFunction_ = LLVMAddFunction(module_, kMutexCreateFunctionName, mutexCreateFunctionType_);
+        LLVMTypeRef oneStringParam[] = {ptr};
+        mutexCreateNamedFunctionType_ = LLVMFunctionType(i64, oneStringParam, 1, 0);
+        mutexCreateNamedFunction_ = LLVMAddFunction(
+            module_, kMutexCreateNamedFunctionName, mutexCreateNamedFunctionType_);
         LLVMTypeRef mutexHandleParams[] = {i64};
         mutexLockFunctionType_ = LLVMFunctionType(
             LLVMVoidTypeInContext(context_), mutexHandleParams, 1, 0);
@@ -1861,6 +1868,10 @@ private:
         semaphoreCreateFunctionType_ = LLVMFunctionType(i64, semaphoreCreateParams, 2, 0);
         semaphoreCreateFunction_ = LLVMAddFunction(
             module_, kSemaphoreCreateFunctionName, semaphoreCreateFunctionType_);
+        LLVMTypeRef semaphoreCreateNamedParams[] = {i32, i32, ptr};
+        semaphoreCreateNamedFunctionType_ = LLVMFunctionType(i64, semaphoreCreateNamedParams, 3, 0);
+        semaphoreCreateNamedFunction_ = LLVMAddFunction(
+            module_, kSemaphoreCreateNamedFunctionName, semaphoreCreateNamedFunctionType_);
         LLVMTypeRef waitForHandleTimeoutParams[] = {i64, i32};
         waitForHandleTimeoutFunctionType_ = LLVMFunctionType(
             LLVMInt1TypeInContext(context_), waitForHandleTimeoutParams, 2, 0);
@@ -1878,6 +1889,11 @@ private:
         LLVMTypeRef eventCreateParams[] = {LLVMInt1TypeInContext(context_), LLVMInt1TypeInContext(context_)};
         eventCreateFunctionType_ = LLVMFunctionType(i64, eventCreateParams, 2, 0);
         eventCreateFunction_ = LLVMAddFunction(module_, kEventCreateFunctionName, eventCreateFunctionType_);
+        LLVMTypeRef eventCreateNamedParams[] = {
+            LLVMInt1TypeInContext(context_), LLVMInt1TypeInContext(context_), ptr};
+        eventCreateNamedFunctionType_ = LLVMFunctionType(i64, eventCreateNamedParams, 3, 0);
+        eventCreateNamedFunction_ = LLVMAddFunction(
+            module_, kEventCreateNamedFunctionName, eventCreateNamedFunctionType_);
         eventSetFunctionType_ = LLVMFunctionType(
             LLVMVoidTypeInContext(context_), oneHandleParams, 1, 0);
         eventSetFunction_ = LLVMAddFunction(module_, kEventSetFunctionName, eventSetFunctionType_);
@@ -8615,6 +8631,16 @@ private:
                 return buildNoUnwindCall(
                     mutexCreateFunctionType_, mutexCreateFunction_, nullptr, 0, "mutex.create");
             }
+            case frontend::ProjectOopMirNodeKind::CoreMutexCreateNamed:
+            {
+                if (node->children.size() != 1 || mutexCreateNamedFunction_ == nullptr)
+                    return failValue(error, "Item 370 Mutex.MutexCreateNamed requires one string argument and runtime hook");
+                LLVMValueRef name = lowerExpression(node->children.front().get(), error);
+                if (name == nullptr) return nullptr;
+                LLVMValueRef args[] = {name};
+                return buildNoUnwindCall(
+                    mutexCreateNamedFunctionType_, mutexCreateNamedFunction_, args, 1, "mutex.create.named");
+            }
             // MutexLock/MutexUnlock/MutexClose take one operand -- a builtin:nint (the HANDLE the
             // caller already holds, saved by Mutex's constructor from MutexCreate's result) --
             // and return void at the NativeSharp level. Same "runtime function genuinely returns
@@ -8740,6 +8766,21 @@ private:
                 return buildNoUnwindCall(
                     semaphoreCreateFunctionType_, semaphoreCreateFunction_, args, 2, "semaphore.create");
             }
+            case frontend::ProjectOopMirNodeKind::CoreSemaphoreCreateNamed:
+            {
+                if (node->children.size() != 3 || semaphoreCreateNamedFunction_ == nullptr)
+                    return failValue(error, "Item 370 Semaphore.SemaphoreCreateNamed requires count, maximum, name, and runtime hook");
+                LLVMValueRef initialCount = lowerExpression(node->children[0].get(), error);
+                if (initialCount == nullptr) return nullptr;
+                LLVMValueRef maximumCount = lowerExpression(node->children[1].get(), error);
+                if (maximumCount == nullptr) return nullptr;
+                LLVMValueRef name = lowerExpression(node->children[2].get(), error);
+                if (name == nullptr) return nullptr;
+                LLVMValueRef args[] = {initialCount, maximumCount, name};
+                return buildNoUnwindCall(
+                    semaphoreCreateNamedFunctionType_, semaphoreCreateNamedFunction_, args, 3,
+                    "semaphore.create.named");
+            }
             // SemaphoreWait/EventWait BOTH lower to the SAME shared runtime hook
             // (waitForHandleTimeoutFunction_) -- see buildWaitForHandleTimeout's header comment in
             // WindowsRuntimeBuilder.cpp for why sharing one wrapper across two
@@ -8790,6 +8831,21 @@ private:
                 if (initialState == nullptr) return nullptr;
                 LLVMValueRef args[] = {manualReset, initialState};
                 return buildNoUnwindCall(eventCreateFunctionType_, eventCreateFunction_, args, 2, "event.create");
+            }
+            case frontend::ProjectOopMirNodeKind::CoreEventCreateNamed:
+            {
+                if (node->children.size() != 3 || eventCreateNamedFunction_ == nullptr)
+                    return failValue(error, "Item 370 Event.EventCreateNamed requires reset mode, state, name, and runtime hook");
+                LLVMValueRef manualReset = lowerExpression(node->children[0].get(), error);
+                if (manualReset == nullptr) return nullptr;
+                LLVMValueRef initialState = lowerExpression(node->children[1].get(), error);
+                if (initialState == nullptr) return nullptr;
+                LLVMValueRef name = lowerExpression(node->children[2].get(), error);
+                if (name == nullptr) return nullptr;
+                LLVMValueRef args[] = {manualReset, initialState, name};
+                return buildNoUnwindCall(
+                    eventCreateNamedFunctionType_, eventCreateNamedFunction_, args, 3,
+                    "event.create.named");
             }
             case frontend::ProjectOopMirNodeKind::CoreEventSet:
             {
@@ -13464,6 +13520,8 @@ private:
     LLVMTypeRef interlockedCompareExchangeInt64FunctionType_ = nullptr;
     LLVMValueRef mutexCreateFunction_ = nullptr;
     LLVMTypeRef mutexCreateFunctionType_ = nullptr;
+    LLVMValueRef mutexCreateNamedFunction_ = nullptr;
+    LLVMTypeRef mutexCreateNamedFunctionType_ = nullptr;
     LLVMValueRef mutexLockFunction_ = nullptr;
     LLVMTypeRef mutexLockFunctionType_ = nullptr;
     LLVMValueRef mutexUnlockFunction_ = nullptr;
@@ -13484,6 +13542,8 @@ private:
     LLVMTypeRef monitorWaitFunctionType_ = nullptr;
     LLVMValueRef semaphoreCreateFunction_ = nullptr;
     LLVMTypeRef semaphoreCreateFunctionType_ = nullptr;
+    LLVMValueRef semaphoreCreateNamedFunction_ = nullptr;
+    LLVMTypeRef semaphoreCreateNamedFunctionType_ = nullptr;
     LLVMValueRef waitForHandleTimeoutFunction_ = nullptr;
     LLVMTypeRef waitForHandleTimeoutFunctionType_ = nullptr;
     LLVMValueRef semaphoreReleaseFunction_ = nullptr;
@@ -13492,6 +13552,8 @@ private:
     LLVMTypeRef semaphoreCloseFunctionType_ = nullptr;
     LLVMValueRef eventCreateFunction_ = nullptr;
     LLVMTypeRef eventCreateFunctionType_ = nullptr;
+    LLVMValueRef eventCreateNamedFunction_ = nullptr;
+    LLVMTypeRef eventCreateNamedFunctionType_ = nullptr;
     LLVMValueRef eventSetFunction_ = nullptr;
     LLVMTypeRef eventSetFunctionType_ = nullptr;
     LLVMValueRef eventResetFunction_ = nullptr;

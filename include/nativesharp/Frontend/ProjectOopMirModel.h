@@ -238,6 +238,7 @@ enum class ProjectOopMirNodeKind
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,
+    CoreMutexCreateNamed,
     CoreMutexLock,
     CoreMutexUnlock,
     CoreMutexClose,
@@ -250,10 +251,12 @@ enum class ProjectOopMirNodeKind
     // Stage 54.5 "Otras primitivas de sincronizacion" -- see ProjectOopHirNodeKind::CoreSemaphore*/
     // CoreEvent* above.
     CoreSemaphoreCreate,
+    CoreSemaphoreCreateNamed,
     CoreSemaphoreWait,
     CoreSemaphoreRelease,
     CoreSemaphoreClose,
     CoreEventCreate,
+    CoreEventCreateNamed,
     CoreEventSet,
     CoreEventReset,
     CoreEventWait,

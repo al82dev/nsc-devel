@@ -61,6 +61,13 @@ namespace NativeSharp.Core.Threading
             handle_ = SemaphoreCreate(initialCount, maximumCount);
         }
 
+        // Item 370. Processes using the same name share one kernel semaphore. Win32 applies
+        // initial/maximum counts only when the object is first created.
+        public Semaphore(int initialCount, int maximumCount, string name)
+        {
+            handle_ = SemaphoreCreateNamed(initialCount, maximumCount, name);
+        }
+
         // Intenta decrementar el contador del semaforo, bloqueando el hilo llamante hasta lograrlo o
         // hasta que expire `millisecondsTimeout` (ver el comentario de cabecera de la clase para la
         // convencion de -1 == indefinido). Devuelve true si se adquirio, false si el timeout expiro.
@@ -90,6 +97,11 @@ namespace NativeSharp.Core.Threading
         // ProjectMethodBodyModel.h), mismo mecanismo "helpers privados y estaticos" que Mutex ya
         // establecio. Los cuerpos de abajo son placeholders -- nunca se ejecutan.
         private static nint SemaphoreCreate(int initialCount, int maximumCount)
+        {
+            return 0;
+        }
+
+        private static nint SemaphoreCreateNamed(int initialCount, int maximumCount, string name)
         {
             return 0;
         }

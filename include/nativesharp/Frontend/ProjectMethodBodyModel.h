@@ -825,6 +825,8 @@ enum class MethodCoreOperationKind
     // el llamador ya tiene guardado) entra, builtin:void sale -- mismo shape que
     // ThreadJoin/ThreadDetach, bucket "expected=1U" compartido.
     MutexCreate,
+    // Item 370: the NativeSharp string is copied to an ANSI, null-terminated Win32 object name.
+    MutexCreateNamed,
     MutexLock,
     MutexUnlock,
     MutexClose,
@@ -889,10 +891,12 @@ enum class MethodCoreOperationKind
     // por el bucket). EventSet/EventReset: builtin:nint entra, builtin:void sale -- mismo shape de
     // un operando que MutexLock/MutexUnlock. EventClose: builtin:nint entra, builtin:void sale.
     SemaphoreCreate,
+    SemaphoreCreateNamed,
     SemaphoreWait,
     SemaphoreRelease,
     SemaphoreClose,
     EventCreate,
+    EventCreateNamed,
     EventSet,
     EventReset,
     EventWait,

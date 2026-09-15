@@ -79,6 +79,14 @@ namespace NativeSharp.Core.Threading
             handle_ = MutexCreate();
         }
 
+        // Item 370. A non-empty Win32 object name places the mutex in the kernel object
+        // namespace, so independently started processes that use the same name synchronize on
+        // the same object. The first creator establishes the object; later constructors open it.
+        public Mutex(string name)
+        {
+            handle_ = MutexCreateNamed(name);
+        }
+
         // Bloquea el hilo LLAMANTE hasta adquirir exclusividad sobre este mutex. Si el hilo
         // llamante YA es dueño de este mutex, tiene exito de inmediato (semantica reentrante,
         // ver el comentario de cabecera de la clase) -- cada Lock() adicional necesita su propio
@@ -118,6 +126,11 @@ namespace NativeSharp.Core.Threading
         // biblioteca que Thread.ns: el codigo de usuario interactua con Mutex exclusivamente via
         // el constructor/Lock()/Unlock()/destructor de arriba, nunca con el HANDLE crudo.
         private static nint MutexCreate()
+        {
+            return 0;
+        }
+
+        private static nint MutexCreateNamed(string name)
         {
             return 0;
         }

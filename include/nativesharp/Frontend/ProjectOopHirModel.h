@@ -306,6 +306,7 @@ enum class ProjectOopHirNodeKind
     // first core operation in the project with none at all), MutexLock/Unlock/Close are
     // one-operand (the saved HANDLE), same as ThreadJoin/ThreadDetach.
     CoreMutexCreate,
+    CoreMutexCreateNamed,
     CoreMutexLock,
     CoreMutexUnlock,
     CoreMutexClose,
@@ -327,10 +328,12 @@ enum class ProjectOopHirNodeKind
     // NativeSharp.Core.Threading.Event. Mismo shape "sin receptor, operandos por la lista de
     // argumentos AST" que Mutex/Thread arriba -- cero mecanismo de FieldAddress.
     CoreSemaphoreCreate,
+    CoreSemaphoreCreateNamed,
     CoreSemaphoreWait,
     CoreSemaphoreRelease,
     CoreSemaphoreClose,
     CoreEventCreate,
+    CoreEventCreateNamed,
     CoreEventSet,
     CoreEventReset,
     CoreEventWait,

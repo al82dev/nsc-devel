@@ -665,6 +665,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreCpuPause: return "core-cpu-pause";
         case ProjectOopMirNodeKind::CoreCpuReadTimestamp: return "core-cpu-read-timestamp";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
+        case ProjectOopMirNodeKind::CoreMutexCreateNamed: return "core-mutex-create-named";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
         case ProjectOopMirNodeKind::CoreMutexClose: return "core-mutex-close";
@@ -674,10 +675,12 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreMonitorPulse: return "core-monitor-pulse";
         case ProjectOopMirNodeKind::CoreMonitorPulseAll: return "core-monitor-pulse-all";
         case ProjectOopMirNodeKind::CoreSemaphoreCreate: return "core-semaphore-create";
+        case ProjectOopMirNodeKind::CoreSemaphoreCreateNamed: return "core-semaphore-create-named";
         case ProjectOopMirNodeKind::CoreSemaphoreWait: return "core-semaphore-wait";
         case ProjectOopMirNodeKind::CoreSemaphoreRelease: return "core-semaphore-release";
         case ProjectOopMirNodeKind::CoreSemaphoreClose: return "core-semaphore-close";
         case ProjectOopMirNodeKind::CoreEventCreate: return "core-event-create";
+        case ProjectOopMirNodeKind::CoreEventCreateNamed: return "core-event-create-named";
         case ProjectOopMirNodeKind::CoreEventSet: return "core-event-set";
         case ProjectOopMirNodeKind::CoreEventReset: return "core-event-reset";
         case ProjectOopMirNodeKind::CoreEventWait: return "core-event-wait";
@@ -1785,6 +1788,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;
             break;
+        case ProjectOopHirNodeKind::CoreMutexCreateNamed:
+            result->kind = ProjectOopMirNodeKind::CoreMutexCreateNamed;
+            break;
         case ProjectOopHirNodeKind::CoreMutexLock:
             result->kind = ProjectOopMirNodeKind::CoreMutexLock;
             break;
@@ -1840,6 +1846,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         case ProjectOopHirNodeKind::CoreSemaphoreCreate:
             result->kind = ProjectOopMirNodeKind::CoreSemaphoreCreate;
             break;
+        case ProjectOopHirNodeKind::CoreSemaphoreCreateNamed:
+            result->kind = ProjectOopMirNodeKind::CoreSemaphoreCreateNamed;
+            break;
         case ProjectOopHirNodeKind::CoreSemaphoreWait:
             result->kind = ProjectOopMirNodeKind::CoreSemaphoreWait;
             break;
@@ -1851,6 +1860,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreEventCreate:
             result->kind = ProjectOopMirNodeKind::CoreEventCreate;
+            break;
+        case ProjectOopHirNodeKind::CoreEventCreateNamed:
+            result->kind = ProjectOopMirNodeKind::CoreEventCreateNamed;
             break;
         case ProjectOopHirNodeKind::CoreEventSet:
             result->kind = ProjectOopMirNodeKind::CoreEventSet;

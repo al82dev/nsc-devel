@@ -10251,6 +10251,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 {
                     mutexKind = MethodCoreOperationKind::MutexCreate;
                 }
+                else if (selectedMember.name == "MutexCreateNamed" &&
+                    selectedMember.declaredTypeKey == "builtin:nint" &&
+                    selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == "builtin:string")
+                {
+                    mutexKind = MethodCoreOperationKind::MutexCreateNamed;
+                }
                 else if (selectedMember.name == "MutexLock" &&
                     selectedMember.declaredTypeKey == "builtin:void" &&
                     selectedMember.parameters.size() == 1 &&
@@ -10398,6 +10405,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 {
                     semaphoreKind = MethodCoreOperationKind::SemaphoreCreate;
                 }
+                else if (selectedMember.name == "SemaphoreCreateNamed" &&
+                    selectedMember.declaredTypeKey == "builtin:nint" &&
+                    selectedMember.parameters.size() == 3 &&
+                    selectedMember.parameters[0].typeKey == "builtin:int" &&
+                    selectedMember.parameters[1].typeKey == "builtin:int" &&
+                    selectedMember.parameters[2].typeKey == "builtin:string")
+                {
+                    semaphoreKind = MethodCoreOperationKind::SemaphoreCreateNamed;
+                }
                 else if (selectedMember.name == "SemaphoreWait" &&
                     selectedMember.declaredTypeKey == "builtin:bool" &&
                     selectedMember.parameters.size() == 2 &&
@@ -10448,6 +10464,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                     selectedMember.parameters[1].typeKey == "builtin:bool")
                 {
                     eventKind = MethodCoreOperationKind::EventCreate;
+                }
+                else if (selectedMember.name == "EventCreateNamed" &&
+                    selectedMember.declaredTypeKey == "builtin:nint" &&
+                    selectedMember.parameters.size() == 3 &&
+                    selectedMember.parameters[0].typeKey == "builtin:bool" &&
+                    selectedMember.parameters[1].typeKey == "builtin:bool" &&
+                    selectedMember.parameters[2].typeKey == "builtin:string")
+                {
+                    eventKind = MethodCoreOperationKind::EventCreateNamed;
                 }
                 else if (selectedMember.name == "EventSet" &&
                     selectedMember.declaredTypeKey == "builtin:void" &&
@@ -14763,6 +14788,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::CpuPause: return "cpu-pause";
         case MethodCoreOperationKind::CpuReadTimestamp: return "cpu-read-timestamp";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
+        case MethodCoreOperationKind::MutexCreateNamed: return "mutex-create-named";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";
         case MethodCoreOperationKind::MutexClose: return "mutex-close";
@@ -14772,10 +14798,12 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::MonitorPulse: return "monitor-pulse";
         case MethodCoreOperationKind::MonitorPulseAll: return "monitor-pulse-all";
         case MethodCoreOperationKind::SemaphoreCreate: return "semaphore-create";
+        case MethodCoreOperationKind::SemaphoreCreateNamed: return "semaphore-create-named";
         case MethodCoreOperationKind::SemaphoreWait: return "semaphore-wait";
         case MethodCoreOperationKind::SemaphoreRelease: return "semaphore-release";
         case MethodCoreOperationKind::SemaphoreClose: return "semaphore-close";
         case MethodCoreOperationKind::EventCreate: return "event-create";
+        case MethodCoreOperationKind::EventCreateNamed: return "event-create-named";
         case MethodCoreOperationKind::EventSet: return "event-set";
         case MethodCoreOperationKind::EventReset: return "event-reset";
         case MethodCoreOperationKind::EventWait: return "event-wait";

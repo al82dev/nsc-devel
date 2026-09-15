@@ -3099,6 +3099,35 @@ bool buildMutexCreate(
     return true;
 }
 
+// Item 370. Named mutexes use the same kernel object as MutexCreate, but pass a stable ANSI
+// object name so independently started processes can rendezvous on it.
+bool buildMutexCreateNamed(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef createMutexA,
+    LLVMTypeRef createMutexAType)
+{
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i64Type, {pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_mutex_create_named", type);
+    if (function == nullptr) return false;
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef nameBuffer = buildNullTerminatedCopy(
+        context, builder, function, LLVMGetParam(function, 0));
+    LLVMValueRef arguments[3] = {
+        LLVMConstNull(pointerType), LLVMConstInt(i32Type, 0, 0), nameBuffer};
+    LLVMValueRef handle = LLVMBuildCall2(
+        builder, createMutexAType, createMutexA, arguments, 3, "handle");
+    LLVMBuildRet(builder, LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int"));
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
 // buildMutexLock: `__nativesharp_mutex_lock`, void(i64). A HANDLE value of 0 (the "CreateMutexA
 // failed" case from buildMutexCreate above) is a silent no-op -- WaitForSingleObject on a HANDLE
 // that was never a real mutex to begin with is meaningless, and Mutex.Lock() must never crash just
@@ -3571,6 +3600,34 @@ bool buildSemaphoreCreate(
     return true;
 }
 
+// Item 370. A named semaphore is visible to every process in the same Windows object namespace.
+bool buildSemaphoreCreateNamed(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef createSemaphoreA,
+    LLVMTypeRef createSemaphoreAType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i64Type, {i32Type, i32Type, pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_semaphore_create_named", type);
+    if (function == nullptr) return false;
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef nameBuffer = buildNullTerminatedCopy(
+        context, builder, function, LLVMGetParam(function, 2));
+    LLVMValueRef arguments[4] = {
+        LLVMConstNull(pointerType), LLVMGetParam(function, 0), LLVMGetParam(function, 1), nameBuffer};
+    LLVMValueRef handle = LLVMBuildCall2(
+        builder, createSemaphoreAType, createSemaphoreA, arguments, 4, "handle");
+    LLVMBuildRet(builder, LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int"));
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
 // buildSemaphoreRelease: `__nativesharp_semaphore_release`, void(i64) over ReleaseSemaphore(handle,
 // 1, NULL) -- always releases exactly ONE count (Semaphore.ns documents why a variable-count
 // Release(int) overload is deliberately out of scope this round: it is a strict superset that adds
@@ -3708,6 +3765,39 @@ bool buildEventCreate(
     LLVMValueRef handleAsInt = LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int");
     LLVMBuildRet(builder, handleAsInt);
 
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
+// Item 370. Named events preserve Win32's first-creator semantics for reset mode and state.
+bool buildEventCreateNamed(
+    LLVMContextRef context,
+    LLVMModuleRef module,
+    LLVMValueRef createEventA,
+    LLVMTypeRef createEventAType)
+{
+    LLVMTypeRef i64Type = LLVMInt64TypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i1Type = LLVMInt1TypeInContext(context);
+    LLVMTypeRef pointerType = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef type = functionType(i64Type, {i1Type, i1Type, pointerType});
+    LLVMValueRef function = LLVMAddFunction(module, "__nativesharp_event_create_named", type);
+    if (function == nullptr) return false;
+
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef nameBuffer = buildNullTerminatedCopy(
+        context, builder, function, LLVMGetParam(function, 2));
+    LLVMValueRef manualReset = LLVMBuildZExt(
+        builder, LLVMGetParam(function, 0), i32Type, "manual_reset_i32");
+    LLVMValueRef initialState = LLVMBuildZExt(
+        builder, LLVMGetParam(function, 1), i32Type, "initial_state_i32");
+    LLVMValueRef arguments[4] = {
+        LLVMConstNull(pointerType), manualReset, initialState, nameBuffer};
+    LLVMValueRef handle = LLVMBuildCall2(
+        builder, createEventAType, createEventA, arguments, 4, "handle");
+    LLVMBuildRet(builder, LLVMBuildPtrToInt(builder, handle, i64Type, "handle_as_int"));
     LLVMDisposeBuilder(builder);
     return true;
 }
@@ -5886,6 +5976,7 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         // import. buildMutexClose reuses closeHandle/closeHandleType directly (Stage 53.3b's
         // declaration above) -- same reason.
         buildMutexCreate(context, module, createMutexA, createMutexAType) &&
+        buildMutexCreateNamed(context, module, createMutexA, createMutexAType) &&
         buildMutexLock(context, module, waitForSingleObject, waitForSingleObjectType) &&
         buildMutexUnlock(context, module, releaseMutex, releaseMutexType) &&
         buildMutexClose(context, module, closeHandle, closeHandleType) &&
@@ -5904,9 +5995,11 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         // buildEventClose reuse closeHandle/closeHandleType directly (Stage 53.3b's declaration).
         buildWaitForHandleTimeout(context, module, waitForSingleObject, waitForSingleObjectType) &&
         buildSemaphoreCreate(context, module, createSemaphoreA, createSemaphoreAType) &&
+        buildSemaphoreCreateNamed(context, module, createSemaphoreA, createSemaphoreAType) &&
         buildSemaphoreRelease(context, module, releaseSemaphore, releaseSemaphoreType) &&
         buildSemaphoreClose(context, module, closeHandle, closeHandleType) &&
         buildEventCreate(context, module, createEventA, createEventAType) &&
+        buildEventCreateNamed(context, module, createEventA, createEventAType) &&
         buildEventSet(context, module, setEvent, setEventType) &&
         buildEventReset(context, module, resetEvent, resetEventType) &&
         buildEventClose(context, module, closeHandle, closeHandleType) &&
