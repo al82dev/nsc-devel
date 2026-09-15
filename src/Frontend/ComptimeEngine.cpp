@@ -18,7 +18,14 @@ bool identifierByte(char value) noexcept
 class IntegerExpression final
 {
 public:
-    explicit IntegerExpression(std::string_view text) : text_(text) {}
+    IntegerExpression(
+        std::string_view text,
+        std::size_t maximumSteps,
+        std::size_t maximumNesting,
+        std::size_t& steps)
+        : text_(text), maximumSteps_(maximumSteps), maximumNesting_(maximumNesting), steps_(steps)
+    {
+    }
 
     std::optional<std::int64_t> evaluate(std::string& error)
     {
@@ -33,6 +40,17 @@ public:
     }
 
 private:
+    bool tick(std::string& error)
+    {
+        if (steps_ >= maximumSteps_)
+        {
+            error = "comptime step budget exceeded";
+            return false;
+        }
+        ++steps_;
+        return true;
+    }
+
     void skipSpace()
     {
         while (cursor_ < text_.size() &&
@@ -50,10 +68,18 @@ private:
 
     std::optional<std::int64_t> parsePrimary(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         skipSpace();
         if (take("("))
         {
+            if (nesting_ >= maximumNesting_)
+            {
+                error = "comptime nesting limit exceeded";
+                return std::nullopt;
+            }
+            ++nesting_;
             auto value = parseBitwiseOr(error);
+            --nesting_;
             if (!value.has_value() || !take(")"))
             {
                 if (error.empty()) error = "expected ')' in #run expression";
@@ -62,6 +88,13 @@ private:
             return value;
         }
         const std::size_t begin = cursor_;
+        if (cursor_ < text_.size() &&
+            (std::isalpha(static_cast<unsigned char>(text_[cursor_])) != 0 ||
+             text_[cursor_] == '_'))
+        {
+            error = "comptime sandbox forbids identifiers, calls, FFI, and host access";
+            return std::nullopt;
+        }
         int base = 10;
         if (cursor_ + 2 <= text_.size() && text_[cursor_] == '0' &&
             (text_[cursor_ + 1] == 'x' || text_[cursor_ + 1] == 'X'))
@@ -96,6 +129,7 @@ private:
 
     std::optional<std::int64_t> parseUnary(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         if (take("+")) return parseUnary(error);
         if (take("-"))
         {
@@ -118,6 +152,7 @@ private:
 
     std::optional<std::int64_t> parseMultiply(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         auto left = parseUnary(error);
         while (left.has_value())
         {
@@ -153,6 +188,7 @@ private:
 
     std::optional<std::int64_t> parseAdd(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         auto left = parseMultiply(error);
         while (left.has_value())
         {
@@ -173,6 +209,7 @@ private:
 
     std::optional<std::int64_t> parseShift(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         auto left = parseAdd(error);
         while (left.has_value())
         {
@@ -195,6 +232,7 @@ private:
 
     std::optional<std::int64_t> parseBitwiseAnd(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         auto value = parseShift(error);
         while (value.has_value() && take("&"))
         {
@@ -207,6 +245,7 @@ private:
 
     std::optional<std::int64_t> parseBitwiseXor(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         auto value = parseBitwiseAnd(error);
         while (value.has_value() && take("^"))
         {
@@ -219,6 +258,7 @@ private:
 
     std::optional<std::int64_t> parseBitwiseOr(std::string& error)
     {
+        if (!tick(error)) return std::nullopt;
         auto value = parseBitwiseXor(error);
         while (value.has_value() && take("|"))
         {
@@ -231,6 +271,10 @@ private:
 
     std::string_view text_;
     std::size_t cursor_ = 0;
+    std::size_t maximumSteps_ = 0;
+    std::size_t maximumNesting_ = 0;
+    std::size_t& steps_;
+    std::size_t nesting_ = 0;
 };
 
 bool startsWord(std::string_view source, std::size_t offset, std::string_view word)
@@ -242,9 +286,16 @@ bool startsWord(std::string_view source, std::size_t offset, std::string_view wo
 }
 }
 
+ComptimeEngine::ComptimeEngine(ComptimeLimits limits) noexcept : limits_(limits) {}
+
 ComptimeResult ComptimeEngine::execute(std::string_view source) const
 {
     ComptimeResult result;
+    if (source.size() > limits_.maximumSourceBytes)
+    {
+        result.error = "comptime source byte limit exceeded";
+        return result;
+    }
     result.source.assign(source);
     enum class Scan { Code, LineComment, BlockComment, String, Character } state = Scan::Code;
     bool escaped = false;
@@ -282,6 +333,11 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         }
         if (source.substr(cursor, 4) != "#run" ||
             (cursor != 0 && identifierByte(source[cursor - 1]))) continue;
+        if (result.evaluations.size() >= limits_.maximumDirectives)
+        {
+            result.error = "comptime directive limit exceeded";
+            return result;
+        }
         std::size_t open = cursor + 4;
         while (open < source.size() &&
                std::isspace(static_cast<unsigned char>(source[open])) != 0) ++open;
@@ -304,7 +360,8 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         }
         const std::size_t end = close;
         std::string error;
-        IntegerExpression evaluator(source.substr(open + 1, end - open - 2));
+        IntegerExpression evaluator(source.substr(open + 1, end - open - 2),
+            limits_.maximumSteps, limits_.maximumNesting, result.executedSteps);
         const auto value = evaluator.evaluate(error);
         if (!value.has_value())
         {

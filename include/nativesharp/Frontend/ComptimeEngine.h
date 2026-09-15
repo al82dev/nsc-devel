@@ -15,12 +15,21 @@ struct ComptimeEvaluation final
     std::int64_t value = 0;
 };
 
+struct ComptimeLimits final
+{
+    std::size_t maximumSourceBytes = 64U * 1024U * 1024U;
+    std::size_t maximumDirectives = 1024;
+    std::size_t maximumSteps = 100'000;
+    std::size_t maximumNesting = 128;
+};
+
 struct ComptimeResult final
 {
     bool success = false;
     std::string source;
     std::string error;
     std::vector<ComptimeEvaluation> evaluations;
+    std::size_t executedSteps = 0;
 };
 
 // Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual
@@ -30,6 +39,10 @@ struct ComptimeResult final
 class ComptimeEngine final
 {
 public:
+    explicit ComptimeEngine(ComptimeLimits limits = {}) noexcept;
     ComptimeResult execute(std::string_view source) const;
+
+private:
+    ComptimeLimits limits_;
 };
 }

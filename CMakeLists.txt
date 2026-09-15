@@ -1209,6 +1209,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item385_comptime_core_tests)
     add_test(NAME nsc.item385.comptime-core COMMAND nsc_item385_comptime_core_tests)
 
+    add_executable(nsc_item386_comptime_sandbox_tests tests/unit/Item386ComptimeSandboxTests.cpp)
+    target_link_libraries(nsc_item386_comptime_sandbox_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_item386_comptime_sandbox_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item386_comptime_sandbox_tests)
+    add_test(NAME nsc.item386.comptime-sandbox COMMAND nsc_item386_comptime_sandbox_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)
