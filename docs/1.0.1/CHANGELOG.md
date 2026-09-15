@@ -69,7 +69,10 @@ empaqueta con NativeSharp 1.0.1.
   de ancho cero. El layout Windows x64 usa unidades MSVC según el ancho del tipo declarado,
   reinicia la unidad cuando cambia su tamaño o no cabe el siguiente campo y respeta barreras de
   ancho cero, `pack`, structs, clases y unions. Headers C/MSVC y NSMETA 1.18 conservan el mismo
-  contrato; lectura, escritura y semántica `volatile` permanecen en los puntos 329–330.
+  contrato. MIR 1.7 publica la unidad y la porción lógica; LLVM lee con máscara y extensión de
+  signo y escribe con read-modify-write sin alterar campos vecinos. Asignaciones simples,
+  compuestas, `++/--` e inicializadores agregados conservan truncamiento y evaluación única;
+  dirección, `ref`, `offsetof` y acceso `volatile` permanecen prohibidos (este último hasta 330).
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

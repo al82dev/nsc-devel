@@ -6760,8 +6760,26 @@ private:
                 if (address == nullptr) return nullptr;
                 LLVMTypeRef targetType = llvmType(node->typeKey, error);
                 if (targetType == nullptr) return nullptr;
-                LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
-                if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+                const bool bitField =
+                    node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress;
+                LLVMValueRef previousStorage = nullptr;
+                LLVMValueRef previous = nullptr;
+                if (bitField)
+                {
+                    LLVMTypeRef storageType = bitFieldStorageType(node->children[0].get(), error);
+                    if (storageType == nullptr) return nullptr;
+                    previousStorage = LLVMBuildLoad2(
+                        builder_, storageType, address, "bitfield.compound.storage.load");
+                    LLVMSetAlignment(
+                        previousStorage, static_cast<unsigned>(node->children[0]->alignment));
+                    previous = extractBitField(node->children[0].get(), previousStorage, error);
+                }
+                else
+                {
+                    previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+                    if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+                }
+                if (previous == nullptr) return nullptr;
 
                 // El operando derecho se baja UNA SOLA VEZ, en la rama que le toca. Bajarlo antes
                 // del `if` y ademas dentro de normalizeNativeIndex lo evaluaria dos veces, que es
@@ -6803,11 +6821,25 @@ private:
                         node->operation, previous, operand, node->typeKey, error);
                 }
                 if (updated == nullptr) return nullptr;
-                LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
-                if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+                LLVMValueRef storedValue = updated;
+                if (bitField)
+                {
+                    LLVMValueRef merged = insertBitField(
+                        node->children[0].get(), previousStorage, updated, error);
+                    if (merged == nullptr) return nullptr;
+                    LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
+                    LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
+                    storedValue = extractBitField(node->children[0].get(), merged, error);
+                }
+                else
+                {
+                    LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+                    if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+                }
+                if (storedValue == nullptr) return nullptr;
                 // `x++` VALE EL VALOR ANTIGUO; `++x` y `x += e` valen el nuevo. Un solo bit de
                 // diferencia porque todo lo anterior es identico.
-                return node->booleanValue ? previous : updated;
+                return node->booleanValue ? previous : storedValue;
             }
 
             case frontend::ProjectOopMirNodeKind::PointerLoad:
@@ -6919,6 +6951,16 @@ private:
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 return load;
             }
+            case frontend::ProjectOopMirNodeKind::BitFieldLoad:
+            {
+                LLVMValueRef address = fieldAddress(node, error);
+                LLVMTypeRef storageType = bitFieldStorageType(node, error);
+                if (address == nullptr || storageType == nullptr) return nullptr;
+                LLVMValueRef storage = LLVMBuildLoad2(
+                    builder_, storageType, address, "bitfield.storage.load");
+                LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment));
+                return extractBitField(node, storage, error);
+            }
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
             {
                 LLVMValueRef address = staticFieldAddress(node, error);
@@ -6933,6 +6975,8 @@ private:
             case frontend::ProjectOopMirNodeKind::LocalAddress:
                 return node->localOrdinal.has_value() ? localStorage_[*node->localOrdinal] : nullptr;
             case frontend::ProjectOopMirNodeKind::FieldAddress:
+                return fieldAddress(node, error);
+            case frontend::ProjectOopMirNodeKind::BitFieldAddress:
                 return fieldAddress(node, error);
             case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
                 return staticFieldAddress(node, error);
@@ -8369,6 +8413,20 @@ private:
                 // ready blocks and is transferred by the final store.
                 LLVMValueRef value = lowerExpression(node->children[1].get(), error);
                 if (value == nullptr) return nullptr;
+                if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress)
+                {
+                    const frontend::ProjectOopMirNode* field = node->children[0].get();
+                    LLVMTypeRef storageType = bitFieldStorageType(field, error);
+                    if (storageType == nullptr) return nullptr;
+                    LLVMValueRef previous = LLVMBuildLoad2(
+                        builder_, storageType, address, "bitfield.store.storage.load");
+                    LLVMSetAlignment(previous, static_cast<unsigned>(field->alignment));
+                    LLVMValueRef merged = insertBitField(field, previous, value, error);
+                    if (merged == nullptr) return nullptr;
+                    LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
+                    LLVMSetAlignment(store, static_cast<unsigned>(field->alignment));
+                    return extractBitField(field, merged, error);
+                }
                 if (node->booleanValue && node->localOrdinal.has_value())
                 {
                     const auto cleanup = std::find_if(
@@ -11365,6 +11423,19 @@ private:
             LLVMValueRef value = lowerExpression(child->children.front().get(), error);
             if (value == nullptr) return nullptr;
             LLVMValueRef address = byteOffset(slot, child->immediate, "aggregate.element.addr");
+            if (child->bitWidth.has_value())
+            {
+                LLVMTypeRef storageType = bitFieldStorageType(child.get(), error);
+                if (storageType == nullptr) return nullptr;
+                LLVMValueRef previous = LLVMBuildLoad2(
+                    builder_, storageType, address, "aggregate.bitfield.storage.load");
+                LLVMSetAlignment(previous, static_cast<unsigned>(child->alignment));
+                LLVMValueRef merged = insertBitField(child.get(), previous, value, error);
+                if (merged == nullptr) return nullptr;
+                LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
+                LLVMSetAlignment(store, static_cast<unsigned>(child->alignment));
+                continue;
+            }
             LLVMValueRef store = LLVMBuildStore(builder_, value, address);
             // An element is written through its own typed address, so it needs its own natural
             // alignment -- the carrier's `[N x i8]` shape would otherwise imply align 1.
@@ -11771,6 +11842,129 @@ private:
 
         LLVMPositionBuilderAtEnd(builder_, doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+    }
+
+    LLVMTypeRef bitFieldStorageType(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error) const
+    {
+        if (node == nullptr || !node->bitOffset.has_value() || !node->bitWidth.has_value() ||
+            node->bitStorageSize == 0 || node->bitStorageSize > 8)
+        {
+            error = "item 329 bit-field access has incomplete allocation-unit metadata";
+            return nullptr;
+        }
+        const std::uint64_t storageBits = node->bitStorageSize * 8U;
+        if (*node->bitWidth == 0 || *node->bitOffset >= storageBits ||
+            *node->bitWidth > storageBits - *node->bitOffset)
+        {
+            error = "item 329 bit-field coordinates exceed their allocation unit";
+            return nullptr;
+        }
+        switch (storageBits)
+        {
+            case 8U: return LLVMInt8TypeInContext(context_);
+            case 16U: return LLVMInt16TypeInContext(context_);
+            case 32U: return LLVMInt32TypeInContext(context_);
+            case 64U: return LLVMInt64TypeInContext(context_);
+            default:
+                error = "item 329 bit-field allocation unit has an unsupported integer width";
+                return nullptr;
+        }
+    }
+
+    LLVMValueRef extractBitField(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef storage,
+        std::string& error)
+    {
+        LLVMTypeRef storageType = bitFieldStorageType(node, error);
+        if (storageType == nullptr || storage == nullptr) return nullptr;
+
+        const std::uint64_t storageBits = node->bitStorageSize * 8U;
+        const std::uint64_t bitOffset = *node->bitOffset;
+        const std::uint64_t bitWidth = *node->bitWidth;
+        const std::uint64_t lowMask = bitWidth == 64U
+            ? ~std::uint64_t{0}
+            : (std::uint64_t{1} << bitWidth) - 1U;
+        LLVMValueRef extracted = storage;
+        if (bitOffset != 0)
+        {
+            extracted = LLVMBuildLShr(
+                builder_, extracted, LLVMConstInt(storageType, bitOffset, 0), "bitfield.shift");
+        }
+        if (bitWidth != storageBits)
+        {
+            extracted = LLVMBuildAnd(
+                builder_, extracted, LLVMConstInt(storageType, lowMask, 0), "bitfield.mask");
+        }
+        if (node->typeKey == "builtin:bool")
+        {
+            return LLVMBuildICmp(
+                builder_, LLVMIntNE, extracted, LLVMConstNull(storageType), "bitfield.bool");
+        }
+
+        const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(node->typeKey);
+        const unsigned logicalWidth = enumInfo != nullptr
+            ? enumInfo->width : integerWidth(node->typeKey);
+        if (logicalWidth != storageBits)
+        {
+            return failValue(error, "item 329 bit-field logical type does not match its allocation unit");
+        }
+        const bool signedField = enumInfo != nullptr ? enumInfo->isSigned : isSignedInteger(node->typeKey);
+        if (signedField && bitWidth < storageBits)
+        {
+            const std::uint64_t extensionShift = storageBits - bitWidth;
+            LLVMValueRef shift = LLVMConstInt(storageType, extensionShift, 0);
+            extracted = LLVMBuildShl(builder_, extracted, shift, "bitfield.sign.left");
+            extracted = LLVMBuildAShr(builder_, extracted, shift, "bitfield.sign.extend");
+        }
+        return extracted;
+    }
+
+    LLVMValueRef insertBitField(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef previousStorage,
+        LLVMValueRef value,
+        std::string& error)
+    {
+        LLVMTypeRef storageType = bitFieldStorageType(node, error);
+        if (storageType == nullptr || previousStorage == nullptr || value == nullptr) return nullptr;
+
+        const std::uint64_t storageBits = node->bitStorageSize * 8U;
+        const std::uint64_t bitOffset = *node->bitOffset;
+        const std::uint64_t bitWidth = *node->bitWidth;
+        const std::uint64_t lowMask = bitWidth == 64U
+            ? ~std::uint64_t{0}
+            : (std::uint64_t{1} << bitWidth) - 1U;
+        const std::uint64_t fieldMask = lowMask << bitOffset;
+
+        LLVMValueRef widened = value;
+        if (node->typeKey == "builtin:bool")
+        {
+            widened = LLVMBuildZExt(builder_, value, storageType, "bitfield.bool.widen");
+        }
+        else
+        {
+            const frontend::builtins::IntegerTypeInfo* enumInfo = enumUnderlyingInfo(node->typeKey);
+            const unsigned logicalWidth = enumInfo != nullptr
+                ? enumInfo->width : integerWidth(node->typeKey);
+            if (logicalWidth != storageBits)
+            {
+                return failValue(error, "item 329 bit-field store type does not match its allocation unit");
+            }
+        }
+        LLVMValueRef bits = LLVMBuildAnd(
+            builder_, widened, LLVMConstInt(storageType, lowMask, 0), "bitfield.value.mask");
+        if (bitOffset != 0)
+        {
+            bits = LLVMBuildShl(
+                builder_, bits, LLVMConstInt(storageType, bitOffset, 0), "bitfield.value.shift");
+        }
+        LLVMValueRef preserved = LLVMBuildAnd(
+            builder_, previousStorage, LLVMConstInt(storageType, ~fieldMask, 0),
+            "bitfield.storage.preserve");
+        return LLVMBuildOr(builder_, preserved, bits, "bitfield.storage.merge");
     }
 
     LLVMValueRef fieldAddress(const frontend::ProjectOopMirNode* node, std::string& error)

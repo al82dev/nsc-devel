@@ -125,9 +125,9 @@ public class Program
     tests.expect(mir, "noheap contracts lower to MIR (" + error + ")");
     if (mir)
     {
-        tests.expect(output.find("schema=1.6") != std::string::npos &&
+        tests.expect(output.find("schema=1.7") != std::string::npos &&
                          output.find("noheap=true") != std::string::npos,
-            "MIR 1.6 transports the noheap function flag");
+            "current MIR transports the noheap function flag");
     }
 
     expectReject(tests, root, "direct_call", R"NS(

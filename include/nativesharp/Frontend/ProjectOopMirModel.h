@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 6;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 7;
 
 enum class ProjectOopMirNodeKind
 {
@@ -92,10 +92,15 @@ enum class ProjectOopMirNodeKind
     ParameterValue,
     LocalValue,
     FieldLoad,
+    // Item 329. A bit field has no standalone address. BitFieldAddress is a logical lvalue
+    // descriptor consumed only by Store/CompoundStore; it identifies the containing allocation
+    // unit so the backend can perform one masked read-modify-write.
+    BitFieldLoad,
     StaticFieldLoad,
     ParameterAddress,
     LocalAddress,
     FieldAddress,
+    BitFieldAddress,
     StaticFieldAddress,
     IntegerConstant,
     FloatingConstant,
@@ -320,6 +325,11 @@ struct ProjectOopMirNode final
     // both offsets get consumed (two GEPs off one already-lowered receiver pointer).
     std::uint64_t secondaryImmediate = 0;
     std::uint64_t alignment = 1;
+    // Item 329. Present together on BitFieldLoad/BitFieldAddress. `immediate` remains the byte
+    // offset of the allocation unit; these values describe that unit and the logical slice in it.
+    std::optional<std::uint64_t> bitOffset;
+    std::optional<std::uint64_t> bitWidth;
+    std::uint64_t bitStorageSize = 0;
     std::uint64_t integerValue = 0;
     double floatingValue = 0.0;
     bool booleanValue = false;

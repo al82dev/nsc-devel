@@ -426,6 +426,12 @@ struct ProjectOopHirNode final
     // Set only on a SwitchSection node: this section carries the `default` label.
     bool switchHasDefault = false;
     std::uint64_t integerValue = 0;
+    // Item 329. AggregateElement uses these when a positional initializer targets a bit field.
+    // The byte offset remains in integerValue, just like an ordinary aggregate element.
+    std::optional<std::uint64_t> bitOffset;
+    std::optional<std::uint64_t> bitWidth;
+    std::uint64_t bitStorageSize = 0;
+    std::uint64_t bitStorageAlignment = 1;
     double floatingValue = 0.0;
     bool booleanValue = false;
     // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather

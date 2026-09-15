@@ -550,10 +550,12 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::ParameterValue: return "parameter-value";
         case ProjectOopMirNodeKind::LocalValue: return "local-value";
         case ProjectOopMirNodeKind::FieldLoad: return "field-load";
+        case ProjectOopMirNodeKind::BitFieldLoad: return "bit-field-load";
         case ProjectOopMirNodeKind::StaticFieldLoad: return "static-field-load";
         case ProjectOopMirNodeKind::ParameterAddress: return "parameter-address";
         case ProjectOopMirNodeKind::LocalAddress: return "local-address";
         case ProjectOopMirNodeKind::FieldAddress: return "field-address";
+        case ProjectOopMirNodeKind::BitFieldAddress: return "bit-field-address";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
         case ProjectOopMirNodeKind::IntegerConstant: return "integer-constant";
         case ProjectOopMirNodeKind::FloatingConstant: return "floating-constant";
@@ -1276,6 +1278,9 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->switchLabels = node->switchLabels;
     result->switchHasDefault = node->switchHasDefault;
     result->integerValue = node->integerValue;
+    result->bitOffset = node->bitOffset;
+    result->bitWidth = node->bitWidth;
+    result->bitStorageSize = node->bitStorageSize;
     result->floatingValue = node->floatingValue;
     result->booleanValue = node->booleanValue;
     result->referenceLocal = node->referenceLocal;
@@ -1948,11 +1953,23 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                     std::to_string(*node->memberOrdinal);
                 return nullptr;
             }
+            const bool bitField = layout->bitOffset.has_value() || layout->bitWidth.has_value();
+            if (bitField && (!layout->bitOffset.has_value() || !layout->bitWidth.has_value() ||
+                             *layout->bitWidth == 0 || layout->size == 0))
+            {
+                error = "item 329 field layout has incomplete bit-field coordinates";
+                return nullptr;
+            }
             result->kind = node->kind == ProjectOopHirNodeKind::FieldValue
-                ? ProjectOopMirNodeKind::FieldLoad
-                : ProjectOopMirNodeKind::FieldAddress;
+                ? (bitField ? ProjectOopMirNodeKind::BitFieldLoad
+                            : ProjectOopMirNodeKind::FieldLoad)
+                : (bitField ? ProjectOopMirNodeKind::BitFieldAddress
+                            : ProjectOopMirNodeKind::FieldAddress);
             result->immediate = layout->offset;
             result->alignment = layout->alignment;
+            result->bitOffset = layout->bitOffset;
+            result->bitWidth = layout->bitWidth;
+            result->bitStorageSize = bitField ? layout->size : 0;
             break;
         }
 
@@ -2063,6 +2080,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
         {
             result->kind = ProjectOopMirNodeKind::AggregateElementStore;
             result->immediate = node->integerValue;
+            if (node->bitWidth.has_value()) result->alignment = node->bitStorageAlignment;
             // C8: the element's WIDTH IN BYTES, resolved here rather than in the backend, because
             // this is where the value layouts live. It is what lets the struct root members read
             // every leaf -- a float, a reference, an enum -- as a plain integer of the right size,

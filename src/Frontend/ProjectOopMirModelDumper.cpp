@@ -53,8 +53,20 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         output << " target-type=#" << node->targetTypeOrdinal.value_or(0)
                << " target-kind=" << (node->targetIsInterface ? "interface" : "class")
                << " type-id=" << node->immediate;
-    if (node->kind == ProjectOopMirNodeKind::FieldAddress || node->kind == ProjectOopMirNodeKind::FieldLoad)
+    if (node->kind == ProjectOopMirNodeKind::FieldAddress ||
+        node->kind == ProjectOopMirNodeKind::FieldLoad ||
+        node->kind == ProjectOopMirNodeKind::BitFieldAddress ||
+        node->kind == ProjectOopMirNodeKind::BitFieldLoad)
         output << " offset=" << node->immediate << " align=" << node->alignment;
+    if (node->kind == ProjectOopMirNodeKind::BitFieldAddress ||
+        node->kind == ProjectOopMirNodeKind::BitFieldLoad)
+        output << " storage=" << node->bitStorageSize
+               << " bit-offset=" << node->bitOffset.value_or(0)
+               << " bit-width=" << node->bitWidth.value_or(0);
+    if (node->kind == ProjectOopMirNodeKind::AggregateElementStore && node->bitWidth.has_value())
+        output << " bit-storage=" << node->bitStorageSize
+               << " bit-offset=" << node->bitOffset.value_or(0)
+               << " bit-width=" << *node->bitWidth;
     if (node->kind == ProjectOopMirNodeKind::AllocateAndConstruct)
         output << " bytes=" << node->immediate << " align=" << node->alignment
                << " zero=" << (node->zeroInitialize ? "true" : "false")

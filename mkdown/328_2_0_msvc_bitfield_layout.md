@@ -20,11 +20,11 @@ while they fit, with offsets increasing from the least-significant bit.
 - `pack(N)` limita alineación sin reducir el tamaño de la unidad;
 - cada alternativa de union comienza en byte/bit cero y aporta su unidad al extent;
 - las clases reutilizan la misma autoridad después de su header o base;
-- `offsetof` y el acceso ejecutable permanecen rechazados para bitfields.
+- `offsetof` permanece rechazado; el acceso ejecutable se incorpora en el punto 329.
 
 Allowed bases are integer, bool and enum types. Widths are compile-time nonnegative values bounded
 by the base. Zero-width barriers, packing, unions and class prefixes follow the measured MSVC x64
-model. Executable field access remains the separate item 329.
+model. Executable field access is supplied by the separate item 329.
 
 ## Fronteras C y NSMETA / C and NSMETA boundaries
 

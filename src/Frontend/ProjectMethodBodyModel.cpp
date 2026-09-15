@@ -1348,7 +1348,8 @@ std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElement
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
     {
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst) continue;
+        if (member.kind != ClassMemberKind::Field || member.isStatic || member.isConst ||
+            member.isUnnamedBitField) continue;
         elements.push_back(member.declaredTypeKey);
         if (isUnion) break;
     }
@@ -7098,7 +7099,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeIdentifi
         result.valid = true;
         result.assignable = !readonlyThis && !field.isConst &&
             (!field.isReadonly || readonlyFieldAssignable(field, methodMemberOrdinal));
-        result.addressable = true;
+        result.addressable = !field.isBitField;
         result.readonlyReceiver = readonlyThis || field.isReadonly;
         result.assignmentMemberOrdinal = fields.front();
         if (!field.isStatic)
@@ -7722,7 +7723,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             readonlyFieldAssignable(field, methodMemberOrdinal);
         result.assignable = !receiver.readonlyReceiver && !field.isConst &&
             (!field.isReadonly || readonlyOnThis);
-        result.addressable = true;
+        result.addressable = !field.isBitField;
         result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
         result.receiverSyntax = typeReceiver ? nullptr : expression->first();
         result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
@@ -10750,13 +10751,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
 
     if (operation == TokenKind::Amp)
     {
-        if (!operand.assignable)
+        if (!operand.addressable || !operand.assignable)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidAddressOf,
                 diagnostics::DiagnosticSeverity::Error,
                 expression->range(),
-                "operand of & must be an addressable local, parameter or field");
+                "operand of & must be mutable addressable storage; bit fields have no address");
             return result;
         }
         result.typeKey = operand.typeKey + '*';

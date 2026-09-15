@@ -445,14 +445,15 @@ transportar el efecto. Los inicializadores de campo y de constructor ejecutados 
 `noheap` forman parte de su cuerpo efectivo y obedecen las mismas reglas.
 
 NSMETA 1.16 transporta `noheap` en métodos y constructores públicos y lo elimina al emitir
-deliberadamente 1.15 o anterior. La propiedad no cambia el ABI nativo, el layout ni el runtime; HIR
-y MIR 1.6 la exponen para auditoría y optimización sin reinterpretarla.
+deliberadamente 1.15 o anterior. La propiedad no cambia el ABI nativo, el layout ni el runtime; MIR
+1.6 la introdujo y MIR 1.7 la conserva para auditoría y optimización sin reinterpretarla.
 
 The `noheap` effect propagates through direct calls, constructors, virtual overrides, interface
 implementations, and precompiled references. Every reachable callable must carry the same
 contract. Indirect delegate/event targets and implicit constructors are rejected because they do
 not provide a verifiable no-heap guarantee. Field and constructor initializers are part of the
-effective constructor body. NSMETA 1.16 and MIR 1.6 preserve the contract without changing ABI.
+effective constructor body. NSMETA 1.16 introduced its metadata form and current MIR 1.7 preserves
+the contract without changing ABI.
 
 ### NS-ESCAPE-002 — Promoción de clases no escapantes al stack
 
@@ -481,8 +482,9 @@ with a trivial implicit construction, known layout of at most one mebibyte, no i
 initializers, explicit destructor, or owned fields, and uses limited to field-value reads or direct
 field stores. Any identity observation, call, argument, borrow, address, move, capture, return, or
 reassignment keeps heap allocation. A promoted construction is non-null, satisfies `noheap`, and
-is cleaned through object-only destruction without freeing its frame-owned bytes. HIR/MIR 1.6
-expose the decision; no source syntax, native ABI, runtime ABI, class layout, or metadata changes.
+is cleaned through object-only destruction without freeing its frame-owned bytes. MIR 1.6
+introduced the decision bit and current MIR 1.7 retains it; no source syntax, native ABI, runtime
+ABI, class layout, or metadata changes.
 
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
@@ -1070,6 +1072,40 @@ live zero-width barrier starts a new aligned unit. Bit offsets grow from the lea
 Packing caps alignment without shrinking storage, union alternatives begin at bit zero, and class
 fields use the same target-owned rules after their header or base subobject. NSMETA 1.18 and
 generated C/MSVC headers preserve the physical contract, while executable access remains item 329.
+
+### NS-LAYOUT-009 — Acceso a bitfields
+
+Un bitfield nombrado de ancho positivo es un lvalue asignable cuando su field es mutable, pero no
+es direccionable: `&`, locales o parámetros `ref`, retornos `ref`, operandos de memoria de `asm` y
+`offsetof` no pueden observar una dirección independiente que no existe. Un bitfield sin nombre no
+participa en resolución de nombres ni ocupa una posición en un inicializador agregado.
+
+Una lectura extrae del allocation unit los bits `[offset, offset + ancho)`. Enteros sin signo se
+extienden con ceros, enteros con signo se extienden desde el bit alto de la porción, `bool` se
+normaliza por comparación con cero y un enum usa el ancho y signo de su tipo subyacente. Una
+escritura trunca a los bits bajos del ancho declarado y hace read-modify-write de la unidad completa,
+preservando todos los bits vecinos. El valor de una asignación es el valor lógico ya truncado y
+normalizado que quedó almacenado.
+
+Las asignaciones compuestas y `++/--` calculan receptor/dirección una sola vez, leen una vez el valor
+lógico, aplican la operación tipada ordinaria y vuelven a insertar el resultado. La forma postfija
+devuelve el valor anterior; la prefija y `op=` devuelven el valor almacenado después del
+truncamiento. Los inicializadores agregados parten de storage en cero y aplican la misma inserción
+en orden, por lo que dos miembros que comparten unidad no se pisan. Estas reglas aplican igualmente
+a structs, unions, clases, miembros promovidos y tipos reconstruidos por `LibraryReference`.
+
+El punto 329 no atribuye semántica ordinaria a `volatile`: cualquier acceso a un bitfield declarado
+`volatile` se rechaza explícitamente hasta el punto 330.
+
+A positive-width named bit field is assignable when mutable but is never addressable. Reads extract
+the declared slice and perform zero extension, sign extension, bool normalization, or enum
+underlying-type interpretation as appropriate. Writes truncate to the declared width and perform a
+full-unit read-modify-write that preserves neighboring fields; the assignment result is the stored,
+normalized logical value. Compound assignments and increment/decrement evaluate the receiver once,
+and aggregate initializers use the same insertion after zero initialization while skipping unnamed
+fields. The rules also cover classes, unions, promoted anonymous members and `LibraryReference`
+types. Address-taking, `ref`, `offsetof`, assembly-memory operands and volatile bit-field access are
+rejected; volatile behavior remains item 330.
 
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su

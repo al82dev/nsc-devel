@@ -151,7 +151,7 @@ public class Program
         const std::string mirDump = ProjectOopMirModelDumper::dump(*compilation.oopMirModel());
         tests.expect(hirDump.find("inline-assembly-output") != std::string::npos &&
                 hirDump.find("constraint=={rax}") != std::string::npos &&
-                mirDump.find("schema=1.6") != std::string::npos &&
+                mirDump.find("schema=1.7") != std::string::npos &&
                 mirDump.find("side-effects=true memory-barrier=true flags=true") !=
                     std::string::npos &&
                 mirDump.find("category=memory") != std::string::npos,

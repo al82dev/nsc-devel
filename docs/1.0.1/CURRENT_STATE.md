@@ -155,7 +155,7 @@ deliberadamente conservadora: clase local sin base, constructor implícito trivi
 inicializadores, destructor explícito ni campos `owned`, tamaño máximo de 1 MiB y usos limitados a
 leer fields o escribirlos directamente. Comparar la referencia, llamar un método, prestarla,
 moverla, capturarla, retornarla o reasignarla conserva la asignación de heap. Una promoción válida
-también satisface `noheap`; HIR/MIR 1.6 muestran `stack-promoted=true`, LLVM reserva los bytes una
+también satisface `noheap`; HIR/MIR 1.7 muestran `stack-promoted=true`, LLVM reserva los bytes una
 vez en la entrada de la función y RAII usa destrucción object-only sin liberar el frame.
 
 Los miembros pueden declarar `struct { ... } Campo;`. El compilador crea una identidad anidada
@@ -179,7 +179,10 @@ cambia el tamaño o ya no cabe el campo y usa offsets de bit desde el bit menos 
 Una barrera de ancho cero sólo afecta después de una unidad viva; `pack` limita alineación sin
 reducir la unidad y las alternativas de una union comienzan en el bit cero. El mismo modelo se usa
 en structs y después del header/base de clases. Los headers C/MSVC y NSMETA 1.18 conservan ancho,
-unidad y offset; el acceso ejecutable y la semántica `volatile` pertenecen a los puntos 329–330.
+unidad y offset. Los bitfields nombrados ya admiten lectura y escritura: las lecturas normalizan
+signo, `bool` y enums; las escrituras y actualizaciones compuestas preservan los bits vecinos y
+evalúan el receptor una vez. No tienen dirección y no admiten `ref`, `offsetof` ni operandos de
+memoria de `asm`. El acceso a un bitfield `volatile` sigue reservado al punto 330.
 
 ## Superficie del lenguaje
 

@@ -3434,9 +3434,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 }
                 const std::size_t fieldOrdinal = binding->candidateMemberOrdinals.front();
                 if (memberModel_ != nullptr && fieldOrdinal < memberModel_->members().size() &&
-                    memberModel_->members()[fieldOrdinal].isBitField)
+                    memberModel_->members()[fieldOrdinal].isBitField &&
+                    memberModel_->members()[fieldOrdinal].isVolatile)
                 {
-                    error = "bit-field access belongs to item 329";
+                    error = "volatile bit-field access belongs to item 330";
                     return nullptr;
                 }
                 auto receiver = lowerReceiver(
@@ -6512,7 +6513,16 @@ bool ProjectOopHirModel::appendAggregateElements(
     std::string& error)
 {
     // Per-element type and offset, for the two aggregate shapes the language has.
-    std::vector<std::pair<std::string, std::uint64_t>> slots;
+    struct AggregateSlot final
+    {
+        std::string typeKey;
+        std::uint64_t offset = 0;
+        std::optional<std::uint64_t> bitOffset;
+        std::optional<std::uint64_t> bitWidth;
+        std::uint64_t storageSize = 0;
+        std::uint64_t storageAlignment = 1;
+    };
+    std::vector<AggregateSlot> slots;
     if (const std::optional<std::string> elementTypeKey =
             ProjectMemberModel::fixedArrayElementTypeKey(targetTypeKey);
         elementTypeKey.has_value())
@@ -6533,7 +6543,9 @@ bool ProjectOopHirModel::appendAggregateElements(
         }
         for (std::uint64_t index = 0; index < *count; ++index)
         {
-            slots.emplace_back(*elementTypeKey, index * layout->first);
+            slots.push_back(AggregateSlot{
+                *elementTypeKey, index * layout->first, std::nullopt, std::nullopt, 0,
+                layout->second});
         }
     }
     else
@@ -6554,7 +6566,17 @@ bool ProjectOopHirModel::appendAggregateElements(
         }
         for (const ObjectFieldLayout& field : layout->fields)
         {
-            slots.emplace_back(field.typeKey, field.offset);
+            const ClassMemberSymbol* member = memberModel_ != nullptr &&
+                    field.memberOrdinal < memberModel_->members().size()
+                ? &memberModel_->members()[field.memberOrdinal] : nullptr;
+            if (member != nullptr && member->isUnnamedBitField) continue;
+            slots.push_back(AggregateSlot{
+                field.typeKey,
+                field.offset,
+                field.bitOffset,
+                field.bitWidth,
+                field.bitWidth.has_value() ? field.size : 0,
+                field.alignment});
             // A union takes exactly one initializer, for its first member -- the same rule C has,
             // and the same one bindAggregateInitializer enforced.
             if (layout->isUnion) break;
@@ -6570,8 +6592,9 @@ bool ProjectOopHirModel::appendAggregateElements(
     for (std::size_t index = 0; index < syntax->children().size(); ++index)
     {
         const ast::AstNode* element = syntax->children()[index];
-        const std::string& slotTypeKey = slots[index].first;
-        const std::uint64_t slotOffset = baseOffset + slots[index].second;
+        const AggregateSlot& target = slots[index];
+        const std::string& slotTypeKey = target.typeKey;
+        const std::uint64_t slotOffset = baseOffset + target.offset;
         if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
         {
             if (!appendAggregateElements(
@@ -6597,6 +6620,10 @@ bool ProjectOopHirModel::appendAggregateElements(
         }
         auto slot = makeNode(ProjectOopHirNodeKind::AggregateElement, element, slotTypeKey);
         slot->integerValue = slotOffset;
+        slot->bitOffset = target.bitOffset;
+        slot->bitWidth = target.bitWidth;
+        slot->bitStorageSize = target.storageSize;
+        slot->bitStorageAlignment = target.storageAlignment;
         slot->children.push_back(std::move(value));
         elements.push_back(std::move(slot));
     }

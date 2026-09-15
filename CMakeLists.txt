@@ -771,6 +771,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item328.msvc-bitfield-layout
         COMMAND nsc_item328_msvc_bitfield_layout_tests)
+    add_executable(
+        nsc_item329_bitfield_access_tests
+        tests/unit/Item329BitFieldAccessTests.cpp)
+    target_link_libraries(nsc_item329_bitfield_access_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item329_bitfield_access_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item329_bitfield_access_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item329_bitfield_access_tests)
+    add_test(
+        NAME nsc.item329.bitfield-access
+        COMMAND nsc_item329_bitfield_access_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

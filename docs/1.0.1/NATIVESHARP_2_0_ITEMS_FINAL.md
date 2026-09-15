@@ -120,7 +120,7 @@
 81. **326 — Promoción y resolución de miembros anónimos / Anonymous-member promotion — COMPLETADO / COMPLETE**
 82. **327 — Sintaxis de bitfields / Bit-field syntax — COMPLETADO / COMPLETE**
 83. **328 — Layout de bitfields MSVC / MSVC bit-field layout — COMPLETADO / COMPLETE**
-84. **329 — Lectura y escritura de bitfields / Bit-field access**
+84. **329 — Lectura y escritura de bitfields / Bit-field access — COMPLETADO / COMPLETE**
 85. **330 — Bitfields volatile / Volatile bit fields**
 86. **331 — Declaraciones C variádicas / Variadic C declarations**
 87. **332 — Promociones C para varargs / C vararg promotions**

@@ -942,7 +942,8 @@ planning shall reject an implementation or redeclaration that weakens a `noheap`
 Delegate and event invocation from `noheap` shall be rejected until their type signatures acquire
 an effect channel; target uncertainty may not be treated as proof.
 
-HIR and MIR functions shall expose the flag and MIR schema minor shall be 1.6. NSMETA 1.16 shall
+HIR and MIR functions shall expose the flag. MIR schema 1.6 introduced it and current schema 1.7
+shall retain it. NSMETA 1.16 shall
 encode the flag on public method and constructor records, validate its callable-only placement,
 reconstruct it in a `LibraryReference`, and strip it when intentionally writing 1.15 or older.
 This additive semantic contract changes neither native ABI, Object ABI, layout nor runtime symbols.
@@ -961,7 +962,8 @@ The initial eligibility set shall require a source-local root class, a direct ze
 initializer work, no explicit destructor or owned instance field, canonical nonzero layout, and an
 object size no greater than one mebibyte. The declaration and construction shall retain owned
 object lifetime and expose storage ownership `none` plus `stack-promoted=true` in HIR and MIR.
-MIR schema minor 1.6 freezes this bit and the construction's destination local identity.
+MIR schema 1.6 introduced this bit and the construction's destination local identity; current
+schema 1.7 shall retain both.
 
 LLVM lowering shall allocate one fixed byte buffer per promoted local in the function entry block,
 honor canonical size and alignment, zero and initialize the ordinary class descriptor in that
@@ -1030,7 +1032,8 @@ The C header generator shall spell promoted carriers as C/MSVC anonymous structs
 compiler-generated identities and assert promoted offsets. NSMETA 1.17 shall mark physical
 anonymous carriers and its source materializer shall recursively reconstruct them for a
 `LibraryReference`. Writing minor 1.16 or earlier shall clear this unsupported marker. This feature
-changes neither MIR 1.6, Object ABI 2, Runtime ABI nor runtime ownership.
+did not itself require a MIR schema change; current MIR 1.7, Object ABI 2, Runtime ABI and runtime
+ownership remain governed by their own contracts.
 
 ## NSC-LAYOUT-005 — Bit-field syntax boundary
 
@@ -1071,6 +1074,30 @@ The C-header generator shall reproduce named, unnamed and zero-width MSVC declar
 not emit `offsetof` assertions for a bit field. NSMETA 1.18 shall serialize field flags, byte/bit
 coordinates and width; writers shall reject a lossy downgrade to 1.17 or earlier, and the public
 source materializer shall reconstruct the declarations for `LibraryReference` consumers.
+
+## NSC-LAYOUT-007 — Executable bit-field access
+
+The method-body model shall distinguish assignability from addressability: a mutable named bit
+field is an assignment target but cannot satisfy address-of, `ref`, reference-return, inline-assembly
+memory-operand or `offsetof` contracts. Unnamed fields shall not consume aggregate-initializer
+positions. HIR shall retain the resolved member and evaluate its receiver once.
+
+MIR schema 1.7 shall expose distinct `BitFieldLoad` and logical `BitFieldAddress` nodes carrying the
+allocation-unit byte offset, alignment and size plus bit offset and width. The logical address node
+may only be consumed by ordinary or compound stores; it does not promise a separately addressable
+object. Imported NSMETA 1.18 layouts shall produce the same MIR coordinates as local declarations.
+
+LLVM lowering shall load the declared integer allocation unit, shift and mask the slice, and use
+the declared base or enum-underlying signedness for extension. Bool reads shall compare the slice
+with zero. Stores shall mask the incoming low bits, clear only the destination slice, merge it into
+the previously loaded unit and store the complete unit. Assignment expressions shall return the
+post-truncation logical value. Compound stores and prefix/postfix updates shall reuse the same
+typed arithmetic path while evaluating the receiver once. Aggregate initialization shall zero the
+carrier first and insert each named bit field with the same merge operation.
+
+Item 329 shall reject every volatile bit-field read or write with the explicit item-330 boundary;
+it shall not emit a nonvolatile approximation. This schema change does not alter NSMETA 1.18,
+Object ABI 2, Runtime ABI 1.0 or ownership.
 
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 

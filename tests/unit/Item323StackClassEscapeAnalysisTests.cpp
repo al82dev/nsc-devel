@@ -166,8 +166,8 @@ public class Program
     if (mir)
     {
         writeFile(validRoot / "StackClass.mir.txt", output);
-        tests.expect(output.find("schema=1.6") != std::string::npos,
-            "MIR 1.6 publishes stack-promoted class semantics");
+        tests.expect(output.find("schema=1.7") != std::string::npos,
+            "current MIR publishes stack-promoted class semantics");
         tests.expect(output.find("allocate-and-construct type=type:StackClassItem323::Cell") !=
                          std::string::npos &&
                          output.find("stack-promoted=true") != std::string::npos &&
