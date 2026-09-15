@@ -20,10 +20,12 @@ class CompilationWorkerPool final
 {
 public:
     using Task = std::function<void(std::size_t workerIndex)>;
+    using WorkerInitializer = std::function<void(std::size_t workerIndex)>;
 
     // A zero request resolves through the active job policy, or the host default policy when the
     // pool is used outside a Driver invocation.
     explicit CompilationWorkerPool(std::size_t workerCount = 0);
+    CompilationWorkerPool(std::size_t workerCount, WorkerInitializer workerInitializer);
     ~CompilationWorkerPool();
 
     CompilationWorkerPool(const CompilationWorkerPool&) = delete;
@@ -43,6 +45,7 @@ private:
     void workerMain(std::size_t workerIndex) noexcept;
 
     CompilationJobPolicy policy_;
+    WorkerInitializer workerInitializer_;
     std::vector<std::thread> workers_;
     std::deque<QueuedTask> queue_;
     std::map<std::size_t, std::exception_ptr> failures_;

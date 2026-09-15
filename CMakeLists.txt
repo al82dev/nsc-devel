@@ -1194,6 +1194,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item375_work_stealing_tests)
     add_test(NAME nsc.item375.work-stealing COMMAND nsc_item375_work_stealing_tests)
 
+    add_executable(nsc_item376_worker_fp_initialization_tests
+        tests/unit/Item376WorkerFloatingPointInitializationTests.cpp)
+    target_link_libraries(nsc_item376_worker_fp_initialization_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item376_worker_fp_initialization_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item376_worker_fp_initialization_tests)
+    add_test(NAME nsc.item376.worker-fp-initialization
+        COMMAND nsc_item376_worker_fp_initialization_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)

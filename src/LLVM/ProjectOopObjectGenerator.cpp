@@ -1,5 +1,7 @@
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 
+#include "nativesharp/LLVM/FloatingPointMode.h"
+
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
@@ -160,9 +162,14 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         moduleErrors[moduleOrdinal] = lowerer.error();
     };
 
+    const FloatingPointState workerFloatingPointState = captureFloatingPointState();
+    const auto initializeWorkerFloatingPoint = [workerFloatingPointState](std::size_t) {
+        initializeFloatingPointStateForWorker(workerFloatingPointState);
+    };
+
     if (usePartitions)
     {
-        driver::CompilationWorkerPool workers(workerCount);
+        driver::CompilationWorkerPool workers(workerCount, initializeWorkerFloatingPoint);
         for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
             workers.submit([&, ordinal](std::size_t) { lowerModule(ordinal); });
         workers.wait();
@@ -207,7 +214,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const bool parallelOptimization = usePartitions && optimizationLevel != LlvmOptimizationLevel::O0;
     if (parallelOptimization)
     {
-        driver::CompilationWorkerPool workers(workerCount);
+        driver::CompilationWorkerPool workers(workerCount, initializeWorkerFloatingPoint);
         for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
             workers.submit([&, ordinal](std::size_t) { optimizeModule(ordinal); });
         workers.wait();
@@ -286,7 +293,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     };
     if (usePartitions)
     {
-        driver::CompilationWorkerPool workers(workerCount);
+        driver::CompilationWorkerPool workers(workerCount, initializeWorkerFloatingPoint);
         for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
             workers.submit([&, ordinal](std::size_t) { emitModule(ordinal); });
         workers.wait();

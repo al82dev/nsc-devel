@@ -20,7 +20,13 @@ CompilationJobPolicy resolvedPolicy(std::size_t requestedWorkers)
 }
 
 CompilationWorkerPool::CompilationWorkerPool(std::size_t workerCount)
-    : policy_(resolvedPolicy(workerCount))
+    : CompilationWorkerPool(workerCount, {})
+{
+}
+
+CompilationWorkerPool::CompilationWorkerPool(
+    std::size_t workerCount, WorkerInitializer workerInitializer)
+    : policy_(resolvedPolicy(workerCount)), workerInitializer_(std::move(workerInitializer))
 {
     const std::size_t count = policy_.effectiveJobs();
     workers_.reserve(count);
@@ -91,6 +97,7 @@ void CompilationWorkerPool::workerMain(std::size_t workerIndex) noexcept
 {
     CompilationJobPolicyScope policyScope(policy_);
     activeWorkerIndex = workerIndex;
+    if (workerInitializer_) workerInitializer_(workerIndex);
     for (;;)
     {
         QueuedTask task;

@@ -62,6 +62,10 @@ struct FloatingPointState final
 
 FloatingPointState captureFloatingPointState() noexcept;
 
+// Installs a captured contract in a freshly-created long-lived worker thread. Unlike the scoped
+// API below, this deliberately has no restore step: the worker owns the state until it exits.
+void initializeFloatingPointStateForWorker(const FloatingPointState& state) noexcept;
+
 class FloatingPointModeScope final
 {
 public:

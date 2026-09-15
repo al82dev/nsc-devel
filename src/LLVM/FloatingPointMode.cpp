@@ -127,6 +127,11 @@ FloatingPointState captureFloatingPointState() noexcept
     return gActiveState;
 }
 
+void initializeFloatingPointStateForWorker(const FloatingPointState& state) noexcept
+{
+    gActiveState = state;
+}
+
 FloatingPointModeScope::FloatingPointModeScope() noexcept
     : previous_(captureFloatingPointState())
 {
