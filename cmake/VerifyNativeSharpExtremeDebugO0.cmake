@@ -15,32 +15,67 @@ endif()
 if(NOT DEFINED DEBUG_OUTPUT_DIR)
     message(FATAL_ERROR "DEBUG_OUTPUT_DIR is required")
 endif()
+if(NOT DEFINED DEBUG_CORE_PROJECT OR NOT EXISTS "${DEBUG_CORE_PROJECT}")
+    message(FATAL_ERROR "DEBUG_CORE_PROJECT must name NativeSharp.Core.nsproj")
+endif()
 
 file(REMOVE_RECURSE "${DEBUG_OUTPUT_DIR}")
-file(MAKE_DIRECTORY "${DEBUG_OUTPUT_DIR}/Producer" "${DEBUG_OUTPUT_DIR}/Consumer")
+file(MAKE_DIRECTORY "${DEBUG_OUTPUT_DIR}/Core" "${DEBUG_OUTPUT_DIR}/Producer" "${DEBUG_OUTPUT_DIR}/Consumer")
+get_filename_component(debug_core_source_dir "${DEBUG_CORE_PROJECT}" DIRECTORY)
+file(COPY "${debug_core_source_dir}/" DESTINATION "${DEBUG_OUTPUT_DIR}/Core/Source")
 file(COPY "${DEBUG_EXTREME_SOURCE_DIR}/Producer.ns" DESTINATION "${DEBUG_OUTPUT_DIR}/Producer")
 file(COPY "${DEBUG_EXTREME_SOURCE_DIR}/Consumer.ns" DESTINATION "${DEBUG_OUTPUT_DIR}/Consumer")
 
 set(producer_library "${DEBUG_OUTPUT_DIR}/Producer/DebugExtremeProducer.lib")
 set(producer_metadata "${DEBUG_OUTPUT_DIR}/Producer/DebugExtremeProducer.nsmeta")
 set(producer_project "${DEBUG_OUTPUT_DIR}/Producer/DebugExtremeProducer.nsproj")
+set(core_library "${DEBUG_OUTPUT_DIR}/Core/NativeSharpCore.lib")
+set(core_metadata "${DEBUG_OUTPUT_DIR}/Core/NativeSharpCore.nsmeta")
+set(core_project "${DEBUG_OUTPUT_DIR}/Core/NativeSharpCore.nsproj")
 set(consumer_project "${DEBUG_OUTPUT_DIR}/Consumer/DebugExtremeConsumer.nsproj")
 set(consumer_executable "${DEBUG_OUTPUT_DIR}/Consumer/DebugExtremeConsumer.exe")
 set(consumer_pdb "${DEBUG_OUTPUT_DIR}/Consumer/DebugExtremeConsumer.pdb")
 file(TO_CMAKE_PATH "${producer_library}" producer_library_xml)
 file(TO_CMAKE_PATH "${producer_metadata}" producer_metadata_xml)
+file(TO_CMAKE_PATH "${core_library}" core_library_xml)
+file(TO_CMAKE_PATH "${core_metadata}" core_metadata_xml)
+
+file(WRITE "${core_project}"
+    "<Project><PropertyGroup><Name>NativeSharpCore</Name>"
+    "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
+    "<ItemGroup><Compile Include=\"Source/**/*.ns\" /></ItemGroup></Project>")
 
 file(WRITE "${producer_project}"
     "<Project><PropertyGroup><Name>DebugExtremeProducer</Name>"
     "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
-    "<ItemGroup><Compile Include=\"Producer.ns\" /></ItemGroup></Project>")
+    "<ItemGroup><Compile Include=\"Producer.ns\" />"
+    "<LibraryReference Include=\"${core_library_xml}\" Metadata=\"${core_metadata_xml}\" />"
+    "</ItemGroup></Project>")
 file(WRITE "${consumer_project}"
     "<Project><PropertyGroup><Name>DebugExtremeConsumer</Name>"
     "<OutputType>Exe</OutputType></PropertyGroup><ItemGroup>"
     "<Compile Include=\"Consumer.ns\" />"
+    # The producer's public metadata mentions the real Core SIMD types.  Keep the same precompiled
+    # Core module present while loading that LibraryReference so its external type closure is
+    # complete in the consumer too.
+    "<LibraryReference Include=\"${core_library_xml}\" Metadata=\"${core_metadata_xml}\" />"
     "<LibraryReference Include=\"${producer_library_xml}\" "
     "Metadata=\"${producer_metadata_xml}\" />"
     "</ItemGroup></Project>")
+
+execute_process(
+    COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-lib "${core_project}"
+        -g -O0 "-fdebug-prefix-map=${DEBUG_OUTPUT_DIR}=/_/nativesharp/debug-extreme"
+        -o "${core_library}"
+    RESULT_VARIABLE core_result
+    OUTPUT_VARIABLE core_output
+    ERROR_VARIABLE core_error)
+if(NOT core_result EQUAL 0 OR
+   NOT EXISTS "${core_library}" OR NOT EXISTS "${core_metadata}")
+    message(FATAL_ERROR
+        "extreme debug Core dependency failed (${core_result})\n"
+        "stdout:\n${core_output}\nstderr:\n${core_error}")
+endif()
 
 execute_process(
     COMMAND "${NSC_EXECUTABLE}" --emit-project-oop-lib "${producer_project}"
@@ -124,6 +159,11 @@ if(NOT pdb_result EQUAL 0 OR
    NOT pdb_dump MATCHES "DebugExtreme\\.ProducerApi\\.Consume" OR
    NOT pdb_dump MATCHES "DebugExtreme\\.Counter\\.~Counter" OR
    NOT pdb_dump MATCHES "destruction-entry \\[generated\\]" OR
+   NOT pdb_dump MATCHES "NativeSharp\\.Core\\.Numerics\\.Float32x4" OR
+   NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Lanes`" OR
+   NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`C3`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`simdVector`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`simdMatrix`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`consumed`" OR
    NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`seed`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`interfaceView`" OR

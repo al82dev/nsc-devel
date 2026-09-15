@@ -1161,6 +1161,24 @@ private:
         return pointer;
     }
 
+    std::optional<std::pair<std::string_view, std::uint64_t>> debugSimdShape(
+        std::string_view typeKey) const noexcept
+    {
+        const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey);
+        if (named == nullptr) return std::nullopt;
+        const std::string name = debugNamedDisplayName(*named);
+        if (name == "NativeSharp.Core.Numerics.Float32x2") return {{"builtin:float", 2}};
+        if (name == "NativeSharp.Core.Numerics.Float32x3") return {{"builtin:float", 3}};
+        if (name == "NativeSharp.Core.Numerics.Float32x4") return {{"builtin:float", 4}};
+        if (name == "NativeSharp.Core.Numerics.Float32x8") return {{"builtin:float", 8}};
+        if (name == "NativeSharp.Core.Numerics.Float64x4") return {{"builtin:double", 4}};
+        if (name == "NativeSharp.Core.Numerics.Int32x4") return {{"builtin:int", 4}};
+        if (name == "NativeSharp.Core.Numerics.Int32x8") return {{"builtin:int", 8}};
+        if (name == "NativeSharp.Core.Numerics.Int64x2") return {{"builtin:long", 2}};
+        if (name == "NativeSharp.Core.Numerics.Int64x4") return {{"builtin:long", 4}};
+        return std::nullopt;
+    }
+
     LLVMMetadataRef debugType(std::string_view typeKey)
     {
         if (debugBuilder_ == nullptr || typeKey == "builtin:void") return nullptr;
@@ -1293,6 +1311,30 @@ private:
                         static_cast<std::uint32_t>(field.alignment * 8), field.offset * 8,
                         fieldFlags, fieldType);
                     if (member != nullptr) members.push_back(member);
+                }
+                // Item 379. Keep source field names (X/Y/Z/W) and add an overlapping native
+                // vector view so VS/WinDbg can inspect lanes and vector registers directly.
+                if (const auto simd = debugSimdShape(typeKey); simd.has_value())
+                {
+                    LLVMMetadataRef elementType = debugType(simd->first);
+                    LLVMMetadataRef subrange = LLVMDIBuilderGetOrCreateSubrange(
+                        debugBuilder_, 0, static_cast<std::int64_t>(simd->second));
+                    LLVMMetadataRef lanes = elementType != nullptr && subrange != nullptr
+                        ? LLVMDIBuilderCreateVectorType(
+                            debugBuilder_, layout->size * 8,
+                            static_cast<std::uint32_t>(layout->alignment * 8),
+                            elementType, &subrange, 1)
+                        : nullptr;
+                    static constexpr std::string_view laneName = "Lanes";
+                    LLVMMetadataRef laneMember = lanes != nullptr
+                        ? LLVMDIBuilderCreateMemberType(
+                            debugBuilder_, temporary, laneName.data(), laneName.size(), file,
+                            line, layout->size * 8,
+                            static_cast<std::uint32_t>(layout->alignment * 8), 0,
+                            static_cast<LLVMDIFlags>(LLVMDIFlagPublic | LLVMDIFlagArtificial),
+                            lanes)
+                        : nullptr;
+                    if (laneMember != nullptr) members.push_back(laneMember);
                 }
 
                 LLVMMetadataRef complete = layout->isUnion

@@ -427,6 +427,13 @@ LLVMMetadataRef LLVMDIBuilderCreateArrayType(
     LLVMMetadataRef elementType,
     LLVMMetadataRef* subscripts,
     unsigned subscriptCount);
+LLVMMetadataRef LLVMDIBuilderCreateVectorType(
+    LLVMDIBuilderRef builder,
+    std::uint64_t sizeInBits,
+    std::uint32_t alignInBits,
+    LLVMMetadataRef elementType,
+    LLVMMetadataRef* subscripts,
+    unsigned subscriptCount);
 LLVMMetadataRef LLVMDIBuilderCreateClassType(
     LLVMDIBuilderRef builder,
     LLVMMetadataRef scope,

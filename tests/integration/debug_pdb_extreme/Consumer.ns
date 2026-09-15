@@ -18,10 +18,11 @@ namespace DebugExtremeConsumer
                 dispatched = ProducerApi.ReadInterface(interfaceView);
             }
             int consumed = ProducerApi.Consume(move(concrete));
+            int simd = ProducerApi.InspectSimd();
             Box<int> box = new Box<int>(consumed);
             int answer = ProducerApi.ReadBox(box);
             delete box;
-            return answer + dispatched - consumed;
+            return answer + dispatched - consumed + simd;
         }
     }
 }

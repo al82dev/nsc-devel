@@ -1,5 +1,6 @@
 namespace DebugExtreme
 {
+    using NativeSharp.Core.Numerics;
     public delegate int Transform(int value);
 
     public interface ICounter
@@ -87,6 +88,17 @@ namespace DebugExtreme
         public static int Consume(owned Counter counter)
         {
             return counter.Read();
+        }
+
+        public static int InspectSimd()
+        {
+            Float32x4 simdVector = new Float32x4(1.0F, 2.0F, 3.0F, 4.0F);
+            Float32x4x4 simdMatrix;
+            simdMatrix.C0 = simdVector;
+            simdMatrix.C1 = simdVector;
+            simdMatrix.C2 = simdVector;
+            simdMatrix.C3 = simdVector;
+            return (int)simdMatrix.C3.X - 1;
         }
     }
 }
