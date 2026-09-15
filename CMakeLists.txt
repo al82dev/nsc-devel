@@ -1777,6 +1777,16 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item315_unified_escape_analysis_tests)
     add_test(NAME nsc.item315.unified-escape-analysis COMMAND nsc_item315_unified_escape_analysis_tests)
+
+    # NativeSharp 2.0 item 316: reference aliases retain a maximum valid lexical region and every
+    # declaration/return is checked against it.
+    add_executable(nsc_item316_reference_lifetime_analysis_tests tests/unit/Item316ReferenceLifetimeAnalysisTests.cpp)
+    target_link_libraries(nsc_item316_reference_lifetime_analysis_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item316_reference_lifetime_analysis_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item316_reference_lifetime_analysis_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item316_reference_lifetime_analysis_tests)
+    add_test(NAME nsc.item316.reference-lifetime-analysis COMMAND nsc_item316_reference_lifetime_analysis_tests)
     # for the two pre-existing, compiler-wide cctor-guard bugs this round found and fixed (a
     # cross-thread TOCTOU race and a same-thread self-deadlock introduced by that race's fix -- see
     # tests/unit/Stage54_3MutexTests.cpp's header comment for the full rationale).

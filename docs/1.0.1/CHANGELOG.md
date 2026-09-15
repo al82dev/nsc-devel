@@ -32,6 +32,9 @@ empaqueta con NativeSharp 1.0.1.
   dispatch virtual/interfaz y `LibraryReference`.
 - El análisis de escapes conserva el origen de cada alias `ref` y rechaza storage del frame aunque
   se oculte tras aliases encadenados, fields de structs, elementos inline o llamadas de reenvío.
+- Cada alias `ref` conserva además su región léxica máxima. Locales y VLAs no pueden adquirir una
+  duración mayor que su scope de origen; parámetros del llamador permanecen válidos dentro del
+  método, sin cambios de ownership, metadata, runtime ni ABI.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

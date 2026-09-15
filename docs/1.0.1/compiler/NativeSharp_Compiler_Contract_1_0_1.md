@@ -817,6 +817,25 @@ exercise safe caller/static/pointer forwarding and reject direct, chained, call-
 value-parameter, struct-field, and fixed-array frame escapes. Existing VLA, borrow, and view escape
 suites shall remain green as adjacent lifetime domains.
 
+## NSC-LIFETIME-REF-001 — Reference lifetime regions
+
+The method-body model shall attach a maximum valid lexical scope to every known reference origin
+and the declaration scope to every reference local. The maximum shall be the source local or VLA
+scope for current-frame storage and the method root for parameters. Unknown raw-pointer pointee
+provenance shall retain the explicit unsafe contract rather than inheriting the pointer slot's
+lifetime.
+
+Reference-local binding shall require the alias scope to equal or descend from the maximum valid
+scope. Address-preserving aliases, aggregate members, indexing and ref-return calls shall propagate
+the original maximum without widening it. Reference-return validation shall continue to treat the
+return boundary as outside every current-frame region, while ref/out caller storage remains valid.
+
+The method-body dump shall expose both `max-scope` and `alias-scope` for auditability. Focused O0
+evidence shall cover nested aliases of caller and local storage, linked execution, and transitive
+rejection of nested locals, struct reference indexers and VLA aliases. Existing reference-return,
+reference-indexer, VLA, borrow and view suites shall remain green. The analysis shall add no runtime
+helper, ownership operation, metadata field or ABI change.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

@@ -64,6 +64,9 @@ struct MethodEscapeOrigin final
 {
     MethodEscapeOriginKind kind = MethodEscapeOriginKind::ExternalStorage;
     std::optional<std::size_t> ordinal;
+    // Item 316. The broadest lexical scope in which the referenced storage is guaranteed live.
+    // Every alias declaration must be nested in this scope.
+    std::optional<std::size_t> maximumValidScopeOrdinal;
 };
 
 struct MethodLocalSymbol final
@@ -99,6 +102,7 @@ struct MethodLocalSymbol final
     // transitive escapes (`ref alias = ref local; return ref alias`) without guessing again at
     // the return site and also propagates through reference-returning calls.
     MethodEscapeOrigin referenceEscapeOrigin;
+    std::optional<std::size_t> referenceLifetimeScopeOrdinal;
     bool isConst = false;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //

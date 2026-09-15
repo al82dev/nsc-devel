@@ -307,6 +307,25 @@ is rejected transitively through aliases, value aggregates, indexing, and ref-fo
 caller/static storage remains valid. Raw-pointer pointee lifetime stays explicit and unsafe rather
 than being inferred from the lifetime of the local pointer variable.
 
+### NS-LIFETIME-REF-001 — Regiones léxicas de referencias
+
+Además de su origen, cada dirección `ref` conserva la región léxica máxima en la que se garantiza
+que su storage permanece vivo. Un alias sólo puede declararse en esa región o en uno de sus scopes
+descendientes. Encadenar aliases, acceder a un field o elemento y reenviar una dirección por una
+llamada `ref` no amplía esa región.
+
+El storage de un local ordinario o VLA queda limitado al scope que lo declara. Un parámetro
+`ref`/`out` pertenece al llamador y puede usarse en cualquier scope del método; un parámetro por
+valor/`in` pertenece al frame actual y tampoco puede salir mediante `return ref`. Un retorno `ref`
+es un sink exterior al método y sólo acepta procedencia externa o del llamador. Los pointees de
+puntero crudo conservan su contrato unsafe explícito.
+
+Every reference address retains the broadest lexical region in which its storage is guaranteed
+live. A reference alias may occupy only that region or one of its descendants, and address-
+preserving operations never widen it. Ordinary locals and VLAs are bounded by their declaration
+scope; caller-owned `ref`/`out` storage spans the method. Reference returns remain an external sink
+and therefore reject all current-frame regions. This rule changes neither ownership nor ABI.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

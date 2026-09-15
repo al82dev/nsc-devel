@@ -1104,10 +1104,17 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
         {
             const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
             if (local.variableLengthArrayRootLocalOrdinal.has_value())
+            {
+                const std::size_t root = *local.variableLengthArrayRootLocalOrdinal;
                 return {MethodEscapeOriginKind::VariableLengthArray,
-                    local.variableLengthArrayRootLocalOrdinal};
+                    local.variableLengthArrayRootLocalOrdinal,
+                    root < locals_.size()
+                        ? std::optional<std::size_t>(locals_[root].scopeOrdinal)
+                        : std::nullopt};
+            }
             if (local.isReference) return local.referenceEscapeOrigin;
-            return {MethodEscapeOriginKind::CurrentFrameLocal, name->semanticOrdinal};
+            return {MethodEscapeOriginKind::CurrentFrameLocal, name->semanticOrdinal,
+                local.scopeOrdinal};
         }
         if (name->kind == ScopeNameKind::Parameter)
         {
@@ -1118,8 +1125,18 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
             {
                 const ParameterPassKind passKind = method->parameters[name->semanticOrdinal].passKind;
                 if (passKind == ParameterPassKind::Ref || passKind == ParameterPassKind::Out)
-                    return {};
-                return {MethodEscapeOriginKind::CurrentFrameParameter, name->semanticOrdinal};
+                {
+                    std::size_t rootScope = scopeOrdinal;
+                    while (rootScope < scopes_.size() &&
+                        scopes_[rootScope].parentScopeOrdinal.has_value())
+                        rootScope = *scopes_[rootScope].parentScopeOrdinal;
+                    return {MethodEscapeOriginKind::ExternalStorage, name->semanticOrdinal, rootScope};
+                }
+                std::size_t rootScope = scopeOrdinal;
+                while (rootScope < scopes_.size() &&
+                    scopes_[rootScope].parentScopeOrdinal.has_value())
+                    rootScope = *scopes_[rootScope].parentScopeOrdinal;
+                return {MethodEscapeOriginKind::CurrentFrameParameter, name->semanticOrdinal, rootScope};
             }
         }
         return {};
@@ -1147,7 +1164,10 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
         if (const std::optional<std::size_t> vla =
                 variableArrayRootLocalOfExpression(expression->first(), scopeOrdinal);
             vla.has_value())
-            return {MethodEscapeOriginKind::VariableLengthArray, vla};
+            return {MethodEscapeOriginKind::VariableLengthArray, vla,
+                *vla < locals_.size()
+                    ? std::optional<std::size_t>(locals_[*vla].scopeOrdinal)
+                    : std::nullopt};
         const std::string_view baseType = typeKeyOf(expression->first());
         if (ProjectMemberModel::fixedArrayElementTypeKey(baseType).has_value() ||
             ProjectMemberModel::flexibleArrayElementTypeKey(baseType).has_value())
@@ -1188,7 +1208,10 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
         if (const std::optional<std::size_t> vla =
                 variableArrayRootLocalOfExpression(expression->first(), scopeOrdinal);
             vla.has_value())
-            return {MethodEscapeOriginKind::VariableLengthArray, vla};
+            return {MethodEscapeOriginKind::VariableLengthArray, vla,
+                *vla < locals_.size()
+                    ? std::optional<std::size_t>(locals_[*vla].scopeOrdinal)
+                    : std::nullopt};
         // The pointer slot may live in this frame while its pointee does not. Without explicit
         // pointer provenance, treating the slot as the referent would be an unsound false claim.
         return {};
@@ -3308,6 +3331,21 @@ void ProjectMethodBodyModel::analyzeVariable(
             }
             pendingReferenceEscapeOrigin =
                 referenceEscapeOriginOfExpression(variable->first(), scopeOrdinal);
+            if (!pendingReferenceEscapeOrigin.maximumValidScopeOrdinal.has_value())
+            {
+                std::size_t rootScope = scopeOrdinal;
+                while (scopes_[rootScope].parentScopeOrdinal.has_value())
+                    rootScope = *scopes_[rootScope].parentScopeOrdinal;
+                pendingReferenceEscapeOrigin.maximumValidScopeOrdinal = rootScope;
+            }
+            if (!scopeContains(*pendingReferenceEscapeOrigin.maximumValidScopeOrdinal, scopeOrdinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    variable->range(),
+                    "reference local lifetime exceeds the lifetime region of its source storage");
+            }
         }
         else if (initializer.valid)
         {
@@ -3488,6 +3526,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.typeKey = typeKey;
     local.isReference = isReferenceLocal;
     local.referenceEscapeOrigin = pendingReferenceEscapeOrigin;
+    if (isReferenceLocal) local.referenceLifetimeScopeOrdinal = scopeOrdinal;
     local.isVariableLengthArray = isVariableLengthArray;
     local.variableLengthArrayElementTypeKey = variableLengthArrayElementTypeKey;
     local.variableLengthArrayCountSyntax = variableLengthArrayCountSyntax;

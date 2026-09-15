@@ -138,6 +138,11 @@ local, parámetro por valor, VLA, field de struct local ni elemento inline del f
 dirección atraviesa aliases o una llamada de reenvío. Storage estático/del llamador y pointees de
 puntero crudo sin procedencia VLA mantienen sus contratos respectivos.
 
+Cada origen conocido incluye también el scope máximo en el que su storage está vivo. El scope de
+un alias debe estar contenido en esa región y el dump de cuerpos publica `max-scope` y
+`alias-scope` para auditoría. La comprobación es enteramente estática: no añade metadata, helpers,
+ownership ni cambios ABI.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros
