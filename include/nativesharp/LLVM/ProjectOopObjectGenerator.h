@@ -3,6 +3,7 @@
 #include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -64,6 +65,18 @@ public:
         LlvmOptimizationLevel optimizationLevel,
         std::size_t workerCount,
         std::span<const DebugPrefixMap> debugPrefixMaps,
+        std::string& error) const;
+
+    std::unique_ptr<ProjectOopObjectBundle> generate(
+        const frontend::ProjectNameLookup& nameLookup,
+        const frontend::ProjectMemberModel& memberModel,
+        const frontend::ProjectOopMirModel& mirModel,
+        const source::SourceManager& sourceManager,
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimizationLevel,
+        std::size_t workerCount,
+        std::span<const DebugPrefixMap> debugPrefixMaps,
+        LinkTimeOptimizationMode linkTimeOptimization,
         std::string& error) const;
 };
 }

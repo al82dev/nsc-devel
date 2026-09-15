@@ -4,6 +4,7 @@
 #include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
 #include "nativesharp/Linker/LldLinker.h"
 
 #include <filesystem>
@@ -51,6 +52,7 @@ private:
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
         llvm_backend::DebugInformationKind debugInformation,
         const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
+        llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
         linker::WindowsExecutableSubsystem subsystem,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
         std::ostream& output,
@@ -61,6 +63,7 @@ private:
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
         llvm_backend::DebugInformationKind debugInformation,
         const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
+        llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProjectOopDynamicLibraryGeneration(
@@ -69,6 +72,7 @@ private:
         llvm_backend::LlvmOptimizationLevel optimizationLevel,
         llvm_backend::DebugInformationKind debugInformation,
         const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
+        llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
         std::ostream& output,
         std::ostream& error);

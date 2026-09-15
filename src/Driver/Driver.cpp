@@ -47,6 +47,7 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
+#include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmProcessTrace.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
@@ -2814,6 +2815,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool jobCountSeen = false;
     bool reservedCoresSeen = false;
     bool artifactCacheSeen = false;
+    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
+        llvm_backend::LinkTimeOptimizationMode::None;
+    bool linkTimeOptimizationSeen = false;
     llvm_backend::FloatingPointMode floatingPointMode = llvm_backend::FloatingPointMode::Precise;
     bool floatingPointModeSeen = false;
     llvm_backend::FmaContractPolicy fmaContractPolicy = llvm_backend::FmaContractPolicy::Off;
@@ -2853,6 +2857,23 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         if (argument == "--llvm-pass-trace")
         {
             continue;
+        }
+        if (argument == "-flto")
+        {
+            if (linkTimeOptimizationSeen)
+            {
+                error << "nsc: error: duplicate link-time optimization mode\n";
+                return ExitCode::CommandLineError;
+            }
+            linkTimeOptimizationSeen = true;
+            linkTimeOptimization = llvm_backend::LinkTimeOptimizationMode::Full;
+            continue;
+        }
+        if (argument.starts_with("-flto="))
+        {
+            error << "nsc: error: unsupported link-time optimization mode '" << argument
+                  << "'; expected -flto\n";
+            return ExitCode::CommandLineError;
         }
         static constexpr std::string_view floatingPointModePrefix = "--fp-mode=";
         if (argument.starts_with(floatingPointModePrefix))
@@ -3235,6 +3256,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     const bool artifactCacheCapableInvocation = args.size() == 4 && args[2] == "-o" &&
         (args[0] == "--emit-project-oop-exe" || args[0] == "--emit-project-oop-lib" ||
          args[0] == "--emit-project-oop-dll");
+    const bool linkTimeOptimizationCapableInvocation = args.size() == 4 && args[2] == "-o" &&
+        (args[0] == "--emit-project-oop-exe" || args[0] == "--emit-project-oop-lib" ||
+         args[0] == "--emit-project-oop-dll");
     if (subsystemSeen && !executableInvocation)
     {
         error << "nsc: error: /subsystem is only valid when emitting an executable\n";
@@ -3262,6 +3286,12 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     {
         error << "nsc: error: --artifact-cache is supported when emitting a project OOP "
                  "executable, static library, or DLL\n";
+        return ExitCode::CommandLineError;
+    }
+    if (linkTimeOptimizationSeen && !linkTimeOptimizationCapableInvocation)
+    {
+        error << "nsc: error: -flto is supported when emitting a project OOP executable, "
+                 "static library, or DLL\n";
         return ExitCode::CommandLineError;
     }
 
@@ -3650,17 +3680,20 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         {
             return runProjectOopExecutableGeneration(
                 args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
+                linkTimeOptimization,
                 subsystem, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-oop-lib")
         {
             return runProjectOopStaticLibraryGeneration(
-                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps, output, error);
+                args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
+                linkTimeOptimization, output, error);
         }
         if (action == "--emit-project-oop-dll")
         {
             return runProjectOopDynamicLibraryGeneration(
                 args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
+                linkTimeOptimization,
                 extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-host-header")
@@ -4724,6 +4757,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     llvm_backend::DebugInformationKind debugInformation,
     const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
+    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
     linker::WindowsExecutableSubsystem subsystem,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
@@ -4798,7 +4832,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
             return objectGenerator.generate(
                 *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
                 compilation.sourceManager(), debugInformation, optimizationLevel,
-                effectiveCompilationJobs(), debugPrefixMaps, codeGenerationError);
+                effectiveCompilationJobs(), debugPrefixMaps, linkTimeOptimization,
+                codeGenerationError);
         });
     if (objectBundle == nullptr)
     {
@@ -4855,6 +4890,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << "subsystem: " << subsystemDisplayName(subsystem) << '\n'
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
+           << "link-time-optimization: "
+           << llvm_backend::linkTimeOptimizationModeName(linkTimeOptimization) << '\n'
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
            << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
@@ -4878,6 +4915,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     llvm_backend::DebugInformationKind debugInformation,
     const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
+    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
     std::ostream &output,
     std::ostream &error)
 {
@@ -4935,7 +4973,8 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
             return objectGenerator.generate(
                 *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
                 compilation.sourceManager(), debugInformation, optimizationLevel,
-                effectiveCompilationJobs(), debugPrefixMaps, codeGenerationError);
+                effectiveCompilationJobs(), debugPrefixMaps, linkTimeOptimization,
+                codeGenerationError);
         });
     if (objectBundle == nullptr)
     {
@@ -4991,6 +5030,8 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
            << "machine-members: AMD64 COFF\n"
            << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
            << "debug-information: " << llvm_backend::debugInformationKindName(debugInformation) << '\n'
+           << "link-time-optimization: "
+           << llvm_backend::linkTimeOptimizationModeName(linkTimeOptimization) << '\n'
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
            << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
@@ -5011,6 +5052,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     llvm_backend::DebugInformationKind debugInformation,
     const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
+    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
     std::ostream &error)
@@ -5149,7 +5191,8 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
             return objectGenerator.generate(
                 *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
                 compilation.sourceManager(), debugInformation, optimizationLevel,
-                effectiveCompilationJobs(), debugPrefixMaps, codeGenerationError);
+                effectiveCompilationJobs(), debugPrefixMaps, linkTimeOptimization,
+                codeGenerationError);
         });
     if (objectBundle == nullptr)
     {

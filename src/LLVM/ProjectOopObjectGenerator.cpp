@@ -107,6 +107,23 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::span<const DebugPrefixMap> debugPrefixMaps,
     std::string& error) const
 {
+    return generate(nameLookup, memberModel, mirModel, sourceManager, debugInformation,
+        optimizationLevel, workerCount, debugPrefixMaps,
+        LinkTimeOptimizationMode::None, error);
+}
+
+std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel,
+    std::size_t workerCount,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    LinkTimeOptimizationMode linkTimeOptimization,
+    std::string& error) const
+{
     error.clear();
     workerCount = std::max<std::size_t>(1, workerCount);
     const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
@@ -131,7 +148,11 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         mirModel.functions(), [](const frontend::ProjectOopMirFunction& function) {
             return function.inliningPolicy == frontend::InliningPolicy::Required;
         });
-    const bool usePartitions = workerCount > 1 && partition.units().size() > 1 &&
+    // Full LTO deliberately keeps the complete program in one LLVM module. This makes
+    // inter-unit inlining, global DCE and constant propagation happen before native object
+    // emission instead of asking the PE linker to recover information already discarded.
+    const bool usePartitions = linkTimeOptimization != LinkTimeOptimizationMode::Full &&
+        workerCount > 1 && partition.units().size() > 1 &&
         !requiresWholeModuleDebugInlining && !requiresWholeModuleRequiredInlining;
     const std::size_t moduleCount = usePartitions ? partition.units().size() + 1 : 1;
     std::vector<std::unique_ptr<LlvmModule>> modules(moduleCount);
