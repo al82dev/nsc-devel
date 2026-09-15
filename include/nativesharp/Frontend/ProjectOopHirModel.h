@@ -276,6 +276,9 @@ enum class ProjectOopHirNodeKind
     CoreSimdFloat256Add,
     CoreSimdFloat256Subtract,
     CoreSimdFloat256Multiply,
+    CoreSimdInt256Add,
+    CoreSimdInt256Subtract,
+    CoreSimdInt256Multiply,
     // Stage 54.3 "Mutex" -- see MethodCoreOperationKind::MutexCreate/MutexLock/MutexUnlock/
     // MutexClose in ProjectMethodBodyModel.h. Exact same shape as CoreThreadCreate/Join/Detach
     // above (a builtin:nint HANDLE round-tripped between separate NativeSharp calls), so these

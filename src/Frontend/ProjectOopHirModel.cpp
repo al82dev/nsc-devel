@@ -104,6 +104,12 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdFloat256Subtract};
     case MethodCoreOperationKind::SimdFloat256Multiply:
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdFloat256Multiply};
+    case MethodCoreOperationKind::SimdInt256Add:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdInt256Add};
+    case MethodCoreOperationKind::SimdInt256Subtract:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdInt256Subtract};
+    case MethodCoreOperationKind::SimdInt256Multiply:
+        return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdInt256Multiply};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -1037,6 +1043,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreSimdFloat256Add: return "core-simd-float256-add";
         case ProjectOopHirNodeKind::CoreSimdFloat256Subtract: return "core-simd-float256-subtract";
         case ProjectOopHirNodeKind::CoreSimdFloat256Multiply: return "core-simd-float256-multiply";
+        case ProjectOopHirNodeKind::CoreSimdInt256Add: return "core-simd-int256-add";
+        case ProjectOopHirNodeKind::CoreSimdInt256Subtract: return "core-simd-int256-subtract";
+        case ProjectOopHirNodeKind::CoreSimdInt256Multiply: return "core-simd-int256-multiply";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

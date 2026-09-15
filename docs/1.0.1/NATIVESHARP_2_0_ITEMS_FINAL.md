@@ -146,7 +146,7 @@
 
 102. **347 — Vectores enteros de 128 bits / 128-bit integer vectors — COMPLETADO / COMPLETE**
 103. **348 — Vectores float/double de 256 bits / 256-bit floating vectors — COMPLETADO / COMPLETE**
-104. **349 — Vectores enteros de 256 bits / 256-bit integer vectors**
+104. **349 — Vectores enteros de 256 bits / 256-bit integer vectors — COMPLETADO / COMPLETE**
 105. **350 — Loads/stores SIMD alineados / Aligned SIMD loads and stores**
 106. **351 — Loads/stores SIMD no alineados / Unaligned SIMD loads and stores**
 107. **352 — `float2` y `float3` / Compact float vectors**

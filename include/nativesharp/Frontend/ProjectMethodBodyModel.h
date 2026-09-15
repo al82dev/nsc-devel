@@ -785,6 +785,10 @@ enum class MethodCoreOperationKind
     SimdFloat256Add,
     SimdFloat256Subtract,
     SimdFloat256Multiply,
+    // Item 349: signed 256-bit integer vectors.
+    SimdInt256Add,
+    SimdInt256Subtract,
+    SimdInt256Multiply,
     // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers PRIVADOS Y
     // ESTATICOS, EXACTO mismo patron estructural que los tres helpers de Thread arriba (Stage
     // 54.1): un HANDLE de Win32 guardado como builtin:nint, creado por MutexCreate y consumido

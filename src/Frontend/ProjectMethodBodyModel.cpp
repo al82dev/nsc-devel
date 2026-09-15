@@ -9221,6 +9221,29 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            const std::string integerVector256Name =
+                declaringType.identity.fullyQualifiedName();
+            if ((integerVector256Name == "NativeSharp.Core.Numerics.Int32x8" ||
+                    integerVector256Name == "NativeSharp.Core.Numerics.Int64x4") &&
+                selectedMember.isStatic && selectedMember.parameters.size() == 2 &&
+                selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&
+                selectedMember.parameters[1].typeKey == selectedMember.declaredTypeKey)
+            {
+                std::optional<MethodCoreOperationKind> simdKind;
+                if (selectedMember.name == "Add")
+                    simdKind = MethodCoreOperationKind::SimdInt256Add;
+                else if (selectedMember.name == "Subtract")
+                    simdKind = MethodCoreOperationKind::SimdInt256Subtract;
+                else if (selectedMember.name == "Multiply")
+                    simdKind = MethodCoreOperationKind::SimdInt256Multiply;
+                if (simdKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *simdKind, expression, methodMemberOrdinal, scopeOrdinal,
+                        selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
+                        false, std::nullopt, std::nullopt});
+                }
+            }
             // SHR-022. Las cuatro salidas de consola. La firma es identica en las cuatro
             // --estatica, void, un solo `string`-- asi que lo unico que las separa es el nombre, y
             // por eso la tabla es de nombre a operacion en vez de cuatro `if` copiados.
@@ -14553,6 +14576,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::SimdFloat256Add: return "simd-float256-add";
         case MethodCoreOperationKind::SimdFloat256Subtract: return "simd-float256-subtract";
         case MethodCoreOperationKind::SimdFloat256Multiply: return "simd-float256-multiply";
+        case MethodCoreOperationKind::SimdInt256Add: return "simd-int256-add";
+        case MethodCoreOperationKind::SimdInt256Subtract: return "simd-int256-subtract";
+        case MethodCoreOperationKind::SimdInt256Multiply: return "simd-int256-multiply";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";
