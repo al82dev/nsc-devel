@@ -34,5 +34,14 @@ namespace NativeSharp.Core.Numerics
         public static void StoreAligned(Int32x4* destination, Int32x4 value)
         {
         }
+
+        public static Int32x4 LoadUnaligned(Int32x4* source)
+        {
+            return default(Int32x4);
+        }
+
+        public static void StoreUnaligned(Int32x4* destination, Int32x4 value)
+        {
+        }
     }
 }

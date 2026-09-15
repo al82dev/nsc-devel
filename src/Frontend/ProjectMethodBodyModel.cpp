@@ -9214,6 +9214,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 {
                     memoryKind = MethodCoreOperationKind::SimdStoreAligned128;
                 }
+                else if (selectedMember.name == "LoadUnaligned" &&
+                    selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey + "*")
+                {
+                    memoryKind = MethodCoreOperationKind::SimdLoadUnaligned128;
+                }
+                else if (selectedMember.name == "StoreUnaligned" &&
+                    selectedMember.declaredTypeKey == "builtin:void" &&
+                    selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey ==
+                        selectedMember.parameters[1].typeKey + "*")
+                {
+                    memoryKind = MethodCoreOperationKind::SimdStoreUnaligned128;
+                }
                 if (memoryKind.has_value())
                 {
                     coreBindings_.push_back(MethodCoreBinding{
@@ -14608,6 +14622,8 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::SimdInt256Multiply: return "simd-int256-multiply";
         case MethodCoreOperationKind::SimdLoadAligned128: return "simd-load-aligned-128";
         case MethodCoreOperationKind::SimdStoreAligned128: return "simd-store-aligned-128";
+        case MethodCoreOperationKind::SimdLoadUnaligned128: return "simd-load-unaligned-128";
+        case MethodCoreOperationKind::SimdStoreUnaligned128: return "simd-store-unaligned-128";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

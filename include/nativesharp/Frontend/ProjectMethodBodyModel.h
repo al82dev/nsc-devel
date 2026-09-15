@@ -792,6 +792,9 @@ enum class MethodCoreOperationKind
     // Item 350: alignment is part of these memory operations' source contract.
     SimdLoadAligned128,
     SimdStoreAligned128,
+    // Item 351: explicit unaligned memory operations never overstate pointer alignment.
+    SimdLoadUnaligned128,
+    SimdStoreUnaligned128,
     // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers PRIVADOS Y
     // ESTATICOS, EXACTO mismo patron estructural que los tres helpers de Thread arriba (Stage
     // 54.1): un HANDLE de Win32 guardado como builtin:nint, creado por MutexCreate y consumido
