@@ -54,8 +54,8 @@ int main()
     writeFile(root / "Body.nssdk",
         "<NativeSharpSdk Name=\"Windows\" FormatVersion=\"1\"><Mapping/></NativeSharpSdk>\n");
     tests.expect(!loader.load(root / "Body.nssdk", error).has_value() &&
-            error.find("body is reserved") != std::string::npos,
-        "format 1 rejects undeclared extension elements");
+            error.find("unsupported NativeSharpSdk child") != std::string::npos,
+        "format 1 rejects undeclared top-level extension elements");
 
     writeFile(root / "Main.ns", "int main() { return 0; }\n");
     writeFile(root / "App.nsproj",

@@ -825,6 +825,15 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item334.declarative-sdk-format
         COMMAND nsc_item334_declarative_sdk_format_tests)
+    add_executable(
+        nsc_item335_sdk_mapping_tests
+        tests/unit/Item335SdkMappingTests.cpp)
+    target_link_libraries(nsc_item335_sdk_mapping_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_item335_sdk_mapping_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item335_sdk_mapping_tests)
+    add_test(
+        NAME nsc.item335.sdk-mapping
+        COMMAND nsc_item335_sdk_mapping_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

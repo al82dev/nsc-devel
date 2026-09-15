@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string_view>
 #include <system_error>
+#include <unordered_set>
 
 namespace nativesharp::compilation
 {
@@ -58,6 +59,106 @@ bool isIdentifier(std::string_view value)
         {
             return isStart(character) || std::isdigit(character) != 0;
         });
+}
+
+bool hasOnlyAttributes(
+    const SimpleXmlElement& element,
+    std::initializer_list<std::string_view> allowed,
+    std::string& error)
+{
+    for (const auto& [name, value] : element.attributes)
+    {
+        static_cast<void>(value);
+        if (std::find(allowed.begin(), allowed.end(), name) == allowed.end())
+        {
+            error = "SDK element '" + element.name + "' has unsupported attribute '" + name + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool requireAttribute(
+    const SimpleXmlElement& element,
+    std::string_view name,
+    std::string& value,
+    std::string& error)
+{
+    const std::string* found = attribute(element, name);
+    if (found == nullptr || trim(*found).empty())
+    {
+        error = "SDK element '" + element.name + "' requires non-empty attribute '" +
+            std::string(name) + "'";
+        return false;
+    }
+    value = trim(*found);
+    return true;
+}
+
+bool parseMappings(const SimpleXmlElement& mappings, SdkManifest& manifest, std::string& error)
+{
+    if (!mappings.attributes.empty() || !trim(mappings.text).empty())
+    {
+        error = "SDK Mappings does not accept attributes or text";
+        return false;
+    }
+    std::unordered_set<std::string> keys;
+    for (const SimpleXmlElement& mapping : mappings.children)
+    {
+        if (!mapping.children.empty() || !trim(mapping.text).empty())
+        {
+            error = "SDK mapping '" + mapping.name + "' must be empty";
+            return false;
+        }
+        std::string first;
+        std::string second;
+        std::string third;
+        std::string key;
+        if (mapping.name == "Header")
+        {
+            if (!hasOnlyAttributes(mapping, {"Include", "Namespace"}, error) ||
+                !requireAttribute(mapping, "Include", first, error) ||
+                !requireAttribute(mapping, "Namespace", second, error)) return false;
+            key = "H\n" + first;
+            manifest.headers.push_back(SdkHeaderMapping{first, second});
+        }
+        else if (mapping.name == "Type")
+        {
+            if (!hasOnlyAttributes(mapping, {"Native", "NativeSharp"}, error) ||
+                !requireAttribute(mapping, "Native", first, error) ||
+                !requireAttribute(mapping, "NativeSharp", second, error)) return false;
+            key = "T\n" + first;
+            manifest.types.push_back(SdkTypeMapping{first, second});
+        }
+        else if (mapping.name == "Field")
+        {
+            if (!hasOnlyAttributes(mapping, {"Type", "Native", "NativeSharp"}, error) ||
+                !requireAttribute(mapping, "Type", first, error) ||
+                !requireAttribute(mapping, "Native", second, error) ||
+                !requireAttribute(mapping, "NativeSharp", third, error)) return false;
+            key = "F\n" + first + "\n" + second;
+            manifest.fields.push_back(SdkFieldMapping{first, second, third});
+        }
+        else if (mapping.name == "Define")
+        {
+            if (!hasOnlyAttributes(mapping, {"Name", "Value"}, error) ||
+                !requireAttribute(mapping, "Name", first, error) ||
+                !requireAttribute(mapping, "Value", second, error)) return false;
+            key = "D\n" + first;
+            manifest.defines.push_back(SdkDefineMapping{first, second});
+        }
+        else
+        {
+            error = "unsupported SDK mapping '" + mapping.name + "'";
+            return false;
+        }
+        if (!keys.insert(key).second)
+        {
+            error = "duplicate SDK mapping key '" + first + "'";
+            return false;
+        }
+    }
+    return true;
 }
 }
 
@@ -112,9 +213,9 @@ std::optional<SdkManifest> SdkManifestLoader::load(
         error = canonical.string() + ": SDK root element must be 'NativeSharpSdk'";
         return std::nullopt;
     }
-    if (!root.children.empty() || !trim(root.text).empty())
+    if (!trim(root.text).empty())
     {
-        error = canonical.string() + ": NativeSharpSdk body is reserved and must be empty in format 1";
+        error = canonical.string() + ": NativeSharpSdk does not accept text";
         return std::nullopt;
     }
     for (const auto& [name, value] : root.attributes)
@@ -150,6 +251,30 @@ std::optional<SdkManifest> SdkManifestLoader::load(
             "'; expected 1";
         return std::nullopt;
     }
-    return SdkManifest{canonical, trim(*name), parsedVersion};
+    SdkManifest manifest;
+    manifest.manifestPath = canonical;
+    manifest.name = trim(*name);
+    manifest.formatVersion = parsedVersion;
+    bool sawMappings = false;
+    for (const SimpleXmlElement& child : root.children)
+    {
+        if (child.name != "Mappings")
+        {
+            error = canonical.string() + ": unsupported NativeSharpSdk child '" + child.name + "'";
+            return std::nullopt;
+        }
+        if (sawMappings)
+        {
+            error = canonical.string() + ": SDK Mappings is declared more than once";
+            return std::nullopt;
+        }
+        sawMappings = true;
+        if (!parseMappings(child, manifest, error))
+        {
+            error = canonical.string() + ": " + error;
+            return std::nullopt;
+        }
+    }
+    return manifest;
 }
 }

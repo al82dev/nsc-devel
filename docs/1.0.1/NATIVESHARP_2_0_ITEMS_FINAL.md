@@ -129,7 +129,7 @@
 ## Tanda 8 — SDK, COM y ABI
 
 89. **334 — Formato declarativo de SDK / Declarative SDK format — COMPLETADO / COMPLETE**
-90. **335 — Mapeo de headers, tipos, campos y defines / Header, type, field, and define mapping**
+90. **335 — Mapeo de headers, tipos, campos y defines / Header, type, field, and define mapping — COMPLETADO / COMPLETE**
 91. **336 — Selección por arquitectura y versión / Architecture and version selection**
 92. **337 — Diagnósticos de SDK y librerías faltantes / SDK and missing-library diagnostics**
 93. **338 — Consumo COM mediante vtables crudas / Raw-vtable COM consumption**
