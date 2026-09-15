@@ -226,6 +226,9 @@ enum class ProjectOopMirNodeKind
     CoreSimdSqrt,
     CoreSimdReciprocalSqrt,
     CoreSimdFusedMultiplyAdd,
+    CoreBitPopulationCount,
+    CoreBitLeadingZeroCount,
+    CoreBitTrailingZeroCount,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,

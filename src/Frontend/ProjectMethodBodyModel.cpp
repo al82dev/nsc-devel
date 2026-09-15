@@ -9301,6 +9301,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.BitOperations" &&
+                selectedMember.isStatic && selectedMember.parameters.size() == 1 &&
+                selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&
+                (selectedMember.declaredTypeKey == "builtin:uint" ||
+                    selectedMember.declaredTypeKey == "builtin:ulong"))
+            {
+                std::optional<MethodCoreOperationKind> bitKind;
+                if (selectedMember.name == "PopCount")
+                    bitKind = MethodCoreOperationKind::BitPopulationCount;
+                else if (selectedMember.name == "LeadingZeroCount")
+                    bitKind = MethodCoreOperationKind::BitLeadingZeroCount;
+                else if (selectedMember.name == "TrailingZeroCount")
+                    bitKind = MethodCoreOperationKind::BitTrailingZeroCount;
+                if (bitKind.has_value())
+                    coreBindings_.push_back(MethodCoreBinding{*bitKind, expression, methodMemberOrdinal,
+                        scopeOrdinal, selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
+                        false, std::nullopt, std::nullopt});
+            }
             // Item 348: the 256-bit floating family uses the same exact-signature gate as the
             // earlier SIMD families while retaining distinct MIR operations for FP semantics.
             const std::string floatingVector256Name =
@@ -14695,6 +14713,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::SimdSqrt: return "simd-sqrt";
         case MethodCoreOperationKind::SimdReciprocalSqrt: return "simd-reciprocal-sqrt";
         case MethodCoreOperationKind::SimdFusedMultiplyAdd: return "simd-fused-multiply-add";
+        case MethodCoreOperationKind::BitPopulationCount: return "bit-popcount";
+        case MethodCoreOperationKind::BitLeadingZeroCount: return "bit-clz";
+        case MethodCoreOperationKind::BitTrailingZeroCount: return "bit-ctz";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

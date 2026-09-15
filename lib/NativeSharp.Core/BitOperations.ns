@@ -1,0 +1,12 @@
+namespace NativeSharp.Core.Numerics
+{
+    public class BitOperations
+    {
+        public static uint PopCount(uint value) { return 0u; }
+        public static ulong PopCount(ulong value) { return 0ul; }
+        public static uint LeadingZeroCount(uint value) { return 0u; }
+        public static ulong LeadingZeroCount(ulong value) { return 0ul; }
+        public static uint TrailingZeroCount(uint value) { return 0u; }
+        public static ulong TrailingZeroCount(ulong value) { return 0ul; }
+    }
+}

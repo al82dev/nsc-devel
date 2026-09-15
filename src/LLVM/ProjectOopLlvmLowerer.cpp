@@ -7815,6 +7815,33 @@ private:
                 LLVMSetAlignment(result, 16U);
                 return result;
             }
+            case frontend::ProjectOopMirNodeKind::CoreBitPopulationCount:
+            case frontend::ProjectOopMirNodeKind::CoreBitLeadingZeroCount:
+            case frontend::ProjectOopMirNodeKind::CoreBitTrailingZeroCount:
+            {
+                if (node->children.size() != 1)
+                    return failValue(error, "bit-count intrinsic requires one operand");
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMTypeRef integerType = llvmType(node->typeKey, error);
+                if (integerType == nullptr) return nullptr;
+                const bool wide = node->typeKey == "builtin:ulong";
+                const char* baseName = node->kind == frontend::ProjectOopMirNodeKind::CoreBitPopulationCount
+                    ? "llvm.ctpop." : node->kind == frontend::ProjectOopMirNodeKind::CoreBitLeadingZeroCount
+                    ? "llvm.ctlz." : "llvm.cttz.";
+                const std::string intrinsicName = std::string(baseName) + (wide ? "i64" : "i32");
+                LLVMTypeRef parameters[2] = {integerType, LLVMInt1TypeInContext(context_)};
+                const bool hasZeroFlag =
+                    node->kind != frontend::ProjectOopMirNodeKind::CoreBitPopulationCount;
+                LLVMTypeRef intrinsicType = LLVMFunctionType(
+                    integerType, parameters, hasZeroFlag ? 2U : 1U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, intrinsicName.c_str());
+                if (intrinsic == nullptr)
+                    intrinsic = LLVMAddFunction(module_, intrinsicName.c_str(), intrinsicType);
+                LLVMValueRef arguments[2] = {value, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+                return LLVMBuildCall2(builder_, intrinsicType, intrinsic, arguments,
+                    hasZeroFlag ? 2U : 1U, "bit.count");
+            }
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply:

@@ -132,6 +132,12 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSimdReciprocalSqrt};
     case MethodCoreOperationKind::SimdFusedMultiplyAdd:
         return StringCallLowering{3U, ProjectOopHirNodeKind::CoreSimdFusedMultiplyAdd};
+    case MethodCoreOperationKind::BitPopulationCount:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreBitPopulationCount};
+    case MethodCoreOperationKind::BitLeadingZeroCount:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreBitLeadingZeroCount};
+    case MethodCoreOperationKind::BitTrailingZeroCount:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreBitTrailingZeroCount};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -1079,6 +1085,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreSimdSqrt: return "core-simd-sqrt";
         case ProjectOopHirNodeKind::CoreSimdReciprocalSqrt: return "core-simd-reciprocal-sqrt";
         case ProjectOopHirNodeKind::CoreSimdFusedMultiplyAdd: return "core-simd-fused-multiply-add";
+        case ProjectOopHirNodeKind::CoreBitPopulationCount: return "core-bit-popcount";
+        case ProjectOopHirNodeKind::CoreBitLeadingZeroCount: return "core-bit-clz";
+        case ProjectOopHirNodeKind::CoreBitTrailingZeroCount: return "core-bit-ctz";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

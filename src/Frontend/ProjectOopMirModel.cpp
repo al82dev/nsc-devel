@@ -655,6 +655,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreSimdSqrt: return "core-simd-sqrt";
         case ProjectOopMirNodeKind::CoreSimdReciprocalSqrt: return "core-simd-reciprocal-sqrt";
         case ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd: return "core-simd-fused-multiply-add";
+        case ProjectOopMirNodeKind::CoreBitPopulationCount: return "core-bit-popcount";
+        case ProjectOopMirNodeKind::CoreBitLeadingZeroCount: return "core-bit-clz";
+        case ProjectOopMirNodeKind::CoreBitTrailingZeroCount: return "core-bit-ctz";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1745,6 +1748,15 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreSimdFusedMultiplyAdd:
             result->kind = ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd;
+            break;
+        case ProjectOopHirNodeKind::CoreBitPopulationCount:
+            result->kind = ProjectOopMirNodeKind::CoreBitPopulationCount;
+            break;
+        case ProjectOopHirNodeKind::CoreBitLeadingZeroCount:
+            result->kind = ProjectOopMirNodeKind::CoreBitLeadingZeroCount;
+            break;
+        case ProjectOopHirNodeKind::CoreBitTrailingZeroCount:
+            result->kind = ProjectOopMirNodeKind::CoreBitTrailingZeroCount;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;
