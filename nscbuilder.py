@@ -23,6 +23,7 @@ report.md y logs separados por etapa y por caso.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -97,6 +98,31 @@ DEFAULT_PREFIX = Path(r"C:\native-sharp")
 DEFAULT_LLVM = Path(r"C:\clang-llvm")
 DEFAULT_NSLINK = Path(r"C:\native-sharp\bin\nslink.exe")
 HISTORY_ROOT = ROOT / "_nscbuilder" / "history"
+
+
+def configure_windows_error_mode() -> None:
+    """Keep child-process failures in the logs instead of Windows dialog boxes."""
+    if os.name != "nt":
+        return
+
+    # Child processes inherit this process-wide mode unless explicitly created with
+    # CREATE_DEFAULT_ERROR_MODE.  The pipeline intentionally does not use that flag.
+    sem_fail_critical_errors = 0x0001
+    sem_no_gp_fault_error_box = 0x0002
+    sem_no_open_file_error_box = 0x8000
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.SetErrorMode.argtypes = [ctypes.c_uint]
+    kernel32.SetErrorMode.restype = ctypes.c_uint
+    requested = (
+        sem_fail_critical_errors
+        | sem_no_gp_fault_error_box
+        | sem_no_open_file_error_box
+    )
+    previous = kernel32.SetErrorMode(requested)
+    kernel32.SetErrorMode(previous | requested)
+
+
+configure_windows_error_mode()
 # Gate 0 del plan 123. Todo lo que produce la certificacion ABI vive bajo `_abi`, separado del
 # historial ordinario de corridas: `_nscbuilder` se puede borrar sin perder un baseline.
 ABI_ROOT = ROOT / "_abi"
