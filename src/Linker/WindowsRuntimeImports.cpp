@@ -189,14 +189,14 @@ bool createWindowsImportLibraries(
     // Si algun dia hay que decidir un import mirando uno de esos, la busqueda tiene que
     // construirse con `irTextSymbolReference`: escrita a mano encontraria cero coincidencias, y
     // aqui un cero no da un rojo, da una biblioteca de importacion a la que le falta una entrada.
-    // These five entries are the compiler-support closure of a final NativeSharp image. They
+    // These entries are the compiler-support closure of a final NativeSharp image. They
     // used to be selected by scanning only the two IR modules compiled in the current command.
     // That is insufficient once a precompiled static library participates: its SEH tables and
     // LLVM-generated memcpy/memset/memmove calls no longer have IR available to scan. Keeping
     // this tiny support set stable lets object-only archives compose transitively without
     // vendoring process import libraries into every .lib.
     const auto ucrtSymbols = std::to_array<std::string_view>({
-        "strlen", "__C_specific_handler", "memset", "memcpy", "memmove"});
+        "strlen", "__C_specific_handler", "memset", "memcpy", "memmove", "fmaf"});
 
     // Merge: runtime tables first, then the project's external imports. A DLL is matched
     // case-insensitively ("user32.dll" == "USER32.DLL"); symbols are deduplicated so a project

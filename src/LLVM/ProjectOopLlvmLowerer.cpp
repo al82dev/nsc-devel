@@ -7758,6 +7758,63 @@ private:
                 LLVMSetAlignment(result, 16U);
                 return result;
             }
+            case frontend::ProjectOopMirNodeKind::CoreSimdSqrt:
+            case frontend::ProjectOopMirNodeKind::CoreSimdReciprocalSqrt:
+            case frontend::ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd:
+            {
+                const bool fma = node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd;
+                if (node->children.size() != (fma ? 3U : 1U))
+                    return failValue(error, "SIMD sqrt/FMA carries an invalid operand count");
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
+                LLVMValueRef vectors[3]{};
+                for (std::size_t index = 0; index < node->children.size(); ++index)
+                {
+                    LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+                    if (value == nullptr) return nullptr;
+                    LLVMValueRef slot = entryBlockAlloca(carrier, 16U, "simd.math.source.addr");
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                    LLVMSetAlignment(store, 16U);
+                    vectors[index] = LLVMBuildLoad2(builder_, vectorType, slot, "simd.math.source");
+                    LLVMSetAlignment(vectors[index], 16U);
+                }
+                LLVMValueRef vectorResult = nullptr;
+                if (fma)
+                {
+                    LLVMTypeRef parameters[] = {vectorType, vectorType, vectorType};
+                    LLVMTypeRef intrinsicType = LLVMFunctionType(vectorType, parameters, 3U, 0);
+                    LLVMValueRef intrinsic = LLVMAddFunction(module_, "llvm.fma.v4f32", intrinsicType);
+                    vectorResult = LLVMBuildCall2(builder_, intrinsicType, intrinsic, vectors, 3U, "simd.fma");
+                }
+                else
+                {
+                    LLVMTypeRef intrinsicType = LLVMFunctionType(vectorType, &vectorType, 1U, 0);
+                    LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.sqrt.v4f32");
+                    if (intrinsic == nullptr)
+                        intrinsic = LLVMAddFunction(module_, "llvm.sqrt.v4f32", intrinsicType);
+                    LLVMValueRef squareRoot = LLVMBuildCall2(
+                        builder_, intrinsicType, intrinsic, vectors, 1U, "simd.sqrt");
+                    if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdReciprocalSqrt)
+                    {
+                        LLVMValueRef ones[4]{};
+                        for (LLVMValueRef& one : ones)
+                            one = LLVMConstReal(LLVMFloatTypeInContext(context_), 1.0);
+                        vectorResult = LLVMBuildFDiv(
+                            builder_, LLVMConstVector(ones, 4U), squareRoot, "simd.rsqrt");
+                    }
+                    else
+                    {
+                        vectorResult = squareRoot;
+                    }
+                }
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "simd.math.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, 16U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.math.result");
+                LLVMSetAlignment(result, 16U);
+                return result;
+            }
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply:

@@ -126,6 +126,12 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSimdSwizzleWzyx};
     case MethodCoreOperationKind::SimdShuffleLowHigh:
         return StringCallLowering{2U, ProjectOopHirNodeKind::CoreSimdShuffleLowHigh};
+    case MethodCoreOperationKind::SimdSqrt:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSimdSqrt};
+    case MethodCoreOperationKind::SimdReciprocalSqrt:
+        return StringCallLowering{1U, ProjectOopHirNodeKind::CoreSimdReciprocalSqrt};
+    case MethodCoreOperationKind::SimdFusedMultiplyAdd:
+        return StringCallLowering{3U, ProjectOopHirNodeKind::CoreSimdFusedMultiplyAdd};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -1070,6 +1076,9 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreHalfToFloat: return "core-half-to-float";
         case ProjectOopHirNodeKind::CoreSimdSwizzleWzyx: return "core-simd-swizzle-wzyx";
         case ProjectOopHirNodeKind::CoreSimdShuffleLowHigh: return "core-simd-shuffle-low-high";
+        case ProjectOopHirNodeKind::CoreSimdSqrt: return "core-simd-sqrt";
+        case ProjectOopHirNodeKind::CoreSimdReciprocalSqrt: return "core-simd-reciprocal-sqrt";
+        case ProjectOopHirNodeKind::CoreSimdFusedMultiplyAdd: return "core-simd-fused-multiply-add";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

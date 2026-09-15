@@ -72,5 +72,12 @@ namespace NativeSharp.Core.Numerics
         {
             return Min(Max(value, lower), upper);
         }
+
+        public static Float32x4 Sqrt(Float32x4 value) { return default(Float32x4); }
+        public static Float32x4 ReciprocalSqrt(Float32x4 value) { return default(Float32x4); }
+        public static Float32x4 FusedMultiplyAdd(Float32x4 left, Float32x4 right, Float32x4 addend)
+        {
+            return default(Float32x4);
+        }
     }
 }

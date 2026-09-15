@@ -9193,6 +9193,26 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            if (compactFloatVectorName == "NativeSharp.Core.Numerics.Float32x4" &&
+                selectedMember.isStatic)
+            {
+                std::optional<MethodCoreOperationKind> mathKind;
+                if (selectedMember.name == "Sqrt" && selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey)
+                    mathKind = MethodCoreOperationKind::SimdSqrt;
+                else if (selectedMember.name == "ReciprocalSqrt" && selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey)
+                    mathKind = MethodCoreOperationKind::SimdReciprocalSqrt;
+                else if (selectedMember.name == "FusedMultiplyAdd" && selectedMember.parameters.size() == 3 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&
+                    selectedMember.parameters[1].typeKey == selectedMember.declaredTypeKey &&
+                    selectedMember.parameters[2].typeKey == selectedMember.declaredTypeKey)
+                    mathKind = MethodCoreOperationKind::SimdFusedMultiplyAdd;
+                if (mathKind.has_value())
+                    coreBindings_.push_back(MethodCoreBinding{*mathKind, expression, methodMemberOrdinal,
+                        scopeOrdinal, selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
+                        false, std::nullopt, std::nullopt});
+            }
             // Item 347: the two public signed 128-bit integer carriers share one intrinsic
             // family. Identity and exact self/self -> self signatures prevent user methods with
             // coincidentally matching names from acquiring compiler semantics.
@@ -14672,6 +14692,9 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::HalfToFloat: return "half-to-float";
         case MethodCoreOperationKind::SimdSwizzleWzyx: return "simd-swizzle-wzyx";
         case MethodCoreOperationKind::SimdShuffleLowHigh: return "simd-shuffle-low-high";
+        case MethodCoreOperationKind::SimdSqrt: return "simd-sqrt";
+        case MethodCoreOperationKind::SimdReciprocalSqrt: return "simd-reciprocal-sqrt";
+        case MethodCoreOperationKind::SimdFusedMultiplyAdd: return "simd-fused-multiply-add";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

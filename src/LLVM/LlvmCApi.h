@@ -658,6 +658,7 @@ LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* n
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
 void LLVMSetGlobalConstant(LLVMValueRef global, LLVMBool isConstant);
 LLVMValueRef LLVMAddFunction(LLVMModuleRef module, const char* name, LLVMTypeRef functionType);
+LLVMValueRef LLVMGetNamedFunction(LLVMModuleRef module, const char* name);
 void LLVMSetFunctionCallConv(LLVMValueRef function, unsigned callingConvention);
 void LLVMSetLinkage(LLVMValueRef global, LLVMLinkage linkage);
 LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);

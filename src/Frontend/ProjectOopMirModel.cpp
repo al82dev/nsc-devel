@@ -652,6 +652,9 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreHalfToFloat: return "core-half-to-float";
         case ProjectOopMirNodeKind::CoreSimdSwizzleWzyx: return "core-simd-swizzle-wzyx";
         case ProjectOopMirNodeKind::CoreSimdShuffleLowHigh: return "core-simd-shuffle-low-high";
+        case ProjectOopMirNodeKind::CoreSimdSqrt: return "core-simd-sqrt";
+        case ProjectOopMirNodeKind::CoreSimdReciprocalSqrt: return "core-simd-reciprocal-sqrt";
+        case ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd: return "core-simd-fused-multiply-add";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1733,6 +1736,15 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreSimdShuffleLowHigh:
             result->kind = ProjectOopMirNodeKind::CoreSimdShuffleLowHigh;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdSqrt:
+            result->kind = ProjectOopMirNodeKind::CoreSimdSqrt;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdReciprocalSqrt:
+            result->kind = ProjectOopMirNodeKind::CoreSimdReciprocalSqrt;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdFusedMultiplyAdd:
+            result->kind = ProjectOopMirNodeKind::CoreSimdFusedMultiplyAdd;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;

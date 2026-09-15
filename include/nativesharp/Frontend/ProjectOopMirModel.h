@@ -223,6 +223,9 @@ enum class ProjectOopMirNodeKind
     CoreHalfToFloat,
     CoreSimdSwizzleWzyx,
     CoreSimdShuffleLowHigh,
+    CoreSimdSqrt,
+    CoreSimdReciprocalSqrt,
+    CoreSimdFusedMultiplyAdd,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,
