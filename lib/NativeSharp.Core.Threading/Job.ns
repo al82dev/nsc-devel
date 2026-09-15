@@ -9,13 +9,28 @@ namespace NativeSharp.Core.Threading
         public abstract T Invoke();
     }
 
-    public class Job<T>
+    // A non-generic dependency surface lets Job<int>, Job<long>, and any other closed job type
+    // participate in one dependency graph without erasing their result types.
+    public interface IJob
+    {
+        public bool IsScheduled();
+        public bool IsCompleted();
+        public bool IsCancelled();
+        public bool Wait(int millisecondsTimeout);
+        public bool Cancel();
+    }
+
+    public class Job<T> : IJob
     {
         private JobFunction<T> function_;
         private ThreadStart work_;
         private T result_;
         private owned AtomicInt32 state_;
         private owned Event completed_;
+        // The array allocation is owned by this Job, but its elements are plain non-owning
+        // references. This is the same borrowed-elements pattern used by snapshot enumerators.
+        private IJob[] dependencies_;
+        private int dependencyCount_;
 
         public Job(JobFunction<T> function)
         {
@@ -24,6 +39,31 @@ namespace NativeSharp.Core.Threading
             result_ = default(T);
             state_ = new AtomicInt32(0);
             completed_ = new Event(true, false);
+            dependencies_ = new IJob[8];
+            dependencyCount_ = 0;
+        }
+
+        public Job(JobFunction<T> function, int dependencyCapacity)
+        {
+            int actualCapacity = dependencyCapacity;
+            if (actualCapacity < 1) { actualCapacity = 1; }
+            function_ = function;
+            work_ = Run;
+            result_ = default(T);
+            state_ = new AtomicInt32(0);
+            completed_ = new Event(true, false);
+            dependencies_ = new IJob[actualCapacity];
+            dependencyCount_ = 0;
+        }
+
+        // Dependencies are borrowed and frozen when Schedule succeeds. They must be scheduled
+        // before the dependent job, which keeps a one-worker pool from waiting on work behind it.
+        public bool AddDependency(IJob dependency)
+        {
+            if (state_.Load() != 0 || dependencyCount_ == dependencies_.Length) { return false; }
+            dependencies_[dependencyCount_] = dependency;
+            dependencyCount_ = dependencyCount_ + 1;
+            return true;
         }
 
         // A Job is single-shot. false means it was already scheduled or the bounded pool queue
@@ -46,7 +86,28 @@ namespace NativeSharp.Core.Threading
 
         public bool IsCompleted()
         {
-            return state_.Load() == 2;
+            return state_.Load() == 3;
+        }
+
+        public bool IsCancelled()
+        {
+            int state = state_.Load();
+            return state == 4 || state == 5;
+        }
+
+        // Cancellation is cooperative and succeeds only before Invoke begins. A ready job is
+        // completed as cancelled immediately; a queued job is discarded when its worker reaches
+        // it. Running and already completed jobs cannot be cancelled retroactively.
+        public bool Cancel()
+        {
+            if (state_.CompareExchange(4, 0) == 0)
+            {
+                state_.Store(5);
+                completed_.Set();
+                return true;
+            }
+            if (state_.CompareExchange(4, 1) == 1) { return true; }
+            return false;
         }
 
         public bool Wait(int millisecondsTimeout)
@@ -64,9 +125,40 @@ namespace NativeSharp.Core.Threading
 
         private void Run()
         {
+            if (state_.Load() == 4)
+            {
+                state_.Store(5);
+                completed_.Set();
+                return;
+            }
+
+            int i = 0;
+            while (i < dependencyCount_)
+            {
+                dependencies_[i].Wait(-1);
+                if (dependencies_[i].IsCancelled() || state_.Load() == 4)
+                {
+                    state_.Store(5);
+                    completed_.Set();
+                    return;
+                }
+                i = i + 1;
+            }
+
+            if (state_.CompareExchange(2, 1) != 1)
+            {
+                state_.Store(5);
+                completed_.Set();
+                return;
+            }
             result_ = function_.Invoke();
-            state_.Store(2);
+            state_.Store(3);
             completed_.Set();
+        }
+
+        ~Job()
+        {
+            delete[] dependencies_;
         }
     }
 }

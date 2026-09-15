@@ -1164,6 +1164,17 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item372_typed_jobs_tests)
     add_test(NAME nsc.item372.typed-jobs COMMAND nsc_item372_typed_jobs_tests)
 
+    add_executable(nsc_item373_job_dependencies_cancellation_tests
+        tests/unit/Item373JobDependenciesCancellationTests.cpp)
+    target_link_libraries(nsc_item373_job_dependencies_cancellation_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item373_job_dependencies_cancellation_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item373_job_dependencies_cancellation_tests PRIVATE
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item373_job_dependencies_cancellation_tests)
+    add_test(NAME nsc.item373.job-dependencies-cancellation
+        COMMAND nsc_item373_job_dependencies_cancellation_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)
