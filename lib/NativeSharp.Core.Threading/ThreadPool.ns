@@ -14,6 +14,8 @@ namespace NativeSharp.Core.Threading
         private int nextQueue_;
         private int startedWorkers_;
         private int pending_;
+        private int stealCount_;
+        private bool workStealing_;
         private bool stopping_;
 
         public ThreadPool(int workerCount, int queueCapacity)
@@ -32,6 +34,39 @@ namespace NativeSharp.Core.Threading
             nextQueue_ = 0;
             startedWorkers_ = 0;
             pending_ = 0;
+            stealCount_ = 0;
+            workStealing_ = true;
+            stopping_ = false;
+
+            int i = 0;
+            while (i < workers_.Length)
+            {
+                ThreadStart start = WorkerLoop;
+                workers_[i] = new Thread(start);
+                i = i + 1;
+            }
+        }
+
+        // Directed-affinity users may disable stealing explicitly. The two-argument constructor
+        // enables it by default so an idle worker can balance ordinary pool workloads.
+        public ThreadPool(int workerCount, int queueCapacity, bool enableWorkStealing)
+        {
+            int actualWorkers = workerCount;
+            int actualCapacity = queueCapacity;
+            if (actualWorkers < 1) { actualWorkers = 1; }
+            if (actualCapacity < 1) { actualCapacity = 1; }
+
+            workers_ = new Thread[actualWorkers];
+            queues_ = new ThreadStart[actualWorkers * actualCapacity];
+            heads_ = new int[actualWorkers];
+            counts_ = new int[actualWorkers];
+            gate_ = new Monitor();
+            queueCapacity_ = actualCapacity;
+            nextQueue_ = 0;
+            startedWorkers_ = 0;
+            pending_ = 0;
+            stealCount_ = 0;
+            workStealing_ = enableWorkStealing;
             stopping_ = false;
 
             int i = 0;
@@ -56,6 +91,19 @@ namespace NativeSharp.Core.Threading
         public int WorkerQueueCount()
         {
             return workers_.Length;
+        }
+
+        public bool WorkStealingEnabled()
+        {
+            return workStealing_;
+        }
+
+        public int StealCount()
+        {
+            gate_.Enter();
+            int result = stealCount_;
+            gate_.Exit();
+            return result;
         }
 
         // The delegate is borrowed until it runs, matching Thread(ThreadStart). Callers keep it
@@ -154,21 +202,34 @@ namespace NativeSharp.Core.Threading
             while (true)
             {
                 gate_.Enter();
-                while (counts_[workerIndex] == 0 && !stopping_)
+                int source = FindWorkQueueLocked(workerIndex);
+                while (source < 0 && !stopping_)
                 {
                     gate_.Wait(-1);
+                    source = FindWorkQueueLocked(workerIndex);
                 }
-                if (counts_[workerIndex] == 0 && stopping_)
+                if (source < 0 && stopping_)
                 {
                     gate_.Exit();
                     return;
                 }
 
-                int slot = workerIndex * queueCapacity_ + heads_[workerIndex];
+                int slot = 0;
+                if (source == workerIndex)
+                {
+                    slot = source * queueCapacity_ + heads_[source];
+                    heads_[source] = heads_[source] + 1;
+                    if (heads_[source] == queueCapacity_) { heads_[source] = 0; }
+                }
+                else
+                {
+                    int tail = heads_[source] + counts_[source] - 1;
+                    if (tail >= queueCapacity_) { tail = tail - queueCapacity_; }
+                    slot = source * queueCapacity_ + tail;
+                    stealCount_ = stealCount_ + 1;
+                }
                 ThreadStart work = queues_[slot];
-                heads_[workerIndex] = heads_[workerIndex] + 1;
-                if (heads_[workerIndex] == queueCapacity_) { heads_[workerIndex] = 0; }
-                counts_[workerIndex] = counts_[workerIndex] - 1;
+                counts_[source] = counts_[source] - 1;
                 gate_.Exit();
 
                 work();
@@ -178,6 +239,24 @@ namespace NativeSharp.Core.Threading
                 if (pending_ == 0) { gate_.PulseAll(); }
                 gate_.Exit();
             }
+        }
+
+        private int FindWorkQueueLocked(int workerIndex)
+        {
+            if (counts_[workerIndex] != 0) { return workerIndex; }
+            if (!workStealing_) { return -1; }
+
+            int checkedQueues = 1;
+            int source = workerIndex + 1;
+            if (source == workers_.Length) { source = 0; }
+            while (checkedQueues < workers_.Length)
+            {
+                if (counts_[source] != 0) { return source; }
+                source = source + 1;
+                if (source == workers_.Length) { source = 0; }
+                checkedQueues = checkedQueues + 1;
+            }
+            return -1;
         }
 
         ~ThreadPool()

@@ -178,7 +178,7 @@
 127. **372 — Jobs tipados / Typed jobs — COMPLETADO / COMPLETE**
 128. **373 — Dependencias y cancelación de jobs / Job dependencies and cancellation — COMPLETADO / COMPLETE**
 129. **374 — Colas por worker / Per-worker queues — COMPLETADO / COMPLETE**
-130. **375 — Work stealing / Work stealing**
+130. **375 — Work stealing / Work stealing — COMPLETADO / COMPLETE**
 131. **376 — Estado floating-point de workers / Worker floating-point initialization**
 
 ## Tanda 12 — Depuración extrema

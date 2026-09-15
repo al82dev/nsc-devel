@@ -1185,6 +1185,15 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item374_per_worker_queues_tests)
     add_test(NAME nsc.item374.per-worker-queues COMMAND nsc_item374_per_worker_queues_tests)
 
+    add_executable(nsc_item375_work_stealing_tests tests/unit/Item375WorkStealingTests.cpp)
+    target_link_libraries(nsc_item375_work_stealing_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item375_work_stealing_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item375_work_stealing_tests PRIVATE
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item375_work_stealing_tests)
+    add_test(NAME nsc.item375.work-stealing COMMAND nsc_item375_work_stealing_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)

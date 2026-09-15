@@ -74,7 +74,7 @@ public class Program
 {
     public static int Main()
     {
-        raii ThreadPool pool = new ThreadPool(2, 4);
+        raii ThreadPool pool = new ThreadPool(2, 4, false);
         if (pool.WorkerQueueCount() != 2 || pool.QueueCapacity() != 4) { return 1; }
         ThreadStart blocker = State.Blocker;
         ThreadStart same = State.SameQueue;
