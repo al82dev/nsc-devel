@@ -2818,6 +2818,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool floatingPointModeSeen = false;
     llvm_backend::FmaContractPolicy fmaContractPolicy = llvm_backend::FmaContractPolicy::Off;
     bool fmaContractPolicySeen = false;
+    llvm_backend::FloatingPointRoundingMode floatingPointRoundingMode =
+        llvm_backend::FloatingPointRoundingMode::Dynamic;
+    bool floatingPointRoundingModeSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
     std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
@@ -2886,6 +2889,27 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CommandLineError;
             }
             fmaContractPolicy = *parsed;
+            continue;
+        }
+        static constexpr std::string_view floatingPointRoundingPrefix = "--fp-rounding=";
+        if (argument.starts_with(floatingPointRoundingPrefix))
+        {
+            if (floatingPointRoundingModeSeen)
+            {
+                error << "nsc: error: duplicate floating-point rounding mode\n";
+                return ExitCode::CommandLineError;
+            }
+            floatingPointRoundingModeSeen = true;
+            const std::optional<llvm_backend::FloatingPointRoundingMode> parsed =
+                llvm_backend::parseFloatingPointRoundingMode(
+                    argument.substr(floatingPointRoundingPrefix.size()));
+            if (!parsed.has_value())
+            {
+                error << "nsc: error: unsupported floating-point rounding mode '" << argument
+                      << "'; expected --fp-rounding=dynamic, nearest-even, toward-zero, upward, or downward\n";
+                return ExitCode::CommandLineError;
+            }
+            floatingPointRoundingMode = *parsed;
             continue;
         }
         static constexpr std::string_view compilationProfilePrefix = "--profile=";
@@ -3152,11 +3176,18 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     if (!fmaContractPolicySeen && floatingPointMode == llvm_backend::FloatingPointMode::Fast)
         fmaContractPolicy = llvm_backend::FmaContractPolicy::Fast;
     floatingPointModeScope.setFmaContractPolicy(fmaContractPolicy);
+    if (!floatingPointRoundingModeSeen &&
+        floatingPointMode == llvm_backend::FloatingPointMode::Deterministic)
+        floatingPointRoundingMode = llvm_backend::FloatingPointRoundingMode::NearestEven;
+    floatingPointModeScope.setRoundingMode(floatingPointRoundingMode);
 
     if (floatingPointModeSeen)
         output << "floating-point-mode: " << llvm_backend::floatingPointModeName(floatingPointMode) << '\n';
     if (fmaContractPolicySeen)
         output << "fma-contract-policy: " << llvm_backend::fmaContractPolicyName(fmaContractPolicy) << '\n';
+    if (floatingPointRoundingModeSeen)
+        output << "floating-point-rounding: "
+               << llvm_backend::floatingPointRoundingModeName(floatingPointRoundingMode) << '\n';
 
     if (normalizedArguments.empty())
     {
@@ -3742,6 +3773,8 @@ void Driver::printHelp(std::ostream &output)
               "precise is the default and fast is explicit opt-in.\n"
            << "--fp-contract=off|on|fast controls whether multiply/add sequences may contract "
               "to FMA; off is the strict default.\n"
+           << "--fp-rounding=dynamic|nearest-even|toward-zero|upward|downward controls constrained "
+              "floating-point rounding; deterministic mode defaults to nearest-even.\n"
            << "--time reports deterministic per-phase microseconds plus total wall time; "
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
            << "--progress streams and flushes phase boundaries plus source read, lex and parse "

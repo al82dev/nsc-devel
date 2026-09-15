@@ -653,12 +653,25 @@ LLVMValueRef LLVMConstInBoundsGEP2(
     unsigned indexCount);
 LLVMValueRef LLVMGetUndef(LLVMTypeRef type);
 LLVMValueRef LLVMConstVector(LLVMValueRef* scalarConstantValues, unsigned size);
+LLVMTypeRef LLVMTypeOf(LLVMValueRef value);
 
 LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* name);
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
 void LLVMSetGlobalConstant(LLVMValueRef global, LLVMBool isConstant);
 LLVMValueRef LLVMAddFunction(LLVMModuleRef module, const char* name, LLVMTypeRef functionType);
 LLVMValueRef LLVMGetNamedFunction(LLVMModuleRef module, const char* name);
+LLVMTypeRef LLVMGlobalGetValueType(LLVMValueRef global);
+unsigned LLVMLookupIntrinsicID(const char* name, std::size_t nameLength);
+LLVMValueRef LLVMGetIntrinsicDeclaration(
+    LLVMModuleRef module,
+    unsigned id,
+    LLVMTypeRef* overloadTypes,
+    std::size_t overloadCount);
+LLVMMetadataRef LLVMMDStringInContext2(
+    LLVMContextRef context,
+    const char* text,
+    std::size_t textLength);
+LLVMValueRef LLVMMetadataAsValue(LLVMContextRef context, LLVMMetadataRef metadata);
 void LLVMSetFunctionCallConv(LLVMValueRef function, unsigned callingConvention);
 void LLVMSetLinkage(LLVMValueRef global, LLVMLinkage linkage);
 LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);

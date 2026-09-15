@@ -11254,6 +11254,42 @@ private:
         }
         if (floating)
         {
+            const FloatingPointRoundingMode rounding = activeFloatingPointRoundingMode();
+            if (rounding != FloatingPointRoundingMode::Dynamic &&
+                operation != lexer::TokenKind::Percent)
+            {
+                const char* intrinsicName = nullptr;
+                switch (operation)
+                {
+                    case lexer::TokenKind::Plus: intrinsicName = "llvm.experimental.constrained.fadd"; break;
+                    case lexer::TokenKind::Minus: intrinsicName = "llvm.experimental.constrained.fsub"; break;
+                    case lexer::TokenKind::Star: intrinsicName = "llvm.experimental.constrained.fmul"; break;
+                    case lexer::TokenKind::Slash: intrinsicName = "llvm.experimental.constrained.fdiv"; break;
+                    default: break;
+                }
+                if (intrinsicName != nullptr)
+                {
+                    const unsigned intrinsicId = LLVMLookupIntrinsicID(
+                        intrinsicName, std::char_traits<char>::length(intrinsicName));
+                    LLVMTypeRef overloadType = LLVMTypeOf(left);
+                    LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(
+                        module_, intrinsicId, &overloadType, 1U);
+                    LLVMTypeRef intrinsicType = LLVMGlobalGetValueType(intrinsic);
+                    const std::string_view roundingText = floatingPointRoundingMetadata(rounding);
+                    LLVMMetadataRef roundingMetadata = LLVMMDStringInContext2(
+                        context_, roundingText.data(), roundingText.size());
+                    static constexpr std::string_view exceptionText = "fpexcept.strict";
+                    LLVMMetadataRef exceptionMetadata = LLVMMDStringInContext2(
+                        context_, exceptionText.data(), exceptionText.size());
+                    LLVMValueRef arguments[] = {
+                        left,
+                        right,
+                        LLVMMetadataAsValue(context_, roundingMetadata),
+                        LLVMMetadataAsValue(context_, exceptionMetadata)};
+                    return LLVMBuildCall2(
+                        builder_, intrinsicType, intrinsic, arguments, 4U, "fop.rounded");
+                }
+            }
             LLVMValueRef result = nullptr;
             switch (operation)
             {
