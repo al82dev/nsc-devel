@@ -814,8 +814,14 @@ private:
         signatureTypes.reserve(function.parameterTypeKeys.size() + 1);
         signatureTypes.push_back(debugType(
             function.referenceReturn ? function.returnTypeKey + "*" : function.returnTypeKey));
-        for (const std::string& parameterType : function.parameterTypeKeys)
-            signatureTypes.push_back(debugType(parameterType));
+        for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+        {
+            const std::string_view parameterName = index < function.parameterNames.size()
+                ? std::string_view(function.parameterNames[index])
+                : std::string_view{};
+            signatureTypes.push_back(
+                debugNamedValueType(function.parameterTypeKeys[index], parameterName));
+        }
         LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
             debugBuilder_, file, signatureTypes.data(),
             static_cast<unsigned>(signatureTypes.size()), LLVMDIFlagZero);
@@ -1052,7 +1058,7 @@ private:
                     fieldLine = sourceManager_->getPosition(member.range.begin()).line;
                 }
             }
-            LLVMMetadataRef fieldType = debugType(field.typeKey);
+            LLVMMetadataRef fieldType = debugNamedValueType(field.typeKey, fieldName);
             if (fieldType == nullptr)
                 fieldType = LLVMDIBuilderCreateUnspecifiedType(
                     debugBuilder_, field.typeKey.data(), field.typeKey.size());
@@ -1122,6 +1128,82 @@ private:
         return pointer;
     }
 
+    bool debugNameLooksLikeNativeHandle(std::string_view name) const
+    {
+        std::string lower(name);
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+            [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        return lower == "handle" || lower == "handle_" ||
+            lower.ends_with("handle") || lower.ends_with("handle_");
+    }
+
+    LLVMMetadataRef debugNativeHandleType()
+    {
+        static constexpr std::string_view cacheKey = "debug:native-handle";
+        if (const auto cached = debugTypes_.find(std::string(cacheKey));
+            cached != debugTypes_.end())
+            return cached->second;
+        static constexpr std::string_view pointeeName = "NativeSharp.Win32.HANDLE";
+        static constexpr std::string_view pointerName = "HANDLE";
+        static constexpr std::string_view uniqueId = "nativesharp:debug:win32-handle";
+        LLVMMetadataRef pointee = LLVMDIBuilderCreateStructType(
+            debugBuilder_, debugCompileUnit_, pointeeName.data(), pointeeName.size(),
+            nullptr, 0, 0, 8, LLVMDIFlagArtificial, nullptr, nullptr, 0, 0, nullptr,
+            uniqueId.data(), uniqueId.size());
+        LLVMMetadataRef type = pointee != nullptr
+            ? LLVMDIBuilderCreatePointerType(
+                debugBuilder_, pointee, 64, 64, 0, pointerName.data(), pointerName.size())
+            : nullptr;
+        if (type != nullptr) debugTypes_.emplace(std::string(cacheKey), type);
+        return type;
+    }
+
+    LLVMMetadataRef debugNamedValueType(std::string_view typeKey, std::string_view name)
+    {
+        if ((typeKey == "builtin:nint" || typeKey == "builtin:nuint") &&
+            debugNameLooksLikeNativeHandle(name))
+        {
+            if (LLVMMetadataRef handle = debugNativeHandleType(); handle != nullptr)
+                return handle;
+        }
+        return debugType(typeKey);
+    }
+
+    LLVMMetadataRef debugDelegateFunctionPointer(
+        std::string_view typeKey,
+        const frontend::NamedTypeDeclaration& named)
+    {
+        const std::string cacheKey = "delegate-function:" + std::string(typeKey);
+        if (const auto cached = debugTypes_.find(cacheKey); cached != debugTypes_.end())
+            return cached->second;
+        if (memberModel_ == nullptr || named.syntax == nullptr) return debugType("builtin:void*");
+
+        std::vector<LLVMMetadataRef> signatureTypes;
+        signatureTypes.push_back(debugType(
+            memberModel_->canonicalTypeKey(named.syntax->typeSyntax(), nameLookup_)));
+        for (const ast::AstNode* parameter : named.syntax->children())
+        {
+            if (parameter == nullptr ||
+                parameter->kind() != ast::AstNodeKind::ParameterDeclaration)
+                continue;
+            const std::string parameterType =
+                memberModel_->canonicalTypeKey(parameter->typeSyntax(), nameLookup_);
+            signatureTypes.push_back(parameterType == typeKey
+                ? debugType("builtin:void*")
+                : debugType(parameterType));
+        }
+        LLVMMetadataRef functionType = LLVMDIBuilderCreateSubroutineType(
+            debugBuilder_, debugFile(named.range.begin()), signatureTypes.data(),
+            static_cast<unsigned>(signatureTypes.size()), LLVMDIFlagZero);
+        const std::string name = debugNamedDisplayName(named);
+        LLVMMetadataRef pointer = functionType != nullptr
+            ? LLVMDIBuilderCreatePointerType(
+                debugBuilder_, functionType, 64, 64, 0, name.data(), name.size())
+            : nullptr;
+        if (pointer != nullptr) debugTypes_.emplace(cacheKey, pointer);
+        return pointer;
+    }
+
     LLVMMetadataRef debugDelegateReference(
         std::string_view typeKey,
         const frontend::NamedTypeDeclaration& named)
@@ -1138,9 +1220,11 @@ private:
             LLVMDIFlagArtificial, uniqueId.data(), uniqueId.size());
         if (temporary == nullptr) return nullptr;
         LLVMMetadataRef pointerType = debugType("builtin:void*");
+        LLVMMetadataRef targetType = debugDelegateFunctionPointer(typeKey, named);
+        if (targetType == nullptr) targetType = pointerType;
         LLVMMetadataRef fields[] = {
             LLVMDIBuilderCreateMemberType(debugBuilder_, temporary, "Code", 4, nullptr, 0,
-                64, 64, 0, LLVMDIFlagPublic, pointerType),
+                64, 64, 0, LLVMDIFlagPublic, targetType),
             LLVMDIBuilderCreateMemberType(debugBuilder_, temporary, "Receiver", 8, nullptr, 0,
                 64, 64, 64, LLVMDIFlagPublic, pointerType),
             LLVMDIBuilderCreateMemberType(debugBuilder_, temporary, "ContextDestroy", 14, nullptr, 0,
@@ -1299,7 +1383,7 @@ private:
                             fieldLine = sourceManager_->getPosition(member.range.begin()).line;
                         }
                     }
-                    LLVMMetadataRef fieldType = debugType(field.typeKey);
+                    LLVMMetadataRef fieldType = debugNamedValueType(field.typeKey, fieldName);
                     if (fieldType == nullptr)
                     {
                         fieldType = LLVMDIBuilderCreateUnspecifiedType(
@@ -1367,7 +1451,10 @@ private:
             }
             else if (named->kind == frontend::NamedTypeDeclarationKind::Delegate)
             {
-                type = debugDelegateReference(typeKey, *named);
+                type = named->syntax != nullptr &&
+                        named->syntax->hasModifier(lexer::TokenKind::KwExtern)
+                    ? debugDelegateFunctionPointer(typeKey, *named)
+                    : debugDelegateReference(typeKey, *named);
             }
             else
             {
@@ -1510,8 +1597,9 @@ private:
         const sema::OwnershipKind ownership = index < function.parameterOwnerships.size()
             ? function.parameterOwnerships[index]
             : sema::OwnershipKind::None;
-        LLVMMetadataRef type =
-            debugOwnershipType(function.parameterTypeKeys[index], ownership, false, range);
+        LLVMMetadataRef type = ownership == sema::OwnershipKind::None
+            ? debugNamedValueType(function.parameterTypeKeys[index], name)
+            : debugOwnershipType(function.parameterTypeKeys[index], ownership, false, range);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
@@ -1601,8 +1689,11 @@ private:
             node->ownership != sema::OwnershipKind::None
             ? node->ownership
             : node->objectLifetimeOwnership;
-        LLVMMetadataRef type = debugOwnershipType(
-            typeKey, debugOwnership, node->automaticDestruction, range);
+        LLVMMetadataRef type = debugOwnership == sema::OwnershipKind::None &&
+                !node->automaticDestruction
+            ? debugNamedValueType(typeKey, node->stringValue)
+            : debugOwnershipType(
+                typeKey, debugOwnership, node->automaticDestruction, range);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         LLVMMetadataRef scope = currentDebugScope_ != nullptr

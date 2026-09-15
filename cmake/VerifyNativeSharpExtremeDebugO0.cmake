@@ -164,6 +164,12 @@ if(NOT pdb_result EQUAL 0 OR
    NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`C3`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`simdVector`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`simdMatrix`" OR
+   NOT pdb_dump MATCHES "DebugExtreme\.Transform\.delegate-cell" OR
+   NOT pdb_dump MATCHES "LF_MEMBER[^\n]*`Code`[^\n]*Type = 0x1" OR
+   NOT pdb_dump MATCHES "NativeSharp\.Win32\.HANDLE" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`managedDelegate`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`functionPointer`[\n\r ]+type=[^\n]*int \(int\)\*" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`nativeHandle`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`consumed`" OR
    NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`seed`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`interfaceView`" OR

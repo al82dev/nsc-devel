@@ -2,6 +2,7 @@ namespace DebugExtreme
 {
     using NativeSharp.Core.Numerics;
     public delegate int Transform(int value);
+    public extern C delegate int NativeTransform(int value);
 
     public interface ICounter
     {
@@ -99,6 +100,17 @@ namespace DebugExtreme
             simdMatrix.C2 = simdVector;
             simdMatrix.C3 = simdVector;
             return (int)simdMatrix.C3.X - 1;
+        }
+
+        public static int InspectCallables()
+        {
+            Transform managedDelegate = Increment;
+            NativeTransform functionPointer = Increment;
+            nint nativeHandle = 0;
+            int managedResult = managedDelegate(20);
+            int nativeResult = functionPointer(20);
+            delete managedDelegate;
+            return managedResult - nativeResult + (int)nativeHandle;
         }
     }
 }

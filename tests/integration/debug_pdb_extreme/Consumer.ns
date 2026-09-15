@@ -19,10 +19,11 @@ namespace DebugExtremeConsumer
             }
             int consumed = ProducerApi.Consume(move(concrete));
             int simd = ProducerApi.InspectSimd();
+            int callable = ProducerApi.InspectCallables();
             Box<int> box = new Box<int>(consumed);
             int answer = ProducerApi.ReadBox(box);
             delete box;
-            return answer + dispatched - consumed + simd;
+            return answer + dispatched - consumed + simd + callable;
         }
     }
 }
