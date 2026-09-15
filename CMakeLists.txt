@@ -885,6 +885,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item340.com-function-pointers
         COMMAND nsc_item340_com_function_pointer_tests)
+    add_executable(
+        nsc_item341_exception_safe_com_thunk_tests
+        tests/unit/Item341ExceptionSafeComThunkTests.cpp)
+    target_link_libraries(nsc_item341_exception_safe_com_thunk_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item341_exception_safe_com_thunk_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item341_exception_safe_com_thunk_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item341_exception_safe_com_thunk_tests)
+    add_test(
+        NAME nsc.item341.exception-safe-com-thunk
+        COMMAND nsc_item341_exception_safe_com_thunk_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
