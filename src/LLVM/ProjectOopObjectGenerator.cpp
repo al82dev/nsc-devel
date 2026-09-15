@@ -2,6 +2,8 @@
 
 #include "nativesharp/LLVM/FloatingPointMode.h"
 
+#include "nativesharp/Basic/Sha256.h"
+
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
@@ -96,6 +98,16 @@ std::size_t ProjectOopObjectBundle::cacheMissCount() const noexcept
     return cacheMissCount_;
 }
 
+std::size_t ProjectOopObjectBundle::thinLtoSummaryCount() const noexcept
+{
+    return thinLtoSummaryCount_;
+}
+
+const std::string& ProjectOopObjectBundle::thinLtoIndexDigest() const noexcept
+{
+    return thinLtoIndexDigest_;
+}
+
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const frontend::ProjectNameLookup& nameLookup,
     const frontend::ProjectMemberModel& memberModel,
@@ -131,7 +143,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     ProjectOopCodePartition partition;
     if (!partition.build(
             mirModel, workerCount, error,
-            cache != nullptr && cache->enabled()
+            (cache != nullptr && cache->enabled()) ||
+                    linkTimeOptimization == LinkTimeOptimizationMode::Thin
                 ? ProjectOopCodePartitionPolicy::StableIncremental
                 : ProjectOopCodePartitionPolicy::Balanced))
         return nullptr;
@@ -270,6 +283,25 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         result->combinedLlvmText_ += '\n';
         result->objectFiles_.push_back(
             *temporaryDirectory / ("program-" + std::to_string(ordinal) + ".obj"));
+    }
+    if (linkTimeOptimization == LinkTimeOptimizationMode::Thin)
+    {
+        // The index is independent of temporary paths, scheduling and cache state. Each optimized
+        // partition contributes in stable ordinal order, matching ThinLTO's summary-before-backend
+        // contract while native object generation remains embarrassingly parallel.
+        std::string index = "NativeSharp.ThinLTO.Index.v1\n";
+        for (std::size_t ordinal = 0; ordinal < moduleTexts.size(); ++ordinal)
+        {
+            const auto bytes = std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(moduleTexts[ordinal].data()),
+                moduleTexts[ordinal].size());
+            index += std::to_string(ordinal) + ":" +
+                basic::sha256Hex(basic::sha256(bytes)) + "\n";
+        }
+        const auto indexBytes = std::span<const std::uint8_t>(
+            reinterpret_cast<const std::uint8_t*>(index.data()), index.size());
+        result->thinLtoSummaryCount_ = moduleTexts.size();
+        result->thinLtoIndexDigest_ = basic::sha256Hex(basic::sha256(indexBytes));
     }
 
     std::vector<std::string> emissionErrors(moduleCount);

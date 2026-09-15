@@ -39,6 +39,8 @@ public:
     bool usedParallelOptimization() const noexcept;
     std::size_t cacheHitCount() const noexcept;
     std::size_t cacheMissCount() const noexcept;
+    std::size_t thinLtoSummaryCount() const noexcept;
+    const std::string& thinLtoIndexDigest() const noexcept;
 
 private:
     friend class ProjectOopObjectGenerator;
@@ -51,6 +53,8 @@ private:
     bool usedParallelOptimization_ = false;
     std::size_t cacheHitCount_ = 0;
     std::size_t cacheMissCount_ = 0;
+    std::size_t thinLtoSummaryCount_ = 0;
+    std::string thinLtoIndexDigest_;
 };
 
 class ProjectOopObjectGenerator final

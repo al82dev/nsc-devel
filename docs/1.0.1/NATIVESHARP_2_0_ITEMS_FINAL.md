@@ -203,7 +203,7 @@
 
 144. **389 — Sanitizers nativos / Native sanitizers — COMPLETADO / COMPLETE**
 145. **390 — LTO / Link-time optimization — COMPLETADO / COMPLETE**
-146. **391 — ThinLTO / Thin link-time optimization**
+146. **391 — ThinLTO / Thin link-time optimization — COMPLETADO / COMPLETE**
 147. **392 — Enlace incremental / Incremental linking**
 148. **393 — Matriz N-1/N de compatibilidad / N-1 and N compatibility matrix**
 

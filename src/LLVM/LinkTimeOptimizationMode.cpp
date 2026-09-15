@@ -8,6 +8,7 @@ std::string_view linkTimeOptimizationModeName(LinkTimeOptimizationMode mode) noe
     {
     case LinkTimeOptimizationMode::None: return "none";
     case LinkTimeOptimizationMode::Full: return "full";
+    case LinkTimeOptimizationMode::Thin: return "thin";
     }
     return {};
 }

@@ -7,7 +7,8 @@ namespace nativesharp::llvm_backend
 enum class LinkTimeOptimizationMode
 {
     None,
-    Full
+    Full,
+    Thin
 };
 
 std::string_view linkTimeOptimizationModeName(LinkTimeOptimizationMode mode) noexcept;

@@ -2871,9 +2871,23 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (argument.starts_with("-flto="))
         {
-            error << "nsc: error: unsupported link-time optimization mode '" << argument
-                  << "'; expected -flto\n";
-            return ExitCode::CommandLineError;
+            if (linkTimeOptimizationSeen)
+            {
+                error << "nsc: error: duplicate link-time optimization mode\n";
+                return ExitCode::CommandLineError;
+            }
+            linkTimeOptimizationSeen = true;
+            if (argument == "-flto=thin")
+                linkTimeOptimization = llvm_backend::LinkTimeOptimizationMode::Thin;
+            else if (argument == "-flto=full")
+                linkTimeOptimization = llvm_backend::LinkTimeOptimizationMode::Full;
+            else
+            {
+                error << "nsc: error: unsupported link-time optimization mode '" << argument
+                      << "'; expected -flto, -flto=full, or -flto=thin\n";
+                return ExitCode::CommandLineError;
+            }
+            continue;
         }
         static constexpr std::string_view floatingPointModePrefix = "--fp-mode=";
         if (argument.starts_with(floatingPointModePrefix))
@@ -4895,6 +4909,11 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
            << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
+           << "thinlto-summaries: " << objectBundle->thinLtoSummaryCount() << '\n'
+           << "thinlto-index: "
+           << (objectBundle->thinLtoIndexDigest().empty()
+                   ? "none"
+                   : objectBundle->thinLtoIndexDigest()) << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
            << "packaged-runtimes: " << packagedRuntimes.size() << '\n'
            << "sections: " << builder.info().sectionCount << '\n'
@@ -5035,6 +5054,11 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
            << "code-units: " << objectBundle->codeUnitCount() << '\n'
            << "artifact-cache-hits: " << objectBundle->cacheHitCount() << '\n'
            << "artifact-cache-misses: " << objectBundle->cacheMissCount() << '\n'
+           << "thinlto-summaries: " << objectBundle->thinLtoSummaryCount() << '\n'
+           << "thinlto-index: "
+           << (objectBundle->thinLtoIndexDigest().empty()
+                   ? "none"
+                   : objectBundle->thinLtoIndexDigest()) << '\n'
            << "debug-companion: "
            << (debugInformation == llvm_backend::DebugInformationKind::None
                    ? "none"
