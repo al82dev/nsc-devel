@@ -994,6 +994,25 @@ offset applies to the carrier. Recursive anonymous structs shall remain structur
 The value shall occupy inline storage and shall introduce no descriptor, allocation, ownership,
 Object ABI, Runtime ABI or MIR-schema change.
 
+## NSC-LAYOUT-003 — Anonymous union fields
+
+The parser shall recognize contextual `union { members } name;` in a class, struct or union member
+position without requiring a source-level type name. It shall retain a compiler-generated nested
+`StructDeclaration` whose deterministic identity derives from file identity and source offset,
+mark it with ordinary union layout semantics, keep body fields as its children and attach one
+ordinary carrier `FieldDeclaration` on a separate AST edge. Missing carrier names shall diagnose
+the item-326 boundary rather than promote alternatives.
+
+Name lookup and member collection shall follow NSC-LAYOUT-002. The object-layout model shall be the
+only downstream component that distinguishes the synthesized union from a struct: every instance
+alternative begins at offset zero and size and alignment cover the largest alternative under the
+existing `pack`, `align` and asserted-size rules. An explicit field offset applies only to the
+carrier. Member access, HIR, MIR and LLVM shall reuse ordinary nested value-field lowering.
+
+The representation shall contain no hidden discriminant, active-member state, descriptor,
+allocation or ownership. This feature changes no Object ABI, Runtime ABI, MIR schema, runtime or
+binding surface.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

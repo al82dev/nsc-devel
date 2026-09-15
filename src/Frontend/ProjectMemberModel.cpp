@@ -215,11 +215,11 @@ void appendExpandedMemberNodes(
     {
         return;
     }
-    // Item 324. The direct node is the compiler-generated nested layout type. Its first edge is
+    // Items 324-325. The direct node is the compiler-generated nested layout type. Its first edge is
     // the field that belongs to the containing type; children are the fields of the anonymous
-    // struct itself and are collected only when that synthesized type gets its own member pass.
+    // aggregate itself and are collected only when that synthesized type gets its own member pass.
     if (node->kind() == ast::AstNodeKind::StructDeclaration &&
-        node->auxiliaryText().starts_with("anonymous-struct") &&
+        node->auxiliaryText().starts_with("anonymous-") &&
         node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::FieldDeclaration)
     {
         output.push_back(node->first());
@@ -907,7 +907,7 @@ bool ProjectMemberModel::collectTypeMembers(
         {
             const ast::AstNode* declaredMember =
                 directMember != nullptr && directMember->kind() == ast::AstNodeKind::StructDeclaration &&
-                    directMember->auxiliaryText().starts_with("anonymous-struct") &&
+                    directMember->auxiliaryText().starts_with("anonymous-") &&
                     directMember->first() != nullptr
                 ? directMember->first()
                 : directMember;

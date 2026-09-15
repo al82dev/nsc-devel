@@ -3166,19 +3166,21 @@ ast::AstNode* Parser::parseClassMember(
         return parseEventTail(accessibility, isNew, isStatic, beginIndex);
     }
 
-    // Item 324. `struct { ... } field;` is one source declaration with two semantic identities:
+    // Items 324-325. `struct/union { ... } field;` is one source declaration with two semantic identities:
     // an inline value type that owns the physical layout, and an ordinary field in the containing
     // type. Keep the synthesized declaration as the direct child so name lookup can predeclare it
     // exactly like every other nested struct. Its first() edge carries the outer field; the actual
-    // anonymous-struct members remain children(), so collecting the synthesized type cannot
+    // anonymous-aggregate members remain children(), so collecting the synthesized type cannot
     // accidentally give it a recursive field of its own.
-    if (at(TokenKind::KwStruct) && peek().kind() == TokenKind::LeftBrace)
+    const bool anonymousStruct = at(TokenKind::KwStruct) && peek().kind() == TokenKind::LeftBrace;
+    const bool anonymousUnion = atContextualKeyword("union") && peek().kind() == TokenKind::LeftBrace;
+    if (anonymousStruct || anonymousUnion)
     {
-        const lexer::Token& structKeyword = consume();
+        const lexer::Token& aggregateKeyword = consume();
         const std::string synthesizedName =
-            "__nsc_anonymous_struct_f" +
-            std::to_string(structKeyword.range().begin().fileId().value()) + "_" +
-            std::to_string(structKeyword.range().begin().offset());
+            std::string(anonymousUnion ? "__nsc_anonymous_union_f" : "__nsc_anonymous_struct_f") +
+            std::to_string(aggregateKeyword.range().begin().fileId().value()) + "_" +
+            std::to_string(aggregateKeyword.range().begin().offset());
         knownTypeNames_.insert(synthesizedName);
 
         if (isPartial || isVirtual || isOverride || isAbstract || isSealed ||
@@ -3188,8 +3190,8 @@ ast::AstNode* Parser::parseClassMember(
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
-                structKeyword.range(),
-                "an anonymous struct field accepts field accessibility, new, static, readonly, "
+                aggregateKeyword.range(),
+                "an anonymous aggregate field accepts field accessibility, new, static, readonly, "
                 "volatile, const and layout modifiers only");
         }
         if (structContext && accessibility == TokenKind::KwProtected)
@@ -3197,14 +3199,15 @@ ast::AstNode* Parser::parseClassMember(
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
-                structKeyword.range(),
+                aggregateKeyword.range(),
                 "a struct member cannot be protected: structs are not inheritable");
         }
 
         ast::AstNode* declaration = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::StructDeclaration, structKeyword.range());
+            ast::AstNodeKind::StructDeclaration, aggregateKeyword.range());
         declaration->setText(synthesizedName);
-        declaration->setAuxiliaryText("anonymous-struct");
+        declaration->setAuxiliaryText(
+            anonymousUnion ? "anonymous-union,union" : "anonymous-struct");
         // A public carrier needs its synthesized layout type to cross the same module boundary.
         // For private/internal carriers the matching accessibility also keeps the implementation
         // detail no more visible than the field that names it.
@@ -3227,7 +3230,8 @@ ast::AstNode* Parser::parseClassMember(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
                 current().range(),
-                "item 324 anonymous struct requires a field name after '}'; unnamed member "
+                std::string("item ") + (anonymousUnion ? "325 anonymous union" : "324 anonymous struct") +
+                " requires a field name after '}'; unnamed member "
                 "promotion is introduced by item 326");
             synchronizeStatement();
             return declaration;
@@ -3235,7 +3239,7 @@ ast::AstNode* Parser::parseClassMember(
 
         const lexer::Token& name = consume();
         ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
-            structKeyword.range(), TokenKind::Identifier, synthesizedName);
+            aggregateKeyword.range(), TokenKind::Identifier, synthesizedName);
         ast::AstNode* field = arena_.make<ast::AstNode>(
             ast::AstNodeKind::FieldDeclaration, name.range());
         field->setTypeSyntax(type);

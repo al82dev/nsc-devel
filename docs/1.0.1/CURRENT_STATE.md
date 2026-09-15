@@ -164,6 +164,11 @@ calcula el cuerpo como valor inline. Los accesos conservan la calificación
 `contenedor.Campo.Miembro`; no hay promoción implícita antes del punto 326. El cuerpo admite
 anidamiento recursivo y los modificadores de layout del agregado sin cambios de runtime ni ABI.
 
+La forma paralela `union { ... } Campo;` conserva un field contenedor y calcula todas sus
+alternativas desde offset cero mediante el layout de union ya existente. No añade discriminante ni
+estado de alternativa activa; el acceso sigue calificado como `contenedor.Campo.Miembro`. Puede
+anidarse con structs anónimos y mantiene separada la promoción que corresponde al punto 326.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

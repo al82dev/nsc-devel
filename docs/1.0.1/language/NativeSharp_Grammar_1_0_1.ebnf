@@ -36,7 +36,7 @@ type-member = { member-modifier },
               ( field-declaration | method-declaration | constructor-declaration |
                 destructor-declaration | property-declaration | indexer-declaration |
                 operator-declaration | conversion-declaration | event-declaration |
-                anonymous-struct-field ) ;
+                anonymous-struct-field | anonymous-union-field ) ;
 interface-member = { "public" | "abstract" | "noheap" }, [ "ref" ], [ ownership ], type, identifier,
                    "(", [ parameter-list ], ")", ";" |
                    [ ownership ], type, identifier, accessor-body |
@@ -48,6 +48,8 @@ field-declaration = [ ownership ], type, identifier, [ "at", integer-literal ],
                     [ "=", expression | aggregate-initializer ], ";" ;
 anonymous-struct-field = "struct", type-body, identifier,
                          [ "=", expression | aggregate-initializer ], ";" ;
+anonymous-union-field = "union", type-body, identifier,
+                        [ "=", expression | aggregate-initializer ], ";" ;
 method-declaration = [ "ref" ], [ ownership ], type, identifier, [ type-parameters ],
                      "(", [ parameter-list ], ")", { constraint-clause },
                      ( block | "=>", expression, ";" | ";" ) ;

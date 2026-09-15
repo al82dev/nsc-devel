@@ -982,6 +982,24 @@ The body follows ordinary struct layout, may nest recursively, and participates 
 aggregate exactly like a named struct field. A field name is mandatory until anonymous-member
 promotion is introduced by item 326.
 
+### NS-LAYOUT-005 — Unions anónimos con campo contenedor
+
+La forma `union { miembros } nombre;` declara dentro de una clase, struct o union un valor inline
+sin nombre fuente y un campo contenedor llamado `nombre`. Todas las alternativas del cuerpo
+comienzan en offset cero y el tamaño y la alineación siguen las reglas de una union ordinaria. Los
+miembros se acceden como `objeto.nombre.miembro`; no se promueven al agregado exterior. Omitir
+`nombre` es un error hasta que el punto 326 defina la promoción de miembros anónimos.
+
+El cuerpo puede incluir cualquier field válido de una union y anidar structs o unions anónimos.
+`pack(N)`, `align(N)` y `size(N)` antes de `union` describen el tipo embebido; `at(N)` describe la
+posición de su campo contenedor. La accesibilidad y los demás modificadores de field pertenecen al
+contenedor. La union no incorpora discriminante ni seguimiento de la alternativa activa.
+
+The form `union { members } name;` declares an inline union with no source-level type name plus a
+containing field named `name`. Alternatives overlap at offset zero, remain qualified through the
+carrier and are not promoted. Ordinary union layout and lifetime restrictions apply, and a field
+name remains mandatory until item 326.
+
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su
 representación canónica equivale a un arreglo exterior de `d0` elementos, cada uno de los cuales
