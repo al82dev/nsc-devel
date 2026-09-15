@@ -18,11 +18,11 @@ public struct Packet
 ```
 
 El acceso permanece calificado como `packet.Payload.High`. Los miembros no aparecen directamente
-en `Packet`: esa promoción pertenece al punto 326.
+en `Packet`; la forma sin campo y su promoción se completaron después en el punto 326.
 
 NativeSharp accepts a source-anonymous inline struct when the declaration retains an explicit
-carrier field. Access remains qualified through that field; member promotion is deliberately left
-to item 326.
+carrier field. Access remains qualified through that field; item 326 later added the distinct
+unnamed promoted form.
 
 ## Representación / Representation
 
@@ -48,8 +48,8 @@ struct pipeline instead of introducing an anonymous runtime type.
 - `pack(N)`, `align(N)` y `size(N)` antes de `struct` pertenecen al cuerpo anónimo.
 - `at(N)` pertenece al field contenedor.
 - Los cuerpos pueden anidarse recursivamente y conservan identidades distintas por archivo y offset fuente.
-- El nombre del field después de `}` es obligatorio en el punto 324.
-- `struct { ... };` recibe un diagnóstico que señala la promoción futura del punto 326.
+- El nombre del field después de `}` era obligatorio al cerrar el punto 324; el punto 326 añadió la
+  forma sin nombre y su promoción, sin cambiar el contrato de la forma nombrada.
 - Los unions anónimos pertenecen al punto 325.
 - No cambian MIR 1.6, NSMETA 1.16, Object ABI 2, Runtime ABI, runtime, bindings ni tutoriales.
 
@@ -66,7 +66,7 @@ struct pipeline instead of introducing an anonymous runtime type.
 - ausencia de colisión entre offsets iguales de archivos parciales distintos;
 - lowering LLVM mediante offsets ordinarios;
 - enlace y ejecución con resultado 42;
-- rechazo explícito de una declaración sin nombre.
+- conservación del acceso calificado y ausencia de promoción para la forma nombrada.
 
 Las regresiones adyacentes cubren parser, name lookup, member model, layout de structs, lowering OOP
 y los puntos 317–323.

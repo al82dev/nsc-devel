@@ -181,22 +181,6 @@ class Program
     tests.expect(runDriver(nestedArguments, output, error) == ExitCode::Success,
         "anonymous unions nest inside anonymous structs without flattening ownership (" + error + ")");
 
-    const auto missingName = root / "missing-name";
-    writeProject(missingName, "MissingAnonymousUnionName", R"NS(
-struct Invalid { union { public int Value; public float Other; }; }
-)NS");
-    const std::string missingProject = (missingName / "MissingAnonymousUnionName.nsproj").string();
-    const std::array<std::string_view, 2> missingArguments = {
-        "--check-project-layouts", missingProject};
-    output.clear();
-    error.clear();
-    tests.expect(runDriver(missingArguments, output, error) != ExitCode::Success,
-        "item 325 does not silently implement unnamed-member promotion");
-    tests.expect(error.find("item 325 anonymous union") != std::string::npos &&
-                     error.find("requires a field name after '}'") != std::string::npos &&
-                     error.find("item 326") != std::string::npos,
-        "the diagnostic names the union boundary and the later promotion item (" + error + ")");
-
     const auto packed = root / "packed";
     writeProject(packed, "PackedAnonymousUnionItem325", R"NS(
 struct Wire

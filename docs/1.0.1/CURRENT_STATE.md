@@ -161,13 +161,15 @@ vez en la entrada de la función y RAII usa destrucción object-only sin liberar
 Los miembros pueden declarar `struct { ... } Campo;`. El compilador crea una identidad anidada
 determinista sólo para sus modelos internos, mantiene `Campo` como field ordinario del contenedor y
 calcula el cuerpo como valor inline. Los accesos conservan la calificación
-`contenedor.Campo.Miembro`; no hay promoción implícita antes del punto 326. El cuerpo admite
-anidamiento recursivo y los modificadores de layout del agregado sin cambios de runtime ni ABI.
+`contenedor.Campo.Miembro`. Si se omite `Campo`, los fields de instancia se promueven directamente
+al contenedor mediante aliases semánticos sin duplicar storage. El cuerpo admite anidamiento
+recursivo y los modificadores de layout del agregado sin cambios de runtime ni ABI.
 
 La forma paralela `union { ... } Campo;` conserva un field contenedor y calcula todas sus
 alternativas desde offset cero mediante el layout de union ya existente. No añade discriminante ni
-estado de alternativa activa; el acceso sigue calificado como `contenedor.Campo.Miembro`. Puede
-anidarse con structs anónimos y mantiene separada la promoción que corresponde al punto 326.
+estado de alternativa activa; con campo explícito el acceso sigue calificado como
+`contenedor.Campo.Miembro`, y sin campo explícito sus alternativas se promueven. Puede anidarse con
+structs anónimos y conserva un único carrier físico por agregado.
 
 ## Superficie del lenguaje
 
@@ -313,7 +315,7 @@ transporta directamente por valor. Las aplicaciones GUI pueden seleccionar
 
 Un producto precompilado combina `.lib`, `.nsmeta` y, para una biblioteca compartida, `.dll` más su
 import library. `LibraryReference` consume el contrato sin incorporar las fuentes del productor.
-NSMETA 1.16 conserva:
+NSMETA 1.17 conserva:
 
 - tipos, miembros, accesibilidad efectiva y nombres físicos;
 - constantes y valores necesarios para reconstruir la API;
@@ -325,6 +327,7 @@ NSMETA 1.16 conserva:
 - campos públicos `volatile` y el mismo modificador en su layout físico;
 - retornos `ref` públicos y su ABI física de puntero;
 - contratos `noheap` públicos de métodos y constructores;
+- carriers de agregados anónimos y promoción recursiva de sus fields;
 - requisitos de runtime seleccionados únicamente cuando un símbolo alcanzado los necesita.
 
 `--verify-library-artifacts` compara metadata, archivo COFF, import library y tabla de exportaciones.

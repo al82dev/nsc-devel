@@ -119,6 +119,11 @@ bool ProjectObjectLayoutModel::build(
 
     if (!diagnostics.hasErrors())
     {
+        buildPromotedFieldLayouts(diagnostics);
+    }
+
+    if (!diagnostics.hasErrors())
+    {
         buildAllocationPlans();
     }
     built_ = true;
@@ -175,6 +180,10 @@ const ObjectFieldLayout* ProjectObjectLayoutModel::fieldLayoutForMember(std::siz
         {
             if (field.memberOrdinal == memberOrdinal) return &field;
         }
+    }
+    for (const ObjectFieldLayout& field : promotedFieldLayouts_)
+    {
+        if (field.memberOrdinal == memberOrdinal) return &field;
     }
     return nullptr;
 }
@@ -847,6 +856,74 @@ bool ProjectObjectLayoutModel::buildClassLayout(
     const std::size_t layoutIndex = classLayouts_.size();
     classLayouts_.push_back(std::move(layout));
     classLayoutIndexByType_[typeOrdinal] = layoutIndex;
+    return true;
+}
+
+bool ProjectObjectLayoutModel::buildPromotedFieldLayouts(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (memberModel_ == nullptr || nameLookup_ == nullptr) return false;
+
+    // Item 326. The ordinary struct/class layouts above contain only physical carrier fields.
+    // A promoted name receives a derived lookup layout here: carrier offsets plus the ultimate
+    // source field offset. Keeping these entries out of StructValueLayout::fields and
+    // ClassObjectLayout::fields prevents header emission, aggregate initialization and
+    // destruction from mistaking a semantic alias for duplicate storage.
+    for (std::size_t typeOrdinal = 0;
+         typeOrdinal < nameLookup_->namedTypes().size();
+         ++typeOrdinal)
+    {
+        for (const std::size_t aliasOrdinal : memberModel_->promotedMembersOfType(typeOrdinal))
+        {
+            if (aliasOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& alias = memberModel_->members()[aliasOrdinal];
+            if (!alias.isAnonymousMemberPromotion ||
+                !alias.promotedSourceMemberOrdinal.has_value())
+                continue;
+
+            const ObjectFieldLayout* source =
+                fieldLayoutForMember(*alias.promotedSourceMemberOrdinal);
+            if (source == nullptr)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    alias.range,
+                    "promoted anonymous member has no physical source-field layout");
+                return false;
+            }
+
+            std::uint64_t offset = source->offset;
+            std::uint64_t alignment = source->alignment;
+            for (const std::size_t carrierOrdinal : alias.anonymousCarrierMemberOrdinals)
+            {
+                const ObjectFieldLayout* carrier = fieldLayoutForMember(carrierOrdinal);
+                if (carrier == nullptr)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        alias.range,
+                        "promoted anonymous member has no physical carrier-field layout");
+                    return false;
+                }
+                const std::optional<std::uint64_t> combined = checkedAdd(offset, carrier->offset);
+                if (!combined.has_value())
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        alias.range,
+                        "promoted anonymous member offset overflows the Windows x64 layout model");
+                    return false;
+                }
+                offset = *combined;
+                alignment = std::min(alignment, carrier->alignment);
+            }
+            promotedFieldLayouts_.push_back(ObjectFieldLayout{
+                aliasOrdinal, offset, source->size, alignment, alias.declaredTypeKey});
+        }
+    }
     return true;
 }
 

@@ -152,6 +152,7 @@ private:
     bool buildClassLayout(
         std::size_t typeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool buildPromotedFieldLayouts(diagnostics::DiagnosticEngine& diagnostics);
     void buildAllocationPlans();
 
     const ProjectNameLookup* nameLookup_ = nullptr;
@@ -162,6 +163,7 @@ private:
     std::vector<StructValueLayout> structLayouts_;
     std::vector<std::optional<std::size_t>> structLayoutIndexByType_;
     std::vector<ClassObjectLayout> classLayouts_;
+    std::vector<ObjectFieldLayout> promotedFieldLayouts_;
     std::vector<std::optional<std::size_t>> classLayoutIndexByType_;
     std::vector<target::TypeLayout> namedTypeLayouts_;
     std::vector<NamedLayoutState> namedLayoutStates_;

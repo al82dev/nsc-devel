@@ -218,7 +218,7 @@ namespace CrossNoHeap
     output.clear();
     error.clear();
     tests.expect(runDriver(producerArguments, output, error) == ExitCode::Success,
-        "a noheap producer emits its library and NSMETA 1.16 (" + error + ")");
+        "a noheap producer emits its library and current NSMETA (" + error + ")");
 
     nativesharp::interop::LibraryMetadataCodec codec;
     nativesharp::interop::LibraryMetadata metadata;
@@ -235,8 +235,9 @@ namespace CrossNoHeap
                 metadataNoHeap = true;
         }
     }
-    tests.expect(metadataRead && metadata.formatMinor == 16U && metadataNoHeap,
-        "NSMETA 1.16 preserves the public noheap bit (" + metadataError + ")");
+    tests.expect(metadataRead &&
+                     metadata.formatMinor == nativesharp::interop::kMetadataFormatMinor && metadataNoHeap,
+        "current NSMETA preserves the 1.16 public noheap bit (" + metadataError + ")");
     if (metadataRead)
     {
         metadata.formatMinor = 15U;

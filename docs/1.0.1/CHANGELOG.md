@@ -57,10 +57,14 @@ empaqueta con NativeSharp 1.0.1.
   identidad observable, llamada, alias, captura, retorno o constructor no trivial conserva heap.
 - `struct { ... } Campo;` declara un struct anónimo inline conservando un campo contenedor normal.
   El cuerpo tiene layout propio, puede anidarse, acepta `pack/align/size` y se accede mediante
-  `objeto.Campo.Miembro`; la promoción sin nombre permanece reservada para el punto 326.
+  `objeto.Campo.Miembro`; omitir `Campo` selecciona la promoción sin nombre.
 - `union { ... } Campo;` declara una union anónima inline con alternativas superpuestas en offset
   cero y un campo contenedor ordinario. Reutiliza layout, acceso y lowering de unions nombradas,
-  admite anidamiento y conserva la promoción sin nombre para el punto 326.
+  admite anidamiento y conserva acceso calificado cuando el campo tiene nombre.
+- `struct { ... };` y `union { ... };` promueven recursivamente sus fields de instancia sin
+  aplanar ni duplicar el layout. Los conflictos se diagnostican, `offsetof` suma la ruta física,
+  los headers C/MSVC usan agregados anónimos y NSMETA 1.17 conserva la promoción en
+  `LibraryReference`.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 17 (2026-09-15): los campos portadores de agregados anonimos conservan su marca para
+// que una LibraryReference reconstruya la promocion de miembros sin aplanar el layout fisico.
 // MINOR 16 (2026-09-14): metodos y constructores publicos conservan `noheap`.
 // MINOR 15 (2026-09-14): los metodos publicos con retorno ref conservan su categoria de resultado
 // y su portador ABI de direccion al reconstruirse desde una LibraryReference.
@@ -47,7 +49,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 16;
+inline constexpr std::uint16_t kMetadataFormatMinor = 17;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -63,6 +65,10 @@ inline constexpr std::uint32_t kMetadataMemberReferenceReturn = 1U << 24U;
 // Item 322. Bit 25 is a callable effect contract: callers in a noheap context may dispatch only
 // to methods and constructors that preserve this bit across module boundaries.
 inline constexpr std::uint32_t kMetadataMemberNoHeap = 1U << 25U;
+// Item 326. Bit 26 belongs to layout-field records. It distinguishes the hidden physical field
+// that carries an unnamed struct/union from an ordinary compiler-generated field, allowing the
+// metadata source materializer to recreate promotion while retaining the producer's exact layout.
+inline constexpr std::uint32_t kMetadataFieldAnonymousCarrier = 1U << 26U;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una

@@ -463,6 +463,9 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.isImplicitUserConversion) flags |= 1U << 18U;
     if (member.isNewSlot) flags |= 1U << 19U;
     if (member.isImportedC) flags |= 1U << 20U;
+    if (member.syntax != nullptr &&
+        member.syntax->auxiliaryText().find("anonymous-member-carrier") != std::string::npos)
+        flags |= kMetadataFieldAnonymousCarrier;
     flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
     if (member.isVolatile) flags |= kMetadataMemberVolatile;
     if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
@@ -1996,6 +1999,12 @@ bool LibraryMetadataCodec::writeModel(
     {
         for (LibraryMetadataMember& member : metadata.members)
             member.flags &= ~kMetadataMemberNoHeap;
+    }
+    if (metadata.formatMinor < 17)
+    {
+        for (LibraryMetadataType& type : metadata.types)
+            for (LibraryMetadataField& field : type.fields)
+                field.flags &= ~kMetadataFieldAnonymousCarrier;
     }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));

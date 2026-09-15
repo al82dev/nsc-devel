@@ -208,6 +208,12 @@ struct ClassMemberSymbol final
     // `align(N)` on an instance field raises that field's placement alignment and therefore the
     // containing aggregate's alignment. It is a minimum, never a request to weaken natural layout.
     std::optional<std::uint64_t> explicitFieldAlignment;
+    // Item 326. A promoted field is a semantic alias owned by the containing type. It is not a
+    // second physical field: the source member remains inside the anonymous aggregate and this
+    // path names the compiler-generated carrier fields that lead from the containing object to it.
+    bool isAnonymousMemberPromotion = false;
+    std::optional<std::size_t> promotedSourceMemberOrdinal;
+    std::vector<std::size_t> anonymousCarrierMemberOrdinals;
 };
 
 struct PrecompiledMemberIdentity final
@@ -250,6 +256,7 @@ public:
     std::span<const ClassMemberSymbol> members() const noexcept;
     std::span<const MemberBodyBinding> bodyBindings() const noexcept;
     std::span<const std::size_t> membersOfType(std::size_t typeOrdinal) const noexcept;
+    std::span<const std::size_t> promotedMembersOfType(std::size_t typeOrdinal) const noexcept;
     std::vector<std::size_t> findMembers(
         std::size_t typeOrdinal,
         std::string_view name) const;
@@ -287,6 +294,9 @@ private:
         std::size_t typeOrdinal,
         const NamedTypeDeclaration& type,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool collectAnonymousMemberPromotions(
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics);
     void scanMethodBody(
         const ast::AstNode* node,
         std::size_t typeOrdinal,
@@ -305,6 +315,7 @@ private:
     std::vector<ClassMemberSymbol> members_;
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
+    std::vector<std::vector<std::size_t>> promotedMembersByType_;
     std::unordered_map<const ast::AstNode*, std::size_t> memberBySyntax_;
     bool built_ = false;
 };

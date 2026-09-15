@@ -410,6 +410,18 @@ bool emitDelegate(
     return true;
 }
 
+bool isAnonymousMemberCarrier(const ClassMemberSymbol& member) noexcept
+{
+    return member.isCompilerGenerated && member.syntax != nullptr &&
+        member.syntax->auxiliaryText().find("anonymous-member-carrier") != std::string::npos;
+}
+
+bool isPromotedAnonymousLayoutType(const NamedTypeDeclaration& type) noexcept
+{
+    return type.syntax != nullptr &&
+        type.syntax->auxiliaryText().find("promote") != std::string::npos;
+}
+
 bool emitStruct(
     std::ostringstream& out,
     const HostContext& context,
@@ -447,13 +459,72 @@ bool emitStruct(
     // `align(N)` becomes an alignment specifier on the FIRST member, which is where C11 accepts
     // one and where it raises the whole aggregate's alignment. (After the tag it is not valid C.)
     bool pendingAlignment = layout->minimumAlignment != 0;
-    for (const std::size_t ordinal : context.members.membersOfType(typeOrdinal))
+    std::function<bool(
+        const ClassMemberSymbol&,
+        std::string_view,
+        bool&,
+        std::uint64_t)> emitField;
+    emitField = [&](const ClassMemberSymbol& field,
+                    const std::string_view indentation,
+                    bool& aggregatePendingAlignment,
+                    const std::uint64_t aggregateMinimumAlignment) -> bool
     {
-        const ClassMemberSymbol& field = context.members.members()[ordinal];
-        if (field.kind != ClassMemberKind::Field || field.isStatic) continue;
+        const bool anonymousCarrier = isAnonymousMemberCarrier(field);
+        if (anonymousCarrier)
+        {
+            const NamedTypeDeclaration* nestedType =
+                namedTypeForCoreKey(field.declaredTypeKey, context.names);
+            const auto namedTypes = context.names.namedTypes();
+            if (nestedType == nullptr || nestedType->kind != NamedTypeDeclarationKind::Struct)
+            {
+                error = "host header cannot resolve anonymous carrier type '" +
+                    field.declaredTypeKey + "'";
+                return false;
+            }
+            const std::size_t nestedOrdinal =
+                static_cast<std::size_t>(nestedType - namedTypes.data());
+            const frontend::StructValueLayout* nestedLayout =
+                context.layouts.structLayoutForType(nestedOrdinal);
+            if (nestedLayout == nullptr)
+            {
+                error = "missing layout for anonymous host aggregate '" +
+                    nestedType->identity.fullyQualifiedName() + "'";
+                return false;
+            }
+            if (nestedLayout->hasExplicitFieldOffsets)
+            {
+                error = "host header cannot express explicit field offsets in anonymous aggregate '" +
+                    nestedType->identity.fullyQualifiedName() + "'";
+                return false;
+            }
+            if (nestedLayout->pack != 0)
+                out << "#pragma pack(push, " << nestedLayout->pack << ")\n";
+            out << indentation;
+            if (field.explicitFieldAlignment.has_value())
+                out << "NS_ALIGNAS(" << *field.explicitFieldAlignment << ") ";
+            if (aggregatePendingAlignment)
+            {
+                out << "NS_ALIGNAS(" << aggregateMinimumAlignment << ") ";
+                aggregatePendingAlignment = false;
+            }
+            out << (nestedLayout->isUnion ? "union" : "struct") << "\n"
+                << indentation << "{\n";
+            bool nestedPendingAlignment = nestedLayout->minimumAlignment != 0;
+            for (const std::size_t nestedMemberOrdinal : context.members.membersOfType(nestedOrdinal))
+            {
+                const ClassMemberSymbol& nestedField = context.members.members()[nestedMemberOrdinal];
+                if (nestedField.kind != ClassMemberKind::Field || nestedField.isStatic) continue;
+                if (!emitField(nestedField, std::string(indentation) + "    ",
+                        nestedPendingAlignment, nestedLayout->minimumAlignment))
+                    return false;
+            }
+            out << indentation << "};\n";
+            if (nestedLayout->pack != 0) out << "#pragma pack(pop)\n";
+            return true;
+        }
+
         // C2.1 "fixed arrays": C spells an array field with the extent AFTER the name, so the
-        // element type and the count are emitted on either side of it. This is what makes
-        // `float color[4]` inside a C struct expressible in both directions.
+        // element type and the count are emitted on either side of it.
         const std::optional<std::string> element =
             frontend::ProjectMemberModel::fixedArrayElementTypeKey(field.declaredTypeKey);
         const std::optional<std::string> flexibleElement =
@@ -464,15 +535,13 @@ bool emitStruct(
             context,
             error);
         if (!error.empty()) return false;
-        out << "    ";
+        out << indentation;
         if (field.explicitFieldAlignment.has_value())
-        {
             out << "NS_ALIGNAS(" << *field.explicitFieldAlignment << ") ";
-        }
-        if (pendingAlignment)
+        if (aggregatePendingAlignment)
         {
-            out << "NS_ALIGNAS(" << layout->minimumAlignment << ") ";
-            pendingAlignment = false;
+            out << "NS_ALIGNAS(" << aggregateMinimumAlignment << ") ";
+            aggregatePendingAlignment = false;
         }
         out << fieldType << ' ' << sanitizeIdentifier(field.name);
         if (element.has_value())
@@ -491,6 +560,13 @@ bool emitStruct(
             out << "[]";
         }
         out << ";\n";
+        return true;
+    };
+    for (const std::size_t ordinal : context.members.membersOfType(typeOrdinal))
+    {
+        const ClassMemberSymbol& field = context.members.members()[ordinal];
+        if (field.kind != ClassMemberKind::Field || field.isStatic) continue;
+        if (!emitField(field, "    ", pendingAlignment, layout->minimumAlignment)) return false;
     }
     out << "};\n";
     if (layout->pack != 0)
@@ -505,9 +581,21 @@ bool emitStruct(
     {
         if (fieldLayout.memberOrdinal >= context.members.members().size()) continue;
         const ClassMemberSymbol& field = context.members.members()[fieldLayout.memberOrdinal];
+        if (isAnonymousMemberCarrier(field)) continue;
         out << "NS_STATIC_ASSERT(offsetof(" << hostName << ", " << sanitizeIdentifier(field.name)
             << ") == " << fieldLayout.offset << ", \"NativeSharp host struct offset mismatch: "
             << hostName << '.' << sanitizeIdentifier(field.name) << "\");\n";
+    }
+    for (const std::size_t promotedOrdinal : context.members.promotedMembersOfType(typeOrdinal))
+    {
+        if (promotedOrdinal >= context.members.members().size()) continue;
+        const ClassMemberSymbol& promoted = context.members.members()[promotedOrdinal];
+        const frontend::ObjectFieldLayout* promotedLayout =
+            context.layouts.fieldLayoutForMember(promotedOrdinal);
+        if (promotedLayout == nullptr) continue;
+        out << "NS_STATIC_ASSERT(offsetof(" << hostName << ", " << sanitizeIdentifier(promoted.name)
+            << ") == " << promotedLayout->offset << ", \"NativeSharp host struct offset mismatch: "
+            << hostName << '.' << sanitizeIdentifier(promoted.name) << "\");\n";
     }
     return true;
 }
@@ -560,11 +648,26 @@ std::vector<std::string> definitionDependencies(
 
     if (type.kind == NamedTypeDeclarationKind::Struct)
     {
-        for (const std::size_t ordinal : context.members.membersOfType(typeOrdinal))
+        std::function<void(std::size_t)> considerFields;
+        considerFields = [&](const std::size_t ownerOrdinal)
         {
-            const ClassMemberSymbol& field = context.members.members()[ordinal];
-            if (field.kind == ClassMemberKind::Field && !field.isStatic) consider(field.declaredTypeKey);
-        }
+            for (const std::size_t ordinal : context.members.membersOfType(ownerOrdinal))
+            {
+                const ClassMemberSymbol& field = context.members.members()[ordinal];
+                if (field.kind != ClassMemberKind::Field || field.isStatic) continue;
+                if (!isAnonymousMemberCarrier(field))
+                {
+                    consider(field.declaredTypeKey);
+                    continue;
+                }
+                const NamedTypeDeclaration* nested =
+                    namedTypeForCoreKey(field.declaredTypeKey, context.names);
+                const auto types = context.names.namedTypes();
+                if (nested != nullptr)
+                    considerFields(static_cast<std::size_t>(nested - types.data()));
+            }
+        };
+        considerFields(typeOrdinal);
     }
     else if (type.kind == NamedTypeDeclarationKind::Delegate && type.syntax != nullptr)
     {
@@ -614,6 +717,12 @@ bool emitOrderedDefinitions(
         for (const std::string& dependency : definitionDependencies(context, type, foundOrdinal->second))
         {
             if (!visit(dependency)) return false;
+        }
+
+        if (isPromotedAnonymousLayoutType(type))
+        {
+            state = State::Done;
+            return true;
         }
 
         if (type.kind == NamedTypeDeclarationKind::Struct)
@@ -704,6 +813,7 @@ bool CHeaderGenerator::writeHeader(
     for (const NamedTypeDeclaration& type : namedTypes)
     {
         if (!reachable.contains(type.identity.key())) continue;
+        if (isPromotedAnonymousLayoutType(type)) continue;
         if (type.kind == NamedTypeDeclarationKind::Class || type.kind == NamedTypeDeclarationKind::Interface ||
             type.kind == NamedTypeDeclarationKind::Struct)
         {

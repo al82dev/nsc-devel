@@ -175,21 +175,6 @@ class Program
     tests.expect(runDriver(nestedArguments, output, error) == ExitCode::Success,
         "anonymous structs nest recursively without flattening member ownership (" + error + ")");
 
-    const auto missingName = root / "missing-name";
-    writeProject(missingName, "MissingAnonymousName", R"NS(
-struct Invalid { struct { public int Value; }; }
-)NS");
-    const std::string missingProject = (missingName / "MissingAnonymousName.nsproj").string();
-    const std::array<std::string_view, 2> missingArguments = {
-        "--check-project-layouts", missingProject};
-    output.clear();
-    error.clear();
-    tests.expect(runDriver(missingArguments, output, error) != ExitCode::Success,
-        "item 324 does not silently implement unnamed-member promotion");
-    tests.expect(error.find("requires a field name after '}'") != std::string::npos &&
-                     error.find("item 326") != std::string::npos,
-        "the diagnostic names the current boundary and the later promotion item (" + error + ")");
-
     const auto packed = root / "packed";
     writeProject(packed, "PackedAnonymousItem324", R"NS(
 struct Wire

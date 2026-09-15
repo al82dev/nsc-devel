@@ -3224,28 +3224,47 @@ ast::AstNode* Parser::parseClassMember(
         appendLayout("size", nestedLayoutSize);
         parseStructBody(declaration, synthesizedName, beginIndex);
 
-        if (!at(TokenKind::Identifier))
+        const bool promotesMembers = !at(TokenKind::Identifier);
+        std::string fieldName;
+        SourceRange fieldNameRange = current().range();
+        if (promotesMembers)
         {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                current().range(),
-                std::string("item ") + (anonymousUnion ? "325 anonymous union" : "324 anonymous struct") +
-                " requires a field name after '}'; unnamed member "
-                "promotion is introduced by item 326");
-            synchronizeStatement();
-            return declaration;
+            fieldName = "__nsc_anonymous_member_f" +
+                std::to_string(aggregateKeyword.range().begin().fileId().value()) + "_" +
+                std::to_string(aggregateKeyword.range().begin().offset());
+            std::string markers = declaration->auxiliaryText();
+            markers += ",promote";
+            declaration->setAuxiliaryText(std::move(markers));
+            if (isNew || isStatic || isReadonly || isVolatile || isConst)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    aggregateKeyword.range(),
+                    "an unnamed anonymous aggregate accepts accessibility, at, pack, align and size only");
+            }
         }
-
-        const lexer::Token& name = consume();
+        else
+        {
+            const lexer::Token& name = consume();
+            fieldName = std::string(name.lexeme());
+            fieldNameRange = name.range();
+        }
         ast::TypeSyntax* type = arena_.make<ast::TypeSyntax>(
             aggregateKeyword.range(), TokenKind::Identifier, synthesizedName);
         ast::AstNode* field = arena_.make<ast::AstNode>(
-            ast::AstNodeKind::FieldDeclaration, name.range());
+            ast::AstNodeKind::FieldDeclaration, fieldNameRange);
         field->setTypeSyntax(type);
-        field->setText(std::string(name.lexeme()));
+        field->setText(std::move(fieldName));
         if (explicitFieldOffset.has_value())
             field->setAuxiliaryText("at:" + std::to_string(*explicitFieldOffset));
+        if (promotesMembers)
+        {
+            std::string metadata = field->auxiliaryText();
+            metadata += (metadata.empty() ? "" : ",");
+            metadata += "anonymous-member-carrier";
+            field->setAuxiliaryText(std::move(metadata));
+        }
         if (accessibility != TokenKind::Invalid)
         {
             field->setTokenKind(accessibility);
@@ -3256,14 +3275,14 @@ ast::AstNode* Parser::parseClassMember(
         if (isNew) field->addModifier(TokenKind::KwNew);
         if (isReadonly) field->addModifier(TokenKind::KwReadonly);
         if (isConst) field->addModifier(TokenKind::KwConst);
-        if (consumeIf(TokenKind::Equal))
+        if (!promotesMembers && consumeIf(TokenKind::Equal))
             field->setFirst(at(TokenKind::LeftBrace) ? parseAggregateInitializer() : parseExpression());
-        else if (isConst)
+        else if (!promotesMembers && isConst)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
                 diagnostics::DiagnosticSeverity::Error,
-                name.range(),
+                fieldNameRange,
                 "const field requires an initializer");
         }
         expect(TokenKind::Semicolon, "';'");

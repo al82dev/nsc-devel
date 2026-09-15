@@ -979,9 +979,8 @@ ABI, Runtime ABI, bindings, or runtime implementation.
 The parser shall recognize `struct { members } name;` in a class or struct member position without
 requiring or manufacturing a source-level type name. It shall retain one compiler-generated nested
 `StructDeclaration` with a deterministic identity derived from file identity and source offset, ordinary body
-members as children, and the containing `FieldDeclaration` on a separate AST edge. The field name
-shall remain mandatory; an omitted declarator shall diagnose the item-326 boundary rather than
-silently promote members.
+members as children, and the containing `FieldDeclaration` on a separate AST edge. A present field
+name shall retain qualified access; an omitted declarator shall follow NSC-LAYOUT-004.
 
 Name lookup shall predeclare the synthesized struct through the existing nested-type path. Member
 collection shall assign body members only to that synthesized type and the carrier field only to
@@ -1000,8 +999,8 @@ The parser shall recognize contextual `union { members } name;` in a class, stru
 position without requiring a source-level type name. It shall retain a compiler-generated nested
 `StructDeclaration` whose deterministic identity derives from file identity and source offset,
 mark it with ordinary union layout semantics, keep body fields as its children and attach one
-ordinary carrier `FieldDeclaration` on a separate AST edge. Missing carrier names shall diagnose
-the item-326 boundary rather than promote alternatives.
+ordinary carrier `FieldDeclaration` on a separate AST edge. A missing carrier name shall follow
+NSC-LAYOUT-004.
 
 Name lookup and member collection shall follow NSC-LAYOUT-002. The object-layout model shall be the
 only downstream component that distinguishes the synthesized union from a struct: every instance
@@ -1012,6 +1011,26 @@ carrier. Member access, HIR, MIR and LLVM shall reuse ordinary nested value-fiel
 The representation shall contain no hidden discriminant, active-member state, descriptor,
 allocation or ownership. This feature changes no Object ABI, Runtime ABI, MIR schema, runtime or
 binding surface.
+
+## NSC-LAYOUT-004 — Anonymous-member promotion
+
+For an unnamed `struct { fields };` or `union { fields };`, the parser shall keep the synthesized
+nested aggregate and one compiler-generated physical carrier field, marking both deterministically.
+The member model shall add separate nonphysical aliases on the containing type for instance fields
+only. Promotion shall recurse through unnamed carriers, retain the ultimate source field and its
+ordered carrier path, compute conservative effective accessibility, and diagnose collisions with
+direct or previously promoted names. Named carriers shall not promote.
+
+The layout model shall first complete every physical aggregate and then derive each alias offset by
+adding its carrier-path offsets to the ultimate source offset. Aliases shall not appear in physical
+field lists and therefore shall not duplicate storage, initialization, destruction, header state or
+MIR operands. Member access, assignment and `offsetof` shall resolve through the derived layout.
+
+The C header generator shall spell promoted carriers as C/MSVC anonymous structs or unions, omit
+compiler-generated identities and assert promoted offsets. NSMETA 1.17 shall mark physical
+anonymous carriers and its source materializer shall recursively reconstruct them for a
+`LibraryReference`. Writing minor 1.16 or earlier shall clear this unsupported marker. This feature
+changes neither MIR 1.6, Object ABI 2, Runtime ABI nor runtime ownership.
 
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 

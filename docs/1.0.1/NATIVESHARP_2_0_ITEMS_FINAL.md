@@ -117,7 +117,7 @@
 
 79. **324 — Structs anónimos / Anonymous structs — COMPLETADO / COMPLETE**
 80. **325 — Unions anónimos / Anonymous unions — COMPLETADO / COMPLETE**
-81. **326 — Promoción y resolución de miembros anónimos / Anonymous-member promotion**
+81. **326 — Promoción y resolución de miembros anónimos / Anonymous-member promotion — COMPLETADO / COMPLETE**
 82. **327 — Sintaxis de bitfields / Bit-field syntax**
 83. **328 — Layout de bitfields MSVC / MSVC bit-field layout**
 84. **329 — Lectura y escritura de bitfields / Bit-field access**

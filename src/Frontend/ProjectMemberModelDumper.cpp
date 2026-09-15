@@ -62,6 +62,24 @@ void ProjectMemberModelDumper::dump(
                        << " ownership=" << sema::ownershipKindName(parameter.ownership) << '\n';
             }
         }
+        for (const std::size_t memberOrdinal : model.promotedMembersOfType(typeOrdinal))
+        {
+            if (memberOrdinal >= model.members().size()) continue;
+            const ClassMemberSymbol& member = model.members()[memberOrdinal];
+            output << "  promoted-member[" << memberOrdinal << "] "
+                   << classMemberAccessibilityName(member.accessibility) << " field "
+                   << member.name << " type=" << member.declaredTypeKey << " via=";
+            for (std::size_t index = 0;
+                 index < member.anonymousCarrierMemberOrdinals.size();
+                 ++index)
+            {
+                if (index != 0) output << ',';
+                output << member.anonymousCarrierMemberOrdinals[index];
+            }
+            output << " source-member="
+                   << member.promotedSourceMemberOrdinal.value_or(model.members().size())
+                   << '\n';
+        }
     }
 
     output << "body-bindings=" << model.bodyBindings().size() << '\n';

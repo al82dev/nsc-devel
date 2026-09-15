@@ -1809,12 +1809,82 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
 
         std::set<const interop::LibraryMetadataMember *> materializedEvents;
         std::set<const interop::LibraryMetadataMember *> materializedAccessors;
+        std::function<bool(
+            const interop::LibraryMetadataType &,
+            const interop::LibraryMetadataField &,
+            std::string_view)> emitAnonymousCarrier;
+        emitAnonymousCarrier = [&]
+            (const interop::LibraryMetadataType &owner,
+             const interop::LibraryMetadataField &carrier,
+             const std::string_view indentation) -> bool {
+            if (!carrier.typeKey.starts_with("type:"))
+            {
+                error = "metadata anonymous-member carrier '" + carrier.name +
+                    "' does not refer to a nominal aggregate type";
+                return false;
+            }
+            const std::string_view carrierIdentity(carrier.typeKey.data() + 5U, carrier.typeKey.size() - 5U);
+            const auto nestedFound = std::ranges::find_if(metadata.types, [&](const auto &candidate) {
+                return candidate.identityKey == carrierIdentity;
+            });
+            if (nestedFound == metadata.types.end() ||
+                nestedFound->kind != interop::LibraryMetadataTypeKind::Struct)
+            {
+                error = "metadata anonymous-member carrier '" + carrier.name +
+                    "' refers to a missing or non-aggregate type '" + carrier.typeKey + "'";
+                return false;
+            }
+            const interop::LibraryMetadataType &nested = *nestedFound;
+            const interop::LibraryMetadataMember *carrierMember =
+                metadataFieldMember(metadata, owner, carrier.name);
+            generated << indentation;
+            if (owner.kind == interop::LibraryMetadataTypeKind::Struct)
+                generated << "at(" << carrier.offset << ") ";
+            generated << sourceAccessibility(
+                carrierMember == nullptr ? 0U : carrierMember->accessibility) << ' ';
+            generated << "pack(" << nested.alignment << ") align(" << nested.alignment
+                      << ") size(" << nested.size << ") "
+                      << ((nested.flags & (1U << 5U)) != 0U ? "union" : "struct") << "\n"
+                      << indentation << "{\n";
+            const std::string childIndentation = std::string(indentation) + "    ";
+            for (std::size_t childIndex = 0; childIndex < nested.fields.size(); ++childIndex)
+            {
+                const interop::LibraryMetadataField &child = nested.fields[childIndex];
+                if ((child.flags & interop::kMetadataFieldAnonymousCarrier) != 0U)
+                {
+                    if (!emitAnonymousCarrier(nested, child, childIndentation)) return false;
+                    continue;
+                }
+                std::string childType;
+                if (!sourceTypeForMetadataKey(metadata, child.typeKey, childType, error)) return false;
+                const interop::LibraryMetadataMember *childMember =
+                    metadataFieldMember(metadata, nested, child.name);
+                const std::string childName = child.name.empty()
+                    ? "__nsc_layout_field_" + std::to_string(childIndex)
+                    : child.name;
+                generated << childIndentation << "at(" << child.offset << ") align("
+                          << child.alignment << ") "
+                          << sourceAccessibility(childMember == nullptr ? 0U : childMember->accessibility)
+                          << ' ';
+                if ((child.flags & (1U << 1U)) != 0U || (nested.flags & (1U << 6U)) != 0U)
+                    generated << "readonly ";
+                if ((child.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
+                generated << ownershipPrefix(child.ownership) << childType << ' ' << childName << ";\n";
+            }
+            generated << indentation << "};\n";
+            return true;
+        };
         if (type.kind == interop::LibraryMetadataTypeKind::Struct ||
             type.kind == interop::LibraryMetadataTypeKind::Class)
         {
             for (std::size_t fieldIndex = 0; fieldIndex < type.fields.size(); ++fieldIndex)
             {
                 const interop::LibraryMetadataField &field = type.fields[fieldIndex];
+                if ((field.flags & interop::kMetadataFieldAnonymousCarrier) != 0U)
+                {
+                    if (!emitAnonymousCarrier(type, field, "    ")) return false;
+                    continue;
+                }
                 std::string fieldType;
                 if (!sourceTypeForMetadataKey(metadata, field.typeKey, fieldType, error)) return false;
                 if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, type, field);

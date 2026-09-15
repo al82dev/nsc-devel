@@ -967,8 +967,8 @@ reconstruir un consumidor con una alineación menor aunque los offsets coincidan
 
 La forma `struct { miembros } nombre;` declara dentro de una clase o struct un valor inline cuyo
 tipo no tiene nombre fuente y un campo contenedor llamado `nombre`. Los miembros pertenecen al
-valor anónimo: se acceden como `objeto.nombre.miembro`; no se promueven al contenedor. Omitir
-`nombre` es un error hasta que el punto 326 defina la promoción de miembros anónimos.
+valor anónimo y se acceden como `objeto.nombre.miembro`. Si se omite `nombre`, se aplican las reglas
+de promoción de NS-LAYOUT-006.
 
 El cuerpo acepta las mismas declaraciones y puede contener recursivamente otro struct anónimo.
 Su layout usa las reglas ordinarias de struct. `pack(N)`, `align(N)` y `size(N)` escritos antes de
@@ -979,16 +979,15 @@ restricciones existentes: por ejemplo, un agregado no se vuelve un acceso `volat
 The form `struct { members } name;` declares an inline value with no source-level type name plus a
 containing field named `name`. Members remain qualified through that field and are not promoted.
 The body follows ordinary struct layout, may nest recursively, and participates in the containing
-aggregate exactly like a named struct field. A field name is mandatory until anonymous-member
-promotion is introduced by item 326.
+aggregate exactly like a named struct field. Omitting `name` selects NS-LAYOUT-006 promotion.
 
 ### NS-LAYOUT-005 — Unions anónimos con campo contenedor
 
 La forma `union { miembros } nombre;` declara dentro de una clase, struct o union un valor inline
 sin nombre fuente y un campo contenedor llamado `nombre`. Todas las alternativas del cuerpo
 comienzan en offset cero y el tamaño y la alineación siguen las reglas de una union ordinaria. Los
-miembros se acceden como `objeto.nombre.miembro`; no se promueven al agregado exterior. Omitir
-`nombre` es un error hasta que el punto 326 defina la promoción de miembros anónimos.
+miembros se acceden como `objeto.nombre.miembro`; no se promueven al agregado exterior. Si se
+omite `nombre`, se aplican las reglas de promoción de NS-LAYOUT-006.
 
 El cuerpo puede incluir cualquier field válido de una union y anidar structs o unions anónimos.
 `pack(N)`, `align(N)` y `size(N)` antes de `union` describen el tipo embebido; `at(N)` describe la
@@ -997,8 +996,29 @@ contenedor. La union no incorpora discriminante ni seguimiento de la alternativa
 
 The form `union { members } name;` declares an inline union with no source-level type name plus a
 containing field named `name`. Alternatives overlap at offset zero, remain qualified through the
-carrier and are not promoted. Ordinary union layout and lifetime restrictions apply, and a field
-name remains mandatory until item 326.
+carrier and are not promoted. Ordinary union layout and lifetime restrictions apply. Omitting the
+field name selects NS-LAYOUT-006 promotion.
+
+### NS-LAYOUT-006 — Promoción de miembros anónimos
+
+Las formas `struct { campos };` y `union { campos };` conservan un único agregado físico inline,
+pero hacen visibles sus fields de instancia directamente en el tipo contenedor. La promoción es
+recursiva: una ruta puede atravesar varios agregados sin nombre. Cada alias promovido conserva tipo,
+ownership y accesibilidad efectiva; esta última es la intersección conservadora de todos los fields
+que forman la ruta. No se promueven métodos, miembros estáticos ni almacenamiento adicional.
+
+Un nombre promovido no puede colisionar con un miembro directo ni con otro nombre promovido del
+mismo contenedor. `at(N)` posiciona el carrier físico; `pack(N)`, `align(N)` y `size(N)` siguen
+perteneciendo al agregado embebido. Acceso, asignación y `offsetof` resuelven el offset como la suma
+de la ruta de carriers y el field final. Los headers C/MSVC emiten agregados anónimos equivalentes.
+NSMETA 1.17 conserva la marca del carrier y reconstruye la misma promoción en una
+`LibraryReference`; un downlevel 1.16 elimina la marca porque ese formato no expresa la semántica.
+
+The forms `struct { fields };` and `union { fields };` retain one physical inline aggregate while
+promoting instance fields into the containing type. Promotion may recurse, never duplicates
+storage, and rejects direct or promoted name conflicts. Effective accessibility is the conservative
+intersection along the carrier path. Member access and `offsetof` use the accumulated physical
+offset; C/MSVC headers and NSMETA 1.17 preserve the same source and cross-module contract.
 
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su

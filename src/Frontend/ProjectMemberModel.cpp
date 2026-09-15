@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -301,6 +302,7 @@ bool ProjectMemberModel::build(
 
     nameLookup_ = &nameLookup;
     membersByType_.resize(nameLookup.namedTypes().size());
+    promotedMembersByType_.resize(nameLookup.namedTypes().size());
 
     for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
     {
@@ -393,6 +395,8 @@ bool ProjectMemberModel::build(
         }
         collectTypeMembers(typeOrdinal, type, nameLookup, diagnostics);
     }
+
+    collectAnonymousMemberPromotions(nameLookup, diagnostics);
 
     std::unordered_map<std::string, const ClassMemberSymbol*> cAbiExports;
     for (const ClassMemberSymbol& member : members_)
@@ -639,6 +643,15 @@ std::span<const std::size_t> ProjectMemberModel::membersOfType(std::size_t typeO
     return membersByType_[typeOrdinal];
 }
 
+std::span<const std::size_t> ProjectMemberModel::promotedMembersOfType(
+    std::size_t typeOrdinal) const noexcept
+{
+    static const std::vector<std::size_t> empty;
+    return typeOrdinal < promotedMembersByType_.size()
+        ? std::span<const std::size_t>(promotedMembersByType_[typeOrdinal])
+        : std::span<const std::size_t>(empty);
+}
+
 std::vector<std::size_t> ProjectMemberModel::findMembers(
     std::size_t typeOrdinal,
     std::string_view name) const
@@ -651,9 +664,23 @@ std::vector<std::size_t> ProjectMemberModel::findMembers(
 
     for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
     {
-        if (memberOrdinal < members_.size() && members_[memberOrdinal].name == name)
+        if (memberOrdinal < members_.size() && members_[memberOrdinal].name == name &&
+            !(members_[memberOrdinal].isCompilerGenerated &&
+              members_[memberOrdinal].syntax != nullptr &&
+              members_[memberOrdinal].syntax->auxiliaryText().find("anonymous-member-carrier") !=
+                  std::string::npos))
         {
             result.push_back(memberOrdinal);
+        }
+    }
+    if (typeOrdinal < promotedMembersByType_.size())
+    {
+        for (const std::size_t memberOrdinal : promotedMembersByType_[typeOrdinal])
+        {
+            if (memberOrdinal < members_.size() && members_[memberOrdinal].name == name)
+            {
+                result.push_back(memberOrdinal);
+            }
         }
     }
     return result;
@@ -1243,7 +1270,8 @@ bool ProjectMemberModel::collectTypeMembers(
 
             const std::string& metadata = memberNode->auxiliaryText();
             symbol.isCompilerGenerated = metadata.starts_with("property-backing:") ||
-                metadata.starts_with("event-backing:");
+                metadata.starts_with("event-backing:") ||
+                metadata.find("anonymous-member-carrier") != std::string::npos;
             symbol.isEvent = symbol.kind == ClassMemberKind::Event;
             symbol.isEventBacking = metadata.starts_with("event-backing:");
             symbol.isPropertyAccessor = metadata.starts_with("property:get:") ||
@@ -1788,6 +1816,160 @@ bool ProjectMemberModel::collectTypeMembers(
         }
     }
 
+    return !diagnostics.hasErrors();
+}
+
+bool ProjectMemberModel::collectAnonymousMemberPromotions(
+    const ProjectNameLookup& nameLookup,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    // Item 326. Promotion is a semantic alias, not physical flattening. Every unnamed aggregate
+    // still owns one compiler-generated carrier field so its pack/align/size, union overlap and
+    // tail padding remain authoritative. The aliases live outside membersByType_: ordinary model
+    // consumers therefore continue to see exactly the physical fields, while findMembers() adds
+    // the promoted surface for source resolution.
+    const auto typeOrdinalForKey = [&](std::string_view key) -> std::optional<std::size_t>
+    {
+        if (!key.starts_with("type:")) return std::nullopt;
+        const std::string_view identity = key.substr(5);
+        for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+        {
+            if (nameLookup.namedTypes()[ordinal].identity.key() == identity) return ordinal;
+        }
+        return std::nullopt;
+    };
+    const auto intersectAccessibility = [](
+        ClassMemberAccessibility carrier,
+        ClassMemberAccessibility member) noexcept
+    {
+        if (carrier == member) return carrier;
+        if (carrier == ClassMemberAccessibility::Private ||
+            member == ClassMemberAccessibility::Private)
+            return ClassMemberAccessibility::Private;
+        if (carrier == ClassMemberAccessibility::Public) return member;
+        if (member == ClassMemberAccessibility::Public) return carrier;
+        // `internal` intersected with `protected` has no single NativeSharp spelling. Private is
+        // the conservative result: promotion must never make a member more visible than either
+        // edge of its path.
+        return ClassMemberAccessibility::Private;
+    };
+
+    enum class VisitState { Unvisited, Visiting, Complete };
+    std::vector<VisitState> states(nameLookup.namedTypes().size(), VisitState::Unvisited);
+    std::function<void(std::size_t)> visit = [&](std::size_t typeOrdinal)
+    {
+        if (typeOrdinal >= states.size() || states[typeOrdinal] == VisitState::Complete) return;
+        if (states[typeOrdinal] == VisitState::Visiting) return;
+        states[typeOrdinal] = VisitState::Visiting;
+
+        std::unordered_map<std::string, std::size_t> directNames;
+        for (const std::size_t ordinal : membersByType_[typeOrdinal])
+        {
+            if (ordinal >= members_.size()) continue;
+            const ClassMemberSymbol& member = members_[ordinal];
+            if (!member.isCompilerGenerated) directNames.emplace(member.name, ordinal);
+        }
+        std::unordered_map<std::string, std::size_t> promotedNames;
+        const std::vector<std::size_t> physicalMembers = membersByType_[typeOrdinal];
+        for (const std::size_t carrierOrdinal : physicalMembers)
+        {
+            if (carrierOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& carrierBeforeVisit = members_[carrierOrdinal];
+            if (carrierBeforeVisit.kind != ClassMemberKind::Field || carrierBeforeVisit.isStatic ||
+                carrierBeforeVisit.syntax == nullptr ||
+                carrierBeforeVisit.syntax->auxiliaryText().find("anonymous-member-carrier") ==
+                    std::string::npos)
+                continue;
+
+            const std::optional<std::size_t> nestedTypeOrdinal =
+                typeOrdinalForKey(carrierBeforeVisit.declaredTypeKey);
+            if (!nestedTypeOrdinal.has_value())
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    carrierBeforeVisit.range,
+                    "anonymous-member carrier has no synthesized aggregate type");
+                continue;
+            }
+            visit(*nestedTypeOrdinal);
+
+            std::vector<std::size_t> candidates = membersByType_[*nestedTypeOrdinal];
+            candidates.insert(
+                candidates.end(),
+                promotedMembersByType_[*nestedTypeOrdinal].begin(),
+                promotedMembersByType_[*nestedTypeOrdinal].end());
+            for (const std::size_t sourceOrdinal : candidates)
+            {
+                if (sourceOrdinal >= members_.size()) continue;
+                const ClassMemberSymbol source = members_[sourceOrdinal];
+                if (source.isCompilerGenerated && !source.isAnonymousMemberPromotion) continue;
+                if (source.kind != ClassMemberKind::Field || source.isStatic)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        source.range,
+                        "an unnamed anonymous aggregate can promote instance fields only");
+                    continue;
+                }
+
+                ClassMemberSymbol alias = source;
+                alias.accessibility = intersectAccessibility(
+                    members_[carrierOrdinal].accessibility, source.accessibility);
+                alias.declaringTypeOrdinal = typeOrdinal;
+                alias.partOrdinal = members_[carrierOrdinal].partOrdinal;
+                alias.declarationOrdinal = members_[carrierOrdinal].declarationOrdinal;
+                alias.syntax = nullptr;
+                alias.isCompilerGenerated = true;
+                alias.isAnonymousMemberPromotion = true;
+                alias.promotedSourceMemberOrdinal = source.isAnonymousMemberPromotion
+                    ? source.promotedSourceMemberOrdinal
+                    : std::optional<std::size_t>(sourceOrdinal);
+                alias.anonymousCarrierMemberOrdinals.clear();
+                alias.anonymousCarrierMemberOrdinals.push_back(carrierOrdinal);
+                alias.anonymousCarrierMemberOrdinals.insert(
+                    alias.anonymousCarrierMemberOrdinals.end(),
+                    source.anonymousCarrierMemberOrdinals.begin(),
+                    source.anonymousCarrierMemberOrdinals.end());
+                alias.explicitFieldOffset.reset();
+                alias.explicitFieldAlignment.reset();
+                alias.declaringTypeIsStruct =
+                    typeOrdinal < nameLookup.namedTypes().size() &&
+                    nameLookup.namedTypes()[typeOrdinal].kind == NamedTypeDeclarationKind::Struct;
+
+                const auto direct = directNames.find(alias.name);
+                const auto previousPromotion = promotedNames.find(alias.name);
+                if (direct != directNames.end() || previousPromotion != promotedNames.end())
+                {
+                    const std::size_t previousOrdinal = direct != directNames.end()
+                        ? direct->second : previousPromotion->second;
+                    if (previousOrdinal < members_.size())
+                    {
+                        reportDuplicate(
+                            alias,
+                            members_[previousOrdinal],
+                            diagnostics,
+                            "promoted anonymous member name '" + alias.name +
+                                "' conflicts in type '" +
+                                nameLookup.namedTypes()[typeOrdinal].identity.fullyQualifiedName() + "'");
+                    }
+                    continue;
+                }
+
+                const std::size_t aliasOrdinal = members_.size();
+                members_.push_back(std::move(alias));
+                promotedMembersByType_[typeOrdinal].push_back(aliasOrdinal);
+                promotedNames.emplace(members_[aliasOrdinal].name, aliasOrdinal);
+            }
+        }
+        states[typeOrdinal] = VisitState::Complete;
+    };
+
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        visit(typeOrdinal);
+    }
     return !diagnostics.hasErrors();
 }
 

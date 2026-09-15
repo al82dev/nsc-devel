@@ -18,12 +18,12 @@ public struct Packet
 ```
 
 Las alternativas se superponen y el acceso permanece calificado, por ejemplo
-`packet.Payload.AsInt`. Ningún miembro aparece directamente en `Packet`: esa promoción pertenece
-al punto 326.
+`packet.Payload.AsInt`. Ningún miembro aparece directamente en `Packet`; la forma sin campo y su
+promoción se completaron después en el punto 326.
 
 NativeSharp accepts a source-anonymous inline union when the declaration retains an explicit
-carrier field. Alternatives overlap at offset zero and remain qualified through that field;
-anonymous-member promotion is deliberately left to item 326.
+carrier field. Alternatives overlap at offset zero and remain qualified through that field; item
+326 later added the distinct unnamed promoted form.
 
 ## Representación / Representation
 
@@ -51,8 +51,8 @@ named structs and unions.
 - `pack(N)`, `align(N)` y `size(N)` antes de `union` pertenecen al cuerpo anónimo.
 - `at(N)` pertenece al field contenedor.
 - Los cuerpos pueden anidarse con structs o unions anónimos.
-- El nombre del field después de `}` es obligatorio en el punto 325.
-- `union { ... };` diagnostica que la promoción pertenece al punto 326.
+- El nombre del field después de `}` era obligatorio al cerrar el punto 325; el punto 326 añadió la
+  forma sin nombre y su promoción, sin cambiar el contrato de la forma nombrada.
 - No cambian MIR 1.6, NSMETA 1.16, Object ABI 2, Runtime ABI, runtime, bindings ni tutoriales.
 
 ## Evidencia / Evidence
@@ -68,7 +68,7 @@ named structs and unions.
 - ausencia de colisión entre offsets iguales de archivos parciales distintos;
 - lowering LLVM mediante offsets ordinarios;
 - enlace y ejecución de lectura solapada con resultado 42;
-- rechazo explícito de una declaración sin nombre.
+- conservación del acceso calificado y ausencia de promoción para la forma nombrada.
 
 Las regresiones adyacentes cubren name lookup, member model, layout, lowering OOP, unions nombradas
 y los puntos 317–324.

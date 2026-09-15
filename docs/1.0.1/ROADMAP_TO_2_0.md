@@ -99,10 +99,11 @@ historia, no una certificación nueva y no incluye archivos sin commit.
 - emisión de OBJ, EXE, `.lib`, DLL, import library, headers y NSMETA;
 - consumo por `ProjectReference` y `LibraryReference`;
 - HIR/MIR 1.6 con promoción conservadora de clases `raii` no escapantes a storage del frame;
-- structs anónimos inline con campo contenedor explícito y layout anidado determinista;
-- unions anónimos inline con campo contenedor explícito y alternativas superpuestas;
-- NSMETA 1.16 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
-  cuerpos inline reutilizables, campos volatile, retornos `ref` y contratos `noheap` preservados;
+- structs y unions anónimos inline con carrier explícito opcional, promoción recursiva y layout
+  anidado determinista;
+- NSMETA 1.17 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
+  cuerpos inline reutilizables, campos volatile, retornos `ref`, contratos `noheap` y carriers
+  anónimos preservados;
 - verificación cruzada de metadata, COFF, import library y exportaciones PE;
 - identidad de build, instalación verificable, inventario criptográfico y actualización segura;
 - documentación 1.0.1 autocontenida e instalable.
