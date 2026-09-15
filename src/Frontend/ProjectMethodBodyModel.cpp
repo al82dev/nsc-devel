@@ -9149,8 +9149,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             // Entrega 228: SIMD por familia justificada, reconocida por identidad y firma exactas.
             // Comparar los parametros con el tipo de retorno evita acoplar esta regla a la
             // codificacion interna del type-key del proyecto que contiene NativeSharp.Core.
-            if (declaringType.identity.fullyQualifiedName() ==
-                    "NativeSharp.Core.Numerics.Float32x4" &&
+            const std::string compactFloatVectorName =
+                declaringType.identity.fullyQualifiedName();
+            if ((compactFloatVectorName == "NativeSharp.Core.Numerics.Float32x2" ||
+                    compactFloatVectorName == "NativeSharp.Core.Numerics.Float32x3" ||
+                    compactFloatVectorName == "NativeSharp.Core.Numerics.Float32x4") &&
                 selectedMember.isStatic &&
                 selectedMember.parameters.size() == 2 &&
                 selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&

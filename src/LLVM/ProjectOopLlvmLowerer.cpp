@@ -7654,13 +7654,21 @@ private:
                 if (right == nullptr) return nullptr;
                 LLVMTypeRef carrier = llvmType(node->typeKey, error);
                 if (carrier == nullptr) return nullptr;
-                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
-                LLVMValueRef leftSlot = LLVMBuildAlloca(builder_, carrier, "simd.left.addr");
-                LLVMValueRef rightSlot = LLVMBuildAlloca(builder_, carrier, "simd.right.addr");
-                LLVMBuildStore(builder_, left, leftSlot);
-                LLVMBuildStore(builder_, right, rightSlot);
+                const unsigned laneCount = compactFloatVectorLaneCount(node->typeKey);
+                if (laneCount < 2U || laneCount > 4U)
+                    return failValue(error, "compact floating SIMD intrinsic carries an unsupported type");
+                const unsigned alignment = laneCount == 4U ? 16U : 4U;
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), laneCount);
+                LLVMValueRef leftSlot = entryBlockAlloca(carrier, alignment, "simd.left.addr");
+                LLVMValueRef rightSlot = entryBlockAlloca(carrier, alignment, "simd.right.addr");
+                LLVMValueRef leftStore = LLVMBuildStore(builder_, left, leftSlot);
+                LLVMValueRef rightStore = LLVMBuildStore(builder_, right, rightSlot);
+                LLVMSetAlignment(leftStore, alignment);
+                LLVMSetAlignment(rightStore, alignment);
                 LLVMValueRef leftVector = LLVMBuildLoad2(builder_, vectorType, leftSlot, "simd.left");
                 LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.right");
+                LLVMSetAlignment(leftVector, alignment);
+                LLVMSetAlignment(rightVector, alignment);
                 LLVMValueRef vectorResult = nullptr;
                 if (node->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Add)
                     vectorResult = LLVMBuildFAdd(builder_, leftVector, rightVector, "simd.add");
@@ -7668,9 +7676,12 @@ private:
                     vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.subtract");
                 else
                     vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
-                LLVMValueRef resultSlot = LLVMBuildAlloca(builder_, carrier, "simd.result.addr");
-                LLVMBuildStore(builder_, vectorResult, resultSlot);
-                return LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.result");
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "simd.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
+                LLVMSetAlignment(resultStore, alignment);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "simd.result");
+                LLVMSetAlignment(result, alignment);
+                return result;
             }
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract:
@@ -12676,6 +12687,24 @@ private:
                 type.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.Float32x4";
         }
         return false;
+    }
+
+    unsigned compactFloatVectorLaneCount(std::string_view typeKey) const noexcept
+    {
+        if (!typeKey.starts_with("type:")) return 0U;
+        const std::string_view identityKey = typeKey.substr(5);
+        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
+        {
+            if (type.identity.key() != identityKey ||
+                type.kind != frontend::NamedTypeDeclarationKind::Struct)
+                continue;
+            const std::string name = type.identity.fullyQualifiedName();
+            if (name == "NativeSharp.Core.Numerics.Float32x2") return 2U;
+            if (name == "NativeSharp.Core.Numerics.Float32x3") return 3U;
+            if (name == "NativeSharp.Core.Numerics.Float32x4") return 4U;
+            return 0U;
+        }
+        return 0U;
     }
 
     unsigned integerSimd128LaneBits(std::string_view typeKey) const noexcept

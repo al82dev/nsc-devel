@@ -149,7 +149,7 @@
 104. **349 — Vectores enteros de 256 bits / 256-bit integer vectors — COMPLETADO / COMPLETE**
 105. **350 — Loads/stores SIMD alineados / Aligned SIMD loads and stores — COMPLETADO / COMPLETE**
 106. **351 — Loads/stores SIMD no alineados / Unaligned SIMD loads and stores — COMPLETADO / COMPLETE**
-107. **352 — `float2` y `float3` / Compact float vectors**
+107. **352 — `float2` y `float3` / Compact float vectors — COMPLETADO / COMPLETE**
 108. **353 — Matrices nativas / Native matrices**
 109. **354 — Tipo `half` / Half-precision type**
 110. **355 — Formatos GPU empaquetados / Packed GPU formats**
