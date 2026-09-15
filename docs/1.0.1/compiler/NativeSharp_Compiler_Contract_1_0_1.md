@@ -800,6 +800,23 @@ bit and reject inconsistent metadata that combines that bit with a property or s
 evidence shall include direct, compound, reference-local, virtual, interface, linked execution, and
 precompiled producer/consumer cases.
 
+## NSC-ESCAPE-001 — Unified reference escape-origin analysis
+
+The method-body model shall assign every reference local one explicit origin classification:
+external/caller storage, current-frame local, current-frame value parameter, or VLA storage. It
+shall compute the classification once at binding and preserve it through chained reference locals.
+
+Reference-return validation shall query that model rather than inspecting only the final syntax.
+Origin propagation shall cover value-struct fields, fixed/flexible inline elements, ref indexer
+receivers, and ref-return calls whose ref/out arguments may be forwarded. Returning either direct
+or transitively rooted current-frame storage shall produce a source diagnostic; ref/out caller
+storage, static storage, and raw-pointer pointees without known VLA provenance shall remain valid.
+
+The method-body dump shall expose the retained origin for auditability. Focused O0 evidence shall
+exercise safe caller/static/pointer forwarding and reject direct, chained, call-forwarded,
+value-parameter, struct-field, and fixed-array frame escapes. Existing VLA, borrow, and view escape
+suites shall remain green as adjacent lifetime domains.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

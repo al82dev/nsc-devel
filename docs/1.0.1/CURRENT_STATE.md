@@ -133,6 +133,11 @@ Son get-only: su resultado ya es el destino de lectura o escritura y no se sinte
 La evaluación del receptor y los índices ocurre una vez por llamada, incluso mediante dispatch
 virtual, interfaz o una biblioteca precompilada.
 
+El modelo de cuerpos conserva el origen de cada dirección `ref`. Un retorno no puede exponer un
+local, parámetro por valor, VLA, field de struct local ni elemento inline del frame, incluso si la
+dirección atraviesa aliases o una llamada de reenvío. Storage estático/del llamador y pointees de
+puntero crudo sin procedencia VLA mantienen sus contratos respectivos.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

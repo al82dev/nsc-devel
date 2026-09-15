@@ -70,6 +70,19 @@ void ProjectMethodBodyModelDumper::dump(
                << " const=" << (local.isConst ? "true" : "false")
                << " raii=" << (local.isRaii ? "true" : "false")
                << " ownership=" << sema::ownershipKindName(local.ownership);
+        if (local.isReference)
+        {
+            output << " escape-origin=";
+            switch (local.referenceEscapeOrigin.kind)
+            {
+                case MethodEscapeOriginKind::ExternalStorage: output << "external"; break;
+                case MethodEscapeOriginKind::CurrentFrameLocal: output << "frame-local"; break;
+                case MethodEscapeOriginKind::CurrentFrameParameter: output << "frame-parameter"; break;
+                case MethodEscapeOriginKind::VariableLengthArray: output << "vla"; break;
+            }
+            if (local.referenceEscapeOrigin.ordinal.has_value())
+                output << ':' << *local.referenceEscapeOrigin.ordinal;
+        }
         if (local.localBorrowBindingOrdinal.has_value())
         {
             output << " local-borrow=" << *local.localBorrowBindingOrdinal;

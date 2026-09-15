@@ -52,6 +52,20 @@ struct MethodScope final
     std::vector<std::size_t> localOrdinals;
 };
 
+enum class MethodEscapeOriginKind
+{
+    ExternalStorage,
+    CurrentFrameLocal,
+    CurrentFrameParameter,
+    VariableLengthArray
+};
+
+struct MethodEscapeOrigin final
+{
+    MethodEscapeOriginKind kind = MethodEscapeOriginKind::ExternalStorage;
+    std::optional<std::size_t> ordinal;
+};
+
 struct MethodLocalSymbol final
 {
     std::size_t methodMemberOrdinal = 0;
@@ -81,6 +95,10 @@ struct MethodLocalSymbol final
     // NativeSharp 2.0 item 312. typeKey is the logical element type; the physical local slot
     // stores an address to another exact-type, mutable location.
     bool isReference = false;
+    // Item 315. A ref local keeps the escape origin of the address it aliases. This closes
+    // transitive escapes (`ref alias = ref local; return ref alias`) without guessing again at
+    // the return site and also propagates through reference-returning calls.
+    MethodEscapeOrigin referenceEscapeOrigin;
     bool isConst = false;
     // El VALOR de un local `const` de tipo entero, plegado al declararlo.
     //
@@ -1712,6 +1730,9 @@ private:
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
     std::optional<std::size_t> variableArrayRootLocalOfExpression(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
+    MethodEscapeOrigin referenceEscapeOriginOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
     bool aggregateIsBorrowedView(std::string_view typeKey) const noexcept;

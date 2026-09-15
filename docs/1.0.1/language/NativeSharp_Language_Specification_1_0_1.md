@@ -290,6 +290,23 @@ Its expression is a true lvalue backed by the getter's returned address, includi
 interface, and precompiled-library dispatch. Ordinary value indexers retain their established
 getter/setter behavior.
 
+### NS-ESCAPE-001 — Origen unificado de escapes
+
+Toda dirección que participa en un local o retorno `ref` conserva un origen semántico: storage
+externo/al llamador, local del frame, parámetro por valor del frame o VLA. El origen se propaga por
+aliases encadenados, fields de structs por valor, elementos de storage inline y llamadas `ref` que
+reciben una ubicación por `ref`/`out`.
+
+Un retorno puede exponer sólo storage externo o perteneciente al llamador. Se rechaza aunque la
+dirección del frame esté oculta detrás de uno o varios locales `ref`, un field/elemento, un getter
+`ref` o una función de reenvío. Un puntero crudo no se confunde con el slot local que guarda ese
+puntero: sin procedencia VLA explícita, desreferenciarlo conserva el contrato unsafe existente.
+
+Every reference address carries one conservative escape origin. Returning current-frame storage
+is rejected transitively through aliases, value aggregates, indexing, and ref-forwarding calls;
+caller/static storage remains valid. Raw-pointer pointee lifetime stays explicit and unsafe rather
+than being inferred from the lifetime of the local pointer variable.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

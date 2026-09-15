@@ -1767,6 +1767,16 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item314_reference_indexers_tests)
     add_test(NAME nsc.item314.reference-indexers COMMAND nsc_item314_reference_indexers_tests)
+
+    # NativeSharp 2.0 item 315: one reference-origin analysis closes transitive frame escapes
+    # through aliases, value aggregates, index expressions, and ref-return forwarding calls.
+    add_executable(nsc_item315_unified_escape_analysis_tests tests/unit/Item315UnifiedEscapeAnalysisTests.cpp)
+    target_link_libraries(nsc_item315_unified_escape_analysis_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item315_unified_escape_analysis_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item315_unified_escape_analysis_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item315_unified_escape_analysis_tests)
+    add_test(NAME nsc.item315.unified-escape-analysis COMMAND nsc_item315_unified_escape_analysis_tests)
     # for the two pre-existing, compiler-wide cctor-guard bugs this round found and fixed (a
     # cross-thread TOCTOU race and a same-thread self-deadlock introduced by that race's fix -- see
     # tests/unit/Stage54_3MutexTests.cpp's header comment for the full rationale).

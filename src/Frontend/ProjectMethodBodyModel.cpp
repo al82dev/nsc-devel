@@ -1075,6 +1075,130 @@ std::optional<std::size_t> ProjectMethodBodyModel::variableArrayRootLocalOfExpre
     return std::nullopt;
 }
 
+MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr) return {};
+
+    const auto typeKeyOf = [&](const ast::AstNode* syntax) -> std::string_view
+    {
+        for (auto iterator = expressionTypes_.rbegin(); iterator != expressionTypes_.rend(); ++iterator)
+            if (iterator->syntax == syntax) return iterator->typeKey;
+        return {};
+    };
+    const auto resolvedCall = [&](const ast::AstNode* syntax) -> const MethodCallBinding*
+    {
+        for (auto iterator = calls_.rbegin(); iterator != calls_.rend(); ++iterator)
+            if (iterator->syntax == syntax &&
+                iterator->resolution == MethodCallResolutionKind::Resolved &&
+                iterator->selectedMemberOrdinal.has_value()) return &*iterator;
+        return nullptr;
+    };
+
+    if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+        if (!name.has_value()) return {};
+        if (name->kind == ScopeNameKind::Local && name->semanticOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+            if (local.variableLengthArrayRootLocalOrdinal.has_value())
+                return {MethodEscapeOriginKind::VariableLengthArray,
+                    local.variableLengthArrayRootLocalOrdinal};
+            if (local.isReference) return local.referenceEscapeOrigin;
+            return {MethodEscapeOriginKind::CurrentFrameLocal, name->semanticOrdinal};
+        }
+        if (name->kind == ScopeNameKind::Parameter)
+        {
+            const std::size_t methodOrdinal = scopeOrdinal < scopes_.size()
+                ? scopes_[scopeOrdinal].methodMemberOrdinal : 0U;
+            const ClassMemberSymbol* method = methodSymbol(methodOrdinal);
+            if (method != nullptr && name->semanticOrdinal < method->parameters.size())
+            {
+                const ParameterPassKind passKind = method->parameters[name->semanticOrdinal].passKind;
+                if (passKind == ParameterPassKind::Ref || passKind == ParameterPassKind::Out)
+                    return {};
+                return {MethodEscapeOriginKind::CurrentFrameParameter, name->semanticOrdinal};
+            }
+        }
+        return {};
+    }
+
+    if (expression->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        const ast::AstNode* receiver = expression->first();
+        if (typeKeyIsStruct(typeKeyOf(receiver)))
+            return referenceEscapeOriginOfExpression(receiver, scopeOrdinal);
+        return {};
+    }
+
+    if (expression->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        if (const MethodCallBinding* call = resolvedCall(expression);
+            call != nullptr && memberModel_ != nullptr &&
+            *call->selectedMemberOrdinal < memberModel_->members().size() &&
+            memberModel_->members()[*call->selectedMemberOrdinal].isReferenceReturn)
+        {
+            if (typeKeyIsStruct(call->receiverTypeKey))
+                return referenceEscapeOriginOfExpression(call->receiverSyntax, scopeOrdinal);
+            return {};
+        }
+        if (const std::optional<std::size_t> vla =
+                variableArrayRootLocalOfExpression(expression->first(), scopeOrdinal);
+            vla.has_value())
+            return {MethodEscapeOriginKind::VariableLengthArray, vla};
+        const std::string_view baseType = typeKeyOf(expression->first());
+        if (ProjectMemberModel::fixedArrayElementTypeKey(baseType).has_value() ||
+            ProjectMemberModel::flexibleArrayElementTypeKey(baseType).has_value())
+            return referenceEscapeOriginOfExpression(expression->first(), scopeOrdinal);
+        return {};
+    }
+
+    if (expression->kind() == ast::AstNodeKind::CallExpression)
+    {
+        const MethodCallBinding* call = resolvedCall(expression);
+        if (call == nullptr || memberModel_ == nullptr ||
+            *call->selectedMemberOrdinal >= memberModel_->members().size()) return {};
+        const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
+        if (!callee.isReferenceReturn) return {};
+        if (!call->staticCall && typeKeyIsStruct(call->receiverTypeKey))
+        {
+            const MethodEscapeOrigin receiver =
+                referenceEscapeOriginOfExpression(call->receiverSyntax, scopeOrdinal);
+            if (receiver.kind != MethodEscapeOriginKind::ExternalStorage) return receiver;
+        }
+        for (std::size_t index = 0; index < expression->children().size(); ++index)
+        {
+            const std::size_t parameterIndex = index < call->selectedArgumentParameterOrdinals.size()
+                ? call->selectedArgumentParameterOrdinals[index] : index;
+            if (parameterIndex >= callee.parameters.size()) continue;
+            const ParameterPassKind passKind = callee.parameters[parameterIndex].passKind;
+            if (passKind != ParameterPassKind::Ref && passKind != ParameterPassKind::Out) continue;
+            const MethodEscapeOrigin argument =
+                referenceEscapeOriginOfExpression(expression->children()[index], scopeOrdinal);
+            if (argument.kind != MethodEscapeOriginKind::ExternalStorage) return argument;
+        }
+        return {};
+    }
+
+    if (expression->kind() == ast::AstNodeKind::UnaryExpression &&
+        expression->tokenKind() == lexer::TokenKind::Star)
+    {
+        if (const std::optional<std::size_t> vla =
+                variableArrayRootLocalOfExpression(expression->first(), scopeOrdinal);
+            vla.has_value())
+            return {MethodEscapeOriginKind::VariableLengthArray, vla};
+        // The pointer slot may live in this frame while its pointee does not. Without explicit
+        // pointer provenance, treating the slot as the referent would be an unsound false claim.
+        return {};
+    }
+
+    // Parentheses, ref/out wrappers, and other address-preserving shells keep the operand origin.
+    // Non-addressable expressions never reach a valid ref binding.
+    return referenceEscapeOriginOfExpression(expression->first(), scopeOrdinal);
+}
+
 bool ProjectMethodBodyModel::definiteAssignmentTracksLocal(std::size_t localOrdinal) const noexcept
 {
     if (localOrdinal >= locals_.size())
@@ -3030,6 +3154,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     // the wrong keyword.
     const char* const ownerSpelling = ownedQualifierOwnsStorage ? "owned local" : "raii local";
     std::optional<MethodLocalBorrowBinding> pendingLocalBorrow;
+    MethodEscapeOrigin pendingReferenceEscapeOrigin;
     const bool raiiOwnsNativeArrayBuffer =
         variable->hasModifier(TokenKind::KwRaii) && ProjectTypeConversion::isNativeArray(typeKey);
     if (isReferenceLocal &&
@@ -3181,6 +3306,8 @@ void ProjectMethodBodyModel::analyzeVariable(
                     "reference-local initializer type '" + initializer.typeKey +
                         "' must exactly match declared type '" + typeKey + "'");
             }
+            pendingReferenceEscapeOrigin =
+                referenceEscapeOriginOfExpression(variable->first(), scopeOrdinal);
         }
         else if (initializer.valid)
         {
@@ -3360,6 +3487,7 @@ void ProjectMethodBodyModel::analyzeVariable(
     local.name = variable->text();
     local.typeKey = typeKey;
     local.isReference = isReferenceLocal;
+    local.referenceEscapeOrigin = pendingReferenceEscapeOrigin;
     local.isVariableLengthArray = isVariableLengthArray;
     local.variableLengthArrayElementTypeKey = variableLengthArrayElementTypeKey;
     local.variableLengthArrayCountSyntax = variableLengthArrayCountSyntax;
@@ -3975,33 +4103,26 @@ void ProjectMethodBodyModel::analyzeReturn(
             return;
         }
 
-        if (statement->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        const MethodEscapeOrigin escape =
+            referenceEscapeOriginOfExpression(statement->first(), scopeOrdinal);
+        if (escape.kind == MethodEscapeOriginKind::CurrentFrameLocal ||
+            escape.kind == MethodEscapeOriginKind::VariableLengthArray)
         {
-            const std::optional<ScopeName> returnedName =
-                lookupScopeName(scopeOrdinal, statement->first()->text());
-            if (returnedName.has_value() && returnedName->kind == ScopeNameKind::Local &&
-                (returnedName->semanticOrdinal >= locals_.size() ||
-                 !locals_[returnedName->semanticOrdinal].isReference))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidReturn,
-                    diagnostics::DiagnosticSeverity::Error,
-                    statement->first()->range(),
-                    "ref return cannot expose storage owned by the current stack frame");
-                return;
-            }
-            if (returnedName.has_value() && returnedName->kind == ScopeNameKind::Parameter &&
-                (returnedName->semanticOrdinal >= method->parameters.size() ||
-                 (method->parameters[returnedName->semanticOrdinal].passKind != ParameterPassKind::Ref &&
-                  method->parameters[returnedName->semanticOrdinal].passKind != ParameterPassKind::Out)))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidReturn,
-                    diagnostics::DiagnosticSeverity::Error,
-                    statement->first()->range(),
-                    "ref return cannot expose a by-value or readonly parameter");
-                return;
-            }
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "ref return cannot expose storage owned by the current stack frame");
+            return;
+        }
+        if (escape.kind == MethodEscapeOriginKind::CurrentFrameParameter)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                statement->first()->range(),
+                "ref return cannot expose a by-value or readonly parameter");
+            return;
         }
         return;
     }

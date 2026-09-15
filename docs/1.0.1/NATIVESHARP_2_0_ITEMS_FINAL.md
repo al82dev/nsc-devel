@@ -103,7 +103,7 @@
 67. **312 — Variables locales `ref` / Reference locals — COMPLETADO / COMPLETE**
 68. **313 — Retornos `ref` / Reference returns — COMPLETADO / COMPLETE**
 69. **314 — Indexadores `ref` / Reference-returning indexers — COMPLETADO / COMPLETE**
-70. **315 — Analizador unificado de escapes / Unified escape analysis**
+70. **315 — Analizador unificado de escapes / Unified escape analysis — COMPLETADO / COMPLETE**
 71. **316 — Análisis de duración de referencias / Reference lifetime analysis**
 72. **317 — Sintaxis de placement construction / Placement construction syntax**
 73. **318 — Lowering de placement construction / Placement construction lowering**

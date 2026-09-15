@@ -30,6 +30,8 @@ empaqueta con NativeSharp 1.0.1.
 - Los indexadores `ref T this[...]` son getters get-only que devuelven storage. Lecturas,
   escrituras, asignaciones compuestas y locales `ref` reutilizan esa dirección también mediante
   dispatch virtual/interfaz y `LibraryReference`.
+- El análisis de escapes conserva el origen de cada alias `ref` y rechaza storage del frame aunque
+  se oculte tras aliases encadenados, fields de structs, elementos inline o llamadas de reenvío.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.
