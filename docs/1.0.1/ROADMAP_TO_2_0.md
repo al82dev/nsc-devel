@@ -98,6 +98,7 @@ historia, no una certificación nueva y no incluye archivos sin commit.
 
 - emisión de OBJ, EXE, `.lib`, DLL, import library, headers y NSMETA;
 - consumo por `ProjectReference` y `LibraryReference`;
+- HIR/MIR 1.6 con promoción conservadora de clases `raii` no escapantes a storage del frame;
 - NSMETA 1.16 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
   cuerpos inline reutilizables, campos volatile, retornos `ref` y contratos `noheap` preservados;
 - verificación cruzada de metadata, COFF, import library y exportaciones PE;

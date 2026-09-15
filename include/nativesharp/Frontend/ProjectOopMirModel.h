@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 5;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 6;
 
 enum class ProjectOopMirNodeKind
 {
@@ -327,6 +327,8 @@ struct ProjectOopMirNode final
     bool referenceLocal = false;
     // Item 313. Mirrors ProjectOopHirNode::referenceResult for physical call ABI selection.
     bool referenceResult = false;
+    // Item 323. Mirrors the HIR proof; AllocateAndConstruct consumes a frame-owned object buffer.
+    bool stackPromotedObject = false;
     // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.
     bool volatileAccess = false;
     bool allocationFailureReturnsNull = false;

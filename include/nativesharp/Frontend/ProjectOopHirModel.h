@@ -434,6 +434,9 @@ struct ProjectOopHirNode final
     // Item 313. A call with this bit produces an address although typeKey names the referent.
     // Value contexts add PointerLoad; address contexts preserve the call itself.
     bool referenceResult = false;
+    // Item 323. Set on a proven-nonescaping RAII class local and its ObjectConstruction child.
+    // The object lifetime remains owned, but its backing bytes belong to the current stack frame.
+    bool stackPromotedObject = false;
     // Item 308. Set on field value/address nodes and propagated to the store that consumes an
     // address. It means LLVM volatile memory access, never atomic synchronization.
     bool volatileAccess = false;

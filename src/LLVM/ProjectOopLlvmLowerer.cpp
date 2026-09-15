@@ -4102,6 +4102,7 @@ private:
                     context_, 0, 0, currentDebugSubprogram_, nullptr));
         parameterStorage_.clear();
         localStorage_.clear();
+        stackObjectStorage_.clear();
         parameterCaptureCells_.clear();
         localCaptureCells_.clear();
         thisCaptureCell_ = nullptr;
@@ -4313,6 +4314,30 @@ private:
                     : structAlignmentFor(typeKey);
                 if (!captured && structAlignment > 1U) LLVMSetAlignment(slot, structAlignment);
                 localStorage_[*node->localOrdinal] = slot;
+            }
+            if (node->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                node->stackPromotedObject && !stackObjectStorage_.contains(*node->localOrdinal))
+            {
+                if (node->children.size() != 1 || node->children.front() == nullptr ||
+                    node->children.front()->kind !=
+                        frontend::ProjectOopMirNodeKind::AllocateAndConstruct ||
+                    !node->children.front()->stackPromotedObject ||
+                    node->children.front()->localOrdinal != node->localOrdinal ||
+                    node->children.front()->immediate == 0 ||
+                    node->children.front()->alignment == 0)
+                {
+                    error = "item 323 stack-promoted local has no matching object layout";
+                    return;
+                }
+                const frontend::ProjectOopMirNode* construction = node->children.front().get();
+                LLVMTypeRef bytes = LLVMArrayType2(
+                    LLVMInt8TypeInContext(context_), construction->immediate);
+                LLVMValueRef object = LLVMBuildAlloca(
+                    builder_, bytes,
+                    ("local" + std::to_string(*node->localOrdinal) + ".object").c_str());
+                if (construction->alignment > 1U)
+                    LLVMSetAlignment(object, static_cast<unsigned>(construction->alignment));
+                stackObjectStorage_[*node->localOrdinal] = object;
             }
         }
         for (const auto& child : node->children) collectLocalAllocas(child.get(), error);
@@ -4927,8 +4952,10 @@ private:
             return fail(error, "Stage 49 RAII cleanup has no class-descriptor destruction ABI");
         }
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, value, "raii.descriptor");
+        const unsigned destructionEntryIndex = node->stackPromotedObject ? 7U : 5U;
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
-            builder_, descriptorType_, descriptor, 5, "raii.entry.addr");
+            builder_, descriptorType_, descriptor, destructionEntryIndex,
+            node->stackPromotedObject ? "raii.object.entry.addr" : "raii.entry.addr");
         LLVMValueRef destructionEntry = LLVMBuildLoad2(
             builder_, ptr, entryAddress, "raii.entry");
         LLVMValueRef arguments[] = {value};
@@ -11354,7 +11381,7 @@ private:
 
     LLVMValueRef lowerConstruction(const frontend::ProjectOopMirNode* node, std::string& error)
     {
-        if (!node->allocationFailureReturnsNull)
+        if (!node->stackPromotedObject && !node->allocationFailureReturnsNull)
         {
             return failValue(
                 error,
@@ -11399,15 +11426,30 @@ private:
             orderedArguments.push_back(evaluatedArguments[source]);
 
         LLVMValueRef size = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
-        LLVMValueRef allocArgs[] = {size};
-        LLVMValueRef object = buildNoUnwindCall(allocationFunctionType_, allocationFunction_, allocArgs, 1, "object");
-        LLVMValueRef nullValue = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
-        LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, object, nullValue, "alloc.failed");
-        LLVMBasicBlockRef initBlock = appendBlock("object.init");
-        LLVMBasicBlockRef endBlock = appendBlock("object.end");
-        LLVMBuildCondBr(builder_, isNull, endBlock, initBlock);
-
-        LLVMPositionBuilderAtEnd(builder_, initBlock);
+        LLVMValueRef object = nullptr;
+        LLVMBasicBlockRef endBlock = nullptr;
+        if (node->stackPromotedObject)
+        {
+            if (!node->localOrdinal.has_value())
+                return failValue(error, "item 323 stack construction has no local identity");
+            const auto storage = stackObjectStorage_.find(*node->localOrdinal);
+            if (storage == stackObjectStorage_.end() || storage->second == nullptr)
+                return failValue(error, "item 323 stack construction cannot find its frame storage");
+            object = storage->second;
+        }
+        else
+        {
+            LLVMValueRef allocArgs[] = {size};
+            object = buildNoUnwindCall(
+                allocationFunctionType_, allocationFunction_, allocArgs, 1, "object");
+            LLVMValueRef nullValue = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+            LLVMValueRef isNull = LLVMBuildICmp(
+                builder_, LLVMIntEQ, object, nullValue, "alloc.failed");
+            LLVMBasicBlockRef initBlock = appendBlock("object.init");
+            endBlock = appendBlock("object.end");
+            LLVMBuildCondBr(builder_, isNull, endBlock, initBlock);
+            LLVMPositionBuilderAtEnd(builder_, initBlock);
+        }
         if (node->zeroInitialize)
         {
             LLVMValueRef zero = LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0);
@@ -11474,8 +11516,11 @@ private:
             }
         }
         constructionThisOverride_ = previousOverride;
-        if (!terminated()) LLVMBuildBr(builder_, endBlock);
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        if (!node->stackPromotedObject)
+        {
+            if (!terminated()) LLVMBuildBr(builder_, endBlock);
+            LLVMPositionBuilderAtEnd(builder_, endBlock);
+        }
         return object;
     }
 
@@ -12534,6 +12579,8 @@ private:
     LLVMValueRef constructionThisOverride_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> parameterStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> localStorage_;
+    // Item 323. Backing bytes for promoted class objects, separate from each local's pointer slot.
+    std::unordered_map<std::size_t, LLVMValueRef> stackObjectStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> parameterCaptureCells_;
     std::unordered_map<std::size_t, LLVMValueRef> localCaptureCells_;
     LLVMValueRef thisCaptureCell_ = nullptr;

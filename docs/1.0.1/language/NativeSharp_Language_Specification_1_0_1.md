@@ -413,8 +413,10 @@ the object obligation, whereas `delete` discharges the dynamic object and its al
 `noheap` puede modificar un método ordinario o constructor y declara que su cuerpo no crea almacenamiento en el
 heap. Dentro de ese contexto siguen permitidos valores, `stackalloc`, placement construction sobre
 storage suministrado y `destroy`, porque ninguno adquiere una asignación del heap. Se rechazan
-`new C(...)` de clase, raw `new`, arreglos nativos con `new`, concatenación o construcción de
-cadenas que reserva memoria, creación de delegates/lambdas y suscripciones de evento.
+`new C(...)` de clase que permanezca respaldado por heap después de NS-ESCAPE-002, raw `new`,
+arreglos nativos con `new`, concatenación o construcción de cadenas que reserva memoria, creación
+de delegates/lambdas y suscripciones de evento. Una clase demostrada no escapante y promovida al
+frame ya no constituye una asignación de heap.
 
 El contrato describe el cuerpo completo, independientemente de O0/O2 y del inlining. En este punto
 se comprueban las operaciones directas. NS-NOHEAP-002/punto 322 extiende la obligación a las
@@ -423,9 +425,10 @@ asignación directa en NS-NOHEAP-001.
 
 The `noheap` method modifier promises that the method body performs no direct heap allocation.
 Stack allocation, supplied-storage placement construction and object-only destruction remain
-valid. Class, raw and native-array allocation, allocating string operations, delegate or lambda
-creation, and event subscription are rejected at their source expression. Item 322 propagates the
-contract across calls.
+valid. Heap-backed class, raw and native-array allocation, allocating string operations, delegate
+or lambda creation, and event subscription are rejected at their source expression. A class
+construction proven frame-backed by NS-ESCAPE-002 is permitted. Item 322 propagates the contract
+across calls.
 
 ### NS-NOHEAP-002 — Propagación del contrato sin heap
 
@@ -443,13 +446,43 @@ transportar el efecto. Los inicializadores de campo y de constructor ejecutados 
 
 NSMETA 1.16 transporta `noheap` en métodos y constructores públicos y lo elimina al emitir
 deliberadamente 1.15 o anterior. La propiedad no cambia el ABI nativo, el layout ni el runtime; HIR
-y MIR 1.5 la exponen para auditoría y optimización sin reinterpretarla.
+y MIR 1.6 la exponen para auditoría y optimización sin reinterpretarla.
 
 The `noheap` effect propagates through direct calls, constructors, virtual overrides, interface
 implementations, and precompiled references. Every reachable callable must carry the same
 contract. Indirect delegate/event targets and implicit constructors are rejected because they do
 not provide a verifiable no-heap guarantee. Field and constructor initializers are part of the
-effective constructor body. NSMETA 1.16 and MIR 1.5 preserve the contract without changing ABI.
+effective constructor body. NSMETA 1.16 and MIR 1.6 preserve the contract without changing ABI.
+
+### NS-ESCAPE-002 — Promoción de clases no escapantes al stack
+
+Una declaración local `raii C value = new C();` puede materializar el objeto en storage del frame
+cuando el compilador demuestra conservadoramente que la identidad de `value` no escapa. La
+promoción conserva el lifetime de objeto `owned`, cambia únicamente el ownership del storage a
+frame y ejecuta al salir la destrucción object-only; nunca libera esos bytes.
+
+La superficie inicial exige una clase declarada en el proyecto, sin base, constructor explícito,
+argumentos, inicializadores de instancia, destructor explícito ni fields `owned`. El layout debe
+ser conocido, no vacío y no exceder 1 MiB. Sólo se consideran no escapantes las lecturas de fields
+y las escrituras cuyo destino es directamente un field del local. Cualquier observación de la
+referencia —comparación incluso con `null`, llamada como receptor, argumento, borrow, dirección,
+move, captura, retorno o reasignación— cancela la promoción y conserva `new` en el heap.
+
+Para un local promovido, la construcción produce una referencia no nula al storage del frame y el
+fallo del asignador de heap deja de ser una posibilidad observable. Un programa que observe la
+identidad o nulidad no entra en este subconjunto. La prueba es independiente del nivel de
+optimización y una construcción promovida puede aparecer dentro de `noheap`; una construcción que
+no satisfaga la prueba conserva el diagnóstico de asignación directa. La regla no cambia sintaxis,
+layout de clase, Object ABI, Runtime ABI ni NSMETA.
+
+A local `raii C value = new C();` may use frame storage when the compiler conservatively proves
+that the identity of `value` does not escape. The initial surface accepts only a local, root class
+with a trivial implicit construction, known layout of at most one mebibyte, no instance
+initializers, explicit destructor, or owned fields, and uses limited to field-value reads or direct
+field stores. Any identity observation, call, argument, borrow, address, move, capture, return, or
+reassignment keeps heap allocation. A promoted construction is non-null, satisfies `noheap`, and
+is cleaned through object-only destruction without freeing its frame-owned bytes. HIR/MIR 1.6
+expose the decision; no source syntax, native ABI, runtime ABI, class layout, or metadata changes.
 
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 

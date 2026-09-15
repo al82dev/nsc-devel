@@ -916,11 +916,13 @@ project member model and its audit dump shall preserve `isNoHeap` independently 
 ownership, ABI and accessibility.
 
 HIR construction shall reject any direct heap-producing node inside a `noheap` body before MIR or
-LLVM can be emitted. The closed direct set is class `ObjectConstruction`, `RawAllocation`,
+LLVM can be emitted. The closed direct set is heap-backed class `ObjectConstruction` after the
+NSC-ESCAPE-002 proof, `RawAllocation`,
 `ArrayAllocation`, allocating string construction, `DelegateCreate`, `LambdaCreate`, and
 `EventAdd`. `StackAllocation`, `PlacementConstruction`, value construction and object-only
 destruction remain legal. Diagnostics shall identify both the callable and the heap-producing HIR
-operation at the original expression range.
+operation at the original expression range. A class construction proven stack-promoted by
+NSC-ESCAPE-002 is no longer heap-producing and is permitted.
 
 This item establishes the local body boundary only. Call-graph propagation, override/interface
 compatibility and precompiled transport belong to NSC-NOHEAP-002/item 322. No runtime, NSMETA or
@@ -940,10 +942,37 @@ planning shall reject an implementation or redeclaration that weakens a `noheap`
 Delegate and event invocation from `noheap` shall be rejected until their type signatures acquire
 an effect channel; target uncertainty may not be treated as proof.
 
-HIR and MIR functions shall expose the flag and MIR schema minor shall be 1.5. NSMETA 1.16 shall
+HIR and MIR functions shall expose the flag and MIR schema minor shall be 1.6. NSMETA 1.16 shall
 encode the flag on public method and constructor records, validate its callable-only placement,
 reconstruct it in a `LibraryReference`, and strip it when intentionally writing 1.15 or older.
 This additive semantic contract changes neither native ABI, Object ABI, layout nor runtime symbols.
+
+## NSC-ESCAPE-002 — Stack allocation of nonescaping classes
+
+After a function's complete HIR has been formed, the compiler may promote an exact local
+`raii` class construction from heap storage to frame storage only after proving that no use exposes
+the local's object identity. Field-value loads and direct field-address stores are the closed safe
+use set. Every other local-value, local-address, move, borrow, call receiver/argument, comparison,
+capture, return or reassignment shall conservatively decline promotion without diagnosing an
+otherwise valid heap program.
+
+The initial eligibility set shall require a source-local root class, a direct zero-argument
+`ObjectConstruction`, an implicit default with no constructor entry, no synthesized instance
+initializer work, no explicit destructor or owned instance field, canonical nonzero layout, and an
+object size no greater than one mebibyte. The declaration and construction shall retain owned
+object lifetime and expose storage ownership `none` plus `stack-promoted=true` in HIR and MIR.
+MIR schema minor 1.6 freezes this bit and the construction's destination local identity.
+
+LLVM lowering shall allocate one fixed byte buffer per promoted local in the function entry block,
+honor canonical size and alignment, zero and initialize the ordinary class descriptor in that
+buffer, and issue no allocator call or allocation-failure branch. RAII shall use descriptor entry
+7, the existing object-only destruction entry, instead of entry 5, the destruction-and-free entry.
+The pointer owner slot shall retain the existing exactly-once cleanup guard.
+
+A successfully promoted construction is non-null and is eligible within a `noheap` callable. If
+the post-HIR proof declines it, the existing direct `ObjectConstruction` heap diagnostic remains
+mandatory. This compiler transformation changes no parser surface, NSMETA, class layout, Object
+ABI, Runtime ABI, bindings, or runtime implementation.
 
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 

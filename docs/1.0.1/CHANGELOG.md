@@ -49,7 +49,12 @@ empaqueta con NativeSharp 1.0.1.
 - El modificador `noheap` en métodos y constructores prohíbe asignaciones directas y llamadas a
   callables sin el mismo contrato. Overrides e implementaciones de interfaz no pueden debilitarlo;
   placement exige un constructor `noheap` explícito y los destinos delegate/event se rechazan al
-  no expresar ese efecto. HIR/MIR 1.5 y NSMETA 1.16 lo conservan entre proyectos precompilados.
+  no expresar ese efecto. HIR/MIR 1.6 y NSMETA 1.16 lo conservan entre proyectos precompilados.
+- Los locales `raii` de clase que no escapan pueden usar storage del frame. La prueba conservadora
+  exige construcción implícita trivial de una clase local sin base, inicializadores, destructor ni
+  campos `owned`, y sólo admite lectura o escritura directa de fields. HIR/MIR 1.6 publica la
+  promoción, LLVM reserva el objeto una vez en la entrada y el cleanup destruye sin liberar. Una
+  identidad observable, llamada, alias, captura, retorno o constructor no trivial conserva heap.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

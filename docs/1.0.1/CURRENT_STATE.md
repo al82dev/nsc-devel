@@ -149,6 +149,15 @@ expresión de destino, el tipo y los argumentos sin confundirla con asignación 
 operación, LLVM comprueba null, inicializa el layout y llama al constructor sobre esa dirección sin
 reservar memoria. El caller mantiene capacidad, alineación, lifetime y ownership del storage.
 
+Un local `raii` de clase puede promover su construcción ordinaria a storage del frame cuando el
+análisis completo de HIR demuestra que su identidad no escapa. La superficie inicial es
+deliberadamente conservadora: clase local sin base, constructor implícito trivial, sin
+inicializadores, destructor explícito ni campos `owned`, tamaño máximo de 1 MiB y usos limitados a
+leer fields o escribirlos directamente. Comparar la referencia, llamar un método, prestarla,
+moverla, capturarla, retornarla o reasignarla conserva la asignación de heap. Una promoción válida
+también satisface `noheap`; HIR/MIR 1.6 muestran `stack-promoted=true`, LLVM reserva los bytes una
+vez en la entrada de la función y RAII usa destrucción object-only sin liberar el frame.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

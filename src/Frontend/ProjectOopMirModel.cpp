@@ -1280,6 +1280,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->booleanValue = node->booleanValue;
     result->referenceLocal = node->referenceLocal;
     result->referenceResult = node->referenceResult;
+    result->stackPromotedObject = node->stackPromotedObject;
     result->volatileAccess = node->volatileAccess;
     result->baseReceiver = node->baseReceiver;
     result->targetIsInterface = node->targetIsInterface;

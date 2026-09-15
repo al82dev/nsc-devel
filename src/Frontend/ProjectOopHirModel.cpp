@@ -468,6 +468,74 @@ std::unique_ptr<ProjectOopHirNode> makeNode(
     return node;
 }
 
+// Item 323 deliberately proves only uses that cannot expose the address of the containing class.
+// Reading a field copies its value. A FieldAddress is equally safe only while it is the direct
+// destination of a store; every other appearance of the local is conservatively an escape.
+bool stackClassLocalUsesAreSafe(
+    const ProjectOopHirNode* node,
+    const ProjectOopHirNode* declaration,
+    std::size_t localOrdinal,
+    const ProjectOopHirNode* parent = nullptr,
+    const ProjectOopHirNode* grandparent = nullptr,
+    std::size_t childIndex = 0,
+    std::size_t parentChildIndex = 0)
+{
+    if (node == nullptr) return true;
+    if (node != declaration && node->localOrdinal == localOrdinal)
+    {
+        const bool copiedField = node->kind == ProjectOopHirNodeKind::LocalValue &&
+            parent != nullptr && parent->kind == ProjectOopHirNodeKind::FieldValue &&
+            childIndex == 0;
+        const bool directFieldStore = node->kind == ProjectOopHirNodeKind::LocalValue &&
+            parent != nullptr && parent->kind == ProjectOopHirNodeKind::FieldAddress &&
+            childIndex == 0 && grandparent != nullptr && parentChildIndex == 0 &&
+            (grandparent->kind == ProjectOopHirNodeKind::Assignment ||
+             grandparent->kind == ProjectOopHirNodeKind::CompoundStore);
+        if (!copiedField && !directFieldStore) return false;
+    }
+    for (std::size_t index = 0; index < node->children.size(); ++index)
+    {
+        if (!stackClassLocalUsesAreSafe(
+                node->children[index].get(), declaration, localOrdinal,
+                node, parent, index, childIndex))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void collectLocalDeclarations(
+    ProjectOopHirNode* node,
+    std::vector<ProjectOopHirNode*>& declarations)
+{
+    if (node == nullptr) return;
+    if (node->kind == ProjectOopHirNodeKind::LocalDeclaration)
+        declarations.push_back(node);
+    for (auto& child : node->children)
+        collectLocalDeclarations(child.get(), declarations);
+}
+
+const ProjectOopHirNode* firstUnpromotedObjectConstruction(
+    const ProjectOopHirNode* node) noexcept
+{
+    if (node == nullptr) return nullptr;
+    if (node->kind == ProjectOopHirNodeKind::ObjectConstruction &&
+        !node->stackPromotedObject)
+    {
+        return node;
+    }
+    for (const auto& child : node->children)
+    {
+        if (const ProjectOopHirNode* found =
+                firstUnpromotedObjectConstruction(child.get()))
+        {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 enum class StaticAssertConstantKind
 {
     Integer,
@@ -1638,6 +1706,86 @@ bool ProjectOopHirModel::buildImpl(
                 std::make_move_iterator(prefix.begin()),
                 std::make_move_iterator(prefix.end()));
         }
+
+        // Item 323. Promotion is intentionally a post-HIR proof: every use of each local is now
+        // visible, including nested control flow and synthesized work. Only a trivial, local class
+        // construction whose identity never becomes observable may exchange owned heap storage
+        // for frame storage. The one-mebibyte cap matches explicit stackalloc's fixed budget.
+        std::vector<ProjectOopHirNode*> localDeclarations;
+        collectLocalDeclarations(function.body.get(), localDeclarations);
+        constexpr std::uint64_t kMaximumPromotedObjectBytes = std::uint64_t{1} << 20;
+        for (ProjectOopHirNode* declaration : localDeclarations)
+        {
+            if (declaration == nullptr || !declaration->localOrdinal.has_value() ||
+                declaration->children.size() != 1 || declaration->children.front() == nullptr)
+            {
+                continue;
+            }
+            ProjectOopHirNode* construction = declaration->children.front().get();
+            if (construction->kind != ProjectOopHirNodeKind::ObjectConstruction ||
+                construction->argumentCount != 0 || !construction->children.empty() ||
+                !construction->constructionOrdinal.has_value() ||
+                !construction->targetTypeOrdinal.has_value())
+            {
+                continue;
+            }
+            const MethodLocalSymbol* local = localSymbol(declaration->syntax);
+            const ObjectConstructionBinding* binding = constructionBinding(construction->syntax);
+            const std::size_t targetTypeOrdinal = *construction->targetTypeOrdinal;
+            const ClassObjectLayout* layout = objectLayoutModel_ != nullptr
+                ? objectLayoutModel_->layoutForType(targetTypeOrdinal) : nullptr;
+            if (local == nullptr || !local->isRaii || local->isReference ||
+                local->objectLifetimeOwnership != sema::OwnershipKind::Owned ||
+                local->storageOwnership != sema::OwnershipKind::Owned ||
+                binding == nullptr || !binding->selectedImplicitDefault ||
+                binding->selectedConstructorMemberOrdinal.has_value() ||
+                binding->implicitDefaultBaseConstructorMemberOrdinal.has_value() ||
+                layout == nullptr || layout->baseTypeOrdinal.has_value() || layout->size == 0 ||
+                layout->size > kMaximumPromotedObjectBytes ||
+                targetTypeOrdinal >= nameLookup.namedTypes().size() ||
+                nameLookup.namedTypes()[targetTypeOrdinal].isPrecompiled)
+            {
+                continue;
+            }
+            bool hasNontrivialLifetimeMember = false;
+            for (const ClassMemberSymbol& targetMember : memberModel.members())
+            {
+                if (targetMember.declaringTypeOrdinal != targetTypeOrdinal) continue;
+                if (targetMember.kind == ClassMemberKind::Destructor ||
+                    (targetMember.kind == ClassMemberKind::Field && !targetMember.isStatic &&
+                     targetMember.declaredOwnership == sema::OwnershipKind::Owned))
+                {
+                    hasNontrivialLifetimeMember = true;
+                    break;
+                }
+            }
+            if (hasNontrivialLifetimeMember ||
+                !stackClassLocalUsesAreSafe(
+                    function.body.get(), declaration, *declaration->localOrdinal))
+            {
+                continue;
+            }
+            declaration->stackPromotedObject = true;
+            declaration->storageOwnership = sema::OwnershipKind::None;
+            construction->stackPromotedObject = true;
+            construction->localOrdinal = declaration->localOrdinal;
+            construction->storageOwnership = sema::OwnershipKind::None;
+        }
+
+        // Object construction is deferred until after the proof so a noheap callable can use a
+        // proven frame object. Every construction that remains heap-backed keeps item 321's exact
+        // diagnostic and contract.
+        if (function.isNoHeap)
+        {
+            if (const ProjectOopHirNode* allocation =
+                    firstUnpromotedObjectConstruction(function.body.get()))
+            {
+                error = "noheap callable '" + member.name +
+                    "' cannot contain direct heap allocation '" +
+                    std::string(projectOopHirNodeKindName(allocation->kind)) + "'";
+                return false;
+            }
+        }
         functionByMember_[memberOrdinal] = functions_.size();
         functions_.push_back(std::move(function));
     }
@@ -2755,7 +2903,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
             case ProjectOopHirNodeKind::DelegateCreate:
             case ProjectOopHirNodeKind::LambdaCreate:
             case ProjectOopHirNodeKind::EventAdd:
-            case ProjectOopHirNodeKind::ObjectConstruction:
                 return true;
             default:
                 return false;

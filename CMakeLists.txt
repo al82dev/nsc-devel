@@ -705,6 +705,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item322.noheap-propagation
         COMMAND nsc_item322_noheap_propagation_tests)
+    add_executable(
+        nsc_item323_stack_class_escape_analysis_tests
+        tests/unit/Item323StackClassEscapeAnalysisTests.cpp)
+    target_link_libraries(nsc_item323_stack_class_escape_analysis_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item323_stack_class_escape_analysis_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item323_stack_class_escape_analysis_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item323_stack_class_escape_analysis_tests)
+    add_test(
+        NAME nsc.item323.stack-class-escape-analysis
+        COMMAND nsc_item323_stack_class_escape_analysis_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
