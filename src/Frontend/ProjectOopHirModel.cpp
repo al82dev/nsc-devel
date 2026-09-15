@@ -2267,6 +2267,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
             auto node = makeNode(ProjectOopHirNodeKind::LocalDeclaration, statement, local->typeKey);
             node->stringValue = local->name;
             node->referenceLocal = local->isReference;
+            node->ownership = local->ownership;
             node->objectLifetimeOwnership = local->objectLifetimeOwnership;
             node->storageOwnership = local->storageOwnership;
             const auto localIndex = static_cast<std::size_t>(local - methodBodyModel_->locals().data());

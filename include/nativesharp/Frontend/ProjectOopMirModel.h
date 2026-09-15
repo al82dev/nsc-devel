@@ -369,6 +369,8 @@ struct ProjectOopMirNode final
     bool referenceLocal = false;
     // Item 313. Mirrors ProjectOopHirNode::referenceResult for physical call ABI selection.
     bool referenceResult = false;
+    // Item 377. Retained for CodeView/PDB ownership and borrow visualization.
+    sema::OwnershipKind ownership = sema::OwnershipKind::None;
     // Item 323. Mirrors the HIR proof; AllocateAndConstruct consumes a frame-owned object buffer.
     bool stackPromotedObject = false;
     // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.

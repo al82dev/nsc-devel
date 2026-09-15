@@ -472,6 +472,10 @@ struct ProjectOopHirNode final
     // Item 313. A call with this bit produces an address although typeKey names the referent.
     // Value contexts add PointerLoad; address contexts preserve the call itself.
     bool referenceResult = false;
+    // Item 377. Debug information must distinguish an owner from a borrow even though both use
+    // the same physical pointer representation. This is the declaration-level qualifier;
+    // objectLifetimeOwnership/storageOwnership remain the independent placement axes.
+    sema::OwnershipKind ownership = sema::OwnershipKind::None;
     // Item 323. Set on a proven-nonescaping RAII class local and its ObjectConstruction child.
     // The object lifetime remains owned, but its backing bytes belong to the current stack frame.
     bool stackPromotedObject = false;

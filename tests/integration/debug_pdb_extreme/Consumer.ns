@@ -11,13 +11,12 @@ namespace DebugExtremeConsumer
             int delegated = ProducerApi.Invoke(transform, seed);
             Pair pair = ProducerApi.MakePair(delegated, 1);
             int aggregate = pair.Sum();
-            Counter concrete = new Counter(aggregate);
-            ICounter interfaceView = concrete;
+            raii Counter concrete = new Counter(aggregate);
+            borrowed ICounter interfaceView = concrete;
             int dispatched = ProducerApi.ReadInterface(interfaceView);
             Box<int> box = new Box<int>(dispatched);
             int answer = ProducerApi.ReadBox(box);
             delete box;
-            delete concrete;
             return answer;
         }
     }

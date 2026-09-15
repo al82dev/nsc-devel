@@ -119,7 +119,9 @@ if(NOT pdb_result EQUAL 0 OR
    NOT pdb_dump MATCHES "DebugExtreme\\.Counter\\.Read" OR
    NOT pdb_dump MATCHES "DebugExtreme\\.Pair\\.Sum" OR
    NOT pdb_dump MATCHES "DebugExtreme\\.Box<int>" OR
-   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`seed`" OR
+   NOT pdb_dump MATCHES "borrowed DebugExtreme\\.ICounter" OR
+   NOT pdb_dump MATCHES "owned DebugExtreme\\.Counter" OR
+   NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`seed`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`interfaceView`" OR
    NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`answer`" OR
    NOT pdb_dump MATCHES "Producer\\.ns" OR

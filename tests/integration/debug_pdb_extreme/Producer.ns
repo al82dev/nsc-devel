@@ -74,7 +74,7 @@ namespace DebugExtreme
             return pair;
         }
 
-        public static int ReadInterface(ICounter counter)
+        public static int ReadInterface(borrowed ICounter counter)
         {
             return counter.Read();
         }

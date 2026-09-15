@@ -1368,6 +1368,72 @@ private:
         return type;
     }
 
+    LLVMMetadataRef debugOwnershipType(
+        std::string_view typeKey,
+        sema::OwnershipKind ownership,
+        SourceRange range)
+    {
+        LLVMMetadataRef physical = debugType(typeKey);
+        if (physical == nullptr || ownership == sema::OwnershipKind::None) return physical;
+
+        const std::string cacheKey = "ownership:" +
+            std::string(sema::ownershipKindName(ownership)) + ":" + std::string(typeKey);
+        if (const auto cached = debugTypes_.find(cacheKey); cached != debugTypes_.end())
+            return cached->second;
+
+        const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey);
+        const std::string name = std::string(sema::ownershipKindName(ownership)) + " " +
+            (named != nullptr ? debugNamedDisplayName(*named) : std::string(typeKey));
+        LLVMMetadataRef file = range.isValid() ? debugFile(range.begin()) : nullptr;
+        const unsigned line = range.isValid() && sourceManager_ != nullptr
+            ? sourceManager_->getPosition(range.begin()).line
+            : 0;
+
+        LLVMMetadataRef qualifiedPointee = nullptr;
+        if (named != nullptr && named->kind == frontend::NamedTypeDeclarationKind::Class)
+        {
+            const frontend::ProjectOopMirClassLayout* layout = classLayout(typeKey);
+            const auto base = debugPointeeTypes_.find(std::string(typeKey));
+            if (layout != nullptr && base != debugPointeeTypes_.end())
+            {
+                const std::string uniqueId = "nativesharp:ownership:" + cacheKey;
+                LLVMMetadataRef temporary = LLVMDIBuilderCreateReplaceableCompositeType(
+                    debugBuilder_, LLVMDWARFTagClassType, name.data(), name.size(),
+                    debugCompileUnit_, file, line, 0, layout->size * 8,
+                    static_cast<std::uint32_t>(layout->alignment * 8), LLVMDIFlagArtificial,
+                    uniqueId.data(), uniqueId.size());
+                LLVMMetadataRef inheritance = temporary != nullptr
+                    ? LLVMDIBuilderCreateInheritance(
+                        debugBuilder_, temporary, base->second, 0, 0, LLVMDIFlagPublic)
+                    : nullptr;
+                LLVMMetadataRef elements[] = {inheritance};
+                qualifiedPointee = temporary != nullptr && inheritance != nullptr
+                    ? LLVMDIBuilderCreateClassType(
+                        debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                        layout->size * 8, static_cast<std::uint32_t>(layout->alignment * 8), 0,
+                        LLVMDIFlagArtificial, base->second, elements, 1, nullptr, nullptr,
+                        uniqueId.data(), uniqueId.size())
+                    : nullptr;
+                if (temporary != nullptr && qualifiedPointee != nullptr)
+                    LLVMMetadataReplaceAllUsesWith(temporary, qualifiedPointee);
+            }
+        }
+        if (qualifiedPointee == nullptr)
+        {
+            const std::string uniqueId = "nativesharp:ownership:" + cacheKey;
+            qualifiedPointee = LLVMDIBuilderCreateStructType(
+                debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                64, 64, LLVMDIFlagArtificial, nullptr, nullptr, 0, 0, nullptr,
+                uniqueId.data(), uniqueId.size());
+        }
+        LLVMMetadataRef qualified = qualifiedPointee != nullptr
+            ? LLVMDIBuilderCreatePointerType(
+                debugBuilder_, qualifiedPointee, 64, 64, 0, name.data(), name.size())
+            : nullptr;
+        if (qualified != nullptr) debugTypes_.emplace(cacheKey, qualified);
+        return qualified != nullptr ? qualified : physical;
+    }
+
     bool emitDebugParameter(
         const frontend::ProjectOopMirFunction& function,
         std::size_t index,
@@ -1395,7 +1461,11 @@ private:
         }
         if (!range.isValid()) return true;
         LLVMMetadataRef file = debugFile(range.begin());
-        LLVMMetadataRef type = debugType(function.parameterTypeKeys[index]);
+        const sema::OwnershipKind ownership = index < function.parameterOwnerships.size()
+            ? function.parameterOwnerships[index]
+            : sema::OwnershipKind::None;
+        LLVMMetadataRef type =
+            debugOwnershipType(function.parameterTypeKeys[index], ownership, range);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
@@ -1481,7 +1551,11 @@ private:
                node->kind == frontend::ProjectOopMirNodeKind::CatchRegion
                 ? std::string_view(node->elementTypeKey)
                 : std::string_view(node->typeKey));
-        LLVMMetadataRef type = debugType(typeKey);
+        const sema::OwnershipKind debugOwnership =
+            node->ownership != sema::OwnershipKind::None
+            ? node->ownership
+            : node->objectLifetimeOwnership;
+        LLVMMetadataRef type = debugOwnershipType(typeKey, debugOwnership, range);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         LLVMMetadataRef scope = currentDebugScope_ != nullptr
