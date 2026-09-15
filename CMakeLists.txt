@@ -1114,6 +1114,13 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item366_rounding_control_tests)
     add_test(NAME nsc.item366.rounding-control COMMAND nsc_item366_rounding_control_tests)
 
+    add_executable(nsc_item367_denormal_control_tests tests/unit/Item367DenormalControlTests.cpp)
+    target_link_libraries(nsc_item367_denormal_control_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item367_denormal_control_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item367_denormal_control_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_item367_denormal_control_tests)
+    add_test(NAME nsc.item367.denormal-control COMMAND nsc_item367_denormal_control_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)

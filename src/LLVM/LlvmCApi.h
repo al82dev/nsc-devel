@@ -133,6 +133,14 @@ enum LLVMRealPredicate
     LLVMRealPredicateTrue = 15
 };
 
+enum LLVMDenormalModeKind
+{
+    LLVMDenormalModeKindIEEE = 0,
+    LLVMDenormalModeKindPreserveSign = 1,
+    LLVMDenormalModeKindPositiveZero = 2,
+    LLVMDenormalModeKindDynamic = 3
+};
+
 // Stage 54.2 "Atomics" -- values fixed by llvm-c/Core.h, same "hand-maintained subset, exact
 // upstream numeric values" discipline as LLVMIntPredicate/LLVMRealPredicate above. Only the
 // members this compiler actually emits are listed (LLVMAtomicRMWBinOpXchg for Interlocked.
@@ -691,6 +699,12 @@ using LLVMAttributeRef = LLVMOpaqueAttributeRef*;
 using LLVMAttributeIndex = unsigned;
 unsigned LLVMGetEnumAttributeKindForName(const char* name, std::size_t sLen);
 LLVMAttributeRef LLVMCreateEnumAttribute(LLVMContextRef context, unsigned kindId, std::uint64_t value);
+LLVMAttributeRef LLVMCreateDenormalFPEnvAttribute(
+    LLVMContextRef context,
+    LLVMDenormalModeKind defaultModeOutput,
+    LLVMDenormalModeKind defaultModeInput,
+    LLVMDenormalModeKind floatModeOutput,
+    LLVMDenormalModeKind floatModeInput);
 void LLVMAddAttributeAtIndex(LLVMValueRef function, LLVMAttributeIndex index, LLVMAttributeRef attribute);
 
 // Stage 56-prep (Win64 aggregate ABI): indirect struct returns are expressed exactly the way

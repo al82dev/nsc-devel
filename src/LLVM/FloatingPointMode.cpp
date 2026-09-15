@@ -9,6 +9,7 @@ namespace
 std::atomic<FloatingPointMode> gActiveMode{FloatingPointMode::Precise};
 std::atomic<FmaContractPolicy> gActiveFmaContractPolicy{FmaContractPolicy::Off};
 std::atomic<FloatingPointRoundingMode> gActiveRoundingMode{FloatingPointRoundingMode::Dynamic};
+std::atomic<FloatingPointDenormalMode> gActiveDenormalMode{FloatingPointDenormalMode::Preserve};
 }
 
 std::optional<FloatingPointMode> parseFloatingPointMode(std::string_view value) noexcept
@@ -100,10 +101,37 @@ FloatingPointRoundingMode activeFloatingPointRoundingMode() noexcept
     return gActiveRoundingMode.load(std::memory_order_relaxed);
 }
 
+std::optional<FloatingPointDenormalMode> parseFloatingPointDenormalMode(std::string_view value) noexcept
+{
+    if (value == "preserve") return FloatingPointDenormalMode::Preserve;
+    if (value == "ftz") return FloatingPointDenormalMode::FlushToZero;
+    if (value == "daz") return FloatingPointDenormalMode::DenormalsAreZero;
+    if (value == "ftz-daz") return FloatingPointDenormalMode::FlushToZeroAndDenormalsAreZero;
+    return std::nullopt;
+}
+
+std::string_view floatingPointDenormalModeName(FloatingPointDenormalMode mode) noexcept
+{
+    switch (mode)
+    {
+        case FloatingPointDenormalMode::Preserve: return "preserve";
+        case FloatingPointDenormalMode::FlushToZero: return "ftz";
+        case FloatingPointDenormalMode::DenormalsAreZero: return "daz";
+        case FloatingPointDenormalMode::FlushToZeroAndDenormalsAreZero: return "ftz-daz";
+    }
+    return {};
+}
+
+FloatingPointDenormalMode activeFloatingPointDenormalMode() noexcept
+{
+    return gActiveDenormalMode.load(std::memory_order_relaxed);
+}
+
 FloatingPointModeScope::FloatingPointModeScope() noexcept
     : previous_(activeFloatingPointMode()),
       previousFmaContractPolicy_(activeFmaContractPolicy()),
-      previousRoundingMode_(activeFloatingPointRoundingMode())
+      previousRoundingMode_(activeFloatingPointRoundingMode()),
+      previousDenormalMode_(activeFloatingPointDenormalMode())
 {
 }
 
@@ -112,11 +140,17 @@ FloatingPointModeScope::~FloatingPointModeScope()
     set(previous_);
     setFmaContractPolicy(previousFmaContractPolicy_);
     setRoundingMode(previousRoundingMode_);
+    setDenormalMode(previousDenormalMode_);
 }
 
 void FloatingPointModeScope::setRoundingMode(FloatingPointRoundingMode mode) noexcept
 {
     gActiveRoundingMode.store(mode, std::memory_order_relaxed);
+}
+
+void FloatingPointModeScope::setDenormalMode(FloatingPointDenormalMode mode) noexcept
+{
+    gActiveDenormalMode.store(mode, std::memory_order_relaxed);
 }
 
 void FloatingPointModeScope::setFmaContractPolicy(FmaContractPolicy policy) noexcept

@@ -2821,6 +2821,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     llvm_backend::FloatingPointRoundingMode floatingPointRoundingMode =
         llvm_backend::FloatingPointRoundingMode::Dynamic;
     bool floatingPointRoundingModeSeen = false;
+    llvm_backend::FloatingPointDenormalMode floatingPointDenormalMode =
+        llvm_backend::FloatingPointDenormalMode::Preserve;
+    bool floatingPointDenormalModeSeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
     std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
@@ -2910,6 +2913,27 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CommandLineError;
             }
             floatingPointRoundingMode = *parsed;
+            continue;
+        }
+        static constexpr std::string_view floatingPointDenormalPrefix = "--fp-denormal=";
+        if (argument.starts_with(floatingPointDenormalPrefix))
+        {
+            if (floatingPointDenormalModeSeen)
+            {
+                error << "nsc: error: duplicate floating-point denormal mode\n";
+                return ExitCode::CommandLineError;
+            }
+            floatingPointDenormalModeSeen = true;
+            const std::optional<llvm_backend::FloatingPointDenormalMode> parsed =
+                llvm_backend::parseFloatingPointDenormalMode(
+                    argument.substr(floatingPointDenormalPrefix.size()));
+            if (!parsed.has_value())
+            {
+                error << "nsc: error: unsupported floating-point denormal mode '" << argument
+                      << "'; expected --fp-denormal=preserve, ftz, daz, or ftz-daz\n";
+                return ExitCode::CommandLineError;
+            }
+            floatingPointDenormalMode = *parsed;
             continue;
         }
         static constexpr std::string_view compilationProfilePrefix = "--profile=";
@@ -3180,6 +3204,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         floatingPointMode == llvm_backend::FloatingPointMode::Deterministic)
         floatingPointRoundingMode = llvm_backend::FloatingPointRoundingMode::NearestEven;
     floatingPointModeScope.setRoundingMode(floatingPointRoundingMode);
+    floatingPointModeScope.setDenormalMode(floatingPointDenormalMode);
 
     if (floatingPointModeSeen)
         output << "floating-point-mode: " << llvm_backend::floatingPointModeName(floatingPointMode) << '\n';
@@ -3188,6 +3213,9 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     if (floatingPointRoundingModeSeen)
         output << "floating-point-rounding: "
                << llvm_backend::floatingPointRoundingModeName(floatingPointRoundingMode) << '\n';
+    if (floatingPointDenormalModeSeen)
+        output << "floating-point-denormal: "
+               << llvm_backend::floatingPointDenormalModeName(floatingPointDenormalMode) << '\n';
 
     if (normalizedArguments.empty())
     {
@@ -3775,6 +3803,7 @@ void Driver::printHelp(std::ostream &output)
               "to FMA; off is the strict default.\n"
            << "--fp-rounding=dynamic|nearest-even|toward-zero|upward|downward controls constrained "
               "floating-point rounding; deterministic mode defaults to nearest-even.\n"
+           << "--fp-denormal=preserve|ftz|daz|ftz-daz controls subnormal inputs and results.\n"
            << "--time reports deterministic per-phase microseconds plus total wall time; "
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
            << "--progress streams and flushes phase boundaries plus source read, lex and parse "

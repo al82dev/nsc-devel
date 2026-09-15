@@ -2546,6 +2546,7 @@ private:
                 }
             }
             applyUwtableAttribute(llvmFunction);
+            applyDenormalFloatingPointAttribute(llvmFunction);
             if (function.inliningPolicy == frontend::InliningPolicy::Preferred &&
                 !function.isImportedC && !function.isImportedNative)
             {
@@ -13289,6 +13290,31 @@ private:
         LLVMAttributeRef attribute = LLVMCreateEnumAttribute(context_, kindId, 2);
         if (attribute == nullptr) return;
         LLVMAddAttributeAtIndex(function, static_cast<LLVMAttributeIndex>(~0U), attribute);
+    }
+
+    void applyDenormalFloatingPointAttribute(LLVMValueRef function)
+    {
+        if (function == nullptr || context_ == nullptr) return;
+        LLVMDenormalModeKind output = LLVMDenormalModeKindIEEE;
+        LLVMDenormalModeKind input = LLVMDenormalModeKindIEEE;
+        switch (activeFloatingPointDenormalMode())
+        {
+            case FloatingPointDenormalMode::Preserve: break;
+            case FloatingPointDenormalMode::FlushToZero:
+                output = LLVMDenormalModeKindPreserveSign;
+                break;
+            case FloatingPointDenormalMode::DenormalsAreZero:
+                input = LLVMDenormalModeKindPreserveSign;
+                break;
+            case FloatingPointDenormalMode::FlushToZeroAndDenormalsAreZero:
+                output = LLVMDenormalModeKindPreserveSign;
+                input = LLVMDenormalModeKindPreserveSign;
+                break;
+        }
+        LLVMAttributeRef attribute = LLVMCreateDenormalFPEnvAttribute(
+            context_, output, input, output, input);
+        if (attribute != nullptr)
+            LLVMAddAttributeAtIndex(function, static_cast<LLVMAttributeIndex>(~0U), attribute);
     }
 
     bool terminated() const noexcept
