@@ -1095,9 +1095,20 @@ post-truncation logical value. Compound stores and prefix/postfix updates shall 
 typed arithmetic path while evaluating the receiver once. Aggregate initialization shall zero the
 carrier first and insert each named bit field with the same merge operation.
 
-Item 329 shall reject every volatile bit-field read or write with the explicit item-330 boundary;
-it shall not emit a nonvolatile approximation. This schema change does not alter NSMETA 1.18,
-Object ABI 2, Runtime ABI 1.0 or ownership.
+This schema change does not alter NSMETA 1.18, Object ABI 2, Runtime ABI 1.0 or ownership.
+
+## NSC-LAYOUT-008 — Volatile bit-field lowering
+
+HIR and MIR shall preserve the resolved field's `volatile` qualifier on bit-field loads, logical
+addresses and aggregate-element stores. A read shall issue one LLVM volatile load of the declared
+allocation-unit integer and extract only afterward. A simple or compound write shall issue a
+volatile load and a volatile store of that same complete unit around the ordinary masked merge;
+prefix/postfix result rules and single receiver evaluation remain those of NSC-LAYOUT-007.
+
+The compiler shall not translate volatile bit fields into narrow independent accesses, atomics or
+fences. O0 and O2 shall preserve the volatile operations. NSMETA 1.18 reconstruction shall combine
+the existing volatile member flag with the stored bit coordinates so local, ProjectReference and
+LibraryReference declarations lower identically. MIR remains schema 1.7 and no ABI version changes.
 
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 

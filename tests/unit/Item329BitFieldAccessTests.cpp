@@ -260,10 +260,6 @@ public class Program
 public struct Bits { public uint Value : 3; }
 public class Api { public static uint* Address(Bits* value) { return &value->Value; } }
 )NS", "bit fields have no address");
-    expectRejected(tests, root, "VolatileBitFieldAccess", R"NS(
-public struct Bits { public volatile uint Value : 3; }
-public class Api { public static uint Read(Bits* value) { return value->Value; } }
-)NS", "volatile bit-field access belongs to item 330");
 
     const auto producer = root / "producer";
     writeProject(producer, "BitFieldProducer", R"NS(

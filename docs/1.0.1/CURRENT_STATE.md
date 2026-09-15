@@ -182,7 +182,9 @@ en structs y después del header/base de clases. Los headers C/MSVC y NSMETA 1.1
 unidad y offset. Los bitfields nombrados ya admiten lectura y escritura: las lecturas normalizan
 signo, `bool` y enums; las escrituras y actualizaciones compuestas preservan los bits vecinos y
 evalúan el receptor una vez. No tienen dirección y no admiten `ref`, `offsetof` ni operandos de
-memoria de `asm`. El acceso a un bitfield `volatile` sigue reservado al punto 330.
+memoria de `asm`. Un bitfield `volatile` carga y almacena como `volatile` la unidad física completa;
+las escrituras conservan los bits vecinos mediante read-modify-write, sin semántica atómica ni
+fences, y la marca se conserva en tipos importados por `LibraryReference`.
 
 ## Superficie del lenguaje
 

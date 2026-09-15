@@ -1094,9 +1094,6 @@ truncamiento. Los inicializadores agregados parten de storage en cero y aplican 
 en orden, por lo que dos miembros que comparten unidad no se pisan. Estas reglas aplican igualmente
 a structs, unions, clases, miembros promovidos y tipos reconstruidos por `LibraryReference`.
 
-El punto 329 no atribuye semántica ordinaria a `volatile`: cualquier acceso a un bitfield declarado
-`volatile` se rechaza explícitamente hasta el punto 330.
-
 A positive-width named bit field is assignable when mutable but is never addressable. Reads extract
 the declared slice and perform zero extension, sign extension, bool normalization, or enum
 underlying-type interpretation as appropriate. Writes truncate to the declared width and perform a
@@ -1104,8 +1101,25 @@ full-unit read-modify-write that preserves neighboring fields; the assignment re
 normalized logical value. Compound assignments and increment/decrement evaluate the receiver once,
 and aggregate initializers use the same insertion after zero initialization while skipping unnamed
 fields. The rules also cover classes, unions, promoted anonymous members and `LibraryReference`
-types. Address-taking, `ref`, `offsetof`, assembly-memory operands and volatile bit-field access are
-rejected; volatile behavior remains item 330.
+types. Address-taking, `ref`, `offsetof` and assembly-memory operands remain rejected.
+
+### NS-LAYOUT-010 — Bitfields `volatile`
+
+Cada evaluación de lectura de un bitfield `volatile` realiza una lectura `volatile` de su allocation
+unit completa y después extrae la porción lógica conforme a NS-LAYOUT-009. Una asignación simple,
+compuesta o `++/--` realiza read-modify-write sobre esa unidad: la lectura y el store completos son
+`volatile`, se preservan todos los bits ajenos al field y el receptor se evalúa una vez. Un
+inicializador agregado aplica la misma regla cuando su posición corresponde a un field `volatile`.
+
+`volatile` conserva observabilidad y orden de accesos frente al optimizador, pero no introduce
+atomicidad, memoria ordenada ni fences. La regla es idéntica para structs, unions, clases y fields
+reconstruidos desde NSMETA por `LibraryReference`.
+
+Every volatile bit-field read accesses the complete allocation unit as one volatile load before
+extracting the logical slice. Simple and compound stores and increment/decrement use a volatile
+load and volatile full-unit store while preserving neighboring bits and evaluating the receiver
+once. Aggregate initialization uses the same rule. Volatile does not imply atomicity, memory
+ordering or fences, and imported NSMETA declarations retain the same behavior.
 
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su

@@ -1237,7 +1237,6 @@ bool ProjectOopHirModel::buildImpl(
     {
         localBySyntax_[local.syntax] = &local;
     }
-
     functionByMember_.resize(memberModel.members().size());
     const bool regularFunctionsBuiltInParallel = workerCount > 1 && !memberFilter.has_value();
     if (regularFunctionsBuiltInParallel)
@@ -1796,7 +1795,6 @@ bool ProjectOopHirModel::buildImpl(
         built_ = true;
         return true;
     }
-
     // Stage 43 lowers every target-typed lambda as a synthetic native callable.  Capturing
     // lambdas use the Stage 42 receiver slot as a closure-environment pointer; non-capturing
     // lambdas remain ordinary static callables with a null delegate receiver.
@@ -3433,13 +3431,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     return nullptr;
                 }
                 const std::size_t fieldOrdinal = binding->candidateMemberOrdinals.front();
-                if (memberModel_ != nullptr && fieldOrdinal < memberModel_->members().size() &&
-                    memberModel_->members()[fieldOrdinal].isBitField &&
-                    memberModel_->members()[fieldOrdinal].isVolatile)
-                {
-                    error = "volatile bit-field access belongs to item 330";
-                    return nullptr;
-                }
                 auto receiver = lowerReceiver(
                     binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
                 if (receiver == nullptr)
@@ -3629,6 +3620,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 if (addressContext)
                 {
                     error = "Stage 34 address-of result is not itself addressable";
+                    return nullptr;
+                }
+                // Bit fields are logical slices of an allocation unit, not independently
+                // addressable objects.  Assignment lowering may request their allocation-unit
+                // address internally, but source `&field` must never expose that address as a
+                // pointer to the logical field type.
+                if (const MethodNameBinding* target = nameBinding(expression->first());
+                    target != nullptr && !target->candidateMemberOrdinals.empty() &&
+                    memberModel_ != nullptr &&
+                    target->candidateMemberOrdinals.front() < memberModel_->members().size() &&
+                    memberModel_->members()[target->candidateMemberOrdinals.front()].isBitField)
+                {
+                    error = "bit fields have no address";
                     return nullptr;
                 }
                 auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
@@ -6521,6 +6525,7 @@ bool ProjectOopHirModel::appendAggregateElements(
         std::optional<std::uint64_t> bitWidth;
         std::uint64_t storageSize = 0;
         std::uint64_t storageAlignment = 1;
+        bool volatileAccess = false;
     };
     std::vector<AggregateSlot> slots;
     if (const std::optional<std::string> elementTypeKey =
@@ -6545,7 +6550,7 @@ bool ProjectOopHirModel::appendAggregateElements(
         {
             slots.push_back(AggregateSlot{
                 *elementTypeKey, index * layout->first, std::nullopt, std::nullopt, 0,
-                layout->second});
+                layout->second, false});
         }
     }
     else
@@ -6576,7 +6581,8 @@ bool ProjectOopHirModel::appendAggregateElements(
                 field.bitOffset,
                 field.bitWidth,
                 field.bitWidth.has_value() ? field.size : 0,
-                field.alignment});
+                field.alignment,
+                member != nullptr && member->isVolatile});
             // A union takes exactly one initializer, for its first member -- the same rule C has,
             // and the same one bindAggregateInitializer enforced.
             if (layout->isUnion) break;
@@ -6624,6 +6630,7 @@ bool ProjectOopHirModel::appendAggregateElements(
         slot->bitWidth = target.bitWidth;
         slot->bitStorageSize = target.storageSize;
         slot->bitStorageAlignment = target.storageAlignment;
+        slot->volatileAccess = target.volatileAccess;
         slot->children.push_back(std::move(value));
         elements.push_back(std::move(slot));
     }

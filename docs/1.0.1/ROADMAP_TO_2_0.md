@@ -104,7 +104,7 @@ historia, no una certificación nueva y no incluye archivos sin commit.
   anidado determinista;
 - sintaxis, layout y acceso MSVC de bitfields nombrados, sin nombre y de ancho cero, incluidos
   cambios de unidad, barreras, `pack`, structs, clases, unions, máscaras de lectura/escritura y
-  extensión de signo; `volatile` sigue separado;
+  extensión de signo; las variantes `volatile` acceden a la unidad completa sin atomics ni fences;
 - NSMETA 1.18 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
   cuerpos inline reutilizables, campos volatile, retornos `ref`, contratos `noheap` y carriers
   anónimos y coordenadas físicas de bitfields preservados;

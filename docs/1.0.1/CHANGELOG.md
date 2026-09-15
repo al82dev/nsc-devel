@@ -71,8 +71,10 @@ empaqueta con NativeSharp 1.0.1.
   ancho cero, `pack`, structs, clases y unions. Headers C/MSVC y NSMETA 1.18 conservan el mismo
   contrato. MIR 1.7 publica la unidad y la porción lógica; LLVM lee con máscara y extensión de
   signo y escribe con read-modify-write sin alterar campos vecinos. Asignaciones simples,
-  compuestas, `++/--` e inicializadores agregados conservan truncamiento y evaluación única;
-  dirección, `ref`, `offsetof` y acceso `volatile` permanecen prohibidos (este último hasta 330).
+  compuestas, `++/--` e inicializadores agregados conservan truncamiento y evaluación única.
+  Dirección, `ref` y `offsetof` permanecen prohibidos. Los bitfields `volatile` hacen cada lectura
+  y cada read-modify-write sobre la unidad completa mediante accesos LLVM `volatile`, sin volverla
+  atómica ni insertar fences, también al reconstruirse desde `LibraryReference`.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

@@ -6772,6 +6772,7 @@ private:
                         builder_, storageType, address, "bitfield.compound.storage.load");
                     LLVMSetAlignment(
                         previousStorage, static_cast<unsigned>(node->children[0]->alignment));
+                    if (node->children[0]->volatileAccess) LLVMSetVolatile(previousStorage, 1);
                     previous = extractBitField(node->children[0].get(), previousStorage, error);
                 }
                 else
@@ -6829,6 +6830,7 @@ private:
                     if (merged == nullptr) return nullptr;
                     LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
                     LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
+                    if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
                     storedValue = extractBitField(node->children[0].get(), merged, error);
                 }
                 else
@@ -6959,6 +6961,7 @@ private:
                 LLVMValueRef storage = LLVMBuildLoad2(
                     builder_, storageType, address, "bitfield.storage.load");
                 LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment));
+                if (node->volatileAccess) LLVMSetVolatile(storage, 1);
                 return extractBitField(node, storage, error);
             }
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
@@ -8421,10 +8424,12 @@ private:
                     LLVMValueRef previous = LLVMBuildLoad2(
                         builder_, storageType, address, "bitfield.store.storage.load");
                     LLVMSetAlignment(previous, static_cast<unsigned>(field->alignment));
+                    if (field->volatileAccess) LLVMSetVolatile(previous, 1);
                     LLVMValueRef merged = insertBitField(field, previous, value, error);
                     if (merged == nullptr) return nullptr;
                     LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
                     LLVMSetAlignment(store, static_cast<unsigned>(field->alignment));
+                    if (field->volatileAccess) LLVMSetVolatile(store, 1);
                     return extractBitField(field, merged, error);
                 }
                 if (node->booleanValue && node->localOrdinal.has_value())
@@ -11430,10 +11435,12 @@ private:
                 LLVMValueRef previous = LLVMBuildLoad2(
                     builder_, storageType, address, "aggregate.bitfield.storage.load");
                 LLVMSetAlignment(previous, static_cast<unsigned>(child->alignment));
+                if (child->volatileAccess) LLVMSetVolatile(previous, 1);
                 LLVMValueRef merged = insertBitField(child.get(), previous, value, error);
                 if (merged == nullptr) return nullptr;
                 LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
                 LLVMSetAlignment(store, static_cast<unsigned>(child->alignment));
+                if (child->volatileAccess) LLVMSetVolatile(store, 1);
                 continue;
             }
             LLVMValueRef store = LLVMBuildStore(builder_, value, address);
