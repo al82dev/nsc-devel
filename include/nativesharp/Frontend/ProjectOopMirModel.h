@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 2;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 3;
 
 enum class ProjectOopMirNodeKind
 {
@@ -275,7 +275,8 @@ enum class ProjectOopMirNodeKind
     VirtualInstanceCall,
     InterfaceInstanceCall,
     AllocateAndConstruct,
-    Deallocate
+    Deallocate,
+    ObjectDestroy
 };
 
 struct ProjectOopMirNode final
@@ -436,6 +437,7 @@ struct ProjectOopMirDispatchTable final
     std::vector<std::size_t> slotMemberOrdinals;
     std::vector<std::string> slotCalleeNames;
     std::string destructionEntryName;
+    std::string objectDestructionEntryName;
     std::vector<std::size_t> destructorMemberOrdinals;
     std::vector<std::string> destructorCalleeNames;
     // A local class may derive from a class whose destructor bodies and owned-field layout live

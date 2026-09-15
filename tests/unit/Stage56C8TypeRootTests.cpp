@@ -309,9 +309,10 @@ namespace proj {
     expectContains(tests, ir, "c\"Gadget\\00\"", "ClassRootMembers");
     // Field 6 of the descriptor is where it lives, and the root's ToString() reads it there.
     expectContains(tests, ir, "descriptor.type_name", "ClassRootMembers");
-    // The class descriptor now carries seven fields, the seventh being that pointer.
+    // Item 319 appends the object-only destruction entry after the type-name pointer. Existing
+    // C8 field 6 stays fixed while the descriptor grows to eight fields.
     expectContains(
-        tests, ir, "%nativesharp.class_descriptor = type { ptr, ptr, i64, i64, ptr, ptr, ptr }",
+        tests, ir, "%nativesharp.class_descriptor = type { ptr, ptr, i64, i64, ptr, ptr, ptr, ptr }",
         "ClassRootMembers");
 }
 
@@ -371,9 +372,9 @@ namespace proj {
     const auto projectPath = writeProject(root, "RootIsOptional", source, /*referenceCore=*/false);
     compileAndRun(tests, projectPath, "-O0", "RootIsOptional [-O0]", 42);
     const std::string ir = dumpIr(tests, projectPath, "RootIsOptional");
-    // Six fields, not seven: without the root there is no name to carry.
+    // Descriptor shape is ABI-stable regardless of whether the optional root is visible.
     expectContains(
-        tests, ir, "%nativesharp.class_descriptor = type { ptr, ptr, i64, i64, ptr, ptr, ptr }",
+        tests, ir, "%nativesharp.class_descriptor = type { ptr, ptr, i64, i64, ptr, ptr, ptr, ptr }",
         "RootIsOptional");
     expectLacks(tests, ir, "NativeSharp_Core_Object", "RootIsOptional");
 

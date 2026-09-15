@@ -289,7 +289,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
         "ABI fingerprint is a full 256-bit SHA-256 value");
     tests.expect(metadata.nativeAbiMajor == 1 && metadata.nativeAbiMinor == 0 &&
             metadata.runtimeAbiMajor == 1 && metadata.runtimeAbiMinor == 0 &&
-            metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 1 &&
+            metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 2 &&
             metadata.delegateAbiVersion == 1 && metadata.exceptionAbiVersion == 1 &&
             metadata.managedDelegateCellSize == 32,
                  "NSMETA 1.8 separates its file version from the frozen "
@@ -483,8 +483,9 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    tests.expect(goldenHex == "d4b903103cd1b7343a591659eadd889fc78d057f25ccea86092340f919d8ee18",
-        "ABI 1.0 root contract retains its reviewed golden fingerprint");
+    tests.expect(goldenHex == "2cc4390f9b25ec1aa54110f0f4187034c648ee13f9a4fbaf2ea9985f15a3bad4",
+        "ABI root contract with Object ABI 2 retains its reviewed golden fingerprint (" +
+            goldenHex + ")");
 }
 
 void testDefaultValueContractSensitivity(TestContext& tests, const std::filesystem::path& root)
@@ -1330,9 +1331,20 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                          "archived NSMETA 1." + std::to_string(minor) +
                              " golden remains readable (" + error + ")");
             error.clear();
-            tests.expect(goldenRead && codec.verifyCurrentCompiler(golden, error),
-                         "archived NSMETA 1." + std::to_string(minor) +
-                             " golden remains compatible (" + error + ")");
+            const bool goldenCompatible = goldenRead && codec.verifyCurrentCompiler(golden, error);
+            if (minor >= 8)
+            {
+                tests.expect(!goldenCompatible &&
+                                 error.find("object ABI expected 2, found 1") != std::string::npos,
+                             "archived NSMETA 1." + std::to_string(minor) +
+                                 " golden is rejected at the explicit Object ABI 2 boundary (" + error + ")");
+            }
+            else
+            {
+                tests.expect(goldenCompatible,
+                             "archived NSMETA 1." + std::to_string(minor) +
+                                 " golden remains compatible (" + error + ")");
+            }
         }
     }
 
@@ -1437,10 +1449,10 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                      error.find("mangling ABI expected 1, found 2") != std::string::npos,
                  "E5 identifies the mangling contract independently");
     incompatible = metadata;
-    incompatible.objectAbiVersion = 2;
+    incompatible.objectAbiVersion = 3;
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
-                     error.find("object ABI expected 1, found 2") != std::string::npos,
+                     error.find("object ABI expected 2, found 3") != std::string::npos,
                  "E5 identifies the object-layout contract independently");
     incompatible = metadata;
     incompatible.managedDelegateCellSize = 16;
@@ -1580,7 +1592,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                          std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
                      output.find("runtime-abi: 1.0") != std::string::npos &&
-                     output.find("object-abi: 1") != std::string::npos &&
+                     output.find("object-abi: 2") != std::string::npos &&
                      output.find("delegate-cell-size: 32") != std::string::npos,
                  "driver verification prints the complete frozen ABI contract, "
                  "not only its fingerprint");

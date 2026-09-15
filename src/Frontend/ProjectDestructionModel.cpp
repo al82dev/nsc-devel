@@ -97,6 +97,8 @@ bool ProjectDestructionModel::buildClass(
     plan.typeOrdinal = typeOrdinal;
     plan.destructionEntryName = "__nsc_destroy_" +
         sanitizeSymbol(nameLookup_->namedTypes()[typeOrdinal].identity.key());
+    plan.objectDestructionEntryName = "__nsc_destroy_object_" +
+        sanitizeSymbol(nameLookup_->namedTypes()[typeOrdinal].identity.key());
 
     std::size_t destructorCount = 0;
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))

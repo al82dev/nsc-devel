@@ -1012,6 +1012,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::ConstructorInitializerCall: return "constructor-initializer-call";
         case ProjectOopHirNodeKind::ObjectConstruction: return "object-construction";
         case ProjectOopHirNodeKind::Deallocation: return "deallocation";
+        case ProjectOopHirNodeKind::ObjectDestruction: return "object-destruction";
     }
     return "unknown";
 }
@@ -5476,6 +5477,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             // and clear it before destruction.  This prevents a later release-before-store from
             // observing a dangling owner and destroying the same allocation twice.
             node->booleanValue = clearsElementSlot;
+            node->elementTypeKey = operandType->typeKey;
+            node->children.push_back(std::move(operand));
+            return node;
+        }
+
+        case ast::AstNodeKind::DestroyExpression:
+        {
+            const MethodExpressionTypeBinding* operandType = expressionType(expression->first());
+            if (operandType == nullptr)
+            {
+                error = "item 319 cannot determine destroy operand type";
+                return nullptr;
+            }
+            auto operand = lowerExpression(expression->first(), memberOrdinal, false, error);
+            if (operand == nullptr) return nullptr;
+
+            bool dynamicDestruction = isReferenceType(operandType->typeKey);
+            if (!dynamicDestruction && operandType->typeKey.ends_with('*'))
+            {
+                const std::string pointee = operandType->typeKey.substr(
+                    0, operandType->typeKey.size() - 1);
+                dynamicDestruction = isReferenceType(pointee);
+            }
+
+            auto node = makeNode(
+                ProjectOopHirNodeKind::ObjectDestruction, expression, "builtin:void");
+            node->dynamicDestruction = dynamicDestruction;
             node->elementTypeKey = operandType->typeKey;
             node->children.push_back(std::move(operand));
             return node;

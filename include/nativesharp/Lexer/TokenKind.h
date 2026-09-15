@@ -76,6 +76,8 @@ enum class TokenKind
     KwUsing,
     KwNew,
     KwDelete,
+    // NativeSharp 2.0 item 319. Ends an object's lifetime without releasing its storage.
+    KwDestroy,
     KwStackalloc,
     KwSizeof,
     KwAlignof,

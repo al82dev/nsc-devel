@@ -2583,9 +2583,9 @@ private:
         for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
         {
             if (table.isImported) continue;
-            if (table.destructionEntryName.empty())
+            if (table.destructionEntryName.empty() || table.objectDestructionEntryName.empty())
             {
-                return fail(error, "Stage 35 class descriptor has no destruction-entry name");
+                return fail(error, "item 319 class descriptor has incomplete destruction-entry names");
             }
             LLVMValueRef function = LLVMAddFunction(
                 module_, table.destructionEntryName.c_str(), destructionEntryFunctionType_);
@@ -2616,6 +2616,35 @@ private:
             if (subprogram != nullptr) LLVMSetSubprogram(function, subprogram);
             destructionFunctions_[table.typeOrdinal] = FunctionInfo{
                 function, destructionEntryFunctionType_, subprogram};
+
+            LLVMValueRef objectFunction = LLVMAddFunction(
+                module_, table.objectDestructionEntryName.c_str(), destructionEntryFunctionType_);
+            if (objectFunction == nullptr)
+            {
+                return fail(error, "item 319 failed to declare object-only destruction entry " +
+                    table.objectDestructionEntryName);
+            }
+            if (!partitioned_ || ownsModuleGlobals_)
+                applyGenericOdrDefinition(objectFunction, table.genericSpecializationKey);
+            LLVMMetadataRef objectSubprogram = nullptr;
+            if (ownsDefinition && table.typeOrdinal < nameLookup_.namedTypes().size())
+            {
+                const frontend::NamedTypeDeclaration& type = nameLookup_.namedTypes()[table.typeOrdinal];
+                const std::vector<std::string> parameters = {table.typeKey};
+                const std::string displayName =
+                    type.identity.fullyQualifiedName() + ".object-destruction-entry [generated]";
+                objectSubprogram = createSynthesizedDebugSubprogram(
+                    type.range, displayName, table.objectDestructionEntryName, "builtin:void",
+                    parameters, true, false);
+            }
+            if (debugBuilder_ != nullptr && ownsDefinition && objectSubprogram == nullptr)
+            {
+                return fail(error, "failed to create debug subprogram for object-only destruction entry " +
+                    table.objectDestructionEntryName);
+            }
+            if (objectSubprogram != nullptr) LLVMSetSubprogram(objectFunction, objectSubprogram);
+            objectDestructionFunctions_[table.typeOrdinal] = FunctionInfo{
+                objectFunction, destructionEntryFunctionType_, objectSubprogram};
         }
         return true;
     }
@@ -2642,13 +2671,15 @@ private:
         // string literal ({i64 length, [N+1 x i8] bytes}) so NativeSharp.Core.Object.ToString()
         // can hand it back as a `string` with a single load and no allocation. Appended rather
         // than inserted so every existing field index in this file stays valid.
-        LLVMTypeRef descriptorFields[] = {ptr, ptr, i64, i64, ptr, ptr, ptr};
+        // Item 319 appends field 7. It has the same `void(ptr)` ABI as field 5, but destroys only
+        // the object lifetime and deliberately leaves the backing storage untouched.
+        LLVMTypeRef descriptorFields[] = {ptr, ptr, i64, i64, ptr, ptr, ptr, ptr};
         descriptorType_ = LLVMStructCreateNamed(context_, "nativesharp.class_descriptor");
         if (descriptorType_ == nullptr)
         {
             return fail(error, "Macro A failed to create NativeSharp class-descriptor type");
         }
-        LLVMStructSetBody(descriptorType_, descriptorFields, 7, 0);
+        LLVMStructSetBody(descriptorType_, descriptorFields, 8, 0);
         descriptorAccessorFunctionType_ = LLVMFunctionType(ptr, nullptr, 0, 0);
         if (descriptorAccessorFunctionType_ == nullptr)
         {
@@ -2902,6 +2933,11 @@ private:
             {
                 return fail(error, "Stage 35 descriptor cannot resolve its destruction entry");
             }
+            const auto objectDestructionFound = objectDestructionFunctions_.find(table.typeOrdinal);
+            if (objectDestructionFound == objectDestructionFunctions_.end())
+            {
+                return fail(error, "item 319 descriptor cannot resolve its object-only destruction entry");
+            }
 
             LLVMValueRef interfaceMap = LLVMConstNull(ptr);
             const auto interfaceMapFound = interfaceMapGlobals_.find(table.typeOrdinal);
@@ -2925,9 +2961,10 @@ private:
                 LLVMConstInt(i64, table.stableTypeId, 0),
                 interfaceMap,
                 destructionFound->second.function,
-                typeName
+                typeName,
+                objectDestructionFound->second.function
             };
-            LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType_, values, 7);
+            LLVMValueRef initializer = LLVMConstNamedStruct(descriptorType_, values, 8);
             LLVMSetInitializer(descriptorFound->second, initializer);
             LLVMSetGlobalConstant(
                 descriptorFound->second,
@@ -3868,12 +3905,17 @@ private:
             // module neither declares nor defines that private implementation directly.
             if (table.isImported) continue;
             const auto entryFound = destructionFunctions_.find(table.typeOrdinal);
-            if (entryFound == destructionFunctions_.end())
+            const auto objectEntryFound = objectDestructionFunctions_.find(table.typeOrdinal);
+            if (entryFound == destructionFunctions_.end() ||
+                objectEntryFound == objectDestructionFunctions_.end())
             {
-                return fail(error, "Stage 35 lost a declared destruction entry");
+                return fail(error, "item 319 lost a declared destruction entry");
             }
 
-            currentFunction_ = entryFound->second.function;
+            // The object-only entry owns the complete destructor/owned-field/base traversal.
+            // The traditional entry below is now a thin wrapper that invokes it and releases
+            // the outermost storage exactly once.
+            currentFunction_ = objectEntryFound->second.function;
             currentMirFunction_ = nullptr;
             thisValue_ = nullptr;
             closureEnvironment_ = nullptr;
@@ -3892,7 +3934,7 @@ private:
             sretStorage_ = nullptr;
             blockCounter_ = 0;
 
-            currentDebugSubprogram_ = entryFound->second.subprogram;
+            currentDebugSubprogram_ = objectEntryFound->second.subprogram;
             currentDebugScope_ = currentDebugSubprogram_;
             debugDeclaredLocals_.clear();
             currentDebugFileKey_ = 0;
@@ -3996,19 +4038,36 @@ private:
                     builder_, baseAccessor->second.functionType, baseAccessor->second.function,
                     nullptr, 0, "destruction.base.descriptor");
                 LLVMValueRef entryAddress = LLVMBuildStructGEP2(
-                    builder_, descriptorType_, baseDescriptor, 5, "destruction.base.entry.addr");
+                    builder_, descriptorType_, baseDescriptor, 7,
+                    "destruction.base.object.entry.addr");
                 LLVMValueRef baseDestructionEntry = LLVMBuildLoad2(
-                    builder_, ptr, entryAddress, "destruction.base.entry");
+                    builder_, ptr, entryAddress, "destruction.base.object.entry");
                 LLVMValueRef baseArguments[] = {object};
                 buildNoUnwindCall(
                     destructionEntryFunctionType_, baseDestructionEntry, baseArguments, 1, "");
             }
-            else
-            {
-                LLVMValueRef freeArguments[] = {object};
-                buildNoUnwindCall(
-                    deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
-            }
+            LLVMBuildRetVoid(builder_);
+
+            currentFunction_ = entryFound->second.function;
+            currentDebugSubprogram_ = entryFound->second.subprogram;
+            currentDebugScope_ = currentDebugSubprogram_;
+            blockCounter_ = 0;
+            LLVMBasicBlockRef releasingEntry = appendBlock("destroy-and-free.entry");
+            LLVMPositionBuilderAtEnd(builder_, releasingEntry);
+            ScopedDebugLocation releasingLocation(
+                builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
+            LLVMValueRef releasingObject = LLVMGetParam(currentFunction_, 0);
+            LLVMSetValueName2(releasingObject, "object", 6);
+            LLVMValueRef destroyArguments[] = {releasingObject};
+            buildNoUnwindCall(
+                objectEntryFound->second.functionType,
+                objectEntryFound->second.function,
+                destroyArguments,
+                1,
+                "");
+            LLVMValueRef freeArguments[] = {releasingObject};
+            buildNoUnwindCall(
+                deallocationFunctionType_, deallocationFunction_, freeArguments, 1, "");
             LLVMBuildRetVoid(builder_);
         }
         currentDebugSubprogram_ = nullptr;
@@ -8433,6 +8492,8 @@ private:
                 return lowerConstruction(node, error);
             case frontend::ProjectOopMirNodeKind::Deallocate:
                 return lowerDeallocation(node, error);
+            case frontend::ProjectOopMirNodeKind::ObjectDestroy:
+                return lowerObjectDestruction(node, error);
 
             // LOS VEINTE QUE NO SON EXPRESIONES, escritos uno a uno en vez de un `default:`.
             //
@@ -11540,6 +11601,52 @@ private:
         return storage;
     }
 
+    LLVMValueRef lowerObjectDestruction(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error)
+    {
+        if (node->children.size() != 1)
+            return failValue(error, "item 319 object destruction requires one operand");
+
+        LLVMValueRef object = lowerExpression(node->children.front().get(), error);
+        if (object == nullptr) return nullptr;
+
+        // Structs currently have no destructor or owned fields. Evaluating the pointer ends the
+        // language lifetime contract and requires no machine operation; importantly, it still
+        // never becomes a call to the allocator's free hook.
+        if (!node->dynamicDestruction)
+            return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+
+        if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+            return failValue(error, "item 319 object destruction has no descriptor ABI");
+
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef isNull = LLVMBuildICmp(
+            builder_, LLVMIntEQ, object, LLVMConstNull(ptr), "destroy.object.isnull");
+        LLVMBasicBlockRef destroyBlock = appendBlock("destroy.object");
+        LLVMBasicBlockRef doneBlock = appendBlock("destroy.object.done");
+        LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        LLVMValueRef descriptor = LLVMBuildLoad2(
+            builder_, ptr, object, "destroy.object.descriptor");
+        LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+            builder_, descriptorType_, descriptor, 7, "destroy.object.entry.addr");
+        LLVMValueRef destructionEntry = LLVMBuildLoad2(
+            builder_, ptr, entryAddress, "destroy.object.entry");
+        LLVMValueRef arguments[] = {object};
+        if (buildPotentiallyThrowingCall(
+                destructionEntryFunctionType_, destructionEntry, arguments, 1, "", error) == nullptr &&
+            !error.empty())
+        {
+            return nullptr;
+        }
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+
+        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+    }
+
     LLVMValueRef lowerDeallocation(const frontend::ProjectOopMirNode* node, std::string& error)
     {
         if (node->children.size() != 1)
@@ -12387,6 +12494,7 @@ private:
     std::unordered_set<std::size_t> runtimeDescriptorAccessorTypes_;
     std::unordered_map<std::size_t, LLVMValueRef> interfaceMapGlobals_;
     std::unordered_map<std::size_t, FunctionInfo> destructionFunctions_;
+    std::unordered_map<std::size_t, FunctionInfo> objectDestructionFunctions_;
     std::unordered_map<std::size_t, LLVMValueRef> vtableGlobals_;
     std::unordered_map<std::size_t, LLVMValueRef> staticFieldGlobals_;
     std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*> staticFieldInfo_;

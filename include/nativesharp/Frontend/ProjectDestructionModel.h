@@ -23,6 +23,7 @@ struct ClassDestructionPlan final
     std::optional<std::size_t> explicitDestructorMemberOrdinal;
     std::vector<std::size_t> destructorMemberOrdinals;
     std::string destructionEntryName;
+    std::string objectDestructionEntryName;
 };
 
 class ProjectDestructionModel final

@@ -40,6 +40,9 @@ empaqueta con NativeSharp 1.0.1.
 - Placement construction reutiliza la resolución ordinaria de constructores y construye clases o
   structs directamente en `T*` sin invocar al asignador. Evalúa destino y argumentos una vez,
   inicializa el layout y devuelve la misma dirección como puntero de struct o referencia de clase.
+- `destroy objeto` ejecuta la cadena dinámica completa de destructores y campos `owned` sin liberar
+  el storage exterior, que puede reutilizarse mediante placement construction. El descriptor añade
+  una entrada separada y el contrato Object ABI pasa a versión 2.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

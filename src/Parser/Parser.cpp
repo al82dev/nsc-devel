@@ -6871,6 +6871,17 @@ ast::AstNode* Parser::parseUnaryExpression()
         return node;
     }
 
+    if (at(TokenKind::KwDestroy))
+    {
+        const SourceRange start = consume().range();
+        ast::AstNode* operand = parseUnaryExpression();
+        ast::AstNode* node = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::DestroyExpression,
+            join(start, operand->range()));
+        node->setFirst(operand);
+        return node;
+    }
+
     if (at(TokenKind::KwStackalloc))
     {
         const SourceRange start = consume().range();

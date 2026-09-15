@@ -98,6 +98,8 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     if (node->conversionKind.has_value()) output << " conversion=" << projectConversionKindName(*node->conversionKind);
     if (node->kind == ProjectOopMirNodeKind::Deallocate)
         output << " destruction=" << (node->dynamicDestruction ? "dynamic-descriptor" : "direct-free");
+    if (node->kind == ProjectOopMirNodeKind::ObjectDestroy)
+        output << " destruction=" << (node->dynamicDestruction ? "dynamic-object-only" : "trivial-object");
     output << '\n';
     for (const auto& child : node->children) dumpNode(output, child.get(), depth + 1);
 }
@@ -173,7 +175,8 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " descriptor=" << table.descriptorName
                << " vtable=" << (table.vtableName.empty() ? "<none>" : table.vtableName)
                << " type-id=" << table.stableTypeId
-               << " destroy=" << table.destructionEntryName;
+               << " destroy=" << table.destructionEntryName
+               << " destroy-object=" << table.objectDestructionEntryName;
         if (!table.genericSpecializationKey.empty())
             output << " generic-specialization=" << table.genericSpecializationKey;
         output << '\n';

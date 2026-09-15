@@ -68,7 +68,9 @@ inline constexpr std::uint16_t kNativeAbiMinor = 0;
 inline constexpr std::uint16_t kRuntimeAbiMajor = 1;
 inline constexpr std::uint16_t kRuntimeAbiMinor = 0;
 inline constexpr std::uint16_t kManglingAbiVersion = 1;
-inline constexpr std::uint16_t kObjectAbiVersion = 1;
+// NativeSharp 2.0 item 319 appends the object-only destruction entry to every class descriptor.
+// Existing field offsets remain stable, but a producer without field 7 cannot satisfy `destroy`.
+inline constexpr std::uint16_t kObjectAbiVersion = 2;
 inline constexpr std::uint16_t kDelegateAbiVersion = 1;
 inline constexpr std::uint16_t kExceptionAbiVersion = 1;
 inline constexpr std::uint32_t kManagedDelegateCellSize = 32;

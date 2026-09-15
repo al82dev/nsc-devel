@@ -78,6 +78,8 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
                << " preserve=" << (node->booleanValue ? "true" : "false");
     if (node->kind == ProjectOopHirNodeKind::Deallocation)
         output << " destruction=" << (node->dynamicDestruction ? "dynamic-descriptor" : "direct-free");
+    if (node->kind == ProjectOopHirNodeKind::ObjectDestruction)
+        output << " destruction=" << (node->dynamicDestruction ? "dynamic-object-only" : "trivial-object");
     output << '\n';
     for (const auto& child : node->children)
     {

@@ -694,6 +694,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::InterfaceInstanceCall: return "interface-instance-call";
         case ProjectOopMirNodeKind::AllocateAndConstruct: return "allocate-and-construct";
         case ProjectOopMirNodeKind::Deallocate: return "deallocate";
+        case ProjectOopMirNodeKind::ObjectDestroy: return "object-destroy";
     }
     return "unknown";
 }
@@ -805,6 +806,7 @@ bool ProjectOopMirModel::build(
             return false;
         }
         table.destructionEntryName = destruction->destructionEntryName;
+        table.objectDestructionEntryName = destruction->objectDestructionEntryName;
         table.destructorMemberOrdinals = destruction->destructorMemberOrdinals;
         if (!table.isImported)
         {
@@ -1918,6 +1920,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         }
         case ProjectOopHirNodeKind::Deallocation: result->kind = ProjectOopMirNodeKind::Deallocate; break;
+        case ProjectOopHirNodeKind::ObjectDestruction: result->kind = ProjectOopMirNodeKind::ObjectDestroy; break;
 
         case ProjectOopHirNodeKind::StaticFieldValue:
             result->kind = ProjectOopMirNodeKind::StaticFieldLoad;

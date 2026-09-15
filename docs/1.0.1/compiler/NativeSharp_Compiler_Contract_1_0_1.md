@@ -869,6 +869,27 @@ caller obligations. Focused O0 evidence shall cover explicit and implicit-defaul
 construction, class descriptor/member behavior, destination/argument order, HIR/MIR audit nodes,
 verifier-clean LLVM, linked execution, and invalid destination/type/constructor diagnostics.
 
+## NSC-PLACEMENT-003 — Object-only destruction lowering
+
+The parser shall recognize `destroy unary-expression` as `DestroyExpression`. Project semantic
+analysis shall accept class/interface references and pointers to concrete classes or structs, set
+the result type to `void`, and reject RAII locals, owned values, invalid scalar/pointer targets and
+recursive `destroy this` from a destructor.
+
+HIR `object-destruction` and MIR `object-destroy` shall preserve whether runtime class dispatch is
+required. A class descriptor shall append an object-only `void(ptr)` entry after all established
+fields; the pre-existing destruction entry shall call that object-only traversal and then release
+the outer allocation. Object-only traversal shall execute the same most-derived-to-base destructor
+and owned-field contract, delegate across precompiled bases through the corresponding object-only
+entry, and never call `__nativesharp_free` for the outer object. This descriptor expansion is
+Object ABI version 2.
+
+LLVM shall evaluate the operand once, treat null as a no-op, dynamically load the object-only entry
+for class/interface objects, and emit no machine operation for a trivially destructible struct.
+Focused O0 evidence shall cover dynamic derived/base order, reusable caller storage, class-reference
+and raw-class-pointer operands, trivial struct lifetime termination, HIR/MIR/LLVM identities, and
+invalid scalar, primitive-pointer, and RAII operands.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

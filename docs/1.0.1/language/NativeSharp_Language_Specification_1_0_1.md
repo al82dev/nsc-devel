@@ -366,6 +366,29 @@ without calling an allocator. Struct placement returns `T*`; class placement ret
 `T` reference to the supplied object bytes. The caller owns pointer validity, capacity, alignment,
 storage lifetime, and—until the following contracts—explicit object destruction.
 
+### NS-PLACEMENT-003 — Destrucción explícita conservando storage
+
+`destroy expresión` termina el lifetime del objeto designado sin liberar los bytes que lo alojan.
+Acepta una referencia de clase o interfaz, o un puntero a clase o struct concreto, evalúa el
+operando exactamente una vez y produce `void`. `null` es un no-op. En clases e interfaces la
+destrucción usa el descriptor del objeto real: ejecuta destructores derivados y base y descarga
+campos `owned` en el orden ordinario, pero conserva exclusivamente el storage exterior. En structs
+sin destructor la operación sólo fija el fin del lifetime y no genera una llamada física.
+
+No se permite aplicar `destroy` directamente a un local `raii`, un valor `owned` ni a `this` desde
+su propio destructor, porque otra obligación ya posee esa destrucción y/o el storage. Después de
+`destroy`, ningún alias puede usar el objeto terminado; el storage puede recibir una nueva
+placement construction. El descriptor de clase incorpora una entrada separada de destrucción de
+objeto y eleva el contrato Object ABI a versión 2.
+
+`destroy expression` ends the designated object's lifetime without releasing its backing bytes.
+It evaluates its operand once and dynamically follows the real class descriptor through derived
+and base destruction, including owned-field cleanup, while preserving the outer storage. A
+trivially destructible struct pointer requires no physical call. RAII and owned values retain
+their existing owner's cleanup obligation and therefore cannot be explicitly destroyed. The
+destroyed object may not be used again until placement construction begins a new lifetime in the
+same storage.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

@@ -6683,6 +6683,87 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 !deletesOwnedField;
             break;
         }
+        case ast::AstNodeKind::DestroyExpression:
+        {
+            const ExpressionResult operand = analyzeExpression(
+                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+
+            bool validTarget = false;
+            if (operand.valid)
+            {
+                // A class/interface reference carries the runtime descriptor needed for dynamic
+                // destruction. A raw T* is accepted only when T is a concrete class or struct;
+                // the latter currently has trivial destruction but still has a real lifetime to
+                // end after placement construction.
+                validTarget = isReferenceTypeKey(operand.typeKey);
+                if (!validTarget && operand.typeKey.ends_with('*') && operand.typeKey.size() > 1)
+                {
+                    const std::string_view pointee(
+                        operand.typeKey.data(), operand.typeKey.size() - 1);
+                    const std::optional<std::size_t> ordinal = namedTypeOrdinalForTypeKey(pointee);
+                    validTarget = ordinal.has_value() && nameLookup_ != nullptr &&
+                        *ordinal < nameLookup_->namedTypes().size() &&
+                        (inheritanceModel_->isClass(*ordinal) ||
+                         nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Struct);
+                }
+                if (!validTarget)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "destroy requires a class/interface reference or a pointer to a concrete class or struct");
+                }
+            }
+
+            bool destroysRaiiLocal = false;
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> target =
+                    lookupScopeName(scopeOrdinal, expression->first()->text());
+                destroysRaiiLocal = target.has_value() && target->kind == ScopeNameKind::Local &&
+                    target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].isRaii;
+                if (destroysRaiiLocal)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "explicit destroy of a RAII local is forbidden; lexical cleanup owns destruction");
+                }
+            }
+
+            const ClassMemberSymbol* context = methodSymbol(methodMemberOrdinal);
+            const bool destroysCurrentThis = context != nullptr &&
+                context->kind == ClassMemberKind::Destructor &&
+                expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::ThisExpression;
+            if (destroysCurrentThis)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "destroy this is forbidden inside a destructor; the active destruction entry owns the object lifetime");
+            }
+
+            const bool destroysOwnedValue = operand.valid &&
+                operand.ownership == sema::OwnershipKind::Owned && !destroysRaiiLocal;
+            if (destroysOwnedValue)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "explicit destroy of an owned value is forbidden; its owner must also discharge storage");
+            }
+
+            result.typeKey = "builtin:void";
+            result.valid = operand.valid && validTarget && !destroysRaiiLocal &&
+                !destroysCurrentThis && !destroysOwnedValue;
+            break;
+        }
         default:
             break;
     }

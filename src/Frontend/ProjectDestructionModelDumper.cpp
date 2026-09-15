@@ -23,6 +23,7 @@ void ProjectDestructionModelDumper::dump(
             output << nameLookup.namedTypes()[plan.typeOrdinal].identity.key();
         }
         output << " entry=" << plan.destructionEntryName
+               << " object-entry=" << plan.objectDestructionEntryName
                << " explicit=";
         if (plan.explicitDestructorMemberOrdinal.has_value())
         {

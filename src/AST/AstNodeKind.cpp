@@ -86,6 +86,7 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(ObjectCreationExpression);
         NS_AST_KIND(PlacementConstructionExpression);
         NS_AST_KIND(DeleteExpression);
+        NS_AST_KIND(DestroyExpression);
         NS_AST_KIND(StackallocExpression);
         NS_AST_KIND(MoveExpression);
         NS_AST_KIND(AggregateInitializerExpression);

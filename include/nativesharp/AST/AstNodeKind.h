@@ -117,6 +117,8 @@ enum class AstNodeKind
     // Physical construction into that address is introduced by item 318.
     PlacementConstructionExpression,
     DeleteExpression,
+    // Item 319. `destroy operand` runs object destruction but preserves the backing bytes.
+    DestroyExpression,
     StackallocExpression,
     MoveExpression,
     // C7 "aggregate initializer": `V v = {1, 2};` -- the braced form, with the elements as

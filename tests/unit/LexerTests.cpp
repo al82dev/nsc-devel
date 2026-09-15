@@ -149,7 +149,7 @@ int main()
         source::SourceManager sources;
         const std::string allKeywords =
             "void bool byte char short ushort int uint long ulong nint nuint float double const public internal protected private "
-            "if else while for break continue return struct class enum namespace using new delete stackalloc sizeof alignof offsetof static_assert "
+            "if else while for break continue return struct class enum namespace using new delete destroy stackalloc sizeof alignof offsetof static_assert "
             "extern true false null this";
         const std::vector<Token> tokens = lex(allKeywords, diagnostics, sources);
         const std::vector<TokenKind> expected = {
@@ -161,6 +161,7 @@ int main()
             TokenKind::KwElse, TokenKind::KwWhile, TokenKind::KwFor, TokenKind::KwBreak,
             TokenKind::KwContinue, TokenKind::KwReturn, TokenKind::KwStruct, TokenKind::KwClass, TokenKind::KwEnum,
             TokenKind::KwNamespace, TokenKind::KwUsing, TokenKind::KwNew, TokenKind::KwDelete,
+            TokenKind::KwDestroy,
             TokenKind::KwStackalloc, TokenKind::KwSizeof, TokenKind::KwAlignof, TokenKind::KwOffsetof,
             TokenKind::KwStaticAssert,
             TokenKind::KwExtern, TokenKind::KwTrue, TokenKind::KwFalse,

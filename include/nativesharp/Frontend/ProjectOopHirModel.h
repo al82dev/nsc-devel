@@ -378,7 +378,10 @@ enum class ProjectOopHirNodeKind
     StaticCall,
     ConstructorInitializerCall,
     ObjectConstruction,
-    Deallocation
+    Deallocation,
+    // Item 319. One operand; dynamicDestruction selects the class descriptor's object-only
+    // entry. A non-dynamic node is a typed no-op for a destructible-free struct lifetime.
+    ObjectDestruction
 };
 
 struct ProjectOopHirNode final

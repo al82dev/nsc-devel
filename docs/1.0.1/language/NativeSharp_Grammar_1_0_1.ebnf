@@ -159,6 +159,7 @@ unary-expression = postfix-expression | ( "+" | "-" | "!" | "~" | "++" | "--" | 
                    "offsetof", "(", type, ",", identifier, ")" |
                    "default", [ "(", type, ")" ] |
                    "delete", [ "[", "]" ], unary-expression |
+                   "destroy", unary-expression |
                    "stackalloc", type, "[", expression, "]" ;
 cast-expression = "(", type, ")", unary-expression ;
 postfix-expression = primary-expression,

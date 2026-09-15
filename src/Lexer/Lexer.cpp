@@ -100,6 +100,7 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"using", TokenKind::KwUsing},
         {"new", TokenKind::KwNew},
         {"delete", TokenKind::KwDelete},
+        {"destroy", TokenKind::KwDestroy},
         {"stackalloc", TokenKind::KwStackalloc},
         {"sizeof", TokenKind::KwSizeof},
         {"alignof", TokenKind::KwAlignof},
