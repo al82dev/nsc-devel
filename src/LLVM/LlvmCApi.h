@@ -607,6 +607,7 @@ LLVMTypeRef LLVMInt8TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt16TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt32TypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt64TypeInContext(LLVMContextRef context);
+LLVMTypeRef LLVMHalfTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMFloatTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMDoubleTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMVectorType(LLVMTypeRef elementType, unsigned elementCount);
@@ -860,6 +861,11 @@ LLVMValueRef LLVMBuildSExt(
     LLVMTypeRef destinationType,
     const char* name);
 LLVMValueRef LLVMBuildZExt(
+    LLVMBuilderRef builder,
+    LLVMValueRef value,
+    LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildBitCast(
     LLVMBuilderRef builder,
     LLVMValueRef value,
     LLVMTypeRef destinationType,

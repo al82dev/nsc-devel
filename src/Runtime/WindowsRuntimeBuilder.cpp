@@ -4511,6 +4511,106 @@ bool buildAtomicLoad(
     return true;
 }
 
+// Item 354: LLVM legalizes scalar binary16 conversions to these compiler-rt entry points on
+// baseline x64 targets. NativeSharp links without a CRT, so provide the two helpers in its own
+// runtime using integer IEEE-754 field manipulation. This also works on machines without F16C.
+bool buildHalfCompilerRtSupport(LLVMContextRef context, LLVMModuleRef module)
+{
+    LLVMTypeRef i1 = LLVMInt1TypeInContext(context);
+    LLVMTypeRef i16 = LLVMInt16TypeInContext(context);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef f16 = LLVMHalfTypeInContext(context);
+    LLVMTypeRef f32 = LLVMFloatTypeInContext(context);
+    auto c32 = [i32](std::uint64_t value) { return LLVMConstInt(i32, value, 0); };
+
+    LLVMTypeRef truncType = functionType(f16, {f32});
+    LLVMValueRef truncFunction = LLVMAddFunction(module, "__truncsfhf2", truncType);
+    if (truncFunction == nullptr) return false;
+    LLVMBasicBlockRef truncEntry = LLVMAppendBasicBlockInContext(context, truncFunction, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, truncEntry);
+    LLVMValueRef bits = LLVMBuildBitCast(builder, LLVMGetParam(truncFunction, 0), i32, "bits");
+    LLVMValueRef sign = LLVMBuildAnd(builder,
+        LLVMBuildLShr(builder, bits, c32(16), "sign.shift"), c32(0x8000), "sign");
+    LLVMValueRef exponent = LLVMBuildAnd(builder,
+        LLVMBuildLShr(builder, bits, c32(23), "exp.shift"), c32(0xff), "exp");
+    LLVMValueRef mantissa = LLVMBuildAnd(builder, bits, c32(0x7fffff), "mantissa");
+    LLVMValueRef halfExponent = LLVMBuildSub(builder, exponent, c32(112), "half.exp");
+    LLVMValueRef retained = LLVMBuildAnd(builder,
+        LLVMBuildLShr(builder, mantissa, c32(13), "retained.shift"), c32(1), "retained.bit");
+    LLVMValueRef roundedMantissa = LLVMBuildLShr(builder,
+        LLVMBuildAdd(builder, mantissa,
+            LLVMBuildAdd(builder, c32(0xfff), retained, "round.bias"), "rounded.source"),
+        c32(13), "rounded.mantissa");
+    LLVMValueRef normal = LLVMBuildOr(builder, sign,
+        LLVMBuildAdd(builder, LLVMBuildShl(builder, halfExponent, c32(10), "normal.exp"),
+            roundedMantissa, "normal.payload"), "normal");
+    LLVMValueRef shift = LLVMBuildSub(builder, c32(126), exponent, "subnormal.shift");
+    LLVMValueRef hiddenMantissa = LLVMBuildOr(builder, mantissa, c32(0x800000), "hidden.mantissa");
+    LLVMValueRef subnormalRound = LLVMBuildShl(builder, c32(1),
+        LLVMBuildSub(builder, shift, c32(1), "subnormal.round.shift"), "subnormal.round");
+    LLVMValueRef subnormalPayload = LLVMBuildLShr(builder,
+        LLVMBuildAdd(builder, hiddenMantissa, subnormalRound, "subnormal.rounded"), shift, "subnormal.payload");
+    LLVMValueRef subnormal = LLVMBuildOr(builder, sign, subnormalPayload, "subnormal");
+    LLVMValueRef finiteLow = LLVMBuildSelect(builder,
+        LLVMBuildICmp(builder, LLVMIntULT, exponent, c32(103), "underflows"), sign, subnormal, "finite.low");
+    LLVMValueRef finite = LLVMBuildSelect(builder,
+        LLVMBuildICmp(builder, LLVMIntULT, exponent, c32(113), "is.subnormal"), finiteLow, normal, "finite");
+    LLVMValueRef infinity = LLVMBuildOr(builder, sign, c32(0x7c00), "infinity");
+    LLVMValueRef overflowed = LLVMBuildSelect(builder,
+        LLVMBuildICmp(builder, LLVMIntUGE, exponent, c32(143), "overflows"), infinity, finite, "overflowed");
+    LLVMValueRef nanPayload = LLVMBuildOr(builder,
+        LLVMBuildLShr(builder, mantissa, c32(13), "nan.payload.shift"), c32(0x200), "nan.payload");
+    LLVMValueRef special = LLVMBuildOr(builder, infinity, nanPayload, "special");
+    LLVMValueRef result32 = LLVMBuildSelect(builder,
+        LLVMBuildICmp(builder, LLVMIntEQ, exponent, c32(255), "is.special"), special, overflowed, "half.bits.i32");
+    LLVMValueRef result16 = LLVMBuildTrunc(builder, result32, i16, "half.bits");
+    LLVMBuildRet(builder, LLVMBuildBitCast(builder, result16, f16, "half.value"));
+    LLVMDisposeBuilder(builder);
+
+    LLVMTypeRef extendType = functionType(f32, {f16});
+    LLVMValueRef extendFunction = LLVMAddFunction(module, "__extendhfsf2", extendType);
+    if (extendFunction == nullptr) return false;
+    LLVMBasicBlockRef extendEntry = LLVMAppendBasicBlockInContext(context, extendFunction, "entry");
+    builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, extendEntry);
+    LLVMValueRef halfBits16 = LLVMBuildBitCast(builder, LLVMGetParam(extendFunction, 0), i16, "half.bits");
+    LLVMValueRef halfBits = LLVMBuildZExt(builder, halfBits16, i32, "half.bits.i32");
+    LLVMValueRef wideSign = LLVMBuildShl(builder,
+        LLVMBuildAnd(builder, halfBits, c32(0x8000), "half.sign"), c32(16), "float.sign");
+    LLVMValueRef halfExp = LLVMBuildAnd(builder,
+        LLVMBuildLShr(builder, halfBits, c32(10), "half.exp.shift"), c32(0x1f), "half.exp");
+    LLVMValueRef halfMantissa = LLVMBuildAnd(builder, halfBits, c32(0x3ff), "half.mantissa");
+    LLVMValueRef normalBits = LLVMBuildOr(builder, wideSign,
+        LLVMBuildOr(builder,
+            LLVMBuildShl(builder, LLVMBuildAdd(builder, halfExp, c32(112), "float.exp"), c32(23), "float.exp.bits"),
+            LLVMBuildShl(builder, halfMantissa, c32(13), "float.mantissa"), "float.payload"), "normal.bits");
+    LLVMValueRef specialBits = LLVMBuildOr(builder, wideSign,
+        LLVMBuildOr(builder, c32(0x7f800000),
+            LLVMBuildShl(builder, halfMantissa, c32(13), "special.mantissa"), "special.payload"), "special.bits");
+    LLVMTypeRef ctlzType = functionType(i32, {i32, i1});
+    LLVMValueRef ctlz = LLVMAddFunction(module, "llvm.ctlz.i32", ctlzType);
+    LLVMValueRef ctlzArgs[] = {halfMantissa, LLVMConstInt(i1, 0, 0)};
+    LLVMValueRef leading = LLVMBuildCall2(builder, ctlzType, ctlz, ctlzArgs, 2, "leading.zeros");
+    LLVMValueRef normalizeShift = LLVMBuildSub(builder, leading, c32(21), "normalize.shift");
+    LLVMValueRef normalizedMantissa = LLVMBuildAnd(builder,
+        LLVMBuildShl(builder, halfMantissa, normalizeShift, "normalized.source"), c32(0x3ff), "normalized.mantissa");
+    LLVMValueRef subnormalBits = LLVMBuildOr(builder, wideSign,
+        LLVMBuildOr(builder,
+            LLVMBuildShl(builder, LLVMBuildSub(builder, c32(113), normalizeShift, "subnormal.exp"), c32(23), "subnormal.exp.bits"),
+            LLVMBuildShl(builder, normalizedMantissa, c32(13), "subnormal.mantissa"), "subnormal.float.payload"),
+        "subnormal.float.bits");
+    LLVMValueRef zeroOrSubnormal = LLVMBuildSelect(builder,
+        LLVMBuildICmp(builder, LLVMIntEQ, halfMantissa, c32(0), "is.zero"), wideSign, subnormalBits, "zero.or.subnormal");
+    LLVMValueRef finiteBits = LLVMBuildSelect(builder,
+        LLVMBuildICmp(builder, LLVMIntEQ, halfExp, c32(0), "exp.zero"), zeroOrSubnormal, normalBits, "finite.bits");
+    LLVMValueRef floatBits = LLVMBuildSelect(builder,
+        LLVMBuildICmp(builder, LLVMIntEQ, halfExp, c32(31), "exp.special"), specialBits, finiteBits, "float.bits");
+    LLVMBuildRet(builder, LLVMBuildBitCast(builder, floatBits, f32, "float.value"));
+    LLVMDisposeBuilder(builder);
+    return true;
+}
+
 bool buildAtomicStore(
     LLVMContextRef context,
     LLVMModuleRef module,
@@ -5673,6 +5773,7 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
         buildAllocate(context, module, getProcessHeap, getProcessHeapType, heapAlloc, heapAllocType) &&
         buildFree(context, module, getProcessHeap, getProcessHeapType, heapFree, heapFreeType) &&
         buildTrap(context, module, exitProcess, exitProcessType) &&
+        buildHalfCompilerRtSupport(context, module) &&
         (!includeStart || buildStart(
             context, module, exitProcess, exitProcessType, ehInit, ehInitType, mainSymbol)) &&
         buildConsoleWrite(context, module, getStdHandle, getStdHandleType, writeFile, writeFileType) &&

@@ -648,6 +648,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreSimdStoreAligned128: return "core-simd-store-aligned-128";
         case ProjectOopMirNodeKind::CoreSimdLoadUnaligned128: return "core-simd-load-unaligned-128";
         case ProjectOopMirNodeKind::CoreSimdStoreUnaligned128: return "core-simd-store-unaligned-128";
+        case ProjectOopMirNodeKind::CoreHalfFromFloat: return "core-half-from-float";
+        case ProjectOopMirNodeKind::CoreHalfToFloat: return "core-half-to-float";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1717,6 +1719,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreSimdStoreUnaligned128:
             result->kind = ProjectOopMirNodeKind::CoreSimdStoreUnaligned128;
+            break;
+        case ProjectOopHirNodeKind::CoreHalfFromFloat:
+            result->kind = ProjectOopMirNodeKind::CoreHalfFromFloat;
+            break;
+        case ProjectOopHirNodeKind::CoreHalfToFloat:
+            result->kind = ProjectOopMirNodeKind::CoreHalfToFloat;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;

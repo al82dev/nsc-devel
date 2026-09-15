@@ -7683,6 +7683,40 @@ private:
                 LLVMSetAlignment(result, alignment);
                 return result;
             }
+            case frontend::ProjectOopMirNodeKind::CoreHalfFromFloat:
+            {
+                if (node->children.size() != 1)
+                    return failValue(error, "Half.FromFloat requires one float operand");
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMTypeRef halfType = LLVMHalfTypeInContext(context_);
+                LLVMValueRef binary16 = LLVMBuildFPTrunc(builder_, value, halfType, "half.from.float");
+                LLVMValueRef slot = entryBlockAlloca(carrier, 2U, "half.result.addr");
+                LLVMValueRef store = LLVMBuildStore(builder_, binary16, slot);
+                LLVMSetAlignment(store, 2U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, slot, "half.result");
+                LLVMSetAlignment(result, 2U);
+                return result;
+            }
+            case frontend::ProjectOopMirNodeKind::CoreHalfToFloat:
+            {
+                if (node->children.size() != 1)
+                    return failValue(error, "Half.ToFloat requires one Half operand");
+                LLVMValueRef value = lowerExpression(node->children.front().get(), error);
+                if (value == nullptr) return nullptr;
+                LLVMTypeRef carrier = llvmType(node->children.front()->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMValueRef slot = entryBlockAlloca(carrier, 2U, "half.source.addr");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(store, 2U);
+                LLVMValueRef binary16 = LLVMBuildLoad2(
+                    builder_, LLVMHalfTypeInContext(context_), slot, "half.source");
+                LLVMSetAlignment(binary16, 2U);
+                return LLVMBuildFPExt(
+                    builder_, binary16, LLVMFloatTypeInContext(context_), "half.to.float");
+            }
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply:

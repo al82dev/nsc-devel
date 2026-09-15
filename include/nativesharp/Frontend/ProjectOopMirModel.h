@@ -219,6 +219,8 @@ enum class ProjectOopMirNodeKind
     CoreSimdStoreAligned128,
     CoreSimdLoadUnaligned128,
     CoreSimdStoreUnaligned128,
+    CoreHalfFromFloat,
+    CoreHalfToFloat,
     // Stage 54.3 "Mutex" -- see ProjectOopHirNodeKind::CoreMutexCreate/CoreMutexLock/
     // CoreMutexUnlock/CoreMutexClose above.
     CoreMutexCreate,

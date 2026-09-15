@@ -9240,6 +9240,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            // Item 354: Half is a two-byte ABI carrier. Only these exact conversion signatures
+            // acquire native IEEE binary16 semantics.
+            if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.Half" &&
+                selectedMember.isStatic && selectedMember.parameters.size() == 1)
+            {
+                std::optional<MethodCoreOperationKind> halfKind;
+                if (selectedMember.name == "FromFloat" &&
+                    selectedMember.parameters[0].typeKey == "builtin:float" &&
+                    selectedMember.declaredTypeKey != "builtin:float")
+                    halfKind = MethodCoreOperationKind::HalfFromFloat;
+                else if (selectedMember.name == "ToFloat" &&
+                    selectedMember.declaredTypeKey == "builtin:float" &&
+                    selectedMember.parameters[0].typeKey != "builtin:float")
+                    halfKind = MethodCoreOperationKind::HalfToFloat;
+                if (halfKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *halfKind, expression, methodMemberOrdinal, scopeOrdinal,
+                        selectedMember.declaredTypeKey, selectedMember.parameters[0].typeKey,
+                        false, std::nullopt, std::nullopt});
+                }
+            }
             // Item 348: the 256-bit floating family uses the same exact-signature gate as the
             // earlier SIMD families while retaining distinct MIR operations for FP semantics.
             const std::string floatingVector256Name =
@@ -14627,6 +14649,8 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::SimdStoreAligned128: return "simd-store-aligned-128";
         case MethodCoreOperationKind::SimdLoadUnaligned128: return "simd-load-unaligned-128";
         case MethodCoreOperationKind::SimdStoreUnaligned128: return "simd-store-unaligned-128";
+        case MethodCoreOperationKind::HalfFromFloat: return "half-from-float";
+        case MethodCoreOperationKind::HalfToFloat: return "half-to-float";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";
