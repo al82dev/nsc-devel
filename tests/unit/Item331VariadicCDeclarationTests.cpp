@@ -246,10 +246,9 @@ public class Program
         "--dump-project-oop-hir", callProject};
     output.clear();
     error.clear();
-    tests.expect(runDriver(callArguments, output, error) != ExitCode::Success &&
-                     error.find("calls to variadic C declarations belong to item 332") !=
-                         std::string::npos,
-        "item 331 declares but does not silently call C varargs (" + error + ")");
+    tests.expect(runDriver(callArguments, output, error) == ExitCode::Success &&
+                     output.find("static-call type=builtin:int") != std::string::npos,
+        "item 332 consumes the variadic declaration established by item 331 (" + error + ")");
 
     return tests.resultKeeping(root);
 }

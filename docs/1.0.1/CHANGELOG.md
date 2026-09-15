@@ -77,8 +77,9 @@ empaqueta con NativeSharp 1.0.1.
   atómica ni insertar fences, también al reconstruirse desde `LibraryReference`.
 - Las importaciones `extern C` aceptan un `...` terminal después de al menos un parámetro fijo.
   La marca forma parte de la identidad de la declaración, llega hasta una función LLVM variádica y
-  se conserva en NSMETA 1.19 y `LibraryReference`. Las llamadas permanecen en la frontera explícita
-  del punto 332, donde se incorporan las promociones C.
+  se conserva en NSMETA 1.19 y `LibraryReference`. Sus llamadas aplican las promociones C
+  predeterminadas: `float` pasa como `double` y los enteros, `bool` y enums menores de 32 bits como
+  `int`. La cola sólo admite escalares ABI-seguros, punteros crudos y delegates `extern C` por valor.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

@@ -25,14 +25,14 @@ NSMETA 1.19 into precompiled consumers.
 - el ellipsis debe ser el último elemento;
 - sólo se admite en imports `extern C` sin cuerpo;
 - una firma fija y una variádica no pueden atribuirse al mismo símbolo de la misma biblioteca;
-- las llamadas permanecen rechazadas hasta el punto 332, que define promociones C.
+- las llamadas usan desde el punto 332 promociones C explícitas antes de HIR.
 
 ## Evidencia / Evidence
 
 `Item331VariadicCDeclarationTests.cpp` cubre maximal munch, AST, identidad, diagnósticos, HIR,
-declaración LLVM, NSMETA 1.19, rechazo de downlevel, reconstrucción por `LibraryReference` y la
-frontera de llamada. Las pruebas de lexer, metadata, toolchain y migration baseline permanecen
-verdes.
+declaración LLVM, NSMETA 1.19, rechazo de downlevel, reconstrucción por `LibraryReference` y el
+enlace consumido por el punto 332. Las pruebas de lexer, metadata, toolchain y migration baseline
+permanecen verdes.
 
 ## Mensaje de commit / Commit message
 

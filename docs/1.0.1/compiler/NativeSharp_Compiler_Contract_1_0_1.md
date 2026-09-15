@@ -1121,8 +1121,23 @@ variadic declarations of the same external symbol.
 HIR and MIR shall carry the bit on the body-less import and LLVM shall declare the function with
 the written fixed prefix followed by varargs. NSMETA 1.19 shall preserve the bit and generated
 `LibraryReference` source shall reconstruct the ellipsis. A pre-1.19 downlevel shall fail rather
-than erase it. Calls shall report the item-332 boundary until C default argument promotions exist;
-item 331 must not lower an unpromoted variadic call.
+than erase it. Variadic calls shall use the promotions in NSC-ABI-002.
+
+## NSC-ABI-002 — C default argument promotions
+
+The call binder shall map ordinary arguments to the written fixed parameters and assign each
+subsequent positional argument a stable tail ordinal. It shall reject named tail arguments,
+by-reference passing, ownership-bearing values, managed references, arrays, aggregates, and
+managed delegates before lowering.
+
+Before HIR, each accepted tail expression shall receive an explicit C default promotion: `float`
+to `double`, and `bool`, sub-32-bit integers, and sub-32-bit enums to `int`. Wider enums convert to
+their compatible integer type; other 32/64-bit integers, `double`, raw pointers, and `extern C`
+delegates retain their type. HIR and MIR
+shall retain the promoted operand types and the fixed-prefix-plus-tail argument order; LLVM calls
+shall use the variadic function prototype at O0 and O2. Calls through `LibraryReference` metadata
+shall behave identically. Physical Windows x64 vararg register certification belongs to
+NSC-ABI-003.
 
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 

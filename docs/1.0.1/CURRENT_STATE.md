@@ -190,7 +190,11 @@ Una importación `extern C` puede terminar su lista de parámetros con `...`, si
 menos un parámetro fijo. El lexer conserva el ellipsis como un token, el modelo lo incorpora a la
 identidad de la firma y HIR/MIR/LLVM mantienen la declaración variádica sin inventar parámetros.
 NSMETA 1.19 transporta la marca y `LibraryReference` reconstruye el mismo contrato. Esta etapa no
-habilita todavía llamadas: sus promociones de argumentos pertenecen al punto 332.
+altera el prefijo fijo. Las llamadas ya aceptan una cola posicional por valor: `float` se promueve
+a `double`, y `bool`, enteros estrechos y enums estrechos se promueven a `int`; escalares de 32/64
+bits, punteros crudos y delegates `extern C` conservan su representación. Valores administrados,
+agregados, ownership, argumentos nombrados de cola y `ref/out/in` se rechazan antes de HIR. La
+certificación física de registros Win64 queda delimitada al punto 333.
 
 ## Superficie del lenguaje
 

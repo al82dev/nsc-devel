@@ -5342,9 +5342,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                         std::move(argument), binding->selectedConversions[selectedIndex], expression->children()[index]);
                 }
                 const ast::AstNode* argumentSyntax = expression->children()[index];
-                argument = wrapCallArgumentBorrow(
-                    std::move(argument), argumentSyntax, selectedMemberOrdinal,
-                    parameterIndex, hasOwnedTemporary);
+                if (memberModel_ != nullptr && selectedMemberOrdinal < memberModel_->members().size() &&
+                    parameterIndex < memberModel_->members()[selectedMemberOrdinal].parameters.size())
+                {
+                    argument = wrapCallArgumentBorrow(
+                        std::move(argument), argumentSyntax, selectedMemberOrdinal,
+                        parameterIndex, hasOwnedTemporary);
+                }
                 node->children.push_back(std::move(argument));
                 node->argumentParameterOrdinals.push_back(parameterIndex);
             }

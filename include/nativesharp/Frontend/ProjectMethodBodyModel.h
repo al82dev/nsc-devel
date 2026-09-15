@@ -1147,6 +1147,8 @@ struct MethodCallCandidate final
     std::vector<std::size_t> argumentParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;
     std::size_t defaultedParameterCount = 0;
+    bool isVariadicCandidate = false;
+    std::optional<std::size_t> invalidVariadicArgumentOrdinal;
 };
 
 struct MethodCallBinding final
@@ -1690,6 +1692,7 @@ private:
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,
         std::optional<ProjectIntegerConstant> integerConstant = std::nullopt) const;
+    ProjectImplicitConversion classifyCVariadicPromotion(std::string_view sourceTypeKey) const;
     std::string implicitThisTypeKey(std::size_t methodMemberOrdinal) const;
     // C4 "language references": enforce that a call writes the same `ref`/`out`/`in` keyword the
     // selected member's parameters declare.

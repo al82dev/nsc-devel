@@ -1225,14 +1225,35 @@ posición intermedia, en métodos NativeSharp con cuerpo ni en exports implement
 
 La declaración produce una función C/LLVM variádica con el prefijo fijo escrito. NSMETA 1.19
 conserva la marca, por lo que una `LibraryReference` reconstruye exactamente la misma declaración.
-El punto 331 sólo define y transporta el contrato; una llamada se rechaza hasta que NS-ABI-004
-defina las promociones de argumentos del punto 332.
+Las llamadas aplican las promociones predeterminadas definidas por NS-ABI-004.
 
 A body-less `extern C` import may end its parameter list with `...` after one or more fixed
 parameters. The ellipsis is not a named or typed parameter and participates in signature identity.
 It is invalid first, in the middle, in NativeSharp method bodies or on NativeSharp-defined exports.
-The declaration lowers to an LLVM variadic function and NSMETA 1.19 preserves it. Calls remain an
-explicit item-332 boundary until their C argument promotions are defined.
+The declaration lowers to an LLVM variadic function and NSMETA 1.19 preserves it. Calls use the
+default argument promotions defined by NS-ABI-004.
+
+### NS-ABI-004 — Promociones predeterminadas de argumentos C
+
+Una llamada a un import C variádico enlaza primero su prefijo fijo con las reglas ordinarias. Los
+argumentos posteriores al prefijo son posicionales, se evalúan una sola vez en orden de fuente y
+se pasan por valor. `float` se promueve a `double`; `bool`, `byte`, `sbyte`, `char`, `short`,
+`ushort` y cualquier enum cuyo tipo subyacente mida menos de 32 bits se promueven a `int`.
+
+`int`, `uint`, `long`, `ulong`, `nint`, `nuint` y `double` conservan su tipo; los enums de al menos
+32 bits usan su tipo entero compatible sin cambiar de ancho. Los punteros crudos y los delegates
+`extern C` conservan su representación ABI. Una cola variádica no
+admite argumentos nombrados, `ref`, `out`, `in`, ownership, cadenas administradas, referencias de
+clase o interfaz, arrays, structs ni delegates administrados. La colocación física de registros
+específica de Windows x64 pertenece a NS-ABI-005.
+
+A variadic C call first binds its fixed prefix by the ordinary rules. Trailing arguments are
+positional, evaluated once in source order, and passed by value. `float` promotes to `double`;
+`bool`, the integer types narrower than 32 bits, and enums with an underlying width below 32 bits
+promote to `int`. Wider enums use their compatible integer type; other wider scalars, raw pointers,
+and `extern C` delegates retain their ABI representation. Managed values, ownership, named tail
+arguments, and `ref`/`out`/`in` are rejected.
+Windows x64 physical register placement is specified separately by NS-ABI-005.
 
 ## 11. Tipos, genéricos y control estructurado
 

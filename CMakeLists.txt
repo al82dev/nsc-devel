@@ -804,6 +804,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item331.variadic-c-declarations
         COMMAND nsc_item331_variadic_c_declaration_tests)
+    add_executable(
+        nsc_item332_c_vararg_promotion_tests
+        tests/unit/Item332CVarargPromotionTests.cpp)
+    target_link_libraries(nsc_item332_c_vararg_promotion_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item332_c_vararg_promotion_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item332_c_vararg_promotion_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item332_c_vararg_promotion_tests)
+    add_test(
+        NAME nsc.item332.c-vararg-promotions
+        COMMAND nsc_item332_c_vararg_promotion_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

@@ -194,12 +194,18 @@ NamedArgumentMap mapArgumentsToParameters(
     for (std::size_t index = 0; index < reservedLeadingParameters; ++index) assigned[index] = true;
 
     std::size_t nextPositional = reservedLeadingParameters;
+    std::size_t variadicOrdinal = 0;
+    bool reachedVariadicArguments = false;
     for (const ast::AstNode* argument : arguments)
     {
         if (argument == nullptr) return result;
         std::optional<std::size_t> parameterOrdinal;
         if (!argument->argumentName().empty())
         {
+            // The ellipsis has neither a name nor a parameter symbol. Once a positional
+            // argument has crossed the fixed prefix, a later named argument would otherwise
+            // make the physical C argument order ambiguous.
+            if (reachedVariadicArguments) return result;
             for (std::size_t index = reservedLeadingParameters; index < candidate.parameters.size(); ++index)
             {
                 if (candidate.parameters[index].name == argument->argumentName())
@@ -213,9 +219,18 @@ NamedArgumentMap mapArgumentsToParameters(
         {
             while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
             if (nextPositional < assigned.size()) parameterOrdinal = nextPositional;
+            else if (candidate.isVariadic)
+            {
+                parameterOrdinal = candidate.parameters.size() + variadicOrdinal++;
+                reachedVariadicArguments = true;
+            }
         }
-        if (!parameterOrdinal.has_value() || assigned[*parameterOrdinal]) return result;
-        assigned[*parameterOrdinal] = true;
+        if (!parameterOrdinal.has_value()) return result;
+        if (*parameterOrdinal < assigned.size())
+        {
+            if (assigned[*parameterOrdinal]) return result;
+            assigned[*parameterOrdinal] = true;
+        }
         result.explicitParameterOrdinals.push_back(*parameterOrdinal);
         while (nextPositional < assigned.size() && assigned[nextPositional]) ++nextPositional;
     }
@@ -8187,11 +8202,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 if (expression->children()[index]->kind() != ast::AstNodeKind::LambdaExpression) continue;
                 const std::size_t firstParameter =
                     arityMatches.front().second.explicitParameterOrdinals[index];
+                if (firstParameter >= arityMatches.front().first->parameters.size()) continue;
                 const std::string& firstType = arityMatches.front().first->parameters[firstParameter].typeKey;
                 const bool agreed = std::ranges::all_of(arityMatches, [&](const auto& candidate)
                 {
                     const std::size_t parameter = candidate.second.explicitParameterOrdinals[index];
-                    return candidate.first->parameters[parameter].typeKey == firstType;
+                    return parameter < candidate.first->parameters.size() &&
+                        candidate.first->parameters[parameter].typeKey == firstType;
                 });
                 if (agreed && isDelegateTypeKey(firstType))
                 {
@@ -8209,6 +8226,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 for (const auto& candidate : arityMatches)
                 {
                     const std::size_t parameter = candidate.second.explicitParameterOrdinals[index];
+                    if (parameter >= candidate.first->parameters.size()) continue;
                     const std::string& candidateType = candidate.first->parameters[parameter].typeKey;
                     std::string ignoredReturn;
                     std::vector<std::string> candidateParameterTypes;
@@ -8512,6 +8530,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
 
             MethodCallCandidate candidateBinding;
             candidateBinding.memberOrdinal = candidateOrdinal;
+            candidateBinding.isVariadicCandidate = candidate.isVariadic;
             const NamedArgumentMap explicitMapping = mapArgumentsToParameters(
                 expression->children(), candidate, coreStringForwarding ? 1U : 0U);
             if (!explicitMapping.valid)
@@ -8535,6 +8554,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             {
                 const std::size_t parameterOrdinal =
                     candidateBinding.argumentParameterOrdinals[argumentOrdinal];
+                if (parameterOrdinal >= candidate.parameters.size())
+                {
+                    ProjectImplicitConversion conversion = classifyCVariadicPromotion(
+                        resolvedArguments[argumentOrdinal].typeKey);
+                    const ExpressionResult& argument = resolvedArguments[argumentOrdinal];
+                    if (!conversion.exists() || argument.argumentPassKind != ParameterPassKind::Value ||
+                        argument.ownership != sema::OwnershipKind::None ||
+                        argument.ownershipTransfer || argument.ownershipFreshOwner)
+                    {
+                        candidateBinding.viable = false;
+                        candidateBinding.invalidVariadicArgumentOrdinal = argumentOrdinal;
+                    }
+                    candidateBinding.conversions.push_back(std::move(conversion));
+                    continue;
+                }
                 ProjectImplicitConversion conversion = classifyImplicit(
                     resolvedArguments[argumentOrdinal].typeKey,
                     candidate.parameters[parameterOrdinal].typeKey,
@@ -8642,6 +8676,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                 genericConstraintModel_->reportSpecializationConstraintViolations(
                     rejected, expression->range(), diagnostics);
             }
+            call.resolution = MethodCallResolutionKind::NoViableCandidate;
+            calls_.push_back(std::move(call));
+            return result;
+        }
+        for (const MethodCallCandidate& candidate : call.evaluatedCandidates)
+        {
+            if (!candidate.invalidVariadicArgumentOrdinal.has_value()) continue;
+            const std::size_t ordinal = *candidate.invalidVariadicArgumentOrdinal;
+            const ast::AstNode* argument = resolvedArgumentSyntax(ordinal);
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                argument != nullptr ? argument->range() : expression->range(),
+                "C variadic arguments must be by-value ABI scalars, raw pointers, enums, "
+                "or extern C delegates");
             call.resolution = MethodCallResolutionKind::NoViableCandidate;
             calls_.push_back(std::move(call));
             return result;
@@ -8845,17 +8894,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
-        if (selectedMember.isVariadic)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidCall,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "calls to variadic C declarations belong to item 332");
-            call.resolution = MethodCallResolutionKind::NoViableCandidate;
-            calls_.push_back(std::move(call));
-            return result;
-        }
         if (callee.readonlyReceiver && selectedMember.declaringTypeIsStruct &&
             !selectedMember.isStatic && !selectedMember.isReadonly)
         {
@@ -13799,6 +13837,73 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImplicit(
         integerConstant);
 }
 
+ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
+    std::string_view sourceTypeKey) const
+{
+    std::string targetTypeKey(sourceTypeKey);
+    ProjectConversionKind kind = ProjectConversionKind::Identity;
+
+    if (sourceTypeKey == "builtin:float")
+    {
+        targetTypeKey = "builtin:double";
+        kind = ProjectConversionKind::Numeric;
+    }
+    else if (sourceTypeKey == "builtin:bool")
+    {
+        targetTypeKey = "builtin:int";
+        kind = ProjectConversionKind::IntegralPromotion;
+    }
+    else if (const builtins::IntegerTypeInfo* integer = builtins::findIntegerType(sourceTypeKey);
+             integer != nullptr)
+    {
+        if (integer->width < 32U)
+        {
+            targetTypeKey = "builtin:int";
+            kind = ProjectConversionKind::IntegralPromotion;
+        }
+    }
+    else if (isEnumTypeKey(sourceTypeKey))
+    {
+        const std::string_view identity = sourceTypeKey.substr(5);
+        for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+        {
+            if (type.identity.key() != identity) continue;
+            const std::string_view underlying = enumUnderlyingTypeKey(type.syntax);
+            const builtins::IntegerTypeInfo* integer = builtins::findIntegerType(underlying);
+            if (integer == nullptr)
+            {
+                return ProjectImplicitConversion{
+                    ProjectConversionKind::None, 1000, std::string(sourceTypeKey), {}, std::nullopt};
+            }
+            if (integer->width < 32U)
+            {
+                targetTypeKey = "builtin:int";
+            }
+            else
+            {
+                targetTypeKey = underlying;
+            }
+            // An enum is passed through its C-compatible integer representation even when the
+            // representation already has the width of int or wider. Keeping the named enum key
+            // here would make the call-site type depend on a NativeSharp-only identity.
+            kind = ProjectConversionKind::IntegralPromotion;
+            break;
+        }
+    }
+    else if (sourceTypeKey != "builtin:double" &&
+             !isRawPointerTypeKey(sourceTypeKey) &&
+             !isExternCDelegateTypeKey(sourceTypeKey))
+    {
+        return ProjectImplicitConversion{
+            ProjectConversionKind::None, 1000, std::string(sourceTypeKey), {}, std::nullopt};
+    }
+
+    // Vararg conversions deliberately rank below every conversion to a written parameter. This
+    // keeps a fixed overload preferable when both it and a variadic import are otherwise viable.
+    return ProjectImplicitConversion{
+        kind, 10, std::string(sourceTypeKey), std::move(targetTypeKey), std::nullopt};
+}
+
 std::string ProjectMethodBodyModel::implicitThisTypeKey(std::size_t methodMemberOrdinal) const
 {
     const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
@@ -14069,6 +14174,10 @@ bool ProjectMethodBodyModel::betterCandidate(
     if (!strictlyBetter && left.defaultedParameterCount != right.defaultedParameterCount)
     {
         return left.defaultedParameterCount < right.defaultedParameterCount;
+    }
+    if (!strictlyBetter && left.isVariadicCandidate != right.isVariadicCandidate)
+    {
+        return !left.isVariadicCandidate;
     }
     return strictlyBetter;
 }
