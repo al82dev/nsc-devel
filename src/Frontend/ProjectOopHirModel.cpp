@@ -2719,6 +2719,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
 {
     std::unique_ptr<ProjectOopHirNode> lowered =
         lowerExpressionImpl(expression, memberOrdinal, addressContext, error);
+    const auto directlyAllocatesHeap = [](ProjectOopHirNodeKind kind) noexcept
+    {
+        switch (kind)
+        {
+            case ProjectOopHirNodeKind::ArrayAllocation:
+            case ProjectOopHirNodeKind::RawAllocation:
+            case ProjectOopHirNodeKind::StringConcat:
+            case ProjectOopHirNodeKind::StringSubstring:
+            case ProjectOopHirNodeKind::StringFromCharArray:
+            case ProjectOopHirNodeKind::DelegateCreate:
+            case ProjectOopHirNodeKind::LambdaCreate:
+            case ProjectOopHirNodeKind::EventAdd:
+            case ProjectOopHirNodeKind::ObjectConstruction:
+                return true;
+            default:
+                return false;
+        }
+    };
+    if (lowered != nullptr && memberModel_ != nullptr &&
+        memberOrdinal < memberModel_->members().size() &&
+        memberModel_->members()[memberOrdinal].isNoHeap && directlyAllocatesHeap(lowered->kind))
+    {
+        error = "noheap callable '" + memberModel_->members()[memberOrdinal].name +
+            "' cannot contain direct heap allocation '" +
+            std::string(projectOopHirNodeKindName(lowered->kind)) + "'";
+        lowered.reset();
+    }
     // Solo se apunta si NO hay nada apuntado: asi gana el nodo mas interno, que es el que de
     // verdad fallo, y no la expresion que lo contiene.
     if (lowered == nullptr && !error.empty() && !lastErrorRange_.isValid() && expression != nullptr)

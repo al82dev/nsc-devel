@@ -41,7 +41,7 @@ interface-member = [ "ref" ], [ ownership ], type, identifier,
                    [ ownership ], type, identifier, accessor-body |
                    [ "ref" ], [ ownership ], type, "this", "[", parameter-list, "]", accessor-body ;
 member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" |
-                  "inline" | "forceinline" | "noinline" ;
+                  "inline" | "forceinline" | "noinline" | "noheap" ;
 
 field-declaration = [ ownership ], type, identifier, [ "at", integer-literal ],
                     [ "=", expression | aggregate-initializer ], ";" ;

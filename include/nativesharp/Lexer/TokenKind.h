@@ -47,6 +47,8 @@ enum class TokenKind
     KwInline,
     KwForceInline,
     KwNoInline,
+    // NativeSharp 2.0 item 321. Declares a callable whose body cannot allocate from the heap.
+    KwNoHeap,
     KwPublic,
     KwInternal,
     KwProtected,

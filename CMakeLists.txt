@@ -683,6 +683,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item320.object-storage-ownership
         COMMAND nsc_item320_object_storage_ownership_tests)
+    add_executable(
+        nsc_item321_noheap_context_tests
+        tests/unit/Item321NoHeapContextTests.cpp)
+    target_link_libraries(nsc_item321_noheap_context_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item321_noheap_context_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item321_noheap_context_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item321_noheap_context_tests)
+    add_test(
+        NAME nsc.item321.noheap-context
+        COMMAND nsc_item321_noheap_context_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

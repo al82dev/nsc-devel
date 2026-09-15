@@ -74,6 +74,7 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"inline", TokenKind::KwInline},
         {"forceinline", TokenKind::KwForceInline},
         {"noinline", TokenKind::KwNoInline},
+        {"noheap", TokenKind::KwNoHeap},
         {"public", TokenKind::KwPublic},
         {"internal", TokenKind::KwInternal},
         {"protected", TokenKind::KwProtected},

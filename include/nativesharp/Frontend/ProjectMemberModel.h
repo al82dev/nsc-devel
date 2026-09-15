@@ -126,6 +126,8 @@ struct ClassMemberSymbol final
     bool isVolatile = false;
     bool isConst = false;
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
+    // Item 321. The callable body may not contain an operation that allocates heap storage.
+    bool isNoHeap = false;
     bool isVirtual = false;
     bool isOverride = false;
     bool isAbstract = false;

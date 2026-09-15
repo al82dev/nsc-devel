@@ -46,6 +46,9 @@ empaqueta con NativeSharp 1.0.1.
 - El modelo semántico, HIR y MIR separa propiedad del lifetime del objeto y propiedad del storage:
   heap es `owned/owned`, placement es `owned/borrowed` y asignación cruda es `none/owned`.
   `destroy` descarga sólo el objeto; `delete` conserva su contrato de objeto más asignación.
+- El modificador de método `noheap` prohíbe asignaciones directas de heap: clases, raw/array `new`,
+  cadenas asignadas, delegates, lambdas y suscripciones. `stackalloc`, placement y `destroy`
+  permanecen válidos; la propagación entre callables se completa en el punto 322.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

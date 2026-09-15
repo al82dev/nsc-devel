@@ -408,6 +408,25 @@ placement construction is `owned/borrowed`, and raw or stack allocation is `none
 object lifetime begins there. Address-preserving casts retain both axes. `destroy` discharges only
 the object obligation, whereas `delete` discharges the dynamic object and its allocation.
 
+### NS-NOHEAP-001 — Contextos sin asignación de heap
+
+`noheap` puede modificar un método ordinario y declara que su cuerpo no crea almacenamiento en el
+heap. Dentro de ese contexto siguen permitidos valores, `stackalloc`, placement construction sobre
+storage suministrado y `destroy`, porque ninguno adquiere una asignación del heap. Se rechazan
+`new C(...)` de clase, raw `new`, arreglos nativos con `new`, concatenación o construcción de
+cadenas que reserva memoria, creación de delegates/lambdas y suscripciones de evento.
+
+El contrato describe el cuerpo completo, independientemente de O0/O2 y del inlining. En este punto
+se comprueban las operaciones directas. NS-NOHEAP-002/punto 322 extiende la obligación a las
+llamadas transitivas, dispatch e interfaces; una llamada todavía no se considera evidencia de una
+asignación directa en NS-NOHEAP-001.
+
+The `noheap` method modifier promises that the method body performs no direct heap allocation.
+Stack allocation, supplied-storage placement construction and object-only destruction remain
+valid. Class, raw and native-array allocation, allocating string operations, delegate or lambda
+creation, and event subscription are rejected at their source expression. Item 322 propagates the
+contract across calls.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

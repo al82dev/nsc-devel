@@ -908,6 +908,24 @@ Focused O0 evidence shall cover stack storage, cast provenance, placement constr
 heap construction, object-only destruction, full deletion and semantic/HIR/MIR preservation. This
 contract adds no runtime or Object ABI field and does not make supplied storage owned by placement.
 
+## NSC-NOHEAP-001 — Direct no-heap contexts
+
+The lexer shall reserve `noheap`; the parser shall accept it once on an ordinary class or struct
+method and on an interface method contract, and reject duplicate or non-method placement. The
+project member model and its audit dump shall preserve `isNoHeap` independently from inlining,
+ownership, ABI and accessibility.
+
+HIR construction shall reject any direct heap-producing node inside a `noheap` body before MIR or
+LLVM can be emitted. The closed direct set is class `ObjectConstruction`, `RawAllocation`,
+`ArrayAllocation`, allocating string construction, `DelegateCreate`, `LambdaCreate`, and
+`EventAdd`. `StackAllocation`, `PlacementConstruction`, value construction and object-only
+destruction remain legal. Diagnostics shall identify both the callable and the heap-producing HIR
+operation at the original expression range.
+
+This item establishes the local body boundary only. Call-graph propagation, override/interface
+compatibility and precompiled transport belong to NSC-NOHEAP-002/item 322. No runtime, NSMETA or
+Object ABI change is introduced here.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

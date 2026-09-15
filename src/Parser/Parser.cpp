@@ -2246,8 +2246,9 @@ ast::AstNode* Parser::parseInterfaceMember()
     TokenKind accessibility = TokenKind::KwPublic;
     bool sawPublic = false;
     bool sawAbstract = false;
+    bool sawNoHeap = false;
 
-    while (at(TokenKind::KwPublic) || at(TokenKind::KwAbstract))
+    while (at(TokenKind::KwPublic) || at(TokenKind::KwAbstract) || at(TokenKind::KwNoHeap))
     {
         const TokenKind modifier = consume().kind();
         if (modifier == TokenKind::KwPublic)
@@ -2262,7 +2263,7 @@ ast::AstNode* Parser::parseInterfaceMember()
             }
             sawPublic = true;
         }
-        else
+        else if (modifier == TokenKind::KwAbstract)
         {
             if (sawAbstract)
             {
@@ -2273,6 +2274,18 @@ ast::AstNode* Parser::parseInterfaceMember()
                     "duplicate abstract modifier on interface member");
             }
             sawAbstract = true;
+        }
+        else
+        {
+            if (sawNoHeap)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    tokens_[index_ - 1].range(),
+                    "duplicate noheap modifier on interface member");
+            }
+            sawNoHeap = true;
         }
     }
 
@@ -2312,7 +2325,8 @@ ast::AstNode* Parser::parseInterfaceMember()
     {
         ast::AstNode* method = parseMethodTail(
             returnType, name, accessibility,
-            false, false, false, false, true, false, false, false, false, false, false, beginIndex);
+            false, false, false, false, true, false, false, false, false, false, false, sawNoHeap,
+            beginIndex);
         if (method != nullptr) method->setReference(isReferenceReturn);
         return method;
     }
@@ -2512,6 +2526,7 @@ ast::AstNode* Parser::parseClassMember(
     bool isInline = false;
     bool isForceInline = false;
     bool isNoInline = false;
+    bool isNoHeap = false;
     bool isBorrowedView = false;
     std::optional<std::uint64_t> nestedLayoutPack;
     std::optional<std::uint64_t> nestedLayoutAlign;
@@ -2634,7 +2649,7 @@ ast::AstNode* Parser::parseClassMember(
               at(TokenKind::KwReadonly) || at(TokenKind::KwConst) ||
               at(TokenKind::KwVolatile) ||
               at(TokenKind::KwInline) || at(TokenKind::KwForceInline) ||
-              at(TokenKind::KwNoInline) ||
+              at(TokenKind::KwNoInline) || at(TokenKind::KwNoHeap) ||
               at(TokenKind::KwVirtual) || at(TokenKind::KwOverride) ||
               at(TokenKind::KwAbstract) || at(TokenKind::KwSealed) ||
               at(TokenKind::KwExport) || at(TokenKind::KwExtern)))
@@ -2747,6 +2762,19 @@ ast::AstNode* Parser::parseClassMember(
             isNoInline = true;
             continue;
         }
+        if (modifier.kind() == TokenKind::KwNoHeap)
+        {
+            if (isNoHeap)
+            {
+                diagnostics_.report(
+                    diagnostics::DiagnosticId::ExpectedDeclaration,
+                    diagnostics::DiagnosticSeverity::Error,
+                    modifier.range(),
+                    "duplicate noheap modifier on class member");
+            }
+            isNoHeap = true;
+            continue;
+        }
         if (modifier.kind() == TokenKind::KwConst)
         {
             if (isConst)
@@ -2842,7 +2870,7 @@ ast::AstNode* Parser::parseClassMember(
             //       "succeeded".
             if ((at(TokenKind::Identifier) && current().lexeme() == "from") || at(TokenKind::LeftBrace))
             {
-                if (isInline || isForceInline || isNoInline)
+                if (isInline || isForceInline || isNoInline || isNoHeap)
                 {
                     diagnostics_.report(
                         diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3054,7 +3082,7 @@ ast::AstNode* Parser::parseClassMember(
     if (at(TokenKind::Tilde))
     {
         if (accessibility != TokenKind::Invalid || isNew || isStatic || isReadonly || isVolatile || isConst ||
-            isInline || isForceInline || isNoInline ||
+            isInline || isForceInline || isNoInline || isNoHeap ||
             isVirtual || isOverride || isAbstract || isSealed || isExported || isExternC)
         {
             diagnostics_.report(
@@ -3070,7 +3098,7 @@ ast::AstNode* Parser::parseClassMember(
         peek().kind() == TokenKind::LeftParen)
     {
         if (isNew || isVirtual || isOverride || isStatic || isReadonly || isVolatile || isConst ||
-            isInline || isForceInline || isNoInline || isAbstract || isSealed ||
+            isInline || isForceInline || isNoInline || isNoHeap || isAbstract || isSealed ||
             isExported || isExternC)
         {
             diagnostics_.report(
@@ -3092,7 +3120,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isNew || isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline ||
+        if (isNew || isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline || isNoHeap ||
             isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
@@ -3116,7 +3144,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isNew || isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline ||
+        if (isNew || isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline || isNoHeap ||
             isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
@@ -3142,7 +3170,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "volatile applies only to fields, not nested types");
         }
-        if (isInline || isForceInline || isNoInline)
+        if (isInline || isForceInline || isNoInline || isNoHeap)
         {
             diagnostics_.report(
                 diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -3206,7 +3234,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline ||
+        if (isReadonly || isVolatile || isConst || isInline || isForceInline || isNoInline || isNoHeap ||
             isVirtual || isOverride || isAbstract || isSealed)
         {
             diagnostics_.report(
@@ -3228,7 +3256,7 @@ ast::AstNode* Parser::parseClassMember(
                 current().range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isStatic || isVolatile || isConst || isInline || isForceInline || isNoInline ||
+        if (isStatic || isVolatile || isConst || isInline || isForceInline || isNoInline || isNoHeap ||
             (isReadonly && !structContext))
         {
             diagnostics_.report(
@@ -3294,7 +3322,7 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* method = parseMethodTail(
             type, name, accessibility, isNew, isStatic, isVirtual, isOverride, isAbstract, isSealed,
-            isExported, isExternC, isInline, isForceInline, isNoInline, beginIndex);
+            isExported, isExternC, isInline, isForceInline, isNoInline, isNoHeap, beginIndex);
         if (isReadonly && structContext && !isStatic && method != nullptr)
             method->addModifier(TokenKind::KwReadonly);
         if (method != nullptr) method->setReference(isReferenceReturn);
@@ -3319,7 +3347,7 @@ ast::AstNode* Parser::parseClassMember(
                 name.range(),
                 "export extern C is valid only on ordinary static methods in Stage 47");
         }
-        if (isVolatile || isConst || isInline || isForceInline || isNoInline ||
+        if (isVolatile || isConst || isInline || isForceInline || isNoInline || isNoHeap ||
             (isReadonly && (!structContext || isStatic)))
         {
             diagnostics_.report(
@@ -3384,7 +3412,7 @@ ast::AstNode* Parser::parseClassMember(
             name.range(),
             "virtual, override, abstract and sealed modifiers are valid only on instance methods in Stage 35");
     }
-    if (isInline || isForceInline || isNoInline)
+    if (isInline || isForceInline || isNoInline || isNoHeap)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedDeclaration,
@@ -4365,6 +4393,7 @@ ast::AstNode* Parser::parseMethodTail(
     bool isInline,
     bool isForceInline,
     bool isNoInline,
+    bool isNoHeap,
     std::size_t beginIndex)
 {
     ast::AstNode* method = arena_.make<ast::AstNode>(
@@ -4420,6 +4449,10 @@ ast::AstNode* Parser::parseMethodTail(
     if (isNoInline)
     {
         method->addModifier(TokenKind::KwNoInline);
+    }
+    if (isNoHeap)
+    {
+        method->addModifier(TokenKind::KwNoHeap);
     }
 
     parseGenericParameterList(method);
