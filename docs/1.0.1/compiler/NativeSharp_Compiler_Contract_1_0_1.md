@@ -782,6 +782,24 @@ Focused O0 evidence shall cover reads, writes, forwarding, virtual/interface dis
 verifier-ready LLVM, linking, execution, metadata round-trip, downlevel stripping, and a real
 producer/consumer archive boundary.
 
+## NSC-REF-003 — Reference-indexer accessor contract
+
+The parser shall accept `ref` on class, struct, and interface indexer declarations, copy the mode to
+the synthesized `get_Item`, and reject a setter on the same declaration. The getter shall obey the
+exact-type, mutable-address, ownership, and lifetime rules of NSC-REF-002.
+
+Semantic analysis shall distinguish a reference getter from the established getter/setter rewrite.
+Its index expression shall be assignable and addressable without resolving `set_Item`; ordinary
+indexers shall remain non-addressable and require an accessible setter for assignment. HIR shall
+lower the receiver and indices once, preserve the returned address for stores and reference-local
+binding, and load it only in value contexts.
+
+Virtual and interface dispatch shall preserve the reference-result fact. NSMETA 1.15 source
+reconstruction shall emit a get-only reference indexer when `get_Item` carries the reference-return
+bit and reject inconsistent metadata that combines that bit with a property or setter. Focused O0
+evidence shall include direct, compound, reference-local, virtual, interface, linked execution, and
+precompiled producer/consumer cases.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

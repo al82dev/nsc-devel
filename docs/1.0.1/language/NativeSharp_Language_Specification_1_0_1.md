@@ -270,6 +270,26 @@ parameters, temporaries, lambdas, and `extern C` boundaries cannot expose refere
 Virtual/interface matching includes the ref-return mode, and NSMETA 1.15 transports it across
 precompiled-library boundaries without transferring ownership or extending lifetime.
 
+### NS-REF-003 — Indexadores por referencia
+
+Un indexador puede declarar `ref T this[parámetros] { get { return ref ubicación; } }`. Es una
+forma exclusivamente `get`: el getter selecciona y devuelve storage, por lo que un setter sería
+redundante y se rechaza. El cuerpo, el tipo exacto, la mutabilidad, el ownership y el lifetime se
+rigen por NS-REF-002.
+
+Una expresión `obj[índice]` ligada a ese getter es un lvalue. Puede leerse, asignarse, modificarse
+con una asignación compuesta, incrementarse o inicializar un local `ref`; el receptor y cada índice
+se evalúan una sola vez por llamada. Dispatch virtual e interfaz preservan el modo `ref`. Un
+indexador ordinario continúa siendo un valor de accessor y sólo es asignable cuando existe setter.
+
+NSMETA 1.15 marca el `get_Item` público y el materializador reconstruye la sintaxis de indexador
+get-only. Así, una biblioteca consumidora conserva la ABI `ptr` del productor.
+
+A reference indexer is spelled `ref T this[...] { get { return ref location; } }` and is get-only.
+Its expression is a true lvalue backed by the getter's returned address, including through virtual,
+interface, and precompiled-library dispatch. Ordinary value indexers retain their established
+getter/setter behavior.
+
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 
 Un delegate contiene una firma, un destino invocable y, cuando corresponde, contexto. La firma

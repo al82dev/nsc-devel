@@ -5718,7 +5718,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const std::vector<std::size_t> setters = stage38AccessorCandidates(
                         *receiverType, "set_Item", false, false, false,
                         accessingTypeOrdinal, *receiverType);
-                    result.assignable = result.valid && !base.readonlyReceiver && !setters.empty();
+                    const bool referenceGetter = result.addressable;
+                    result.assignable = result.valid && !base.readonlyReceiver &&
+                        (referenceGetter || !setters.empty());
+                    result.addressable = result.valid && !base.readonlyReceiver && referenceGetter;
                     result.readonlyReceiver = base.readonlyReceiver;
                     result.receiverSyntax = expression->first();
                     result.receiverTypeKey = base.typeKey;
@@ -10212,6 +10215,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
         const ClassMemberSymbol& member = memberModel_->members()[selected.memberOrdinal];
         call.resultTypeKey = member.declaredTypeKey;
         call.staticCall = member.isStatic;
+        result.assignable = member.isReferenceReturn;
+        result.addressable = member.isReferenceReturn;
         if (call.staticCall)
         {
             call.implicitThis = false;
@@ -11785,6 +11790,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // appends to calls_ between here and the last use below.
     const MethodCallBinding* getterBinding = getterBindingIndex.has_value()
         ? &calls_[*getterBindingIndex] : nullptr;
+    if (getterBinding != nullptr && memberModel_ != nullptr &&
+        getterBinding->selectedMemberOrdinal.has_value() &&
+        *getterBinding->selectedMemberOrdinal < memberModel_->members().size() &&
+        memberModel_->members()[*getterBinding->selectedMemberOrdinal].isReferenceReturn)
+    {
+        // A ref indexer getter exposes its returned location directly. It is an ordinary
+        // addressable assignment target and must not be rewritten into a nonexistent setter.
+        getterBinding = nullptr;
+    }
 
     if (right.ownership == sema::OwnershipKind::Borrowed && getterBinding != nullptr)
     {

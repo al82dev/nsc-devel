@@ -3051,7 +3051,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             if (const MethodCallBinding* accessorCall = accessorGetterBinding(expression);
                 accessorCall != nullptr)
             {
-                if (addressContext)
+                const std::size_t accessorOrdinal = *accessorCall->selectedMemberOrdinal;
+                if (addressContext && !memberModel_->members()[accessorOrdinal].isReferenceReturn)
                 {
                     error = "Stage 38 properties are semantic accessor calls and are not addressable";
                     return nullptr;
@@ -3824,7 +3825,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 memberModel_->members()[*indexerCall->selectedMemberOrdinal].isIndexerAccessor &&
                 memberModel_->members()[*indexerCall->selectedMemberOrdinal].isGetter)
             {
-                if (addressContext)
+                const ClassMemberSymbol& getter =
+                    memberModel_->members()[*indexerCall->selectedMemberOrdinal];
+                if (addressContext && !getter.isReferenceReturn)
                 {
                     error = "Stage 38 indexers are semantic accessor calls and are not directly addressable";
                     return nullptr;
@@ -5680,8 +5683,15 @@ bool ProjectOopHirModel::isNaturallyAddressable(const ast::AstNode* expression) 
         case ast::AstNodeKind::IdentifierExpression:
         case ast::AstNodeKind::MemberExpression:
         case ast::AstNodeKind::IndexExpression:
-            // A real field or a real element: storage. An accessor: a returned value with no home.
-            return accessorGetterBinding(expression) == nullptr;
+        {
+            // A real field or element is storage. An ordinary accessor returns a value with no
+            // home, while a ref-returning accessor deliberately returns existing storage.
+            const MethodCallBinding* accessor = accessorGetterBinding(expression);
+            if (accessor == nullptr) return true;
+            return accessor->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *accessor->selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*accessor->selectedMemberOrdinal].isReferenceReturn;
+        }
         case ast::AstNodeKind::ThisExpression:
         case ast::AstNodeKind::BaseExpression:
             return true;

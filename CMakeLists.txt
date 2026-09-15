@@ -1757,6 +1757,16 @@ if(NSC_BUILD_TESTS)
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
     nsc_enable_warnings(nsc_item313_reference_returns_tests)
     add_test(NAME nsc.item313.reference-returns COMMAND nsc_item313_reference_returns_tests)
+
+    # NativeSharp 2.0 item 314: get-only ref indexers preserve address identity through direct,
+    # virtual, interface, and precompiled-library calls.
+    add_executable(nsc_item314_reference_indexers_tests tests/unit/Item314ReferenceIndexersTests.cpp)
+    target_link_libraries(nsc_item314_reference_indexers_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item314_reference_indexers_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item314_reference_indexers_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item314_reference_indexers_tests)
+    add_test(NAME nsc.item314.reference-indexers COMMAND nsc_item314_reference_indexers_tests)
     # for the two pre-existing, compiler-wide cctor-guard bugs this round found and fixed (a
     # cross-thread TOCTOU race and a same-thread self-deadlock introduced by that race's fix -- see
     # tests/unit/Stage54_3MutexTests.cpp's header comment for the full rationale).

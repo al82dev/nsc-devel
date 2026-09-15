@@ -2296,16 +2296,9 @@ ast::AstNode* Parser::parseInterfaceMember()
 
     if (at(TokenKind::KwThis))
     {
-        if (isReferenceReturn)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                current().range(),
-                "reference-returning indexers are introduced by item 314");
-        }
         return parseIndexerTail(
-            returnType, accessibility, false, false, false, true, false, beginIndex, true);
+            returnType, accessibility, false, false, false, true, false,
+            isReferenceReturn, beginIndex, true);
     }
 
     if (!at(TokenKind::Identifier))
@@ -3227,14 +3220,6 @@ ast::AstNode* Parser::parseClassMember(
 
     if (at(TokenKind::KwThis))
     {
-        if (isReferenceReturn)
-        {
-            diagnostics_.report(
-                diagnostics::DiagnosticId::ExpectedDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                current().range(),
-                "reference-returning indexers are introduced by item 314");
-        }
         if (isExported || isExternC)
         {
             diagnostics_.report(
@@ -3255,7 +3240,7 @@ ast::AstNode* Parser::parseClassMember(
         }
         ast::AstNode* indexer = parseIndexerTail(
             type, accessibility, isNew, isVirtual, isOverride, isAbstract, isSealed,
-            beginIndex, false);
+            isReferenceReturn, beginIndex, false);
         if (isReadonly && indexer != nullptr)
         {
             indexer->addModifier(TokenKind::KwReadonly);
@@ -3866,6 +3851,7 @@ ast::AstNode* Parser::parseIndexerTail(
     bool isOverride,
     bool isAbstract,
     bool isSealed,
+    bool isReferenceReturn,
     std::size_t beginIndex,
     bool interfaceContext)
 {
@@ -3875,6 +3861,7 @@ ast::AstNode* Parser::parseIndexerTail(
     indexer->setText("Item");
     indexer->setAuxiliaryText("indexer");
     indexer->setTypeSyntax(elementType);
+    indexer->setReference(isReferenceReturn);
     if (accessibility != TokenKind::Invalid)
     {
         indexer->setTokenKind(accessibility);
@@ -3949,6 +3936,14 @@ ast::AstNode* Parser::parseIndexerTail(
         }
         sawGet = sawGet || getter;
         sawSet = sawSet || setter;
+        if (isReferenceReturn && setter)
+        {
+            diagnostics_.report(
+                diagnostics::DiagnosticId::ExpectedDeclaration,
+                diagnostics::DiagnosticSeverity::Error,
+                accessorRange,
+                "a reference-returning indexer is get-only and cannot declare a setter");
+        }
         const TokenKind effectiveAccessibility = accessorAccessibility != TokenKind::Invalid
             ? accessorAccessibility : accessibility;
         ast::TypeSyntax* returnType = getter
@@ -3965,6 +3960,7 @@ ast::AstNode* Parser::parseIndexerTail(
             isSealed,
             std::string("indexer:") + (getter ? "get:Item" : "set:Item"),
             accessorRange);
+        if (getter) accessor->setReference(isReferenceReturn);
         if (isNew) accessor->addModifier(TokenKind::KwNew);
         for (ast::AstNode* parameter : indexParameters) accessor->addChild(parameter);
         if (setter)

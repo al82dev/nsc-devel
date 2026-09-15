@@ -1526,6 +1526,13 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             const interop::LibraryMetadataMember &shape = *contract.getter;
             if (contract.setter != nullptr)
             {
+                if ((shape.flags & interop::kMetadataMemberReferenceReturn) != 0U ||
+                    (contract.setter->flags & interop::kMetadataMemberReferenceReturn) != 0U)
+                {
+                    error = "metadata reference-returning indexer '" + contract.name +
+                        "' cannot declare a setter";
+                    return false;
+                }
                 if (contract.setter->parameters.empty() ||
                     contract.setter->parameters.back().typeKey != shape.declaredTypeKey ||
                     (contract.setter->flags & kDeclarationFlags) != (shape.flags & kDeclarationFlags))
@@ -1564,6 +1571,7 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 else if ((shape.flags & kAbstract) != 0U) generated << "abstract ";
                 else if ((shape.flags & kVirtual) != 0U) generated << "virtual ";
             }
+            if ((shape.flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
             generated << ownershipPrefix(declaredOwnership) << declaredType << ' ';
             if (contract.isIndexer)
             {
@@ -1729,7 +1737,9 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 if (member->kind != kMethodKind || materializedAccessors.contains(member)) continue;
                 std::string returnType;
                 if (!sourceTypeForMetadataKey(metadata, member->declaredTypeKey, returnType, error)) return false;
-                generated << "    public " << ownershipPrefix(member->declaredOwnership) << returnType << ' '
+                generated << "    public ";
+                if ((member->flags & interop::kMetadataMemberReferenceReturn) != 0U) generated << "ref ";
+                generated << ownershipPrefix(member->declaredOwnership) << returnType << ' '
                           << member->name << '(';
                 if (!emitParameters(*member)) return false;
                 generated << ");\n";

@@ -36,9 +36,10 @@ type-member = { member-modifier },
               ( field-declaration | method-declaration | constructor-declaration |
                 destructor-declaration | property-declaration | indexer-declaration |
                 operator-declaration | conversion-declaration | event-declaration ) ;
-interface-member = [ "ref" ], [ ownership ], type,
-                   ( identifier, "(", [ parameter-list ], ")", ";" |
-                     identifier, accessor-body | "this", "[", parameter-list, "]", accessor-body ) ;
+interface-member = [ "ref" ], [ ownership ], type, identifier,
+                   "(", [ parameter-list ], ")", ";" |
+                   [ ownership ], type, identifier, accessor-body |
+                   [ "ref" ], [ ownership ], type, "this", "[", parameter-list, "]", accessor-body ;
 member-modifier = declaration-modifier | "virtual" | "override" | "new" | "extern" |
                   "inline" | "forceinline" | "noinline" ;
 
@@ -58,7 +59,7 @@ constructor-declaration = identifier, "(", [ parameter-list ], ")",
 destructor-declaration = "~", identifier, "(", ")", block ;
 property-declaration = [ ownership ], type, identifier, accessor-body,
                        [ "=", expression | aggregate-initializer ], ";" ;
-indexer-declaration = [ ownership ], type, "this", "[", parameter-list, "]", accessor-body ;
+indexer-declaration = [ "ref" ], [ ownership ], type, "this", "[", parameter-list, "]", accessor-body ;
 accessor-body = "{", accessor, [ accessor ], "}" ;
 accessor = ( "get" | "set" ), ( block | ";" ) ;
 operator-declaration = type, "operator", operator-token,

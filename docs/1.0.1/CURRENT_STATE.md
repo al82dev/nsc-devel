@@ -128,6 +128,11 @@ de asignación o reenvío conserva la misma ubicación. El tipo y el modo `ref` 
 exactamente en overrides e interfaces. No se permite exponer un local ordinario del frame ni un
 parámetro por valor/`in`; el alias no transfiere ownership ni extiende lifetime.
 
+Los indexadores pueden aplicar el mismo contrato con `ref T this[...] { get { return ref ...; } }`.
+Son get-only: su resultado ya es el destino de lectura o escritura y no se sintetiza un setter.
+La evaluación del receptor y los índices ocurre una vez por llamada, incluso mediante dispatch
+virtual, interfaz o una biblioteca precompilada.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

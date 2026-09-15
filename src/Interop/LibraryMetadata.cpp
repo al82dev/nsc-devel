@@ -2620,13 +2620,22 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     if (metadata.formatMinor >= 15)
     {
         constexpr std::uint8_t kMethodKind = 2U;
+        constexpr std::uint32_t kPropertyAccessor = 1U << 12U;
+        constexpr std::uint32_t kIndexerAccessor = 1U << 13U;
+        constexpr std::uint32_t kGetter = 1U << 14U;
+        constexpr std::uint32_t kSetter = 1U << 15U;
         for (const LibraryMetadataMember& member : metadata.members)
         {
             if ((member.flags & kMetadataMemberReferenceReturn) != 0U &&
-                member.kind != kMethodKind)
+                (member.kind != kMethodKind ||
+                 (member.flags & kPropertyAccessor) != 0U ||
+                 (member.flags & kSetter) != 0U ||
+                 ((member.flags & kIndexerAccessor) != 0U &&
+                  (member.flags & kGetter) == 0U)))
             {
                 error = "metadata member '" + member.declaringTypeKey + "." +
-                    member.signatureKey + "' carries ref-return on a non-method member";
+                    member.signatureKey + "' carries ref-return outside an ordinary method or "
+                    "indexer getter";
                 return false;
             }
         }

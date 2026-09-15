@@ -140,6 +140,7 @@ private:
         bool isOverride,
         bool isAbstract,
         bool isSealed,
+        bool isReferenceReturn,
         std::size_t beginIndex,
         bool interfaceContext);
     ast::AstNode* parseOperatorTail(
