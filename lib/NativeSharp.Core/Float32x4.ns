@@ -32,5 +32,15 @@ namespace NativeSharp.Core.Numerics
         {
             return default(Float32x4);
         }
+
+        public static Float32x4 SwizzleWzyx(Float32x4 value)
+        {
+            return default(Float32x4);
+        }
+
+        public static Float32x4 ShuffleLowHigh(Float32x4 left, Float32x4 right)
+        {
+            return default(Float32x4);
+        }
     }
 }

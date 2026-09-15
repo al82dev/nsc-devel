@@ -652,6 +652,7 @@ LLVMValueRef LLVMConstInBoundsGEP2(
     LLVMValueRef* constantIndices,
     unsigned indexCount);
 LLVMValueRef LLVMGetUndef(LLVMTypeRef type);
+LLVMValueRef LLVMConstVector(LLVMValueRef* scalarConstantValues, unsigned size);
 
 LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* name);
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
@@ -864,6 +865,12 @@ LLVMValueRef LLVMBuildZExt(
     LLVMBuilderRef builder,
     LLVMValueRef value,
     LLVMTypeRef destinationType,
+    const char* name);
+LLVMValueRef LLVMBuildShuffleVector(
+    LLVMBuilderRef builder,
+    LLVMValueRef first,
+    LLVMValueRef second,
+    LLVMValueRef mask,
     const char* name);
 LLVMValueRef LLVMBuildBitCast(
     LLVMBuilderRef builder,

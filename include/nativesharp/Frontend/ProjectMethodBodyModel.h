@@ -798,6 +798,8 @@ enum class MethodCoreOperationKind
     // Item 354: public 16-bit carrier converted through LLVM's native half type.
     HalfFromFloat,
     HalfToFloat,
+    SimdSwizzleWzyx,
+    SimdShuffleLowHigh,
     // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers PRIVADOS Y
     // ESTATICOS, EXACTO mismo patron estructural que los tres helpers de Thread arriba (Stage
     // 54.1): un HANDLE de Win32 guardado como builtin:nint, creado por MutexCreate y consumido

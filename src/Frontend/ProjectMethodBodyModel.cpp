@@ -9174,6 +9174,25 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
                         false, std::nullopt, std::nullopt});
                 }
             }
+            if (compactFloatVectorName == "NativeSharp.Core.Numerics.Float32x4" &&
+                selectedMember.isStatic)
+            {
+                std::optional<MethodCoreOperationKind> shuffleKind;
+                if (selectedMember.name == "SwizzleWzyx" && selectedMember.parameters.size() == 1 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey)
+                    shuffleKind = MethodCoreOperationKind::SimdSwizzleWzyx;
+                else if (selectedMember.name == "ShuffleLowHigh" && selectedMember.parameters.size() == 2 &&
+                    selectedMember.parameters[0].typeKey == selectedMember.declaredTypeKey &&
+                    selectedMember.parameters[1].typeKey == selectedMember.declaredTypeKey)
+                    shuffleKind = MethodCoreOperationKind::SimdShuffleLowHigh;
+                if (shuffleKind.has_value())
+                {
+                    coreBindings_.push_back(MethodCoreBinding{
+                        *shuffleKind, expression, methodMemberOrdinal, scopeOrdinal,
+                        selectedMember.declaredTypeKey, selectedMember.declaredTypeKey,
+                        false, std::nullopt, std::nullopt});
+                }
+            }
             // Item 347: the two public signed 128-bit integer carriers share one intrinsic
             // family. Identity and exact self/self -> self signatures prevent user methods with
             // coincidentally matching names from acquiring compiler semantics.
@@ -14651,6 +14670,8 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::SimdStoreUnaligned128: return "simd-store-unaligned-128";
         case MethodCoreOperationKind::HalfFromFloat: return "half-from-float";
         case MethodCoreOperationKind::HalfToFloat: return "half-to-float";
+        case MethodCoreOperationKind::SimdSwizzleWzyx: return "simd-swizzle-wzyx";
+        case MethodCoreOperationKind::SimdShuffleLowHigh: return "simd-shuffle-low-high";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

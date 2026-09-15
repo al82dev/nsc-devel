@@ -285,6 +285,8 @@ enum class ProjectOopHirNodeKind
     CoreSimdStoreUnaligned128,
     CoreHalfFromFloat,
     CoreHalfToFloat,
+    CoreSimdSwizzleWzyx,
+    CoreSimdShuffleLowHigh,
     // Stage 54.3 "Mutex" -- see MethodCoreOperationKind::MutexCreate/MutexLock/MutexUnlock/
     // MutexClose in ProjectMethodBodyModel.h. Exact same shape as CoreThreadCreate/Join/Detach
     // above (a builtin:nint HANDLE round-tripped between separate NativeSharp calls), so these

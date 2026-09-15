@@ -650,6 +650,8 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::CoreSimdStoreUnaligned128: return "core-simd-store-unaligned-128";
         case ProjectOopMirNodeKind::CoreHalfFromFloat: return "core-half-from-float";
         case ProjectOopMirNodeKind::CoreHalfToFloat: return "core-half-to-float";
+        case ProjectOopMirNodeKind::CoreSimdSwizzleWzyx: return "core-simd-swizzle-wzyx";
+        case ProjectOopMirNodeKind::CoreSimdShuffleLowHigh: return "core-simd-shuffle-low-high";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopMirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopMirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";
@@ -1725,6 +1727,12 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
             break;
         case ProjectOopHirNodeKind::CoreHalfToFloat:
             result->kind = ProjectOopMirNodeKind::CoreHalfToFloat;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdSwizzleWzyx:
+            result->kind = ProjectOopMirNodeKind::CoreSimdSwizzleWzyx;
+            break;
+        case ProjectOopHirNodeKind::CoreSimdShuffleLowHigh:
+            result->kind = ProjectOopMirNodeKind::CoreSimdShuffleLowHigh;
             break;
         case ProjectOopHirNodeKind::CoreMutexCreate:
             result->kind = ProjectOopMirNodeKind::CoreMutexCreate;

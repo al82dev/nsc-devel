@@ -7717,6 +7717,47 @@ private:
                 return LLVMBuildFPExt(
                     builder_, binary16, LLVMFloatTypeInContext(context_), "half.to.float");
             }
+            case frontend::ProjectOopMirNodeKind::CoreSimdSwizzleWzyx:
+            case frontend::ProjectOopMirNodeKind::CoreSimdShuffleLowHigh:
+            {
+                const bool twoSources =
+                    node->kind == frontend::ProjectOopMirNodeKind::CoreSimdShuffleLowHigh;
+                if (node->children.size() != (twoSources ? 2U : 1U))
+                    return failValue(error, "SIMD shuffle carries an invalid operand count");
+                LLVMTypeRef carrier = llvmType(node->typeKey, error);
+                if (carrier == nullptr) return nullptr;
+                LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
+                auto loadVector = [&](const frontend::ProjectOopMirNode* child, const char* name) {
+                    LLVMValueRef value = lowerExpression(child, error);
+                    if (value == nullptr) return static_cast<LLVMValueRef>(nullptr);
+                    LLVMValueRef slot = entryBlockAlloca(carrier, 16U, name);
+                    LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                    LLVMSetAlignment(store, 16U);
+                    LLVMValueRef vector = LLVMBuildLoad2(builder_, vectorType, slot, name);
+                    LLVMSetAlignment(vector, 16U);
+                    return vector;
+                };
+                LLVMValueRef first = loadVector(node->children[0].get(), "shuffle.first");
+                if (first == nullptr) return nullptr;
+                LLVMValueRef second = twoSources
+                    ? loadVector(node->children[1].get(), "shuffle.second")
+                    : LLVMGetUndef(vectorType);
+                if (second == nullptr) return nullptr;
+                const unsigned swizzleIndices[] = {3U, 2U, 1U, 0U};
+                const unsigned shuffleIndices[] = {0U, 1U, 6U, 7U};
+                LLVMValueRef maskValues[4]{};
+                for (unsigned index = 0; index < 4U; ++index)
+                    maskValues[index] = LLVMConstInt(LLVMInt32TypeInContext(context_),
+                        twoSources ? shuffleIndices[index] : swizzleIndices[index], 0);
+                LLVMValueRef shuffled = LLVMBuildShuffleVector(
+                    builder_, first, second, LLVMConstVector(maskValues, 4U), "simd.shuffle");
+                LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "shuffle.result.addr");
+                LLVMValueRef resultStore = LLVMBuildStore(builder_, shuffled, resultSlot);
+                LLVMSetAlignment(resultStore, 16U);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "shuffle.result");
+                LLVMSetAlignment(result, 16U);
+                return result;
+            }
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Add:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract:
             case frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply:
