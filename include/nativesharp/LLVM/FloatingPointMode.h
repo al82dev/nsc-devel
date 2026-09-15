@@ -50,6 +50,18 @@ std::optional<FloatingPointDenormalMode> parseFloatingPointDenormalMode(std::str
 std::string_view floatingPointDenormalModeName(FloatingPointDenormalMode mode) noexcept;
 FloatingPointDenormalMode activeFloatingPointDenormalMode() noexcept;
 
+struct FloatingPointState final
+{
+    FloatingPointMode mode = FloatingPointMode::Precise;
+    FmaContractPolicy fmaContractPolicy = FmaContractPolicy::Off;
+    FloatingPointRoundingMode roundingMode = FloatingPointRoundingMode::Dynamic;
+    FloatingPointDenormalMode denormalMode = FloatingPointDenormalMode::Preserve;
+
+    bool operator==(const FloatingPointState&) const = default;
+};
+
+FloatingPointState captureFloatingPointState() noexcept;
+
 class FloatingPointModeScope final
 {
 public:
@@ -62,11 +74,9 @@ public:
     void setFmaContractPolicy(FmaContractPolicy policy) noexcept;
     void setRoundingMode(FloatingPointRoundingMode mode) noexcept;
     void setDenormalMode(FloatingPointDenormalMode mode) noexcept;
+    void setState(const FloatingPointState& state) noexcept;
 
 private:
-    FloatingPointMode previous_;
-    FmaContractPolicy previousFmaContractPolicy_;
-    FloatingPointRoundingMode previousRoundingMode_;
-    FloatingPointDenormalMode previousDenormalMode_;
+    FloatingPointState previous_;
 };
 }

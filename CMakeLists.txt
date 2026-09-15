@@ -1121,6 +1121,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item367_denormal_control_tests)
     add_test(NAME nsc.item367.denormal-control COMMAND nsc_item367_denormal_control_tests)
 
+    add_executable(nsc_item368_thread_fp_state_tests tests/unit/Item368ThreadFloatingPointStateTests.cpp)
+    target_link_libraries(nsc_item368_thread_fp_state_tests PRIVATE nsc_llvm)
+    target_compile_features(nsc_item368_thread_fp_state_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item368_thread_fp_state_tests)
+    add_test(NAME nsc.item368.thread-fp-state COMMAND nsc_item368_thread_fp_state_tests)
+
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
     target_compile_features(nsc_partial_class_aggregation_tests PRIVATE cxx_std_20)

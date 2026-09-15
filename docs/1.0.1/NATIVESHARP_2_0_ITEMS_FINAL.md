@@ -168,7 +168,7 @@
 120. **365 — Política de contracción FMA / FMA contraction policy — COMPLETADO / COMPLETE**
 121. **366 — Control de rounding / Rounding control — COMPLETADO / COMPLETE**
 122. **367 — Control FTZ y DAZ / FTZ and DAZ control — COMPLETADO / COMPLETE**
-123. **368 — Estado floating-point por thread / Per-thread floating-point state**
+123. **368 — Estado floating-point por thread / Per-thread floating-point state — COMPLETADO / COMPLETE**
 124. **369 — Matemáticas trascendentales deterministas / Deterministic transcendental math**
 
 ## Tanda 11 — Paralelismo para programas NativeSharp
