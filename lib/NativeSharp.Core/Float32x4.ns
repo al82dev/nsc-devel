@@ -42,5 +42,35 @@ namespace NativeSharp.Core.Numerics
         {
             return default(Float32x4);
         }
+
+        public static float Dot(Float32x4 left, Float32x4 right)
+        {
+            return left.X * right.X + left.Y * right.Y + left.Z * right.Z + left.W * right.W;
+        }
+
+        public static Float32x4 Min(Float32x4 left, Float32x4 right)
+        {
+            Float32x4 result;
+            result.X = left.X < right.X ? left.X : right.X;
+            result.Y = left.Y < right.Y ? left.Y : right.Y;
+            result.Z = left.Z < right.Z ? left.Z : right.Z;
+            result.W = left.W < right.W ? left.W : right.W;
+            return result;
+        }
+
+        public static Float32x4 Max(Float32x4 left, Float32x4 right)
+        {
+            Float32x4 result;
+            result.X = left.X > right.X ? left.X : right.X;
+            result.Y = left.Y > right.Y ? left.Y : right.Y;
+            result.Z = left.Z > right.Z ? left.Z : right.Z;
+            result.W = left.W > right.W ? left.W : right.W;
+            return result;
+        }
+
+        public static Float32x4 Clamp(Float32x4 value, Float32x4 lower, Float32x4 upper)
+        {
+            return Min(Max(value, lower), upper);
+        }
     }
 }

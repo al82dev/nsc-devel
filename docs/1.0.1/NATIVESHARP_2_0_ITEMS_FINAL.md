@@ -154,7 +154,7 @@
 109. **354 — Tipo `half` / Half-precision type — COMPLETADO / COMPLETE**
 110. **355 — Formatos GPU empaquetados / Packed GPU formats — COMPLETADO / COMPLETE**
 111. **356 — Swizzle y shuffle / Swizzle and shuffle — COMPLETADO / COMPLETE**
-112. **357 — Dot, cross, min, max y clamp / Vector math operations**
+112. **357 — Dot, cross, min, max y clamp / Vector math operations — COMPLETADO / COMPLETE**
 113. **358 — Sqrt, rsqrt y FMA / Vector sqrt, rsqrt, and FMA**
 114. **359 — Popcount, CLZ y CTZ / Bit-count intrinsics**
 115. **360 — Rotaciones y byte swap / Rotate and byte-swap intrinsics**
