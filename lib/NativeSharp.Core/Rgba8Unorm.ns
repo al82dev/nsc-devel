@@ -1,0 +1,20 @@
+namespace NativeSharp.Core.Numerics
+{
+    // Formato GPU RGBA8_UNORM: R ocupa los bits menos significativos y A los superiores.
+    public struct Rgba8Unorm
+    {
+        public uint Packed;
+
+        public static Rgba8Unorm Pack(byte r, byte g, byte b, byte a)
+        {
+            Rgba8Unorm result;
+            result.Packed = (uint)r | ((uint)g << 8) | ((uint)b << 16) | ((uint)a << 24);
+            return result;
+        }
+
+        public static byte Red(Rgba8Unorm value) { return (byte)(value.Packed & 255u); }
+        public static byte Green(Rgba8Unorm value) { return (byte)((value.Packed >> 8) & 255u); }
+        public static byte Blue(Rgba8Unorm value) { return (byte)((value.Packed >> 16) & 255u); }
+        public static byte Alpha(Rgba8Unorm value) { return (byte)((value.Packed >> 24) & 255u); }
+    }
+}

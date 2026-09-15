@@ -152,7 +152,7 @@
 107. **352 — `float2` y `float3` / Compact float vectors — COMPLETADO / COMPLETE**
 108. **353 — Matrices nativas / Native matrices — COMPLETADO / COMPLETE**
 109. **354 — Tipo `half` / Half-precision type — COMPLETADO / COMPLETE**
-110. **355 — Formatos GPU empaquetados / Packed GPU formats**
+110. **355 — Formatos GPU empaquetados / Packed GPU formats — COMPLETADO / COMPLETE**
 111. **356 — Swizzle y shuffle / Swizzle and shuffle**
 112. **357 — Dot, cross, min, max y clamp / Vector math operations**
 113. **358 — Sqrt, rsqrt y FMA / Vector sqrt, rsqrt, and FMA**
