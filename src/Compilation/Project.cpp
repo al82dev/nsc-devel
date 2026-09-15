@@ -10,13 +10,15 @@ Project::Project(
     ProjectOutputKind outputKind,
     ProjectSourceSet sourceSet,
     std::vector<std::filesystem::path> projectReferences,
-    std::vector<LibraryReference> libraryReferences)
+    std::vector<LibraryReference> libraryReferences,
+    std::vector<SdkManifest> sdkReferences)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
       sourceSet_(std::move(sourceSet)),
       projectReferences_(std::move(projectReferences)),
-      libraryReferences_(std::move(libraryReferences))
+      libraryReferences_(std::move(libraryReferences)),
+      sdkReferences_(std::move(sdkReferences))
 {
 }
 
@@ -48,5 +50,10 @@ std::span<const std::filesystem::path> Project::projectReferences() const noexce
 std::span<const LibraryReference> Project::libraryReferences() const noexcept
 {
     return libraryReferences_;
+}
+
+std::span<const SdkManifest> Project::sdkReferences() const noexcept
+{
+    return sdkReferences_;
 }
 }

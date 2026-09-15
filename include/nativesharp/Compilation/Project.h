@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Compilation/ProjectSourceSet.h"
+#include "nativesharp/Compilation/SdkManifest.h"
 
 #include <filesystem>
 #include <span>
@@ -35,7 +36,8 @@ public:
         ProjectOutputKind outputKind,
         ProjectSourceSet sourceSet,
         std::vector<std::filesystem::path> projectReferences,
-        std::vector<LibraryReference> libraryReferences);
+        std::vector<LibraryReference> libraryReferences,
+        std::vector<SdkManifest> sdkReferences);
 
     const std::filesystem::path& projectFile() const noexcept;
     const std::string& moduleName() const noexcept;
@@ -43,6 +45,7 @@ public:
     const ProjectSourceSet& sourceSet() const noexcept;
     std::span<const std::filesystem::path> projectReferences() const noexcept;
     std::span<const LibraryReference> libraryReferences() const noexcept;
+    std::span<const SdkManifest> sdkReferences() const noexcept;
 
 private:
     std::filesystem::path projectFile_;
@@ -51,5 +54,6 @@ private:
     ProjectSourceSet sourceSet_;
     std::vector<std::filesystem::path> projectReferences_;
     std::vector<LibraryReference> libraryReferences_;
+    std::vector<SdkManifest> sdkReferences_;
 };
 }

@@ -196,7 +196,9 @@ bool normalizeTransitiveSourceOwnership(
             std::vector<std::filesystem::path>(
                 project.projectReferences().begin(), project.projectReferences().end()),
             std::vector<LibraryReference>(
-                project.libraryReferences().begin(), project.libraryReferences().end()));
+                project.libraryReferences().begin(), project.libraryReferences().end()),
+            std::vector<SdkManifest>(
+                project.sdkReferences().begin(), project.sdkReferences().end()));
     }
 
     projects = std::move(normalized);

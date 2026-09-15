@@ -118,6 +118,7 @@ add_library(nsc_compilation STATIC
     src/Driver/CompilationJobPolicy.cpp
     src/Driver/CompilationWorkerPool.cpp
     src/Compilation/SimpleXmlParser.cpp
+    src/Compilation/SdkManifest.cpp
     src/Compilation/GlobPattern.cpp
     src/Compilation/Project.cpp
     src/Compilation/ProjectSourceSet.cpp
@@ -815,6 +816,15 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item332.c-vararg-promotions
         COMMAND nsc_item332_c_vararg_promotion_tests)
+    add_executable(
+        nsc_item334_declarative_sdk_format_tests
+        tests/unit/Item334DeclarativeSdkFormatTests.cpp)
+    target_link_libraries(nsc_item334_declarative_sdk_format_tests PRIVATE nsc_compilation)
+    target_compile_features(nsc_item334_declarative_sdk_format_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item334_declarative_sdk_format_tests)
+    add_test(
+        NAME nsc.item334.declarative-sdk-format
+        COMMAND nsc_item334_declarative_sdk_format_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

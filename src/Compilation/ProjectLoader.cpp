@@ -2,6 +2,7 @@
 
 #include "nativesharp/Compilation/GlobPattern.h"
 #include "nativesharp/Compilation/SimpleXmlParser.h"
+#include "nativesharp/Compilation/SdkManifest.h"
 
 #include <algorithm>
 #include <cctype>
@@ -38,6 +39,7 @@ struct ProjectDescriptor final
     std::vector<GlobPattern> removes;
     std::vector<std::string> projectReferences;
     std::vector<LibraryReferenceDescriptor> libraryReferences;
+    std::vector<std::string> sdkReferences;
 };
 
 std::string trim(std::string_view value)
@@ -373,6 +375,25 @@ bool parseItemGroup(
             }
             descriptor.libraryReferences.push_back(std::move(reference));
         }
+        else if (item.name == "SdkReference")
+        {
+            if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
+            {
+                return false;
+            }
+            const std::string* include = attribute(item, "Include");
+            if (include == nullptr || trim(*include).empty())
+            {
+                error = "SdkReference requires a non-empty Include attribute";
+                return false;
+            }
+            if (include->find(';') != std::string::npos)
+            {
+                error = "SdkReference Include accepts one SDK manifest path per item";
+                return false;
+            }
+            descriptor.sdkReferences.push_back(trim(*include));
+        }
         else
         {
             error = "unsupported project item '" + item.name + "'";
@@ -683,12 +704,43 @@ std::optional<Project> ProjectLoader::load(
             return pathKey(left.libraryPath) < pathKey(right.libraryPath);
         });
 
+    std::vector<SdkManifest> sdkReferences;
+    std::vector<std::string> sdkReferenceKeys;
+    SdkManifestLoader sdkLoader;
+    for (const std::string& reference : descriptor.sdkReferences)
+    {
+        const std::filesystem::path unresolved = projectDirectory / reference;
+        std::string sdkError;
+        std::optional<SdkManifest> manifest = sdkLoader.load(unresolved, sdkError);
+        if (!manifest.has_value())
+        {
+            error = sdkError;
+            return std::nullopt;
+        }
+        const std::string key = pathKey(manifest->manifestPath);
+        if (std::find(sdkReferenceKeys.begin(), sdkReferenceKeys.end(), key) != sdkReferenceKeys.end())
+        {
+            error = "duplicate SdkReference: '" + manifest->manifestPath.string() + "'";
+            return std::nullopt;
+        }
+        sdkReferenceKeys.push_back(key);
+        sdkReferences.push_back(std::move(*manifest));
+    }
+    std::sort(
+        sdkReferences.begin(),
+        sdkReferences.end(),
+        [](const SdkManifest& left, const SdkManifest& right)
+        {
+            return pathKey(left.manifestPath) < pathKey(right.manifestPath);
+        });
+
     return Project(
         canonicalProject,
         moduleName,
         descriptor.outputKind.value_or(ProjectOutputKind::Executable),
         std::move(sourceSet),
         std::move(projectReferences),
-        std::move(libraryReferences));
+        std::move(libraryReferences),
+        std::move(sdkReferences));
 }
 }
