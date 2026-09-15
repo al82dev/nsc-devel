@@ -1,0 +1,139 @@
+namespace NativeSharp.Core.Threading
+{
+    // Item 371. A fixed-size native worker pool. Work is represented by the already-proven
+    // ThreadStart delegate and executed outside the queue monitor, so producers and workers only
+    // hold the lock while changing bounded FIFO state.
+    public class ThreadPool
+    {
+        private owned Thread[] workers_;
+        private owned ThreadStart[] queue_;
+        private owned Monitor gate_;
+        private int head_;
+        private int count_;
+        private int pending_;
+        private bool stopping_;
+
+        public ThreadPool(int workerCount, int queueCapacity)
+        {
+            int actualWorkers = workerCount;
+            int actualCapacity = queueCapacity;
+            if (actualWorkers < 1) { actualWorkers = 1; }
+            if (actualCapacity < 1) { actualCapacity = 1; }
+
+            workers_ = new Thread[actualWorkers];
+            queue_ = new ThreadStart[actualCapacity];
+            gate_ = new Monitor();
+            head_ = 0;
+            count_ = 0;
+            pending_ = 0;
+            stopping_ = false;
+
+            int i = 0;
+            while (i < workers_.Length)
+            {
+                ThreadStart start = WorkerLoop;
+                workers_[i] = new Thread(start);
+                i = i + 1;
+            }
+        }
+
+        public int WorkerCount()
+        {
+            return workers_.Length;
+        }
+
+        public int QueueCapacity()
+        {
+            return queue_.Length;
+        }
+
+        // The delegate is borrowed until it runs, matching Thread(ThreadStart). Callers keep it
+        // alive through WaitIdle/Shutdown; the pool owns only its queue storage.
+        public bool Queue(ThreadStart work)
+        {
+            gate_.Enter();
+            if (stopping_ || count_ == queue_.Length)
+            {
+                gate_.Exit();
+                return false;
+            }
+
+            int tail = head_ + count_;
+            if (tail >= queue_.Length) { tail = tail - queue_.Length; }
+            queue_[tail] = work;
+            count_ = count_ + 1;
+            pending_ = pending_ + 1;
+            gate_.Pulse();
+            gate_.Exit();
+            return true;
+        }
+
+        public void WaitIdle()
+        {
+            gate_.Enter();
+            while (pending_ != 0)
+            {
+                gate_.Wait(-1);
+            }
+            gate_.Exit();
+        }
+
+        public void Shutdown()
+        {
+            gate_.Enter();
+            stopping_ = true;
+            gate_.PulseAll();
+            gate_.Exit();
+
+            int i = 0;
+            while (i < workers_.Length)
+            {
+                workers_[i].Join();
+                i = i + 1;
+            }
+        }
+
+        private void WorkerLoop()
+        {
+            while (true)
+            {
+                gate_.Enter();
+                while (count_ == 0 && !stopping_)
+                {
+                    gate_.Wait(-1);
+                }
+                if (count_ == 0 && stopping_)
+                {
+                    gate_.Exit();
+                    return;
+                }
+
+                ThreadStart work = queue_[head_];
+                head_ = head_ + 1;
+                if (head_ == queue_.Length) { head_ = 0; }
+                count_ = count_ - 1;
+                gate_.Exit();
+
+                work();
+
+                gate_.Enter();
+                pending_ = pending_ - 1;
+                if (pending_ == 0) { gate_.PulseAll(); }
+                gate_.Exit();
+            }
+        }
+
+        ~ThreadPool()
+        {
+            Shutdown();
+            int i = 0;
+            while (i < workers_.Length)
+            {
+                delete workers_[i];
+                i = i + 1;
+            }
+            delete[] workers_;
+            delete[] queue_;
+        }
+    }
+}

@@ -174,7 +174,7 @@
 ## Tanda 11 — Paralelismo para programas NativeSharp
 
 125. **370 — Sincronización nombrada entre procesos / Named cross-process synchronization — COMPLETADO / COMPLETE**
-126. **371 — Thread pool nativo / Native thread pool**
+126. **371 — Thread pool nativo / Native thread pool — COMPLETADO / COMPLETE**
 127. **372 — Jobs tipados / Typed jobs**
 128. **373 — Dependencias y cancelación de jobs / Job dependencies and cancellation**
 129. **374 — Colas por worker / Per-worker queues**
