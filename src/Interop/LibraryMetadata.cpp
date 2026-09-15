@@ -901,6 +901,7 @@ bool buildMetadataModel(
         else if (type.kind == frontend::NamedTypeDeclarationKind::Delegate && type.syntax != nullptr)
         {
             if (type.syntax->hasModifier(lexer::TokenKind::KwExtern)) record.delegateFlags |= 1U;
+            if (type.syntax->hasModifier(lexer::TokenKind::KwVectorCall)) record.delegateFlags |= 2U;
             // Los dos delegates viajan en un registro LLVM `ptr`. El extern C apunta
             // al codigo; el ordinario apunta a la celda ABI versionada. La diferencia
             // queda en flags y en el contrato raiz, pero tamaño/alineacion de la
@@ -1610,7 +1611,8 @@ bool decodePayload(
             return false;
         }
         if (metadata.formatMinor >= 5 &&
-            (!reader.u8(type.delegateFlags) || type.delegateFlags > 1U ||
+            (!reader.u8(type.delegateFlags) ||
+             type.delegateFlags > (metadata.formatMinor >= 20 ? 3U : 1U) ||
              !reader.text(type.delegateReturnTypeKey) ||
              !readStringVector(reader, type.delegateParameterTypeKeys)))
         {
@@ -2045,6 +2047,17 @@ bool LibraryMetadataCodec::writeModel(
             if ((member.flags & kMetadataMemberVariadic) != 0U)
             {
                 error = "NativeSharp metadata before 1.19 cannot represent a variadic C declaration";
+                return false;
+            }
+        }
+    }
+    if (metadata.formatMinor < 20)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            if ((type.delegateFlags & 2U) != 0U)
+            {
+                error = "NativeSharp metadata before 1.20 cannot represent vectorcall delegates";
                 return false;
             }
         }

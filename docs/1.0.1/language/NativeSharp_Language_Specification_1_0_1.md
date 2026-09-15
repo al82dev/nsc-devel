@@ -517,6 +517,13 @@ Un `extern C delegate` no tiene canal de entorno. Por ello admite una lambda sin
 materializa como function pointer protegido por la frontera de excepciones C, y rechaza de forma
 diagnosticada cualquier lambda con captura.
 
+Un `extern vectorcall delegate` conserva esas mismas reglas de entorno y barrera, pero publica e
+invoca el function pointer con la convención Microsoft x64 `vectorcall`. La convención forma parte
+del tipo nominal y de NSMETA; no se infiere a partir de los tipos de los parámetros. / An `extern
+vectorcall delegate` keeps the same environment and exception-boundary rules, but publishes and
+invokes the function pointer with the Microsoft x64 `vectorcall` convention. The convention is
+part of the nominal type and NSMETA; it is never inferred from parameter types.
+
 Un evento controla la lista de invocación mediante sus operaciones admitidas; no cambia el lifetime
 de un delegate de manera implícita. Copiar, almacenar o transferir un delegate debe respetar la
 propiedad publicada por su tipo y por la operación.

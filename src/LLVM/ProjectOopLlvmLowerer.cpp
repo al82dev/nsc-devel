@@ -3376,16 +3376,18 @@ private:
     // equal.
     bool defineCallbackGuardThunks(std::string& error, bool defineBodies)
     {
-        std::vector<std::string> targets;
+        std::vector<std::pair<std::string, bool>> targets;
         const auto visit = [&](const frontend::ProjectOopMirNode* node, auto&& self) -> void
         {
             if (node == nullptr) return;
             if ((node->kind == frontend::ProjectOopMirNodeKind::DelegateCreate ||
                  node->kind == frontend::ProjectOopMirNodeKind::LambdaCreate) &&
-                isExternCDelegateType(node->typeKey) && !node->calleeName.empty() &&
-                std::find(targets.begin(), targets.end(), node->calleeName) == targets.end())
+                isExternCDelegateType(node->typeKey) && !node->calleeName.empty())
             {
-                targets.push_back(node->calleeName);
+                const std::pair<std::string, bool> target = {
+                    node->calleeName, isVectorCallDelegateType(node->typeKey)};
+                if (std::find(targets.begin(), targets.end(), target) == targets.end())
+                    targets.push_back(target);
             }
             for (const auto& child : node->children) self(child.get(), self);
         };
@@ -3397,9 +3399,9 @@ private:
         {
             visit(initializer.value.get(), visit);
         }
-        for (const std::string& target : targets)
+        for (const auto& [target, vectorCall] : targets)
         {
-            if (callbackGuardThunk(target, error, defineBodies) == nullptr) return false;
+            if (callbackGuardThunk(target, error, vectorCall, defineBodies) == nullptr) return false;
         }
         return true;
     }
@@ -3451,9 +3453,11 @@ private:
     LLVMValueRef callbackGuardThunk(
         const std::string& targetName,
         std::string& error,
+        bool vectorCall,
         bool defineBody = true)
     {
-        const auto cached = callbackGuardThunks_.find(targetName);
+        const std::string cacheKey = targetName + (vectorCall ? "|vectorcall" : "|c");
+        const auto cached = callbackGuardThunks_.find(cacheKey);
         if (cached != callbackGuardThunks_.end()) return cached->second.function;
         const auto found = functions_.find(targetName);
         if (found == functions_.end() || found->second.function == nullptr)
@@ -3466,12 +3470,14 @@ private:
             return failValue(error, "C1.3 callback boundary needs the SEH personality and filter");
         }
         LLVMTypeRef thunkType = found->second.functionType;
-        const std::string thunkName = targetName + "__c_boundary";
+        const std::string thunkName = targetName +
+            (vectorCall ? "__vectorcall_boundary" : "__c_boundary");
         LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
         if (thunk == nullptr)
         {
             return failValue(error, "C1.3 failed to declare the callback boundary thunk for " + targetName);
         }
+        if (vectorCall) LLVMSetFunctionCallConv(thunk, LLVMX86VectorCallCallConv);
         applyUwtableAttribute(thunk);
         // Whatever ABI attributes the target's declaration carries (an sret return, above all)
         // must be reproduced on the thunk, because the thunk is what C sees.
@@ -3507,7 +3513,7 @@ private:
         }
         if (!defineBody)
         {
-            callbackGuardThunks_[targetName] = FunctionInfo{thunk, thunkType, nullptr};
+            callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, nullptr};
             return thunk;
         }
         LLVMSetPersonalityFn(thunk, sehPersonalityFunction_);
@@ -3568,7 +3574,7 @@ private:
         currentFunction_ = savedFunction;
         blockCounter_ = savedBlockCounter;
         if (savedBlock != nullptr) LLVMPositionBuilderAtEnd(builder_, savedBlock);
-        callbackGuardThunks_[targetName] = FunctionInfo{thunk, thunkType, subprogram};
+        callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, subprogram};
         return thunk;
     }
 
@@ -3756,6 +3762,20 @@ private:
             if (type.identity.key() != key) continue;
             return type.kind == frontend::NamedTypeDeclarationKind::Delegate &&
                 type.syntax != nullptr && type.syntax->hasModifier(lexer::TokenKind::KwExtern);
+        }
+        return false;
+    }
+
+    bool isVectorCallDelegateType(std::string_view typeKey) const noexcept
+    {
+        if (!typeKey.starts_with("type:")) return false;
+        const std::string_view key = typeKey.substr(5);
+        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
+        {
+            if (type.identity.key() != key) continue;
+            return type.kind == frontend::NamedTypeDeclarationKind::Delegate &&
+                type.syntax != nullptr &&
+                type.syntax->hasModifier(lexer::TokenKind::KwVectorCall);
         }
         return false;
     }
@@ -9126,7 +9146,8 @@ private:
         {
             if (!node->children.empty())
                 return failValue(error, "E11 extern C lambda reached LLVM with captured state");
-            return callbackGuardThunk(node->calleeName, error);
+            return callbackGuardThunk(
+                node->calleeName, error, isVectorCallDelegateType(node->typeKey));
         }
 
         LLVMValueRef receiver = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
@@ -9189,7 +9210,8 @@ private:
             // of unwinding into foreign frames. defineCallbackGuardThunks emitted it before any
             // body was lowered, and it is cached per target, so two conversions of the same method
             // still yield the same pointer.
-            return callbackGuardThunk(node->calleeName, error);
+            return callbackGuardThunk(
+                node->calleeName, error, isVectorCallDelegateType(node->typeKey));
         }
 
         LLVMValueRef receiver = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
@@ -9330,6 +9352,7 @@ private:
         const std::vector<LLVMValueRef>& argumentValues,
         const std::vector<std::string>& argumentTypeKeys,
         std::string_view returnTypeKey,
+        bool vectorCall,
         std::string& error)
     {
         if (argumentValues.size() != argumentTypeKeys.size())
@@ -9375,6 +9398,7 @@ private:
             callArguments.empty() ? nullptr : callArguments.data(),
             static_cast<unsigned>(callArguments.size()),
             returnType == LLVMVoidTypeInContext(context_) ? "" : "cabi.callback.result");
+        if (vectorCall) LLVMSetInstructionCallConv(call, LLVMX86VectorCallCallConv);
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -9415,7 +9439,8 @@ private:
         if (isExternCDelegateType(node->elementTypeKey))
         {
             return emitExternCDelegateCall(
-                delegateValue, arguments, node->argumentTypeKeys, node->typeKey, error);
+                delegateValue, arguments, node->argumentTypeKeys, node->typeKey,
+                isVectorCallDelegateType(node->elementTypeKey), error);
         }
         return emitDelegateCall(delegateValue, arguments, node->argumentTypeKeys, node->typeKey, error);
     }

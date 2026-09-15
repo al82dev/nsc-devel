@@ -1153,6 +1153,18 @@ values in register slots, promoted integers in register and stack slots, 32/64-b
 pointers, and `extern C` callbacks at O0 and O2. An IR-only assertion is insufficient for this
 contract because it does not observe the final machine calling sequence.
 
+## NSC-ABI-004 — Microsoft x64 vectorcall delegates
+
+An `extern vectorcall delegate` shall remain a raw function pointer, use LLVM
+`x86_vectorcallcc` on both the published exception-boundary thunk and every indirect invocation,
+and keep ordinary NativeSharp calling convention on the thunk-to-body edge. The thunk shall retain
+the same exception containment as an `extern C delegate`.
+
+NSMETA 1.20 shall preserve vectorcall as delegate flag bit 1 and reject a lossy pre-1.20
+downlevel. Generated C/C++ headers shall identify the function pointer through `NS_VECTORCALL`.
+Certification shall execute at least six floating arguments at O0 and O2 so register placement is
+observed rather than inferred only from IR text.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

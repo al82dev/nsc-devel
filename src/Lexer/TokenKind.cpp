@@ -76,6 +76,7 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwExtern);
         NS_TOKEN_CASE(KwExport);
         NS_TOKEN_CASE(KwC);
+        NS_TOKEN_CASE(KwVectorCall);
         NS_TOKEN_CASE(KwTrue);
         NS_TOKEN_CASE(KwFalse);
         NS_TOKEN_CASE(KwNull);

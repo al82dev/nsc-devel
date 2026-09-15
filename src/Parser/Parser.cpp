@@ -4836,7 +4836,8 @@ ast::AstNode* Parser::parseExternCDeclaration()
 {
     const std::size_t beginIndex = index_;
     consume();
-    expectContextualKeyword("C", "'C'");
+    const bool isVectorCall = consumeIf(TokenKind::KwVectorCall);
+    if (!isVectorCall) expectContextualKeyword("C", "'C' or 'vectorcall'");
 
     if (at(TokenKind::KwDelegate))
     {
@@ -4844,9 +4845,21 @@ ast::AstNode* Parser::parseExternCDeclaration()
         if (delegate != nullptr)
         {
             delegate->addModifier(TokenKind::KwExtern);
+            if (isVectorCall) delegate->addModifier(TokenKind::KwVectorCall);
             delegate->setRange(tokenRangeFrom(beginIndex));
         }
         return delegate;
+    }
+
+    if (isVectorCall)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            current().range(),
+            "extern vectorcall currently declares a delegate type");
+        synchronizeGlobal();
+        return nullptr;
     }
 
     ast::AstNode* node = arena_.make<ast::AstNode>(ast::AstNodeKind::ExternCDeclaration, tokenRangeFrom(beginIndex));

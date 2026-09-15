@@ -188,8 +188,8 @@ public class Native
                  (member.flags & nativesharp::interop::kMetadataMemberVariadic) != 0U);
         }
     }
-    tests.expect(metadataRead && metadata.formatMinor == 19U && foundVariadic,
-        "NSMETA 1.19 preserves the variadic member flag (" + metadataError + ")");
+    tests.expect(metadataRead && metadata.formatMinor >= 19U && foundVariadic,
+        "current NSMETA preserves the 1.19 variadic member flag (" + metadataError + ")");
 
     nativesharp::interop::LibraryMetadata downlevel = metadata;
     downlevel.formatMinor = 18U;

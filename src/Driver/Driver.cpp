@@ -1677,7 +1677,8 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
             std::string returnType;
             if (!sourceTypeForMetadataKey(metadata, type.delegateReturnTypeKey, returnType, error)) return false;
             generated << typeAccessibility << ' ';
-            if ((type.delegateFlags & 1U) != 0U) generated << "extern C ";
+            if ((type.delegateFlags & 1U) != 0U)
+                generated << (((type.delegateFlags & 2U) != 0U) ? "extern vectorcall " : "extern C ");
             generated << "delegate " << returnType << ' ' << typeName << '(';
             for (std::size_t parameterIndex = 0; parameterIndex < type.delegateParameterTypeKeys.size();
                 ++parameterIndex)

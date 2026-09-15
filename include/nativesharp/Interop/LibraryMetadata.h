@@ -33,6 +33,7 @@ namespace nativesharp::interop
 // para que un consumidor LibraryReference no los degrade a accesos ordinarios.
 // MINOR 13 (2026-09-13): los metodos inline ordinarios conservan politica y cuerpo fuente para
 // que un consumidor precompilado pueda analizarlos, emitirlos e inlinearlos localmente.
+// MINOR 20 (2026-09-15): delegateFlags bit 1 conserva `extern vectorcall delegate`.
 // MINOR 12 (2026-09-11): el modulo enumera identidades nominales propiedad de otras
 // LibraryReference para validar la clausura completa antes de reconstruir su API.
 // MINOR 11 (2026-09-10): las plantillas reutilizables conservan su grafo de dependencias y la
@@ -53,7 +54,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 19;
+inline constexpr std::uint16_t kMetadataFormatMinor = 20;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -170,7 +171,8 @@ struct LibraryMetadataType final
     std::string enumUnderlyingTypeKey;
     // NSMETA 1.5. Delegate declarations are types, not ordinary member records. Without their
     // return and parameter keys a precompiled consumer can know that `Transform` exists but not
-    // reconstruct `int Transform(int)`. Bit 0 marks the raw-function-pointer `extern C` form.
+    // reconstruct `int Transform(int)`. Bit 0 marks a raw-function-pointer extern delegate and
+    // bit 1 selects Microsoft x64 vectorcall rather than the ordinary C convention.
     std::uint8_t delegateFlags = 0;
     std::string delegateReturnTypeKey;
     std::vector<std::string> delegateParameterTypeKeys;

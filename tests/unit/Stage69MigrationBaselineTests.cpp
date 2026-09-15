@@ -40,7 +40,7 @@ int main()
                      baseline.find("source_language=1.0.1\n") != std::string::npos &&
                      baseline.find("target_major=2\n") != std::string::npos,
         "migration baseline identifies its source and prospective target");
-    tests.expect(baseline.find("nsmeta=1.19\n") != std::string::npos &&
+    tests.expect(baseline.find("nsmeta=1.20\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
                      baseline.find("runtime_abi=1.0\n") != std::string::npos &&
                      baseline.find("runtime_symbol_set=1\n") != std::string::npos &&

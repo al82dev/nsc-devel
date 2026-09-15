@@ -26,9 +26,10 @@ enum-declaration = "enum", identifier, [ ":", integral-type ],
 enum-member = identifier, [ "=", expression ] ;
 delegate-declaration = "delegate", [ ownership ], type, identifier, [ type-parameters ],
                        "(", [ parameter-list ], ")", { constraint-clause }, ";" ;
-extern-c-declaration = [ "public" | "internal" ], "extern", "C",
-                       ( delegate-declaration | extern-c-function-declaration |
-                         "{", { extern-c-function-declaration }, "}" ) ;
+extern-c-declaration = [ "public" | "internal" ], "extern",
+                       ( "vectorcall", delegate-declaration |
+                         "C", ( delegate-declaration | extern-c-function-declaration |
+                                "{", { extern-c-function-declaration }, "}" ) ) ;
 extern-c-function-declaration = [ ownership ], type, identifier,
                                 "(", [ c-parameter-list ], ")", ";" ;
 extern-c-import-block = "extern", "C", [ "from", string-literal ],

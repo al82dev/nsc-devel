@@ -335,7 +335,8 @@ reenvían la ubicación original. Hasta cerrar el análisis de escapes, no puede
 El target contractual usa el ABI Microsoft x64. NativeSharp expresa `extern C`, imports desde DLL,
 exports C, callbacks, punteros crudos, structs por valor, parámetros `ref/out/in`, uniones, arrays de
 tamaño fijo y handles tipados. Las llamadas por vtable se construyen con punteros y delegates
-`extern C`; no se requiere un sistema de tipos COM integrado al compilador.
+`extern C`; `extern vectorcall delegate` añade la convención Microsoft x64 para APIs que la
+requieren. No se requiere un sistema de tipos COM integrado al compilador.
 
 Los delegates que cruzan una frontera C usan una representación y una barrera de excepciones
 definidas. Los eventos reutilizan esa ABI, incluido el paso indirecto de agregados que Win64 no

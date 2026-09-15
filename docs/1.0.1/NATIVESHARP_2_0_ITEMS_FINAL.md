@@ -138,7 +138,7 @@
 96. **341 — Thunks COM con excepciones contenidas / Exception-safe COM thunks — COMPLETADO / COMPLETE**
 97. **342 — Matriz ABI de structs y agregados / Struct and aggregate ABI matrix — COMPLETADO / COMPLETE**
 98. **343 — ABI de callbacks y parámetros de salida / Callback and output-parameter ABI — COMPLETADO / COMPLETE**
-99. **344 — `vectorcall` / Vectorcall**
+99. **344 — `vectorcall` / Vectorcall — COMPLETADO / COMPLETE**
 100. **345 — HVA y retornos vectoriales / Homogeneous vector aggregates**
 101. **346 — Segundo target guiado por consumidor real / Consumer-driven additional target**
 

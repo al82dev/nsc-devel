@@ -42,6 +42,9 @@ using LLVMDbgRecordRef = LLVMOpaqueDbgRecord*;
 using LLVMComdatRef = LLVMComdat*;
 using LLVMBool = int;
 
+// llvm-c/Core.h LLVMCallConv::LLVMX86VectorCallCallConv.
+inline constexpr unsigned LLVMX86VectorCallCallConv = 80;
+
 enum LLVMModuleFlagBehavior
 {
     LLVMModuleFlagBehaviorError = 0,
@@ -648,6 +651,7 @@ LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* n
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
 void LLVMSetGlobalConstant(LLVMValueRef global, LLVMBool isConstant);
 LLVMValueRef LLVMAddFunction(LLVMModuleRef module, const char* name, LLVMTypeRef functionType);
+void LLVMSetFunctionCallConv(LLVMValueRef function, unsigned callingConvention);
 void LLVMSetLinkage(LLVMValueRef global, LLVMLinkage linkage);
 LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);
 void LLVMSetValueName2(LLVMValueRef value, const char* name, std::size_t nameLength);
@@ -992,6 +996,7 @@ LLVMValueRef LLVMBuildCall2(
     LLVMValueRef* arguments,
     unsigned argumentCount,
     const char* name);
+void LLVMSetInstructionCallConv(LLVMValueRef instruction, unsigned callingConvention);
 LLVMValueRef LLVMGetInlineAsm(
     LLVMTypeRef functionType,
     char* assembly,

@@ -89,6 +89,8 @@ enum class TokenKind
     KwExtern,
     KwExport,
     KwC,
+    // NativeSharp 2.0 item 344. Microsoft x64 vector calling convention.
+    KwVectorCall,
     KwTrue,
     KwFalse,
     KwNull,

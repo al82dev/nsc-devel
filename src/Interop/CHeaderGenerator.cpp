@@ -393,7 +393,9 @@ bool emitDelegate(
     const std::string returnType = hostType(returnKey, context, error);
     if (!error.empty()) return false;
 
-    out << "typedef " << returnType << " (NS_CALL *" << hostNamedTypeName(context, type) << ")(";
+    const bool vectorCall = type.syntax->hasModifier(lexer::TokenKind::KwVectorCall);
+    out << "typedef " << returnType << " (" << (vectorCall ? "NS_VECTORCALL" : "NS_CALL") << " *"
+        << hostNamedTypeName(context, type) << ")(";
     bool first = true;
     for (const ast::AstNode* parameter : type.syntax->children())
     {
@@ -805,7 +807,14 @@ bool CHeaderGenerator::writeHeader(
            "#define NS_ALIGNOF(type) 0\n"
            "#define NS_ALIGNAS(bytes)\n"
            "#endif\n\n";
-    out << "#define NS_CALL\n";
+    out << "#define NS_CALL\n"
+           "#if defined(_MSC_VER)\n"
+           "#define NS_VECTORCALL __vectorcall\n"
+           "#elif defined(__clang__)\n"
+           "#define NS_VECTORCALL __attribute__((vectorcall))\n"
+           "#else\n"
+           "#define NS_VECTORCALL\n"
+           "#endif\n";
     if (root->outputKind() == compilation::ProjectOutputKind::SharedLibrary)
     {
         out << "#if defined(" << upperIdentifier(root->moduleName()) << "_BUILDING_DLL)\n"
@@ -880,7 +889,7 @@ bool CHeaderGenerator::writeHeader(
     }
     if (exportCount == 0) out << "/* This library has no export extern C host functions. */\n";
     out << "\n#ifdef __cplusplus\n}\n#endif\n\n";
-    out << "#undef NS_API\n#undef NS_CALL\n#undef NS_ALIGNOF\n#undef NS_ALIGNAS\n#undef NS_STATIC_ASSERT\n\n";
+    out << "#undef NS_API\n#undef NS_CALL\n#undef NS_VECTORCALL\n#undef NS_ALIGNOF\n#undef NS_ALIGNAS\n#undef NS_STATIC_ASSERT\n\n";
     out << "#endif /* " << guard << " */\n";
     return writeText(destination, out.str(), error);
 }
