@@ -190,7 +190,7 @@
 136. **381 — Depuración de VLAs y placement / VLA and placement debugging — COMPLETADO / COMPLETE**
 137. **382 — Stack walking de SEH y callbacks / SEH and callback stack walking — COMPLETADO / COMPLETE**
 138. **383 — Stack walking de COM, interfaces y closures / COM, interface, and closure stack walking — COMPLETADO / COMPLETE**
-139. **384 — Certificación humana Visual Studio/WinDbg / Visual Studio and WinDbg certification**
+139. **384 — Certificación humana Visual Studio/WinDbg / Visual Studio and WinDbg certification — COMPLETADO / COMPLETE**
 
 ## Tanda 13 — `comptime`
 

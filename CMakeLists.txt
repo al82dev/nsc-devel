@@ -2552,6 +2552,38 @@ if(NSC_BUILD_TESTS)
             "-DDEBUG_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpExtremeDebugO0.cmake")
 
+    file(GLOB _nsc_dia_sdk_roots
+        "C:/Program Files/Microsoft Visual Studio/2022/*/DIA SDK")
+    find_path(NSC_DIA_INCLUDE_DIR dia2.h
+        HINTS ${_nsc_dia_sdk_roots}
+        PATH_SUFFIXES include
+        NO_DEFAULT_PATH)
+    find_file(NSC_DIA_GUIDS_LIBRARY diaguids.lib
+        HINTS ${_nsc_dia_sdk_roots}
+        PATH_SUFFIXES lib/amd64
+        NO_DEFAULT_PATH)
+    find_file(NSC_DIA_RUNTIME msdia140.dll
+        HINTS ${_nsc_dia_sdk_roots}
+        PATH_SUFFIXES bin/amd64
+        NO_DEFAULT_PATH)
+    if(NSC_DIA_INCLUDE_DIR AND NSC_DIA_GUIDS_LIBRARY AND NSC_DIA_RUNTIME)
+        add_executable(nsc_debugger_consumer_handoff
+            tests/integration/debugger_consumers/DebuggerConsumerHandoff.cpp)
+        target_compile_features(nsc_debugger_consumer_handoff PRIVATE cxx_std_20)
+        target_include_directories(nsc_debugger_consumer_handoff PRIVATE "${NSC_DIA_INCLUDE_DIR}")
+        target_link_libraries(nsc_debugger_consumer_handoff PRIVATE
+            "${NSC_DIA_GUIDS_LIBRARY}" ole32 dbghelp)
+        add_test(
+            NAME nsc.debug.consumer-handoff
+            COMMAND nsc_debugger_consumer_handoff
+                "${NSC_DIA_RUNTIME}"
+                "${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test/Consumer/DebugExtremeConsumer.exe"
+                "${CMAKE_CURRENT_BINARY_DIR}/debug-extreme-o0-test/Consumer/DebugExtremeConsumer.pdb")
+        set_tests_properties(nsc.debug.consumer-handoff PROPERTIES DEPENDS nsc.debug.extreme-o0)
+    else()
+        message(STATUS "DIA SDK not found; Visual Studio consumer handoff test is unavailable")
+    endif()
+
     add_test(
         NAME nsc.debug.inline-stepping-o0
         COMMAND "${CMAKE_COMMAND}" -E env
