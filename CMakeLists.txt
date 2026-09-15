@@ -937,6 +937,14 @@ if(NSC_BUILD_TESTS)
         NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     nsc_enable_warnings(nsc_item345_vectorcall_hva_tests)
     add_test(NAME nsc.item345.vectorcall-hva COMMAND nsc_item345_vectorcall_hva_tests)
+    add_executable(
+        nsc_item346_consumer_target_tests
+        tests/unit/Item346ConsumerTargetTests.cpp)
+    target_link_libraries(nsc_item346_consumer_target_tests PRIVATE
+        nsc_frontend nsc_llvm nsc_target)
+    target_compile_features(nsc_item346_consumer_target_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item346_consumer_target_tests)
+    add_test(NAME nsc.item346.consumer-target COMMAND nsc_item346_consumer_target_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

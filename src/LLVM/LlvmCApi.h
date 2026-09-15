@@ -540,6 +540,11 @@ void LLVMInitializeX86Target();
 void LLVMInitializeX86TargetMC();
 void LLVMInitializeX86AsmParser();
 void LLVMInitializeX86AsmPrinter();
+void LLVMInitializeAArch64TargetInfo();
+void LLVMInitializeAArch64Target();
+void LLVMInitializeAArch64TargetMC();
+void LLVMInitializeAArch64AsmParser();
+void LLVMInitializeAArch64AsmPrinter();
 LLVMBool LLVMGetTargetFromTriple(const char* triple, LLVMTargetRef* target, char** errorMessage);
 LLVMTargetMachineRef LLVMCreateTargetMachine(
     LLVMTargetRef target,

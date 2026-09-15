@@ -10,6 +10,14 @@ TargetDataLayout TargetDataLayout::WindowsX64()
     return TargetDataLayout();
 }
 
+TargetDataLayout TargetDataLayout::WindowsArm64()
+{
+    // Windows ARM64 is LLP64 just like Windows x64: the language-visible scalar, pointer and
+    // natural aggregate layouts represented by this class are identical. Calling convention
+    // classification remains the responsibility of the target backend.
+    return TargetDataLayout();
+}
+
 TypeLayout TargetDataLayout::layoutOf(BuiltinLayoutKind kind) const noexcept
 {
     switch (kind)

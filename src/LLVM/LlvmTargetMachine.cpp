@@ -16,6 +16,7 @@ namespace nativesharp::llvm_backend
 namespace
 {
 std::once_flag gX86Initialization;
+std::once_flag gAArch64Initialization;
 
 void initializeX86Backend()
 {
@@ -24,6 +25,15 @@ void initializeX86Backend()
     llvm_api::LLVMInitializeX86TargetMC();
     llvm_api::LLVMInitializeX86AsmParser();
     llvm_api::LLVMInitializeX86AsmPrinter();
+}
+
+void initializeAArch64Backend()
+{
+    llvm_api::LLVMInitializeAArch64TargetInfo();
+    llvm_api::LLVMInitializeAArch64Target();
+    llvm_api::LLVMInitializeAArch64TargetMC();
+    llvm_api::LLVMInitializeAArch64AsmParser();
+    llvm_api::LLVMInitializeAArch64AsmPrinter();
 }
 
 llvm_api::LLVMCodeGenOptLevel codeGenerationLevel(LlvmOptimizationLevel level)
@@ -73,23 +83,46 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsX64(
     LlvmOptimizationLevel level,
     std::string& error)
 {
+    return createWindows(target::TargetInfo::WindowsX64(), level, error);
+}
+
+std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsArm64(std::string& error)
+{
+    return createWindowsArm64(LlvmOptimizationLevel::O0, error);
+}
+
+std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsArm64(
+    LlvmOptimizationLevel level,
+    std::string& error)
+{
+    return createWindows(target::TargetInfo::WindowsArm64(), level, error);
+}
+
+std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindows(
+    const target::TargetInfo& targetInfo,
+    LlvmOptimizationLevel level,
+    std::string& error)
+{
     error.clear();
     if (llvmOptimizationLevelName(level).empty())
     {
-        error = "unsupported LLVM optimization level for Windows x64 TargetMachine";
+        error = "unsupported LLVM optimization level for Windows " +
+            std::string(targetInfo.architectureName()) + " TargetMachine";
         return nullptr;
     }
 
-    std::call_once(gX86Initialization, initializeX86Backend);
-
-    const target::TargetInfo targetInfo = target::TargetInfo::WindowsX64();
+    if (targetInfo.architecture() == target::Architecture::Arm64)
+        std::call_once(gAArch64Initialization, initializeAArch64Backend);
+    else
+        std::call_once(gX86Initialization, initializeX86Backend);
     const std::string triple(targetInfo.llvmTriple());
 
     llvm_api::LLVMTargetRef target = nullptr;
     char* message = nullptr;
     if (llvm_api::LLVMGetTargetFromTriple(triple.c_str(), &target, &message) != 0 || target == nullptr)
     {
-        error = message != nullptr ? message : "LLVM could not resolve the Windows x64 target";
+        error = message != nullptr ? message :
+            "LLVM could not resolve the Windows " + std::string(targetInfo.architectureName()) + " target";
         if (message != nullptr)
         {
             llvm_api::LLVMDisposeMessage(message);
@@ -111,7 +144,8 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsX64(
         llvm_api::LLVMCodeModelDefault);
     if (machine == nullptr)
     {
-        error = "LLVMCreateTargetMachine failed for Windows x64";
+        error = "LLVMCreateTargetMachine failed for Windows " +
+            std::string(targetInfo.architectureName());
         return nullptr;
     }
 
@@ -119,7 +153,8 @@ std::unique_ptr<LlvmTargetMachine> LlvmTargetMachine::createWindowsX64(
     if (targetData == nullptr)
     {
         llvm_api::LLVMDisposeTargetMachine(machine);
-        error = "LLVMCreateTargetDataLayout failed for Windows x64";
+        error = "LLVMCreateTargetDataLayout failed for Windows " +
+            std::string(targetInfo.architectureName());
         return nullptr;
     }
 

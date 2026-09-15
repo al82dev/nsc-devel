@@ -23,6 +23,14 @@ TargetInfo TargetInfo::WindowsX64()
         ObjectFormat::COFF);
 }
 
+TargetInfo TargetInfo::WindowsArm64()
+{
+    return TargetInfo(
+        Architecture::Arm64,
+        OperatingSystem::Windows,
+        ObjectFormat::COFF);
+}
+
 Architecture TargetInfo::architecture() const noexcept
 {
     return architecture_;
@@ -40,7 +48,7 @@ ObjectFormat TargetInfo::objectFormat() const noexcept
 
 std::string_view TargetInfo::architectureName() const noexcept
 {
-    return "x86-64";
+    return architecture_ == Architecture::Arm64 ? "arm64" : "x86-64";
 }
 
 std::string_view TargetInfo::operatingSystemName() const noexcept
@@ -55,27 +63,45 @@ std::string_view TargetInfo::objectFormatName() const noexcept
 
 std::string_view TargetInfo::llvmTriple() const noexcept
 {
-    return "x86_64-pc-windows-msvc";
+    return architecture_ == Architecture::Arm64
+        ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
 }
 
 std::string_view TargetInfo::abiName() const noexcept
 {
-    return "Microsoft Windows x64 ABI";
+    return architecture_ == Architecture::Arm64
+        ? "Microsoft Windows ARM64 ABI" : "Microsoft Windows x64 ABI";
 }
 
 std::string_view TargetInfo::cpuBaselineName() const noexcept
 {
-    return "x86-64-v1";
+    return architecture_ == Architecture::Arm64 ? "armv8-a" : "x86-64-v1";
 }
 
 bool TargetInfo::supportsCpuFeature(std::string_view feature) const noexcept
 {
+    if (architecture_ == Architecture::Arm64)
+        return feature.empty() || feature == "neon" || feature == "fp-armv8";
     return feature.empty() || feature == "x87" || feature == "mmx" ||
         feature == "sse" || feature == "sse2";
 }
 
 bool TargetInfo::isAssemblyRegister(std::string_view name) const noexcept
 {
+    if (architecture_ == Architecture::Arm64)
+    {
+        const auto numberedArm = [&](std::string_view prefix, unsigned maximum)
+        {
+            if (!name.starts_with(prefix) || name.size() == prefix.size()) return false;
+            unsigned ordinal = 0;
+            const std::string_view digits = name.substr(prefix.size());
+            const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), ordinal);
+            return parsed.ec == std::errc{} && parsed.ptr == digits.data() + digits.size() &&
+                ordinal <= maximum;
+        };
+        return name == "sp" || name == "fp" || name == "lr" || name == "xzr" || name == "wzr" ||
+            numberedArm("x", 30) || numberedArm("w", 30) || numberedArm("v", 31);
+    }
     static const std::unordered_set<std::string_view> registers = {
         "rax", "eax", "ax", "al", "ah", "rbx", "ebx", "bx", "bl", "bh",
         "rcx", "ecx", "cx", "cl", "ch", "rdx", "edx", "dx", "dl", "dh",
@@ -113,6 +139,7 @@ bool TargetInfo::isAssemblyRegister(std::string_view name) const noexcept
 
 std::string_view TargetInfo::requiredAssemblyFeature(std::string_view mnemonic) const noexcept
 {
+    if (architecture_ == Architecture::Arm64) return {};
     if (mnemonic.starts_with("v")) return "avx";
     if (mnemonic.starts_with("aes")) return "aes";
     if (mnemonic.starts_with("pclmul")) return "pclmul";

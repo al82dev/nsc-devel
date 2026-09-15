@@ -140,7 +140,7 @@
 98. **343 — ABI de callbacks y parámetros de salida / Callback and output-parameter ABI — COMPLETADO / COMPLETE**
 99. **344 — `vectorcall` / Vectorcall — COMPLETADO / COMPLETE**
 100. **345 — HVA y retornos vectoriales / Homogeneous vector aggregates — COMPLETADO / COMPLETE**
-101. **346 — Segundo target guiado por consumidor real / Consumer-driven additional target**
+101. **346 — Segundo target guiado por consumidor real / Consumer-driven additional target — COMPLETADO / COMPLETE**
 
 ## Tanda 9 — SIMD y CPU
 

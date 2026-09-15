@@ -10,6 +10,18 @@ semantics remain in `../language/NativeSharp_Language_Specification_1_0_1.md`.
 
 The words **must**, **must not**, **shall** and **shall not** are normative.
 
+## NSC-TARGET-002 — Consumer-qualified secondary object target
+
+The backend target layer shall expose Windows ARM64 as `aarch64-pc-windows-msvc`, with the Windows
+LLP64 data model, `armv8-a` baseline, architecture-specific feature and register catalogs, and an
+LLVM TargetMachine capable of emitting physical ARM64 COFF objects. Certification shall inspect
+the emitted COFF machine field (`IMAGE_FILE_MACHINE_ARM64`, `0xaa64`); changing only a label or
+triple is not sufficient.
+
+This secondary object-emission capability does not silently widen the current end-to-end product
+target stated above. Executable runtime, linker, ABI, debug, and execution matrices remain x64
+until each is independently implemented and certified for ARM64.
+
 ## NSC-FAIL-001 — Unhandled compiler failures
 
 An unexpected C++ exception that reaches the executable boundary shall produce exit code 70 and a

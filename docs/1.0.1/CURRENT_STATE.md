@@ -60,6 +60,11 @@ Assembly usa un target determinista `x86-64-v1`. Constraints y clobbers se valid
 catálogo físico y las instrucciones que requieren extensiones ausentes fallan antes de HIR con la
 feature concreta; la máquina host no amplía silenciosamente el producto.
 
+La capa de emisión guiada por consumidores también puede producir COFF para
+`aarch64-pc-windows-msvc`, con modelo Windows LLP64, baseline `armv8-a` y catálogo de registros
+ARM64. Esta capacidad secundaria se certifica leyendo `IMAGE_FILE_MACHINE_ARM64` del objeto real;
+no cambia por sí sola el target contractual ejecutable x64 ni promete runtime/linker ARM64.
+
 El lowering usa dialecto Intel y traduce `$outN`/`$N` al espacio de operands de LLVM. Outputs de
 registro vuelven como resultados escalares o aggregate y se almacenan en sus lvalues; memoria usa
 constraints indirectos con `elementtype`; `+r`, `=m`, resultados múltiples, clobbers y labels

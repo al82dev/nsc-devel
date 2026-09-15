@@ -6,7 +6,8 @@ namespace nativesharp::target
 {
 enum class Architecture
 {
-    X86_64
+    X86_64,
+    Arm64
 };
 
 enum class OperatingSystem
@@ -23,6 +24,7 @@ class TargetInfo final
 {
 public:
     static TargetInfo WindowsX64();
+    static TargetInfo WindowsArm64();
 
     Architecture architecture() const noexcept;
     OperatingSystem operatingSystem() const noexcept;

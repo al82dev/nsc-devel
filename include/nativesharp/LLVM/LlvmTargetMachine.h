@@ -6,6 +6,11 @@
 #include <memory>
 #include <string>
 
+namespace nativesharp::target
+{
+class TargetInfo;
+}
+
 namespace nativesharp::llvm_backend
 {
 class LlvmModule;
@@ -26,6 +31,10 @@ public:
 
     static std::unique_ptr<LlvmTargetMachine> createWindowsX64(std::string& error);
     static std::unique_ptr<LlvmTargetMachine> createWindowsX64(
+        LlvmOptimizationLevel level,
+        std::string& error);
+    static std::unique_ptr<LlvmTargetMachine> createWindowsArm64(std::string& error);
+    static std::unique_ptr<LlvmTargetMachine> createWindowsArm64(
         LlvmOptimizationLevel level,
         std::string& error);
 
@@ -49,6 +58,11 @@ private:
         std::string triple,
         std::string dataLayout,
         LlvmOptimizationLevel optimizationLevel) noexcept;
+
+    static std::unique_ptr<LlvmTargetMachine> createWindows(
+        const target::TargetInfo& targetInfo,
+        LlvmOptimizationLevel level,
+        std::string& error);
 
     void* targetMachine_ = nullptr;
     std::string triple_;
