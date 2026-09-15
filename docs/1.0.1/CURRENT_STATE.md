@@ -145,8 +145,9 @@ ownership ni cambios ABI.
 
 La forma `new (storage) T(args)` posee ya una frontera sintáctica propia. El AST conserva la
 expresión de destino, el tipo y los argumentos sin confundirla con asignación ordinaria, arrays o
-`new T`; su uso todavía se rechaza explícitamente antes de HIR porque la validación y el lowering
-físico corresponden al punto 318.
+`new T`. En el pipeline de proyecto, `storage` debe ser exactamente `T*`: HIR/MIR conservan la
+operación, LLVM comprueba null, inicializa el layout y llama al constructor sobre esa dirección sin
+reservar memoria. El caller mantiene capacidad, alineación, lifetime y ownership del storage.
 
 ## Superficie del lenguaje
 

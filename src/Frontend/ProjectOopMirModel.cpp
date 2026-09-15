@@ -542,6 +542,7 @@ const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
         case ProjectOopMirNodeKind::PointerArithmetic: return "pointer-arithmetic";
         case ProjectOopMirNodeKind::CompoundStore: return "compound-store";
         case ProjectOopMirNodeKind::ValueConstruct: return "value-construct";
+        case ProjectOopMirNodeKind::PlacementConstruct: return "placement-construct";
         case ProjectOopMirNodeKind::TemporaryAddress: return "temporary-address";
         case ProjectOopMirNodeKind::AddressValue: return "address-value";
         case ProjectOopMirNodeKind::BorrowValue: return "borrow-value";
@@ -2096,6 +2097,56 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
                 if (constructor == nullptr)
                 {
                     error = "C6 struct constructor has no OOP HIR function";
+                    return nullptr;
+                }
+                result->calleeName = constructor->mangledName;
+                result->memberOrdinal = node->memberOrdinal;
+            }
+            break;
+        }
+        case ProjectOopHirNodeKind::PlacementConstruction:
+        {
+            if (!node->targetTypeOrdinal.has_value() || objectLayoutModel_ == nullptr ||
+                nameLookup_ == nullptr || *node->targetTypeOrdinal >= nameLookup_->namedTypes().size())
+            {
+                error = "item 318 placement construction has no target layout identity";
+                return nullptr;
+            }
+            const NamedTypeDeclaration& target =
+                nameLookup_->namedTypes()[*node->targetTypeOrdinal];
+            if (target.kind == NamedTypeDeclarationKind::Struct)
+            {
+                const StructValueLayout* layout =
+                    objectLayoutModel_->structLayoutForType(*node->targetTypeOrdinal);
+                if (layout == nullptr)
+                {
+                    error = "item 318 placement struct construction has no value layout";
+                    return nullptr;
+                }
+                result->immediate = layout->size;
+                result->alignment = layout->alignment;
+            }
+            else
+            {
+                const ClassObjectLayout* layout =
+                    objectLayoutModel_->layoutForType(*node->targetTypeOrdinal);
+                if (layout == nullptr)
+                {
+                    error = "item 318 placement class construction has no object layout";
+                    return nullptr;
+                }
+                result->immediate = layout->size;
+                result->alignment = layout->alignment;
+            }
+            result->kind = ProjectOopMirNodeKind::PlacementConstruct;
+            result->zeroInitialize = true;
+            if (node->memberOrdinal.has_value())
+            {
+                const ProjectOopHirFunction* constructor =
+                    hirModel_->functionForMember(*node->memberOrdinal);
+                if (constructor == nullptr)
+                {
+                    error = "item 318 placement constructor has no OOP HIR function";
                     return nullptr;
                 }
                 result->calleeName = constructor->mangledName;

@@ -858,6 +858,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::RawAllocation: return "raw-allocation";
         case ProjectOopHirNodeKind::PointerArithmetic: return "pointer-arithmetic";
         case ProjectOopHirNodeKind::ValueConstruction: return "value-construction";
+        case ProjectOopHirNodeKind::PlacementConstruction: return "placement-construction";
         case ProjectOopHirNodeKind::AggregateInitializer: return "aggregate-initializer";
         case ProjectOopHirNodeKind::AggregateElement: return "aggregate-element";
         case ProjectOopHirNodeKind::TemporaryAddress: return "temporary-address";
@@ -5279,7 +5280,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
         }
 
         case ast::AstNodeKind::ObjectCreationExpression:
+        case ast::AstNodeKind::PlacementConstructionExpression:
         {
+            const bool placement =
+                expression->kind() == ast::AstNodeKind::PlacementConstructionExpression;
             const ObjectConstructionBinding* binding = constructionBinding(expression);
             if (binding == nullptr ||
                 (binding->resolution != ConstructionResolutionKind::ResolvedExplicit &&
@@ -5291,16 +5295,29 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             const auto ordinal = static_cast<std::size_t>(
                 binding - constructionModel_->constructions().data());
             auto node = makeNode(
-                binding->targetIsStruct
+                placement
+                    ? ProjectOopHirNodeKind::PlacementConstruction
+                    : binding->targetIsStruct
                     ? ProjectOopHirNodeKind::ValueConstruction
                     : ProjectOopHirNodeKind::ObjectConstruction,
-                expression, binding->targetTypeKey);
+                expression,
+                placement && binding->targetIsStruct
+                    ? binding->targetTypeKey + "*"
+                    : binding->targetTypeKey);
             node->constructionOrdinal = ordinal;
             node->targetTypeOrdinal = binding->targetTypeOrdinal;
-            node->memberOrdinal = binding->selectedConstructorMemberOrdinal;
+            node->memberOrdinal = binding->selectedConstructorMemberOrdinal.has_value()
+                ? binding->selectedConstructorMemberOrdinal
+                : binding->implicitDefaultBaseConstructorMemberOrdinal;
             node->argumentCount =
                 expression->children().size() + binding->selectedDefaultArguments.size();
             bool hasOwnedTemporary = false;
+            if (placement)
+            {
+                auto storage = lowerExpression(expression->first(), memberOrdinal, false, error);
+                if (storage == nullptr) return nullptr;
+                node->children.push_back(std::move(storage));
+            }
             for (std::size_t index = 0; index < expression->children().size(); ++index)
             {
                 auto argument = lowerExpression(expression->children()[index], memberOrdinal, false, error);

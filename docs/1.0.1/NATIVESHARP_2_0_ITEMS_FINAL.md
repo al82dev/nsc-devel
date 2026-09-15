@@ -106,7 +106,7 @@
 70. **315 — Analizador unificado de escapes / Unified escape analysis — COMPLETADO / COMPLETE**
 71. **316 — Análisis de duración de referencias / Reference lifetime analysis — COMPLETADO / COMPLETE**
 72. **317 — Sintaxis de placement construction / Placement construction syntax — COMPLETADO / COMPLETE**
-73. **318 — Lowering de placement construction / Placement construction lowering**
+73. **318 — Lowering de placement construction / Placement construction lowering — COMPLETADO / COMPLETE**
 74. **319 — Destrucción explícita sin liberar almacenamiento / Explicit destruction without deallocation**
 75. **320 — Separar propiedad del objeto y almacenamiento / Separate object and storage ownership**
 76. **321 — Contextos `noheap` / No-heap contexts**

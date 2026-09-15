@@ -59,6 +59,10 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
         output << " bytes=" << node->immediate << " align=" << node->alignment
                << " zero=" << (node->zeroInitialize ? "true" : "false")
                << " failure=" << (node->allocationFailureReturnsNull ? "null" : "trap");
+    if (node->kind == ProjectOopMirNodeKind::PlacementConstruct)
+        output << " bytes=" << node->immediate << " align=" << node->alignment
+               << " zero=" << (node->zeroInitialize ? "true" : "false")
+               << " storage=supplied";
     if (node->kind == ProjectOopMirNodeKind::ArrayAllocate ||
         node->kind == ProjectOopMirNodeKind::ArrayElementLoad ||
         node->kind == ProjectOopMirNodeKind::ArrayElementAddress)

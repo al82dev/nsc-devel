@@ -864,6 +864,13 @@ void ProjectObjectLayoutModel::buildAllocationPlans()
         {
             continue;
         }
+        if (construction.syntax != nullptr &&
+            construction.syntax->kind() == ast::AstNodeKind::PlacementConstructionExpression)
+        {
+            // Item 318 consumes caller-provided storage and therefore has a layout obligation but
+            // never an allocation plan. MIR reads the canonical class/struct layout directly.
+            continue;
+        }
         const ClassObjectLayout* layout = layoutForType(construction.targetTypeOrdinal);
         if (layout == nullptr)
         {

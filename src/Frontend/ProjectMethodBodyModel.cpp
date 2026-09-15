@@ -6271,19 +6271,63 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             break;
         case ast::AstNodeKind::PlacementConstructionExpression:
-            analyzeExpression(
-                expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-            for (const ast::AstNode* argument : expression->children())
+            if (memberModel_ != nullptr && nameLookup_ != nullptr)
             {
-                analyzeExpression(
-                    argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
-                    /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+                const std::string targetType = memberModel_->canonicalTypeKey(
+                    expression->typeSyntax(), *nameLookup_);
+                const NamedTypeDeclaration* target =
+                    nameLookup_->resolvedDeclaration(expression->typeSyntax());
+                const bool constructible = target != nullptr &&
+                    (target->kind == NamedTypeDeclarationKind::Class ||
+                     target->kind == NamedTypeDeclarationKind::Struct) &&
+                    expression->typeSyntax() != nullptr &&
+                    expression->typeSyntax()->modifiers().empty();
+                if (!constructible)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidAllocationType,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "placement construction requires an unmodified class or struct type");
+                }
+
+                const ExpressionResult storage = analyzeExpression(
+                    expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+                const std::string requiredStorageType = targetType + "*";
+                bool storageValid = storage.valid && !storage.methodGroup;
+                if (storageValid && storage.typeKey != requiredStorageType)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->first()->range(),
+                        "placement construction of '" + targetType +
+                            "' requires destination storage of exact type '" +
+                            requiredStorageType + "'");
+                    storageValid = false;
+                }
+
+                bool argumentsValid = true;
+                for (const ast::AstNode* argument : expression->children())
+                {
+                    const ExpressionResult argumentResult = analyzeExpression(
+                        argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                        /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+                    argumentsValid = argumentsValid && argumentResult.valid &&
+                        !argumentResult.methodGroup;
+                }
+                // A placed struct is exposed through the raw T* that names its supplied storage.
+                // A class expression keeps NativeSharp's ordinary class-reference type even
+                // though its placement operand is T*: physically both are the object address,
+                // while logically this lets `placed.Member` use the class contract instead of
+                // treating the address as a pointer-to-reference slot.
+                result.typeKey = target != nullptr &&
+                        target->kind == NamedTypeDeclarationKind::Class
+                    ? targetType
+                    : requiredStorageType;
+                result.valid = constructible && storageValid && argumentsValid &&
+                    !isErrorType(targetType);
             }
-            diagnostics.report(
-                diagnostics::DiagnosticId::PlacementConstructionNotAvailable,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "placement construction syntax is recognized but is not executable until item 318 lowering");
             break;
         case ast::AstNodeKind::NewExpression:
         case ast::AstNodeKind::StackallocExpression:

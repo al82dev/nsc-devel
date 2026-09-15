@@ -650,6 +650,17 @@ if(NSC_BUILD_TESTS)
         nsc_item317_placement_construction_syntax_tests
         tests/unit/Item317PlacementConstructionSyntaxTests.cpp
         nsc.item317.placement-construction-syntax)
+    add_executable(
+        nsc_item318_placement_construction_lowering_tests
+        tests/unit/Item318PlacementConstructionLoweringTests.cpp)
+    target_link_libraries(nsc_item318_placement_construction_lowering_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item318_placement_construction_lowering_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item318_placement_construction_lowering_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item318_placement_construction_lowering_tests)
+    add_test(
+        NAME nsc.item318.placement-construction-lowering
+        COMMAND nsc_item318_placement_construction_lowering_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)

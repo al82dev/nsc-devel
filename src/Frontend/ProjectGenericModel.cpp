@@ -1078,6 +1078,14 @@ ast::TypeSyntax* ProjectGenericModel::inferExpressionType(
         case ast::AstNodeKind::DefaultValueExpression:
         case ast::AstNodeKind::ObjectCreationExpression:
             return clone(expression->typeSyntax());
+        case ast::AstNodeKind::PlacementConstructionExpression:
+        {
+            ast::TypeSyntax* result = clone(expression->typeSyntax());
+            if (result != nullptr)
+                result->addModifier(ast::TypeModifierSyntax{
+                    ast::TypeModifierSyntaxKind::Pointer, nullptr, expression->range()});
+            return result;
+        }
         case ast::AstNodeKind::NewExpression:
         {
             ast::TypeSyntax* result = clone(expression->typeSyntax());

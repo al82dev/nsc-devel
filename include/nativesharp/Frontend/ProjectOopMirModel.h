@@ -76,6 +76,9 @@ enum class ProjectOopMirNodeKind
     // C6 -- see ProjectOopHirNodeKind::ValueConstruction. `immediate` is the struct's size,
     // `alignment` its alignment, `calleeName` the constructor to run (empty for a default).
     ValueConstruct,
+    // Item 318. First child is exact T* destination storage; the remaining prefix of
+    // argumentCount children are constructor arguments. Uses no allocator.
+    PlacementConstruct,
     // C7 -- see ProjectOopHirNodeKind::AggregateInitializer. `immediate` is the aggregate's size,
     // `alignment` its alignment; children are AggregateElementStore nodes.
     AggregateInitialize,

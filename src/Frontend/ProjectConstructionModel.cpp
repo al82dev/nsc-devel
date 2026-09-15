@@ -247,7 +247,8 @@ void ProjectConstructionModel::scanUnsupportedContexts(
     {
         return;
     }
-    if (node->kind() == ast::AstNodeKind::ObjectCreationExpression)
+    if (node->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+        node->kind() == ast::AstNodeKind::PlacementConstructionExpression)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidCall,
@@ -276,8 +277,11 @@ void ProjectConstructionModel::scanNode(
         return;
     }
 
-    if (node->kind() == ast::AstNodeKind::ObjectCreationExpression)
+    if (node->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+        node->kind() == ast::AstNodeKind::PlacementConstructionExpression)
     {
+        if (node->kind() == ast::AstNodeKind::PlacementConstructionExpression)
+            scanNode(node->first(), callerMemberOrdinal, diagnostics);
         for (const ast::AstNode* argument : node->children())
         {
             scanNode(argument, callerMemberOrdinal, diagnostics);

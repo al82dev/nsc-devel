@@ -88,6 +88,9 @@ enum class ProjectOopHirNodeKind
     // allocates: this one initializes storage IN PLACE and yields the value. No heap, no class
     // descriptor, nothing to free -- which is exactly what makes a struct a struct.
     ValueConstruction,
+    // Item 318. children[0] is caller-supplied T* storage, followed by argumentCount constructor
+    // arguments and then synthesized field-initializer work. No allocation is performed.
+    PlacementConstruction,
     // C7 "aggregate initializer": `V v = {1, 2};` and `int[4] cells = {1};`. typeKey is the
     // aggregate; children are AggregateElement nodes, ALREADY FLATTENED to absolute byte offsets,
     // so nesting (`Matrix m = { {1, 0}, {0, 1} };`) is resolved here rather than in the backend.

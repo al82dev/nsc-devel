@@ -844,11 +844,30 @@ its type syntax shall retain `T`, and its children shall retain constructor argu
 order, including argument names and pass modes. Both parenthesized groups are mandatory.
 
 The new form shall not alter the established AST identity of ordinary object, array, or raw-storage
-allocation. Until item 318 defines semantic binding and lowering, both frontend pipelines shall
-emit `PlacementConstructionNotAvailable` as a source diagnostic and shall not reach HIR, allocate
-memory, call a constructor or silently erase the expression. Focused evidence shall cover the AST
-shape, a compound destination expression, ordinary-`new` non-regression, missing argument-list
-rejection and the explicit pre-lowering boundary.
+allocation. The syntax-only frontend may retain `PlacementConstructionNotAvailable`; the project
+pipeline shall implement the expression according to NSC-PLACEMENT-002. Focused syntax evidence
+shall cover the AST shape, a compound destination expression, ordinary-`new` non-regression,
+missing argument-list rejection and the explicit standalone-frontend boundary.
+
+## NSC-PLACEMENT-002 — Supplied-storage construction lowering
+
+Project semantic analysis shall require an unmodified concrete class or struct `T` and exact
+destination type `T*`. It shall assign result type `T*` for structs and the ordinary non-owning
+class-reference type `T` for classes. Constructor resolution shall reuse the established candidate,
+conversion, named/default argument, accessibility and ownership machinery.
+
+HIR shall carry a dedicated placement node whose first child is the destination, followed by the
+source-ordered constructor arguments and any synthesized initializer work. MIR shall freeze the
+canonical target byte size and alignment without creating an allocation plan. LLVM shall evaluate
+the destination once, then each argument once from left to right, guard against null, zero the
+supplied bytes, install a class descriptor when applicable, invoke the selected constructor with
+the destination as `this`, and return that same address.
+
+No placement path may call `__nativesharp_alloc`, acquire storage ownership, schedule deallocation,
+or manufacture a second object. Pointer capacity, writability and alignment remain explicit unsafe
+caller obligations. Focused O0 evidence shall cover explicit and implicit-default struct
+construction, class descriptor/member behavior, destination/argument order, HIR/MIR audit nodes,
+verifier-clean LLVM, linked execution, and invalid destination/type/constructor diagnostics.
 
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 

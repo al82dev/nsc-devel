@@ -334,16 +334,37 @@ constructor son obligatorios, incluso cuando ésta queda vacía. Esto mantiene l
 `new T(args)`, `new T[count]` y `new T`.
 
 `storage` es una expresión completa y se conserva separada de los argumentos, que mantienen su
-orden y sus modos `ref`/`out`/`in`. En el punto 317 la forma tiene contrato exclusivamente
-sintáctico: se reconoce y representa de manera estable, pero cualquier intento de compilarla
-produce un diagnóstico de fuente antes de HIR. Las reglas de tipo, alineación, evaluación única,
-constructor, resultado y efectos físicos pertenecen al lowering del punto 318.
+orden y sus modos `ref`/`out`/`in`. El punto 317 fija esta frontera sintáctica; las reglas de tipo,
+evaluación y ejecución se definen en NS-PLACEMENT-002.
 
 The spelling `new (storage) T(arguments)` reserves placement construction into program-supplied
 storage. Parentheses around the storage expression and an explicit constructor argument list are
 mandatory. The AST retains storage separately from ordered call arguments. Item 317 defines this
-grammar boundary only; compilation diagnoses the expression before HIR until item 318 supplies its
-semantic and lowering contract.
+grammar boundary; NS-PLACEMENT-002 defines its semantic and physical execution contract.
+
+### NS-PLACEMENT-002 — Construcción física sin asignación
+
+`T` debe ser una clase o struct concreto sin modificadores y `storage` debe tener exactamente tipo
+`T*`. La expresión de storage se evalúa una vez y antes que los argumentos; éstos se evalúan una
+vez, de izquierda a derecha, y usan la selección, conversiones, defaults, accesibilidad y contratos
+de ownership del constructor ordinario.
+
+El destino debe ser no nulo y señalar suficientes bytes escribibles con la alineación de `T`; salvo
+la comprobación de null, capacidad, validez y alineación pertenecen al contrato unsafe del puntero.
+El compilador no reserva ni libera memoria: pone a cero el layout canónico, instala el descriptor
+si `T` es clase y ejecuta el constructor seleccionado sobre esa misma dirección. Un struct produce
+`T*`; una clase produce una referencia `T` no propietaria respaldada por el storage suministrado.
+
+La operación comienza el lifetime de un objeto pero no programa su final. La destrucción explícita
+sin liberar storage pertenece a NS-PLACEMENT-003/punto 319, y la separación completa entre
+ownership del objeto y del storage al punto 320.
+
+Placement construction requires an exact `T*` destination for a concrete class or struct. Storage
+is evaluated once before left-to-right constructor arguments. The compiler null-checks, zeroes the
+canonical layout, installs class infrastructure when required, and invokes the selected constructor
+without calling an allocator. Struct placement returns `T*`; class placement returns a non-owning
+`T` reference to the supplied object bytes. The caller owns pointer validity, capacity, alignment,
+storage lifetime, and—until the following contracts—explicit object destruction.
 
 ### NS-DELEGATE-001 — Delegates, closures y eventos
 

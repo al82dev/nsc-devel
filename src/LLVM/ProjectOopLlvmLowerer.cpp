@@ -8422,6 +8422,8 @@ private:
             }
             case frontend::ProjectOopMirNodeKind::ValueConstruct:
                 return lowerValueConstruction(node, error);
+            case frontend::ProjectOopMirNodeKind::PlacementConstruct:
+                return lowerPlacementConstruction(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateInitialize:
                 return lowerAggregateInitializer(node, error);
             case frontend::ProjectOopMirNodeKind::AggregateElementStore:
@@ -11414,6 +11416,128 @@ private:
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
         LLVMPositionBuilderAtEnd(builder_, endBlock);
         return object;
+    }
+
+    LLVMValueRef lowerPlacementConstruction(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error)
+    {
+        if (node->children.empty() || node->children.front() == nullptr)
+            return failValue(error, "item 318 placement construction requires destination storage");
+        if (node->immediate == 0 || node->alignment == 0)
+            return failValue(error, "item 318 placement construction has no target layout");
+        if (node->argumentCount + 1 > node->children.size())
+            return failValue(error, "item 318 placement construction has an invalid argument count");
+
+        // The destination is evaluated exactly once and before every constructor argument. Its
+        // semantic type is exact T*, so no conversion or hidden temporary can substitute another
+        // location after this point.
+        LLVMValueRef storage = lowerExpression(node->children.front().get(), error);
+        if (storage == nullptr) return nullptr;
+
+        std::vector<LLVMValueRef> evaluatedArguments;
+        evaluatedArguments.reserve(node->argumentCount);
+        for (std::size_t index = 0; index < node->argumentCount; ++index)
+        {
+            const auto& child = node->children[index + 1];
+            LLVMValueRef value = lowerExpression(child.get(), error);
+            if (value == nullptr) return nullptr;
+            value = wrapIndirectArgument(value, child->typeKey, error);
+            if (value == nullptr) return nullptr;
+            evaluatedArguments.push_back(value);
+        }
+        std::vector<std::size_t> parameterToSource;
+        if (!callArgumentOrder(node, evaluatedArguments.size(), parameterToSource, error))
+            return nullptr;
+        std::vector<LLVMValueRef> orderedArguments;
+        orderedArguments.reserve(evaluatedArguments.size());
+        for (const std::size_t source : parameterToSource)
+            orderedArguments.push_back(evaluatedArguments[source]);
+
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef notNull = LLVMBuildICmp(
+            builder_, LLVMIntNE, storage, LLVMConstNull(pointerType), "placement.notnull");
+        if (!emitGuard(notNull, LlvmTrapReason::NullReference, "placement.storage", error))
+            return nullptr;
+
+        if (node->zeroInitialize)
+        {
+            LLVMValueRef args[] = {
+                storage,
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, args, 4, "");
+        }
+
+        if (!node->targetTypeOrdinal.has_value() ||
+            *node->targetTypeOrdinal >= nameLookup_.namedTypes().size())
+        {
+            return failValue(error, "item 318 placement construction has no target type ordinal");
+        }
+        const frontend::NamedTypeDeclaration& targetType =
+            nameLookup_.namedTypes()[*node->targetTypeOrdinal];
+        if (targetType.kind == frontend::NamedTypeDeclarationKind::Class)
+        {
+            LLVMValueRef descriptorValue = nullptr;
+            const auto descriptorAccessor =
+                descriptorAccessorFunctions_.find(*node->targetTypeOrdinal);
+            if (descriptorAccessor != descriptorAccessorFunctions_.end() &&
+                runtimeDescriptorAccessorTypes_.contains(*node->targetTypeOrdinal))
+            {
+                descriptorValue = buildNoUnwindCall(
+                    descriptorAccessor->second.functionType,
+                    descriptorAccessor->second.function,
+                    nullptr,
+                    0,
+                    "placement.classdesc");
+            }
+            else
+            {
+                const auto descriptor = descriptorGlobals_.find(*node->targetTypeOrdinal);
+                if (descriptor != descriptorGlobals_.end()) descriptorValue = descriptor->second;
+            }
+            if (descriptorValue == nullptr)
+                return failValue(error, "item 318 placement construction cannot resolve its class descriptor");
+            LLVMValueRef descriptorStore = LLVMBuildStore(builder_, descriptorValue, storage);
+            if (node->alignment > 1U)
+                LLVMSetAlignment(descriptorStore, static_cast<unsigned>(node->alignment));
+        }
+
+        if (!node->calleeName.empty())
+        {
+            const auto constructor = functions_.find(node->calleeName);
+            if (constructor == functions_.end())
+                return failValue(error, "item 318 placement constructor target missing: " + node->calleeName);
+            std::vector<LLVMValueRef> constructorArguments;
+            constructorArguments.reserve(1 + orderedArguments.size());
+            constructorArguments.push_back(storage);
+            constructorArguments.insert(
+                constructorArguments.end(), orderedArguments.begin(), orderedArguments.end());
+            if (buildPotentiallyThrowingCall(
+                    constructor->second.functionType,
+                    constructor->second.function,
+                    constructorArguments.data(),
+                    static_cast<unsigned>(constructorArguments.size()),
+                    "",
+                    error) == nullptr && !error.empty())
+            {
+                return nullptr;
+            }
+        }
+
+        LLVMValueRef previousOverride = constructionThisOverride_;
+        constructionThisOverride_ = storage;
+        for (std::size_t index = node->argumentCount + 1; index < node->children.size(); ++index)
+        {
+            if (lowerExpression(node->children[index].get(), error) == nullptr)
+            {
+                constructionThisOverride_ = previousOverride;
+                return nullptr;
+            }
+        }
+        constructionThisOverride_ = previousOverride;
+        return storage;
     }
 
     LLVMValueRef lowerDeallocation(const frontend::ProjectOopMirNode* node, std::string& error)

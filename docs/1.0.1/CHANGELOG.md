@@ -36,8 +36,10 @@ empaqueta con NativeSharp 1.0.1.
   duración mayor que su scope de origen; parámetros del llamador permanecen válidos dentro del
   método, sin cambios de ownership, metadata, runtime ni ABI.
 - La gramática reconoce `new (storage) T(args)` como construcción placement con destino, tipo y
-  argumentos separados en AST. Hasta completar su lowering en el punto 318, el compilador emite
-  un diagnóstico de fuente explícito y no genera HIR.
+  argumentos separados en AST.
+- Placement construction reutiliza la resolución ordinaria de constructores y construye clases o
+  structs directamente en `T*` sin invocar al asignador. Evalúa destino y argumentos una vez,
+  inicializa el layout y devuelve la misma dirección como puntero de struct o referencia de clase.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.
