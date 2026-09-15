@@ -1,0 +1,72 @@
+namespace NativeSharp.Core.Threading
+{
+    // Item 372. NativeSharp cannot yet declare a generic delegate whose generic parameter is its
+    // return type (the parameters are introduced after the return type is parsed), so the typed
+    // producer is an abstract generic class. It preserves the essential contract: each closed
+    // JobFunction<T> can only produce T, without casts or untyped storage.
+    public abstract class JobFunction<T>
+    {
+        public abstract T Invoke();
+    }
+
+    public class Job<T>
+    {
+        private JobFunction<T> function_;
+        private ThreadStart work_;
+        private T result_;
+        private owned AtomicInt32 state_;
+        private owned Event completed_;
+
+        public Job(JobFunction<T> function)
+        {
+            function_ = function;
+            work_ = Run;
+            result_ = default(T);
+            state_ = new AtomicInt32(0);
+            completed_ = new Event(true, false);
+        }
+
+        // A Job is single-shot. false means it was already scheduled or the bounded pool queue
+        // could not accept it; a failed queue attempt restores the ready state for retry.
+        public bool Schedule(ThreadPool pool)
+        {
+            if (state_.CompareExchange(1, 0) != 0) { return false; }
+            if (!pool.Queue(work_))
+            {
+                state_.Store(0);
+                return false;
+            }
+            return true;
+        }
+
+        public bool IsScheduled()
+        {
+            return state_.Load() != 0;
+        }
+
+        public bool IsCompleted()
+        {
+            return state_.Load() == 2;
+        }
+
+        public bool Wait(int millisecondsTimeout)
+        {
+            return completed_.Wait(millisecondsTimeout);
+        }
+
+        // Schedule must have succeeded before Result is requested. The event publishes result_
+        // after Run writes it, so consumers never observe a partially produced value.
+        public T Result()
+        {
+            completed_.Wait(-1);
+            return result_;
+        }
+
+        private void Run()
+        {
+            result_ = function_.Invoke();
+            state_.Store(2);
+            completed_.Set();
+        }
+    }
+}
