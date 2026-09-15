@@ -2,6 +2,7 @@
 
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
@@ -14,6 +15,7 @@
 #include <cstdint>
 // <cstdlib> por getenv/_dupenv_s y free -- ver linkTemporaryRootOverride mas abajo.
 #include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <span>
 #include <string>
@@ -161,6 +163,96 @@ bool verifyObject(const std::filesystem::path& path, std::string_view label, std
     if (!verifier.verify(path))
     {
         error = std::string(label) + " COFF verification failed: " + verifier.error();
+        return false;
+    }
+    return true;
+}
+
+std::filesystem::path incrementalStatePath(const std::filesystem::path& outputPath)
+{
+    std::filesystem::path state = outputPath;
+    state += ".nslinc";
+    return state;
+}
+
+bool appendFileIdentity(
+    const std::filesystem::path& path, std::string& keyMaterial, std::string& error)
+{
+    basic::Sha256Digest digest{};
+    std::uintmax_t size = 0;
+    if (!basic::sha256File(path, digest, size, error)) return false;
+    keyMaterial += path.filename().generic_string() + ":" + std::to_string(size) + ":" +
+        basic::sha256Hex(digest) + "\n";
+    return true;
+}
+
+std::string incrementalLinkKey(
+    std::span<const std::filesystem::path> programObjects,
+    std::string_view programLlvmText,
+    std::string_view runtimeLlvmText,
+    std::span<const std::filesystem::path> extraLibraries,
+    std::span<const ExternalImportModule> externalImports,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
+    WindowsExecutableSubsystem subsystem,
+    std::string_view mainSymbol,
+    std::string& error)
+{
+    std::string material = "NativeSharp.IncrementalLink.v1\n";
+    material += std::to_string(static_cast<unsigned>(optimizationLevel)) + ":" +
+        std::to_string(static_cast<unsigned>(debugInformation)) + ":" +
+        std::to_string(static_cast<unsigned>(subsystem)) + ":" + std::string(mainSymbol) + "\n";
+    material.append(programLlvmText);
+    material.push_back('\n');
+    material.append(runtimeLlvmText);
+    material.push_back('\n');
+    for (const auto& module : externalImports)
+    {
+        material += module.dllName + "\n";
+        for (const std::string& symbol : module.symbols) material += symbol + "\n";
+    }
+    for (const std::filesystem::path& object : programObjects)
+        if (!appendFileIdentity(object, material, error)) return {};
+    for (const std::filesystem::path& library : extraLibraries)
+        if (!appendFileIdentity(library, material, error)) return {};
+    const auto bytes = std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
+std::string readIncrementalState(const std::filesystem::path& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    std::string value;
+    if (file) std::getline(file, value);
+    return value;
+}
+
+bool writeIncrementalState(
+    const std::filesystem::path& path, std::string_view key, std::string& error)
+{
+    const std::filesystem::path temporary = path.string() + ".tmp";
+    {
+        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+        if (!file)
+        {
+            error = "could not write incremental link state: " + temporary.string();
+            return false;
+        }
+        file << key << '\n';
+        if (!file)
+        {
+            error = "could not finish incremental link state: " + temporary.string();
+            return false;
+        }
+    }
+    std::error_code filesystemError;
+    std::filesystem::remove(path, filesystemError);
+    filesystemError.clear();
+    std::filesystem::rename(temporary, path, filesystemError);
+    if (filesystemError)
+    {
+        error = "could not publish incremental link state: " + filesystemError.message();
         return false;
     }
     return true;
@@ -373,6 +465,7 @@ bool WindowsExecutableBuilder::buildObjects(
     std::string& error)
 {
     info_ = {};
+    reusedIncrementalLink_ = false;
     error.clear();
     if (programObjects.empty())
     {
@@ -418,6 +511,32 @@ bool WindowsExecutableBuilder::buildObjects(
     {
         error = "runtime LLVM optimization failed: " + targetError;
         return false;
+    }
+
+    std::string incrementalKey;
+    const std::filesystem::path statePath = incrementalStatePath(outputPath);
+    if (incrementalLink_)
+    {
+        const std::string runtimeText = runtimeModule->text();
+        incrementalKey = incrementalLinkKey(programObjects, programLlvmText, runtimeText,
+            extraLinkLibraries_, externalImports_, optimizationLevel, debugInformation_,
+            subsystem_, mainSymbol, error);
+        if (incrementalKey.empty()) return false;
+        std::filesystem::path pdbPath = outputPath;
+        pdbPath.replace_extension(".pdb");
+        const bool debugCompanionExists =
+            debugInformation_ == llvm_backend::DebugInformationKind::None ||
+            std::filesystem::is_regular_file(pdbPath);
+        if (debugCompanionExists && readIncrementalState(statePath) == incrementalKey)
+        {
+            PeExecutableVerifier verifier;
+            if (verifier.verify(outputPath))
+            {
+                info_ = verifier.info();
+                reusedIncrementalLink_ = true;
+                return true;
+            }
+        }
     }
 
     std::unique_ptr<TemporaryDirectory> temporaryDirectory = createTemporaryDirectory(targetError);
@@ -475,6 +594,7 @@ bool WindowsExecutableBuilder::buildObjects(
         return false;
     }
     info_ = verifier.info();
+    if (incrementalLink_ && !writeIncrementalState(statePath, incrementalKey, error)) return false;
     return true;
 }
 
@@ -492,6 +612,16 @@ void WindowsExecutableBuilder::setDebugInformation(
     llvm_backend::DebugInformationKind debugInformation) noexcept
 {
     debugInformation_ = debugInformation;
+}
+
+void WindowsExecutableBuilder::setIncrementalLink(bool enabled) noexcept
+{
+    incrementalLink_ = enabled;
+}
+
+bool WindowsExecutableBuilder::reusedIncrementalLink() const noexcept
+{
+    return reusedIncrementalLink_;
 }
 
 void WindowsExecutableBuilder::setSubsystem(WindowsExecutableSubsystem subsystem) noexcept

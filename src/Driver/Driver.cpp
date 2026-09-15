@@ -2818,6 +2818,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     llvm_backend::LinkTimeOptimizationMode linkTimeOptimization =
         llvm_backend::LinkTimeOptimizationMode::None;
     bool linkTimeOptimizationSeen = false;
+    bool incrementalLink = false;
     llvm_backend::FloatingPointMode floatingPointMode = llvm_backend::FloatingPointMode::Precise;
     bool floatingPointModeSeen = false;
     llvm_backend::FmaContractPolicy fmaContractPolicy = llvm_backend::FmaContractPolicy::Off;
@@ -2856,6 +2857,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
         }
         if (argument == "--llvm-pass-trace")
         {
+            continue;
+        }
+        if (argument == "--incremental-link")
+        {
+            incrementalLink = true;
             continue;
         }
         if (argument == "-flto")
@@ -3273,6 +3279,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     const bool linkTimeOptimizationCapableInvocation = args.size() == 4 && args[2] == "-o" &&
         (args[0] == "--emit-project-oop-exe" || args[0] == "--emit-project-oop-lib" ||
          args[0] == "--emit-project-oop-dll");
+    const bool incrementalLinkCapableInvocation = args.size() == 4 && args[2] == "-o" &&
+        args[0] == "--emit-project-oop-exe";
     if (subsystemSeen && !executableInvocation)
     {
         error << "nsc: error: /subsystem is only valid when emitting an executable\n";
@@ -3306,6 +3314,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     {
         error << "nsc: error: -flto is supported when emitting a project OOP executable, "
                  "static library, or DLL\n";
+        return ExitCode::CommandLineError;
+    }
+    if (incrementalLink && !incrementalLinkCapableInvocation)
+    {
+        error << "nsc: error: --incremental-link is supported when emitting a project OOP executable\n";
         return ExitCode::CommandLineError;
     }
 
@@ -3695,6 +3708,7 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             return runProjectOopExecutableGeneration(
                 args[1], args[3], optimizationLevel, debugInformation, debugPrefixMaps,
                 linkTimeOptimization,
+                incrementalLink,
                 subsystem, extraLinkLibraries, output, error);
         }
         if (action == "--emit-project-oop-lib")
@@ -4772,6 +4786,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     llvm_backend::DebugInformationKind debugInformation,
     const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
     llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
+    bool incrementalLink,
     linker::WindowsExecutableSubsystem subsystem,
     const std::vector<std::filesystem::path> &extraLinkLibraries,
     std::ostream &output,
@@ -4867,6 +4882,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     linker::WindowsExecutableBuilder builder;
     builder.setSubsystem(subsystem);
     builder.setDebugInformation(debugInformation);
+    builder.setIncrementalLink(incrementalLink);
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;
@@ -4914,6 +4930,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
            << (objectBundle->thinLtoIndexDigest().empty()
                    ? "none"
                    : objectBundle->thinLtoIndexDigest()) << '\n'
+           << "incremental-link: "
+           << (incrementalLink ? (builder.reusedIncrementalLink() ? "hit" : "miss") : "disabled") << '\n'
            << "linked-libraries: " << linkLibraries.size() << '\n'
            << "packaged-runtimes: " << packagedRuntimes.size() << '\n'
            << "sections: " << builder.info().sectionCount << '\n'

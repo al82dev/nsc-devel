@@ -2531,6 +2531,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item391_thinlto_tests)
     add_test(NAME nsc.item391-thinlto COMMAND nsc_item391_thinlto_tests)
 
+    add_executable(nsc_item392_incremental_link_tests tests/unit/Item392IncrementalLinkTests.cpp)
+    target_link_libraries(nsc_item392_incremental_link_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item392_incremental_link_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item392_incremental_link_tests)
+    add_test(NAME nsc.item392-incremental-link COMMAND nsc_item392_incremental_link_tests)
+
     add_executable(nsc_windows_runtime_tests tests/unit/WindowsRuntimeTests.cpp)
     target_link_libraries(nsc_windows_runtime_tests PRIVATE nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_windows_runtime_tests PRIVATE cxx_std_20)

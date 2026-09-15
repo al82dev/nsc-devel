@@ -59,6 +59,8 @@ public:
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
     void setSubsystem(WindowsExecutableSubsystem subsystem) noexcept;
     void setDebugInformation(llvm_backend::DebugInformationKind debugInformation) noexcept;
+    void setIncrementalLink(bool enabled) noexcept;
+    bool reusedIncrementalLink() const noexcept;
 
 private:
     PeExecutableInfo info_;
@@ -66,5 +68,7 @@ private:
     std::vector<std::filesystem::path> extraLinkLibraries_;
     WindowsExecutableSubsystem subsystem_ = WindowsExecutableSubsystem::Console;
     llvm_backend::DebugInformationKind debugInformation_ = llvm_backend::DebugInformationKind::None;
+    bool incrementalLink_ = false;
+    bool reusedIncrementalLink_ = false;
 };
 }

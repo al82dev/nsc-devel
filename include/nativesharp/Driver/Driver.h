@@ -53,6 +53,7 @@ private:
         llvm_backend::DebugInformationKind debugInformation,
         const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
         llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
+        bool incrementalLink,
         linker::WindowsExecutableSubsystem subsystem,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
         std::ostream& output,
