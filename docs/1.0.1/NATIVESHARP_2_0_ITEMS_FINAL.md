@@ -134,7 +134,7 @@
 92. **337 — Diagnósticos de SDK y librerías faltantes / SDK and missing-library diagnostics — COMPLETADO / COMPLETE**
 93. **338 — Consumo COM mediante vtables crudas / Raw-vtable COM consumption — COMPLETADO / COMPLETE**
 94. **339 — Producción de vtables COM / COM vtable production — COMPLETADO / COMPLETE**
-95. **340 — Function pointers y delegates para COM / COM function pointers and delegates**
+95. **340 — Function pointers y delegates para COM / COM function pointers and delegates — COMPLETADO / COMPLETE**
 96. **341 — Thunks COM con excepciones contenidas / Exception-safe COM thunks**
 97. **342 — Matriz ABI de structs y agregados / Struct and aggregate ABI matrix**
 98. **343 — ABI de callbacks y parámetros de salida / Callback and output-parameter ABI**
