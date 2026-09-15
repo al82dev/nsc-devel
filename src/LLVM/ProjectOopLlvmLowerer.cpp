@@ -252,10 +252,18 @@ bool isFloating(std::string_view type) noexcept
     return type == "builtin:float" || type == "builtin:double";
 }
 
-LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction) noexcept
+LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction, bool contractable = false) noexcept
 {
-    if (instruction != nullptr && activeFloatingPointMode() == FloatingPointMode::Fast)
-        LLVMSetFastMathFlags(instruction, LLVMFastMathFast);
+    if (instruction == nullptr) return instruction;
+    unsigned flags = activeFloatingPointMode() == FloatingPointMode::Fast
+        ? static_cast<unsigned>(LLVMFastMathFast)
+        : static_cast<unsigned>(LLVMFastMathNone);
+    if (activeFmaContractPolicy() == FmaContractPolicy::Off)
+        flags &= ~static_cast<unsigned>(LLVMFastMathAllowContract);
+    else if (contractable)
+        flags |= static_cast<unsigned>(LLVMFastMathAllowContract);
+    if (flags != 0U)
+        LLVMSetFastMathFlags(instruction, static_cast<LLVMFastMathFlags>(flags));
     return instruction;
 }
 
@@ -7684,7 +7692,7 @@ private:
                     vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.subtract");
                 else
                     vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
-                vectorResult = applyFloatingPointMode(vectorResult);
+                vectorResult = applyFloatingPointMode(vectorResult, true);
                 LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "simd.result.addr");
                 LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
                 LLVMSetAlignment(resultStore, alignment);
@@ -7995,7 +8003,7 @@ private:
                     vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.fp256.subtract");
                 else
                     vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.fp256.multiply");
-                vectorResult = applyFloatingPointMode(vectorResult);
+                vectorResult = applyFloatingPointMode(vectorResult, true);
                 LLVMValueRef resultSlot =
                     entryBlockAlloca(carrier, 32U, "simd.fp256.result.addr");
                 LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
@@ -11256,7 +11264,9 @@ private:
                 case lexer::TokenKind::Percent: result = LLVMBuildFRem(builder_, left, right, "frem"); break;
                 default: return failValue(error, "unsupported floating binary operation in Stage 34");
             }
-            return applyFloatingPointMode(result);
+            const bool contractable = operation == lexer::TokenKind::Plus ||
+                operation == lexer::TokenKind::Minus || operation == lexer::TokenKind::Star;
+            return applyFloatingPointMode(result, contractable);
         }
         switch (operation)
         {

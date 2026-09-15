@@ -2816,6 +2816,8 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     bool artifactCacheSeen = false;
     llvm_backend::FloatingPointMode floatingPointMode = llvm_backend::FloatingPointMode::Precise;
     bool floatingPointModeSeen = false;
+    llvm_backend::FmaContractPolicy fmaContractPolicy = llvm_backend::FmaContractPolicy::Off;
+    bool fmaContractPolicySeen = false;
     llvm_backend::DebugInformationKind debugInformation = llvm_backend::DebugInformationKind::None;
     bool debugInformationSeen = false;
     std::vector<llvm_backend::DebugPrefixMap> debugPrefixMaps;
@@ -2864,6 +2866,26 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CommandLineError;
             }
             floatingPointMode = *parsed;
+            continue;
+        }
+        static constexpr std::string_view fmaContractPrefix = "--fp-contract=";
+        if (argument.starts_with(fmaContractPrefix))
+        {
+            if (fmaContractPolicySeen)
+            {
+                error << "nsc: error: duplicate FMA contraction policy\n";
+                return ExitCode::CommandLineError;
+            }
+            fmaContractPolicySeen = true;
+            const std::optional<llvm_backend::FmaContractPolicy> parsed =
+                llvm_backend::parseFmaContractPolicy(argument.substr(fmaContractPrefix.size()));
+            if (!parsed.has_value())
+            {
+                error << "nsc: error: unsupported FMA contraction policy '" << argument
+                      << "'; expected --fp-contract=off, on, or fast\n";
+                return ExitCode::CommandLineError;
+            }
+            fmaContractPolicy = *parsed;
             continue;
         }
         static constexpr std::string_view compilationProfilePrefix = "--profile=";
@@ -3127,9 +3149,14 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
     optimizationLevel = profileSettings.optimizationLevel;
     debugInformation = profileSettings.debugInformation;
     floatingPointModeScope.set(floatingPointMode);
+    if (!fmaContractPolicySeen && floatingPointMode == llvm_backend::FloatingPointMode::Fast)
+        fmaContractPolicy = llvm_backend::FmaContractPolicy::Fast;
+    floatingPointModeScope.setFmaContractPolicy(fmaContractPolicy);
 
     if (floatingPointModeSeen)
         output << "floating-point-mode: " << llvm_backend::floatingPointModeName(floatingPointMode) << '\n';
+    if (fmaContractPolicySeen)
+        output << "fma-contract-policy: " << llvm_backend::fmaContractPolicyName(fmaContractPolicy) << '\n';
 
     if (normalizedArguments.empty())
     {
@@ -3713,6 +3740,8 @@ void Driver::printHelp(std::ostream &output)
               "compilation command.\n"
            << "--fp-mode=precise|fast|deterministic selects the floating-point IR contract; "
               "precise is the default and fast is explicit opt-in.\n"
+           << "--fp-contract=off|on|fast controls whether multiply/add sequences may contract "
+              "to FMA; off is the strict default.\n"
            << "--time reports deterministic per-phase microseconds plus total wall time; "
               "--timeout-ms=N requests cooperative cancellation at safe project phase boundaries.\n"
            << "--progress streams and flushes phase boundaries plus source read, lex and parse "

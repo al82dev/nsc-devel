@@ -7,6 +7,7 @@ namespace nativesharp::llvm_backend
 namespace
 {
 std::atomic<FloatingPointMode> gActiveMode{FloatingPointMode::Precise};
+std::atomic<FmaContractPolicy> gActiveFmaContractPolicy{FmaContractPolicy::Off};
 }
 
 std::optional<FloatingPointMode> parseFloatingPointMode(std::string_view value) noexcept
@@ -33,14 +34,45 @@ FloatingPointMode activeFloatingPointMode() noexcept
     return gActiveMode.load(std::memory_order_relaxed);
 }
 
+std::optional<FmaContractPolicy> parseFmaContractPolicy(std::string_view value) noexcept
+{
+    if (value == "off") return FmaContractPolicy::Off;
+    if (value == "on") return FmaContractPolicy::On;
+    if (value == "fast") return FmaContractPolicy::Fast;
+    return std::nullopt;
+}
+
+std::string_view fmaContractPolicyName(FmaContractPolicy policy) noexcept
+{
+    switch (policy)
+    {
+        case FmaContractPolicy::Off: return "off";
+        case FmaContractPolicy::On: return "on";
+        case FmaContractPolicy::Fast: return "fast";
+    }
+    return {};
+}
+
+FmaContractPolicy activeFmaContractPolicy() noexcept
+{
+    return gActiveFmaContractPolicy.load(std::memory_order_relaxed);
+}
+
 FloatingPointModeScope::FloatingPointModeScope() noexcept
-    : previous_(activeFloatingPointMode())
+    : previous_(activeFloatingPointMode()),
+      previousFmaContractPolicy_(activeFmaContractPolicy())
 {
 }
 
 FloatingPointModeScope::~FloatingPointModeScope()
 {
     set(previous_);
+    setFmaContractPolicy(previousFmaContractPolicy_);
+}
+
+void FloatingPointModeScope::setFmaContractPolicy(FmaContractPolicy policy) noexcept
+{
+    gActiveFmaContractPolicy.store(policy, std::memory_order_relaxed);
 }
 
 void FloatingPointModeScope::set(FloatingPointMode mode) noexcept
