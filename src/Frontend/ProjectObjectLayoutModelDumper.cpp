@@ -36,7 +36,13 @@ void ProjectObjectLayoutModelDumper::dump(
             output << " type=" << field.typeKey
                    << " offset=" << field.offset
                    << " size=" << field.size
-                   << " align=" << field.alignment << '\n';
+                   << " align=" << field.alignment;
+            if (field.bitWidth.has_value())
+            {
+                output << " bit-offset=" << *field.bitOffset
+                       << " bit-width=" << *field.bitWidth;
+            }
+            output << '\n';
         }
     }
 
@@ -57,7 +63,13 @@ void ProjectObjectLayoutModelDumper::dump(
             output << " type=" << field.typeKey
                    << " offset=" << field.offset
                    << " size=" << field.size
-                   << " align=" << field.alignment << '\n';
+                   << " align=" << field.alignment;
+            if (field.bitWidth.has_value())
+            {
+                output << " bit-offset=" << *field.bitOffset
+                       << " bit-width=" << *field.bitWidth;
+            }
+            output << '\n';
         }
     }
 

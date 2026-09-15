@@ -66,8 +66,10 @@ empaqueta con NativeSharp 1.0.1.
   los headers C/MSVC usan agregados anónimos y NSMETA 1.17 conserva la promoción en
   `LibraryReference`.
 - La sintaxis `tipo nombre : ancho;` y `tipo : ancho;` conserva bitfields nombrados, sin nombre y
-  de ancho cero en AST y member model. El layout físico permanece bloqueado explícitamente hasta
-  el punto 328; todavía no hay lectura, escritura ni semántica `volatile` de bitfields.
+  de ancho cero. El layout Windows x64 usa unidades MSVC según el ancho del tipo declarado,
+  reinicia la unidad cuando cambia su tamaño o no cabe el siguiente campo y respeta barreras de
+  ancho cero, `pack`, structs, clases y unions. Headers C/MSVC y NSMETA 1.18 conservan el mismo
+  contrato; lectura, escritura y semántica `volatile` permanecen en los puntos 329–330.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

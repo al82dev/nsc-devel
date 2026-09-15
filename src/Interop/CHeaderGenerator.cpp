@@ -543,7 +543,9 @@ bool emitStruct(
             out << "NS_ALIGNAS(" << aggregateMinimumAlignment << ") ";
             aggregatePendingAlignment = false;
         }
-        out << fieldType << ' ' << sanitizeIdentifier(field.name);
+        out << fieldType;
+        if (!field.isUnnamedBitField)
+            out << ' ' << sanitizeIdentifier(field.name);
         if (element.has_value())
         {
             const std::optional<std::uint64_t> count =
@@ -558,6 +560,18 @@ bool emitStruct(
         else if (flexibleElement.has_value())
         {
             out << "[]";
+        }
+        if (field.isBitField)
+        {
+            const frontend::ObjectFieldLayout* bitLayout =
+                context.layouts.fieldLayoutForMember(static_cast<std::size_t>(
+                    &field - context.members.members().data()));
+            if (bitLayout == nullptr || !bitLayout->bitWidth.has_value())
+            {
+                error = "missing physical width for host bit-field '" + field.name + "'";
+                return false;
+            }
+            out << " : " << *bitLayout->bitWidth;
         }
         out << ";\n";
         return true;
@@ -581,7 +595,7 @@ bool emitStruct(
     {
         if (fieldLayout.memberOrdinal >= context.members.members().size()) continue;
         const ClassMemberSymbol& field = context.members.members()[fieldLayout.memberOrdinal];
-        if (isAnonymousMemberCarrier(field)) continue;
+        if (isAnonymousMemberCarrier(field) || field.isBitField) continue;
         out << "NS_STATIC_ASSERT(offsetof(" << hostName << ", " << sanitizeIdentifier(field.name)
             << ") == " << fieldLayout.offset << ", \"NativeSharp host struct offset mismatch: "
             << hostName << '.' << sanitizeIdentifier(field.name) << "\");\n";
@@ -590,6 +604,7 @@ bool emitStruct(
     {
         if (promotedOrdinal >= context.members.members().size()) continue;
         const ClassMemberSymbol& promoted = context.members.members()[promotedOrdinal];
+        if (promoted.isBitField) continue;
         const frontend::ObjectFieldLayout* promotedLayout =
             context.layouts.fieldLayoutForMember(promotedOrdinal);
         if (promotedLayout == nullptr) continue;

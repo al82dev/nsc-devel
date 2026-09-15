@@ -172,9 +172,14 @@ estado de alternativa activa; con campo explícito el acceso sigue calificado co
 structs anónimos y conserva un único carrier físico por agregado.
 
 Los fields aceptan la sintaxis C `tipo nombre : ancho;` y la variante sin nombre
-`tipo : ancho;`, incluido ancho cero. El AST y el modelo de miembros conservan el ancho como una
-expresión separada. El punto 327 no asigna todavía almacenamiento: solicitar layout diagnostica la
-frontera explícita del punto 328 en vez de degradar el bitfield a un entero ordinario.
+`tipo : ancho;`, incluido ancho cero. El ancho debe ser una constante integral no negativa y no
+puede exceder el tipo base; sólo una declaración sin nombre puede usar cero. El layout Windows x64
+agrupa campos consecutivos del mismo tamaño físico en unidades MSVC, abre una unidad nueva cuando
+cambia el tamaño o ya no cabe el campo y usa offsets de bit desde el bit menos significativo.
+Una barrera de ancho cero sólo afecta después de una unidad viva; `pack` limita alineación sin
+reducir la unidad y las alternativas de una union comienzan en el bit cero. El mismo modelo se usa
+en structs y después del header/base de clases. Los headers C/MSVC y NSMETA 1.18 conservan ancho,
+unidad y offset; el acceso ejecutable y la semántica `volatile` pertenecen a los puntos 329–330.
 
 ## Superficie del lenguaje
 

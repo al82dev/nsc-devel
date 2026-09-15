@@ -107,13 +107,20 @@ std::optional<StructLayout> TargetDataLayout::layoutStruct(
     std::uint64_t currentOffset = 0;
     std::uint64_t extent = 0;
     std::uint64_t structAlignment = 1;
+    bool hasActiveBitFieldUnit = false;
+    std::uint64_t activeBitFieldOffset = 0;
+    std::uint64_t activeBitFieldSize = 0;
+    std::uint64_t activeBitFieldBitsUsed = 0;
     std::vector<StructFieldLayout> fieldLayouts;
     fieldLayouts.reserve(fields.size());
 
     for (const StructFieldRequest& request : fields)
     {
         const TypeLayout field = request.layout;
-        if ((!request.isFlexibleArray && field.size == 0) || field.alignment == 0)
+        if ((!request.isFlexibleArray && field.size == 0) || field.alignment == 0 ||
+            (request.bitWidth.has_value() &&
+             (request.explicitOffset.has_value() || request.minimumAlignment.has_value() ||
+              request.isFlexibleArray)))
             return std::nullopt;
         std::uint64_t effectiveAlignment =
             options.pack == 0 ? field.alignment : (std::min)(field.alignment, options.pack);
@@ -123,6 +130,77 @@ std::optional<StructLayout> TargetDataLayout::layoutStruct(
             if (requested == 0 || (requested & (requested - 1)) != 0) return std::nullopt;
             effectiveAlignment = (std::max)(effectiveAlignment, requested);
         }
+
+        if (request.bitWidth.has_value())
+        {
+            const std::uint64_t width = *request.bitWidth;
+            if (field.size > std::numeric_limits<std::uint64_t>::max() / 8U ||
+                width > field.size * 8U || (width == 0 && !request.isUnnamedBitField))
+                return std::nullopt;
+
+            // MSVC ignores a leading zero-width field. After a live unit it ends that unit and
+            // aligns the next field to the zero-width declaration's base type. This alignment
+            // also becomes an aggregate requirement. A union has no sequential active unit.
+            if (width == 0)
+            {
+                std::uint64_t zeroOffset = 0;
+                if (!options.isUnion && hasActiveBitFieldUnit)
+                {
+                    const std::optional<std::uint64_t> aligned =
+                        alignUp(currentOffset, effectiveAlignment);
+                    if (!aligned.has_value()) return std::nullopt;
+                    zeroOffset = *aligned;
+                    currentOffset = zeroOffset;
+                    extent = (std::max)(extent, zeroOffset);
+                    structAlignment = (std::max)(structAlignment, effectiveAlignment);
+                }
+                fieldLayouts.push_back(StructFieldLayout{
+                    zeroOffset, 0, effectiveAlignment, std::uint64_t{0}, std::uint64_t{0}});
+                hasActiveBitFieldUnit = false;
+                activeBitFieldBitsUsed = 0;
+                continue;
+            }
+
+            if (options.isUnion)
+            {
+                // Microsoft unions reserve the full declared allocation unit for a bit-field,
+                // while that member deliberately contributes no alignment to the union.
+                fieldLayouts.push_back(StructFieldLayout{
+                    0, field.size, effectiveAlignment, std::uint64_t{0}, width});
+                extent = (std::max)(extent, field.size);
+                continue;
+            }
+
+            const std::uint64_t unitBits = field.size * 8U;
+            if (!hasActiveBitFieldUnit || activeBitFieldSize != field.size ||
+                width > unitBits - activeBitFieldBitsUsed)
+            {
+                const std::optional<std::uint64_t> aligned =
+                    alignUp(currentOffset, effectiveAlignment);
+                if (!aligned.has_value()) return std::nullopt;
+                activeBitFieldOffset = *aligned;
+                activeBitFieldSize = field.size;
+                activeBitFieldBitsUsed = 0;
+                const std::optional<std::uint64_t> end =
+                    checkedAdd(activeBitFieldOffset, activeBitFieldSize);
+                if (!end.has_value()) return std::nullopt;
+                currentOffset = *end;
+                extent = (std::max)(extent, *end);
+                hasActiveBitFieldUnit = true;
+            }
+            fieldLayouts.push_back(StructFieldLayout{
+                activeBitFieldOffset,
+                activeBitFieldSize,
+                effectiveAlignment,
+                activeBitFieldBitsUsed,
+                width});
+            activeBitFieldBitsUsed += width;
+            structAlignment = (std::max)(structAlignment, effectiveAlignment);
+            continue;
+        }
+
+        hasActiveBitFieldUnit = false;
+        activeBitFieldBitsUsed = 0;
 
         std::uint64_t offset = 0;
         if (request.explicitOffset.has_value())
@@ -138,7 +216,8 @@ std::optional<StructLayout> TargetDataLayout::layoutStruct(
             offset = *aligned;
         }
 
-        fieldLayouts.push_back(StructFieldLayout{offset, field.size, effectiveAlignment});
+        fieldLayouts.push_back(StructFieldLayout{
+            offset, field.size, effectiveAlignment, std::nullopt, std::nullopt});
 
         const std::optional<std::uint64_t> end = checkedAdd(offset, field.size);
         if (!end.has_value()) return std::nullopt;
@@ -179,7 +258,8 @@ std::optional<StructLayout> TargetDataLayout::layoutStruct(
             return std::nullopt;
         }
 
-        fieldLayouts.push_back(StructFieldLayout{*alignedOffset, field.size, field.alignment});
+        fieldLayouts.push_back(StructFieldLayout{
+            *alignedOffset, field.size, field.alignment, std::nullopt, std::nullopt});
 
         const std::optional<std::uint64_t> nextOffset = checkedAdd(*alignedOffset, field.size);
         if (!nextOffset.has_value())

@@ -3432,6 +3432,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     error = "Macro A field binding has no candidate member";
                     return nullptr;
                 }
+                const std::size_t fieldOrdinal = binding->candidateMemberOrdinals.front();
+                if (memberModel_ != nullptr && fieldOrdinal < memberModel_->members().size() &&
+                    memberModel_->members()[fieldOrdinal].isBitField)
+                {
+                    error = "bit-field access belongs to item 329";
+                    return nullptr;
+                }
                 auto receiver = lowerReceiver(
                     binding->receiverSyntax, binding->receiverTypeKey, memberOrdinal, error);
                 if (receiver == nullptr)
@@ -3442,7 +3449,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                     addressContext ? ProjectOopHirNodeKind::FieldAddress : ProjectOopHirNodeKind::FieldValue,
                     expression,
                     binding->typeKey);
-                node->memberOrdinal = binding->candidateMemberOrdinals.front();
+                node->memberOrdinal = fieldOrdinal;
                 node->volatileAccess = memberModel_ != nullptr &&
                     *node->memberOrdinal < memberModel_->members().size() &&
                     memberModel_->members()[*node->memberOrdinal].isVolatile;
@@ -5906,6 +5913,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             {
                 error = "offsetof cannot find the canonical layout for field '" +
                     expression->text() + "'";
+                return nullptr;
+            }
+            if (field->bitWidth.has_value())
+            {
+                error = "offsetof cannot be applied to a bit-field";
                 return nullptr;
             }
             auto node = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nuint");

@@ -1047,6 +1047,31 @@ both struct and class layout shall reject such a member with the explicit item-3
 pipeline may silently allocate the declared integer type as an ordinary full-width field. Item 327
 changes no ABI schema, metadata format, generated header, runtime or binding.
 
+## NSC-LAYOUT-006 — MSVC bit-field allocation units
+
+`TargetDataLayout` shall be the single authority for physical bit-field placement. Each request
+shall retain the declared storage size, effective alignment, optional width and unnamed category;
+each result shall publish allocation-unit byte offset, full unit size, bit offset and width.
+Equal-sized consecutive units may share storage while the next field fits. A size change, exhausted
+unit, ordinary field or effective zero-width barrier shall close the active unit. `pack` may cap
+alignment but shall not shrink the declared allocation unit.
+
+A zero-width field shall be unnamed. It shall have no effect without a live preceding bit-field
+unit; otherwise it shall close that unit, align the next position to its effective base-type
+alignment and contribute that alignment to the aggregate. Union bit fields shall all begin at byte
+and bit zero, contribute their full units to extent and not independently raise union alignment.
+Class layout shall invoke the same target authority after representing its header or completed base
+subobject as an immutable prefix.
+
+The frontend shall accept only integer, bool and enum bases and integral constant widths in range.
+The layout dump shall expose bit coordinates for auditing. `offsetof` and HIR field access shall
+reject bit fields until item 329 supplies executable masks and sign extension.
+
+The C-header generator shall reproduce named, unnamed and zero-width MSVC declarations and shall
+not emit `offsetof` assertions for a bit field. NSMETA 1.18 shall serialize field flags, byte/bit
+coordinates and width; writers shall reject a lossy downgrade to 1.17 or earlier, and the public
+source materializer shall reconstruct the declarations for `LibraryReference` consumers.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

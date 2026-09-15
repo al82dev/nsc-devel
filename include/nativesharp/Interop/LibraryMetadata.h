@@ -20,6 +20,8 @@ namespace nativesharp::interop
 // minor ACTUAL y sale roja -- que es exactamente lo que ocurrio. Un numero de version repetido es
 // la misma forma de defecto que este arbol lleva todo el dia persiguiendo.
 //
+// MINOR 18 (2026-09-15): los bitfields conservan unidad, offset de bit y ancho para reproducir
+// el layout MSVC en headers y LibraryReference.
 // MINOR 17 (2026-09-15): los campos portadores de agregados anonimos conservan su marca para
 // que una LibraryReference reconstruya la promocion de miembros sin aplanar el layout fisico.
 // MINOR 16 (2026-09-14): metodos y constructores publicos conservan `noheap`.
@@ -49,7 +51,7 @@ namespace nativesharp::interop
 // MINOR 2 (2026-09-03): el registro de tipo lleva `enumUnderlyingTypeKey`.
 // MINOR 1: los campos, miembros y parametros llevan `ownership`.
 inline constexpr std::uint16_t kMetadataFormatMajor = 1;
-inline constexpr std::uint16_t kMetadataFormatMinor = 17;
+inline constexpr std::uint16_t kMetadataFormatMinor = 18;
 
 // Bits 21-22 of LibraryMetadataMember::flags carry the four-valued inlining contract. Keeping
 // this layout public prevents the producer, source materializer, and host tooling from growing
@@ -69,6 +71,10 @@ inline constexpr std::uint32_t kMetadataMemberNoHeap = 1U << 25U;
 // that carries an unnamed struct/union from an ordinary compiler-generated field, allowing the
 // metadata source materializer to recreate promotion while retaining the producer's exact layout.
 inline constexpr std::uint32_t kMetadataFieldAnonymousCarrier = 1U << 26U;
+// Item 328. These bits belong only to layout-field records. Minor 1.18 appends the exact bit
+// coordinates; the flags distinguish a named bit-field from an unnamed padding declaration.
+inline constexpr std::uint32_t kMetadataFieldBitField = 1U << 27U;
+inline constexpr std::uint32_t kMetadataFieldUnnamedBitField = 1U << 28U;
 
 // Contrato binario de NativeSharp 1.0. Son numeros, no nombres decorativos: entran en el
 // fingerprint ABI, se verifican antes de compilar al consumidor y sólo cambian cuando cambia una
@@ -128,6 +134,8 @@ struct LibraryMetadataField final
     std::uint64_t size = 0;
     std::uint64_t alignment = 1;
     std::uint32_t flags = 0;
+    std::uint64_t bitOffset = 0;
+    std::uint64_t bitWidth = 0;
 };
 
 struct LibraryMetadataType final

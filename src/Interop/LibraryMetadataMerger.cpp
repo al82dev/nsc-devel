@@ -21,9 +21,9 @@ bool vectorEqual(const std::vector<T>& left, const std::vector<T>& right, Equal 
 bool equalField(const LibraryMetadataField& left, const LibraryMetadataField& right)
 {
     return std::tie(left.name, left.typeKey, left.ownership, left.offset, left.size,
-               left.alignment, left.flags) ==
+               left.alignment, left.flags, left.bitOffset, left.bitWidth) ==
         std::tie(right.name, right.typeKey, right.ownership, right.offset, right.size,
-            right.alignment, right.flags);
+            right.alignment, right.flags, right.bitOffset, right.bitWidth);
 }
 
 bool equalType(const LibraryMetadataType& left, const LibraryMetadataType& right)

@@ -1039,6 +1039,38 @@ zero-width form. The width is retained on a dedicated AST edge and cannot be a f
 Item 327 deliberately stops before physical placement: MSVC storage units belong to item 328,
 loads/stores to item 329, and volatile access semantics to item 330.
 
+### NS-LAYOUT-008 — Layout MSVC de bitfields
+
+En Windows x64, un bitfield usa como unidad de asignación el tamaño completo de su tipo declarado.
+Campos consecutivos cuyos tipos tienen el mismo tamaño comparten la unidad mientras el siguiente
+ancho quepa; signo y nombre del tipo no separan por sí solos dos unidades del mismo tamaño. Si el
+tamaño cambia o el campo no cabe, se abre una unidad alineada nueva. Dentro de una unidad los
+offsets avanzan desde el bit menos significativo.
+
+El ancho debe ser una expresión integral constante, no negativa y menor o igual que los bits del
+tipo base. Los tipos base admitidos son enteros, `bool` y enums. Un campo nombrado no puede tener
+ancho cero. Una declaración sin nombre de ancho cero termina una unidad viva y alinea la siguiente
+posición al tipo declarado; si aparece antes de cualquier unidad activa no afecta tamaño ni
+alineación. Una declaración sin nombre de ancho positivo consume bits normalmente.
+
+`pack(N)` limita la alineación efectiva de la unidad pero no reduce su tamaño. En una union cada
+bitfield comienza en byte y bit cero, aporta el tamaño completo de su unidad al extent y, conforme
+al layout MSVC, no eleva por sí solo la alineación de la union. Las clases aplican las mismas reglas
+después de su header o subobjeto base. El layout publica byte de unidad, offset de bit y ancho; no
+permite `offsetof` sobre el bitfield.
+
+NSMETA 1.18 conserva esas coordenadas y la condición named/unnamed para que una
+`LibraryReference` reconstruya el mismo layout. Los headers generados emiten declaraciones de
+bitfield C/MSVC y omiten aserciones `offsetof` ilegales. Esta etapa todavía rechaza el acceso en
+HIR: lectura/escritura pertenece al punto 329 y el acceso `volatile` al 330.
+
+On Windows x64, a bit field occupies an allocation unit with the full size of its declared base
+type. Consecutive equal-sized fields share a unit while they fit; a size change, overflow, or a
+live zero-width barrier starts a new aligned unit. Bit offsets grow from the least-significant bit.
+Packing caps alignment without shrinking storage, union alternatives begin at bit zero, and class
+fields use the same target-owned rules after their header or base subobject. NSMETA 1.18 and
+generated C/MSVC headers preserve the physical contract, while executable access remains item 329.
+
 Un fixed array ocupa `stride(elemento) * cantidad`. Su layout forma parte del agregado; no es una
 referencia ni lleva cabecera oculta. Un arreglo `T[d0, d1, ...]` es contiguo y row-major: su
 representación canónica equivale a un arreglo exterior de `d0` elementos, cada uno de los cuales

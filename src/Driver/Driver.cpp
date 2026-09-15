@@ -1862,14 +1862,22 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 const std::string childName = child.name.empty()
                     ? "__nsc_layout_field_" + std::to_string(childIndex)
                     : child.name;
-                generated << childIndentation << "at(" << child.offset << ") align("
-                          << child.alignment << ") "
-                          << sourceAccessibility(childMember == nullptr ? 0U : childMember->accessibility)
-                          << ' ';
+                const bool childBitField =
+                    (child.flags & interop::kMetadataFieldBitField) != 0U;
+                const bool childUnnamedBitField =
+                    (child.flags & interop::kMetadataFieldUnnamedBitField) != 0U;
+                generated << childIndentation;
+                if (!childBitField)
+                    generated << "at(" << child.offset << ") align(" << child.alignment << ") ";
+                generated << sourceAccessibility(
+                    childMember == nullptr ? 0U : childMember->accessibility) << ' ';
                 if ((child.flags & (1U << 1U)) != 0U || (nested.flags & (1U << 6U)) != 0U)
                     generated << "readonly ";
                 if ((child.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
-                generated << ownershipPrefix(child.ownership) << childType << ' ' << childName << ";\n";
+                generated << ownershipPrefix(child.ownership) << childType;
+                if (!childUnnamedBitField) generated << ' ' << childName;
+                if (childBitField) generated << " : " << child.bitWidth;
+                generated << ";\n";
             }
             generated << indentation << "};\n";
             return true;
@@ -1904,17 +1912,24 @@ bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std:
                 const std::string fieldName = propertyBacking
                     ? "__nsc_layout_property_" + std::to_string(fieldIndex)
                     : field.name.empty() ? "__nsc_layout_field_" + std::to_string(fieldIndex) : field.name;
+                const bool bitField =
+                    (field.flags & interop::kMetadataFieldBitField) != 0U;
+                const bool unnamedBitField =
+                    (field.flags & interop::kMetadataFieldUnnamedBitField) != 0U;
                 generated << "    ";
-                if (type.kind == interop::LibraryMetadataTypeKind::Struct)
+                if (!bitField && type.kind == interop::LibraryMetadataTypeKind::Struct)
                     generated << "at(" << field.offset << ") ";
-                generated << "align(" << field.alignment << ") ";
+                if (!bitField) generated << "align(" << field.alignment << ") ";
                 generated << (member == nullptr ? std::string_view("private")
                                                 : sourceAccessibility(member->accessibility))
                           << ' ';
                 if ((field.flags & (1U << 1U)) != 0U || (type.flags & (1U << 6U)) != 0U)
                     generated << "readonly ";
                 if ((field.flags & interop::kMetadataMemberVolatile) != 0U) generated << "volatile ";
-                generated << ownershipPrefix(field.ownership) << fieldType << ' ' << fieldName << ";\n";
+                generated << ownershipPrefix(field.ownership) << fieldType;
+                if (!unnamedBitField) generated << ' ' << fieldName;
+                if (bitField) generated << " : " << field.bitWidth;
+                generated << ";\n";
             }
         }
 

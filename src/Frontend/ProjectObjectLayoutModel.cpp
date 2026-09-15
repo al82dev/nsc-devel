@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
@@ -54,19 +55,6 @@ std::optional<std::uint64_t> checkedAdd(std::uint64_t left, std::uint64_t right)
     return left + right;
 }
 
-std::optional<std::uint64_t> checkedAlignUp(std::uint64_t value, std::uint64_t alignment) noexcept
-{
-    if (alignment == 0)
-    {
-        return std::nullopt;
-    }
-    const std::uint64_t remainder = value % alignment;
-    if (remainder == 0)
-    {
-        return value;
-    }
-    return checkedAdd(value, alignment - remainder);
-}
 }
 
 bool ProjectObjectLayoutModel::build(
@@ -590,16 +578,6 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         if (memberOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
-        if (member.isBitField)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                member.range,
-                "bit-field physical layout belongs to item 328");
-            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-            return false;
-        }
         const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(
             member.declaredTypeSyntax, diagnostics, member.range);
         if (!fieldLayout.has_value())
@@ -609,6 +587,49 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         }
         const bool flexible =
             ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey).has_value();
+        std::optional<std::uint64_t> bitWidth;
+        if (member.isBitField)
+        {
+            bool validBase = ProjectIntegerEvaluator::isIntegerType(member.declaredTypeKey) ||
+                member.declaredTypeKey == "builtin:bool";
+            if (!validBase && member.declaredTypeKey.starts_with("type:"))
+            {
+                const std::string_view identity =
+                    std::string_view(member.declaredTypeKey).substr(5);
+                for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
+                {
+                    if (declaration.identity.key() == identity)
+                    {
+                        validBase = declaration.kind == NamedTypeDeclarationKind::Enum;
+                        break;
+                    }
+                }
+            }
+            const std::optional<ProjectIntegerValue> folded =
+                ProjectIntegerEvaluator(nullptr).evaluate(member.bitWidthSyntax, typeOrdinal);
+            const bool negative = folded.has_value() &&
+                ProjectIntegerEvaluator::isSignedInteger(folded->typeKey) &&
+                folded->asSigned() < 0;
+            if (!validBase || !folded.has_value() || negative ||
+                folded->bits > fieldLayout->size * 8U ||
+                (folded->bits == 0 && !member.isUnnamedBitField))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member.range,
+                    !validBase
+                        ? "a bit-field base type must be an integer, bool, or enum"
+                        : !folded.has_value() || negative
+                            ? "bit-field width must be a nonnegative integral constant expression"
+                            : folded->bits == 0
+                                ? "a named bit-field cannot have width zero"
+                                : "bit-field width exceeds its storage type");
+                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+                return false;
+            }
+            bitWidth = folded->bits;
+        }
         if (flexible)
         {
             const std::string element =
@@ -628,7 +649,12 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         }
         physicalFields.push_back(
             target::StructFieldRequest{
-                *fieldLayout, member.explicitFieldOffset, member.explicitFieldAlignment, flexible});
+                *fieldLayout,
+                member.explicitFieldOffset,
+                member.explicitFieldAlignment,
+                flexible,
+                bitWidth,
+                member.isUnnamedBitField});
         fieldMembers.push_back(memberOrdinal);
     }
 
@@ -688,7 +714,9 @@ bool ProjectObjectLayoutModel::buildStructLayout(
             field.offset,
             field.size,
             field.alignment,
-            member.declaredTypeKey});
+            member.declaredTypeKey,
+            field.bitOffset,
+            field.bitWidth});
     }
 
     // `size(N)`. Aqui es donde se comprueba, porque es el unico sitio donde el tamano YA ESTA
@@ -785,6 +813,20 @@ bool ProjectObjectLayoutModel::buildClassLayout(
     layout.referenceSize = reference.size;
     layout.referenceAlignment = reference.alignment;
 
+    // Item 328. Treat the object header/base subobject as an already-laid-out prefix and route
+    // every instance field through the same target authority used by value structs. This keeps
+    // class bit-field allocation units, zero-width barriers and ordinary trailing fields from
+    // growing a second MSVC layout algorithm here.
+    std::vector<target::StructFieldRequest> physicalFields;
+    std::vector<std::size_t> fieldMembers;
+    physicalFields.push_back(target::StructFieldRequest{
+        TypeLayout{offset, aggregateAlignment},
+        std::nullopt,
+        std::nullopt,
+        false,
+        std::nullopt,
+        false});
+
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
     {
         if (memberOrdinal >= memberModel_->members().size())
@@ -795,16 +837,6 @@ bool ProjectObjectLayoutModel::buildClassLayout(
         if (member.kind != ClassMemberKind::Field || member.isStatic)
         {
             continue;
-        }
-
-        if (member.isBitField)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                member.range,
-                "bit-field physical layout belongs to item 328");
-            return false;
         }
 
         if (ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey).has_value())
@@ -825,42 +857,63 @@ bool ProjectObjectLayoutModel::buildClassLayout(
         {
             return false;
         }
-        const std::uint64_t fieldAlignment = member.explicitFieldAlignment.has_value()
-            ? (std::max)(fieldLayout->alignment, *member.explicitFieldAlignment)
-            : fieldLayout->alignment;
-        const std::optional<std::uint64_t> alignedOffset = checkedAlignUp(offset, fieldAlignment);
-        if (!alignedOffset.has_value())
+
+        std::optional<std::uint64_t> bitWidth;
+        if (member.isBitField)
         {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                member.range,
-                "class field offset overflows the Windows x64 object-size model");
-            return false;
-        }
-        const std::optional<std::uint64_t> afterField = checkedAdd(*alignedOffset, fieldLayout->size);
-        if (!afterField.has_value())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                member.range,
-                "class field extent overflows the Windows x64 object-size model");
-            return false;
+            bool validBase = ProjectIntegerEvaluator::isIntegerType(member.declaredTypeKey) ||
+                member.declaredTypeKey == "builtin:bool";
+            if (!validBase && member.declaredTypeKey.starts_with("type:"))
+            {
+                const std::string_view identity =
+                    std::string_view(member.declaredTypeKey).substr(5);
+                for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
+                {
+                    if (declaration.identity.key() == identity)
+                    {
+                        validBase = declaration.kind == NamedTypeDeclarationKind::Enum;
+                        break;
+                    }
+                }
+            }
+            const std::optional<ProjectIntegerValue> folded =
+                ProjectIntegerEvaluator(nullptr).evaluate(member.bitWidthSyntax, typeOrdinal);
+            const bool negative = folded.has_value() &&
+                ProjectIntegerEvaluator::isSignedInteger(folded->typeKey) &&
+                folded->asSigned() < 0;
+            if (!validBase || !folded.has_value() || negative ||
+                folded->bits > fieldLayout->size * 8U ||
+                (folded->bits == 0 && !member.isUnnamedBitField))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error,
+                    member.range,
+                    !validBase
+                        ? "a bit-field base type must be an integer, bool, or enum"
+                        : !folded.has_value() || negative
+                            ? "bit-field width must be a nonnegative integral constant expression"
+                            : folded->bits == 0
+                                ? "a named bit-field cannot have width zero"
+                                : "bit-field width exceeds its storage type");
+                return false;
+            }
+            bitWidth = folded->bits;
         }
 
-        layout.fields.push_back(ObjectFieldLayout{
-            memberOrdinal,
-            *alignedOffset,
-            fieldLayout->size,
-            fieldAlignment,
-            member.declaredTypeKey});
-        offset = *afterField;
-        aggregateAlignment = std::max(aggregateAlignment, fieldAlignment);
+        physicalFields.push_back(target::StructFieldRequest{
+            *fieldLayout,
+            std::nullopt,
+            member.explicitFieldAlignment,
+            false,
+            bitWidth,
+            member.isUnnamedBitField});
+        fieldMembers.push_back(memberOrdinal);
     }
 
-    const std::optional<std::uint64_t> finalSize = checkedAlignUp(offset, aggregateAlignment);
-    if (!finalSize.has_value())
+    const std::optional<target::StructLayout> physicalLayout =
+        targetLayout_.layoutStruct(physicalFields, {});
+    if (!physicalLayout.has_value() || physicalLayout->fields.size() != physicalFields.size())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidType,
@@ -870,8 +923,34 @@ bool ProjectObjectLayoutModel::buildClassLayout(
                 type.identity.fullyQualifiedName() + "'");
         return false;
     }
-    layout.size = *finalSize;
-    layout.alignment = aggregateAlignment;
+
+    for (std::size_t index = 0; index < fieldMembers.size(); ++index)
+    {
+        const std::size_t memberOrdinal = fieldMembers[index];
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        const target::StructFieldLayout& field = physicalLayout->fields[index + 1];
+        layout.fields.push_back(ObjectFieldLayout{
+            memberOrdinal,
+            field.offset,
+            field.size,
+            field.alignment,
+            member.declaredTypeKey,
+            field.bitOffset,
+            field.bitWidth});
+    }
+
+    layout.size = physicalLayout->size;
+    layout.alignment = physicalLayout->alignment;
+
+    if (layout.size < offset)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            type.range,
+            "class object layout is smaller than its header or base subobject");
+        return false;
+    }
 
     const std::size_t layoutIndex = classLayouts_.size();
     classLayouts_.push_back(std::move(layout));
@@ -941,7 +1020,13 @@ bool ProjectObjectLayoutModel::buildPromotedFieldLayouts(
                 alignment = std::min(alignment, carrier->alignment);
             }
             promotedFieldLayouts_.push_back(ObjectFieldLayout{
-                aliasOrdinal, offset, source->size, alignment, alias.declaredTypeKey});
+                aliasOrdinal,
+                offset,
+                source->size,
+                alignment,
+                alias.declaredTypeKey,
+                source->bitOffset,
+                source->bitWidth});
         }
     }
     return true;

@@ -466,6 +466,8 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     if (member.syntax != nullptr &&
         member.syntax->auxiliaryText().find("anonymous-member-carrier") != std::string::npos)
         flags |= kMetadataFieldAnonymousCarrier;
+    if (member.isBitField) flags |= kMetadataFieldBitField;
+    if (member.isUnnamedBitField) flags |= kMetadataFieldUnnamedBitField;
     flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
     if (member.isVolatile) flags |= kMetadataMemberVolatile;
     if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
@@ -831,6 +833,8 @@ bool buildMetadataModel(
                 field.offset = fieldLayout.offset;
                 field.size = fieldLayout.size;
                 field.alignment = fieldLayout.alignment;
+                field.bitOffset = fieldLayout.bitOffset.value_or(0);
+                field.bitWidth = fieldLayout.bitWidth.value_or(0);
                 record.fields.push_back(std::move(field));
             }
         }
@@ -858,6 +862,8 @@ bool buildMetadataModel(
                 field.offset = fieldLayout.offset;
                 field.size = fieldLayout.size;
                 field.alignment = fieldLayout.alignment;
+                field.bitOffset = fieldLayout.bitOffset.value_or(0);
+                field.bitWidth = fieldLayout.bitWidth.value_or(0);
                 record.fields.push_back(std::move(field));
             }
         }
@@ -1431,6 +1437,11 @@ std::vector<std::uint8_t> encodePayload(const LibraryMetadata& metadata)
             writer.u64(field.size);
             writer.u64(field.alignment);
             writer.u32(field.flags);
+            if (metadata.formatMinor >= 18)
+            {
+                writer.u64(field.bitOffset);
+                writer.u64(field.bitWidth);
+            }
         }
     }
 
@@ -1617,6 +1628,12 @@ bool decodePayload(
                 !reader.u64(field.alignment) || !reader.u32(field.flags))
             {
                 error = "truncated or invalid metadata field record";
+                return false;
+            }
+            if (metadata.formatMinor >= 18 &&
+                (!reader.u64(field.bitOffset) || !reader.u64(field.bitWidth)))
+            {
+                error = "truncated or invalid metadata bit-field record";
                 return false;
             }
             type.fields.push_back(std::move(field));
@@ -2005,6 +2022,20 @@ bool LibraryMetadataCodec::writeModel(
         for (LibraryMetadataType& type : metadata.types)
             for (LibraryMetadataField& field : type.fields)
                 field.flags &= ~kMetadataFieldAnonymousCarrier;
+    }
+    if (metadata.formatMinor < 18)
+    {
+        for (const LibraryMetadataType& type : metadata.types)
+        {
+            for (const LibraryMetadataField& field : type.fields)
+            {
+                if ((field.flags & kMetadataFieldBitField) != 0U)
+                {
+                    error = "NativeSharp metadata before 1.18 cannot represent bit-field layout";
+                    return false;
+                }
+            }
+        }
     }
 
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));

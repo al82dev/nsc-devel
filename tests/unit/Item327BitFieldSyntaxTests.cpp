@@ -126,9 +126,9 @@ public struct Control
     const std::array<std::string_view, 2> layoutArguments = {"--dump-project-layouts", project};
     output.clear();
     error.clear();
-    tests.expect(runDriver(layoutArguments, output, error) != ExitCode::Success &&
-                     error.find("bit-field physical layout belongs to item 328") != std::string::npos,
-        "physical placement fails at the explicit item-328 boundary (" + error + ")");
+    tests.expect(runDriver(layoutArguments, output, error) == ExitCode::Success &&
+                     output.find("bit-offset=0 bit-width=1") != std::string::npos,
+        "the syntax fixture advances into the item-328 physical layout (" + error + ")");
 
     expectSyntaxRejected(tests, root, "Static", "public static uint Value : 1;",
         "a bit-field accepts accessibility and optional volatile only");

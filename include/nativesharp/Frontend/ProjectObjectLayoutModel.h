@@ -27,6 +27,8 @@ struct ObjectFieldLayout final
     std::uint64_t size = 0;
     std::uint64_t alignment = 1;
     std::string typeKey;
+    std::optional<std::uint64_t> bitOffset;
+    std::optional<std::uint64_t> bitWidth;
 };
 
 

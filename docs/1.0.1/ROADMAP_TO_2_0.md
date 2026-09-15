@@ -101,11 +101,11 @@ historia, no una certificación nueva y no incluye archivos sin commit.
 - HIR/MIR 1.6 con promoción conservadora de clases `raii` no escapantes a storage del frame;
 - structs y unions anónimos inline con carrier explícito opcional, promoción recursiva y layout
   anidado determinista;
-- sintaxis de bitfields nombrados, sin nombre y de ancho cero preservada hasta el modelo de miembros,
-  con frontera física explícita hacia el layout MSVC pendiente;
-- NSMETA 1.17 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
+- sintaxis y layout MSVC de bitfields nombrados, sin nombre y de ancho cero, incluidos cambios de
+  unidad, barreras, `pack`, structs, clases y unions; acceso y `volatile` siguen separados;
+- NSMETA 1.18 con identidad física, accesibilidad efectiva, templates, clausura transitiva,
   cuerpos inline reutilizables, campos volatile, retornos `ref`, contratos `noheap` y carriers
-  anónimos preservados;
+  anónimos y coordenadas físicas de bitfields preservados;
 - verificación cruzada de metadata, COFF, import library y exportaciones PE;
 - identidad de build, instalación verificable, inventario criptográfico y actualización segura;
 - documentación 1.0.1 autocontenida e instalable.
