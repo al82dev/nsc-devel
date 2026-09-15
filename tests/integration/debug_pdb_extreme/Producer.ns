@@ -4,6 +4,7 @@ namespace DebugExtreme
     using NativeSharp.Core.Diagnostics;
     public delegate int Transform(int value);
     public extern C delegate int NativeTransform(int value);
+    public extern C delegate int ComStackMethod(void* self, int baseline);
 
     public class StackProblem : NativeSharp.Core.Exception
     {
@@ -12,6 +13,17 @@ namespace DebugExtreme
     public interface ICounter
     {
         int Read();
+    }
+
+    public interface IStackCounter
+    {
+        int CaptureDepth(int baseline);
+    }
+
+    public struct RawComStackInterface
+    {
+        public nint* VTable;
+        public int Marker;
     }
 
     public struct Pair
@@ -70,6 +82,14 @@ namespace DebugExtreme
         }
     }
 
+    public class StackCounter : IStackCounter
+    {
+        public int CaptureDepth(int baseline)
+        {
+            return Debug.CaptureStackFrameCount() - baseline;
+        }
+    }
+
     public static class ProducerApi
     {
         public static int Increment(int value)
@@ -123,6 +143,52 @@ namespace DebugExtreme
                 result = result + 0;
             }
             return result - 21;
+        }
+
+        public static int CaptureComFrames(void* self, int baseline)
+        {
+            RawComStackInterface* instance = (RawComStackInterface*)self;
+            int additionalFrames = Debug.CaptureStackFrameCount() - baseline;
+            return additionalFrames + instance->Marker;
+        }
+
+        public static int InspectComStack(int baseline)
+        {
+            nint* table = stackalloc nint[1];
+            ComStackMethod implementation = CaptureComFrames;
+            table[0] = (nint)implementation;
+            RawComStackInterface instance;
+            instance.VTable = table;
+            instance.Marker = 0;
+            ComStackMethod method = (ComStackMethod)instance.VTable[0];
+            int additionalFrames = method(&instance, baseline);
+            if (additionalFrames <= 0)
+            {
+                return 1;
+            }
+            return 0;
+        }
+
+        public static int InspectInterfaceStack(borrowed IStackCounter counter, int baseline)
+        {
+            int additionalFrames = counter.CaptureDepth(baseline);
+            if (additionalFrames <= 0)
+            {
+                return 1;
+            }
+            return 0;
+        }
+
+        public static int InspectClosureStack(int baseline)
+        {
+            int capturedBaseline = baseline;
+            raii Transform closure = ignored => Debug.CaptureStackFrameCount() - capturedBaseline;
+            int additionalFrames = closure(0);
+            if (additionalFrames <= 0)
+            {
+                return 1;
+            }
+            return 0;
         }
 
         public static int Invoke(Transform transform, int value)

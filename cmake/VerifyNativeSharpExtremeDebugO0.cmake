@@ -219,6 +219,18 @@ if(NOT pdb_result EQUAL 0 OR
    NOT pdb_dump MATCHES "S_LPROC32[^\n]*`DebugExtreme\\.StackProblem\\.catch-filter \\[generated\\]`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`caughtFrames`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`additionalFrames`" OR
+   NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugExtreme\\.ProducerApi\\.CaptureComFrames`" OR
+   NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugExtreme\\.ProducerApi\\.InspectComStack`" OR
+   NOT pdb_dump MATCHES "S_THUNK32[^`]*`[^`]*CaptureComFrames[^`]*__c_boundary`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`method`" OR
+   NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugExtreme\\.StackCounter\\.CaptureDepth`" OR
+   NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugExtreme\\.ProducerApi\\.InspectInterfaceStack`" OR
+   pdb_dump MATCHES "S_THUNK32[^`]*`DebugExtreme\\.StackCounter\\.CaptureDepth`" OR
+   NOT pdb_dump MATCHES "S_GPROC32[^\n]*`DebugExtreme\\.ProducerApi\\.InspectClosureStack`" OR
+   NOT pdb_dump MATCHES "DebugExtreme\\.ProducerApi\\.InspectClosureStack\\.lambda#0" OR
+   NOT pdb_dump MATCHES "InspectClosureStack\\.lambda#0 \\[generated: closure context[ \\n\\r]+destroy\\]" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`capturedBaseline`" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`closure`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`consumed`" OR
    NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`seed`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`interfaceView`" OR

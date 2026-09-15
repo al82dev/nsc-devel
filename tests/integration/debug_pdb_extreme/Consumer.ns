@@ -25,10 +25,19 @@ namespace DebugExtremeConsumer
             int baselineFrames = Debug.CaptureStackFrameCount();
             int callbackWalk = ProducerApi.InspectCallbackStack(baselineFrames);
             int sehWalk = ProducerApi.InspectSehStack(baselineFrames);
+            int comWalk = ProducerApi.InspectComStack(baselineFrames);
+            raii StackCounter stackConcrete = new StackCounter();
+            int interfaceWalk;
+            {
+                borrowed IStackCounter stackInterface = stackConcrete;
+                interfaceWalk = ProducerApi.InspectInterfaceStack(stackInterface, baselineFrames);
+            }
+            int closureWalk = ProducerApi.InspectClosureStack(baselineFrames);
             Box<int> box = new Box<int>(consumed);
             int answer = ProducerApi.ReadBox(box);
             delete box;
-            return answer + dispatched - consumed + simd + callable + storage + callbackWalk + sehWalk;
+            return answer + dispatched - consumed + simd + callable + storage + callbackWalk + sehWalk +
+                comWalk + interfaceWalk + closureWalk;
         }
     }
 }
