@@ -9321,14 +9321,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeCall(
             }
             if (declaringType.identity.fullyQualifiedName() ==
                     "NativeSharp.Core.Runtime.CompilerServices.HardwareIntrinsics" &&
-                selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:void")
+                selectedMember.isStatic)
             {
                 std::optional<MethodCoreOperationKind> hardwareKind;
                 if (selectedMember.name == "PrefetchRead" && selectedMember.parameters.size() == 1 &&
-                    selectedMember.parameters[0].typeKey == "builtin:void*")
+                    selectedMember.parameters[0].typeKey == "builtin:void*" &&
+                    selectedMember.declaredTypeKey == "builtin:void")
                     hardwareKind = MethodCoreOperationKind::CpuPrefetchRead;
-                else if (selectedMember.name == "Pause" && selectedMember.parameters.empty())
+                else if (selectedMember.name == "Pause" && selectedMember.parameters.empty() &&
+                    selectedMember.declaredTypeKey == "builtin:void")
                     hardwareKind = MethodCoreOperationKind::CpuPause;
+                else if (selectedMember.name == "ReadTimestamp" && selectedMember.parameters.empty() &&
+                    selectedMember.declaredTypeKey == "builtin:ulong")
+                    hardwareKind = MethodCoreOperationKind::CpuReadTimestamp;
                 if (hardwareKind.has_value())
                     coreBindings_.push_back(MethodCoreBinding{*hardwareKind, expression, methodMemberOrdinal,
                         scopeOrdinal, selectedMember.declaredTypeKey,
@@ -14756,6 +14761,7 @@ const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
         case MethodCoreOperationKind::BitByteSwap: return "bit-byte-swap";
         case MethodCoreOperationKind::CpuPrefetchRead: return "cpu-prefetch-read";
         case MethodCoreOperationKind::CpuPause: return "cpu-pause";
+        case MethodCoreOperationKind::CpuReadTimestamp: return "cpu-read-timestamp";
         case MethodCoreOperationKind::MutexCreate: return "mutex-create";
         case MethodCoreOperationKind::MutexLock: return "mutex-lock";
         case MethodCoreOperationKind::MutexUnlock: return "mutex-unlock";

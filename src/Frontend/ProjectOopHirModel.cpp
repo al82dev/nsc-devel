@@ -148,6 +148,8 @@ std::optional<StringCallLowering> stringCallLowering(MethodCoreOperationKind kin
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreCpuPrefetchRead};
     case MethodCoreOperationKind::CpuPause:
         return StringCallLowering{0U, ProjectOopHirNodeKind::CoreCpuPause};
+    case MethodCoreOperationKind::CpuReadTimestamp:
+        return StringCallLowering{0U, ProjectOopHirNodeKind::CoreCpuReadTimestamp};
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -1103,6 +1105,7 @@ const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept
         case ProjectOopHirNodeKind::CoreBitByteSwap: return "core-bit-byte-swap";
         case ProjectOopHirNodeKind::CoreCpuPrefetchRead: return "core-cpu-prefetch-read";
         case ProjectOopHirNodeKind::CoreCpuPause: return "core-cpu-pause";
+        case ProjectOopHirNodeKind::CoreCpuReadTimestamp: return "core-cpu-read-timestamp";
         case ProjectOopHirNodeKind::CoreMutexCreate: return "core-mutex-create";
         case ProjectOopHirNodeKind::CoreMutexLock: return "core-mutex-lock";
         case ProjectOopHirNodeKind::CoreMutexUnlock: return "core-mutex-unlock";

@@ -7840,6 +7840,15 @@ private:
                 LLVMBuildCall2(builder_, type, intrinsic, nullptr, 0U, "");
                 return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
             }
+            case frontend::ProjectOopMirNodeKind::CoreCpuReadTimestamp:
+            {
+                if (!node->children.empty())
+                    return failValue(error, "ReadTimestamp cannot have operands");
+                LLVMTypeRef type = LLVMFunctionType(LLVMInt64TypeInContext(context_), nullptr, 0U, 0);
+                LLVMValueRef intrinsic = LLVMGetNamedFunction(module_, "llvm.readcyclecounter");
+                if (intrinsic == nullptr) intrinsic = LLVMAddFunction(module_, "llvm.readcyclecounter", type);
+                return LLVMBuildCall2(builder_, type, intrinsic, nullptr, 0U, "cpu.timestamp");
+            }
             case frontend::ProjectOopMirNodeKind::CoreBitRotateLeft:
             case frontend::ProjectOopMirNodeKind::CoreBitRotateRight:
             case frontend::ProjectOopMirNodeKind::CoreBitByteSwap:

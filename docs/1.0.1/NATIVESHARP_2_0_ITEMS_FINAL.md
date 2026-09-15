@@ -159,7 +159,7 @@
 114. **359 — Popcount, CLZ y CTZ / Bit-count intrinsics — COMPLETADO / COMPLETE**
 115. **360 — Rotaciones y byte swap / Rotate and byte-swap intrinsics — COMPLETADO / COMPLETE**
 116. **361 — Prefetch y pause / Prefetch and pause intrinsics — COMPLETADO / COMPLETE**
-117. **362 — Contador de tiempo de CPU / CPU timestamp counter**
+117. **362 — Contador de tiempo de CPU / CPU timestamp counter — COMPLETADO / COMPLETE**
 118. **363 — Selección y fallback de features de CPU / CPU feature selection and fallback**
 
 ## Tanda 10 — Floating-point determinista
