@@ -852,6 +852,17 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.item337.sdk-diagnostics
         COMMAND nsc_item337_sdk_diagnostics_tests)
+    add_executable(
+        nsc_item338_raw_com_vtable_tests
+        tests/unit/Item338RawComVtableTests.cpp)
+    target_link_libraries(nsc_item338_raw_com_vtable_tests PRIVATE nsc_driver)
+    target_compile_features(nsc_item338_raw_com_vtable_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_item338_raw_com_vtable_tests PRIVATE
+        NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_item338_raw_com_vtable_tests)
+    add_test(
+        NAME nsc.item338.raw-com-vtable
+        COMMAND nsc_item338_raw_com_vtable_tests)
 
     add_executable(nsc_partial_class_aggregation_tests tests/unit/PartialClassAggregationTests.cpp)
     target_link_libraries(nsc_partial_class_aggregation_tests PRIVATE nsc_frontend nsc_compilation)
