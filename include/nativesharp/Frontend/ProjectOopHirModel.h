@@ -476,6 +476,8 @@ struct ProjectOopHirNode final
     // the same physical pointer representation. This is the declaration-level qualifier;
     // objectLifetimeOwnership/storageOwnership remain the independent placement axes.
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
+    // Item 378. Distinguishes a scope-bound RAII owner from a manually managed owner in PDB.
+    bool automaticDestruction = false;
     // Item 323. Set on a proven-nonescaping RAII class local and its ObjectConstruction child.
     // The object lifetime remains owned, but its backing bytes belong to the current stack frame.
     bool stackPromotedObject = false;

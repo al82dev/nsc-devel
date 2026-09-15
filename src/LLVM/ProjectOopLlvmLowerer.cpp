@@ -1371,18 +1371,22 @@ private:
     LLVMMetadataRef debugOwnershipType(
         std::string_view typeKey,
         sema::OwnershipKind ownership,
+        bool automaticDestruction,
         SourceRange range)
     {
         LLVMMetadataRef physical = debugType(typeKey);
+        if (automaticDestruction) ownership = sema::OwnershipKind::Owned;
         if (physical == nullptr || ownership == sema::OwnershipKind::None) return physical;
 
-        const std::string cacheKey = "ownership:" +
-            std::string(sema::ownershipKindName(ownership)) + ":" + std::string(typeKey);
+        const std::string qualifier = automaticDestruction
+            ? "raii"
+            : std::string(sema::ownershipKindName(ownership));
+        const std::string cacheKey = "ownership:" + qualifier + ":" + std::string(typeKey);
         if (const auto cached = debugTypes_.find(cacheKey); cached != debugTypes_.end())
             return cached->second;
 
         const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey);
-        const std::string name = std::string(sema::ownershipKindName(ownership)) + " " +
+        const std::string name = qualifier + " " +
             (named != nullptr ? debugNamedDisplayName(*named) : std::string(typeKey));
         LLVMMetadataRef file = range.isValid() ? debugFile(range.begin()) : nullptr;
         const unsigned line = range.isValid() && sourceManager_ != nullptr
@@ -1465,7 +1469,7 @@ private:
             ? function.parameterOwnerships[index]
             : sema::OwnershipKind::None;
         LLVMMetadataRef type =
-            debugOwnershipType(function.parameterTypeKeys[index], ownership, range);
+            debugOwnershipType(function.parameterTypeKeys[index], ownership, false, range);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
@@ -1555,7 +1559,8 @@ private:
             node->ownership != sema::OwnershipKind::None
             ? node->ownership
             : node->objectLifetimeOwnership;
-        LLVMMetadataRef type = debugOwnershipType(typeKey, debugOwnership, range);
+        LLVMMetadataRef type = debugOwnershipType(
+            typeKey, debugOwnership, node->automaticDestruction, range);
         if (file == nullptr || type == nullptr) return true;
         const source::SourcePosition position = sourceManager_->getPosition(range.begin());
         LLVMMetadataRef scope = currentDebugScope_ != nullptr

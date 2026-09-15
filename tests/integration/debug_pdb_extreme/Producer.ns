@@ -83,5 +83,10 @@ namespace DebugExtreme
         {
             return box.Read();
         }
+
+        public static int Consume(owned Counter counter)
+        {
+            return counter.Read();
+        }
     }
 }

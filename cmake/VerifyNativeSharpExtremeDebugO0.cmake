@@ -120,7 +120,11 @@ if(NOT pdb_result EQUAL 0 OR
    NOT pdb_dump MATCHES "DebugExtreme\\.Pair\\.Sum" OR
    NOT pdb_dump MATCHES "DebugExtreme\\.Box<int>" OR
    NOT pdb_dump MATCHES "borrowed DebugExtreme\\.ICounter" OR
-   NOT pdb_dump MATCHES "owned DebugExtreme\\.Counter" OR
+   NOT pdb_dump MATCHES "raii DebugExtreme\\.Counter" OR
+   NOT pdb_dump MATCHES "DebugExtreme\\.ProducerApi\\.Consume" OR
+   NOT pdb_dump MATCHES "DebugExtreme\\.Counter\\.~Counter" OR
+   NOT pdb_dump MATCHES "destruction-entry \\[generated\\]" OR
+   NOT pdb_dump MATCHES "S_LOCAL[^\n]*`consumed`" OR
    NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`seed`" OR
    NOT pdb_dump MATCHES "S_LOCAL[^\n]*`interfaceView`" OR
    NOT pdb_dump MATCHES "(S_LOCAL|S_CONSTANT)[^\n]*`answer`" OR

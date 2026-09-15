@@ -184,7 +184,7 @@
 ## Tanda 12 — Depuración extrema
 
 132. **377 — Visualización de ownership y préstamos / Ownership and borrow debugging — COMPLETADO / COMPLETE**
-133. **378 — Visualización de movimientos y destrucción / Move and destruction debugging**
+133. **378 — Visualización de movimientos y destrucción / Move and destruction debugging — COMPLETADO / COMPLETE**
 134. **379 — Visualización SIMD y matrices / SIMD and matrix debugging**
 135. **380 — Handles, delegates y function pointers / Handle, delegate, and function-pointer debugging**
 136. **381 — Depuración de VLAs y placement / VLA and placement debugging**

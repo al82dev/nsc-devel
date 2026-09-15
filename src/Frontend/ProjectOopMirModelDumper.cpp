@@ -102,6 +102,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopMirNode* node, int dep
     if (node->referenceResult) output << " reference-result=true";
     if (node->ownership != sema::OwnershipKind::None)
         output << " ownership=" << sema::ownershipKindName(node->ownership);
+    if (node->automaticDestruction) output << " destruction=scope-bound";
     if (node->stackPromotedObject) output << " stack-promoted=true";
     if (node->volatileAccess) output << " volatile=true";
     if (node->kind == ProjectOopMirNodeKind::ClosureCaptureLoad)

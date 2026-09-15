@@ -371,6 +371,8 @@ struct ProjectOopMirNode final
     bool referenceResult = false;
     // Item 377. Retained for CodeView/PDB ownership and borrow visualization.
     sema::OwnershipKind ownership = sema::OwnershipKind::None;
+    // Item 378. Scope-bound destruction remains visible to late debug-info lowering.
+    bool automaticDestruction = false;
     // Item 323. Mirrors the HIR proof; AllocateAndConstruct consumes a frame-owned object buffer.
     bool stackPromotedObject = false;
     // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.

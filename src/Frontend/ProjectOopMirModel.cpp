@@ -1319,6 +1319,7 @@ std::unique_ptr<ProjectOopMirNode> ProjectOopMirModel::lowerNode(
     result->referenceLocal = node->referenceLocal;
     result->referenceResult = node->referenceResult;
     result->ownership = node->ownership;
+    result->automaticDestruction = node->automaticDestruction;
     result->stackPromotedObject = node->stackPromotedObject;
     result->volatileAccess = node->volatileAccess;
     result->baseReceiver = node->baseReceiver;
