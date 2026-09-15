@@ -1,0 +1,31 @@
+public extern C delegate int Callback(int value);
+
+public class Native
+{
+    extern C from "@HOST_DLL@"
+    {
+        public int NSVarargProbe(int tag, ...);
+    }
+}
+
+public class Program
+{
+    public static int Twice(int value) { return value * 2; }
+
+    public static int Main()
+    {
+        int marker = 99;
+        Callback callback = Twice;
+        return Native.NSVarargProbe(
+            10,
+            (float)1.5,
+            true,
+            (double)2.25,
+            (byte)7,
+            (short)-3,
+            4000000000u,
+            (long)5000000000,
+            &marker,
+            callback);
+    }
+}

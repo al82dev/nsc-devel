@@ -124,7 +124,7 @@
 85. **330 — Bitfields volatile / Volatile bit fields — COMPLETADO / COMPLETE**
 86. **331 — Declaraciones C variádicas / Variadic C declarations — COMPLETADO / COMPLETE**
 87. **332 — Promociones C para varargs / C vararg promotions — COMPLETADO / COMPLETE**
-88. **333 — ABI Win64 de varargs / Win64 variadic ABI**
+88. **333 — ABI Win64 de varargs / Win64 variadic ABI — COMPLETADO / COMPLETE**
 
 ## Tanda 8 — SDK, COM y ABI
 

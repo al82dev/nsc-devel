@@ -80,6 +80,9 @@ empaqueta con NativeSharp 1.0.1.
   se conserva en NSMETA 1.19 y `LibraryReference`. Sus llamadas aplican las promociones C
   predeterminadas: `float` pasa como `double` y los enteros, `bool` y enums menores de 32 bits como
   `int`. La cola sólo admite escalares ABI-seguros, punteros crudos y delegates `extern C` por valor.
+  En Windows x64 el backend conserva el prototipo variádico para que LLVM duplique valores de coma
+  flotante entre XMM y registros enteros en los primeros cuatro slots y coloque el resto después
+  del shadow space. Hosts independientes C11/C++20 lo verifican por `va_list` en O0 y O2.
 - `NativeSharp.Core.Threading.MemoryOrder` publica el vocabulario ABI estable para atomics 2.0:
   `Relaxed`, `Acquire`, `Release`, `AcquireRelease` y `SequentiallyConsistent`; las operaciones sin
   parámetro conservan por ahora su semántica `seq_cst`.

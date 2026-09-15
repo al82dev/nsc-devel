@@ -196,6 +196,12 @@ bits, punteros crudos y delegates `extern C` conservan su representación. Valor
 agregados, ownership, argumentos nombrados de cola y `ref/out/in` se rechazan antes de HIR. La
 certificación física de registros Win64 queda delimitada al punto 333.
 
+La ABI física del punto 333 también está cerrada. En Windows x64 las llamadas conservan el tipo
+LLVM variádico, por lo que los argumentos flotantes de los primeros cuatro slots se duplican en
+XMM y en su registro entero correspondiente; la cola restante sigue el shadow space en slots de
+ocho bytes. Ejecutables NativeSharp O0/O2 fueron verificados contra callees independientes C11 y
+C++20 que consumen la mezcla completa mediante `va_list`, incluidos punteros y callbacks.
+
 ## Superficie del lenguaje
 
 La edición cubre namespaces, clases parciales y anidadas, structs, interfaces, herencia, miembros

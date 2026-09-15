@@ -1139,6 +1139,20 @@ shall use the variadic function prototype at O0 and O2. Calls through `LibraryRe
 shall behave identically. Physical Windows x64 vararg register certification belongs to
 NSC-ABI-003.
 
+## NSC-ABI-003 — Win64 variadic call lowering
+
+For the `x86_64-pc-windows-msvc` target, the LLVM call site shall retain the variadic function type
+rather than casting the callee to a fixed prototype. Target lowering shall therefore duplicate
+each floating-point value in the first four argument slots into the corresponding XMM and
+general-purpose registers, reserve the Win64 shadow space, and place remaining promoted arguments
+in eight-byte stack slots.
+
+Certification shall execute NativeSharp callers against independently compiled C11 and C++20
+callees that consume the arguments through `va_list`. It shall cover promoted and direct floating
+values in register slots, promoted integers in register and stack slots, 32/64-bit integers, raw
+pointers, and `extern C` callbacks at O0 and O2. An IR-only assertion is insufficient for this
+contract because it does not observe the final machine calling sequence.
+
 ## NSC-ASM-001 — Integrated assembly grammar boundary
 
 The parser shall recognize contextual `asm { ... }` only as a statement in function and method

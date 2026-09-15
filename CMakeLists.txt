@@ -2197,6 +2197,17 @@ if(NSC_BUILD_TESTS)
             "-DASSEMBLY_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/assembly-abi-o0-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpAssemblyAbiO0.cmake")
 
+    add_test(
+        NAME nsc.item333.win64-vararg-abi
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DCLANG_C=${NSC_TEST_CLANG_EXECUTABLE}"
+            "-DCLANG_CXX=${NSC_TEST_CLANGXX_EXECUTABLE}"
+            "-DLLD_LINK=${NSC_DEBUG_LLD_LINK_EXECUTABLE}"
+            "-DVARARG_ABI_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/item333_vararg_abi"
+            "-DVARARG_ABI_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/item333-vararg-abi-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpWin64VarargAbi.cmake")
+
     # CC1-000: este regex comprueba la identidad visible del compilador instalado. El stage exacto
     # se extrae de Version.h para conservar una sola fuente de verdad sin aceptar una instalacion
     # atrasada. nsc.version.identity comprueba por separado las constantes enlazadas en este build.

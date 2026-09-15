@@ -1255,6 +1255,25 @@ and `extern C` delegates retain their ABI representation. Managed values, owners
 arguments, and `ref`/`out`/`in` are rejected.
 Windows x64 physical register placement is specified separately by NS-ABI-005.
 
+### NS-ABI-005 — ABI Win64 de argumentos variádicos
+
+En el target `x86_64-pc-windows-msvc`, una llamada C variádica usa los cuatro slots iniciales de
+la convención Win64 y el área de stack ordinaria. Cuando un argumento de coma flotante ocupa uno
+de esos cuatro slots, el llamador coloca el mismo valor tanto en el registro XMM correspondiente
+como en el registro entero correspondiente; así un callee C/C++ que recorre `va_list` observa los
+bytes prescritos por la ABI. Los argumentos restantes ocupan slots de stack de ocho bytes después
+del shadow space.
+
+La regla se aplica después de NS-ABI-004: un `float` ya llega como `double` y un entero estrecho ya
+llega como `int`. Punteros crudos y delegates `extern C` conservan su valor de dirección. La misma
+conducta es obligatoria en O0 y O2.
+
+On `x86_64-pc-windows-msvc`, variadic C calls use the standard four register slots and stack area.
+A floating-point value in one of the first four slots is duplicated into both its XMM register and
+the corresponding general-purpose register so an independent C or C++ `va_list` observes the
+required representation. Stack arguments follow the Win64 shadow space in eight-byte slots. This
+placement occurs after NS-ABI-004 promotions and must be identical at O0 and O2.
+
 ## 11. Tipos, genéricos y control estructurado
 
 ### NS-CT-001 — Aserciones estáticas

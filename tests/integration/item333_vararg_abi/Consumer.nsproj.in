@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Name>@PROJECT_NAME@</Name>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+  </ItemGroup>
+</Project>
