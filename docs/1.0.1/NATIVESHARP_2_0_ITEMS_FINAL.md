@@ -150,7 +150,7 @@
 105. **350 — Loads/stores SIMD alineados / Aligned SIMD loads and stores — COMPLETADO / COMPLETE**
 106. **351 — Loads/stores SIMD no alineados / Unaligned SIMD loads and stores — COMPLETADO / COMPLETE**
 107. **352 — `float2` y `float3` / Compact float vectors — COMPLETADO / COMPLETE**
-108. **353 — Matrices nativas / Native matrices**
+108. **353 — Matrices nativas / Native matrices — COMPLETADO / COMPLETE**
 109. **354 — Tipo `half` / Half-precision type**
 110. **355 — Formatos GPU empaquetados / Packed GPU formats**
 111. **356 — Swizzle y shuffle / Swizzle and shuffle**

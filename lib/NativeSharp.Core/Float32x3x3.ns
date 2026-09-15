@@ -1,0 +1,29 @@
+namespace NativeSharp.Core.Numerics
+{
+    // Matriz nativa column-major de 3x3. El carrier conserva exactamente nueve floats (36 bytes)
+    // para buffers de GPU y para interoperar sin una representacion administrada auxiliar.
+    public struct Float32x3x3
+    {
+        public Float32x3 C0;
+        public Float32x3 C1;
+        public Float32x3 C2;
+
+        public static Float32x3 Transform(Float32x3x3 matrix, Float32x3 vector)
+        {
+            Float32x3 result;
+            result.X = matrix.C0.X * vector.X + matrix.C1.X * vector.Y + matrix.C2.X * vector.Z;
+            result.Y = matrix.C0.Y * vector.X + matrix.C1.Y * vector.Y + matrix.C2.Y * vector.Z;
+            result.Z = matrix.C0.Z * vector.X + matrix.C1.Z * vector.Y + matrix.C2.Z * vector.Z;
+            return result;
+        }
+
+        public static Float32x3x3 Multiply(Float32x3x3 left, Float32x3x3 right)
+        {
+            Float32x3x3 result;
+            result.C0 = Transform(left, right.C0);
+            result.C1 = Transform(left, right.C1);
+            result.C2 = Transform(left, right.C2);
+            return result;
+        }
+    }
+}
