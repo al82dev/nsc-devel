@@ -4697,7 +4697,7 @@ private:
                 return fail(error, "OOP MIR cleanup contract contains a null action");
             cleanupRegions_.emplace(cleanup.ordinal, cleanup.action);
         }
-        const bool hasExceptionalControl = containsExceptionalControl(function.body.get());
+        const bool hasExceptionalControl = function.exceptionFlow.requiresPersonality;
         if (hasExceptionalControl || !ownedCaptureCells_.empty())
         {
             LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
@@ -4849,46 +4849,6 @@ private:
         // only once, and it keeps the slot from holding a dangling pointer afterwards on any path
         // that legitimately survives the cleanup.
         LLVMBuildStore(builder_, LLVMConstNull(ptr), ownerStorage);
-    }
-
-    bool containsExceptionalControl(const frontend::ProjectOopMirNode* node) const noexcept
-    {
-        if (node == nullptr) return false;
-        switch (node->kind)
-        {
-            case frontend::ProjectOopMirNodeKind::TryRegion:
-            case frontend::ProjectOopMirNodeKind::FinallyRegion:
-            case frontend::ProjectOopMirNodeKind::UsingRegion:
-            case frontend::ProjectOopMirNodeKind::LocalDeclaration:
-            case frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow:
-            case frontend::ProjectOopMirNodeKind::OwnedParameterCleanup:
-                if (node->cleanupRegionOrdinal.has_value()) return true;
-                break;
-            case frontend::ProjectOopMirNodeKind::Throw:
-            case frontend::ProjectOopMirNodeKind::Rethrow:
-            // Stage 52 fix: a try/catch needs the full SEH funclet/personality-routine machinery
-            // (and therefore the `returnStorage_` spill slot for `return` statements that unwind
-            // through an active catch funclet -- see lowerStructuredExit's `complexExit` check)
-            // regardless of whether its *protected* body happens to contain a `throw`/`rethrow`
-            // or a cleanup-owning local. A catch region proves the enclosing try/catch exists,
-            // which is what actually drives funclet nesting at LLVM lowering time -- the previous
-            // check only looked for a `cleanupRegionOrdinal` on TryRegion/FinallyRegion/UsingRegion
-            // (set only when the protected block owns RAII/using cleanup) or an explicit
-            // throw/rethrow, so `try { return x; } catch (...) { ... }` with neither -- a
-            // completely ordinary, expected shape -- silently fell through with
-            // `hasExceptionalControl == false`, never allocated the spill slot, and then crashed
-            // with "Stage 45.10 return through cleanup/catch has no return spill slot" the moment
-            // `lowerStructuredExit` saw the catch funclet on the stack. See CatchRegion below.
-            case frontend::ProjectOopMirNodeKind::CatchRegion:
-                return true;
-            default:
-                break;
-        }
-        for (const auto& child : node->children)
-        {
-            if (containsExceptionalControl(child.get())) return true;
-        }
-        return false;
     }
 
     std::optional<std::size_t> activeCleanupIndex(

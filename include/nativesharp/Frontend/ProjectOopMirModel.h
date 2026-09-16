@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 9;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 10;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -486,6 +486,37 @@ struct ProjectOopMirCleanupRegion final
     bool automaticDestruction = false;
 };
 
+enum class ProjectOopMirNonlocalExitKind
+{
+    Return,
+    Break,
+    Continue,
+    Throw,
+    Rethrow,
+    CleanupContinuation
+};
+
+const char* projectOopMirNonlocalExitKindName(ProjectOopMirNonlocalExitKind kind) noexcept;
+
+struct ProjectOopMirNonlocalExit final
+{
+    ProjectOopMirNonlocalExitKind kind = ProjectOopMirNonlocalExitKind::Return;
+    const ProjectOopMirNode* node = nullptr;
+    std::vector<std::size_t> cleanupRegionOrdinals;
+    std::optional<std::size_t> targetScopeOrdinal;
+    std::optional<std::size_t> exceptionTargetRegionOrdinal;
+    std::optional<MethodCleanupContinuationKind> cleanupContinuationKind;
+};
+
+struct ProjectOopMirExceptionFlow final
+{
+    bool requiresPersonality = false;
+    std::vector<std::size_t> protectedRegionOrdinals;
+    std::size_t catchRegionCount = 0;
+    std::size_t finallyRegionCount = 0;
+    std::vector<ProjectOopMirNonlocalExit> nonlocalExits;
+};
+
 struct ProjectOopMirStaticField final
 {
     std::size_t memberOrdinal = 0;
@@ -652,6 +683,7 @@ struct ProjectOopMirFunction final
     ProjectOopMirFunctionAbi abi;
     std::vector<std::size_t> localOrdinals;
     std::vector<ProjectOopMirCleanupRegion> cleanupRegions;
+    ProjectOopMirExceptionFlow exceptionFlow;
     std::unique_ptr<ProjectOopMirNode> body;
 };
 

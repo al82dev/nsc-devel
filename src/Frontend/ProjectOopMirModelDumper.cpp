@@ -186,6 +186,27 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
             if (cleanup.automaticDestruction) output << " automatic-destruction";
             output << '\n';
         }
+        output << "  exception-flow personality="
+               << (function.exceptionFlow.requiresPersonality ? "true" : "false")
+               << " protected=" << function.exceptionFlow.protectedRegionOrdinals.size()
+               << " catches=" << function.exceptionFlow.catchRegionCount
+               << " finally=" << function.exceptionFlow.finallyRegionCount
+               << " exits=" << function.exceptionFlow.nonlocalExits.size() << '\n';
+        for (const ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
+        {
+            output << "    nonlocal-exit kind=" << projectOopMirNonlocalExitKindName(exit.kind)
+                   << " cleanup-path=";
+            if (exit.cleanupRegionOrdinals.empty()) output << "<none>";
+            for (std::size_t index = 0; index < exit.cleanupRegionOrdinals.size(); ++index)
+            {
+                if (index != 0) output << ',';
+                output << '#' << exit.cleanupRegionOrdinals[index];
+            }
+            if (exit.targetScopeOrdinal.has_value()) output << " target-scope=#" << *exit.targetScopeOrdinal;
+            if (exit.exceptionTargetRegionOrdinal.has_value())
+                output << " exception-target=#" << *exit.exceptionTargetRegionOrdinal;
+            output << '\n';
+        }
         dumpNode(output, function.body.get(), 1);
     }
     output << "static-fields=" << model.staticFields().size() << '\n';

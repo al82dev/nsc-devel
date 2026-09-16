@@ -30,6 +30,44 @@ bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error
 {
     const auto collect = [&](const auto& self, const ProjectOopMirNode* node) -> bool {
         if (node == nullptr) return true;
+        switch (node->kind)
+        {
+            case ProjectOopMirNodeKind::TryRegion:
+                if (node->mirRegionOrdinal.has_value())
+                    function.exceptionFlow.protectedRegionOrdinals.push_back(*node->mirRegionOrdinal);
+                break;
+            case ProjectOopMirNodeKind::CatchRegion:
+                ++function.exceptionFlow.catchRegionCount;
+                function.exceptionFlow.requiresPersonality = true;
+                break;
+            case ProjectOopMirNodeKind::FinallyRegion:
+                ++function.exceptionFlow.finallyRegionCount;
+                function.exceptionFlow.requiresPersonality = true;
+                break;
+            case ProjectOopMirNodeKind::Throw:
+            case ProjectOopMirNodeKind::Rethrow:
+                function.exceptionFlow.requiresPersonality = true;
+                break;
+            default: break;
+        }
+        std::optional<ProjectOopMirNonlocalExitKind> exitKind;
+        switch (node->kind)
+        {
+            case ProjectOopMirNodeKind::Return: exitKind = ProjectOopMirNonlocalExitKind::Return; break;
+            case ProjectOopMirNodeKind::Break: exitKind = ProjectOopMirNonlocalExitKind::Break; break;
+            case ProjectOopMirNodeKind::Continue: exitKind = ProjectOopMirNonlocalExitKind::Continue; break;
+            case ProjectOopMirNodeKind::Throw: exitKind = ProjectOopMirNonlocalExitKind::Throw; break;
+            case ProjectOopMirNodeKind::Rethrow: exitKind = ProjectOopMirNonlocalExitKind::Rethrow; break;
+            case ProjectOopMirNodeKind::CleanupContinuation:
+                exitKind = ProjectOopMirNonlocalExitKind::CleanupContinuation; break;
+            default: break;
+        }
+        if (exitKind.has_value())
+        {
+            function.exceptionFlow.nonlocalExits.push_back(ProjectOopMirNonlocalExit{*exitKind,
+                node, node->cleanupRegionOrdinals, node->targetScopeOrdinal,
+                node->exceptionTargetRegionOrdinal, node->cleanupContinuationKind});
+        }
         if (node->cleanupRegionOrdinal.has_value())
         {
             std::optional<ProjectOopMirCleanupKind> kind;
@@ -71,6 +109,15 @@ bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error
     };
     if (!collect(collect, function.body.get())) return false;
     std::ranges::sort(function.cleanupRegions, {}, &ProjectOopMirCleanupRegion::ordinal);
+    std::ranges::sort(function.exceptionFlow.protectedRegionOrdinals);
+    if (std::ranges::adjacent_find(function.exceptionFlow.protectedRegionOrdinals) !=
+        function.exceptionFlow.protectedRegionOrdinals.end())
+    {
+        error = "OOP MIR contains duplicate exception-region identity";
+        return false;
+    }
+    function.exceptionFlow.requiresPersonality =
+        function.exceptionFlow.requiresPersonality || !function.cleanupRegions.empty();
 
     const auto validateReferences = [&](const auto& self, const ProjectOopMirNode* node) -> bool {
         if (node == nullptr) return true;
@@ -85,6 +132,14 @@ bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error
                     std::to_string(ordinal);
                 return false;
             }
+        }
+        if (node->exceptionTargetRegionOrdinal.has_value() &&
+            !std::ranges::binary_search(function.exceptionFlow.protectedRegionOrdinals,
+                *node->exceptionTargetRegionOrdinal))
+        {
+            error = "OOP MIR nonlocal exit references missing exception region #" +
+                std::to_string(*node->exceptionTargetRegionOrdinal);
+            return false;
         }
         for (const auto& child : node->children)
             if (!self(self, child.get())) return false;
@@ -589,6 +644,20 @@ const char* projectOopMirCleanupKindName(ProjectOopMirCleanupKind kind) noexcept
         case ProjectOopMirCleanupKind::OwnedParameter: return "owned-parameter";
         case ProjectOopMirCleanupKind::Using: return "using";
         case ProjectOopMirCleanupKind::Finally: return "finally";
+    }
+    return "unknown";
+}
+
+const char* projectOopMirNonlocalExitKindName(ProjectOopMirNonlocalExitKind kind) noexcept
+{
+    switch (kind)
+    {
+        case ProjectOopMirNonlocalExitKind::Return: return "return";
+        case ProjectOopMirNonlocalExitKind::Break: return "break";
+        case ProjectOopMirNonlocalExitKind::Continue: return "continue";
+        case ProjectOopMirNonlocalExitKind::Throw: return "throw";
+        case ProjectOopMirNonlocalExitKind::Rethrow: return "rethrow";
+        case ProjectOopMirNonlocalExitKind::CleanupContinuation: return "cleanup-continuation";
     }
     return "unknown";
 }

@@ -2486,6 +2486,11 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_item396_mir_ownership_cleanup_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_item396_mir_ownership_cleanup_tests)
     add_test(NAME nsc.item396.mir-ownership-cleanup COMMAND nsc_item396_mir_ownership_cleanup_tests)
+    add_executable(nsc_item397_mir_exception_flow_tests tests/unit/Item397MirExceptionFlowTests.cpp)
+    target_link_libraries(nsc_item397_mir_exception_flow_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item397_mir_exception_flow_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item397_mir_exception_flow_tests)
+    add_test(NAME nsc.item397.mir-exception-flow COMMAND nsc_item397_mir_exception_flow_tests)
     nsc_add_unit_test(
         nsc_frontend_robustness_tests
         tests/unit/FrontendRobustnessTests.cpp

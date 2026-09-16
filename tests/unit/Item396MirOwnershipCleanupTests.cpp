@@ -91,7 +91,7 @@ class Api
         "MIR cleanup regions have deterministic ordinal order");
 
     const std::string dump = ProjectOopMirModelDumper::dump(model);
-    tests.expect(dump.find("schema=1.9") != std::string::npos &&
+    tests.expect(dump.find("schema=1.10") != std::string::npos &&
             dump.find("kind=owned-parameter") != std::string::npos &&
             dump.find("kind=finally") != std::string::npos,
         "versioned MIR dump exposes ownership and cleanup actions");
