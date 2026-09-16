@@ -1227,6 +1227,7 @@ class PipelineWorker(QObject):
         build_dir: str | Path | None = None,
     ) -> list[str]:
         llvm = Path(self.plan.llvm_root).as_posix()
+        prefix = Path(self.plan.prefix).as_posix()
         selected_build = str(
             build_dir if build_dir is not None else self.plan.compiler_build_dir
         )
@@ -1239,6 +1240,7 @@ class PipelineWorker(QObject):
             "-G",
             "Ninja",
             "-DCMAKE_BUILD_TYPE=Release",
+            f"-DCMAKE_INSTALL_PREFIX={prefix}",
             f"-DCMAKE_CXX_COMPILER={llvm}/bin/clang-cl.exe",
             f"-DCMAKE_LINKER={llvm}/bin/lld-link.exe",
             f"-DCMAKE_MT={llvm}/bin/llvm-mt.exe",
