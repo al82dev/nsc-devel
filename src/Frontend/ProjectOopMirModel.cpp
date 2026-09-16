@@ -26,6 +26,73 @@ ProjectOopMirAbiPassing abiPassingForSize(std::uint64_t size) noexcept
     }
 }
 
+bool finalizeCleanupContract(ProjectOopMirFunction& function, std::string& error)
+{
+    const auto collect = [&](const auto& self, const ProjectOopMirNode* node) -> bool {
+        if (node == nullptr) return true;
+        if (node->cleanupRegionOrdinal.has_value())
+        {
+            std::optional<ProjectOopMirCleanupKind> kind;
+            switch (node->kind)
+            {
+                case ProjectOopMirNodeKind::LocalDeclaration:
+                    kind = ProjectOopMirCleanupKind::LocalOwner; break;
+                case ProjectOopMirNodeKind::OwnedTemporaryBorrow:
+                    kind = ProjectOopMirCleanupKind::TemporaryOwner; break;
+                case ProjectOopMirNodeKind::OwnedParameterCleanup:
+                    kind = ProjectOopMirCleanupKind::OwnedParameter; break;
+                case ProjectOopMirNodeKind::UsingRegion:
+                    kind = ProjectOopMirCleanupKind::Using; break;
+                case ProjectOopMirNodeKind::FinallyRegion:
+                    kind = ProjectOopMirCleanupKind::Finally; break;
+                default: break;
+            }
+            if (kind.has_value())
+            {
+                const std::size_t ordinal = *node->cleanupRegionOrdinal;
+                const bool duplicate = std::ranges::any_of(function.cleanupRegions,
+                    [ordinal](const ProjectOopMirCleanupRegion& region) {
+                        return region.ordinal == ordinal;
+                    });
+                if (duplicate)
+                {
+                    error = "OOP MIR contains duplicate cleanup-region identity #" +
+                        std::to_string(ordinal);
+                    return false;
+                }
+                function.cleanupRegions.push_back(ProjectOopMirCleanupRegion{ordinal, *kind, node,
+                    node->localOrdinal, node->parameterOrdinal, node->typeKey, node->ownership,
+                    node->automaticDestruction});
+            }
+        }
+        for (const auto& child : node->children)
+            if (!self(self, child.get())) return false;
+        return true;
+    };
+    if (!collect(collect, function.body.get())) return false;
+    std::ranges::sort(function.cleanupRegions, {}, &ProjectOopMirCleanupRegion::ordinal);
+
+    const auto validateReferences = [&](const auto& self, const ProjectOopMirNode* node) -> bool {
+        if (node == nullptr) return true;
+        for (const std::size_t ordinal : node->cleanupRegionOrdinals)
+        {
+            if (!std::ranges::any_of(function.cleanupRegions,
+                    [ordinal](const ProjectOopMirCleanupRegion& region) {
+                        return region.ordinal == ordinal;
+                    }))
+            {
+                error = "OOP MIR structured exit references missing cleanup region #" +
+                    std::to_string(ordinal);
+                return false;
+            }
+        }
+        for (const auto& child : node->children)
+            if (!self(self, child.get())) return false;
+        return true;
+    };
+    return validateReferences(validateReferences, function.body.get());
+}
+
 // NSC-LIMIT-009. Solo se llama sobre claves de identidad, de modo que delega en el codificador
 // que conserva el `+`. Antes aplastaba `+` y `.` al mismo `_` y el descriptor, la vtable y el mapa
 // de interfaces de `N.Outer+Item` chocaban con los de `N.Outer.Item`.
@@ -511,6 +578,19 @@ std::optional<bool> booleanConstantValue(
 const char* projectOopMirAbiPassingName(ProjectOopMirAbiPassing passing) noexcept
 {
     return passing == ProjectOopMirAbiPassing::Indirect ? "win64-indirect" : "win64-direct";
+}
+
+const char* projectOopMirCleanupKindName(ProjectOopMirCleanupKind kind) noexcept
+{
+    switch (kind)
+    {
+        case ProjectOopMirCleanupKind::LocalOwner: return "local-owner";
+        case ProjectOopMirCleanupKind::TemporaryOwner: return "temporary-owner";
+        case ProjectOopMirCleanupKind::OwnedParameter: return "owned-parameter";
+        case ProjectOopMirCleanupKind::Using: return "using";
+        case ProjectOopMirCleanupKind::Finally: return "finally";
+    }
+    return "unknown";
 }
 
 const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
@@ -1085,6 +1165,11 @@ bool ProjectOopMirModel::build(
             // paid again by every internal error after it. The mangled name is the cheapest thing
             // here that actually narrows the search, and it is always available.
             functionError += "\n  while lowering '" + source.mangledName + "'";
+        }
+        else if (!finalizeCleanupContract(function, functionError))
+        {
+            functionError += "\n  while finalizing ownership/cleanup MIR for '" +
+                source.mangledName + "'";
         }
         return function;
     };

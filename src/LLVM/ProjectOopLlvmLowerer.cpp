@@ -4691,8 +4691,12 @@ private:
 
         collectLocalAllocas(function.body.get(), error);
         if (!error.empty()) return false;
-        collectCleanupRegions(function.body.get(), error);
-        if (!error.empty()) return false;
+        for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
+        {
+            if (cleanup.action == nullptr)
+                return fail(error, "OOP MIR cleanup contract contains a null action");
+            cleanupRegions_.emplace(cleanup.ordinal, cleanup.action);
+        }
         const bool hasExceptionalControl = containsExceptionalControl(function.body.get());
         if (hasExceptionalControl || !ownedCaptureCells_.empty())
         {
@@ -4885,26 +4889,6 @@ private:
             if (containsExceptionalControl(child.get())) return true;
         }
         return false;
-    }
-
-    void collectCleanupRegions(const frontend::ProjectOopMirNode* node, std::string& error)
-    {
-        if (node == nullptr || !error.empty()) return;
-        if ((node->kind == frontend::ProjectOopMirNodeKind::FinallyRegion ||
-             node->kind == frontend::ProjectOopMirNodeKind::UsingRegion ||
-             node->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
-             node->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow ||
-             node->kind == frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) &&
-            node->cleanupRegionOrdinal.has_value())
-        {
-            const auto [found, inserted] = cleanupRegions_.emplace(*node->cleanupRegionOrdinal, node);
-            if (!inserted && found->second != node)
-            {
-                error = "Stage 45.10 found duplicate MIR cleanup-region identity";
-                return;
-            }
-        }
-        for (const auto& child : node->children) collectCleanupRegions(child.get(), error);
     }
 
     std::optional<std::size_t> activeCleanupIndex(

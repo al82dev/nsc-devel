@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 8;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 9;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -463,6 +463,29 @@ struct ProjectOopMirFunctionAbi final
     std::size_t physicalParameterCount = 0;
 };
 
+enum class ProjectOopMirCleanupKind
+{
+    LocalOwner,
+    TemporaryOwner,
+    OwnedParameter,
+    Using,
+    Finally
+};
+
+const char* projectOopMirCleanupKindName(ProjectOopMirCleanupKind kind) noexcept;
+
+struct ProjectOopMirCleanupRegion final
+{
+    std::size_t ordinal = 0;
+    ProjectOopMirCleanupKind kind = ProjectOopMirCleanupKind::LocalOwner;
+    const ProjectOopMirNode* action = nullptr;
+    std::optional<std::size_t> localOrdinal;
+    std::optional<std::size_t> parameterOrdinal;
+    std::string typeKey;
+    sema::OwnershipKind ownership = sema::OwnershipKind::None;
+    bool automaticDestruction = false;
+};
+
 struct ProjectOopMirStaticField final
 {
     std::size_t memberOrdinal = 0;
@@ -628,6 +651,7 @@ struct ProjectOopMirFunction final
     std::vector<sema::OwnershipKind> parameterOwnerships;
     ProjectOopMirFunctionAbi abi;
     std::vector<std::size_t> localOrdinals;
+    std::vector<ProjectOopMirCleanupRegion> cleanupRegions;
     std::unique_ptr<ProjectOopMirNode> body;
 };
 

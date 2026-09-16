@@ -173,6 +173,19 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
             output << "  parameter-ownership[" << index << "]="
                    << sema::ownershipKindName(function.parameterOwnerships[index]) << '\n';
         }
+        output << "  cleanup-contract=" << function.cleanupRegions.size() << '\n';
+        for (const ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
+        {
+            output << "    cleanup #" << cleanup.ordinal
+                   << " kind=" << projectOopMirCleanupKindName(cleanup.kind)
+                   << " type=" << cleanup.typeKey
+                   << " ownership=" << sema::ownershipKindName(cleanup.ownership);
+            if (cleanup.localOrdinal.has_value()) output << " local=#" << *cleanup.localOrdinal;
+            if (cleanup.parameterOrdinal.has_value())
+                output << " parameter=#" << *cleanup.parameterOrdinal;
+            if (cleanup.automaticDestruction) output << " automatic-destruction";
+            output << '\n';
+        }
         dumpNode(output, function.body.get(), 1);
     }
     output << "static-fields=" << model.staticFields().size() << '\n';
