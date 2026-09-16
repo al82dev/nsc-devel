@@ -366,6 +366,7 @@ add_library(nsc_linker STATIC
     src/Linker/PdbVerifier.cpp
     src/Linker/WindowsExecutableBuilder.cpp
     src/Linker/WindowsLibraryBuilder.cpp
+    src/Linker/WindowsRuntimeLibrary.cpp
     src/Linker/WindowsRuntimeImports.cpp)
 
 target_include_directories(nsc_linker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -391,6 +392,8 @@ add_library(nsc_driver STATIC
 
 target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+target_compile_definitions(nsc_driver PRIVATE
+    NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY="${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib")
 target_compile_features(nsc_driver PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_driver)
 add_dependencies(nsc_driver nsc_build_identity)
@@ -421,16 +424,20 @@ set(NSC_MIGRATION_BASELINE
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Migration.baseline")
 set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
+set(NSC_WINDOWS_RUNTIME_LIBRARY
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp.Runtime.Win32.lib")
 add_custom_command(TARGET nsc POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
     COMMAND $<TARGET_FILE:nsc> --write-toolchain-contract "${NSC_TOOLCHAIN_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-compatibility-policy "${NSC_COMPATIBILITY_POLICY}"
     COMMAND $<TARGET_FILE:nsc> --write-migration-baseline "${NSC_MIGRATION_BASELINE}"
     COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
+    COMMAND $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
                "${NSC_MIGRATION_BASELINE}"
                "${NSC_RUNTIME_ABI_CONTRACT}"
+               "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
     VERBATIM)
 
@@ -455,6 +462,7 @@ file(GLOB_RECURSE NSC_INSTALLATION_DOCUMENTATION_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/docs/*")
 set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
+    "lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib"
     "share/nativesharp/runtime/NativeSharpRuntime.abi"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
@@ -521,6 +529,7 @@ install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchai
 install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_MIGRATION_BASELINE}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_RUNTIME_ABI_CONTRACT}" DESTINATION share/nativesharp/runtime)
+install(FILES "${NSC_WINDOWS_RUNTIME_LIBRARY}" DESTINATION lib/nativesharp/runtime)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
 if(WIN32)
     # La verificacion corre al FINAL: no basta que CMake haya intentado copiar los archivos. El
@@ -2591,6 +2600,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_item400_runtime_abi_contract_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_item400_runtime_abi_contract_tests)
     add_test(NAME nsc.item400.runtime-abi-contract COMMAND nsc_item400_runtime_abi_contract_tests)
+
+    add_executable(nsc_item401_independent_windows_runtime_tests tests/unit/Item401IndependentWindowsRuntimeTests.cpp)
+    target_link_libraries(nsc_item401_independent_windows_runtime_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item401_independent_windows_runtime_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item401_independent_windows_runtime_tests)
+    add_test(NAME nsc.item401.independent-windows-runtime COMMAND nsc_item401_independent_windows_runtime_tests)
 
     add_executable(nsc_windows_linker_tests tests/unit/WindowsLinkerTests.cpp)
     target_link_libraries(nsc_windows_linker_tests PRIVATE nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)

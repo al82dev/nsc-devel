@@ -248,13 +248,15 @@ bool verifyRuntimeAbiContract(
 
     for (const RuntimeAbiSymbol& expected : kRuntimeAbiSymbols)
     {
-        const bool required = imageKind == RuntimeAbiImageKind::Executable || !isEntryPoint(expected);
+        const bool required = imageKind == RuntimeAbiImageKind::Executable ||
+            (imageKind == RuntimeAbiImageKind::SupportLibrary && !isEntryPoint(expected)) ||
+            (imageKind == RuntimeAbiImageKind::EntryPoint && isEntryPoint(expected));
         const auto found = actual.find(std::string(expected.name));
         if (!required)
         {
-            if (found != actual.end())
+            if (found != actual.end() && imageKind != RuntimeAbiImageKind::Executable)
             {
-                error = "support runtime unexpectedly defines executable entry symbol '" +
+                error = "runtime image unexpectedly defines symbol '" +
                     std::string(expected.name) + "'";
                 return false;
             }

@@ -72,6 +72,7 @@ cada versión ABI se verifican además de esta identidad de productor.
 - `src/Driver/CompatibilityPolicy.cpp`: política de versiones y formatos.
 - `include/nativesharp/Interop/LibraryMetadata.h`: NSMETA y Native ABI; publica en metadata el Runtime ABI autoritativo.
 - `include/nativesharp/Runtime/RuntimeAbiContract.h`: Runtime ABI, symbol set y manifiesto tipado.
+- `include/nativesharp/Linker/WindowsRuntimeLibrary.h`: formato del archivo Win32 independiente.
 
 ---
 

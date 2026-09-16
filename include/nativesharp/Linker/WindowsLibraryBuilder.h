@@ -61,11 +61,13 @@ public:
     // to rediscover private static dependencies.
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
+    void setRuntimeLibrary(std::filesystem::path runtimeLibrary);
 
 private:
     CoffArchiveInfo archiveInfo_;
     PeExecutableInfo dynamicLibraryInfo_;
     std::vector<ExternalImportModule> externalImports_;
     std::vector<std::filesystem::path> extraLinkLibraries_;
+    std::filesystem::path runtimeLibrary_;
 };
 }

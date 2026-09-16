@@ -5400,6 +5400,97 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildSupport(st
     return buildInternal({}, false, error);
 }
 
+std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildEntry(
+    std::string_view mainSymbol,
+    std::string& error) const
+{
+    error.clear();
+    if (mainSymbol.empty())
+    {
+        error = "NativeSharp Windows runtime entry symbol is empty";
+        return nullptr;
+    }
+    LLVMContextRef context = LLVMContextCreate();
+    if (context == nullptr)
+    {
+        error = "LLVMContextCreate failed for the NativeSharp Windows runtime entry";
+        return nullptr;
+    }
+    LLVMModuleRef module = LLVMModuleCreateWithNameInContext("nativesharp.windows.entry", context);
+    if (module == nullptr)
+    {
+        LLVMContextDispose(context);
+        error = "LLVMModuleCreateWithNameInContext failed for the NativeSharp Windows runtime entry";
+        return nullptr;
+    }
+    const std::string triple(target::TargetInfo::WindowsX64().llvmTriple());
+    LLVMSetTarget(module, triple.c_str());
+    LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
+    LLVMTypeRef i32Type = LLVMInt32TypeInContext(context);
+    LLVMTypeRef exitProcessType = functionType(voidType, {i32Type});
+    LLVMValueRef exitProcess = LLVMAddFunction(module, "ExitProcess", exitProcessType);
+    LLVMTypeRef ehInitType = functionType(i32Type, {});
+    LLVMValueRef ehInit = LLVMAddFunction(module, "__nativesharp_eh_init", ehInitType);
+    if (exitProcess == nullptr || ehInit == nullptr ||
+        !buildStart(context, module, exitProcess, exitProcessType, ehInit, ehInitType, mainSymbol))
+    {
+        LLVMDisposeModule(module);
+        LLVMContextDispose(context);
+        error = "failed to construct the NativeSharp Windows runtime entry";
+        return nullptr;
+    }
+    std::unique_ptr<llvm_backend::LlvmModule> result(
+        new llvm_backend::LlvmModule(context, module));
+    std::string verificationError;
+    if (!result->verify(verificationError))
+    {
+        error = "NativeSharp Windows runtime entry LLVM verification failed: " + verificationError;
+        return nullptr;
+    }
+    if (!verifyRuntimeAbiContract(result->text(), RuntimeAbiImageKind::EntryPoint, verificationError))
+    {
+        error = "NativeSharp Windows runtime entry ABI contract verification failed: " + verificationError;
+        return nullptr;
+    }
+    return result;
+}
+
+std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildDynamicLibraryAnchor(
+    std::string& error) const
+{
+    error.clear();
+    LLVMContextRef context = LLVMContextCreate();
+    if (context == nullptr)
+    {
+        error = "LLVMContextCreate failed for the NativeSharp Windows DLL anchor";
+        return nullptr;
+    }
+    LLVMModuleRef module = LLVMModuleCreateWithNameInContext(
+        "nativesharp.windows.dll.anchor", context);
+    if (module == nullptr)
+    {
+        LLVMContextDispose(context);
+        error = "LLVMModuleCreateWithNameInContext failed for the NativeSharp Windows DLL anchor";
+        return nullptr;
+    }
+    const std::string triple(target::TargetInfo::WindowsX64().llvmTriple());
+    LLVMSetTarget(module, triple.c_str());
+    LLVMTypeRef i8Type = LLVMInt8TypeInContext(context);
+    LLVMValueRef anchor = LLVMAddGlobal(module, i8Type, "__nsc_dll_anchor");
+    LLVMSetInitializer(anchor, LLVMConstInt(i8Type, 0, 0));
+    LLVMSetGlobalConstant(anchor, 1);
+
+    std::unique_ptr<llvm_backend::LlvmModule> result(
+        new llvm_backend::LlvmModule(context, module));
+    std::string verificationError;
+    if (!result->verify(verificationError))
+    {
+        error = "NativeSharp Windows DLL anchor LLVM verification failed: " + verificationError;
+        return nullptr;
+    }
+    return result;
+}
+
 std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     std::string_view mainSymbol,
     bool includeStart,

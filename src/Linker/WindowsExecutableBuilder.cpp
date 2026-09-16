@@ -8,6 +8,7 @@
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 
 #include <array>
@@ -312,9 +313,16 @@ bool WindowsExecutableBuilder::build(
         return false;
     }
 
+    const bool independentRuntime = !runtimeLibrary_.empty();
+    if (independentRuntime && !verifyWindowsRuntimeLibrary(runtimeLibrary_, error))
+    {
+        return false;
+    }
     runtime::WindowsRuntimeBuilder runtimeBuilder;
     std::string runtimeError;
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = runtimeBuilder.build(mainSymbol, runtimeError);
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = independentRuntime
+        ? runtimeBuilder.buildEntry(mainSymbol, runtimeError)
+        : runtimeBuilder.build(mainSymbol, runtimeError);
     if (runtimeModule == nullptr)
     {
         error = "could not construct the NativeSharp runtime: " + runtimeError;
@@ -427,6 +435,10 @@ bool WindowsExecutableBuilder::build(
     {
         importLibraries.push_back(extra);
     }
+    if (independentRuntime)
+    {
+        importLibraries.push_back(runtimeLibrary_);
+    }
 
     const std::array<std::filesystem::path, 2> objectFiles = {programObject, runtimeObject};
     std::filesystem::path pdbPath;
@@ -496,9 +508,16 @@ bool WindowsExecutableBuilder::buildObjects(
         error = "could not create the Windows x64 TargetMachine: " + targetError;
         return false;
     }
+    const bool independentRuntime = !runtimeLibrary_.empty();
+    if (independentRuntime && !verifyWindowsRuntimeLibrary(runtimeLibrary_, error))
+    {
+        return false;
+    }
     runtime::WindowsRuntimeBuilder runtimeBuilder;
     std::unique_ptr<llvm_backend::LlvmModule> runtimeModule =
-        runtimeBuilder.build(mainSymbol, targetError);
+        independentRuntime
+            ? runtimeBuilder.buildEntry(mainSymbol, targetError)
+            : runtimeBuilder.build(mainSymbol, targetError);
     if (runtimeModule == nullptr)
     {
         error = "could not construct the NativeSharp runtime: " + targetError;
@@ -518,8 +537,10 @@ bool WindowsExecutableBuilder::buildObjects(
     if (incrementalLink_)
     {
         const std::string runtimeText = runtimeModule->text();
+        std::vector<std::filesystem::path> runtimeAwareLibraries = extraLinkLibraries_;
+        if (independentRuntime) runtimeAwareLibraries.push_back(runtimeLibrary_);
         incrementalKey = incrementalLinkKey(programObjects, programLlvmText, runtimeText,
-            extraLinkLibraries_, externalImports_, optimizationLevel, debugInformation_,
+            runtimeAwareLibraries, externalImports_, optimizationLevel, debugInformation_,
             subsystem_, mainSymbol, error);
         if (incrementalKey.empty()) return false;
         std::filesystem::path pdbPath = outputPath;
@@ -569,6 +590,7 @@ bool WindowsExecutableBuilder::buildObjects(
     }
     importLibraries.insert(
         importLibraries.end(), extraLinkLibraries_.begin(), extraLinkLibraries_.end());
+    if (independentRuntime) importLibraries.push_back(runtimeLibrary_);
 
     std::vector<std::filesystem::path> objectFiles(programObjects.begin(), programObjects.end());
     objectFiles.push_back(runtimeObject);
@@ -606,6 +628,11 @@ void WindowsExecutableBuilder::setExternalImports(std::vector<ExternalImportModu
 void WindowsExecutableBuilder::setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries)
 {
     extraLinkLibraries_ = std::move(extraLibraries);
+}
+
+void WindowsExecutableBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
+{
+    runtimeLibrary_ = std::move(runtimeLibrary);
 }
 
 void WindowsExecutableBuilder::setDebugInformation(

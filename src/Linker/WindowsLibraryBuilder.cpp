@@ -7,6 +7,7 @@
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 
 #include <algorithm>
@@ -107,6 +108,29 @@ bool verifyObject(const std::filesystem::path& path, std::string_view label, std
     return true;
 }
 
+bool emitDynamicLibraryAnchor(
+    runtime::WindowsRuntimeBuilder& runtimeBuilder,
+    llvm_backend::LlvmTargetMachine& targetMachine,
+    const std::filesystem::path& path,
+    std::string& error)
+{
+    std::string targetError;
+    std::unique_ptr<llvm_backend::LlvmModule> module =
+        runtimeBuilder.buildDynamicLibraryAnchor(targetError);
+    if (module == nullptr)
+    {
+        error = "could not construct NativeSharp DLL anchor: " + targetError;
+        return false;
+    }
+    if (!targetMachine.emit(
+            *module, path, llvm_backend::LlvmCodeGenFileType::Object, targetError))
+    {
+        error = "DLL anchor object emission failed: " + targetError;
+        return false;
+    }
+    return verifyObject(path, "DLL anchor", error);
+}
+
 bool createRuntimeImportLibraries(
     const LldLinker& linker,
     const std::filesystem::path& directory,
@@ -145,9 +169,15 @@ bool WindowsLibraryBuilder::buildStatic(
         return false;
     }
 
+    const bool independentRuntime = !runtimeLibrary_.empty();
+    if (independentRuntime && !verifyWindowsRuntimeLibrary(runtimeLibrary_, error))
+    {
+        return false;
+    }
     runtime::WindowsRuntimeBuilder runtimeBuilder;
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = runtimeBuilder.buildSupport(error);
-    if (runtimeModule == nullptr)
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
+    if (!independentRuntime) runtimeModule = runtimeBuilder.buildSupport(error);
+    if (!independentRuntime && runtimeModule == nullptr)
     {
         error = "could not construct NativeSharp static-library runtime support: " + error;
         return false;
@@ -172,7 +202,7 @@ bool WindowsLibraryBuilder::buildStatic(
     }
     // NSC-LIMIT-005: observada, igual que la de arriba.
     llvm_backend::LlvmOptimizationObservation runtimeObservation;
-    if (!optimizer.optimize(
+    if (runtimeModule != nullptr && !optimizer.optimize(
             *runtimeModule, *targetMachine, optimizationLevel, &runtimeObservation, targetError))
     {
         error = "runtime LLVM optimization failed: " + targetError;
@@ -200,20 +230,17 @@ bool WindowsLibraryBuilder::buildStatic(
     {
         return false;
     }
-    if (!targetMachine->emit(
-            *runtimeModule,
-            runtimeObject,
-            llvm_backend::LlvmCodeGenFileType::Object,
-            targetError))
+    if (runtimeModule != nullptr && !targetMachine->emit(
+            *runtimeModule, runtimeObject,
+            llvm_backend::LlvmCodeGenFileType::Object, targetError))
     {
         error = "runtime object emission failed: " + targetError;
         return false;
     }
-    if (!verifyObject(runtimeObject, "runtime", error))
+    if (runtimeModule != nullptr && !verifyObject(runtimeObject, "runtime", error))
     {
         return false;
     }
-
     std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
     if (linker == nullptr)
     {
@@ -225,7 +252,8 @@ bool WindowsLibraryBuilder::buildStatic(
     // duplicated both NativeSharp definitions and DLL import members: Saru.NativeSharp.lib, for
     // example, carried NativeSharp.Foundation's __imp_/public symbols and NSLink then received the
     // same Foundation import library again from the metadata closure.
-    std::vector<std::filesystem::path> archiveInputs = {programObject, runtimeObject};
+    std::vector<std::filesystem::path> archiveInputs = {programObject};
+    if (runtimeModule != nullptr) archiveInputs.push_back(runtimeObject);
     if (!linker->createStaticLibrary(archiveInputs, outputPath, error))
     {
         return false;
@@ -268,9 +296,15 @@ bool WindowsLibraryBuilder::buildDynamic(
         return false;
     }
 
+    const bool independentRuntime = !runtimeLibrary_.empty();
+    if (independentRuntime && !verifyWindowsRuntimeLibrary(runtimeLibrary_, error))
+    {
+        return false;
+    }
     runtime::WindowsRuntimeBuilder runtimeBuilder;
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = runtimeBuilder.buildSupport(error);
-    if (runtimeModule == nullptr)
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
+    if (!independentRuntime) runtimeModule = runtimeBuilder.buildSupport(error);
+    if (!independentRuntime && runtimeModule == nullptr)
     {
         error = "could not construct NativeSharp DLL runtime support: " + error;
         return false;
@@ -295,7 +329,7 @@ bool WindowsLibraryBuilder::buildDynamic(
     }
     // NSC-LIMIT-005: observada, igual que la de arriba.
     llvm_backend::LlvmOptimizationObservation runtimeObservation;
-    if (!optimizer.optimize(
+    if (runtimeModule != nullptr && !optimizer.optimize(
             *runtimeModule, *targetMachine, optimizationLevel, &runtimeObservation, targetError))
     {
         error = "runtime LLVM optimization failed: " + targetError;
@@ -323,16 +357,14 @@ bool WindowsLibraryBuilder::buildDynamic(
     {
         return false;
     }
-    if (!targetMachine->emit(
-            *runtimeModule,
-            runtimeObject,
-            llvm_backend::LlvmCodeGenFileType::Object,
-            targetError))
+    if (runtimeModule != nullptr && !targetMachine->emit(
+            *runtimeModule, runtimeObject,
+            llvm_backend::LlvmCodeGenFileType::Object, targetError))
     {
         error = "runtime object emission failed: " + targetError;
         return false;
     }
-    if (!verifyObject(runtimeObject, "runtime", error))
+    if (runtimeModule != nullptr && !verifyObject(runtimeObject, "runtime", error))
     {
         return false;
     }
@@ -350,7 +382,8 @@ bool WindowsLibraryBuilder::buildDynamic(
     // (as Environment.GetEnvironmentVariable/SetEnvironmentVariable's does, at any optimization
     // level above O0) links with "undefined symbol: memcpy" for every DLL, not just ones that
     // use Environment.
-    const std::string combinedProgramText = programModule.text() + runtimeModule->text();
+    const std::string combinedProgramText = programModule.text() +
+        (runtimeModule != nullptr ? runtimeModule->text() : std::string());
     if (!createRuntimeImportLibraries(
             *linker,
             temporaryDirectory->path(),
@@ -365,8 +398,17 @@ bool WindowsLibraryBuilder::buildDynamic(
     {
         importLibraries.push_back(extra);
     }
+    if (independentRuntime) importLibraries.push_back(runtimeLibrary_);
 
-    const std::array<std::filesystem::path, 2> objects = {programObject, runtimeObject};
+    const std::filesystem::path anchorObject = temporaryDirectory->path() / "dll-anchor.obj";
+    std::vector<std::filesystem::path> objects = {programObject};
+    if (runtimeModule != nullptr) objects.push_back(runtimeObject);
+    if (independentRuntime)
+    {
+        if (!emitDynamicLibraryAnchor(runtimeBuilder, *targetMachine, anchorObject, error))
+            return false;
+        objects.push_back(anchorObject);
+    }
     std::filesystem::path pdbPath;
     if (debugInformation != llvm_backend::DebugInformationKind::None)
     {
@@ -447,6 +489,24 @@ bool WindowsLibraryBuilder::buildStaticObjects(
     for (const std::filesystem::path& object : programObjects)
     {
         if (!verifyObject(object, "program code unit", error)) return false;
+    }
+
+    if (!runtimeLibrary_.empty())
+    {
+        if (!verifyWindowsRuntimeLibrary(runtimeLibrary_, error)) return false;
+        std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+        if (linker == nullptr) return false;
+        if (!linker->createStaticLibrary(programObjects, outputPath, error)) return false;
+        CoffArchiveVerifier verifier;
+        if (!verifier.verify(outputPath))
+        {
+            std::error_code cleanupError;
+            std::filesystem::remove(outputPath, cleanupError);
+            error = "static library verification failed: " + verifier.error();
+            return false;
+        }
+        archiveInfo_ = verifier.info();
+        return true;
     }
 
     std::string targetError;
@@ -537,16 +597,22 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
         error = "could not create the Windows x64 TargetMachine: " + targetError;
         return false;
     }
+    const bool independentRuntime = !runtimeLibrary_.empty();
+    if (independentRuntime && !verifyWindowsRuntimeLibrary(runtimeLibrary_, error))
+    {
+        return false;
+    }
     runtime::WindowsRuntimeBuilder runtimeBuilder;
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule = runtimeBuilder.buildSupport(targetError);
-    if (runtimeModule == nullptr)
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
+    if (!independentRuntime) runtimeModule = runtimeBuilder.buildSupport(targetError);
+    if (!independentRuntime && runtimeModule == nullptr)
     {
         error = "could not construct NativeSharp DLL runtime support: " + targetError;
         return false;
     }
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation runtimeObservation;
-    if (!optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel,
+    if (runtimeModule != nullptr && !optimizer.optimize(*runtimeModule, *targetMachine, optimizationLevel,
             &runtimeObservation, targetError))
     {
         error = "runtime LLVM optimization failed: " + targetError;
@@ -556,18 +622,18 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     std::unique_ptr<TemporaryDirectory> temporaryDirectory = createTemporaryDirectory(error);
     if (temporaryDirectory == nullptr) return false;
     const std::filesystem::path runtimeObject = temporaryDirectory->path() / "runtime.obj";
-    if (!targetMachine->emit(*runtimeModule, runtimeObject,
+    if (runtimeModule != nullptr && !targetMachine->emit(*runtimeModule, runtimeObject,
             llvm_backend::LlvmCodeGenFileType::Object, targetError))
     {
         error = "runtime object emission failed: " + targetError;
         return false;
     }
-    if (!verifyObject(runtimeObject, "runtime", error)) return false;
-
+    if (runtimeModule != nullptr && !verifyObject(runtimeObject, "runtime", error)) return false;
     std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
     if (linker == nullptr) return false;
     std::vector<std::filesystem::path> importLibraries;
-    const std::string allLlvmText = std::string(programLlvmText) + runtimeModule->text();
+    const std::string allLlvmText = std::string(programLlvmText) +
+        (runtimeModule != nullptr ? runtimeModule->text() : std::string());
     if (!createRuntimeImportLibraries(*linker, temporaryDirectory->path(), allLlvmText,
             externalImports_, importLibraries, error))
     {
@@ -575,8 +641,16 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     }
     importLibraries.insert(
         importLibraries.end(), extraLinkLibraries_.begin(), extraLinkLibraries_.end());
+    if (independentRuntime) importLibraries.push_back(runtimeLibrary_);
+    const std::filesystem::path anchorObject = temporaryDirectory->path() / "dll-anchor.obj";
     std::vector<std::filesystem::path> objects(programObjects.begin(), programObjects.end());
-    objects.push_back(runtimeObject);
+    if (runtimeModule != nullptr) objects.push_back(runtimeObject);
+    if (independentRuntime)
+    {
+        if (!emitDynamicLibraryAnchor(runtimeBuilder, *targetMachine, anchorObject, error))
+            return false;
+        objects.push_back(anchorObject);
+    }
     std::filesystem::path pdbPath;
     if (debugInformation != llvm_backend::DebugInformationKind::None)
     {
@@ -632,6 +706,11 @@ void WindowsLibraryBuilder::setExternalImports(std::vector<ExternalImportModule>
 void WindowsLibraryBuilder::setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries)
 {
     extraLinkLibraries_ = std::move(extraLibraries);
+}
+
+void WindowsLibraryBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
+{
+    runtimeLibrary_ = std::move(runtimeLibrary);
 }
 
 const CoffArchiveInfo& WindowsLibraryBuilder::archiveInfo() const noexcept

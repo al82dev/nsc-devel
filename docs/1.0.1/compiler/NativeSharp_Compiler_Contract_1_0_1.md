@@ -409,6 +409,15 @@ NativeSharp-prefixed definition leaks from the image. The canonical `NSRUNTIMEAB
 installed as `share/nativesharp/runtime/NativeSharpRuntime.abi` and carries target, pointer model,
 calling convention, symbol-set version and the ordered typed inventory.
 
+The Windows x64 implementation of that contract is delivered as the independently versioned COFF
+archive `lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib`. The archive owns the reusable
+runtime support symbols but never the program-specific `__nativesharp_start` entry point. Each
+executable receives a separate entry object that calls its selected NativeSharp `Main` and consumes
+runtime initialization from the archive. User static libraries shall not embed private runtime
+copies; executables and DLLs resolve support from the installed archive. The compiler verifies the
+archive before every use. `NSC_WINDOWS_RUNTIME_LIBRARY` may select another verified archive for a
+controlled toolchain or test environment.
+
 ## NSC-PKG-001 — Deterministic toolchain contract
 
 Every distributable build of `nsc` shall generate and install a canonical

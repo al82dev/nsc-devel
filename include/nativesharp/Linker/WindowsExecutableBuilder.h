@@ -57,6 +57,7 @@ public:
     // appended to the link line as-is.
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
+    void setRuntimeLibrary(std::filesystem::path runtimeLibrary);
     void setSubsystem(WindowsExecutableSubsystem subsystem) noexcept;
     void setDebugInformation(llvm_backend::DebugInformationKind debugInformation) noexcept;
     void setIncrementalLink(bool enabled) noexcept;
@@ -66,6 +67,7 @@ private:
     PeExecutableInfo info_;
     std::vector<ExternalImportModule> externalImports_;
     std::vector<std::filesystem::path> extraLinkLibraries_;
+    std::filesystem::path runtimeLibrary_;
     WindowsExecutableSubsystem subsystem_ = WindowsExecutableSubsystem::Console;
     llvm_backend::DebugInformationKind debugInformation_ = llvm_backend::DebugInformationKind::None;
     bool incrementalLink_ = false;

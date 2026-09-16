@@ -8,6 +8,7 @@
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ToolchainContract.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
 #include <algorithm>
 
@@ -80,6 +81,7 @@
 #include <bit>
 #include <chrono>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -102,6 +104,27 @@ namespace nativesharp::driver
 namespace
 {
 using target::BuiltinLayoutKind;
+
+std::filesystem::path configuredWindowsRuntimeLibrary()
+{
+#ifdef _WIN32
+    char* overridePath = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&overridePath, &length, "NSC_WINDOWS_RUNTIME_LIBRARY") == 0 &&
+        overridePath != nullptr)
+    {
+        std::filesystem::path result(overridePath);
+        std::free(overridePath);
+        if (!result.empty()) return result;
+    }
+#else
+    if (const char* overridePath = std::getenv("NSC_WINDOWS_RUNTIME_LIBRARY"))
+    {
+        if (*overridePath != '\0') return std::filesystem::path(overridePath);
+    }
+#endif
+    return std::filesystem::path(NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY);
+}
 
 bool parseBoundedDecimal(
     std::string_view text, std::size_t maximum, std::size_t& value) noexcept
@@ -3469,6 +3492,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << "runtime ABI contract verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
+        if (action == "--write-windows-runtime-library")
+        {
+            std::string runtimeError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!linker::writeWindowsRuntimeLibrary(destination, runtimeError))
+            {
+                error << "nsc: error: " << runtimeError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "Windows runtime library written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-windows-runtime-library")
+        {
+            std::string runtimeError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!linker::verifyWindowsRuntimeLibrary(source, runtimeError))
+            {
+                error << "nsc: error: " << runtimeError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "Windows runtime library verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
         if (action == "--verify-toolchain-contract")
         {
             std::string contractError;
@@ -3865,6 +3912,8 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --write-runtime-abi-contract <file.abi>\n"
            << "  nsc --verify-runtime-abi-contract <file.abi>\n"
+           << "  nsc --write-windows-runtime-library <file.lib>\n"
+           << "  nsc --verify-windows-runtime-library <file.lib>\n"
            << "  nsc --print-compatibility-policy\n"
            << "  nsc --write-compatibility-policy <file.policy>\n"
            << "  nsc --verify-compatibility-policy <file.policy>\n"
@@ -4228,6 +4277,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     }
 
     linker::WindowsExecutableBuilder builder;
+    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
     builder.setSubsystem(subsystem);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
@@ -4944,6 +4994,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     }
 
     linker::WindowsExecutableBuilder builder;
+    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
     builder.setSubsystem(subsystem);
     builder.setDebugInformation(debugInformation);
     builder.setIncrementalLink(incrementalLink);
@@ -5084,6 +5135,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
 
     linker::WindowsLibraryBuilder builder;
+    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(referencedLibraries);
     std::string buildError;
@@ -5330,6 +5382,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     }
 
     linker::WindowsLibraryBuilder builder;
+    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;

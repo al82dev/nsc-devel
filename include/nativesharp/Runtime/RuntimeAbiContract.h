@@ -26,7 +26,8 @@ enum class RuntimeAbiSymbolKind : std::uint8_t
 enum class RuntimeAbiImageKind : std::uint8_t
 {
     Executable,
-    SupportLibrary
+    SupportLibrary,
+    EntryPoint
 };
 
 struct RuntimeAbiSymbol

@@ -19,6 +19,11 @@ public:
         std::string_view mainSymbol,
         std::string& error) const;
     std::unique_ptr<llvm_backend::LlvmModule> buildSupport(std::string& error) const;
+    std::unique_ptr<llvm_backend::LlvmModule> buildEntry(
+        std::string_view mainSymbol,
+        std::string& error) const;
+    std::unique_ptr<llvm_backend::LlvmModule> buildDynamicLibraryAnchor(
+        std::string& error) const;
 
 private:
     std::unique_ptr<llvm_backend::LlvmModule> buildInternal(
