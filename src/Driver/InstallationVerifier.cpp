@@ -2,6 +2,7 @@
 
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
+#include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
@@ -44,7 +45,7 @@ constexpr std::array<RequiredFile, 5> kRequiredSpecifications = {{
      "compiler conformance map"},
 }};
 
-constexpr std::array<RequiredFile, 10> kRequiredCurrentDocumentation = {{
+constexpr std::array<RequiredFile, 11> kRequiredCurrentDocumentation = {{
     {"share/nativesharp/docs/README.md", "documentation version index"},
     {"share/nativesharp/docs/1.0.1/README.md", "1.0.1 documentation index"},
     {"share/nativesharp/docs/1.0.1/VERSION.md", "1.0.1 version contract"},
@@ -62,6 +63,8 @@ constexpr std::array<RequiredFile, 10> kRequiredCurrentDocumentation = {{
      "2.0 release-candidate freeze"},
     {"share/nativesharp/docs/2.0/COMPATIBILITY.md",
      "2.0 final compatibility certification"},
+    {"share/nativesharp/docs/2.0/FINAL_BASELINE.md",
+     "2.0 final baseline contract"},
 }};
 
 bool requireRegularFile(const std::filesystem::path &prefix,
@@ -160,6 +163,14 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   std::string matrixError;
   if (!verifyCompatibilityMatrix(matrixPath, matrixError)) {
     error = "installed final compatibility matrix is invalid: " + matrixError;
+    return false;
+  }
+
+  const std::filesystem::path finalBaselinePath =
+      prefix / "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract";
+  std::string finalBaselineError;
+  if (!verifyFinalBaselineContract(finalBaselinePath, finalBaselineError)) {
+    error = "installed final baseline contract is invalid: " + finalBaselineError;
     return false;
   }
 

@@ -3,6 +3,7 @@
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
+#include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
@@ -29,7 +30,7 @@ std::vector<Field> fields()
         {"source_compiler", "1.0.1"},
         {"source_language", "1.0.1"},
         {"target_release", "2.0.0"},
-        {"status", "compatibility-certified"},
+        {"status", "final-baseline-ready"},
         {"nsmeta", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
@@ -46,6 +47,7 @@ std::vector<Field> fields()
         {"migration_notes", std::to_string(kMigrationGuideFormatVersion)},
         {"n_minus_one_matrix", std::to_string(kCompatibilityMatrixFormatVersion)},
         {"release_candidate_freeze", std::to_string(kReleaseCandidateFreezeFormatVersion)},
+        {"final_baseline_contract", std::to_string(kFinalBaselineContractFormatVersion)},
     };
 }
 

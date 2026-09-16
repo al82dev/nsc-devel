@@ -1403,3 +1403,11 @@ explicitly; it shall not derive them by decrementing SemVer components. Both gen
 NSMETA 1.20, Native ABI 1.0, and Runtime ABI 1.0. For every surface, the N consumer accepts N-1 and
 N producers while the N-1 consumer rejects the N producer. The package shall install the exact
 matrix as `NativeSharp2Compatibility.matrix` and installation verification shall certify it.
+
+## NSC-RELEASE-002 — Final complete-baseline gate
+
+`NativeSharp2FinalBaseline.contract` (`NSFINALBASELINE 1`) shall require a clean Release build,
+verified installation, complete lld-link and NSLink CTest matrices without skipped tests, all
+fixtures and bug-triage cases in O0 and O2, a LANDED Gate 0, stable source digest and tool hashes,
+zero failures, disabled interactive debugging, and no message boxes. Promotion requires one passed
+report produced after all batch changes; a partial or earlier run is not release evidence.

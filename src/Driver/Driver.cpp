@@ -4,6 +4,7 @@
 #include "nativesharp/Driver/CompilationProfile.h"
 #include "nativesharp/Driver/CompilationJobPolicy.h"
 #include "nativesharp/Driver/DiagnosticBundle.h"
+#include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
@@ -3433,6 +3434,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentReleaseCandidateFreeze();
             return ExitCode::Success;
         }
+        if (argument == "--print-final-baseline-contract")
+        {
+            output << currentFinalBaselineContract();
+            return ExitCode::Success;
+        }
         if (argument == "--print-linker")
         {
             return printLinker(output, error);
@@ -3679,6 +3685,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "release-candidate freeze verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-final-baseline-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeFinalBaselineContract(destination, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "final baseline contract written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-final-baseline-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyFinalBaselineContract(source, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "final baseline contract verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--verify-installation")
@@ -3998,6 +4028,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-release-candidate-freeze\n"
            << "  nsc --write-release-candidate-freeze <file.freeze>\n"
            << "  nsc --verify-release-candidate-freeze <file.freeze>\n"
+           << "  nsc --print-final-baseline-contract\n"
+           << "  nsc --write-final-baseline-contract <file.contract>\n"
+           << "  nsc --verify-final-baseline-contract <file.contract>\n"
            << "  nsc --verify-installation <prefix>\n"
            << "  nsc --write-installation-manifest <prefix> <file-list> <manifest>\n"
            << "  nsc --verify-installation-manifest <prefix> <manifest>\n"

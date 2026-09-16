@@ -3,6 +3,7 @@
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
@@ -20,7 +21,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 26> kRequiredFiles = {
+constexpr std::array<std::string_view, 28> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -48,6 +49,8 @@ constexpr std::array<std::string_view, 26> kRequiredFiles = {
     "share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
     "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix",
     "share/nativesharp/docs/2.0/COMPATIBILITY.md",
+    "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract",
+    "share/nativesharp/docs/2.0/FINAL_BASELINE.md",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -99,6 +102,9 @@ bool populateInstallation(const std::filesystem::path &prefix) {
              error) &&
          nativesharp::driver::writeCompatibilityMatrix(
              prefix / "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix",
+             error) &&
+         nativesharp::driver::writeFinalBaselineContract(
+             prefix / "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract",
              error);
 }
 } // namespace
@@ -232,6 +238,16 @@ int main() {
                "installation composes final compatibility-matrix diagnostics");
   tests.expect(driver::writeCompatibilityMatrix(matrix, error),
                "current final compatibility matrix fixture is restored");
+
+  const std::filesystem::path finalBaseline =
+      prefix / "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract";
+  tests.expect(writeFile(finalBaseline, "NSFINALBASELINE 9\n"),
+               "incompatible final baseline contract fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed final baseline contract is invalid") != std::string::npos,
+               "installation composes final-baseline diagnostics");
+  tests.expect(driver::writeFinalBaselineContract(finalBaseline, error),
+               "current final baseline contract fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"
