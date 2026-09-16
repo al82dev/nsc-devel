@@ -218,7 +218,7 @@ public class Program
         "--dump-project-oop-mir", project, "-O0"};
     const bool mir = runDriver(mirArguments, output, error) == ExitCode::Success;
     tests.expect(mir, "bit-field reads and writes reach OOP MIR (" + error + ")");
-    tests.expect(mir && output.find("schema=1.10") != std::string::npos &&
+    tests.expect(mir && output.find("schema=1.11") != std::string::npos &&
                      output.find("bit-field-load type=builtin:uint") != std::string::npos &&
                      output.find("bit-field-address type=builtin:uint") != std::string::npos &&
                      output.find("storage=4 bit-offset=0 bit-width=3") != std::string::npos,

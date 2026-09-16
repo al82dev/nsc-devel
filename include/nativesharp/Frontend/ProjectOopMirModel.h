@@ -22,7 +22,7 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 10;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 11;
 
 enum class ProjectOopMirAbiPassing
 {
@@ -687,6 +687,32 @@ struct ProjectOopMirFunction final
     std::unique_ptr<ProjectOopMirNode> body;
 };
 
+// Item 398: a single MIR-owned catalogue of every closed generic identity.  Consumers no longer
+// need to rediscover which functions, static fields, and runtime tables belong to one
+// specialization by scanning three unrelated collections.
+struct ProjectOopMirGenericSpecialization final
+{
+    std::string key;
+    std::vector<std::size_t> functionIndices;
+    std::vector<std::size_t> staticFieldIndices;
+    std::vector<std::size_t> dispatchTableIndices;
+};
+
+// Item 398: the complete class/interface binding consumed by runtime metadata and interface
+// cleanup dispatch.  This is deliberately independent of ProjectInterfaceModel so every backend
+// decision is available at the MIR boundary.
+struct ProjectOopMirInterfaceBinding final
+{
+    std::size_t implementingTypeOrdinal = 0;
+    std::size_t interfaceTypeOrdinal = 0;
+    std::string interfaceTypeKey;
+    std::uint64_t stableInterfaceTypeId = 0;
+    std::string methodTableName;
+    std::vector<std::size_t> interfaceMemberOrdinals;
+    std::vector<std::size_t> implementationMemberOrdinals;
+    std::vector<std::string> calleeNames;
+};
+
 class ProjectOopMirModel final
 {
 public:
@@ -707,7 +733,16 @@ public:
     std::span<const ProjectOopMirStructLayout> structLayouts() const noexcept;
     std::span<const ProjectOopMirClassLayout> classLayouts() const noexcept;
     std::span<const ProjectOopMirDispatchTable> dispatchTables() const noexcept;
+    std::span<const ProjectOopMirGenericSpecialization> genericSpecializations() const noexcept;
+    std::span<const ProjectOopMirInterfaceBinding> interfaceBindings() const noexcept;
     const ProjectOopMirDispatchTable* dispatchTableForType(std::size_t typeOrdinal) const noexcept;
+    const ProjectOopMirInterfaceBinding* interfaceBindingForTypes(
+        std::size_t implementingTypeOrdinal,
+        std::size_t interfaceTypeOrdinal) const noexcept;
+    bool interfaceSlotForMember(
+        std::size_t interfaceMemberOrdinal,
+        std::uint64_t& stableInterfaceTypeId,
+        std::size_t& slot) const noexcept;
     const ProjectOopMirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
     bool isBuilt() const noexcept;
 
@@ -739,6 +774,8 @@ private:
     std::vector<std::optional<std::size_t>> functionByMember_;
     std::vector<ProjectOopMirDispatchTable> dispatchTables_;
     std::vector<std::optional<std::size_t>> dispatchTableByType_;
+    std::vector<ProjectOopMirGenericSpecialization> genericSpecializations_;
+    std::vector<ProjectOopMirInterfaceBinding> interfaceBindings_;
     bool built_ = false;
 };
 

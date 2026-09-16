@@ -2491,6 +2491,11 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_item397_mir_exception_flow_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_item397_mir_exception_flow_tests)
     add_test(NAME nsc.item397.mir-exception-flow COMMAND nsc_item397_mir_exception_flow_tests)
+    add_executable(nsc_item398_mir_generics_interfaces_tests tests/unit/Item398MirGenericsInterfacesTests.cpp)
+    target_link_libraries(nsc_item398_mir_generics_interfaces_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item398_mir_generics_interfaces_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item398_mir_generics_interfaces_tests)
+    add_test(NAME nsc.item398.mir-generics-interfaces COMMAND nsc_item398_mir_generics_interfaces_tests)
     nsc_add_unit_test(
         nsc_frontend_robustness_tests
         tests/unit/FrontendRobustnessTests.cpp

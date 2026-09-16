@@ -1401,6 +1401,68 @@ bool ProjectOopMirModel::build(
         }
     }
 
+    const auto recordGenericSpecialization = [&](std::string_view key) -> std::size_t {
+        const auto found = std::find_if(genericSpecializations_.begin(), genericSpecializations_.end(),
+            [key](const ProjectOopMirGenericSpecialization& specialization) {
+                return specialization.key == key;
+            });
+        if (found != genericSpecializations_.end())
+            return static_cast<std::size_t>(found - genericSpecializations_.begin());
+        genericSpecializations_.push_back(
+            ProjectOopMirGenericSpecialization{std::string(key), {}, {}, {}});
+        return genericSpecializations_.size() - 1;
+    };
+    for (std::size_t index = 0; index < functions_.size(); ++index)
+    {
+        if (functions_[index].genericSpecializationKey.empty()) continue;
+        genericSpecializations_[recordGenericSpecialization(functions_[index].genericSpecializationKey)]
+            .functionIndices.push_back(index);
+    }
+    for (std::size_t index = 0; index < staticFields_.size(); ++index)
+    {
+        if (staticFields_[index].genericSpecializationKey.empty()) continue;
+        genericSpecializations_[recordGenericSpecialization(staticFields_[index].genericSpecializationKey)]
+            .staticFieldIndices.push_back(index);
+    }
+    for (std::size_t index = 0; index < dispatchTables_.size(); ++index)
+    {
+        const ProjectOopMirDispatchTable& table = dispatchTables_[index];
+        if (!table.genericSpecializationKey.empty())
+        {
+            genericSpecializations_[recordGenericSpecialization(table.genericSpecializationKey)]
+                .dispatchTableIndices.push_back(index);
+        }
+        for (const ProjectOopMirDispatchTable::InterfaceTable& source : table.interfaceTables)
+        {
+            if (source.interfaceMemberOrdinals.size() != source.implementationMemberOrdinals.size() ||
+                source.interfaceMemberOrdinals.size() != source.calleeNames.size())
+            {
+                error = "Item 398 MIR interface binding has inconsistent slot vectors";
+                return false;
+            }
+            if (source.interfaceTypeKey.empty() || source.stableInterfaceTypeId == 0 ||
+                source.methodTableName.empty())
+            {
+                error = "Item 398 MIR interface binding is missing stable ABI identity";
+                return false;
+            }
+            if (interfaceBindingForTypes(table.typeOrdinal, source.interfaceTypeOrdinal) != nullptr)
+            {
+                error = "Item 398 MIR contains a duplicate class/interface binding";
+                return false;
+            }
+            interfaceBindings_.push_back(ProjectOopMirInterfaceBinding{
+                table.typeOrdinal,
+                source.interfaceTypeOrdinal,
+                source.interfaceTypeKey,
+                source.stableInterfaceTypeId,
+                source.methodTableName,
+                source.interfaceMemberOrdinals,
+                source.implementationMemberOrdinals,
+                source.calleeNames});
+        }
+    }
+
     built_ = true;
     return true;
 }
@@ -1435,6 +1497,17 @@ std::span<const ProjectOopMirDispatchTable> ProjectOopMirModel::dispatchTables()
     return dispatchTables_;
 }
 
+std::span<const ProjectOopMirGenericSpecialization>
+ProjectOopMirModel::genericSpecializations() const noexcept
+{
+    return genericSpecializations_;
+}
+
+std::span<const ProjectOopMirInterfaceBinding> ProjectOopMirModel::interfaceBindings() const noexcept
+{
+    return interfaceBindings_;
+}
+
 const ProjectOopMirDispatchTable* ProjectOopMirModel::dispatchTableForType(std::size_t typeOrdinal) const noexcept
 {
     if (typeOrdinal >= dispatchTableByType_.size() || !dispatchTableByType_[typeOrdinal].has_value())
@@ -1443,6 +1516,35 @@ const ProjectOopMirDispatchTable* ProjectOopMirModel::dispatchTableForType(std::
     }
     const std::size_t index = *dispatchTableByType_[typeOrdinal];
     return index < dispatchTables_.size() ? &dispatchTables_[index] : nullptr;
+}
+
+const ProjectOopMirInterfaceBinding* ProjectOopMirModel::interfaceBindingForTypes(
+    std::size_t implementingTypeOrdinal,
+    std::size_t interfaceTypeOrdinal) const noexcept
+{
+    const auto found = std::find_if(interfaceBindings_.begin(), interfaceBindings_.end(),
+        [implementingTypeOrdinal, interfaceTypeOrdinal](const ProjectOopMirInterfaceBinding& binding) {
+            return binding.implementingTypeOrdinal == implementingTypeOrdinal &&
+                binding.interfaceTypeOrdinal == interfaceTypeOrdinal;
+        });
+    return found == interfaceBindings_.end() ? nullptr : &*found;
+}
+
+bool ProjectOopMirModel::interfaceSlotForMember(
+    std::size_t interfaceMemberOrdinal,
+    std::uint64_t& stableInterfaceTypeId,
+    std::size_t& slot) const noexcept
+{
+    for (const ProjectOopMirInterfaceBinding& binding : interfaceBindings_)
+    {
+        const auto found = std::find(binding.interfaceMemberOrdinals.begin(),
+            binding.interfaceMemberOrdinals.end(), interfaceMemberOrdinal);
+        if (found == binding.interfaceMemberOrdinals.end()) continue;
+        stableInterfaceTypeId = binding.stableInterfaceTypeId;
+        slot = static_cast<std::size_t>(found - binding.interfaceMemberOrdinals.begin());
+        return true;
+    }
+    return false;
 }
 
 const ProjectOopMirFunction* ProjectOopMirModel::functionForMember(std::size_t memberOrdinal) const noexcept

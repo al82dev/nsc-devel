@@ -5118,22 +5118,8 @@ private:
         std::uint64_t& stableInterfaceId,
         std::size_t& slot) const noexcept
     {
-        for (const frontend::ProjectOopMirDispatchTable& table : mirModel_.dispatchTables())
-        {
-            for (const auto& interfaceTable : table.interfaceTables)
-            {
-                const auto found = std::find(
-                    interfaceTable.interfaceMemberOrdinals.begin(),
-                    interfaceTable.interfaceMemberOrdinals.end(),
-                    contractMemberOrdinal);
-                if (found == interfaceTable.interfaceMemberOrdinals.end()) continue;
-                stableInterfaceId = interfaceTable.stableInterfaceTypeId;
-                slot = static_cast<std::size_t>(
-                    found - interfaceTable.interfaceMemberOrdinals.begin());
-                return true;
-            }
-        }
-        return false;
+        return mirModel_.interfaceSlotForMember(
+            contractMemberOrdinal, stableInterfaceId, slot);
     }
 
     bool emitInterfaceDispose(

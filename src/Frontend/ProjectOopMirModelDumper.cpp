@@ -140,6 +140,14 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " min-align=" << layout.minimumAlignment
                << " abi=" << projectOopMirAbiPassingName(layout.abiPassing) << '\n';
     }
+    output << "generic-specializations=" << model.genericSpecializations().size() << '\n';
+    for (const ProjectOopMirGenericSpecialization& specialization : model.genericSpecializations())
+    {
+        output << "generic-specialization key=" << specialization.key
+               << " functions=" << specialization.functionIndices.size()
+               << " static-fields=" << specialization.staticFieldIndices.size()
+               << " dispatch-tables=" << specialization.dispatchTableIndices.size() << '\n';
+    }
     for (const ProjectOopMirFunction& function : model.functions())
     {
         output << "function #" << function.memberOrdinal << ' ' << function.mangledName
@@ -265,6 +273,16 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
             }
         }
         output << '\n';
+    }
+    output << "interface-bindings=" << model.interfaceBindings().size() << '\n';
+    for (const ProjectOopMirInterfaceBinding& binding : model.interfaceBindings())
+    {
+        output << "interface-binding type=#" << binding.implementingTypeOrdinal
+               << " interface=#" << binding.interfaceTypeOrdinal
+               << " key=" << binding.interfaceTypeKey
+               << " type-id=" << binding.stableInterfaceTypeId
+               << " method-table=" << binding.methodTableName
+               << " slots=" << binding.interfaceMemberOrdinals.size() << '\n';
     }
     output << "field-initializers=" << model.fieldInitializers().size() << '\n';
     for (const ProjectOopMirFieldInitializer& initializer : model.fieldInitializers())
