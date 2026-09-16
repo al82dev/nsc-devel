@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -73,6 +75,13 @@ int main()
         tests.expect(std::find(symbols.begin(), symbols.end(), "__nativesharp_start") == symbols.end(),
             "independent runtime archive does not capture a program-specific entry point");
     }
+    std::ifstream runtimeStream(runtimeLibrary, std::ios::binary);
+    const std::string runtimeBytes{
+        std::istreambuf_iterator<char>(runtimeStream), std::istreambuf_iterator<char>()};
+    tests.expect(runtimeBytes.find("NativeSharp.Runtime.Win32.obj") != std::string::npos,
+        "independent runtime archive uses a stable member name");
+    tests.expect(runtimeBytes.find(evidence.generic_string()) == std::string::npos,
+        "independent runtime archive does not retain its build directory");
 
     runtime::WindowsRuntimeBuilder runtimeBuilder;
     std::unique_ptr<llvm_backend::LlvmModule> entry = runtimeBuilder.buildEntry("Main", error);

@@ -67,7 +67,8 @@ private:
         const std::filesystem::path& responsePath,
         const std::filesystem::path& logPath,
         std::string& error,
-        bool libraryMode = false) const;
+        bool libraryMode = false,
+        const std::filesystem::path& workingDirectory = {}) const;
 
     std::filesystem::path executablePath_;
 };

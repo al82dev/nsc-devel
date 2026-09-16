@@ -330,7 +330,8 @@ bool LldLinker::runResponseFile(
     const std::filesystem::path& responsePath,
     const std::filesystem::path& logPath,
     std::string& error,
-    bool libraryMode) const
+    bool libraryMode,
+    const std::filesystem::path& workingDirectory) const
 {
     error.clear();
     if (containsQuote(responsePath) || containsQuote(logPath))
@@ -403,7 +404,7 @@ bool LldLinker::runResponseFile(
         TRUE,
         CREATE_NO_WINDOW,
         nullptr,
-        nullptr,
+        workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
         &startupInfo,
         &processInfo);
 
@@ -598,9 +599,30 @@ bool LldLinker::createStaticLibrary(
     std::vector<std::string> arguments = {
         "/machine:x64",
         responsePathArgument("/out:", outputPath)};
+#ifdef _WIN32
+    // llvm-lib preserves the spelling of an input path as the COFF archive member name.  Use
+    // basenames from a common working directory so deterministic archives do not leak build-tree
+    // paths into downstream PDB module records.
+    const std::filesystem::path workingDirectory =
+        outputPath.is_absolute() ? outputPath.parent_path() : std::filesystem::path{};
+#else
+    const std::filesystem::path workingDirectory;
+#endif
     for (const std::filesystem::path& path : objectFiles)
     {
-        arguments.push_back(responseFileArgument(path));
+#ifdef _WIN32
+        std::error_code objectError;
+        const std::filesystem::path absoluteObject = std::filesystem::absolute(path, objectError);
+        if (!objectError && !workingDirectory.empty() &&
+            absoluteObject.parent_path() == workingDirectory)
+        {
+            arguments.push_back(responseFileArgument(absoluteObject.filename()));
+        }
+        else
+#endif
+        {
+            arguments.push_back(responseFileArgument(path));
+        }
     }
     if (!writeResponseFile(responsePath, arguments, error))
     {
@@ -614,7 +636,8 @@ bool LldLinker::createStaticLibrary(
         responsePath,
         logPath,
         error,
-        isLldLinkExecutable(librarianPath));
+        isLldLinkExecutable(librarianPath),
+        workingDirectory);
     if (!keepLinkTemporaries())
     {
         std::filesystem::remove(responsePath, cleanupError);

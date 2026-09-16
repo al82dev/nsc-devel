@@ -24,18 +24,23 @@ namespace
 class TemporaryFiles final
 {
 public:
-    TemporaryFiles(std::filesystem::path object, std::filesystem::path archive)
-        : object_(std::move(object)), archive_(std::move(archive)) {}
+    TemporaryFiles(
+        std::filesystem::path directory,
+        std::filesystem::path object,
+        std::filesystem::path archive)
+        : directory_(std::move(directory)),
+          object_(std::move(object)),
+          archive_(std::move(archive)) {}
     ~TemporaryFiles()
     {
         std::error_code ignored;
-        std::filesystem::remove(object_, ignored);
-        std::filesystem::remove(archive_, ignored);
+        std::filesystem::remove_all(directory_, ignored);
     }
     const std::filesystem::path& object() const noexcept { return object_; }
     const std::filesystem::path& archive() const noexcept { return archive_; }
 
 private:
+    std::filesystem::path directory_;
     std::filesystem::path object_;
     std::filesystem::path archive_;
 };
@@ -140,9 +145,19 @@ bool writeWindowsRuntimeLibrary(const std::filesystem::path& destination, std::s
     }
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    const std::string suffix = ".tmp." + std::to_string(stamp);
-    TemporaryFiles temporary(destination.string() + suffix + ".obj",
-        destination.string() + suffix + ".lib");
+    const std::filesystem::path temporaryDirectory =
+        parent / (".nsc-runtime-" + std::to_string(stamp));
+    std::filesystem::create_directories(temporaryDirectory, filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot create Windows runtime temporary directory '" +
+            temporaryDirectory.string() + "': " + filesystemError.message();
+        return false;
+    }
+    TemporaryFiles temporary(
+        temporaryDirectory,
+        temporaryDirectory / "NativeSharp.Runtime.Win32.obj",
+        temporaryDirectory / std::string(kWindowsRuntimeLibraryFileName));
     if (!targetMachine->emit(*module, temporary.object(),
             llvm_backend::LlvmCodeGenFileType::Object, targetError))
     {
