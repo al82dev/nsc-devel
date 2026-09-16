@@ -3,6 +3,7 @@
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/PeExecutableVerifier.h"
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 
 #include "../support/TestContext.h"
 
@@ -26,7 +27,9 @@ using nativesharp::ExitCode;
 using nativesharp::driver::Driver;
 using nativesharp::linker::LldLinker;
 using nativesharp::linker::PeExecutableVerifier;
+using nativesharp::linker::configuredWindowsRuntimeLibrary;
 using nativesharp::linker::createWindowsImportLibraries;
+using nativesharp::linker::verifyWindowsRuntimeLibrary;
 using nativesharp::tests::TestContext;
 
 void writeFile(const std::filesystem::path& path, std::string_view text)
@@ -299,9 +302,9 @@ bool hasDecoratedNativeSharpImport(const nativesharp::linker::PeExecutableInfo& 
 }
 
 // Materializa la superficie de imports del runtime para enlazar un host contra la biblioteca
-// ESTATICA. En el enlace estatico el objeto de runtime entra dentro del ejecutable del host, asi
-// que el host necesita la lista entera de simbolos Win32 del runtime, no solo los que su propio
-// codigo llama. (En la variante DLL no hace falta: el runtime va dentro de la DLL.)
+// ESTATICA. Desde el item 401 la biblioteca de usuario no incrusta el runtime: el host enlaza
+// explicitamente NativeSharp.Runtime.Win32.lib y necesita la lista entera de imports Win32 de ese
+// runtime. (En la variante DLL no hace falta: la DLL ya resolvio su soporte al enlazarse.)
 //
 // LLAMA A LA FUNCION DEL COMPILADOR, y eso es la correccion del 2026-09-02. Hasta hoy este helper
 // tenia su PROPIA COPIA de las cuatro tablas de simbolos --las 62 entradas de KERNEL32
@@ -485,7 +488,13 @@ void testStaticLibraryCppHost(TestContext& tests, const std::filesystem::path& r
         "Stage 48.4 materializes only NativeSharp runtime imports needed by static C++ linkage");
     if (imports.size() != 4) return;
 
+    const std::filesystem::path runtimeLibrary = configuredWindowsRuntimeLibrary();
+    const bool runtimeValid = verifyWindowsRuntimeLibrary(runtimeLibrary, error);
+    tests.expect(runtimeValid,
+        "static C++ host consumes the verified independent Windows runtime library");
+    if (!runtimeValid) return;
     const std::string dependencies = " " + quote(directory / "Stage48_4HostApi.lib") + " " +
+        quote(runtimeLibrary) + " " +
         quote(imports[0]) + " " + quote(imports[1]) + " " + quote(imports[2]) + " " + quote(imports[3]);
     tests.expect(runCommand(
             quote(linker->executablePath()) +

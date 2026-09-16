@@ -11,6 +11,8 @@ inline constexpr std::uint16_t kWindowsRuntimeLibraryFormatVersion = 1;
 inline constexpr std::string_view kWindowsRuntimeLibraryFileName =
     "NativeSharp.Runtime.Win32.lib";
 
+std::filesystem::path configuredWindowsRuntimeLibrary();
+
 bool writeWindowsRuntimeLibrary(
     const std::filesystem::path& destination,
     std::string& error);

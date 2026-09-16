@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <memory>
 #include <span>
 #include <system_error>
@@ -38,6 +39,27 @@ private:
     std::filesystem::path object_;
     std::filesystem::path archive_;
 };
+}
+
+std::filesystem::path configuredWindowsRuntimeLibrary()
+{
+#ifdef _WIN32
+    char* overridePath = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&overridePath, &length, "NSC_WINDOWS_RUNTIME_LIBRARY") == 0 &&
+        overridePath != nullptr)
+    {
+        std::filesystem::path result(overridePath);
+        std::free(overridePath);
+        if (!result.empty()) return result;
+    }
+#else
+    if (const char* overridePath = std::getenv("NSC_WINDOWS_RUNTIME_LIBRARY"))
+    {
+        if (*overridePath != '\0') return std::filesystem::path(overridePath);
+    }
+#endif
+    return std::filesystem::path(NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY);
 }
 
 bool verifyWindowsRuntimeLibrary(const std::filesystem::path& source, std::string& error)

@@ -371,6 +371,8 @@ add_library(nsc_linker STATIC
 
 target_include_directories(nsc_linker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_linker PUBLIC nsc_runtime nsc_llvm)
+target_compile_definitions(nsc_linker PRIVATE
+    NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY="${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib")
 target_compile_features(nsc_linker PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_linker)
 
@@ -392,8 +394,6 @@ add_library(nsc_driver STATIC
 
 target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
-target_compile_definitions(nsc_driver PRIVATE
-    NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY="${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib")
 target_compile_features(nsc_driver PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_driver)
 add_dependencies(nsc_driver nsc_build_identity)

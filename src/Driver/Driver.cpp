@@ -81,7 +81,6 @@
 #include <bit>
 #include <chrono>
 #include <cctype>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -104,27 +103,6 @@ namespace nativesharp::driver
 namespace
 {
 using target::BuiltinLayoutKind;
-
-std::filesystem::path configuredWindowsRuntimeLibrary()
-{
-#ifdef _WIN32
-    char* overridePath = nullptr;
-    std::size_t length = 0;
-    if (_dupenv_s(&overridePath, &length, "NSC_WINDOWS_RUNTIME_LIBRARY") == 0 &&
-        overridePath != nullptr)
-    {
-        std::filesystem::path result(overridePath);
-        std::free(overridePath);
-        if (!result.empty()) return result;
-    }
-#else
-    if (const char* overridePath = std::getenv("NSC_WINDOWS_RUNTIME_LIBRARY"))
-    {
-        if (*overridePath != '\0') return std::filesystem::path(overridePath);
-    }
-#endif
-    return std::filesystem::path(NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY);
-}
 
 bool parseBoundedDecimal(
     std::string_view text, std::size_t maximum, std::size_t& value) noexcept
@@ -4277,7 +4255,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     }
 
     linker::WindowsExecutableBuilder builder;
-    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
+    builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setSubsystem(subsystem);
     std::string buildError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
@@ -4994,7 +4972,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath,
     }
 
     linker::WindowsExecutableBuilder builder;
-    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
+    builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setSubsystem(subsystem);
     builder.setDebugInformation(debugInformation);
     builder.setIncrementalLink(incrementalLink);
@@ -5135,7 +5113,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
 
     linker::WindowsLibraryBuilder builder;
-    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
+    builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(referencedLibraries);
     std::string buildError;
@@ -5382,7 +5360,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     }
 
     linker::WindowsLibraryBuilder builder;
-    builder.setRuntimeLibrary(configuredWindowsRuntimeLibrary());
+    builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     builder.setExternalImports(collectExternalImports(*compilation.oopMirModel()));
     builder.setExtraLinkLibraries(linkLibraries);
     std::string buildError;

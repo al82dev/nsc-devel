@@ -416,7 +416,9 @@ executable receives a separate entry object that calls its selected NativeSharp 
 runtime initialization from the archive. User static libraries shall not embed private runtime
 copies; executables and DLLs resolve support from the installed archive. The compiler verifies the
 archive before every use. `NSC_WINDOWS_RUNTIME_LIBRARY` may select another verified archive for a
-controlled toolchain or test environment.
+controlled toolchain or test environment. A native C or C++ host that links a NativeSharp static
+library directly shall also pass the independent runtime archive before the Win32 import libraries;
+the user archive deliberately carries no private runtime copy.
 
 ## NSC-PKG-001 — Deterministic toolchain contract
 

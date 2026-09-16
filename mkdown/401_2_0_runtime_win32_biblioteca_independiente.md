@@ -24,6 +24,6 @@
   separación del objeto de entrada, enlace y ejecución de un PE nativo, y ausencia de símbolos del
   runtime dentro de una biblioteca estática de usuario.
 - Regresiones del runtime y del enlazador Windows, driver, enlace incremental, bibliotecas nativas,
-  matriz cruzada de DLL y manifiesto de instalación.
+  matriz cruzada de DLL, hosts C/C++ estáticos con `lld-link` y NSLink, y manifiesto de instalación.
 - Construcción limpia completa, instalación en `C:\native-sharp` y verificación directa del
   artefacto recién instalado.
