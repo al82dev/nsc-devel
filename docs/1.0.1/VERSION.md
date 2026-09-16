@@ -70,7 +70,8 @@ cada versión ABI se verifican además de esta identidad de productor.
 - `cmake/GenerateBuildIdentity.cmake`: timestamp UTC e identificador único de cada build.
 - `src/Driver/ToolchainContract.cpp`: contrato reproducible instalado.
 - `src/Driver/CompatibilityPolicy.cpp`: política de versiones y formatos.
-- `include/nativesharp/Interop/LibraryMetadata.h`: NSMETA, Native ABI y Runtime ABI.
+- `include/nativesharp/Interop/LibraryMetadata.h`: NSMETA y Native ABI; publica en metadata el Runtime ABI autoritativo.
+- `include/nativesharp/Runtime/RuntimeAbiContract.h`: Runtime ABI, symbol set y manifiesto tipado.
 
 ---
 

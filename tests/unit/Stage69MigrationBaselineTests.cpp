@@ -43,7 +43,7 @@ int main()
     tests.expect(baseline.find("nsmeta=1.20\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
                      baseline.find("runtime_abi=1.0\n") != std::string::npos &&
-                     baseline.find("runtime_symbol_set=1\n") != std::string::npos &&
+                     baseline.find("runtime_symbol_set=2\n") != std::string::npos &&
                      baseline.find("mir_schema=1.11\n") != std::string::npos,
         "migration baseline freezes every cross-component contract");
     tests.expect(baseline.find("breaking_change_ledger=required\n") != std::string::npos &&

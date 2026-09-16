@@ -1,5 +1,7 @@
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 
+#include "nativesharp/Runtime/RuntimeAbiContract.h"
+
 #include "../LLVM/LlvmCApi.h"
 
 #include "nativesharp/LLVM/LlvmModule.h"
@@ -6053,6 +6055,15 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildInternal(
     if (!result->verify(verificationError))
     {
         error = "NativeSharp Windows runtime LLVM verification failed: " + verificationError;
+        return nullptr;
+    }
+    std::string contractError;
+    const RuntimeAbiImageKind imageKind = includeStart
+        ? RuntimeAbiImageKind::Executable
+        : RuntimeAbiImageKind::SupportLibrary;
+    if (!verifyRuntimeAbiContract(result->text(), imageKind, contractError))
+    {
+        error = "NativeSharp Windows runtime ABI contract verification failed: " + contractError;
         return nullptr;
     }
     return result;

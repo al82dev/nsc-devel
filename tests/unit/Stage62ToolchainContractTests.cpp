@@ -90,7 +90,7 @@ int main()
     tests.expect(contract.find("native_abi=1.0\n") != std::string::npos &&
                      contract.find("runtime_abi=1.0\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");
-    tests.expect(contract.find("runtime_symbol_set=1\n") != std::string::npos &&
+    tests.expect(contract.find("runtime_symbol_set=2\n") != std::string::npos &&
                      contract.find("mir_schema=1.11\n") != std::string::npos,
         "contract freezes the runtime symbol set and MIR schema");
     tests.expect(contract.find("mangling_abi=1\n") != std::string::npos &&

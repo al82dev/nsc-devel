@@ -8,6 +8,7 @@
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ToolchainContract.h"
+#include "nativesharp/Runtime/RuntimeAbiContract.h"
 #include <algorithm>
 
 #include "nativesharp/AST/AstDumper.h"
@@ -3381,6 +3382,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentToolchainContract();
             return ExitCode::Success;
         }
+        if (argument == "--print-runtime-abi-contract")
+        {
+            output << runtime::runtimeAbiContractManifest();
+            return ExitCode::Success;
+        }
         if (argument == "--print-compatibility-policy")
         {
             output << currentCompatibilityPolicy();
@@ -3437,6 +3443,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "toolchain contract written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-runtime-abi-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!runtime::writeRuntimeAbiContract(destination, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "runtime ABI contract written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-runtime-abi-contract")
+        {
+            std::string contractError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!runtime::verifyRuntimeAbiContractFile(source, contractError))
+            {
+                error << "nsc: error: " << contractError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "runtime ABI contract verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--verify-toolchain-contract")
@@ -3832,6 +3862,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --write-diagnostic-bundle <file.nsproj> <file.nsdiag>\n"
            << "  nsc --write-toolchain-contract <file.contract>\n"
            << "  nsc --verify-toolchain-contract <file.contract>\n"
+           << "  nsc --print-runtime-abi-contract\n"
+           << "  nsc --write-runtime-abi-contract <file.abi>\n"
+           << "  nsc --verify-runtime-abi-contract <file.abi>\n"
            << "  nsc --print-compatibility-policy\n"
            << "  nsc --write-compatibility-policy <file.policy>\n"
            << "  nsc --verify-compatibility-policy <file.policy>\n"
@@ -3880,6 +3913,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-llvm-pipeline [-O0|-O1|-O2|-O3]\n"
            << "  nsc --print-llvm-version\n"
            << "  nsc --print-toolchain-contract\n"
+           << "  nsc --print-runtime-abi-contract\n"
            << "  nsc --print-linker\n"
            << "  nsc --dump-runtime-llvm\n"
            << "  nsc --print-target\n"

@@ -351,6 +351,7 @@ target_compile_features(nsc_llvm PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_llvm)
 
 add_library(nsc_runtime STATIC
+    src/Runtime/RuntimeAbiContract.cpp
     src/Runtime/WindowsRuntimeBuilder.cpp)
 
 target_include_directories(nsc_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -418,14 +419,18 @@ set(NSC_COMPATIBILITY_POLICY
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpCompatibility.policy")
 set(NSC_MIGRATION_BASELINE
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Migration.baseline")
+set(NSC_RUNTIME_ABI_CONTRACT
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
 add_custom_command(TARGET nsc POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
     COMMAND $<TARGET_FILE:nsc> --write-toolchain-contract "${NSC_TOOLCHAIN_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-compatibility-policy "${NSC_COMPATIBILITY_POLICY}"
     COMMAND $<TARGET_FILE:nsc> --write-migration-baseline "${NSC_MIGRATION_BASELINE}"
+    COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
                "${NSC_MIGRATION_BASELINE}"
+               "${NSC_RUNTIME_ABI_CONTRACT}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
     VERBATIM)
 
@@ -450,6 +455,7 @@ file(GLOB_RECURSE NSC_INSTALLATION_DOCUMENTATION_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/docs/*")
 set(NSC_INSTALLATION_EXPECTED_PATHS
     "bin/nsc.exe"
+    "share/nativesharp/runtime/NativeSharpRuntime.abi"
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
     "share/nativesharp/toolchain/NativeSharp2Migration.baseline"
@@ -514,6 +520,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_MIGRATION_BASELINE}" DESTINATION share/nativesharp/toolchain)
+install(FILES "${NSC_RUNTIME_ABI_CONTRACT}" DESTINATION share/nativesharp/runtime)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
 if(WIN32)
     # La verificacion corre al FINAL: no basta que CMake haya intentado copiar los archivos. El
@@ -2578,6 +2585,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_windows_runtime_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_windows_runtime_tests)
     add_test(NAME nsc.windows-runtime COMMAND nsc_windows_runtime_tests)
+
+    add_executable(nsc_item400_runtime_abi_contract_tests tests/unit/Item400RuntimeAbiContractTests.cpp)
+    target_link_libraries(nsc_item400_runtime_abi_contract_tests PRIVATE nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item400_runtime_abi_contract_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item400_runtime_abi_contract_tests)
+    add_test(NAME nsc.item400.runtime-abi-contract COMMAND nsc_item400_runtime_abi_contract_tests)
 
     add_executable(nsc_windows_linker_tests tests/unit/WindowsLinkerTests.cpp)
     target_link_libraries(nsc_windows_linker_tests PRIVATE nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)

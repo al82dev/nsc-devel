@@ -215,7 +215,7 @@
 152. **397 — Excepciones y flujo no local en MIR / Exceptions and nonlocal control flow in MIR — COMPLETADO / COMPLETE**
 153. **398 — Genéricos e interfaces consolidados en MIR / Generics and interfaces consolidated in MIR — COMPLETADO / COMPLETE**
 154. **399 — Encapsulación del backend LLVM / LLVM backend encapsulation — COMPLETADO / COMPLETE**
-155. **400 — Runtime ABI formal y versionado / Formal versioned runtime ABI**
+155. **400 — Runtime ABI formal y versionado / Formal versioned runtime ABI — COMPLETADO / COMPLETE**
 156. **401 — Runtime Win32 como biblioteca independiente / Independent Win32 runtime library**
 
 ## Tanda 16 — Cierre 2.0

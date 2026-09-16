@@ -402,8 +402,12 @@ ABI annotations belong to that schema.
 The native runtime ABI and the complete runtime symbol set are independently versioned. Changing a
 signature, calling convention, layout or behavior requires a runtime ABI change; adding, removing
 or renaming a required runtime symbol requires a runtime-symbol-set change. The canonical symbol
-inventory is `RuntimeAbiContract.h`, and the runtime-module test shall prove that every listed
-symbol is actually materialized.
+inventory is `RuntimeAbiContract.h`. Symbol-set 2 records kind and exact opaque-pointer LLVM type
+for all 97 NativeSharp-prefixed exports. Every build shall verify the generated runtime module in
+both directions: each contracted symbol is materialized with its declared type and no uncontracted
+NativeSharp-prefixed definition leaks from the image. The canonical `NSRUNTIMEABI 1.0` manifest is
+installed as `share/nativesharp/runtime/NativeSharpRuntime.abi` and carries target, pointer model,
+calling convention, symbol-set version and the ordered typed inventory.
 
 ## NSC-PKG-001 — Deterministic toolchain contract
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Runtime/RuntimeAbiContract.h"
+
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -86,8 +88,8 @@ inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
 // decisión física. NSMETA puede evolucionar de forma aditiva manteniendo estos valores.
 inline constexpr std::uint16_t kNativeAbiMajor = 1;
 inline constexpr std::uint16_t kNativeAbiMinor = 0;
-inline constexpr std::uint16_t kRuntimeAbiMajor = 1;
-inline constexpr std::uint16_t kRuntimeAbiMinor = 0;
+inline constexpr std::uint16_t kRuntimeAbiMajor = runtime::kRuntimeAbiMajor;
+inline constexpr std::uint16_t kRuntimeAbiMinor = runtime::kRuntimeAbiMinor;
 inline constexpr std::uint16_t kManglingAbiVersion = 1;
 // NativeSharp 2.0 item 319 appends the object-only destruction entry to every class descriptor.
 // Existing field offsets remain stable, but a producer without field 7 cannot satisfy `destroy`.
