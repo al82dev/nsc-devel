@@ -7,6 +7,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Dominance/DominanceArena.h"
 #include "nativesharp/Dominance/DominanceModule.h"
+#include "nativesharp/Frontend/StageBoundaryVerifier.h"
 #include "nativesharp/HIR/HirArena.h"
 #include "nativesharp/HIR/HirNode.h"
 #include "nativesharp/Lexer/Token.h"
@@ -56,6 +57,7 @@ public:
     const std::string& ssaError() const noexcept;
     const passes::OptimizationModule* optimizationModule() const noexcept;
     const std::string& optimizationError() const noexcept;
+    const std::vector<StageBoundary>& verifiedStageBoundaries() const noexcept;
     FileId primaryFileId() const noexcept;
 
 private:
@@ -87,6 +89,7 @@ private:
     passes::OptimizationArena optimizationArena_;
     passes::OptimizationModule* optimizationModule_ = nullptr;
     std::string optimizationError_;
+    std::vector<StageBoundary> verifiedStageBoundaries_;
     FileId primaryFileId_;
 };
 }

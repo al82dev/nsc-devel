@@ -209,7 +209,7 @@
 
 ## Tanda 15 — Arquitectura interna 2.0
 
-149. **394 — Verificadores locales entre etapas / Local stage-boundary verifiers**
+149. **394 — Verificadores locales entre etapas / Local stage-boundary verifiers — COMPLETADO / COMPLETE**
 150. **395 — Layout y ABI completamente en MIR / Layout and ABI fully represented in MIR**
 151. **396 — Ownership y cleanup completamente en MIR / Ownership and cleanup fully represented in MIR**
 152. **397 — Excepciones y flujo no local en MIR / Exceptions and nonlocal control flow in MIR**

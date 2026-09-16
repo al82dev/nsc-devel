@@ -3,16 +3,11 @@
 
 #include "nativesharp/Lexer/Lexer.h"
 #include "nativesharp/CFG/CfgBuilder.h"
-#include "nativesharp/CFG/CfgVerifier.h"
 #include "nativesharp/Dominance/DominanceBuilder.h"
-#include "nativesharp/Dominance/DominanceVerifier.h"
 #include "nativesharp/MIR/MirBuilder.h"
-#include "nativesharp/MIR/MirVerifier.h"
 #include "nativesharp/HIR/HirBuilder.h"
-#include "nativesharp/HIR/HirVerifier.h"
 #include "nativesharp/Parser/Parser.h"
 #include "nativesharp/SSA/SsaBuilder.h"
-#include "nativesharp/SSA/SsaVerifier.h"
 #include "nativesharp/Passes/OptimizationBuilder.h"
 #include "nativesharp/Passes/PassManager.h"
 
@@ -83,10 +78,16 @@ const std::string& FrontendCompilation::optimizationError() const noexcept
 {
     return optimizationError_;
 }
+const std::vector<StageBoundary>& FrontendCompilation::verifiedStageBoundaries() const noexcept
+{
+    return verifiedStageBoundaries_;
+}
 FileId FrontendCompilation::primaryFileId() const noexcept { return primaryFileId_; }
 
 bool FrontendCompilation::run(FileId fileId, bool requireMain)
 {
+    verifiedStageBoundaries_.clear();
+    StageBoundaryVerifier boundaryVerifier;
     primaryFileId_ = fileId;
     const source::SourceFile* sourceFile = sourceManager_.getFile(fileId);
     if (sourceFile == nullptr)
@@ -127,12 +128,12 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         return false;
     }
 
-    hir::HirVerifier verifier;
-    if (!verifier.verify(hirRoot_))
+    if (!boundaryVerifier.verify(StageBoundary::HirToMir, hirRoot_))
     {
-        hirError_ = verifier.error();
+        hirError_ = boundaryVerifier.error();
         return false;
     }
+    verifiedStageBoundaries_.push_back(StageBoundary::HirToMir);
 
     mir::MirBuilder mirBuilder(mirArena_);
     mirModule_ = mirBuilder.build(hirRoot_);
@@ -142,12 +143,12 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         return false;
     }
 
-    mir::MirVerifier mirVerifier;
-    if (!mirVerifier.verify(mirModule_))
+    if (!boundaryVerifier.verify(StageBoundary::MirToCfg, mirModule_))
     {
-        mirError_ = mirVerifier.error();
+        mirError_ = boundaryVerifier.error();
         return false;
     }
+    verifiedStageBoundaries_.push_back(StageBoundary::MirToCfg);
 
     cfg::CfgBuilder cfgBuilder(cfgArena_);
     cfgModule_ = cfgBuilder.build(mirModule_);
@@ -157,12 +158,12 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         return false;
     }
 
-    cfg::CfgVerifier cfgVerifier;
-    if (!cfgVerifier.verify(cfgModule_))
+    if (!boundaryVerifier.verify(StageBoundary::CfgToDominance, cfgModule_))
     {
-        cfgError_ = cfgVerifier.error();
+        cfgError_ = boundaryVerifier.error();
         return false;
     }
+    verifiedStageBoundaries_.push_back(StageBoundary::CfgToDominance);
 
     dominance::DominanceBuilder dominanceBuilder(dominanceArena_);
     dominanceModule_ = dominanceBuilder.build(cfgModule_);
@@ -172,12 +173,12 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         return false;
     }
 
-    dominance::DominanceVerifier dominanceVerifier;
-    if (!dominanceVerifier.verify(dominanceModule_))
+    if (!boundaryVerifier.verify(StageBoundary::DominanceToSsa, dominanceModule_))
     {
-        dominanceError_ = dominanceVerifier.error();
+        dominanceError_ = boundaryVerifier.error();
         return false;
     }
+    verifiedStageBoundaries_.push_back(StageBoundary::DominanceToSsa);
 
     ssa::SsaBuilder ssaBuilder(ssaArena_);
     ssaModule_ = ssaBuilder.build(mirModule_, cfgModule_, dominanceModule_);
@@ -187,12 +188,12 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         return false;
     }
 
-    ssa::SsaVerifier ssaVerifier;
-    if (!ssaVerifier.verify(ssaModule_))
+    if (!boundaryVerifier.verify(StageBoundary::SsaToOptimization, ssaModule_))
     {
-        ssaError_ = ssaVerifier.error();
+        ssaError_ = boundaryVerifier.error();
         return false;
     }
+    verifiedStageBoundaries_.push_back(StageBoundary::SsaToOptimization);
 
     passes::OptimizationBuilder optimizationBuilder(optimizationArena_);
     optimizationModule_ = optimizationBuilder.build(ssaModule_);
@@ -209,6 +210,13 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         optimizationError_ = passManager.error();
         return false;
     }
+
+    if (!boundaryVerifier.verify(StageBoundary::OptimizationToBackend, optimizationModule_))
+    {
+        optimizationError_ = boundaryVerifier.error();
+        return false;
+    }
+    verifiedStageBoundaries_.push_back(StageBoundary::OptimizationToBackend);
 
     return true;
 }

@@ -235,6 +235,7 @@ add_library(nsc_frontend STATIC
     src/Passes/OptimizationDumper.cpp
     src/Passes/PassPipelineDumper.cpp
     src/Frontend/FrontendCompilation.cpp
+    src/Frontend/StageBoundaryVerifier.cpp
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
@@ -2471,6 +2472,10 @@ if(NSC_BUILD_TESTS)
         nsc_optimization_verifier_tests
         tests/unit/OptimizationVerifierTests.cpp
         nsc.optimization-verifier)
+    nsc_add_unit_test(
+        nsc_item394_stage_boundary_verifier_tests
+        tests/unit/Item394StageBoundaryVerifierTests.cpp
+        nsc.item394.stage-boundary-verifiers)
     nsc_add_unit_test(
         nsc_frontend_robustness_tests
         tests/unit/FrontendRobustnessTests.cpp
