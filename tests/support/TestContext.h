@@ -7,8 +7,68 @@
 #include <string_view>
 #include <system_error>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace nativesharp::tests
 {
+#ifdef _WIN32
+// A CRASH IS A TEST RESULT, NOT A USER-INTERFACE EVENT.
+//
+// CTest's `--interactive-debug-mode 0` protects the direct test process, but many integration
+// tests launch a second generation of freshly linked NativeSharp executables through
+// std::system().  Installing the policy again in the test process makes that inheritance
+// explicit and also closes the process-local Windows Error Reporting path.  This is enabled only
+// by the builder's NSC_TEST_NONINTERACTIVE environment contract, so a developer who starts a test
+// manually can still use the normal debugger UI.
+inline void configureNonInteractiveErrorHandling() noexcept
+{
+    char* nonInteractive = nullptr;
+    std::size_t nonInteractiveLength = 0;
+    const bool requestedByEnvironment =
+        _dupenv_s(
+            &nonInteractive, &nonInteractiveLength, "NSC_TEST_NONINTERACTIVE") == 0 &&
+        nonInteractive != nullptr;
+    std::free(nonInteractive);
+    if (!requestedByEnvironment)
+    {
+        return;
+    }
+
+    constexpr UINT requested =
+        SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX;
+    const UINT previous = ::SetErrorMode(requested);
+    ::SetErrorMode(previous | requested);
+
+    DWORD previousThread = 0;
+    if (::SetThreadErrorMode(requested, &previousThread) != FALSE)
+    {
+        DWORD ignored = 0;
+        ::SetThreadErrorMode(previousThread | requested, &ignored);
+    }
+
+    using WerSetFlagsFunction = HRESULT(WINAPI*)(DWORD);
+    if (HMODULE wer = ::LoadLibraryW(L"wer.dll"); wer != nullptr)
+    {
+        const auto setFlags = reinterpret_cast<WerSetFlagsFunction>(
+            ::GetProcAddress(wer, "WerSetFlags"));
+        if (setFlags != nullptr)
+        {
+            constexpr DWORD werFaultReportingNoUi = 0x20;
+            setFlags(werFaultReportingNoUi);
+        }
+        ::FreeLibrary(wer);
+    }
+}
+#endif
+
 // DONDE TRABAJA UNA PRUEBA QUE CONSTRUYE COSAS DE VERDAD, y por que hace falta poder moverlo.
 //
 // Estas pruebas se hacen su propia raiz y dejan ahi los .obj, los .lib, los ejecutables y los
@@ -56,6 +116,13 @@ inline std::filesystem::path evidenceRoot(std::string_view name)
 class TestContext final
 {
 public:
+    TestContext() noexcept
+    {
+#ifdef _WIN32
+        configureNonInteractiveErrorHandling();
+#endif
+    }
+
     void expect(bool condition, std::string_view message)
     {
         ++checks_;

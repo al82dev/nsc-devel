@@ -121,6 +121,19 @@ def configure_windows_error_mode() -> None:
     previous = kernel32.SetErrorMode(requested)
     kernel32.SetErrorMode(previous | requested)
 
+    # SetErrorMode covers loader errors and unhandled faults inherited by descendants.  Windows
+    # Error Reporting has a second, process-local UI switch, however, and may still offer its own
+    # modal "stopped working" dialog for this process.  Keep that path non-interactive too.  The
+    # call is deliberately optional so the builder continues to work on stripped Windows images
+    # where wer.dll is unavailable.
+    try:
+        wer = ctypes.WinDLL("wer", use_last_error=True)
+        wer.WerSetFlags.argtypes = [ctypes.c_ulong]
+        wer.WerSetFlags.restype = ctypes.c_long
+        wer.WerSetFlags(0x20)  # WER_FAULT_REPORTING_NO_UI
+    except (AttributeError, OSError):
+        pass
+
 
 configure_windows_error_mode()
 # Gate 0 del plan 123. Todo lo que produce la certificacion ABI vive bajo `_abi`, separado del
@@ -1065,6 +1078,12 @@ class PipelineWorker(QObject):
         env["NSC_EXE"] = str(prefix / "bin" / "nsc.exe")
         env["NS_LIB_ROOT"] = str(prefix / "lib")
         env["NS_LIB_READY"] = "1"
+        # Both layers are intentional.  CTest gets the documented non-interactive setting and
+        # TestContext installs the same protection inside every native test process before it can
+        # launch generated executables through std::system().  Failures still return their real
+        # exit status and remain visible in the logs; only modal UI is forbidden.
+        env["CTEST_INTERACTIVE_DEBUG_MODE"] = "0"
+        env["NSC_TEST_NONINTERACTIVE"] = "1"
         if linker == "lld-link":
             env["NSC_LLD_LINK"] = str(Path(self.plan.llvm_root) / "bin" / "lld-link.exe")
         elif linker == "NSLink":
