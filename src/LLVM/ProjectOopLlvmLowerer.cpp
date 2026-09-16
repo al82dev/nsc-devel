@@ -2806,8 +2806,8 @@ private:
             // instance methods the sret slot sits AFTER `this` (RCX = this, RDX = sret) --
             // confirmed against clang's own C++ output, where member functions carry
             // (ptr this, ptr sret) in that order.
-            const bool sretReturn = !function.referenceReturn &&
-                isIndirectStructTypeKey(function.returnTypeKey);
+            const bool sretReturn = function.abi.returnPassing ==
+                frontend::ProjectOopMirAbiPassing::Indirect;
             LLVMTypeRef returnType = function.referenceReturn
                 ? LLVMPointerTypeInContext(context_, 0)
                 : sretReturn
@@ -2913,7 +2913,7 @@ private:
                 applySretAttributes(
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); },
-                    function.isStatic ? 0U : 1U,
+                    static_cast<unsigned>(*function.abi.hiddenReturnParameterOrdinal),
                     function.returnTypeKey);
             }
             LLVMMetadataRef subprogram = ownsDefinition ? createDebugSubprogram(function) : nullptr;
@@ -3843,8 +3843,8 @@ private:
         // every ordinary call.  A vectorcall boundary is different: Float32x4 and an HVA of one
         // to four Float32x4 fields travel as LLVM vectors / homogeneous vector structs.  Build the
         // public thunk type from those rules instead of reusing the body's ordinary Win64 type.
-        const bool internalSretReturn = !mirFunction->referenceReturn &&
-            isIndirectStructTypeKey(mirFunction->returnTypeKey);
+        const bool internalSretReturn = mirFunction->abi.returnPassing ==
+            frontend::ProjectOopMirAbiPassing::Indirect;
         LLVMTypeRef vectorReturnType = vectorCall
             ? vectorCallAbiType(mirFunction->returnTypeKey) : nullptr;
         const bool externalSretReturn = internalSretReturn && vectorReturnType == nullptr;
@@ -4158,8 +4158,8 @@ private:
         // `this`), a leading sret pointer when the return travels indirectly, then one parameter
         // per declared parameter. Forwarding every one of them unchanged forwards the ABI
         // unchanged.
-        const bool sretReturn = !function.referenceReturn &&
-            isIndirectStructTypeKey(function.returnTypeKey);
+        const bool sretReturn = function.abi.returnPassing ==
+            frontend::ProjectOopMirAbiPassing::Indirect;
         const unsigned parameterCount = static_cast<unsigned>(
             function.parameterTypeKeys.size() + (sretReturn ? 1U : 0U));
         std::vector<LLVMValueRef> forwarded(parameterCount);
@@ -4245,7 +4245,8 @@ private:
             // function -- indirect struct parameters as plain pointers, an indirect struct
             // return as a leading sret pointer. Verified against a real clang-compiled C host
             // in Stage48HostAbi tests.
-            const bool sretReturn = isIndirectStructTypeKey(function.returnTypeKey);
+            const bool sretReturn = function.abi.returnPassing ==
+                frontend::ProjectOopMirAbiPassing::Indirect;
             LLVMTypeRef returnType = sretReturn
                 ? LLVMVoidTypeInContext(context_)
                 : llvmType(function.returnTypeKey, error);
@@ -4587,12 +4588,8 @@ private:
         LLVMBasicBlockRef entry = appendBlock("entry");
         LLVMPositionBuilderAtEnd(builder_, entry);
         constructionThisOverride_ = nullptr;
-        const bool sretReturn = !function.referenceReturn &&
-            isIndirectStructTypeKey(function.returnTypeKey);
-        const unsigned implicitLead = function.isStatic ? 0U : 1U;
-        // Regular parameters sit after `this`/the closure environment AND after the sret slot
-        // when the function returns an indirect struct.
-        const unsigned parameterBase = implicitLead + (sretReturn ? 1U : 0U);
+        const bool sretReturn = function.abi.returnPassing ==
+            frontend::ProjectOopMirAbiPassing::Indirect;
         if (function.isStatic)
         {
             thisValue_ = nullptr;
@@ -4640,13 +4637,14 @@ private:
         sretStorage_ = nullptr;
         if (sretReturn)
         {
-            sretStorage_ = LLVMGetParam(currentFunction_, implicitLead);
+            sretStorage_ = LLVMGetParam(currentFunction_,
+                static_cast<unsigned>(*function.abi.hiddenReturnParameterOrdinal));
             LLVMSetValueName2(sretStorage_, "sret.out", 8);
         }
         for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
         {
             LLVMValueRef value = LLVMGetParam(
-                currentFunction_, parameterBase + static_cast<unsigned>(index));
+                currentFunction_, static_cast<unsigned>(function.abi.parameterPhysicalOrdinals[index]));
             LLVMSetValueName2(value, ("p" + std::to_string(index)).c_str(), ("p" + std::to_string(index)).size());
             const bool captured = std::ranges::find(
                 function.capturedParameterOrdinals, index) != function.capturedParameterOrdinals.end();
@@ -4657,7 +4655,8 @@ private:
                     function.parameterTypeKeys[index], valueAddress,
                     "capture.p" + std::to_string(index), error);
                 if (cell == nullptr || valueAddress == nullptr) return false;
-                if (isIndirectStructTypeKey(function.parameterTypeKeys[index]))
+                if (function.abi.parameterPassing[index] ==
+                    frontend::ProjectOopMirAbiPassing::Indirect)
                 {
                     LLVMTypeRef type = llvmType(function.parameterTypeKeys[index], error);
                     if (type == nullptr) return false;
@@ -4670,7 +4669,8 @@ private:
                 if (!emitDebugParameter(function, index, valueAddress, error)) return false;
                 continue;
             }
-            if (isIndirectStructTypeKey(function.parameterTypeKeys[index]))
+            if (function.abi.parameterPassing[index] ==
+                frontend::ProjectOopMirAbiPassing::Indirect)
             {
                 // Win64 indirect aggregate: the incoming value IS a pointer to a copy the caller
                 // made for THIS call, and that memory belongs to the call -- the callee may read
@@ -13503,11 +13503,7 @@ private:
         if (!typeKey.starts_with("type:") || isEnumTypeKey(typeKey)) return false;
         const frontend::ProjectOopMirStructLayout* layout = structLayout(typeKey);
         if (layout == nullptr) return false;
-        switch (layout->size)
-        {
-            case 1: case 2: case 4: case 8: return false;
-            default: return true;
-        }
+        return layout->abiPassing == frontend::ProjectOopMirAbiPassing::Indirect;
     }
 
     unsigned structAlignmentFor(std::string_view typeKey) const noexcept

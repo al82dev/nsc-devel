@@ -22,7 +22,15 @@ namespace nativesharp::frontend
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
 inline constexpr std::uint16_t kProjectOopMirSchemaMajor = 1;
-inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 7;
+inline constexpr std::uint16_t kProjectOopMirSchemaMinor = 8;
+
+enum class ProjectOopMirAbiPassing
+{
+    Direct,
+    Indirect
+};
+
+const char* projectOopMirAbiPassingName(ProjectOopMirAbiPassing passing) noexcept;
 
 enum class ProjectOopMirNodeKind
 {
@@ -422,7 +430,9 @@ struct ProjectOopMirStructLayout final
     std::uint64_t alignment = 1;
     bool isUnion = false;
     std::uint64_t pack = 0;
+    std::uint64_t minimumAlignment = 0;
     bool hasExplicitFieldOffsets = false;
+    ProjectOopMirAbiPassing abiPassing = ProjectOopMirAbiPassing::Direct;
     std::vector<ObjectFieldLayout> fields;
 };
 
@@ -439,7 +449,18 @@ struct ProjectOopMirClassLayout final
     std::uint64_t headerSize = 0;
     std::optional<std::size_t> baseTypeOrdinal;
     std::uint64_t baseSubobjectSize = 0;
+    std::uint64_t referenceSize = 0;
+    std::uint64_t referenceAlignment = 1;
     std::vector<ObjectFieldLayout> fields;
+};
+
+struct ProjectOopMirFunctionAbi final
+{
+    ProjectOopMirAbiPassing returnPassing = ProjectOopMirAbiPassing::Direct;
+    std::optional<std::size_t> hiddenReturnParameterOrdinal;
+    std::vector<ProjectOopMirAbiPassing> parameterPassing;
+    std::vector<std::size_t> parameterPhysicalOrdinals;
+    std::size_t physicalParameterCount = 0;
 };
 
 struct ProjectOopMirStaticField final
@@ -605,6 +626,7 @@ struct ProjectOopMirFunction final
     std::vector<std::string> parameterNames;
     std::vector<std::string> parameterTypeKeys;
     std::vector<sema::OwnershipKind> parameterOwnerships;
+    ProjectOopMirFunctionAbi abi;
     std::vector<std::size_t> localOrdinals;
     std::unique_ptr<ProjectOopMirNode> body;
 };

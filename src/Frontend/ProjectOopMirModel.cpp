@@ -17,6 +17,15 @@ namespace nativesharp::frontend
 {
 namespace
 {
+ProjectOopMirAbiPassing abiPassingForSize(std::uint64_t size) noexcept
+{
+    switch (size)
+    {
+        case 1: case 2: case 4: case 8: return ProjectOopMirAbiPassing::Direct;
+        default: return ProjectOopMirAbiPassing::Indirect;
+    }
+}
+
 // NSC-LIMIT-009. Solo se llama sobre claves de identidad, de modo que delega en el codificador
 // que conserva el `+`. Antes aplastaba `+` y `.` al mismo `_` y el descriptor, la vtable y el mapa
 // de interfaces de `N.Outer+Item` chocaban con los de `N.Outer.Item`.
@@ -499,6 +508,11 @@ std::optional<bool> booleanConstantValue(
 }
 
 }
+const char* projectOopMirAbiPassingName(ProjectOopMirAbiPassing passing) noexcept
+{
+    return passing == ProjectOopMirAbiPassing::Indirect ? "win64-indirect" : "win64-direct";
+}
+
 const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept
 {
     switch (kind)
@@ -769,7 +783,8 @@ bool ProjectOopMirModel::build(
     {
         structLayouts_.push_back(ProjectOopMirStructLayout{
             layout.typeOrdinal, layout.typeKey, layout.size, layout.alignment,
-            layout.isUnion, layout.pack, layout.hasExplicitFieldOffsets, layout.fields});
+            layout.isUnion, layout.pack, layout.minimumAlignment,
+            layout.hasExplicitFieldOffsets, abiPassingForSize(layout.size), layout.fields});
     }
     for (const ClassObjectLayout& layout : objectLayoutModel.classLayouts())
     {
@@ -781,6 +796,8 @@ bool ProjectOopMirModel::build(
             layout.headerSize,
             layout.baseTypeOrdinal,
             layout.baseSubobjectSize,
+            layout.referenceSize,
+            layout.referenceAlignment,
             layout.fields});
     }
     functionByMember_.resize(memberModel.members().size());
@@ -1034,6 +1051,22 @@ bool ProjectOopMirModel::build(
         function.parameterNames = source.parameterNames;
         function.parameterTypeKeys = source.parameterTypeKeys;
         function.parameterOwnerships = source.parameterOwnerships;
+        const auto abiPassing = [&](std::string_view typeKey) {
+            for (const ProjectOopMirStructLayout& layout : structLayouts_)
+                if (layout.typeKey == typeKey) return layout.abiPassing;
+            return ProjectOopMirAbiPassing::Direct;
+        };
+        function.abi.returnPassing = function.referenceReturn
+            ? ProjectOopMirAbiPassing::Direct : abiPassing(function.returnTypeKey);
+        std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
+        if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
+            function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;
+        for (const std::string& parameterTypeKey : function.parameterTypeKeys)
+        {
+            function.abi.parameterPassing.push_back(abiPassing(parameterTypeKey));
+            function.abi.parameterPhysicalOrdinals.push_back(physicalOrdinal++);
+        }
+        function.abi.physicalParameterCount = physicalOrdinal;
         function.localOrdinals = source.localOrdinals;
         if (source.isImportedC || source.isImportedNative)
         {

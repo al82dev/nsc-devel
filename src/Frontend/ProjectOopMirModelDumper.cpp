@@ -137,8 +137,8 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " key=" << layout.typeKey
                << " size=" << layout.size
                << " align=" << layout.alignment
-               << " abi=" << ((layout.size == 1 || layout.size == 2 || layout.size == 4 || layout.size == 8)
-                   ? "win64-direct-integer-carrier" : "unsupported-indirect-stage40") << '\n';
+               << " min-align=" << layout.minimumAlignment
+               << " abi=" << projectOopMirAbiPassingName(layout.abiPassing) << '\n';
     }
     for (const ProjectOopMirFunction& function : model.functions())
     {
@@ -152,8 +152,14 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
         if (function.isVariadic) output << " variadic";
         if (function.isImportedNative) output << " import-native";
         for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
-            output << ",p" << index << ':' << function.parameterTypeKeys[index];
+            output << ",p" << index << ':' << function.parameterTypeKeys[index]
+                   << '[' << projectOopMirAbiPassingName(function.abi.parameterPassing[index])
+                   << "@" << function.abi.parameterPhysicalOrdinals[index] << ']';
         output << ") -> " << function.returnTypeKey
+               << "[" << projectOopMirAbiPassingName(function.abi.returnPassing);
+        if (function.abi.hiddenReturnParameterOrdinal.has_value())
+            output << "@" << *function.abi.hiddenReturnParameterOrdinal;
+        output << "]"
                << " ref-return=" << (function.referenceReturn ? "true" : "false")
                << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
                << (function.constructor ? " constructor" : function.destructor ? " destructor" : function.isLambda ? " lambda-body" : " method");

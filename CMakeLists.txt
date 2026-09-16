@@ -2476,6 +2476,11 @@ if(NSC_BUILD_TESTS)
         nsc_item394_stage_boundary_verifier_tests
         tests/unit/Item394StageBoundaryVerifierTests.cpp
         nsc.item394.stage-boundary-verifiers)
+    add_executable(nsc_item395_mir_layout_abi_tests tests/unit/Item395MirLayoutAbiTests.cpp)
+    target_link_libraries(nsc_item395_mir_layout_abi_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item395_mir_layout_abi_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item395_mir_layout_abi_tests)
+    add_test(NAME nsc.item395.mir-layout-abi COMMAND nsc_item395_mir_layout_abi_tests)
     nsc_add_unit_test(
         nsc_frontend_robustness_tests
         tests/unit/FrontendRobustnessTests.cpp

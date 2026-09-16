@@ -91,7 +91,7 @@ int main()
                      contract.find("runtime_abi=1.0\n") != std::string::npos,
         "contract identifies native and runtime ABI versions");
     tests.expect(contract.find("runtime_symbol_set=1\n") != std::string::npos &&
-                     contract.find("mir_schema=1.7\n") != std::string::npos,
+                     contract.find("mir_schema=1.8\n") != std::string::npos,
         "contract freezes the runtime symbol set and MIR schema");
     tests.expect(contract.find("mangling_abi=1\n") != std::string::npos &&
                      contract.find("object_abi=2\n") != std::string::npos &&
@@ -170,7 +170,7 @@ int main()
                      error),
         "missing compatibility fields are diagnosed precisely");
     tests.expect(verifyFails(malformed,
-                     withoutLine(contract, "mir_schema=1.7"),
+                     withoutLine(contract, "mir_schema=1.8"),
                      "missing toolchain contract field 'mir_schema'",
                      error),
         "missing MIR schema identity is diagnosed precisely");
