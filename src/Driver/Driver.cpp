@@ -7,6 +7,7 @@
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
+#include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
@@ -3421,6 +3422,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentMigrationBaseline();
             return ExitCode::Success;
         }
+        if (argument == "--print-migration-guide")
+        {
+            output << currentMigrationGuide();
+            return ExitCode::Success;
+        }
         if (argument == "--print-linker")
         {
             return printLinker(output, error);
@@ -3619,6 +3625,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "migration baseline verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-migration-guide")
+        {
+            std::string guideError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeMigrationGuide(destination, guideError))
+            {
+                error << "nsc: error: " << guideError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "migration guide written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-migration-guide")
+        {
+            std::string guideError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyMigrationGuide(source, guideError))
+            {
+                error << "nsc: error: " << guideError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "migration guide verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--verify-installation")
@@ -3932,6 +3962,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-migration-baseline\n"
            << "  nsc --write-migration-baseline <file.baseline>\n"
            << "  nsc --verify-migration-baseline <file.baseline>\n"
+           << "  nsc --print-migration-guide\n"
+           << "  nsc --write-migration-guide <file.guide>\n"
+           << "  nsc --verify-migration-guide <file.guide>\n"
            << "  nsc --verify-installation <prefix>\n"
            << "  nsc --write-installation-manifest <prefix> <file-list> <manifest>\n"
            << "  nsc --verify-installation-manifest <prefix> <manifest>\n"

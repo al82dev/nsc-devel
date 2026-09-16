@@ -5,6 +5,7 @@
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
+#include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include "../support/TestContext.h"
@@ -18,7 +19,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 20> kRequiredFiles = {
+constexpr std::array<std::string_view, 22> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -40,6 +41,8 @@ constexpr std::array<std::string_view, 20> kRequiredFiles = {
     "share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
     "share/nativesharp/toolchain/NativeSharp2Migration.baseline",
     "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger",
+    "share/nativesharp/toolchain/NativeSharp2Migration.guide",
+    "share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -82,6 +85,9 @@ bool populateInstallation(const std::filesystem::path &prefix) {
          nativesharp::driver::writeBreakingChangeLedger(
              prefix /
                  "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger",
+             error) &&
+         nativesharp::driver::writeMigrationGuide(
+             prefix / "share/nativesharp/toolchain/NativeSharp2Migration.guide",
              error);
 }
 } // namespace
@@ -185,6 +191,16 @@ int main() {
                "installation composes breaking-change-ledger diagnostics");
   tests.expect(driver::writeBreakingChangeLedger(breakingChanges, error),
                "current breaking-change ledger fixture is restored");
+
+  const std::filesystem::path migrationGuide =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.guide";
+  tests.expect(writeFile(migrationGuide, "NSMIGRATION-GUIDE 9\n"),
+               "incompatible migration guide fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed migration guide is invalid") != std::string::npos,
+               "installation composes migration-guide diagnostics");
+  tests.expect(driver::writeMigrationGuide(migrationGuide, error),
+               "current migration guide fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"

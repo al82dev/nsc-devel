@@ -4,6 +4,7 @@
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
+#include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -50,6 +51,7 @@ std::vector<Field> fields()
         {"update_plan", std::to_string(kInstallationUpdatePlanFormatVersion)},
         {"migration_baseline", std::to_string(kMigrationBaselineFormatVersion)},
         {"breaking_change_ledger", std::to_string(kBreakingChangeLedgerFormatVersion)},
+        {"migration_guide", std::to_string(kMigrationGuideFormatVersion)},
     };
 }
 

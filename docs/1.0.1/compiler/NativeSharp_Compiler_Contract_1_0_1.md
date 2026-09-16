@@ -1379,3 +1379,11 @@ The ledger shall be closed-world: an omitted, reordered, added, or modified fiel
 verification. The certified 1.0.1-to-2.0 ledger records the independent Win32 runtime as a binary
 and tooling break for native static-library hosts, which must explicitly link
 `NativeSharp.Runtime.Win32.lib`.
+
+## NSC-COMPAT-005 — Executable 1.0.1-to-2.0 migration procedure
+
+The package shall install both the human `docs/2.0/MIGRATION_FROM_1_0_1.md` guide and the canonical
+`NativeSharp2Migration.guide` (`NSMIGRATION-GUIDE 1`) machine contract. The latter shall bind the
+1.0.1 and 2.0.0 endpoints to `NSBREAKING 1`, enumerate the ordered migration steps, classify the
+preserved NSMETA, native ABI, and runtime ABI contracts, and state the exact static-host diagnostic
+and link action. Exact verification rejects additional or modified migration claims.

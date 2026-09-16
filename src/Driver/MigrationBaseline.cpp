@@ -3,6 +3,7 @@
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
+#include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -24,10 +25,10 @@ std::vector<Field> fields()
 {
     using namespace interop;
     return {
-        {"source_compiler", std::string(kCompilerReleaseVersion)},
-        {"source_language", std::string(kLanguageVersion)},
-        {"target_major", "2"},
-        {"status", "design-baseline"},
+        {"source_compiler", "1.0.1"},
+        {"source_language", "1.0.1"},
+        {"target_release", "2.0.0"},
+        {"status", "migration-ready"},
         {"nsmeta", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
@@ -41,7 +42,7 @@ std::vector<Field> fields()
         {"toolchain_contract", std::to_string(kToolchainContractFormatVersion)},
         {"compatibility_policy", std::to_string(kCompatibilityPolicyFormatVersion)},
         {"breaking_change_ledger", std::to_string(kBreakingChangeLedgerFormatVersion)},
-        {"migration_notes", "required"},
+        {"migration_notes", std::to_string(kMigrationGuideFormatVersion)},
         {"n_minus_one_matrix", "required"},
     };
 }

@@ -3,6 +3,7 @@
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
+#include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include <array>
@@ -42,7 +43,7 @@ constexpr std::array<RequiredFile, 5> kRequiredSpecifications = {{
      "compiler conformance map"},
 }};
 
-constexpr std::array<RequiredFile, 7> kRequiredCurrentDocumentation = {{
+constexpr std::array<RequiredFile, 8> kRequiredCurrentDocumentation = {{
     {"share/nativesharp/docs/README.md", "documentation version index"},
     {"share/nativesharp/docs/1.0.1/README.md", "1.0.1 documentation index"},
     {"share/nativesharp/docs/1.0.1/VERSION.md", "1.0.1 version contract"},
@@ -54,6 +55,8 @@ constexpr std::array<RequiredFile, 7> kRequiredCurrentDocumentation = {{
      "1.0.1 debug artifact contract"},
     {"share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
      "1.0.1 programming reference"},
+    {"share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
+     "1.0.1 to 2.0 migration guide"},
 }};
 
 bool requireRegularFile(const std::filesystem::path &prefix,
@@ -128,6 +131,14 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   std::string breakingChangesError;
   if (!verifyBreakingChangeLedger(breakingChangesPath, breakingChangesError)) {
     error = "installed breaking-change ledger is invalid: " + breakingChangesError;
+    return false;
+  }
+
+  const std::filesystem::path migrationGuidePath =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Migration.guide";
+  std::string migrationGuideError;
+  if (!verifyMigrationGuide(migrationGuidePath, migrationGuideError)) {
+    error = "installed migration guide is invalid: " + migrationGuideError;
     return false;
   }
 
