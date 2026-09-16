@@ -6,6 +6,7 @@
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
+#include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include "../support/TestContext.h"
@@ -19,7 +20,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 22> kRequiredFiles = {
+constexpr std::array<std::string_view, 24> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -43,6 +44,8 @@ constexpr std::array<std::string_view, 22> kRequiredFiles = {
     "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger",
     "share/nativesharp/toolchain/NativeSharp2Migration.guide",
     "share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
+    "share/nativesharp/toolchain/NativeSharp2RC.freeze",
+    "share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -88,6 +91,9 @@ bool populateInstallation(const std::filesystem::path &prefix) {
              error) &&
          nativesharp::driver::writeMigrationGuide(
              prefix / "share/nativesharp/toolchain/NativeSharp2Migration.guide",
+             error) &&
+         nativesharp::driver::writeReleaseCandidateFreeze(
+             prefix / "share/nativesharp/toolchain/NativeSharp2RC.freeze",
              error);
 }
 } // namespace
@@ -201,6 +207,16 @@ int main() {
                "installation composes migration-guide diagnostics");
   tests.expect(driver::writeMigrationGuide(migrationGuide, error),
                "current migration guide fixture is restored");
+
+  const std::filesystem::path freeze =
+      prefix / "share/nativesharp/toolchain/NativeSharp2RC.freeze";
+  tests.expect(writeFile(freeze, "NSRCFREEZE 9\n"),
+               "incompatible release-candidate freeze fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed release-candidate freeze is invalid") != std::string::npos,
+               "installation composes release-candidate-freeze diagnostics");
+  tests.expect(driver::writeReleaseCandidateFreeze(freeze, error),
+               "current release-candidate freeze fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"

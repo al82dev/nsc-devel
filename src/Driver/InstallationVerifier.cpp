@@ -4,6 +4,7 @@
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
+#include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
 #include <array>
@@ -43,7 +44,7 @@ constexpr std::array<RequiredFile, 5> kRequiredSpecifications = {{
      "compiler conformance map"},
 }};
 
-constexpr std::array<RequiredFile, 8> kRequiredCurrentDocumentation = {{
+constexpr std::array<RequiredFile, 9> kRequiredCurrentDocumentation = {{
     {"share/nativesharp/docs/README.md", "documentation version index"},
     {"share/nativesharp/docs/1.0.1/README.md", "1.0.1 documentation index"},
     {"share/nativesharp/docs/1.0.1/VERSION.md", "1.0.1 version contract"},
@@ -57,6 +58,8 @@ constexpr std::array<RequiredFile, 8> kRequiredCurrentDocumentation = {{
      "1.0.1 programming reference"},
     {"share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
      "1.0.1 to 2.0 migration guide"},
+    {"share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
+     "2.0 release-candidate freeze"},
 }};
 
 bool requireRegularFile(const std::filesystem::path &prefix,
@@ -139,6 +142,14 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   std::string migrationGuideError;
   if (!verifyMigrationGuide(migrationGuidePath, migrationGuideError)) {
     error = "installed migration guide is invalid: " + migrationGuideError;
+    return false;
+  }
+
+  const std::filesystem::path freezePath =
+      prefix / "share/nativesharp/toolchain/NativeSharp2RC.freeze";
+  std::string freezeError;
+  if (!verifyReleaseCandidateFreeze(freezePath, freezeError)) {
+    error = "installed release-candidate freeze is invalid: " + freezeError;
     return false;
   }
 

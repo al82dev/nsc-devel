@@ -4,6 +4,7 @@
 #include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/MigrationGuide.h"
+#include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -28,7 +29,7 @@ std::vector<Field> fields()
         {"source_compiler", "1.0.1"},
         {"source_language", "1.0.1"},
         {"target_release", "2.0.0"},
-        {"status", "migration-ready"},
+        {"status", "rc-frozen"},
         {"nsmeta", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
@@ -44,6 +45,7 @@ std::vector<Field> fields()
         {"breaking_change_ledger", std::to_string(kBreakingChangeLedgerFormatVersion)},
         {"migration_notes", std::to_string(kMigrationGuideFormatVersion)},
         {"n_minus_one_matrix", "required"},
+        {"release_candidate_freeze", std::to_string(kReleaseCandidateFreezeFormatVersion)},
     };
 }
 

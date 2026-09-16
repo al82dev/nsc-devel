@@ -9,6 +9,7 @@
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
+#include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
@@ -3427,6 +3428,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentMigrationGuide();
             return ExitCode::Success;
         }
+        if (argument == "--print-release-candidate-freeze")
+        {
+            output << currentReleaseCandidateFreeze();
+            return ExitCode::Success;
+        }
         if (argument == "--print-linker")
         {
             return printLinker(output, error);
@@ -3649,6 +3655,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "migration guide verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-release-candidate-freeze")
+        {
+            std::string freezeError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeReleaseCandidateFreeze(destination, freezeError))
+            {
+                error << "nsc: error: " << freezeError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "release-candidate freeze written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-release-candidate-freeze")
+        {
+            std::string freezeError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyReleaseCandidateFreeze(source, freezeError))
+            {
+                error << "nsc: error: " << freezeError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "release-candidate freeze verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--verify-installation")
@@ -3965,6 +3995,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-migration-guide\n"
            << "  nsc --write-migration-guide <file.guide>\n"
            << "  nsc --verify-migration-guide <file.guide>\n"
+           << "  nsc --print-release-candidate-freeze\n"
+           << "  nsc --write-release-candidate-freeze <file.freeze>\n"
+           << "  nsc --verify-release-candidate-freeze <file.freeze>\n"
            << "  nsc --verify-installation <prefix>\n"
            << "  nsc --write-installation-manifest <prefix> <file-list> <manifest>\n"
            << "  nsc --verify-installation-manifest <prefix> <manifest>\n"

@@ -1387,3 +1387,11 @@ The package shall install both the human `docs/2.0/MIGRATION_FROM_1_0_1.md` guid
 1.0.1 and 2.0.0 endpoints to `NSBREAKING 1`, enumerate the ordered migration steps, classify the
 preserved NSMETA, native ABI, and runtime ABI contracts, and state the exact static-host diagnostic
 and link action. Exact verification rejects additional or modified migration claims.
+
+## NSC-RELEASE-001 — NativeSharp 2.0 release-candidate freeze
+
+`NativeSharp2RC.freeze` (`NSRCFREEZE 1`) shall identify the exact release candidate and promotion
+target; bind the breaking ledger, migration guide, compatibility matrix, formats, ABIs, symbol set,
+and MIR schema; and prohibit contract or product-surface changes. A release-blocking correction
+requires a new candidate and recertification. The freeze is not promotion: final N-1/N evidence,
+the complete baseline, and an explicit promotion decision remain separate gates.

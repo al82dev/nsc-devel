@@ -389,6 +389,7 @@ add_library(nsc_driver STATIC
     src/Driver/MigrationBaseline.cpp
     src/Driver/MigrationGuide.cpp
     src/Driver/PackageLifecycle.cpp
+    src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryMetadata.cpp
@@ -428,6 +429,8 @@ set(NSC_BREAKING_CHANGE_LEDGER
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2BreakingChanges.ledger")
 set(NSC_MIGRATION_GUIDE
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Migration.guide")
+set(NSC_RELEASE_CANDIDATE_FREEZE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2RC.freeze")
 set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
 set(NSC_WINDOWS_RUNTIME_LIBRARY
@@ -439,6 +442,7 @@ add_custom_command(TARGET nsc POST_BUILD
     COMMAND $<TARGET_FILE:nsc> --write-migration-baseline "${NSC_MIGRATION_BASELINE}"
     COMMAND $<TARGET_FILE:nsc> --write-breaking-change-ledger "${NSC_BREAKING_CHANGE_LEDGER}"
     COMMAND $<TARGET_FILE:nsc> --write-migration-guide "${NSC_MIGRATION_GUIDE}"
+    COMMAND $<TARGET_FILE:nsc> --write-release-candidate-freeze "${NSC_RELEASE_CANDIDATE_FREEZE}"
     COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
@@ -446,6 +450,7 @@ add_custom_command(TARGET nsc POST_BUILD
                "${NSC_MIGRATION_BASELINE}"
                "${NSC_BREAKING_CHANGE_LEDGER}"
                "${NSC_MIGRATION_GUIDE}"
+               "${NSC_RELEASE_CANDIDATE_FREEZE}"
                "${NSC_RUNTIME_ABI_CONTRACT}"
                "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
@@ -479,6 +484,7 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "share/nativesharp/toolchain/NativeSharp2Migration.baseline"
     "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger"
     "share/nativesharp/toolchain/NativeSharp2Migration.guide"
+    "share/nativesharp/toolchain/NativeSharp2RC.freeze"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
@@ -542,6 +548,7 @@ install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolch
 install(FILES "${NSC_MIGRATION_BASELINE}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_BREAKING_CHANGE_LEDGER}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_MIGRATION_GUIDE}" DESTINATION share/nativesharp/toolchain)
+install(FILES "${NSC_RELEASE_CANDIDATE_FREEZE}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_RUNTIME_ABI_CONTRACT}" DESTINATION share/nativesharp/runtime)
 install(FILES "${NSC_WINDOWS_RUNTIME_LIBRARY}" DESTINATION lib/nativesharp/runtime)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
@@ -2614,6 +2621,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_item403_migration_guide_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_item403_migration_guide_tests)
     add_test(NAME nsc.item403.migration-guide COMMAND nsc_item403_migration_guide_tests)
+
+    add_executable(nsc_item404_release_candidate_freeze_tests tests/unit/Item404ReleaseCandidateFreezeTests.cpp)
+    target_link_libraries(nsc_item404_release_candidate_freeze_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item404_release_candidate_freeze_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item404_release_candidate_freeze_tests)
+    add_test(NAME nsc.item404.release-candidate-freeze COMMAND nsc_item404_release_candidate_freeze_tests)
 
     add_executable(nsc_windows_runtime_tests tests/unit/WindowsRuntimeTests.cpp)
     target_link_libraries(nsc_windows_runtime_tests PRIVATE nsc_runtime nsc_llvm nsc_frontend nsc_target)

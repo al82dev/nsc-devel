@@ -222,7 +222,7 @@
 
 157. **402 — Ledger de breaking changes / Breaking-change ledger — COMPLETADO / COMPLETE**
 158. **403 — Migración 1.0.1 a 2.0 / Migration from 1.0.1 to 2.0 — COMPLETADO / COMPLETE**
-159. **404 — Congelamiento 2.0 RC / 2.0 RC freeze**
+159. **404 — Congelamiento 2.0 RC / 2.0 RC freeze — COMPLETADO / COMPLETE**
 160. **405 — Certificación N-1/N final / Final N-1 and N certification**
 161. **406 — Baseline completo final / Final complete baseline**
 162. **407 — Promoción oficial a NativeSharp 2.0 / Official NativeSharp 2.0 promotion**
