@@ -378,6 +378,7 @@ nsc_enable_warnings(nsc_linker)
 
 add_library(nsc_driver STATIC
     src/Basic/Version.cpp
+    src/Driver/BreakingChangeLedger.cpp
     src/Driver/CompilationProfile.cpp
     src/Driver/CompilationGraphScheduler.cpp
     src/Driver/CompatibilityPolicy.cpp
@@ -422,6 +423,8 @@ set(NSC_COMPATIBILITY_POLICY
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpCompatibility.policy")
 set(NSC_MIGRATION_BASELINE
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Migration.baseline")
+set(NSC_BREAKING_CHANGE_LEDGER
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2BreakingChanges.ledger")
 set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
 set(NSC_WINDOWS_RUNTIME_LIBRARY
@@ -431,11 +434,13 @@ add_custom_command(TARGET nsc POST_BUILD
     COMMAND $<TARGET_FILE:nsc> --write-toolchain-contract "${NSC_TOOLCHAIN_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-compatibility-policy "${NSC_COMPATIBILITY_POLICY}"
     COMMAND $<TARGET_FILE:nsc> --write-migration-baseline "${NSC_MIGRATION_BASELINE}"
+    COMMAND $<TARGET_FILE:nsc> --write-breaking-change-ledger "${NSC_BREAKING_CHANGE_LEDGER}"
     COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
                "${NSC_COMPATIBILITY_POLICY}"
                "${NSC_MIGRATION_BASELINE}"
+               "${NSC_BREAKING_CHANGE_LEDGER}"
                "${NSC_RUNTIME_ABI_CONTRACT}"
                "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
@@ -467,6 +472,7 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "share/nativesharp/toolchain/NativeSharpInstallation.files"
     "share/nativesharp/toolchain/NativeSharpCompatibility.policy"
     "share/nativesharp/toolchain/NativeSharp2Migration.baseline"
+    "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
@@ -528,6 +534,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs/
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_MIGRATION_BASELINE}" DESTINATION share/nativesharp/toolchain)
+install(FILES "${NSC_BREAKING_CHANGE_LEDGER}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_RUNTIME_ABI_CONTRACT}" DESTINATION share/nativesharp/runtime)
 install(FILES "${NSC_WINDOWS_RUNTIME_LIBRARY}" DESTINATION lib/nativesharp/runtime)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
@@ -2588,6 +2595,12 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_item393_compatibility_matrix_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_item393_compatibility_matrix_tests)
     add_test(NAME nsc.item393-compatibility-matrix COMMAND nsc_item393_compatibility_matrix_tests)
+
+    add_executable(nsc_item402_breaking_change_ledger_tests tests/unit/Item402BreakingChangeLedgerTests.cpp)
+    target_link_libraries(nsc_item402_breaking_change_ledger_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item402_breaking_change_ledger_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item402_breaking_change_ledger_tests)
+    add_test(NAME nsc.item402.breaking-change-ledger COMMAND nsc_item402_breaking_change_ledger_tests)
 
     add_executable(nsc_windows_runtime_tests tests/unit/WindowsRuntimeTests.cpp)
     target_link_libraries(nsc_windows_runtime_tests PRIVATE nsc_runtime nsc_llvm nsc_frontend nsc_target)

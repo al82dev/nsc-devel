@@ -1,5 +1,6 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Driver/InstallationVerifier.h"
@@ -17,7 +18,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 19> kRequiredFiles = {
+constexpr std::array<std::string_view, 20> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -38,6 +39,7 @@ constexpr std::array<std::string_view, 19> kRequiredFiles = {
     "share/nativesharp/docs/1.0.1/debug/NativeSharp_Debug_Artifact_Contract_1_0_1.md",
     "share/nativesharp/docs/1.0.1/book/NativeSharp_El_Lenguaje_de_Programacion_ES.md",
     "share/nativesharp/toolchain/NativeSharp2Migration.baseline",
+    "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -76,6 +78,10 @@ bool populateInstallation(const std::filesystem::path &prefix) {
          nativesharp::driver::writeMigrationBaseline(
              prefix /
                  "share/nativesharp/toolchain/NativeSharp2Migration.baseline",
+             error) &&
+         nativesharp::driver::writeBreakingChangeLedger(
+             prefix /
+                 "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger",
              error);
 }
 } // namespace
@@ -168,6 +174,17 @@ int main() {
                "installation composes migration-baseline diagnostics");
   tests.expect(driver::writeMigrationBaseline(migration, error),
                "current migration baseline fixture is restored");
+
+  const std::filesystem::path breakingChanges =
+      prefix / "share/nativesharp/toolchain/NativeSharp2BreakingChanges.ledger";
+  tests.expect(writeFile(breakingChanges, "NSBREAKING 9\n"),
+               "incompatible breaking-change ledger fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed breaking-change ledger is invalid") !=
+                       std::string::npos,
+               "installation composes breaking-change-ledger diagnostics");
+  tests.expect(driver::writeBreakingChangeLedger(breakingChanges, error),
+               "current breaking-change ledger fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"

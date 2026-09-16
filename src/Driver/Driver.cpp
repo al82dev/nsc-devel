@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/CompilationProfile.h"
 #include "nativesharp/Driver/CompilationJobPolicy.h"
@@ -3398,6 +3399,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentCompatibilityMatrix();
             return ExitCode::Success;
         }
+        if (argument == "--print-breaking-change-ledger")
+        {
+            output << currentBreakingChangeLedger();
+            return ExitCode::Success;
+        }
         if (argument == "--print-job-policy")
         {
             output << "hardware-threads: " << jobPolicy.hardwareThreads() << '\n'
@@ -3565,6 +3571,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << explanation << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-breaking-change-ledger")
+        {
+            std::string ledgerError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writeBreakingChangeLedger(destination, ledgerError))
+            {
+                error << "nsc: error: " << ledgerError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "breaking-change ledger written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-breaking-change-ledger")
+        {
+            std::string ledgerError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyBreakingChangeLedger(source, ledgerError))
+            {
+                error << "nsc: error: " << ledgerError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "breaking-change ledger verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--write-migration-baseline")
@@ -3896,6 +3926,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --write-compatibility-policy <file.policy>\n"
            << "  nsc --verify-compatibility-policy <file.policy>\n"
            << "  nsc --check-compiler-compatibility <major.minor.patch>\n"
+           << "  nsc --print-breaking-change-ledger\n"
+           << "  nsc --write-breaking-change-ledger <file.ledger>\n"
+           << "  nsc --verify-breaking-change-ledger <file.ledger>\n"
            << "  nsc --print-migration-baseline\n"
            << "  nsc --write-migration-baseline <file.baseline>\n"
            << "  nsc --verify-migration-baseline <file.baseline>\n"

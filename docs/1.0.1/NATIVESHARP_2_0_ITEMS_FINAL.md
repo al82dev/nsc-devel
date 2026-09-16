@@ -220,7 +220,7 @@
 
 ## Tanda 16 — Cierre 2.0
 
-157. **402 — Ledger de breaking changes / Breaking-change ledger**
+157. **402 — Ledger de breaking changes / Breaking-change ledger — COMPLETADO / COMPLETE**
 158. **403 — Migración 1.0.1 a 2.0 / Migration from 1.0.1 to 2.0**
 159. **404 — Congelamiento 2.0 RC / 2.0 RC freeze**
 160. **405 — Certificación N-1/N final / Final N-1 and N certification**

@@ -1367,3 +1367,15 @@ through a raw pointer, and a physical nonvolatile-register clobber. The last cas
 inside NativeSharp assembly while independent callers keep a sentinel live across the call; both
 callers must observe it unchanged. Successful return values alone do not replace this preservation
 check. The certification uses O0 and the real DLL/import-library/header product path.
+
+## NSC-COMPAT-004 — Canonical 2.0 breaking-change ledger
+
+Every NativeSharp 2.0 package shall generate and install `NativeSharp2BreakingChanges.ledger` in
+canonical `NSBREAKING 1` form. Each entry shall identify the affected 1.x contract and consumer,
+rejected compatible alternatives, replacement semantics, source/binary/metadata/tool impact,
+diagnostic and migration path, minimum participating component versions, and compatibility tests.
+
+The ledger shall be closed-world: an omitted, reordered, added, or modified field fails exact
+verification. The certified 1.0.1-to-2.0 ledger records the independent Win32 runtime as a binary
+and tooling break for native static-library hosts, which must explicitly link
+`NativeSharp.Runtime.Win32.lib`.

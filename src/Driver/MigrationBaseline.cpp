@@ -1,6 +1,7 @@
 #include "nativesharp/Driver/MigrationBaseline.h"
 
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -39,7 +40,7 @@ std::vector<Field> fields()
         {"exception_abi", std::to_string(kExceptionAbiVersion)},
         {"toolchain_contract", std::to_string(kToolchainContractFormatVersion)},
         {"compatibility_policy", std::to_string(kCompatibilityPolicyFormatVersion)},
-        {"breaking_change_ledger", "required"},
+        {"breaking_change_ledger", std::to_string(kBreakingChangeLedgerFormatVersion)},
         {"migration_notes", "required"},
         {"n_minus_one_matrix", "required"},
     };

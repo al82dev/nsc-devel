@@ -1,6 +1,7 @@
 #include "nativesharp/Driver/CompatibilityPolicy.h"
 
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Driver/BreakingChangeLedger.h"
 #include "nativesharp/Driver/InstallationManifest.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
@@ -48,6 +49,7 @@ std::vector<Field> fields()
         {"reproducibility_report", std::to_string(kReproducibilityReportFormatVersion)},
         {"update_plan", std::to_string(kInstallationUpdatePlanFormatVersion)},
         {"migration_baseline", std::to_string(kMigrationBaselineFormatVersion)},
+        {"breaking_change_ledger", std::to_string(kBreakingChangeLedgerFormatVersion)},
     };
 }
 
