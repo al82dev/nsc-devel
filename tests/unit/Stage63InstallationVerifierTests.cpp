@@ -7,6 +7,7 @@
 #include "nativesharp/Driver/InstallationVerifier.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
+#include "nativesharp/Driver/PromotionAct.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
@@ -21,7 +22,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 28> kRequiredFiles = {
+constexpr std::array<std::string_view, 32> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -51,6 +52,10 @@ constexpr std::array<std::string_view, 28> kRequiredFiles = {
     "share/nativesharp/docs/2.0/COMPATIBILITY.md",
     "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract",
     "share/nativesharp/docs/2.0/FINAL_BASELINE.md",
+    "share/nativesharp/toolchain/NativeSharp2Promotion.act",
+    "share/nativesharp/docs/2.0/README.md",
+    "share/nativesharp/docs/2.0/VERSION.md",
+    "share/nativesharp/docs/2.0/RELEASE.md",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -105,6 +110,9 @@ bool populateInstallation(const std::filesystem::path &prefix) {
              error) &&
          nativesharp::driver::writeFinalBaselineContract(
              prefix / "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract",
+             error) &&
+         nativesharp::driver::writePromotionAct(
+             prefix / "share/nativesharp/toolchain/NativeSharp2Promotion.act",
              error);
 }
 } // namespace
@@ -248,6 +256,16 @@ int main() {
                "installation composes final-baseline diagnostics");
   tests.expect(driver::writeFinalBaselineContract(finalBaseline, error),
                "current final baseline contract fixture is restored");
+
+  const std::filesystem::path promotion =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Promotion.act";
+  tests.expect(writeFile(promotion, "NSPROMOTION 9\n"),
+               "incompatible promotion act fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed promotion act is invalid") != std::string::npos,
+               "installation composes promotion-act diagnostics");
+  tests.expect(driver::writePromotionAct(promotion, error),
+               "current promotion act fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"

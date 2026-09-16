@@ -1411,3 +1411,11 @@ verified installation, complete lld-link and NSLink CTest matrices without skipp
 fixtures and bug-triage cases in O0 and O2, a LANDED Gate 0, stable source digest and tool hashes,
 zero failures, disabled interactive debugging, and no message boxes. Promotion requires one passed
 report produced after all batch changes; a partial or earlier run is not release evidence.
+
+## NSC-RELEASE-003 — Official NativeSharp 2.0 promotion
+
+Official promotion changes compiler and language identity to 2.0.0, removes the `-dev` channel
+from the visible compiler version while retaining exact `+build` metadata, and advances the
+internal stage to 70. The NSMETA producer window becomes exactly 1.0.1/2.0.0. The package shall
+install `NativeSharp2Promotion.act` (`NSPROMOTION 1`) and the complete `docs/2.0` product edition;
+the act binds every closure authority and records `decision=officially-promoted`.

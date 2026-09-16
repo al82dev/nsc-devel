@@ -10,6 +10,7 @@
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
+#include "nativesharp/Driver/PromotionAct.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
@@ -3439,6 +3440,11 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << currentFinalBaselineContract();
             return ExitCode::Success;
         }
+        if (argument == "--print-promotion-act")
+        {
+            output << currentPromotionAct();
+            return ExitCode::Success;
+        }
         if (argument == "--print-linker")
         {
             return printLinker(output, error);
@@ -3709,6 +3715,30 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
                 return ExitCode::CompilationError;
             }
             output << "final baseline contract verified: " << source.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--write-promotion-act")
+        {
+            std::string actError;
+            const std::filesystem::path destination{std::string(args[1])};
+            if (!writePromotionAct(destination, actError))
+            {
+                error << "nsc: error: " << actError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "promotion act written: " << destination.string() << '\n';
+            return ExitCode::Success;
+        }
+        if (action == "--verify-promotion-act")
+        {
+            std::string actError;
+            const std::filesystem::path source{std::string(args[1])};
+            if (!verifyPromotionAct(source, actError))
+            {
+                error << "nsc: error: " << actError << '\n';
+                return ExitCode::CompilationError;
+            }
+            output << "promotion act verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
         if (action == "--verify-installation")
@@ -4031,6 +4061,9 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --print-final-baseline-contract\n"
            << "  nsc --write-final-baseline-contract <file.contract>\n"
            << "  nsc --verify-final-baseline-contract <file.contract>\n"
+           << "  nsc --print-promotion-act\n"
+           << "  nsc --write-promotion-act <file.act>\n"
+           << "  nsc --verify-promotion-act <file.act>\n"
            << "  nsc --verify-installation <prefix>\n"
            << "  nsc --write-installation-manifest <prefix> <file-list> <manifest>\n"
            << "  nsc --verify-installation-manifest <prefix> <manifest>\n"
@@ -4145,8 +4178,8 @@ void Driver::printHelp(std::ostream &output)
            << "switch/case. "
            << "The 1.0 library gates add component-level ABI diagnostics and "
               "standalone metadata/archive/DLL artifact verification. "
-           << "This executable belongs to the NativeSharp 1.0.1 development line; "
-              "the installed current documentation is under share/nativesharp/docs/1.0.1.\n";
+           << "This executable is the stable NativeSharp 2.0 release; "
+              "the installed current documentation is under share/nativesharp/docs/2.0.\n";
 }
 
 ExitCode Driver::printCodeGeneration(

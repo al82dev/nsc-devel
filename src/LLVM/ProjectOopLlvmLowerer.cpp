@@ -713,7 +713,7 @@ private:
         if (primaryFile == nullptr)
             return fail(error, "failed to create the primary LLVM debug source file");
 
-        static constexpr std::string_view producer = "NativeSharp nsc 1.0.1";
+        static constexpr std::string_view producer = "NativeSharp nsc 2.0.0";
         const LLVMDWARFEmissionKind emission =
             debugInformation_ == DebugInformationKind::LineTablesOnly
             ? LLVMDWARFEmissionLineTablesOnly

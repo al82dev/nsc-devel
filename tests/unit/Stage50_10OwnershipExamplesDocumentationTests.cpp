@@ -244,8 +244,8 @@ int main()
     // examples/project_stage50/ has no README.md at all -- not authored here, not fabricated here
     // either.)
     tests.expect(
-        nativesharp::kLanguageVersion == "1.0.1" && !nativesharp::kCompilerVersion.empty(),
-        "NativeSharp stays on language version 1.0.1 (compiler build identity moves independently)");
+        nativesharp::kLanguageVersion == "2.0.0" && !nativesharp::kCompilerVersion.empty(),
+        "NativeSharp uses language version 2.0.0 (compiler build identity moves independently)");
 
     const std::filesystem::path sourceRoot = std::filesystem::path(NSC_SOURCE_DIR);
     testPositiveExample(tests, sourceRoot);

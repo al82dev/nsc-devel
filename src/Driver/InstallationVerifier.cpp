@@ -5,6 +5,7 @@
 #include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/MigrationBaseline.h"
 #include "nativesharp/Driver/MigrationGuide.h"
+#include "nativesharp/Driver/PromotionAct.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 
@@ -45,7 +46,7 @@ constexpr std::array<RequiredFile, 5> kRequiredSpecifications = {{
      "compiler conformance map"},
 }};
 
-constexpr std::array<RequiredFile, 11> kRequiredCurrentDocumentation = {{
+constexpr std::array<RequiredFile, 14> kRequiredCurrentDocumentation = {{
     {"share/nativesharp/docs/README.md", "documentation version index"},
     {"share/nativesharp/docs/1.0.1/README.md", "1.0.1 documentation index"},
     {"share/nativesharp/docs/1.0.1/VERSION.md", "1.0.1 version contract"},
@@ -65,6 +66,9 @@ constexpr std::array<RequiredFile, 11> kRequiredCurrentDocumentation = {{
      "2.0 final compatibility certification"},
     {"share/nativesharp/docs/2.0/FINAL_BASELINE.md",
      "2.0 final baseline contract"},
+    {"share/nativesharp/docs/2.0/README.md", "2.0 documentation index"},
+    {"share/nativesharp/docs/2.0/VERSION.md", "2.0 version contract"},
+    {"share/nativesharp/docs/2.0/RELEASE.md", "2.0 promotion act"},
 }};
 
 bool requireRegularFile(const std::filesystem::path &prefix,
@@ -171,6 +175,14 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   std::string finalBaselineError;
   if (!verifyFinalBaselineContract(finalBaselinePath, finalBaselineError)) {
     error = "installed final baseline contract is invalid: " + finalBaselineError;
+    return false;
+  }
+
+  const std::filesystem::path promotionPath =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Promotion.act";
+  std::string promotionError;
+  if (!verifyPromotionAct(promotionPath, promotionError)) {
+    error = "installed promotion act is invalid: " + promotionError;
     return false;
   }
 

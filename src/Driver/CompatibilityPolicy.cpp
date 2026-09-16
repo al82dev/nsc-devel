@@ -8,6 +8,7 @@
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/PackageLifecycle.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
+#include "nativesharp/Driver/PromotionAct.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
@@ -56,6 +57,7 @@ std::vector<Field> fields()
         {"migration_guide", std::to_string(kMigrationGuideFormatVersion)},
         {"release_candidate_freeze", std::to_string(kReleaseCandidateFreezeFormatVersion)},
         {"final_baseline_contract", std::to_string(kFinalBaselineContractFormatVersion)},
+        {"promotion_act", std::to_string(kPromotionActFormatVersion)},
     };
 }
 

@@ -225,7 +225,7 @@
 159. **404 — Congelamiento 2.0 RC / 2.0 RC freeze — COMPLETADO / COMPLETE**
 160. **405 — Certificación N-1/N final / Final N-1 and N certification — COMPLETADO / COMPLETE**
 161. **406 — Baseline completo final / Final complete baseline — COMPLETADO / COMPLETE**
-162. **407 — Promoción oficial a NativeSharp 2.0 / Official NativeSharp 2.0 promotion**
+162. **407 — Promoción oficial a NativeSharp 2.0 / Official NativeSharp 2.0 promotion — COMPLETADO / COMPLETE**
 
 ## Fuera de alcance deliberado
 

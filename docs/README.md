@@ -6,8 +6,8 @@ sufijos `-dev` y `+build` describen el estado y la identidad concreta del ejecut
 
 ## Ediciones disponibles
 
-- [NativeSharp 1.0.1](1.0.1/README.md) — edición vigente; compilador en canal `1.0.1-dev` hasta el
-  próximo baseline certificado.
+- [NativeSharp 2.0](2.0/README.md) — edición estable vigente; compilador `2.0.0`.
+- [NativeSharp 1.0.1](1.0.1/README.md) — edición N-1 y fuente de migración a 2.0.
 
 Los expedientes bajo `mkdown/` pertenecen al repositorio de desarrollo y conservan la historia de
 ingeniería. No se copian aquí porque esta carpeta contiene documentación de producto, no el diario
@@ -19,4 +19,5 @@ de implementación.
 
 Each subdirectory is a self-contained product-line edition. Open the directory matching the family
 reported by `nsc --version`; `-dev` and `+build` identify the executable's status and exact build.
-The current edition is [NativeSharp 1.0.1](1.0.1/README.md).
+The current stable edition is [NativeSharp 2.0](2.0/README.md). NativeSharp 1.0.1 remains the
+certified N-1 edition and migration source.

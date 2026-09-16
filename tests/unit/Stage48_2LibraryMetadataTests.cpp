@@ -1339,11 +1339,21 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                              "archived NSMETA 1." + std::to_string(minor) +
                                  " golden is rejected at the explicit Object ABI 2 boundary (" + error + ")");
             }
+            else if (golden.producerVersion.starts_with("0.9.0"))
+            {
+                // These immutable snapshots were emitted by the pre-release 0.9 producer. They
+                // remain proof that every historical NSMETA minor is readable, but 2.0 must not
+                // silently expand its certified producer window beyond released N-1 (1.0.1).
+                tests.expect(!goldenCompatible &&
+                                 error.find("outside the supported producer window") != std::string::npos,
+                             "archived NSMETA 1." + std::to_string(minor) +
+                                 " golden is readable but its obsolete producer is rejected (" + error + ")");
+            }
             else
             {
                 tests.expect(goldenCompatible,
                              "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden remains compatible (" + error + ")");
+                                 " golden from certified producer 1.0.1 remains compatible (" + error + ")");
             }
         }
     }
@@ -1409,7 +1419,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
         "-dev+build.20000101T000000Z.0000000000000000";
     error.clear();
     tests.expect(codec.verifyCurrentCompiler(incompatible, error),
-                 "the development prerelease channel preserves the 1.0.1 compatibility line");
+                 "a prerelease suffix preserves the 2.0.0 compatibility line");
     incompatible = metadata;
     incompatible.pointerSize = 4;
     error.clear();

@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     NativeSharp
-    VERSION 1.0.1
-    DESCRIPTION "NativeSharp 1.0.1 development compiler"
+    VERSION 2.0.0
+    DESCRIPTION "NativeSharp 2.0 stable compiler"
     LANGUAGES CXX)
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
@@ -30,7 +30,7 @@ endif()
 # Version.cpp incluye el header generado: asi no existe una carrera con los muchos tests que
 # incluyen Version.h y tampoco se obliga a recompilar todo el frontend por cambiar un string.
 set(NSC_COMPILER_RELEASE_VERSION "${PROJECT_VERSION}")
-set(NSC_COMPILER_VERSION_BASE "${NSC_COMPILER_RELEASE_VERSION}-dev")
+set(NSC_COMPILER_VERSION_BASE "${NSC_COMPILER_RELEASE_VERSION}")
 set(NSC_GENERATED_BASIC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/nativesharp/Basic")
 set(NSC_GENERATED_BUILD_ID_HEADER "${NSC_GENERATED_BASIC_DIR}/BuildId.h")
 set(NSC_BUILD_ID_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBuildIdentity.cmake")
@@ -66,7 +66,7 @@ add_custom_target(nsc_build_identity
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
 message(STATUS
     "NativeSharp compiler line: ${NSC_COMPILER_RELEASE_VERSION}; "
-    "development identity: ${NSC_COMPILER_VERSION_BASE}+build.<timestamp>.<id>")
+    "stable identity: ${NSC_COMPILER_VERSION_BASE}+build.<timestamp>.<id>")
 
 # Organizacion explicita de la salida del build, dentro de ${CMAKE_BINARY_DIR} (el directorio
 # que le pasas a "cmake -B"), no en otro lado y no por accidente de donde CMake decida ponerla
@@ -294,7 +294,7 @@ if(LLVM_FOUND)
     # kind of contract break a version gate exists to prevent.
     if(LLVM_PACKAGE_VERSION VERSION_LESS 23 OR LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 24)
         message(FATAL_ERROR
-            "NativeSharp 1.0.1 supports LLVM 23.x; the API floor is LLVM 20 because "
+            "NativeSharp 2.0 supports LLVM 23.x; the API floor is LLVM 20 because "
             "LLVMRunPassesOnFunction is required for -O0 SEH legalization, but only the LLVM 23 "
             "line is qualified for the 1.0 release contract; "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
@@ -390,6 +390,7 @@ add_library(nsc_driver STATIC
     src/Driver/MigrationBaseline.cpp
     src/Driver/MigrationGuide.cpp
     src/Driver/PackageLifecycle.cpp
+    src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
@@ -436,6 +437,8 @@ set(NSC_FINAL_COMPATIBILITY_MATRIX
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Compatibility.matrix")
 set(NSC_FINAL_BASELINE_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2FinalBaseline.contract")
+set(NSC_PROMOTION_ACT
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharp2Promotion.act")
 set(NSC_RUNTIME_ABI_CONTRACT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/NativeSharpRuntime.abi")
 set(NSC_WINDOWS_RUNTIME_LIBRARY
@@ -450,6 +453,7 @@ add_custom_command(TARGET nsc POST_BUILD
     COMMAND $<TARGET_FILE:nsc> --write-release-candidate-freeze "${NSC_RELEASE_CANDIDATE_FREEZE}"
     COMMAND $<TARGET_FILE:nsc> --write-compatibility-matrix "${NSC_FINAL_COMPATIBILITY_MATRIX}"
     COMMAND $<TARGET_FILE:nsc> --write-final-baseline-contract "${NSC_FINAL_BASELINE_CONTRACT}"
+    COMMAND $<TARGET_FILE:nsc> --write-promotion-act "${NSC_PROMOTION_ACT}"
     COMMAND $<TARGET_FILE:nsc> --write-runtime-abi-contract "${NSC_RUNTIME_ABI_CONTRACT}"
     COMMAND $<TARGET_FILE:nsc> --write-windows-runtime-library "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     BYPRODUCTS "${NSC_TOOLCHAIN_CONTRACT}"
@@ -460,6 +464,7 @@ add_custom_command(TARGET nsc POST_BUILD
                "${NSC_RELEASE_CANDIDATE_FREEZE}"
                "${NSC_FINAL_COMPATIBILITY_MATRIX}"
                "${NSC_FINAL_BASELINE_CONTRACT}"
+               "${NSC_PROMOTION_ACT}"
                "${NSC_RUNTIME_ABI_CONTRACT}"
                "${NSC_WINDOWS_RUNTIME_LIBRARY}"
     COMMENT "Generando contrato reproducible del toolchain NativeSharp"
@@ -496,6 +501,7 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
     "share/nativesharp/toolchain/NativeSharp2RC.freeze"
     "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix"
     "share/nativesharp/toolchain/NativeSharp2FinalBaseline.contract"
+    "share/nativesharp/toolchain/NativeSharp2Promotion.act"
     "share/nativesharp/toolchain/NativeSharpToolchain.contract")
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
@@ -562,6 +568,7 @@ install(FILES "${NSC_MIGRATION_GUIDE}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_RELEASE_CANDIDATE_FREEZE}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_FINAL_COMPATIBILITY_MATRIX}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_FINAL_BASELINE_CONTRACT}" DESTINATION share/nativesharp/toolchain)
+install(FILES "${NSC_PROMOTION_ACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_RUNTIME_ABI_CONTRACT}" DESTINATION share/nativesharp/runtime)
 install(FILES "${NSC_WINDOWS_RUNTIME_LIBRARY}" DESTINATION lib/nativesharp/runtime)
 install(FILES "${NSC_INSTALLATION_FILE_LIST}" DESTINATION share/nativesharp/toolchain)
@@ -2653,6 +2660,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item406_final_baseline_contract_tests)
     add_test(NAME nsc.item406.final-baseline-contract COMMAND nsc_item406_final_baseline_contract_tests)
 
+    add_executable(nsc_item407_official_promotion_tests tests/unit/Item407OfficialPromotionTests.cpp)
+    target_link_libraries(nsc_item407_official_promotion_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_item407_official_promotion_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_item407_official_promotion_tests)
+    add_test(NAME nsc.item407.official-promotion COMMAND nsc_item407_official_promotion_tests)
+
     add_executable(nsc_windows_runtime_tests tests/unit/WindowsRuntimeTests.cpp)
     target_link_libraries(nsc_windows_runtime_tests PRIVATE nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_windows_runtime_tests PRIVATE cxx_std_20)
@@ -2830,7 +2843,7 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(
         nsc.version
         PROPERTIES PASS_REGULAR_EXPRESSION
-            "nsc 1.0.1-dev[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 1.0.1.*stage ${NSC_EXPECTED_COMPILER_STAGE}.*build [0-9a-f][0-9a-f]+")
+            "nsc 2.0.0[+]build[.][0-9TZ]+[.][0-9a-f]+.*NativeSharp 2.0.0.*stage ${NSC_EXPECTED_COMPILER_STAGE}.*build [0-9a-f][0-9a-f]+")
 
     add_test(
         NAME nsc.stage25.project-names

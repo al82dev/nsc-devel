@@ -32,7 +32,7 @@ bool verifyLoadedLlvmVersion(std::string& error)
         return true;
     }
 
-    error = "unsupported loaded LLVM " + llvmVersionString(version) + "; NativeSharp 1.0.1 supports LLVM 23.x";
+    error = "unsupported loaded LLVM " + llvmVersionString(version) + "; NativeSharp 2.0 supports LLVM 23.x";
     return false;
 }
 } // namespace nativesharp::llvm_backend

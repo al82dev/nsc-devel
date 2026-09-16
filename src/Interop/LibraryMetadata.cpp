@@ -47,10 +47,9 @@ constexpr std::uint32_t kWindowsX64Target = 1;
 constexpr std::uint32_t kPointerSize = 8;
 constexpr std::uint32_t kPointerAlignment = 8;
 constexpr std::string_view kTargetTriple = "x86_64-pc-windows-msvc";
-// The compatibility window is explicit rather than inferred from SemVer arithmetic: 0.9.0 is
-// the frozen producer that shipped the historical NSMETA 1.0-1.11 goldens. Its file and ABI
-// contracts remain readable by 1.0.1 even though the product release number crossed major zero.
-constexpr std::string_view kPreviousMetadataProducerRelease = "0.9.0";
+// The compatibility window is explicit rather than inferred from SemVer arithmetic. NativeSharp
+// 2.0 certifies 1.0.1 as its N-1 producer; 1.0.0 was never the preceding released producer.
+constexpr std::string_view kPreviousMetadataProducerRelease = "1.0.1";
 constexpr std::size_t kHeaderSize = 100;
 constexpr std::uint64_t kMaximumPayloadSize = 128ULL * 1024ULL * 1024ULL;
 constexpr std::uint32_t kMaximumRecordCount = 1'000'000U;
@@ -1962,7 +1961,7 @@ bool LibraryMetadataCodec::writeModel(
     // en silencio hace que la prueba diga "el objetivo sobrevivio" cuando lo que
     // sobrevivio es la constante.
     //
-    // NativeSharp 1.0.1 solo tiene un objetivo, asi que lo unico correcto es
+    // NativeSharp 2.0 solo tiene un objetivo, asi que lo unico correcto es
     // rechazar cualquier otro con su numero delante, y no producir un fichero que
     // el lector rechazaria despues.
     if (metadata.targetId != kWindowsX64Target || metadata.pointerSize != kPointerSize ||
@@ -1971,7 +1970,7 @@ bool LibraryMetadataCodec::writeModel(
         error = "cannot write NativeSharp metadata for target " + std::to_string(metadata.targetId) +
             " with pointer " + std::to_string(metadata.pointerSize) + "/" +
             std::to_string(metadata.pointerAlignment) +
-            "; NativeSharp 1.0.1 targets Windows x64 only";
+            "; NativeSharp 2.0 targets Windows x64 only";
         return false;
     }
     if (metadata.formatMinor >= 8 && !verifyFrozenAbiContract(metadata, error)) return false;

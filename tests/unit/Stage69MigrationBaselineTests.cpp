@@ -39,7 +39,7 @@ int main()
     tests.expect(baseline.find("source_compiler=1.0.1\n") != std::string::npos &&
                      baseline.find("source_language=1.0.1\n") != std::string::npos &&
                      baseline.find("target_release=2.0.0\n") != std::string::npos &&
-                     baseline.find("status=final-baseline-ready\n") != std::string::npos,
+                     baseline.find("status=promoted\n") != std::string::npos,
         "migration baseline identifies its frozen source and final target");
     tests.expect(baseline.find("nsmeta=1.20\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
@@ -54,6 +54,8 @@ int main()
         "2.0 promotion requirements are executable fields rather than prose only");
     tests.expect(baseline.find("final_baseline_contract=1\n") != std::string::npos,
         "migration baseline binds the final complete-baseline gate");
+    tests.expect(baseline.find("promotion_act=1\n") != std::string::npos,
+        "migration baseline records the official promotion authority");
 
     const std::filesystem::path evidence =
         nativesharp::tests::evidenceRoot("nativesharp_stage69_migration_baseline");

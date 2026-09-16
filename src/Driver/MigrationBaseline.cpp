@@ -6,6 +6,7 @@
 #include "nativesharp/Driver/FinalBaselineContract.h"
 #include "nativesharp/Driver/MigrationGuide.h"
 #include "nativesharp/Driver/ReleaseCandidateFreeze.h"
+#include "nativesharp/Driver/PromotionAct.h"
 #include "nativesharp/Driver/ToolchainContract.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -30,7 +31,7 @@ std::vector<Field> fields()
         {"source_compiler", "1.0.1"},
         {"source_language", "1.0.1"},
         {"target_release", "2.0.0"},
-        {"status", "final-baseline-ready"},
+        {"status", "promoted"},
         {"nsmeta", std::to_string(kMetadataFormatMajor) + "." + std::to_string(kMetadataFormatMinor)},
         {"native_abi", std::to_string(kNativeAbiMajor) + "." + std::to_string(kNativeAbiMinor)},
         {"runtime_abi", std::to_string(kRuntimeAbiMajor) + "." + std::to_string(kRuntimeAbiMinor)},
@@ -48,6 +49,7 @@ std::vector<Field> fields()
         {"n_minus_one_matrix", std::to_string(kCompatibilityMatrixFormatVersion)},
         {"release_candidate_freeze", std::to_string(kReleaseCandidateFreezeFormatVersion)},
         {"final_baseline_contract", std::to_string(kFinalBaselineContractFormatVersion)},
+        {"promotion_act", std::to_string(kPromotionActFormatVersion)},
     };
 }
 
