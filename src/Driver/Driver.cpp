@@ -4470,8 +4470,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     {
         llvm_backend::ProjectOopLlvmLowerer lowerer;
         oopLlvmModule = measureDriverPhase("llvm-lowering", [&] {
-            return lowerer.lower(
-                *projectCompilation.nameLookup(), *projectCompilation.oopMirModel());
+            return lowerer.lower(llvm_backend::ProjectOopLlvmLoweringRequest::withoutDebug(
+                *projectCompilation.nameLookup(), *projectCompilation.oopMirModel()));
         });
         if (oopLlvmModule == nullptr)
         {
@@ -4687,9 +4687,10 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath,
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     std::unique_ptr<llvm_backend::LlvmModule> module =
         measureDriverPhase("llvm-lowering", [&] {
-            return lowerer.lower(*compilation.nameLookup(), *compilation.memberModel(),
+            return lowerer.lower(llvm_backend::ProjectOopLlvmLoweringRequest::withDebug(
+                *compilation.nameLookup(), *compilation.memberModel(),
                 *compilation.oopMirModel(), compilation.sourceManager(),
-                debugInformation, optimizationLevel, debugPrefixMaps);
+                debugInformation, optimizationLevel, debugPrefixMaps));
         });
     if (module == nullptr)
     {

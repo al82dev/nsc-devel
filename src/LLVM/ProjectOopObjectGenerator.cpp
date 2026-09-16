@@ -175,23 +175,23 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         ProjectOopLlvmLowerer lowerer;
         if (!usePartitions)
         {
-            modules[moduleOrdinal] = lowerer.lower(
+            modules[moduleOrdinal] = lowerer.lower(ProjectOopLlvmLoweringRequest::withDebug(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-                optimizationLevel, debugPrefixMaps);
+                optimizationLevel, debugPrefixMaps));
         }
         else if (moduleOrdinal == 0)
         {
-            modules[moduleOrdinal] = lowerer.lowerPartition(
+            modules[moduleOrdinal] = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-                optimizationLevel, {}, true, "NativeSharp.OOP.globals", debugPrefixMaps);
+                optimizationLevel, {}, true, "NativeSharp.OOP.globals", debugPrefixMaps));
         }
         else
         {
             const ProjectOopCodeUnit& unit = partition.units()[moduleOrdinal - 1];
-            modules[moduleOrdinal] = lowerer.lowerPartition(
+            modules[moduleOrdinal] = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
                 nameLookup, memberModel, mirModel, sourceManager, debugInformation,
                 optimizationLevel, unit.functionOrdinals, false,
-                "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps);
+                "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps));
         }
         moduleErrors[moduleOrdinal] = lowerer.error();
     };

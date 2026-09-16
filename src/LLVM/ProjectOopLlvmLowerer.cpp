@@ -13959,32 +13959,99 @@ private:
     std::size_t blockCounter_ = 0;
 };
 
+ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::withoutDebug(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectOopMirModel& mirModel)
+{
+    ProjectOopLlvmLoweringRequest request;
+    request.nameLookup_ = &nameLookup;
+    request.mirModel_ = &mirModel;
+    return request;
+}
+
+ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::withDebug(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel,
+    std::span<const DebugPrefixMap> debugPrefixMaps)
+{
+    ProjectOopLlvmLoweringRequest request = withoutDebug(nameLookup, mirModel);
+    request.memberModel_ = &memberModel;
+    request.sourceManager_ = &sourceManager;
+    request.debugInformation_ = debugInformation;
+    request.optimizationLevel_ = optimizationLevel;
+    request.debugPrefixMaps_ = debugPrefixMaps;
+    return request;
+}
+
+ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::partition(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel,
+    std::span<const std::size_t> functionOrdinals,
+    bool ownsModuleGlobals,
+    std::string_view moduleName,
+    std::span<const DebugPrefixMap> debugPrefixMaps)
+{
+    ProjectOopLlvmLoweringRequest request = withDebug(
+        nameLookup, memberModel, mirModel, sourceManager, debugInformation,
+        optimizationLevel, debugPrefixMaps);
+    request.partitioned_ = true;
+    request.functionOrdinals_ = functionOrdinals;
+    request.ownsModuleGlobals_ = ownsModuleGlobals;
+    request.moduleName_ = moduleName;
+    return request;
+}
+
+std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
+    const ProjectOopLlvmLoweringRequest& request)
+{
+    error_.clear();
+    if (!verifyLoadedLlvmVersion(error_)) return nullptr;
+    if (request.nameLookup_ == nullptr || request.mirModel_ == nullptr ||
+        !request.nameLookup_->isBuilt() || !request.mirModel_->isBuilt())
+    {
+        error_ = "encapsulated LLVM backend requires built project names and physical MIR";
+        return nullptr;
+    }
+    if ((request.memberModel_ == nullptr) != (request.sourceManager_ == nullptr) ||
+        (request.memberModel_ != nullptr && !request.memberModel_->isBuilt()))
+    {
+        error_ = "encapsulated LLVM backend received an incomplete debug context";
+        return nullptr;
+    }
+    if (request.debugInformation_ != DebugInformationKind::None &&
+        (request.memberModel_ == nullptr || request.sourceManager_ == nullptr))
+    {
+        error_ = "encapsulated LLVM backend requires a debug context for debug information";
+        return nullptr;
+    }
+    if (request.partitioned_ && request.moduleName_.empty())
+    {
+        error_ = "encapsulated LLVM backend partition requires a stable module name";
+        return nullptr;
+    }
+    OopLlvmImplementation implementation(
+        *request.nameLookup_, request.memberModel_, *request.mirModel_, request.sourceManager_,
+        request.debugInformation_, request.optimizationLevel_, request.debugPrefixMaps_,
+        request.partitioned_, request.ownsModuleGlobals_, request.functionOrdinals_,
+        request.moduleName_);
+    if (!implementation.lower(error_)) return nullptr;
+    return std::unique_ptr<LlvmModule>(
+        new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));
+}
+
 std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
     const frontend::ProjectNameLookup& nameLookup,
     const frontend::ProjectOopMirModel& mirModel)
 {
-    error_.clear();
-    if (!verifyLoadedLlvmVersion(error_))
-    {
-        return nullptr;
-    }
-
-    if (!nameLookup.isBuilt() || !mirModel.isBuilt())
-    {
-        error_ = "Macro A LLVM lowering requires built project name lookup and physical OOP MIR";
-        return nullptr;
-    }
-    // The compatibility overload intentionally preserves the historical no-debug path used by
-    // lowerer unit tests and internal callers that do not own a SourceManager.
-    OopLlvmImplementation implementation(
-        nameLookup, nullptr, mirModel,
-        nullptr, DebugInformationKind::None, LlvmOptimizationLevel::O0);
-    if (!implementation.lower(error_))
-    {
-        return nullptr;
-    }
-    return std::unique_ptr<LlvmModule>(
-        new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));
+    return lower(ProjectOopLlvmLoweringRequest::withoutDebug(nameLookup, mirModel));
 }
 
 std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
@@ -13996,19 +14063,9 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
     LlvmOptimizationLevel optimizationLevel,
     std::span<const DebugPrefixMap> debugPrefixMaps)
 {
-    error_.clear();
-    if (!verifyLoadedLlvmVersion(error_)) return nullptr;
-    if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !mirModel.isBuilt())
-    {
-        error_ = "debug OOP LLVM lowering requires built project names, members and physical MIR";
-        return nullptr;
-    }
-    OopLlvmImplementation implementation(
-        nameLookup, &memberModel, mirModel, &sourceManager, debugInformation, optimizationLevel,
-        debugPrefixMaps);
-    if (!implementation.lower(error_)) return nullptr;
-    return std::unique_ptr<LlvmModule>(
-        new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));
+    return lower(ProjectOopLlvmLoweringRequest::withDebug(
+        nameLookup, memberModel, mirModel, sourceManager, debugInformation,
+        optimizationLevel, debugPrefixMaps));
 }
 
 std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lowerPartition(
@@ -14023,24 +14080,9 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lowerPartition(
     std::string_view moduleName,
     std::span<const DebugPrefixMap> debugPrefixMaps)
 {
-    error_.clear();
-    if (!verifyLoadedLlvmVersion(error_)) return nullptr;
-    if (!nameLookup.isBuilt() || !memberModel.isBuilt() || !mirModel.isBuilt())
-    {
-        error_ = "partitioned LLVM lowering requires built project names, members and physical MIR";
-        return nullptr;
-    }
-    if (moduleName.empty())
-    {
-        error_ = "partitioned LLVM lowering requires a stable module name";
-        return nullptr;
-    }
-    OopLlvmImplementation implementation(
-        nameLookup, &memberModel, mirModel, &sourceManager, debugInformation, optimizationLevel,
-        debugPrefixMaps, true, ownsModuleGlobals, functionOrdinals, moduleName);
-    if (!implementation.lower(error_)) return nullptr;
-    return std::unique_ptr<LlvmModule>(
-        new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));
+    return lower(ProjectOopLlvmLoweringRequest::partition(
+        nameLookup, memberModel, mirModel, sourceManager, debugInformation,
+        optimizationLevel, functionOrdinals, ownsModuleGlobals, moduleName, debugPrefixMaps));
 }
 
 const std::string& ProjectOopLlvmLowerer::error() const noexcept
