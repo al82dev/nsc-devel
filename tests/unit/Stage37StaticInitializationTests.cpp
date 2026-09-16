@@ -205,7 +205,8 @@ void testMemberFlagsAndStaticAbi(TestContext& tests, const std::filesystem::path
     const std::string mirDump = nativesharp::frontend::ProjectOopMirModelDumper::dump(*compilation.oopMirModel());
     tests.expect(hirDump.find("abi=static") != std::string::npos,
         "HIR dumper exposes the static callable ABI instead of claiming this:first");
-    tests.expect(mirDump.find("abi=(static,p0:builtin:int)") != std::string::npos,
+    tests.expect(mirDump.find("abi=(static,p0:builtin:int[win64-direct@0]) -> builtin:int[win64-direct]") !=
+            std::string::npos,
         "MIR dumper exposes the static method ABI explicitly");
     tests.expect(mirDump.find("readonly=true volatile=false const=false") != std::string::npos &&
             mirDump.find("const=true constant=true value=5") != std::string::npos,

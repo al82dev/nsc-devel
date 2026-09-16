@@ -3102,7 +3102,7 @@ if(NSC_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj)
     set_tests_properties(
         nsc.stage40.mir-dump
-        PROPERTIES PASS_REGULAR_EXPRESSION "win64-direct-integer-carrier")
+        PROPERTIES PASS_REGULAR_EXPRESSION "abi=win64-direct")
 
     add_test(
         NAME nsc.stage40.llvm
