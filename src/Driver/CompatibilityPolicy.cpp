@@ -211,35 +211,17 @@ bool checkCompilerCompatibility(std::string_view requiredVersion, std::string &e
 
 std::string currentCompatibilityMatrix()
 {
-    using namespace interop;
-    SemanticVersion current;
-    if (!parseSemanticVersion(kCompilerReleaseVersion, current)) return {};
-    SemanticVersion previous = current;
-    if (previous.patch > 0U) --previous.patch;
-    else if (previous.minor > 0U) --previous.minor;
-    else if (previous.major > 0U) --previous.major;
-    const std::string previousCompiler = std::to_string(previous.major) + "." +
-        std::to_string(previous.minor) + "." + std::to_string(previous.patch);
-    const unsigned previousMetadataMinor = kMetadataFormatMinor == 0U ? 0U : kMetadataFormatMinor - 1U;
-    const unsigned previousNativeAbiMinor = kNativeAbiMinor == 0U ? 0U : kNativeAbiMinor - 1U;
-    const unsigned previousRuntimeAbiMinor = kRuntimeAbiMinor == 0U ? 0U : kRuntimeAbiMinor - 1U;
-
     std::string matrix = "NSCOMPAT-MATRIX " +
         std::to_string(kCompatibilityMatrixFormatVersion) + "\n";
-    matrix += "compiler.N=" + std::string(kCompilerReleaseVersion) + "\n";
-    matrix += "compiler.N-1=" + previousCompiler + "\n";
-    matrix += "nsmeta.N=" + std::to_string(kMetadataFormatMajor) + "." +
-        std::to_string(kMetadataFormatMinor) + "\n";
-    matrix += "nsmeta.N-1=" + std::to_string(kMetadataFormatMajor) + "." +
-        std::to_string(previousMetadataMinor) + "\n";
-    matrix += "native-abi.N=" + std::to_string(kNativeAbiMajor) + "." +
-        std::to_string(kNativeAbiMinor) + "\n";
-    matrix += "native-abi.N-1=" + std::to_string(kNativeAbiMajor) + "." +
-        std::to_string(previousNativeAbiMinor) + "\n";
-    matrix += "runtime-abi.N=" + std::to_string(kRuntimeAbiMajor) + "." +
-        std::to_string(kRuntimeAbiMinor) + "\n";
-    matrix += "runtime-abi.N-1=" + std::to_string(kRuntimeAbiMajor) + "." +
-        std::to_string(previousRuntimeAbiMinor) + "\n";
+    matrix += "certification=final\n";
+    matrix += "compiler.N=2.0.0\n";
+    matrix += "compiler.N-1=1.0.1\n";
+    matrix += "nsmeta.N=1.20\n";
+    matrix += "nsmeta.N-1=1.20\n";
+    matrix += "native-abi.N=1.0\n";
+    matrix += "native-abi.N-1=1.0\n";
+    matrix += "runtime-abi.N=1.0\n";
+    matrix += "runtime-abi.N-1=1.0\n";
     for (const std::string_view surface : {
              std::string_view("compiler"), std::string_view("nsmeta"),
              std::string_view("native-abi"), std::string_view("runtime-abi")})

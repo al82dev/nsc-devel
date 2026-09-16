@@ -44,7 +44,7 @@ constexpr std::array<RequiredFile, 5> kRequiredSpecifications = {{
      "compiler conformance map"},
 }};
 
-constexpr std::array<RequiredFile, 9> kRequiredCurrentDocumentation = {{
+constexpr std::array<RequiredFile, 10> kRequiredCurrentDocumentation = {{
     {"share/nativesharp/docs/README.md", "documentation version index"},
     {"share/nativesharp/docs/1.0.1/README.md", "1.0.1 documentation index"},
     {"share/nativesharp/docs/1.0.1/VERSION.md", "1.0.1 version contract"},
@@ -60,6 +60,8 @@ constexpr std::array<RequiredFile, 9> kRequiredCurrentDocumentation = {{
      "1.0.1 to 2.0 migration guide"},
     {"share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
      "2.0 release-candidate freeze"},
+    {"share/nativesharp/docs/2.0/COMPATIBILITY.md",
+     "2.0 final compatibility certification"},
 }};
 
 bool requireRegularFile(const std::filesystem::path &prefix,
@@ -150,6 +152,14 @@ bool verifyInstallation(const std::filesystem::path &prefix,
   std::string freezeError;
   if (!verifyReleaseCandidateFreeze(freezePath, freezeError)) {
     error = "installed release-candidate freeze is invalid: " + freezeError;
+    return false;
+  }
+
+  const std::filesystem::path matrixPath =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix";
+  std::string matrixError;
+  if (!verifyCompatibilityMatrix(matrixPath, matrixError)) {
+    error = "installed final compatibility matrix is invalid: " + matrixError;
     return false;
   }
 

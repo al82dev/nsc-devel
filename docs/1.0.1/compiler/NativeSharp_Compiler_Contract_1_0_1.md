@@ -1395,3 +1395,11 @@ target; bind the breaking ledger, migration guide, compatibility matrix, formats
 and MIR schema; and prohibit contract or product-surface changes. A release-blocking correction
 requires a new candidate and recertification. The freeze is not promotion: final N-1/N evidence,
 the complete baseline, and an explicit promotion decision remain separate gates.
+
+## NSC-COMPAT-006 — Final N-1/N certification
+
+The final `NSCOMPAT-MATRIX 1` authority shall name compiler generations 1.0.1 (N-1) and 2.0.0 (N)
+explicitly; it shall not derive them by decrementing SemVer components. Both generations use
+NSMETA 1.20, Native ABI 1.0, and Runtime ABI 1.0. For every surface, the N consumer accepts N-1 and
+N producers while the N-1 consumer rejects the N producer. The package shall install the exact
+matrix as `NativeSharp2Compatibility.matrix` and installation verification shall certify it.

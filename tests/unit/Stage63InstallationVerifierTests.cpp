@@ -20,7 +20,7 @@
 #include <vector>
 
 namespace {
-constexpr std::array<std::string_view, 24> kRequiredFiles = {
+constexpr std::array<std::string_view, 26> kRequiredFiles = {
     "bin/nsc.exe",
     "lib/NativeSharp.Core/NativeSharp.Core.nsproj",
     "lib/NativeSharp.Core.Collections.Generic/"
@@ -46,6 +46,8 @@ constexpr std::array<std::string_view, 24> kRequiredFiles = {
     "share/nativesharp/docs/2.0/MIGRATION_FROM_1_0_1.md",
     "share/nativesharp/toolchain/NativeSharp2RC.freeze",
     "share/nativesharp/docs/2.0/RELEASE_CANDIDATE.md",
+    "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix",
+    "share/nativesharp/docs/2.0/COMPATIBILITY.md",
 };
 
 bool writeFile(const std::filesystem::path &path,
@@ -94,6 +96,9 @@ bool populateInstallation(const std::filesystem::path &prefix) {
              error) &&
          nativesharp::driver::writeReleaseCandidateFreeze(
              prefix / "share/nativesharp/toolchain/NativeSharp2RC.freeze",
+             error) &&
+         nativesharp::driver::writeCompatibilityMatrix(
+             prefix / "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix",
              error);
 }
 } // namespace
@@ -217,6 +222,16 @@ int main() {
                "installation composes release-candidate-freeze diagnostics");
   tests.expect(driver::writeReleaseCandidateFreeze(freeze, error),
                "current release-candidate freeze fixture is restored");
+
+  const std::filesystem::path matrix =
+      prefix / "share/nativesharp/toolchain/NativeSharp2Compatibility.matrix";
+  tests.expect(writeFile(matrix, "NSCOMPAT-MATRIX 9\n"),
+               "incompatible final compatibility matrix fixture is written");
+  tests.expect(!driver::verifyInstallation(prefix, error) &&
+                   error.find("installed final compatibility matrix is invalid") != std::string::npos,
+               "installation composes final compatibility-matrix diagnostics");
+  tests.expect(driver::writeCompatibilityMatrix(matrix, error),
+               "current final compatibility matrix fixture is restored");
 
   const std::filesystem::path collection =
       prefix / "lib/NativeSharp.Core.Collections.Generic/"

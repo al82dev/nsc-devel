@@ -39,7 +39,7 @@ int main()
     tests.expect(baseline.find("source_compiler=1.0.1\n") != std::string::npos &&
                      baseline.find("source_language=1.0.1\n") != std::string::npos &&
                      baseline.find("target_release=2.0.0\n") != std::string::npos &&
-                     baseline.find("status=rc-frozen\n") != std::string::npos,
+                     baseline.find("status=compatibility-certified\n") != std::string::npos,
         "migration baseline identifies its frozen source and final target");
     tests.expect(baseline.find("nsmeta=1.20\n") != std::string::npos &&
                      baseline.find("native_abi=1.0\n") != std::string::npos &&
@@ -49,7 +49,7 @@ int main()
         "migration baseline freezes every cross-component contract");
     tests.expect(baseline.find("breaking_change_ledger=1\n") != std::string::npos &&
                      baseline.find("migration_notes=1\n") != std::string::npos &&
-                     baseline.find("n_minus_one_matrix=required\n") != std::string::npos &&
+                     baseline.find("n_minus_one_matrix=1\n") != std::string::npos &&
                      baseline.find("release_candidate_freeze=1\n") != std::string::npos,
         "2.0 promotion requirements are executable fields rather than prose only");
 
