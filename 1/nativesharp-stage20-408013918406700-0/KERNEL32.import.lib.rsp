@@ -1,6 +1,0 @@
-/dll
-/noentry
-/machine:x64
-/def:"1\nativesharp-stage20-408013918406700-0\KERNEL32.import.lib.def"
-/implib:"1\nativesharp-stage20-408013918406700-0\KERNEL32.import.lib"
-/out:"1\nativesharp-stage20-408013918406700-0\KERNEL32.import.lib.dummy.dll"

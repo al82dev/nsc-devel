@@ -1,8 +1,0 @@
-NSREPRO 1
-result=reproducible
-deterministic_entries=76
-volatile_entries=1
-differences=0
-volatile=build-identity|bin/nsc.exe
-strict_compiler_binary=identical
-compiler_sha256=cbddd8a1ae70712a876c3f249a66a0d673bc7b57ccf6f9fd2f29ea427d4501b8

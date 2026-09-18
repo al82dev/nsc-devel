@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"A:/nsc-devel/_targeted/e9e10-strict3/build-a/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
