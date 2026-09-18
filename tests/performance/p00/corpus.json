@@ -1,0 +1,29 @@
+{
+  "schema": "nsc-performance-corpus-1",
+  "corpora": [
+    {
+      "name": "minimal-control-flow",
+      "project": "tests/language/l1_conditional/l1_conditional.nsproj",
+      "expected_exit": 42,
+      "tags": ["minimal", "control-flow"]
+    },
+    {
+      "name": "medium-runtime-type-root",
+      "project": "tests/interop_contract/c8_type_root/c8_type_root.nsproj",
+      "expected_exit": 42,
+      "tags": ["medium", "runtime", "oop"]
+    },
+    {
+      "name": "generic-overload",
+      "project": "tests/cc1/c35_sobrecarga_generica/c35_sobrecarga_generica.nsproj",
+      "expected_exit": 42,
+      "tags": ["generics", "overload-resolution"]
+    },
+    {
+      "name": "cross-project-constraints",
+      "project": "tests/cc1/c48_constraints_cross_project/c48_constraints_cross_project.nsproj",
+      "expected_exit": 42,
+      "tags": ["multi-project", "generics", "constraints"]
+    }
+  ]
+}
