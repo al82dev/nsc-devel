@@ -574,6 +574,7 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
 {
     dynamicLibraryInfo_ = {};
     error.clear();
+    (void)programLlvmText; // Retained for source compatibility; import planning no longer scans IR.
     if (programObjects.empty())
     {
         error = "partitioned DLL has no program objects";
@@ -632,9 +633,9 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
     if (linker == nullptr) return false;
     std::vector<std::filesystem::path> importLibraries;
-    const std::string allLlvmText = std::string(programLlvmText) +
-        (runtimeModule != nullptr ? runtimeModule->text() : std::string());
-    if (!createRuntimeImportLibraries(*linker, temporaryDirectory->path(), allLlvmText,
+    // Runtime/compiler-support imports are a stable closure and project imports are explicit;
+    // createRuntimeImportLibraries keeps its text parameter only for API compatibility.
+    if (!createRuntimeImportLibraries(*linker, temporaryDirectory->path(), {},
             externalImports_, importLibraries, error))
     {
         return false;

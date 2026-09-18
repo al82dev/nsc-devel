@@ -581,9 +581,11 @@ bool WindowsExecutableBuilder::buildObjects(
         error = targetError;
         return false;
     }
-    const std::string allLlvmText = std::string(programLlvmText) + runtimeModule->text();
     std::vector<std::filesystem::path> importLibraries;
-    if (!createWindowsImportLibraries(*linker, temporaryDirectory->path(), allLlvmText,
+    // The import closure is canonical and external imports are explicit. The retained IR-text
+    // parameter is intentionally ignored by createWindowsImportLibraries, so serializing both
+    // optimized modules here only adds latency and peak memory.
+    if (!createWindowsImportLibraries(*linker, temporaryDirectory->path(), {},
             externalImports_, importLibraries, error))
     {
         return false;

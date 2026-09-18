@@ -276,11 +276,21 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     result->usedParallelOptimization_ = parallelOptimization;
     result->objectFiles_.reserve(moduleCount);
     std::vector<std::string> moduleTexts(moduleCount);
+    // Textual IR used to be serialized for every code unit even though the Windows import
+    // planner no longer consumes it.  Keep it only for the two features whose keys/summaries
+    // are intentionally based on IR.  Ordinary EXE/DLL/LIB production already fingerprints
+    // the emitted objects when incremental linking is enabled.
+    const bool preserveModuleText =
+        (cache != nullptr && cache->enabled()) ||
+        linkTimeOptimization == LinkTimeOptimizationMode::Thin;
     for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
     {
-        moduleTexts[ordinal] = modules[ordinal]->text();
-        result->combinedLlvmText_ += moduleTexts[ordinal];
-        result->combinedLlvmText_ += '\n';
+        if (preserveModuleText)
+        {
+            moduleTexts[ordinal] = modules[ordinal]->text();
+            result->combinedLlvmText_ += moduleTexts[ordinal];
+            result->combinedLlvmText_ += '\n';
+        }
         result->objectFiles_.push_back(
             *temporaryDirectory / ("program-" + std::to_string(ordinal) + ".obj"));
     }
