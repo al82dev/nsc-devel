@@ -12,6 +12,7 @@ Documentos de entrada:
 4. [Congelamiento de la candidata](RELEASE_CANDIDATE.md).
 5. [Baseline completo final](FINAL_BASELINE.md).
 6. [Acta de release](RELEASE.md).
+7. [Roadmap autocontenido de self-hosting](SELF_HOSTING_ROADMAP.md).
 
 ---
 
@@ -19,5 +20,5 @@ Documentos de entrada:
 
 NativeSharp 2.0 is the current stable edition of the native AOT language and compiler. The visible
 compiler version is `2.0.0+build.<UTC>.<id>`; build metadata identifies the exact binary without
-changing SemVer precedence. Use the documents above for migration, compatibility, baseline, and
-release evidence.
+changing SemVer precedence. Use the documents above for migration, compatibility, baseline,
+release evidence, and the self-hosting engineering roadmap.
