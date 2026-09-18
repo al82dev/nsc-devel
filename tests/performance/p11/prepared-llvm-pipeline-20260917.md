@@ -21,28 +21,28 @@ boundary.
 
 ## Measured result
 
-- Before run: `20260917-200807-0bad0d02`
-- After run: `20260917-201118-0bad0d02`
-- Matrix: four corpora, object output, `-g0`, O0-O3
-- Samples: 5 measured plus 1 warmup per configuration
+- Before run: `20260917-194607-0bad0d02` (P10)
+- After run: `20260917-202422-0bad0d02` (P11)
+- Matrix: four corpora, executable output, `-g0`, O0-O3, lld-link and NSLink
+- Samples: 3 measured plus 1 warmup before; 5 measured plus 1 warmup after
 - Compilation failures: 0 before, 0 after
+- Execution failures: 0 before, 0 after
 - Artifact sizes: unchanged in every compared configuration
-- Median `llvm-optimization`: 398.084 ms -> 374.378 ms (`-6.0%`)
-- Median `object-emission`: 367.798 ms -> 364.038 ms (`-1.0%`)
+- Median `llvm-object-generation`: 182.888 ms -> 185.743 ms (`+1.6%`)
+- Median `executable-build`: 272.956 ms -> 262.584 ms (`-3.8%`)
 
-O0 end-to-end medians improved in every corpus:
+The direct end-to-end configurations were mixed and the two aggregate phase
+movements point in opposite directions. Therefore this change is classified as
+removal of provably redundant work with **no independently measurable aggregate
+speedup on the current small corpus**. It is retained because it removes two
+whole-module walks per code unit while preserving both verification boundaries,
+and because the full correctness baseline is clean; no percentage improvement
+is claimed for P11.
 
-| Corpus | Before | After | Change |
-|---|---:|---:|---:|
-| cross-project-constraints | 336.522 ms | 334.885 ms | -0.5% |
-| generic-overload | 394.399 ms | 384.222 ms | -2.6% |
-| medium-runtime-type-root | 351.240 ms | 346.278 ms | -1.4% |
-| minimal-control-flow | 337.566 ms | 331.906 ms | -1.7% |
-
-O1-O3 end-to-end results remained within approximately -1.8% to +3.0% of the
-before medians. Those totals are dominated by LLVM pass and target codegen
-variance, while the aggregate phase medians above directly measure the work
-removed by this change. Peak memory remained effectively unchanged.
+Runs `20260917-200807-0bad0d02` and `20260917-201118-0bad0d02` exercised direct
+object generation. They remain useful compatibility evidence, but that driver
+action does not use `ProjectOopObjectGenerator` and therefore must not be cited
+as the performance measurement for this change.
 
 ## Focused compatibility checks
 
