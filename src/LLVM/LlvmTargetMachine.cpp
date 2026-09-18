@@ -244,6 +244,25 @@ bool LlvmTargetMachine::emit(
     LlvmCodeGenFileType fileType,
     std::string& error) const
 {
+    return emitImpl(module, outputPath, fileType, true, error);
+}
+
+bool LlvmTargetMachine::emitPrepared(
+    LlvmModule& module,
+    const std::filesystem::path& outputPath,
+    LlvmCodeGenFileType fileType,
+    std::string& error) const
+{
+    return emitImpl(module, outputPath, fileType, false, error);
+}
+
+bool LlvmTargetMachine::emitImpl(
+    LlvmModule& module,
+    const std::filesystem::path& outputPath,
+    LlvmCodeGenFileType fileType,
+    bool prepareModule,
+    std::string& error) const
+{
     error.clear();
     if (outputPath.empty())
     {
@@ -251,18 +270,27 @@ bool LlvmTargetMachine::emit(
         return false;
     }
 
-    std::string verificationError;
-    if (!module.verify(verificationError))
+    if (targetMachine_ == nullptr || module.module_ == nullptr)
     {
-        error = "refusing to emit an invalid LLVM module: " + verificationError;
+        error = targetMachine_ == nullptr ? "LLVM target machine is null" : "LLVM module is null";
         return false;
     }
 
-    std::string configurationError;
-    if (!configureModuleForTarget(module, configurationError))
+    if (prepareModule)
     {
-        error = configurationError;
-        return false;
+        std::string verificationError;
+        if (!module.verify(verificationError))
+        {
+            error = "refusing to emit an invalid LLVM module: " + verificationError;
+            return false;
+        }
+
+        std::string configurationError;
+        if (!configureModuleForTarget(module, configurationError))
+        {
+            error = configurationError;
+            return false;
+        }
     }
 
     std::string mutablePath = outputPath.string();

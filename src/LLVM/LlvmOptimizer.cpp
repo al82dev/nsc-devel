@@ -222,6 +222,27 @@ bool LlvmOptimizer::optimize(
     LlvmOptimizationObservation* observation,
     std::string& error) const
 {
+    return optimizeImpl(module, targetMachine, level, observation, true, error);
+}
+
+bool LlvmOptimizer::optimizePrepared(
+    LlvmModule& module,
+    const LlvmTargetMachine& targetMachine,
+    LlvmOptimizationLevel level,
+    LlvmOptimizationObservation* observation,
+    std::string& error) const
+{
+    return optimizeImpl(module, targetMachine, level, observation, false, error);
+}
+
+bool LlvmOptimizer::optimizeImpl(
+    LlvmModule& module,
+    const LlvmTargetMachine& targetMachine,
+    LlvmOptimizationLevel level,
+    LlvmOptimizationObservation* observation,
+    bool prepareModule,
+    std::string& error) const
+{
     error.clear();
     if (observation != nullptr)
     {
@@ -246,20 +267,27 @@ bool LlvmOptimizer::optimize(
     }
 
     std::string verificationError;
-    const bool verifiedBefore = module.verify(verificationError);
-    if (observation != nullptr) observation->verifiedBefore = verifiedBefore;
-    if (!verifiedBefore)
+    if (prepareModule)
     {
-        error = "refusing to optimize an invalid LLVM module: " + verificationError;
-        if (observation != nullptr) error += " [" + observation->report() + "]";
-        return false;
-    }
+        const bool verifiedBefore = module.verify(verificationError);
+        if (observation != nullptr) observation->verifiedBefore = verifiedBefore;
+        if (!verifiedBefore)
+        {
+            error = "refusing to optimize an invalid LLVM module: " + verificationError;
+            if (observation != nullptr) error += " [" + observation->report() + "]";
+            return false;
+        }
 
-    std::string configurationError;
-    if (!targetMachine.configureModuleForTarget(module, configurationError))
+        std::string configurationError;
+        if (!targetMachine.configureModuleForTarget(module, configurationError))
+        {
+            error = configurationError;
+            return false;
+        }
+    }
+    else if (observation != nullptr)
     {
-        error = configurationError;
-        return false;
+        observation->verifiedBefore = true;
     }
 
     llvm_api::LLVMPassBuilderOptionsRef options = llvm_api::LLVMCreatePassBuilderOptions();

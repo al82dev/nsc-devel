@@ -17,6 +17,7 @@ namespace nativesharp::llvm_backend
 class LlvmModule;
 class LlvmNativeSanitizer;
 class LlvmOptimizer;
+class ProjectOopObjectGenerator;
 
 enum class LlvmCodeGenFileType
 {
@@ -63,6 +64,7 @@ public:
 private:
     friend class LlvmOptimizer;
     friend class LlvmNativeSanitizer;
+    friend class ProjectOopObjectGenerator;
 
     LlvmTargetMachine(
         void* targetMachine,
@@ -77,6 +79,19 @@ private:
         const target::TargetInfo& targetInfo,
         LlvmOptimizationLevel level,
         std::string& error);
+
+    bool emitPrepared(
+        LlvmModule& module,
+        const std::filesystem::path& outputPath,
+        LlvmCodeGenFileType fileType,
+        std::string& error) const;
+
+    bool emitImpl(
+        LlvmModule& module,
+        const std::filesystem::path& outputPath,
+        LlvmCodeGenFileType fileType,
+        bool prepareModule,
+        std::string& error) const;
 
     void* targetMachine_ = nullptr;
     std::string triple_;

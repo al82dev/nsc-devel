@@ -241,7 +241,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const auto optimizeModule = [&](std::size_t ordinal) {
         LlvmOptimizer optimizer;
         LlvmOptimizationObservation observation;
-        optimizationSucceeded[ordinal] = optimizer.optimize(
+        optimizationSucceeded[ordinal] = optimizer.optimizePrepared(
             *modules[ordinal], *targetMachines[ordinal], optimizationLevel,
             &observation, optimizationErrors[ordinal]) ? 1U : 0U;
     };
@@ -341,7 +341,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             }
             cacheMisses[ordinal] = 1;
         }
-        if (!targetMachines[ordinal]->emit(
+        if (!targetMachines[ordinal]->emitPrepared(
                 *modules[ordinal], result->objectFiles_[ordinal],
                 LlvmCodeGenFileType::Object, emissionErrors[ordinal]))
         {

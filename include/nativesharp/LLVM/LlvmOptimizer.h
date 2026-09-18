@@ -9,6 +9,7 @@
 namespace nativesharp::llvm_backend
 {
 class LlvmModule;
+class ProjectOopObjectGenerator;
 class LlvmTargetMachine;
 
 // O0 is verified at the optimizer boundary; optimized pipelines additionally verify after each
@@ -62,6 +63,27 @@ public:
         const LlvmTargetMachine& targetMachine,
         LlvmOptimizationLevel level,
         LlvmOptimizationObservation* observation,
+        std::string& error) const;
+
+private:
+    friend class ProjectOopObjectGenerator;
+
+    // The project object pipeline has just verified the lowerer's output and configured it with
+    // this exact TargetMachine. Keep the public optimizer boundary defensive while allowing that
+    // tightly coupled path to avoid repeating two whole-module preparation steps.
+    bool optimizePrepared(
+        LlvmModule& module,
+        const LlvmTargetMachine& targetMachine,
+        LlvmOptimizationLevel level,
+        LlvmOptimizationObservation* observation,
+        std::string& error) const;
+
+    bool optimizeImpl(
+        LlvmModule& module,
+        const LlvmTargetMachine& targetMachine,
+        LlvmOptimizationLevel level,
+        LlvmOptimizationObservation* observation,
+        bool prepareModule,
         std::string& error) const;
 };
 }
