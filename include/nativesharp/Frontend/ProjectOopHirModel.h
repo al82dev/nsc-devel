@@ -601,7 +601,8 @@ private:
         std::string& error,
         const ProjectGenericConstraintModel* genericConstraintModel,
         std::size_t workerCount,
-        std::optional<std::size_t> memberFilter);
+        std::optional<std::size_t> memberFilter,
+        const ProjectOopHirModel* lookupSource);
 
     std::unique_ptr<ProjectOopHirNode> lowerBlock(
         const ast::AstNode* block,
@@ -753,6 +754,7 @@ private:
     const ProjectConstructionModel* constructionModel_ = nullptr;
     const ProjectObjectLayoutModel* objectLayoutModel_ = nullptr;
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
+    const ProjectOopHirModel* lookupSource_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;
     std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
     std::vector<std::optional<std::size_t>> functionByMember_;

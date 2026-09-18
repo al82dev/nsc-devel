@@ -1220,7 +1220,8 @@ bool ProjectOopHirModel::build(
         error,
         genericConstraintModel,
         workerCount,
-        std::nullopt);
+        std::nullopt,
+        nullptr);
 }
 
 bool ProjectOopHirModel::buildImpl(
@@ -1234,10 +1235,12 @@ bool ProjectOopHirModel::buildImpl(
     std::string& error,
     const ProjectGenericConstraintModel* genericConstraintModel,
     std::size_t workerCount,
-    std::optional<std::size_t> memberFilter)
+    std::optional<std::size_t> memberFilter,
+    const ProjectOopHirModel* lookupSource)
 {
     error.clear();
     genericConstraintModel_ = genericConstraintModel;
+    lookupSource_ = lookupSource;
     if (built_)
     {
         error = "ProjectOopHirModel instances are single-use";
@@ -1261,77 +1264,30 @@ bool ProjectOopHirModel::buildImpl(
     nextSyntheticLocalOrdinal_ = methodBodyModel.locals().size();
     nextSyntheticCleanupRegionOrdinal_ = methodBodyModel.cleanupRegions().size();
 
-    for (const MethodNameBinding& binding : methodBodyModel.nameBindings())
+    if (lookupSource_ == nullptr)
     {
-        nameBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodExpressionTypeBinding& binding : methodBodyModel.expressionTypes())
-    {
-        expressionTypeBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodCallBinding& binding : methodBodyModel.calls())
-    {
-        callBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodSwitchBinding& binding : methodBodyModel.switchBindings())
-    {
-        switchBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodRuntimeTypeBinding& binding : methodBodyModel.runtimeTypeBindings())
-    {
-        runtimeTypeBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodDelegateBinding& binding : methodBodyModel.delegateBindings())
-    {
-        delegateBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodLambdaBinding& binding : methodBodyModel.lambdaBindings())
-    {
-        lambdaBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodLambdaValueBinding& binding : methodBodyModel.lambdaValueBindings())
-    {
-        lambdaValueBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodEventBinding& binding : methodBodyModel.eventBindings())
-    {
-        eventBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodCoreBinding& binding : methodBodyModel.coreBindings())
-    {
-        coreBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodExceptionBinding& binding : methodBodyModel.exceptionBindings())
-    {
-        exceptionBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodCleanupRegion& region : methodBodyModel.cleanupRegions())
-    {
-        cleanupRegionBySyntax_[region.syntax] = &region;
-    }
-    for (const MethodUsingBinding& binding : methodBodyModel.usingBindings())
-    {
-        usingBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodMoveBinding& binding : methodBodyModel.moveBindings())
-    {
-        moveBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodBorrowBinding& binding : methodBodyModel.borrowBindings())
-    {
-        borrowBindingBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodStructuredExitBinding& binding : methodBodyModel.structuredExits())
-    {
-        structuredExitBySyntax_[binding.syntax] = &binding;
-    }
-    for (const ObjectConstructionBinding& binding : constructionModel.constructions())
-    {
-        constructionBySyntax_[binding.syntax] = &binding;
-    }
-    for (const MethodLocalSymbol& local : methodBodyModel.locals())
-    {
-        localBySyntax_[local.syntax] = &local;
+        const auto indexBySyntax = [](auto& index, const auto& values) {
+            index.reserve(values.size());
+            for (const auto& value : values) index[value.syntax] = &value;
+        };
+        indexBySyntax(nameBindingBySyntax_, methodBodyModel.nameBindings());
+        indexBySyntax(expressionTypeBySyntax_, methodBodyModel.expressionTypes());
+        indexBySyntax(callBySyntax_, methodBodyModel.calls());
+        indexBySyntax(switchBindingBySyntax_, methodBodyModel.switchBindings());
+        indexBySyntax(runtimeTypeBindingBySyntax_, methodBodyModel.runtimeTypeBindings());
+        indexBySyntax(delegateBindingBySyntax_, methodBodyModel.delegateBindings());
+        indexBySyntax(lambdaBindingBySyntax_, methodBodyModel.lambdaBindings());
+        indexBySyntax(lambdaValueBindingBySyntax_, methodBodyModel.lambdaValueBindings());
+        indexBySyntax(eventBindingBySyntax_, methodBodyModel.eventBindings());
+        indexBySyntax(coreBindingBySyntax_, methodBodyModel.coreBindings());
+        indexBySyntax(exceptionBindingBySyntax_, methodBodyModel.exceptionBindings());
+        indexBySyntax(cleanupRegionBySyntax_, methodBodyModel.cleanupRegions());
+        indexBySyntax(usingBindingBySyntax_, methodBodyModel.usingBindings());
+        indexBySyntax(moveBindingBySyntax_, methodBodyModel.moveBindings());
+        indexBySyntax(borrowBindingBySyntax_, methodBodyModel.borrowBindings());
+        indexBySyntax(structuredExitBySyntax_, methodBodyModel.structuredExits());
+        indexBySyntax(constructionBySyntax_, constructionModel.constructions());
+        indexBySyntax(localBySyntax_, methodBodyModel.locals());
     }
     functionByMember_.resize(memberModel.members().size());
     const bool regularFunctionsBuiltInParallel = workerCount > 1 && !memberFilter.has_value();
@@ -1370,7 +1326,8 @@ bool ProjectOopHirModel::buildImpl(
                     result.error,
                     genericConstraintModel,
                     1,
-                    memberOrdinal);
+                    memberOrdinal,
+                    this);
                 result.errorRange = worker.lastErrorRange();
                 if (result.success && !worker.functions_.empty())
                     result.function = std::move(worker.functions_.front());
@@ -6483,45 +6440,52 @@ std::vector<std::size_t> ProjectOopHirModel::implicitInitializerTypes(
 
 const MethodNameBinding* ProjectOopHirModel::nameBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = nameBindingBySyntax_.find(syntax);
-    return found == nameBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? nameBindingBySyntax_ : lookupSource_->nameBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodExpressionTypeBinding* ProjectOopHirModel::expressionType(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = expressionTypeBySyntax_.find(syntax);
-    return found == expressionTypeBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? expressionTypeBySyntax_ : lookupSource_->expressionTypeBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodCallBinding* ProjectOopHirModel::callBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = callBySyntax_.find(syntax);
-    return found == callBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? callBySyntax_ : lookupSource_->callBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodSwitchBinding* ProjectOopHirModel::switchBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = switchBindingBySyntax_.find(syntax);
-    return found == switchBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? switchBindingBySyntax_ : lookupSource_->switchBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodRuntimeTypeBinding* ProjectOopHirModel::runtimeTypeBinding(
     const ast::AstNode* syntax) const noexcept
 {
-    const auto found = runtimeTypeBindingBySyntax_.find(syntax);
-    return found == runtimeTypeBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? runtimeTypeBindingBySyntax_ : lookupSource_->runtimeTypeBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodLambdaBinding* ProjectOopHirModel::lambdaBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = lambdaBindingBySyntax_.find(syntax);
-    return found == lambdaBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? lambdaBindingBySyntax_ : lookupSource_->lambdaBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodLambdaValueBinding* ProjectOopHirModel::lambdaValueBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = lambdaValueBindingBySyntax_.find(syntax);
-    return found == lambdaValueBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? lambdaValueBindingBySyntax_ : lookupSource_->lambdaValueBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 std::optional<std::size_t> ProjectOopHirModel::currentLambdaThisCapture() const noexcept
@@ -6537,68 +6501,79 @@ std::optional<std::size_t> ProjectOopHirModel::currentLambdaThisCapture() const 
 
 const MethodDelegateBinding* ProjectOopHirModel::delegateBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = delegateBindingBySyntax_.find(syntax);
-    return found == delegateBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? delegateBindingBySyntax_ : lookupSource_->delegateBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodEventBinding* ProjectOopHirModel::eventBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = eventBindingBySyntax_.find(syntax);
-    return found == eventBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? eventBindingBySyntax_ : lookupSource_->eventBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodCoreBinding* ProjectOopHirModel::coreBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = coreBindingBySyntax_.find(syntax);
-    return found == coreBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? coreBindingBySyntax_ : lookupSource_->coreBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodExceptionBinding* ProjectOopHirModel::exceptionBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = exceptionBindingBySyntax_.find(syntax);
-    return found == exceptionBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? exceptionBindingBySyntax_ : lookupSource_->exceptionBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodCleanupRegion* ProjectOopHirModel::cleanupRegion(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = cleanupRegionBySyntax_.find(syntax);
-    return found == cleanupRegionBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? cleanupRegionBySyntax_ : lookupSource_->cleanupRegionBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodUsingBinding* ProjectOopHirModel::usingBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = usingBindingBySyntax_.find(syntax);
-    return found == usingBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? usingBindingBySyntax_ : lookupSource_->usingBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodMoveBinding* ProjectOopHirModel::moveBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = moveBindingBySyntax_.find(syntax);
-    return found == moveBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? moveBindingBySyntax_ : lookupSource_->moveBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodBorrowBinding* ProjectOopHirModel::borrowBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = borrowBindingBySyntax_.find(syntax);
-    return found == borrowBindingBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? borrowBindingBySyntax_ : lookupSource_->borrowBindingBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodStructuredExitBinding* ProjectOopHirModel::structuredExitBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = structuredExitBySyntax_.find(syntax);
-    return found == structuredExitBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? structuredExitBySyntax_ : lookupSource_->structuredExitBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const ObjectConstructionBinding* ProjectOopHirModel::constructionBinding(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = constructionBySyntax_.find(syntax);
-    return found == constructionBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? constructionBySyntax_ : lookupSource_->constructionBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 const MethodLocalSymbol* ProjectOopHirModel::localSymbol(const ast::AstNode* syntax) const noexcept
 {
-    const auto found = localBySyntax_.find(syntax);
-    return found == localBySyntax_.end() ? nullptr : found->second;
+    const auto& index = lookupSource_ == nullptr ? localBySyntax_ : lookupSource_->localBySyntax_;
+    const auto found = index.find(syntax);
+    return found == index.end() ? nullptr : found->second;
 }
 
 ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
