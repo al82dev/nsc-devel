@@ -435,6 +435,11 @@ Gate versionado al cierre: `selfhost/evidence/gates/SH06/gate.json`.
 **Gate SH07:** cada frontera acepta únicamente IR válido; el corpus completo llega a SSA y toda
 divergencia se explica mediante contrato o se corrige.
 
+Expediente de cierre:
+`docs/2.0/self-hosting/tandas/TANDA-08-SH07-HIR-MIR-CFG-DOMINANCIA-SSA.md`.
+Contrato observable: `selfhost/contracts/ir.contract.json`.
+Gate versionado al cierre: `selfhost/evidence/gates/SH07/gate.json`.
+
 ### Fase 8 — backend LLVM, objetos y depuración
 
 **Objetivo:** producir artefactos ejecutables compatibles con NSC 2.0.

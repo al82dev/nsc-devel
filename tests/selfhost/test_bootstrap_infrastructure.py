@@ -21,6 +21,7 @@ from selfhost.bootstrap import (
     verify_nsc_next_skeleton,
     verify_frontend,
     verify_semantics,
+    verify_ir,
 )
 
 
@@ -274,6 +275,24 @@ class BootstrapInfrastructureTests(unittest.TestCase):
             verify_semantics.canonical_lines(b"one\r\ntwo\rthree\n"),
             b"one\ntwo\nthree\n",
         )
+
+    def test_sh07_ir_contract_freezes_all_boundaries_and_levels(self) -> None:
+        contract = verify_ir.load_contract(ROOT / "selfhost/contracts/ir.contract.json")
+        self.assertEqual(contract["optimizations"], ["O0", "O1", "O2", "O3"])
+        self.assertEqual(len(contract["stages"]), 6)
+        self.assertEqual(contract["stages"][0]["dump"], "--dump-hir")
+        self.assertEqual(contract["stages"][4]["dump"], "--dump-ssa")
+        self.assertGreaterEqual(contract["corpus_minimum_sources"], 480)
+        self.assertGreaterEqual(contract["oracle_ssa_minimum_sources"], 20)
+
+    def test_sh07_line_canonicalization_is_host_independent(self) -> None:
+        self.assertEqual(verify_ir.canonical_lines(b"one\r\ntwo\rthree\n"), b"one\ntwo\nthree\n")
+
+    def test_sh07_reducer_keeps_first_divergence(self) -> None:
+        source = "header\nkeep divergence\ntail-a\ntail-b\n"
+        reduced = verify_ir.reduce_lines(source, lambda value: "divergence" in value)
+        self.assertIn("divergence", reduced)
+        self.assertLess(len(reduced), len(source))
 
 
 if __name__ == "__main__":

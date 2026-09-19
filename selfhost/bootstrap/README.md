@@ -26,3 +26,7 @@ python -B selfhost/bootstrap/verify_profile.py --source-root selfhost/nsc
 
 Un resultado 2 significa infracción del perfil; 3 significa contrato o entrada inválidos. Ninguno
 permite continuar al bootstrap.
+
+SH07 añade `verify_ir.py`: construye la matriz diferencial de HIR/MIR/CFG/dominancia/SSA, exige
+estabilidad entre O0/O1/O2/O3 y materializa bajo `selfhost/out` un caso reducido cuando aparece la
+primera divergencia estructural.

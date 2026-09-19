@@ -31,3 +31,8 @@ expresiones, constantes, conversiones, operadores, lambdas y metadatos semántic
 `--dump-symbols`, `--dump-sema` y `--dump-semantic-metadata` son superficies autocontenidas. El
 contrato `contracts/semantic.contract.json` exige igualdad con `nsc0` y estabilidad O0/O2 sobre
 todo el corpus fuente.
+
+SH07 incorpora HIR versionado, lowering a MIR, CFG, dominancia y SSA escritos en NativeSharp.
+Cada frontera tiene verificador propio y dump determinista; `contracts/ir.contract.json` compara
+funciones e invariantes contra `nsc0` y exige estabilidad exacta de O0, O1, O2 y O3. El perfil de
+pases hace explícito qué análisis y transformaciones pertenecen a cada nivel.

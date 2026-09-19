@@ -16,3 +16,5 @@ código y normaliza sólo los campos que el contrato declara no semánticos.
 `frontend.contract.json` congela tokens, árboles y recuperación de SH05.
 `semantic.contract.json` congela desde SH06 símbolos y hechos semánticos diferenciales, estabilidad
 O0/O2 de todo el corpus e invariantes de genéricos, layout, ensamblador y lambdas.
+`ir.contract.json` congela desde SH07 las cinco fronteras IR, los cuatro niveles O0/O1/O2/O3,
+el orden de pases y los mínimos del corpus que debe alcanzar SSA sin divergencia.

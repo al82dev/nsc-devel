@@ -1,0 +1,26 @@
+{
+  "binary_sha256": {
+    "O0": "2bc316d238821dec13362a3dc1f1ea573a52724f73f20c6f25f28bb9861f7442",
+    "O1": "bdea6a954d65c8c02593d9401784a686f67b8e4da3e9219fa7d46976e2dc82b1",
+    "O2": "56ffee418ee891a10e7e7f646cdcc1ff69314724bdcd9b66866c00e5c2b61a0a",
+    "O3": "b13877520d19833bd38405e5895480f0d7b2dbacc2bb565d2004c9791709ca82"
+  },
+  "corpus_stability_comparisons": 1452,
+  "cross_stage_sources": 6,
+  "invariant_checks": 118,
+  "optimizations": [
+    "O0",
+    "O1",
+    "O2",
+    "O3"
+  ],
+  "oracle_ssa_sources": 22,
+  "schema": "nativesharp-selfhost-sh07-report",
+  "source_files": 484,
+  "stability_comparisons": 108,
+  "stage_count": 6,
+  "status": "passed",
+  "structural_comparisons": 20,
+  "verifier_checks": 24,
+  "version": 1
+}

@@ -1,0 +1,29 @@
+{
+  "schema": "nativesharp-selfhost-ir-contract",
+  "version": 1,
+  "optimizations": ["O0", "O1", "O2", "O3"],
+  "stages": [
+    {"dump": "--dump-hir", "verify": "--verify-hir", "header": "hir.module schema=1", "legacy_header": "CompilationUnit", "source": "tests/integration/valid/hir_features.ns", "contains": ["Allocation", "Deallocation", "IndexAddress", "Conversion"]},
+    {"dump": "--dump-mir", "verify": "--verify-mir", "header": "mir.module schema=1", "legacy_header": "mir.module", "source": "tests/integration/valid/mir_features.ns", "contains": ["bounds.check", "alloc.array", "free.array", "while.cond"]},
+    {"dump": "--dump-cfg", "verify": "--verify-cfg", "header": "cfg.module schema=1", "legacy_header": "cfg.module", "source": "tests/integration/valid/cfg_features.ns", "contains": ["unreachable", "continue->", "break->", "pred="]},
+    {"dump": "--dump-dominance", "verify": "--verify-dominance", "header": "dominance.module schema=1", "legacy_header": "dominance.module", "source": "tests/integration/valid/dominance_features.ns", "contains": ["idom=<root>", "idom=bb", "dom={"]},
+    {"dump": "--dump-ssa", "verify": "--verify-ssa", "header": "ssa.module schema=1", "legacy_header": "ssa.module", "source": "tests/integration/valid/ssa_features.ns", "contains": ["promoted:", "phi @", "unreachable.code"]},
+    {"dump": "--dump-pass-pipeline", "verify": "--verify-ssa", "header": "pass.pipeline schema=1", "legacy_header": "pass.pipeline", "source": "tests/integration/valid/pass_features.ns", "contains": ["O0:", "O1:", "O2:", "O3:", "vectorization", "global-dce"]}
+  ],
+  "cross_stage_sources": [
+    "tests/integration/valid/cfg_features.ns",
+    "tests/integration/valid/dominance_features.ns",
+    "tests/integration/valid/hir_features.ns",
+    "tests/integration/valid/mir_features.ns",
+    "tests/integration/valid/pass_features.ns",
+    "tests/integration/valid/ssa_features.ns"
+  ],
+  "corpus_minimum_sources": 480,
+  "oracle_ssa_minimum_sources": 20,
+  "required_pass_order": {
+    "O0": ["verify-hir", "lower-mir", "verify-mir", "build-cfg", "verify-cfg", "dominance", "verify-dominance", "ssa", "verify-ssa"],
+    "O1": ["phi-simplification", "copy-propagation", "dead-code-elimination", "simplify-control-flow"],
+    "O2": ["constant-propagation", "local-cse", "sparse-conditional-constant-propagation", "loop-simplify"],
+    "O3": ["inlining", "loop-rotation", "loop-unroll", "vectorization", "global-dce"]
+  }
+}

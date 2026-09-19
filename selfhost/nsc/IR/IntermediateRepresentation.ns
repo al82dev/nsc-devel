@@ -1,0 +1,752 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Compiler.Lexer;
+using NativeSharp.Compiler.Syntax;
+using NativeSharp.Compiler.Sema;
+using NativeSharp.Compiler.Symbols;
+using NativeSharp.Compiler.Types;
+
+namespace NativeSharp.Compiler.IR
+{
+    // SH07 deliberately uses dense integer identities instead of object addresses.  Every dump
+    // is therefore stable between O0/O3, processes and bootstrap generations.
+    public class HirRecord
+    {
+        private owned string kind;
+        private owned string text;
+        private int syntaxId;
+        private int typeId;
+        private int symbolId;
+        private int depth;
+        private owned string operation;
+        private owned string conversions;
+        private bool boundsCheck;
+
+        public HirRecord(string recordKind, string recordText, int syntax, int type, int symbol, int recordDepth,
+            string recordOperation, string recordConversions, bool requiresBoundsCheck)
+        {
+            kind = String.Copy(recordKind); text = String.Copy(recordText); syntaxId = syntax;
+            typeId = type; symbolId = symbol; depth = recordDepth;
+            operation = String.Copy(recordOperation); conversions = String.Copy(recordConversions);
+            boundsCheck = requiresBoundsCheck;
+        }
+        public string Kind() { return kind; }
+        public string Text() { return text; }
+        public int SyntaxId() { return syntaxId; }
+        public int TypeId() { return typeId; }
+        public int SymbolId() { return symbolId; }
+        public int Depth() { return depth; }
+        public string Operation() { return operation; }
+        public string Conversions() { return conversions; }
+        public bool BoundsCheck() { return boundsCheck; }
+    }
+
+    public class HirModule
+    {
+        private owned List<HirRecord> records;
+        private int errorCount;
+        public HirModule() { records = new List<HirRecord>(); errorCount = 0; }
+        public void Add(owned HirRecord record) { records.Add(move(record)); }
+        public HirRecord RecordAt(int index) { return records[index]; }
+        public int Count() { return records.Count(); }
+        public void AddError() { errorCount = errorCount + 1; }
+        public int ErrorCount() { return errorCount; }
+    }
+
+    public class HirBuilder
+    {
+        private static owned string LowerKind(string kind)
+        {
+            if (kind == "BlockStatement") { return String.Copy("Block"); }
+            if (kind == "VariableDeclarationStatement") { return String.Copy("LocalVariableDeclaration"); }
+            if (kind == "ReturnStatement") { return String.Copy("Return"); }
+            if (kind == "IfStatement") { return String.Copy("If"); }
+            if (kind == "WhileStatement") { return String.Copy("While"); }
+            if (kind == "ForStatement") { return String.Copy("For"); }
+            if (kind == "BreakStatement") { return String.Copy("Break"); }
+            if (kind == "ContinueStatement") { return String.Copy("Continue"); }
+            if (kind == "ExpressionStatement") { return String.Copy("ExpressionStatement"); }
+            if (String.Contains(kind, "LiteralExpression")) { return String.Copy("Constant"); }
+            if (kind == "IdentifierExpression") { return String.Copy("SymbolReference"); }
+            if (kind == "AssignmentExpression") { return String.Copy("Store"); }
+            if (kind == "BinaryExpression") { return String.Copy("Binary"); }
+            if (kind == "UnaryExpression") { return String.Copy("Unary"); }
+            if (kind == "PostfixExpression") { return String.Copy("Increment"); }
+            if (kind == "CallExpression") { return String.Copy("Call"); }
+            if (kind == "IndexExpression") { return String.Copy("IndexAddress"); }
+            if (kind == "MemberExpression") { return String.Copy("FieldAddress"); }
+            if (kind == "NewExpression" || kind == "ObjectCreationExpression") { return String.Copy("Allocation"); }
+            if (kind == "DeleteExpression" || kind == "DestroyExpression") { return String.Copy("Deallocation"); }
+            if (kind == "StackallocExpression") { return String.Copy("StackAllocation"); }
+            if (kind == "CastExpression") { return String.Copy("Conversion"); }
+            return String.Copy(kind);
+        }
+
+        private static void Visit(SyntaxTree tree, SemanticModel semantic, int id, int depth, HirModule module)
+        {
+            if (id < 0) { return; }
+            if (id >= tree.Count()) { module.AddError(); return; }
+            SyntaxNode node = tree.Node(id); SemanticFact fact = semantic.Fact(id);
+            raii string lowered = LowerKind(node.Kind());
+            raii string operation = fact.HasOperator() ? String.Copy(TokenFacts.Name(fact.OperatorKind())) : String.Copy("");
+            raii StringBuilder conversionText = new StringBuilder(); int conversionIndex = 0;
+            while (conversionIndex < fact.ConversionCount())
+            {
+                SemanticConversion conversion = fact.ConversionAt(conversionIndex);
+                if (conversionIndex != 0) { conversionText.Append(','); }
+                conversionText.Append(conversion.Kind()); conversionText.Append(':');
+                conversionText.Append(semantic.Types().Get(conversion.SourceType()).Display()); conversionText.Append("->");
+                conversionText.Append(semantic.Types().Get(conversion.DestinationType()).Display());
+                conversionIndex = conversionIndex + 1;
+            }
+            raii string conversions = conversionText.ToOwnedString();
+            raii HirRecord record = new HirRecord(lowered, node.Text(), id,
+                fact.Present() ? fact.TypeId() : -1, semantic.NodeSymbol(id), depth,
+                operation, conversions, fact.BoundsCheck());
+            module.Add(move(record));
+            Visit(tree, semantic, node.First(), depth + 1, module);
+            Visit(tree, semantic, node.Second(), depth + 1, module);
+            Visit(tree, semantic, node.Third(), depth + 1, module);
+            int index = 0;
+            while (index < node.ChildCount())
+            {
+                Visit(tree, semantic, node.ChildAt(index), depth + 1, module); index = index + 1;
+            }
+        }
+
+        public static owned HirModule Build(SyntaxTree tree, SemanticModel semantic)
+        {
+            raii HirModule module = new HirModule();
+            Visit(tree, semantic, tree.Root(), 0, module);
+            return move(module);
+        }
+    }
+
+    public class HirVerifier
+    {
+        public static bool Verify(HirModule module)
+        {
+            if (module == null || module.ErrorCount() != 0 || module.Count() == 0) { return false; }
+            if (module.RecordAt(0).Kind() != "CompilationUnit" || module.RecordAt(0).Depth() != 0) { return false; }
+            int index = 0;
+            while (index < module.Count())
+            {
+                HirRecord record = module.RecordAt(index);
+                if (record.SyntaxId() < 0 || record.Depth() < 0 || record.Kind().Length == 0) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+    }
+
+    public class FlowEdge
+    {
+        private int source;
+        private int target;
+        private owned string kind;
+        public FlowEdge(int from, int to, string edgeKind)
+        { source = from; target = to; kind = String.Copy(edgeKind); }
+        public int Source() { return source; }
+        public int Target() { return target; }
+        public string Kind() { return kind; }
+    }
+
+    public class FlowBlock
+    {
+        private int id;
+        private owned string label;
+        private owned List<string> operations;
+        private bool terminated;
+        private bool reachable;
+        public FlowBlock(int blockId, string blockLabel, bool isReachable)
+        {
+            id = blockId; label = String.Copy(blockLabel); operations = new List<string>();
+            terminated = false; reachable = isReachable;
+        }
+        public int Id() { return id; }
+        public string Label() { return label; }
+        public int OperationCount() { return operations.Count(); }
+        public string OperationAt(int index) { return operations[index]; }
+        public void AddOperation(string value) { raii string copy = String.Copy(value); operations.Add(move(copy)); }
+        public bool Terminated() { return terminated; }
+        public void Terminate() { terminated = true; }
+        public bool Reachable() { return reachable; }
+    }
+
+    public class FlowFunction
+    {
+        private owned string name;
+        private int symbolId;
+        private owned List<FlowBlock> blocks;
+        private owned List<FlowEdge> edges;
+        private owned List<string> locals;
+        private owned List<int> localTypes;
+        private owned List<string> addressedLocals;
+        private int current;
+        private int serial;
+        public FlowFunction(string functionName, int symbol)
+        {
+            name = String.Copy(functionName); symbolId = symbol; blocks = new List<FlowBlock>();
+            edges = new List<FlowEdge>(); locals = new List<string>(); localTypes = new List<int>();
+            addressedLocals = new List<string>(); current = -1; serial = 0;
+        }
+        public string Name() { return name; }
+        public int SymbolId() { return symbolId; }
+        public int BlockCount() { return blocks.Count(); }
+        public FlowBlock BlockAt(int index) { return blocks[index]; }
+        public int EdgeCount() { return edges.Count(); }
+        public FlowEdge EdgeAt(int index) { return edges[index]; }
+        public int LocalCount() { return locals.Count(); }
+        public string LocalAt(int index) { return locals[index]; }
+        public int LocalTypeAt(int index) { return localTypes[index]; }
+        public int Current() { return current; }
+        public int AddBlock(string stem, bool reachable)
+        {
+            int id = blocks.Count(); raii StringBuilder label = new StringBuilder();
+            label.Append(stem); label.Append('.'); label.Append(serial); serial = serial + 1;
+            raii string text = label.ToOwnedString(); raii FlowBlock block = new FlowBlock(id, text, reachable);
+            blocks.Add(move(block)); current = id; return id;
+        }
+        public void Select(int id) { current = id; }
+        public void AddEdge(int source, int target, string kind)
+        {
+            raii FlowEdge edge = new FlowEdge(source, target, kind); edges.Add(move(edge));
+        }
+        public void AddOperation(string operation)
+        {
+            if (current >= 0) { blocks[current].AddOperation(operation); }
+        }
+        public void Terminate() { if (current >= 0) { blocks[current].Terminate(); } }
+        public void AddLocal(string value, int typeId)
+        {
+            raii string copy = String.Copy(value); locals.Add(move(copy)); localTypes.Add(typeId);
+        }
+        public void MarkAddressed(string value)
+        {
+            if (!addressedLocals.Contains(value)) { raii string copy = String.Copy(value); addressedLocals.Add(move(copy)); }
+        }
+        public bool IsAddressed(string value) { return addressedLocals.Contains(value); }
+        public int PredecessorCount(int block)
+        {
+            int count = 0; int index = 0;
+            while (index < edges.Count()) { if (edges[index].Target() == block) { count = count + 1; } index = index + 1; }
+            return count;
+        }
+        public int PredecessorAt(int block, int ordinal)
+        {
+            int seen = 0; int index = 0;
+            while (index < edges.Count())
+            {
+                if (edges[index].Target() == block)
+                {
+                    if (seen == ordinal) { return edges[index].Source(); } seen = seen + 1;
+                }
+                index = index + 1;
+            }
+            return -1;
+        }
+        public int SuccessorCount(int block)
+        {
+            int count = 0; int index = 0;
+            while (index < edges.Count()) { if (edges[index].Source() == block) { count = count + 1; } index = index + 1; }
+            return count;
+        }
+    }
+
+    public class FlowModule
+    {
+        private owned List<FlowFunction> functions;
+        private int errorCount;
+        public FlowModule() { functions = new List<FlowFunction>(); errorCount = 0; }
+        public void Add(owned FlowFunction function) { functions.Add(move(function)); }
+        public int FunctionCount() { return functions.Count(); }
+        public FlowFunction FunctionAt(int index) { return functions[index]; }
+        public void AddError() { errorCount = errorCount + 1; }
+        public int ErrorCount() { return errorCount; }
+    }
+
+    public class MirBuilder
+    {
+        private static owned string Describe(SyntaxNode node, SemanticFact fact, SemanticModel semantic, int syntaxId)
+        {
+            raii StringBuilder output = new StringBuilder(); string kind = node.Kind();
+            if (fact.Present())
+            {
+                output.Append("%s"); output.Append(syntaxId); output.Append(':');
+                output.Append(semantic.Types().Get(fact.TypeId()).Display()); output.Append(" = ");
+            }
+            if (String.Contains(kind, "LiteralExpression")) { output.Append("const "); output.Append(node.Text()); }
+            else if (kind == "IdentifierExpression") { output.Append("load.symbol @"); output.Append(node.Text()); }
+            else if (kind == "VariableDeclarationStatement") { output.Append("store.symbol @"); output.Append(node.Text()); }
+            else if (kind == "AssignmentExpression") { output.Append("store op="); output.Append(TokenFacts.Name(node.OperatorKind())); }
+            else if (kind == "BinaryExpression") { output.Append("binary op="); output.Append(TokenFacts.Name(node.OperatorKind())); }
+            else if (kind == "UnaryExpression") { output.Append("unary op="); output.Append(TokenFacts.Name(node.OperatorKind())); }
+            else if (kind == "PostfixExpression") { output.Append("increment op="); output.Append(TokenFacts.Name(node.OperatorKind())); }
+            else if (kind == "CallExpression") { output.Append("call"); }
+            else if (kind == "IndexExpression") { output.Append("bounds.check; index.address"); }
+            else if (kind == "MemberExpression") { output.Append("field.address"); }
+            else if (kind == "NewExpression" || kind == "ObjectCreationExpression") { output.Append(node.Flag() ? "alloc.array" : "alloc"); }
+            else if (kind == "DeleteExpression" || kind == "DestroyExpression") { output.Append(node.Flag() ? "free.array" : "free"); }
+            else if (kind == "StackallocExpression") { output.Append("stack.alloc"); }
+            else if (kind == "ReturnStatement") { output.Append("return"); }
+            else { output.Append("lower "); output.Append(kind); }
+            output.Append(" ; syntax="); output.Append(syntaxId);
+            if (fact.SymbolId() >= 0) { output.Append(" symbol="); output.Append(fact.SymbolId()); }
+            return output.ToOwnedString();
+        }
+
+        private static void EmitExpression(SyntaxTree tree, SemanticModel semantic, int id, FlowFunction function)
+        {
+            if (id < 0) { return; } SyntaxNode node = tree.Node(id);
+            if (node.Kind() == "BinaryExpression" &&
+                (node.OperatorKind() == TokenKind.AmpAmp || node.OperatorKind() == TokenKind.PipePipe))
+            {
+                EmitExpression(tree, semantic, node.First(), function); int source = function.Current();
+                int rhs = function.AddBlock("logic.rhs", true); int shortBlock = function.AddBlock("logic.short", true);
+                int end = function.AddBlock("logic.end", true); function.Select(source); function.AddOperation("branch");
+                if (node.OperatorKind() == TokenKind.AmpAmp)
+                { function.AddEdge(source, rhs, "true"); function.AddEdge(source, shortBlock, "false"); }
+                else { function.AddEdge(source, shortBlock, "true"); function.AddEdge(source, rhs, "false"); }
+                function.Terminate(); function.Select(rhs); EmitExpression(tree, semantic, node.Second(), function); Jump(function, end, "jump");
+                function.Select(shortBlock); function.AddOperation(node.OperatorKind() == TokenKind.AmpAmp ? "const false" : "const true");
+                Jump(function, end, "jump"); function.Select(end); function.AddOperation("phi.logic"); return;
+            }
+            if (node.Kind() == "UnaryExpression" && node.OperatorKind() == TokenKind.Amp && node.First() >= 0)
+            {
+                SyntaxNode operand = tree.Node(node.First()); if (operand.Kind() == "IdentifierExpression") { function.MarkAddressed(operand.Text()); }
+            }
+            EmitExpression(tree, semantic, node.First(), function); EmitExpression(tree, semantic, node.Second(), function);
+            EmitExpression(tree, semantic, node.Third(), function); int child = 0;
+            while (child < node.ChildCount()) { EmitExpression(tree, semantic, node.ChildAt(child), function); child = child + 1; }
+            raii string operation = Describe(node, semantic.Fact(id), semantic, id); function.AddOperation(operation);
+        }
+
+        private static void Jump(FlowFunction function, int target, string kind)
+        {
+            int source = function.Current(); function.AddEdge(source, target, kind); function.AddOperation("jump"); function.Terminate();
+        }
+
+        private static void LowerBlock(SyntaxTree tree, SemanticModel semantic, int id, FlowFunction function, int breakTarget, int continueTarget)
+        {
+            if (id < 0) { return; } SyntaxNode block = tree.Node(id); int index = 0;
+            while (index < block.ChildCount())
+            {
+                int statementId = block.ChildAt(index); SyntaxNode statement = tree.Node(statementId);
+                if (function.BlockAt(function.Current()).Terminated())
+                {
+                    function.AddBlock("unreachable.code", false);
+                }
+                string kind = statement.Kind();
+                if (kind == "IfStatement")
+                {
+                    EmitExpression(tree, semantic, statement.First(), function); int source = function.Current();
+                    int thenBlock = function.AddBlock("if.then", true); int elseBlock = -1; int endBlock = -1;
+                    function.Select(source);
+                    if (statement.Third() >= 0) { elseBlock = function.AddBlock("if.else", true); }
+                    endBlock = function.AddBlock("if.end", true); function.Select(source);
+                    function.AddEdge(source, thenBlock, "true"); function.AddEdge(source, elseBlock >= 0 ? elseBlock : endBlock, "false");
+                    function.AddOperation("branch"); function.Terminate();
+                    function.Select(thenBlock); LowerBlock(tree, semantic, statement.Second(), function, breakTarget, continueTarget);
+                    if (!function.BlockAt(function.Current()).Terminated()) { Jump(function, endBlock, "jump"); }
+                    if (elseBlock >= 0)
+                    {
+                        function.Select(elseBlock); SyntaxNode alternate = tree.Node(statement.Third());
+                        if (alternate.Kind() == "BlockStatement") { LowerBlock(tree, semantic, statement.Third(), function, breakTarget, continueTarget); }
+                        else { EmitExpression(tree, semantic, statement.Third(), function); }
+                        if (!function.BlockAt(function.Current()).Terminated()) { Jump(function, endBlock, "jump"); }
+                    }
+                    function.Select(endBlock);
+                }
+                else if (kind == "WhileStatement")
+                {
+                    int preheader = function.Current(); int condition = function.AddBlock("while.cond", true);
+                    int body = function.AddBlock("while.body", true); int end = function.AddBlock("while.end", true);
+                    function.Select(preheader); Jump(function, condition, "jump"); function.Select(condition);
+                    EmitExpression(tree, semantic, statement.First(), function); function.AddOperation("branch");
+                    function.AddEdge(condition, body, "true"); function.AddEdge(condition, end, "false"); function.Terminate();
+                    function.Select(body); LowerBlock(tree, semantic, statement.Second(), function, end, condition);
+                    if (!function.BlockAt(function.Current()).Terminated()) { Jump(function, condition, "back"); }
+                    function.Select(end);
+                }
+                else if (kind == "ForStatement")
+                {
+                    EmitExpression(tree, semantic, statement.First(), function); int preheader = function.Current();
+                    int condition = function.AddBlock("for.cond", true); int body = function.AddBlock("for.body", true);
+                    int increment = function.AddBlock("for.inc", true); int end = function.AddBlock("for.end", true);
+                    function.Select(preheader); Jump(function, condition, "jump"); function.Select(condition);
+                    EmitExpression(tree, semantic, statement.Second(), function); function.AddOperation("branch");
+                    function.AddEdge(condition, body, "true"); function.AddEdge(condition, end, "false"); function.Terminate();
+                    function.Select(body);
+                    if (statement.ChildCount() > 0) { LowerBlock(tree, semantic, statement.ChildAt(0), function, end, increment); }
+                    if (!function.BlockAt(function.Current()).Terminated()) { Jump(function, increment, "jump"); }
+                    function.Select(increment); EmitExpression(tree, semantic, statement.Third(), function); Jump(function, condition, "back");
+                    function.Select(end);
+                }
+                else if (kind == "BreakStatement" && breakTarget >= 0) { Jump(function, breakTarget, "break"); }
+                else if (kind == "ContinueStatement" && continueTarget >= 0) { Jump(function, continueTarget, "continue"); }
+                else if (kind == "ReturnStatement") { EmitExpression(tree, semantic, statement.First(), function); function.AddOperation("return"); function.Terminate(); }
+                else
+                {
+                    if (kind == "VariableDeclarationStatement")
+                    { SemanticFact localFact = semantic.Fact(statementId); function.AddLocal(statement.Text(), localFact.Present() ? localFact.TypeId() : -1); }
+                    EmitExpression(tree, semantic, statementId, function);
+                }
+                index = index + 1;
+            }
+        }
+
+        public static owned FlowModule Build(HirModule hir, SyntaxTree tree, SemanticModel semantic)
+        {
+            raii FlowModule module = new FlowModule(); SyntaxNode root = tree.Node(tree.Root()); int index = 0;
+            if (!HirVerifier.Verify(hir)) { module.AddError(); return move(module); }
+            while (index < root.ChildCount())
+            {
+                int id = root.ChildAt(index); SyntaxNode declaration = tree.Node(id);
+                if (declaration.Kind() == "FunctionDeclaration")
+                {
+                    raii FlowFunction function = new FlowFunction(declaration.Text(), semantic.NodeSymbol(id));
+                    function.AddBlock("entry", true); int parameter = 0;
+                    while (parameter < declaration.ChildCount())
+                    {
+                        SyntaxNode value = tree.Node(declaration.ChildAt(parameter));
+                        if (value.Kind() == "ParameterDeclaration")
+                        {
+                            int parameterSymbol = semantic.NodeSymbol(declaration.ChildAt(parameter));
+                            function.AddLocal(value.Text(), parameterSymbol >= 0 ? semantic.GetSymbol(parameterSymbol).TypeId() : -1);
+                            function.AddOperation("param");
+                        }
+                        parameter = parameter + 1;
+                    }
+                    if (declaration.First() >= 0) { LowerBlock(tree, semantic, declaration.First(), function, -1, -1); }
+                    if (!function.BlockAt(function.Current()).Terminated()) { function.AddOperation("return.void"); function.Terminate(); }
+                    module.Add(move(function));
+                }
+                index = index + 1;
+            }
+            return move(module);
+        }
+    }
+
+    public class FlowVerifier
+    {
+        public static bool Verify(FlowModule module)
+        {
+            if (module == null || module.ErrorCount() != 0) { return false; }
+            int functionIndex = 0;
+            while (functionIndex < module.FunctionCount())
+            {
+                FlowFunction function = module.FunctionAt(functionIndex);
+                if (function.BlockCount() == 0 || function.BlockAt(0).Label().Length == 0) { return false; }
+                int edge = 0;
+                while (edge < function.EdgeCount())
+                {
+                    FlowEdge value = function.EdgeAt(edge);
+                    if (value.Source() < 0 || value.Source() >= function.BlockCount() ||
+                        value.Target() < 0 || value.Target() >= function.BlockCount()) { return false; }
+                    edge = edge + 1;
+                }
+                int block = 0;
+                while (block < function.BlockCount())
+                {
+                    if (!function.BlockAt(block).Terminated()) { return false; } block = block + 1;
+                }
+                functionIndex = functionIndex + 1;
+            }
+            return true;
+        }
+    }
+
+    public class OwnershipCleanupVerifier
+    {
+        public static bool Verify(FlowModule module)
+        {
+            int functionIndex = 0;
+            while (functionIndex < module.FunctionCount())
+            {
+                FlowFunction function = module.FunctionAt(functionIndex); int block = 0;
+                while (block < function.BlockCount())
+                {
+                    FlowBlock value = function.BlockAt(block); int operation = 0;
+                    while (operation < value.OperationCount())
+                    {
+                        string text = value.OperationAt(operation);
+                        if (String.Contains(text, "DeleteExpression") || String.Contains(text, "DestroyExpression") ||
+                            String.Contains(text, "StackallocExpression")) { return false; }
+                        operation = operation + 1;
+                    }
+                    block = block + 1;
+                }
+                functionIndex = functionIndex + 1;
+            }
+            return true;
+        }
+    }
+
+    public class DominanceInfo
+    {
+        private owned int[] immediateDominators;
+        private owned bool[] dominators;
+        private int count;
+        public DominanceInfo(int blockCount)
+        { count = blockCount; immediateDominators = new int[blockCount]; dominators = new bool[blockCount * blockCount]; }
+        public int Count() { return count; }
+        public int Idom(int block) { return immediateDominators[block]; }
+        public void SetIdom(int block, int value) { immediateDominators[block] = value; }
+        public bool Dominates(int dominator, int block) { return dominators[block * count + dominator]; }
+        public void SetDominates(int dominator, int block, bool value) { dominators[block * count + dominator] = value; }
+    }
+
+    public class DominanceBuilder
+    {
+        public static owned DominanceInfo Build(FlowFunction function)
+        {
+            int count = function.BlockCount(); raii DominanceInfo info = new DominanceInfo(count); int block = 0;
+            while (block < count)
+            {
+                int candidate = 0;
+                while (candidate < count)
+                {
+                    info.SetDominates(candidate, block, block == 0 ? candidate == 0 : true); candidate = candidate + 1;
+                }
+                info.SetIdom(block, block == 0 ? -1 : 0); block = block + 1;
+            }
+            bool changed = true;
+            while (changed)
+            {
+                changed = false; block = 1;
+                while (block < count)
+                {
+                    int predecessorCount = function.PredecessorCount(block);
+                    int candidate = 0;
+                    while (candidate < count)
+                    {
+                        bool value = candidate == block; int predecessor = 0; bool common = predecessorCount > 0;
+                        while (predecessor < predecessorCount)
+                        {
+                            common = common && info.Dominates(candidate, function.PredecessorAt(block, predecessor));
+                            predecessor = predecessor + 1;
+                        }
+                        value = value || common;
+                        if (value != info.Dominates(candidate, block))
+                        { info.SetDominates(candidate, block, value); changed = true; }
+                        candidate = candidate + 1;
+                    }
+                    block = block + 1;
+                }
+            }
+            block = 1;
+            while (block < count)
+            {
+                int best = 0; int bestDepth = -1; int candidate = 0;
+                while (candidate < count)
+                {
+                    if (candidate != block && info.Dominates(candidate, block))
+                    {
+                        int depth = 0; int other = 0;
+                        while (other < count) { if (info.Dominates(other, candidate)) { depth = depth + 1; } other = other + 1; }
+                        if (depth > bestDepth) { best = candidate; bestDepth = depth; }
+                    }
+                    candidate = candidate + 1;
+                }
+                info.SetIdom(block, best); block = block + 1;
+            }
+            return move(info);
+        }
+    }
+
+    public class IrDumper
+    {
+        private static void Indent(StringBuilder output, int depth)
+        { int index = 0; while (index < depth) { output.Append("  "); index = index + 1; } }
+
+        public static owned string Hir(HirModule module, SemanticModel semantic)
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("hir.module schema=1\n"); int index = 0;
+            while (index < module.Count())
+            {
+                HirRecord record = module.RecordAt(index); Indent(output, record.Depth()); output.Append(record.Kind());
+                output.Append(" syntax="); output.Append(record.SyntaxId());
+                if (record.Text().Length != 0) { output.Append(" text=\""); output.Append(record.Text()); output.Append('"'); }
+                if (record.SymbolId() >= 0) { output.Append(" symbol="); output.Append(record.SymbolId()); }
+                if (record.TypeId() >= 0) { output.Append(" type="); output.Append(semantic.Types().Get(record.TypeId()).Display()); }
+                if (record.Operation().Length != 0) { output.Append(" op="); output.Append(record.Operation()); }
+                if (record.Conversions().Length != 0) { output.Append(" conversions="); output.Append(record.Conversions()); }
+                if (record.BoundsCheck()) { output.Append(" bounds-check"); }
+                output.Append('\n'); index = index + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        public static owned string Mir(FlowModule module)
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("mir.module schema=1\n"); int fi = 0;
+            while (fi < module.FunctionCount())
+            {
+                FlowFunction function = module.FunctionAt(fi); output.Append("function @"); output.Append(function.Name()); output.Append('\n');
+                int block = 0; while (block < function.BlockCount())
+                {
+                    FlowBlock value = function.BlockAt(block); output.Append("bb"); output.Append(block); output.Append(' ');
+                    output.Append(value.Label()); output.Append(value.Reachable() ? " [reachable]:\n" : " [unreachable]:\n");
+                    int operation = 0; while (operation < value.OperationCount())
+                    { output.Append("  "); output.Append(value.OperationAt(operation)); output.Append('\n'); operation = operation + 1; }
+                    block = block + 1;
+                }
+                fi = fi + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        public static owned string Cfg(FlowModule module)
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("cfg.module schema=1\n"); int fi = 0;
+            while (fi < module.FunctionCount())
+            {
+                FlowFunction function = module.FunctionAt(fi); output.Append("function @"); output.Append(function.Name());
+                output.Append(" nodes="); output.Append(function.BlockCount()); output.Append(" edges="); output.Append(function.EdgeCount()); output.Append('\n');
+                int block = 0; while (block < function.BlockCount())
+                {
+                    output.Append("bb"); output.Append(block); output.Append(' '); output.Append(function.BlockAt(block).Label());
+                    output.Append(function.BlockAt(block).Reachable() ? " [reachable]" : " [unreachable]"); output.Append(" pred=");
+                    int predecessor = 0; while (predecessor < function.PredecessorCount(block))
+                    { if (predecessor != 0) { output.Append(','); } output.Append("bb"); output.Append(function.PredecessorAt(block, predecessor)); predecessor = predecessor + 1; }
+                    output.Append(" succ="); int edge = 0; bool first = true;
+                    while (edge < function.EdgeCount())
+                    {
+                        FlowEdge value = function.EdgeAt(edge); if (value.Source() == block)
+                        { if (!first) { output.Append(','); } output.Append(value.Kind()); output.Append("->bb"); output.Append(value.Target()); first = false; }
+                        edge = edge + 1;
+                    }
+                    output.Append('\n'); block = block + 1;
+                }
+                fi = fi + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        public static owned string Dominance(FlowModule module)
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("dominance.module schema=1\n"); int fi = 0;
+            while (fi < module.FunctionCount())
+            {
+                FlowFunction function = module.FunctionAt(fi); raii DominanceInfo info = DominanceBuilder.Build(function);
+                output.Append("function @"); output.Append(function.Name()); output.Append(" root=bb0\n"); int block = 0;
+                while (block < info.Count())
+                {
+                    output.Append("bb"); output.Append(block); output.Append(" idom=");
+                    if (info.Idom(block) < 0) { output.Append("<root>"); } else { output.Append("bb"); output.Append(info.Idom(block)); }
+                    output.Append(" dom={"); int candidate = 0; bool first = true;
+                    while (candidate < info.Count())
+                    {
+                        if (info.Dominates(candidate, block))
+                        { if (!first) { output.Append(' '); } output.Append("bb"); output.Append(candidate); first = false; }
+                        candidate = candidate + 1;
+                    }
+                    output.Append("} df={"); bool firstFrontier = true; int frontier = 0;
+                    while (frontier < info.Count())
+                    {
+                        if (function.PredecessorCount(frontier) > 1)
+                        {
+                            int predecessor = 0; bool member = false;
+                            while (predecessor < function.PredecessorCount(frontier))
+                            {
+                                int runner = function.PredecessorAt(frontier, predecessor);
+                                while (runner >= 0 && runner != info.Idom(frontier))
+                                {
+                                    if (runner == block) { member = true; }
+                                    runner = info.Idom(runner);
+                                }
+                                predecessor = predecessor + 1;
+                            }
+                            if (member) { if (!firstFrontier) { output.Append(' '); } output.Append("bb"); output.Append(frontier); firstFrontier = false; }
+                        }
+                        frontier = frontier + 1;
+                    }
+                    output.Append("}\n"); block = block + 1;
+                }
+                fi = fi + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        public static owned string Ssa(FlowModule module)
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("ssa.module schema=1\n"); int fi = 0;
+            while (fi < module.FunctionCount())
+            {
+                FlowFunction function = module.FunctionAt(fi); output.Append("function @"); output.Append(function.Name()); output.Append(" promoted:");
+                int local = 0; while (local < function.LocalCount())
+                { if (!function.IsAddressed(function.LocalAt(local))) { output.Append(" @"); output.Append(function.LocalAt(local)); } local = local + 1; }
+                output.Append('\n'); int block = 0;
+                while (block < function.BlockCount())
+                {
+                    output.Append("bb"); output.Append(block); output.Append(' '); output.Append(function.BlockAt(block).Label()); output.Append(":\n");
+                    if (function.PredecessorCount(block) > 1)
+                    {
+                        local = 0; while (local < function.LocalCount())
+                        {
+                            if (!function.IsAddressed(function.LocalAt(local)))
+                            {
+                            output.Append("  phi @"); output.Append(function.LocalAt(local));
+                            if (function.LocalTypeAt(local) >= 0) { output.Append(':'); output.Append(function.LocalTypeAt(local)); }
+                            output.Append(" preds=");
+                                output.Append(function.PredecessorCount(block)); output.Append('\n');
+                            }
+                            local = local + 1;
+                        }
+                    }
+                    int operation = 0; while (operation < function.BlockAt(block).OperationCount())
+                    { output.Append("  "); output.Append(function.BlockAt(block).OperationAt(operation)); output.Append('\n'); operation = operation + 1; }
+                    block = block + 1;
+                }
+                fi = fi + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        public static owned string PassPipeline()
+        {
+            raii StringBuilder output = new StringBuilder(); output.Append("pass.pipeline schema=1\n");
+            output.Append("O0: verify-hir, lower-mir, verify-mir, build-cfg, verify-cfg, dominance, verify-dominance, ssa, verify-ssa\n");
+            output.Append("O1: O0, phi-simplification, copy-propagation, dead-code-elimination, simplify-control-flow\n");
+            output.Append("O2: O1, constant-propagation, local-cse, sparse-conditional-constant-propagation, loop-simplify\n");
+            output.Append("O3: O2, inlining, loop-rotation, loop-unroll, vectorization, global-dce\n");
+            return output.ToOwnedString();
+        }
+    }
+
+    public class IrPipeline
+    {
+        public static owned string Dump(SyntaxTree tree, SemanticModel semantic, int stage)
+        {
+            raii HirModule hir = HirBuilder.Build(tree, semantic);
+            if (!HirVerifier.Verify(hir)) { return String.Copy("ir.error invalid-hir\n"); }
+            if (stage == 1) { return IrDumper.Hir(hir, semantic); }
+            raii FlowModule mir = MirBuilder.Build(hir, tree, semantic);
+            if (!FlowVerifier.Verify(mir) || !OwnershipCleanupVerifier.Verify(mir)) { return String.Copy("ir.error invalid-flow\n"); }
+            if (stage == 2) { return IrDumper.Mir(mir); }
+            if (stage == 3) { return IrDumper.Cfg(mir); }
+            if (stage == 4) { return IrDumper.Dominance(mir); }
+            if (stage == 5) { return IrDumper.Ssa(mir); }
+            return IrDumper.PassPipeline();
+        }
+
+        public static bool Verify(SyntaxTree tree, SemanticModel semantic, int stage)
+        {
+            raii HirModule hir = HirBuilder.Build(tree, semantic);
+            if (!HirVerifier.Verify(hir)) { return false; }
+            if (stage == 1) { return true; }
+            raii FlowModule mir = MirBuilder.Build(hir, tree, semantic);
+            if (!FlowVerifier.Verify(mir) || !OwnershipCleanupVerifier.Verify(mir)) { return false; }
+            if (stage == 4 || stage == 5)
+            {
+                int index = 0; while (index < mir.FunctionCount())
+                {
+                    raii DominanceInfo dominance = DominanceBuilder.Build(mir.FunctionAt(index));
+                    if (dominance.Count() != mir.FunctionAt(index).BlockCount()) { return false; }
+                    index = index + 1;
+                }
+            }
+            return true;
+        }
+    }
+}
