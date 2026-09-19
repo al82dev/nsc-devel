@@ -17,6 +17,7 @@ execute_process(
         --profile "${profile}"
         --source-root "${SOURCE_ROOT}/selfhost/nsc"
         --source-root "${positive_root}"
+        --source-root "${SOURCE_ROOT}/selfhost/tests/host"
         --quiet
     RESULT_VARIABLE profile_result
     OUTPUT_VARIABLE profile_stdout

@@ -1,0 +1,35 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH02",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-03)",
+  "run_id": "tanda-03-sh02-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH01/gate.json",
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-03-sh02-final-20260919/report.md",
+    "baseline_report_json": "selfhost/evidence/runs/tanda-03-sh02-final-20260919/report.json",
+    "baseline_report_sha256": "35cb4f0be39a4325eb1d0fbca4bcbfc51073fa132b26197b24c238c892b670c7",
+    "baseline_report_json_sha256": "42273f608792b651d08bd6e002410862ac592d287ded55a94f359c6eeb4999c7",
+    "baseline_source_sha256": "8cf4c876f3bc0c808f70ebb78d18a1eebda767326c8e32e23e4e3cdd2e2d5e31",
+    "gate0": "_abi/gates/G00/gate.json",
+    "gate0_sha256": "2963b9f031e9ea32dc47092b7311d3fdfa75f93d8ac680be869843c84b124816",
+    "profile_report": "selfhost/evidence/gates/SH02/profile-report.json",
+    "profile_report_sha256": "816f3c29ef23abf7f750e49a6a11737e0dd54b745e3bc9af035950a0bb88a2a9",
+    "workload_report": "selfhost/evidence/gates/SH02/workload-report.json",
+    "workload_report_sha256": "a7a5783ebec433a7542c9f533defa9ea685562e2a28e506a4a79678386db269c",
+    "nsc0_sha256": "556850a81de30e4a440e4c4ccead6cc27c8b5310e2abb595507e6bf500bc7859"
+  },
+  "metrics": {
+    "files": 3,
+    "tokens": 282,
+    "allocations": 282,
+    "arena_peak_bytes": 7424,
+    "lld_link_elapsed_ms": 19.1058,
+    "nslink_elapsed_ms": 40.6642,
+    "active_allocations_after_reset": 0,
+    "runs_per_linker": 2,
+    "exit_code": 42
+  },
+  "problems": []
+}

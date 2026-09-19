@@ -226,7 +226,10 @@ ABI_SOURCE_EXCLUDED_NAMES: frozenset[str] = frozenset(
 ABI_SOURCE_EXCLUDED_SUFFIXES: tuple[str, ...] = (".obj", ".pdb", ".ilk", ".exp", ".tmp", ".log")
 ABI_SOURCE_EXCLUDED_PREFIXES: tuple[tuple[str, ...], ...] = (
     ("selfhost", "out"),
-    ("selfhost", "evidence", "runs"),
+    # La evidencia describe una corrida del arbol, pero no forma parte de sus fuentes. Incluir un
+    # gate que contiene el propio source_digest crearia una identidad autorreferente imposible de
+    # cerrar; runs y gates quedan versionados/auditables, pero fuera del digest de entrada.
+    ("selfhost", "evidence"),
 )
 TEST_WORK_ROOT = DEFAULT_TEST_WORK_ROOT
 CLEANUP_BUILD_NAMES: tuple[str, ...] = (

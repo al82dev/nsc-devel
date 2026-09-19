@@ -299,6 +299,11 @@ Gate versionado: `selfhost/evidence/gates/SH01/gate.json`.
 **Gate SH02:** un programa NativeSharp de prueba carga el corpus, crea tokens sintéticos, llena
 tablas, emite diagnósticos y ejecuta un linker sin fugas ni orden no determinista.
 
+Expediente de cierre: `docs/2.0/self-hosting/tandas/TANDA-03-SH02-BIBLIOTECA-ANFITRIONA.md`.
+Carga certificada: `selfhost/tests/host/CompilerHostWorkload/` y
+`selfhost/tests/host/corpus/`.
+Gate versionado: `selfhost/evidence/gates/SH02/gate.json`.
+
 ### Fase 3 — fronteras LLVM, plataforma, runtime y enlace
 
 **Objetivo:** eliminar dependencias C++ ocultas antes de portar el frontend.

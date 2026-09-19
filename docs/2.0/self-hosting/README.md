@@ -6,6 +6,8 @@ Este directorio contiene la documentación ejecutable del programa de self-hosti
 - `TANDA_TEMPLATE.md` es la plantilla normativa.
 - `BootstrapProfile-2.0.md` es el contrato humano congelado por SH01.
 - `tandas/TANDA-XX-<nombre>.md` contiene el expediente humano de cada tanda.
+- `TANDA-03-SH02-BIBLIOTECA-ANFITRIONA.md` certifica la primera carga representativa escrita en
+  NativeSharp y sus métricas de asignación, memoria, tiempo y determinismo.
 - Los reportes grandes, manifiestos, logs y resultados JSON se conservan en el directorio de
   evidencia generado por la orquestación y se enlazan desde el expediente con su hash.
 

@@ -1,0 +1,9 @@
+{
+  "files_checked": 7,
+  "profile": "NativeSharp.BootstrapProfile/2.0",
+  "profile_sha256": "f3c1d23bb39568c54eed57f1af60faacdc8a268bf47897c63968f034e8e4befb",
+  "schema": "nativesharp-bootstrap-profile-report",
+  "status": "passed",
+  "version": 1,
+  "violations": []
+}

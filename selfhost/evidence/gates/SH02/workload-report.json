@@ -1,0 +1,28 @@
+{
+  "schema": "nativesharp-selfhost-host-workload-matrix",
+  "version": 1,
+  "status": "passed",
+  "run_id": "tanda-03-sh02-final-20260919",
+  "files": 3,
+  "tokens": 282,
+  "allocations": 282,
+  "arena_peak_bytes": 7424,
+  "maximum_elapsed_ms": 30000,
+  "runs_per_linker": 2,
+  "deterministic_output": true,
+  "active_allocations_after_reset": 0,
+  "exit_code": 42,
+  "stdout": "SH02 files=3 tokens=282 allocations=282 arena_peak_bytes=7424",
+  "stderr": "SH02 diagnostic NSH0001: synthetic corpus verified",
+  "linkers": {
+    "lld-link": {
+      "elapsed_ms": 19.1058,
+      "status": "passed"
+    },
+    "NSLink": {
+      "elapsed_ms": 40.6642,
+      "status": "passed"
+    }
+  },
+  "problems": []
+}

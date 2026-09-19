@@ -1,0 +1,176 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Core.Diagnostics;
+using NativeSharp.Core.IO;
+
+namespace NativeSharp.SelfHost.HostWorkload
+{
+    public class Program
+    {
+        private static int CompareText(string left, string right)
+        {
+            return String.CompareOrdinal(left, right);
+        }
+
+        private static int CompareFirstCharacter(string left, string right)
+        {
+            if (left[0] < right[0]) { return -1; }
+            if (left[0] > right[0]) { return 1; }
+            return 0;
+        }
+
+        private static int Kind(char value)
+        {
+            if ((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || value == '_')
+            {
+                return 1;
+            }
+            if (value >= '0' && value <= '9') { return 2; }
+            if (value == ' ' || value == '\r' || value == '\n' || value == '\t') { return 3; }
+            return 4;
+        }
+
+        private static bool CountToken(
+            int kind,
+            List<int> tokens,
+            Dictionary<int, int> counts,
+            HashSet<int> kinds,
+            ArenaAllocator arena)
+        {
+            byte* storage = arena.Allocate(24);
+            if (storage == null) { return false; }
+            tokens.Add(kind);
+            kinds.Add(kind);
+            int[] current = new int[1];
+            if (counts.TryGetValue(kind, current))
+            {
+                counts.SetValue(kind, current[0] + 1);
+            }
+            else
+            {
+                counts.Add(kind, 1);
+            }
+            delete[] current;
+            return true;
+        }
+
+        public static int Main()
+        {
+            string[] arguments = new string[8];
+            int argumentCount = Environment.GetCommandLineArgs(arguments);
+            if (argumentCount != 5) { return 1; }
+
+            string corpus = arguments[1];
+            string linker = arguments[2];
+            string linkerOutput = arguments[3];
+            string metricsOutput = arguments[4];
+            if (!Directory.Exists(corpus) || !File.Exists(linker)) { return 2; }
+
+            raii Stopwatch watch = Stopwatch.StartNew();
+            int fileCount = Directory.GetFileCount(corpus);
+            if (fileCount != 3) { return 3; }
+            string[] files = new string[fileCount];
+            if (Directory.GetFiles(corpus, files) != fileCount) { return 4; }
+
+            Comparison<string> compare = CompareText;
+            Algorithm.StableSort<string>(Spans.Of<string>(files), compare);
+            int ordered = 1;
+            while (ordered < fileCount)
+            {
+                if (String.CompareOrdinal(files[ordered - 1], files[ordered]) > 0) { return 5; }
+                ordered = ordered + 1;
+            }
+
+            string[] stable = new string[4];
+            stable[0] = "a-first";
+            stable[1] = "b-first";
+            stable[2] = "a-second";
+            stable[3] = "b-second";
+            Comparison<string> compareFirst = CompareFirstCharacter;
+            Algorithm.StableSort<string>(Spans.Of<string>(stable), compareFirst);
+            if (stable[0] != "a-first" || stable[1] != "a-second" ||
+                stable[2] != "b-first" || stable[3] != "b-second") { return 22; }
+
+            raii ArenaAllocator arena = new ArenaAllocator(256);
+            raii List<int> tokens = new List<int>();
+            HashFunc<int> hashInt = Hashing.Int32;
+            raii Dictionary<int, int> counts = new Dictionary<int, int>(hashInt);
+            raii HashSet<int> kinds = new HashSet<int>(hashInt);
+
+            int totalBytes = 0;
+            int fileIndex = 0;
+            while (fileIndex < fileCount)
+            {
+                raii string path = Path.Combine(corpus, files[fileIndex]);
+                string text = File.ReadAllText(path);
+                if (text.Length == 0) { return 6; }
+                StringView sourceView = StringView.Of(text);
+                totalBytes = totalBytes + sourceView.Length();
+                int offset = 0;
+                while (offset < sourceView.Length())
+                {
+                    if (!CountToken(Kind(sourceView.UncheckedAt(offset)), tokens, counts, kinds, arena))
+                    {
+                        return 7;
+                    }
+                    offset = offset + 1;
+                }
+                fileIndex = fileIndex + 1;
+            }
+
+            if (tokens.Count() != totalBytes || counts.Count() != 4 || kinds.Count() != 4) { return 8; }
+            if (arena.ActiveAllocationCount() != (long)totalBytes) { return 9; }
+            if (!arena.HasOutstandingAllocations() || arena.BytesUsed() <= 0) { return 10; }
+
+            ByteBuffer buffer = new ByteBuffer();
+            BinaryWriter writer = new BinaryWriter(buffer);
+            writer.WriteUInt32(1397248562u);
+            writer.WriteInt32(fileCount);
+            writer.WriteInt32(tokens.Count());
+            writer.WriteInt64(arena.BytesReserved());
+            byte[] bytes = buffer.ToArray();
+            ReadOnlySpan<byte> view = Spans.ReadOnlyOf<byte>(bytes);
+            BinaryReader reader = new BinaryReader(view);
+            if (reader.ReadUInt32().Value() != 1397248562u) { return 11; }
+            if (reader.ReadInt32().Value() != fileCount) { return 12; }
+            if (reader.ReadInt32().Value() != tokens.Count()) { return 13; }
+            if (reader.ReadInt64().Value() != arena.BytesReserved()) { return 14; }
+            if (!reader.IsAtEnd() || !reader.ReadByte().IsEmpty()) { return 15; }
+
+            string quote = "\"";
+            raii string open = String.Concat(quote, linker);
+            raii string closed = String.Concat(open, quote);
+            raii string commandLine = String.Concat(closed, " --version");
+            int linkerExit = Process.Run(linker, commandLine, linkerOutput);
+            if (linkerExit != 0 || !File.Exists(linkerOutput)) { return 16; }
+            string linkerText = File.ReadAllText(linkerOutput);
+            if (linkerText.Length == 0) { return 17; }
+
+            long totalAllocations = arena.TotalAllocationCount();
+            long arenaPeakBytes = arena.BytesReserved();
+            arena.Reset();
+            if (arena.HasOutstandingAllocations() || arena.ActiveAllocationCount() != 0) { return 18; }
+            if (arena.BytesUsed() != 0 || arena.ResetCount() != 1) { return 19; }
+            if (arena.TotalAllocationCount() != (long)totalBytes) { return 20; }
+
+            watch.Stop();
+            double elapsedMilliseconds = watch.ElapsedMilliseconds();
+            if (elapsedMilliseconds > 30000.0) { return 21; }
+            raii string tokenText = String.ToString(tokens.Count());
+            raii string allocationText = String.ToString(totalAllocations);
+            raii string peakText = String.ToString(arenaPeakBytes);
+            raii string elapsedText = String.ToString(elapsedMilliseconds);
+            raii string summaryTokens = String.Concat("SH02 files=3 tokens=", tokenText);
+            raii string summaryAllocations = String.Concat(summaryTokens, " allocations=");
+            raii string summaryAllocationValue = String.Concat(summaryAllocations, allocationText);
+            raii string summaryPeak = String.Concat(summaryAllocationValue, " arena_peak_bytes=");
+            raii string summary = String.Concat(summaryPeak, peakText);
+            raii string metricsElapsed = String.Concat("elapsed_ms=", elapsedText);
+            raii string metricsNewline = String.Concat(metricsElapsed, "\n");
+            File.WriteAllText(metricsOutput, metricsNewline);
+            Console.WriteLine(summary);
+            Console.ErrorWriteLine("SH02 diagnostic NSH0001: synthetic corpus verified");
+            return 42;
+        }
+    }
+}

@@ -4,6 +4,11 @@
 y ejecutar. `profile/negative` contiene construcciones válidas o reconocibles de NativeSharp 2.0
 que el perfil deliberadamente rechaza antes del bootstrap; `cases.json` fija sus códigos `NSBP`.
 
+`host/CompilerHostWorkload` es la carga certificada de SH02. Lee el corpus hostil de `host/corpus`,
+usa vistas sin copia, colecciones, hashing, orden estable, IO binario, procesos y una arena con
+contadores; se ejecuta dos veces por linker y exige salida idéntica, retorno 42 y cero obligaciones
+de arena después de `Reset()`.
+
 Las corridas generadas nunca se escriben aquí: viven bajo `selfhost/out` o
 `selfhost/evidence/runs`.
 

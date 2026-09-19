@@ -224,6 +224,27 @@ namespace NativeSharp.Core.Collections.Generic
             }
         }
 
+        // Orden estable para tablas donde dos claves iguales deben conservar el orden canonico de
+        // descubrimiento. Insertion sort es deliberado: no aloca, es estable por usar `< 0` (no
+        // mueve empates) y las listas por scope del compilador son pequenas. Las tablas grandes
+        // deben ordenar indices o usar un merge buffer explicito en una fase posterior.
+        public static void StableSort<T>(Span<T> datos, Comparison<T> comparador)
+        {
+            int i = 1;
+            while (i < datos.Length())
+            {
+                var actual = datos[i];
+                int destino = i;
+                while (destino > 0 && comparador(actual, datos[destino - 1]) < 0)
+                {
+                    datos[destino] = datos[destino - 1];
+                    destino = destino - 1;
+                }
+                datos[destino] = actual;
+                i = i + 1;
+            }
+        }
+
         // Baja el elemento de `raiz` hasta que los dos hijos sean menores o iguales. `limite` es
         // cuantos elementos del principio siguen formando parte del monticulo -- lo demas ya esta
         // colocado al final y no se toca.

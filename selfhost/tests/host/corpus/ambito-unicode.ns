@@ -1,0 +1,1 @@
+namespace ámbito { public class Árbol { public static string Texto() { return "niño λ compilador"; } } }

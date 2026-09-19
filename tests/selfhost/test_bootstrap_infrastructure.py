@@ -66,6 +66,8 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         (self.root / "selfhost" / "out" / "generated.txt").write_text("generated")
         (self.root / "selfhost" / "evidence" / "runs").mkdir(parents=True)
         (self.root / "selfhost" / "evidence" / "runs" / "report.md").write_text("report")
+        (self.root / "selfhost" / "evidence" / "gates").mkdir()
+        (self.root / "selfhost" / "evidence" / "gates" / "gate.json").write_text("gate")
         relative = {
             path.relative_to(self.root).as_posix()
             for path in nscbuilder.collect_source_files(self.root)
@@ -73,6 +75,7 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertIn("selfhost/bootstrap/bootstrap.lock", relative)
         self.assertNotIn("selfhost/out/generated.txt", relative)
         self.assertNotIn("selfhost/evidence/runs/report.md", relative)
+        self.assertNotIn("selfhost/evidence/gates/gate.json", relative)
 
     def test_library_source_marker_matches_tracked_file(self) -> None:
         self.assertEqual((ROOT / "lib" / ".source.txt").read_bytes(), nscbuilder.LIBRARY_SOURCE_MARKER)
