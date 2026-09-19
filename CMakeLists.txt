@@ -680,6 +680,17 @@ if(NSC_BUILD_TESTS)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpCompilerHostWorkload.cmake")
     set_tests_properties(nsc.selfhost.compiler-host-workload PROPERTIES RUN_SERIAL TRUE)
 
+    add_test(
+        NAME nsc.selfhost.llvm-c-bridge
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=$<TARGET_FILE:nsc>"
+            "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/selfhost-llvm-c-bridge"
+            "-DLINKER_EXECUTABLE=${CMAKE_LINKER}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyNativeSharpLlvmCBridge.cmake")
+    set_tests_properties(nsc.selfhost.llvm-c-bridge PROPERTIES RUN_SERIAL TRUE)
+
     # A partir de aqui, todo add_executable() (via la funcion nsc_add_unit_test o directo) cae
     # en build/tests/ en vez de build/bin/ -- ver comentario arriba.
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)

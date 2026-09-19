@@ -1,0 +1,109 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Diagnostics;
+using NativeSharp.Core.IO;
+
+namespace NativeSharp.Win32.Compiler
+{
+    public class CompilerCommandLine
+    {
+        // Reglas argv de Windows: duplica las barras anteriores a comillas y al cierre.
+        public static owned string Quote(string value)
+        {
+            raii StringBuilder result = new StringBuilder(value.Length + 8);
+            result.Append('"');
+            int slashes = 0;
+            int i = 0;
+            while (i < value.Length)
+            {
+                char current = value[i];
+                if (current == '\\')
+                {
+                    slashes = slashes + 1;
+                }
+                else
+                {
+                    if (current == '"')
+                    {
+                        result.AppendRepeat('\\', slashes * 2 + 1);
+                    }
+                    else
+                    {
+                        result.AppendRepeat('\\', slashes);
+                    }
+                    slashes = 0;
+                    result.Append(current);
+                }
+                i = i + 1;
+            }
+            result.AppendRepeat('\\', slashes * 2);
+            result.Append('"');
+            return result.ToOwnedString();
+        }
+
+        public static bool WriteLinkResponse(
+            string responsePath,
+            string objectPath,
+            string importLibraryPath,
+            string outputPath)
+        {
+            raii StringBuilder response = new StringBuilder(256);
+            response.AppendLine("/entry:mainCRTStartup");
+            response.AppendLine("/subsystem:console");
+            response.AppendLine("/machine:x64");
+            response.AppendLine("/nodefaultlib");
+            raii string quotedObject = Quote(objectPath);
+            raii string quotedLibrary = Quote(importLibraryPath);
+            raii string quotedOutput = Quote(outputPath);
+            response.AppendLine(quotedObject);
+            response.AppendLine(quotedLibrary);
+            response.Append("/out:");
+            response.AppendLine(quotedOutput);
+            raii string contents = response.ToOwnedString();
+            File.WriteAllText(responsePath, contents);
+            return File.Exists(responsePath);
+        }
+
+        public static int RunResponse(
+            string linker,
+            string responsePath,
+            string logPath)
+        {
+            raii string quotedLinker = Quote(linker);
+            raii string quotedResponse = Quote(responsePath);
+            raii StringBuilder command = new StringBuilder(quotedLinker.Length + quotedResponse.Length + 4);
+            command.Append(quotedLinker);
+            command.Append(" @");
+            command.Append(quotedResponse);
+            raii string commandLine = command.ToOwnedString();
+            return Process.Run(linker, commandLine, logPath);
+        }
+    }
+
+    public class LldLinkAdapter
+    {
+        public static int Link(string linker, string objectPath, string importLibraryPath,
+            string responsePath, string outputPath, string logPath)
+        {
+            if (!CompilerCommandLine.WriteLinkResponse(
+                    responsePath, objectPath, importLibraryPath, outputPath))
+            {
+                return -1;
+            }
+            return CompilerCommandLine.RunResponse(linker, responsePath, logPath);
+        }
+    }
+
+    public class NsLinkAdapter
+    {
+        public static int Link(string linker, string objectPath, string importLibraryPath,
+            string responsePath, string outputPath, string logPath)
+        {
+            if (!CompilerCommandLine.WriteLinkResponse(
+                    responsePath, objectPath, importLibraryPath, outputPath))
+            {
+                return -1;
+            }
+            return CompilerCommandLine.RunResponse(linker, responsePath, logPath);
+        }
+    }
+}

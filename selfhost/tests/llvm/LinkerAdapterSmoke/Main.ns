@@ -1,0 +1,26 @@
+using NativeSharp.Core;
+using NativeSharp.Win32.Compiler;
+
+namespace NativeSharp.SelfHost.Linker
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            string[] arguments = new string[8];
+            int count = Environment.GetCommandLineArgs(arguments);
+            if (count != 8) { return 1; }
+            if (arguments[1] == "lld")
+            {
+                return LldLinkAdapter.Link(arguments[2], arguments[3], arguments[4],
+                    arguments[5], arguments[6], arguments[7]);
+            }
+            if (arguments[1] == "nslink")
+            {
+                return NsLinkAdapter.Link(arguments[2], arguments[3], arguments[4],
+                    arguments[5], arguments[6], arguments[7]);
+            }
+            return 2;
+        }
+    }
+}

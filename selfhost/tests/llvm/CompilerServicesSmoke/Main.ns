@@ -1,0 +1,39 @@
+using NativeSharp.Core;
+using NativeSharp.Win32.Compiler;
+
+namespace NativeSharp.SelfHost.Platform
+{
+    public class Program
+    {
+        public static int Main()
+        {
+            string[] arguments = new string[4];
+            int count = Environment.GetCommandLineArgs(arguments);
+            if (count != 4) { return 1; }
+
+            byte[] payload = new byte[4];
+            payload[0] = 42;
+            payload[1] = 17;
+            payload[2] = 23;
+            payload[3] = 0;
+            if (!CompilerFileSystem.WriteAllBytes(arguments[1], payload, payload.Length)) { return 2; }
+            if (!CompilerFileSystem.Exists(arguments[1]) || CompilerFileSystem.Size(arguments[1]) != 4)
+            {
+                return 3;
+            }
+
+            raii CompilerMappedFile mapped = new CompilerMappedFile(arguments[1]);
+            if (!mapped.IsOpen() || mapped.Length() != 4 || mapped.Data()[0] != 42) { return 4; }
+
+            raii CompilerClock clock = new CompilerClock();
+            raii string commandLine = String.Concat(arguments[2], " --version");
+            int processExit = CompilerProcess.Run(arguments[2], commandLine, arguments[3]);
+            if (processExit != 0 || !CompilerFileSystem.Exists(arguments[3])) { return 5; }
+            if (clock.ElapsedMilliseconds() < 0.0) { return 6; }
+
+            CompilerFileSystem.Delete(arguments[1]);
+            CompilerFileSystem.Delete(arguments[3]);
+            return 42;
+        }
+    }
+}

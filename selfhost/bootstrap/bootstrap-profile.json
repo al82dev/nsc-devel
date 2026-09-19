@@ -57,7 +57,9 @@
     "NativeSharp.Core.nsproj",
     "NativeSharp.Core.Collections.Generic.nsproj",
     "NativeSharp.Core.IO.nsproj",
-    "NativeSharp.Core.Diagnostics.nsproj"
+    "NativeSharp.Core.Diagnostics.nsproj",
+    "NativeSharp.LLVM.C.nsproj",
+    "NativeSharp.Win32.Compiler.nsproj"
   ],
   "allowed_external_boundaries": [
     "NativeSharp.LLVM.C",

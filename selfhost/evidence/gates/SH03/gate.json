@@ -1,0 +1,35 @@
+{
+  "schema": "nativesharp-selfhost-gate",
+  "version": 1,
+  "gate": "SH03",
+  "state": "LANDED",
+  "revision": "selfhost(tanda-04)",
+  "run_id": "tanda-04-sh03-final-20260919",
+  "previous_gate": "selfhost/evidence/gates/SH02/gate.json",
+  "artifacts": {
+    "baseline_report": "selfhost/evidence/runs/tanda-04-sh03-final-20260919/report.md",
+    "baseline_report_json": "selfhost/evidence/runs/tanda-04-sh03-final-20260919/report.json",
+    "baseline_report_sha256": "287ec95047d6f46c68d815cc1316ef4b4953db231b7a5c3fef48e505bfba21ec",
+    "baseline_report_json_sha256": "e7750d15a1463d5cc91c8556dfabd823fe9dab81d22827110f79c04e8755247b",
+    "baseline_source_sha256": "781ad89506fd6c20f738cd871fd6f5641f2076f56235e3d1c63f4274873a8f8a",
+    "gate0": "_abi/gates/G00/gate.json",
+    "gate0_sha256": "d3aeefe55bfc192b7efbcdc732e62fc83f10e3082a918f3beae968fc93230612",
+    "sh03_report": "selfhost/evidence/gates/SH03/sh03-report.json",
+    "sh03_report_sha256": "25ccf3ad75e909defb71e285cf5d4076c717d944cb9e0b0c37dbe8c3a7dbeedc",
+    "llvm_c_contract_report": "selfhost/evidence/gates/SH03/llvm-c-contract-report.json",
+    "llvm_c_contract_report_sha256": "016c961f366b08e8689e9c4ec3c13b3a365fd882bde962df6a76b976509a18cc",
+    "runtime_bootstrap_report": "selfhost/evidence/gates/SH03/runtime-bootstrap-report.json",
+    "runtime_bootstrap_report_sha256": "490a1b867e19f6cf4ba2343f3d0921d1b3c35f43c15ed5b975d7380d729ebe4a",
+    "nsc0_sha256": "d2eeb7abcadb802a1bf2802a0fef148d62f666bfa6e53ee70ec02b5c288f6561"
+  },
+  "metrics": {
+    "nsc0_llvm_imports": 219,
+    "bootstrap_llvm_symbols": 42,
+    "runtime_required_symbols": 13,
+    "linkers": 2,
+    "paths_with_spaces": true,
+    "response_files": true,
+    "exit_code": 42
+  },
+  "problems": []
+}

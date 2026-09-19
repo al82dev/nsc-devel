@@ -1,0 +1,57 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+
+namespace NativeSharp.Win32.Compiler
+{
+    // Vista de sólo lectura. El puntero es prestado y sólo es válido mientras viva esta clase.
+    public class CompilerMappedFile
+    {
+        private void* file_;
+        private void* mapping_;
+        private byte* view_;
+        private long length_;
+
+        extern C from "kernel32.dll"
+        {
+            public void* CreateFileA(byte* name, uint access, uint sharing, void* security,
+                uint creation, uint flags, void* templateFile);
+            public void* CreateFileMappingA(void* file, void* security, uint protection,
+                uint maximumSizeHigh, uint maximumSizeLow, byte* name);
+            public void* MapViewOfFile(void* mapping, uint access, uint offsetHigh,
+                uint offsetLow, ulong bytesToMap);
+            public int UnmapViewOfFile(void* address);
+            public int CloseHandle(void* handle);
+        }
+
+        public CompilerMappedFile(string path)
+        {
+            file_ = null;
+            mapping_ = null;
+            view_ = null;
+            length_ = File.GetSize(path);
+            if (length_ <= 0) { return; }
+
+            raii CString nativePath = new CString(path);
+            file_ = CreateFileA(nativePath.Pointer(), 0x80000000u, 1u, null, 3u, 0x80u, null);
+            if ((long)file_ == -1)
+            {
+                file_ = null;
+                return;
+            }
+            mapping_ = CreateFileMappingA(file_, null, 2u, 0u, 0u, null);
+            if (mapping_ == null) { return; }
+            view_ = (byte*)MapViewOfFile(mapping_, 4u, 0u, 0u, 0UL);
+        }
+
+        ~CompilerMappedFile()
+        {
+            if (view_ != null) { UnmapViewOfFile(view_); }
+            if (mapping_ != null) { CloseHandle(mapping_); }
+            if (file_ != null) { CloseHandle(file_); }
+        }
+
+        public bool IsOpen() { return view_ != null; }
+        public long Length() { return length_; }
+        public byte* Data() { return view_; }
+    }
+}

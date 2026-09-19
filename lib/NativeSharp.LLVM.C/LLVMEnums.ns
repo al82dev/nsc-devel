@@ -1,0 +1,46 @@
+namespace NativeSharp.LLVM.C
+{
+    // Valores ABI exactos de llvm-c/TargetMachine.h y llvm-c/Analysis.h (LLVM 23.x).
+    public enum LLVMCodeGenOptLevel
+    {
+        None = 0,
+        Less = 1,
+        Default = 2,
+        Aggressive = 3
+    }
+
+    public enum LLVMRelocMode
+    {
+        Default = 0,
+        Static = 1,
+        PIC = 2,
+        DynamicNoPic = 3,
+        ROPI = 4,
+        RWPI = 5,
+        ROPI_RWPI = 6
+    }
+
+    public enum LLVMCodeModel
+    {
+        Default = 0,
+        JITDefault = 1,
+        Tiny = 2,
+        Small = 3,
+        Kernel = 4,
+        Medium = 5,
+        Large = 6
+    }
+
+    public enum LLVMCodeGenFileType
+    {
+        Assembly = 0,
+        Object = 1
+    }
+
+    public enum LLVMVerifierFailureAction
+    {
+        AbortProcess = 0,
+        PrintMessage = 1,
+        ReturnStatus = 2
+    }
+}

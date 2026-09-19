@@ -1,0 +1,15 @@
+{
+  "schema": "nativesharp-selfhost-sh03-report",
+  "version": 1,
+  "status": "passed",
+  "llvm_major": 23,
+  "nsc0_llvm_imports": 219,
+  "bootstrap_llvm_symbols": 42,
+  "linkers": ["lld-link", "NSLink"],
+  "paths_with_spaces": true,
+  "response_files": true,
+  "expected_exit_code": 42,
+  "object_sha256": "4e4dc4a50881bcf0935f412595e130e8a0b93c4fa06a69c8302079727821a6b3",
+  "lld_executable_sha256": "1b7886558d75a2cb8726fa56ac087f345e5831e7f5b83232052bcaeda520b893",
+  "nslink_executable_sha256": "c7db0ae6d0b4b4a5d53dc90f793310c55398626bde1d75068b0a184f82a4fb82"
+}

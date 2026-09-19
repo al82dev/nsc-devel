@@ -1,0 +1,189 @@
+using NativeSharp.Core;
+using NativeSharp.LLVM.C;
+
+namespace NativeSharp.SelfHost.Llvm
+{
+    public class Program
+    {
+        private static void Dispose(
+            void* context,
+            void* module,
+            void* builder,
+            void* targetMachine,
+            void* targetData)
+        {
+            if (targetData != null) { LLVM.LLVMDisposeTargetData(targetData); }
+            if (targetMachine != null) { LLVM.LLVMDisposeTargetMachine(targetMachine); }
+            if (builder != null) { LLVM.LLVMDisposeBuilder(builder); }
+            if (module != null) { LLVM.LLVMDisposeModule(module); }
+            if (context != null) { LLVM.LLVMContextDispose(context); }
+        }
+
+        public static int Main()
+        {
+            string[] arguments = new string[4];
+            int argumentCount = Environment.GetCommandLineArgs(arguments);
+            if (argumentCount == 3 && arguments[1] == "--reject-version")
+            {
+                raii string rejected = LLVMVersionPolicy.Diagnostic(22u, 0u, 0u);
+                Console.ErrorWriteLine(rejected);
+                return 35;
+            }
+            if (argumentCount != 2) { return 1; }
+
+            uint major = 0u;
+            uint minor = 0u;
+            uint patch = 0u;
+            if (!LLVMVersionPolicy.Read(&major, &minor, &patch)) { return 2; }
+            if (!LLVMVersionPolicy.IsSupported(major))
+            {
+                raii string diagnostic = LLVMVersionPolicy.Diagnostic(major, minor, patch);
+                Console.ErrorWriteLine(diagnostic);
+                return 3;
+            }
+
+            LLVM.LLVMInitializeX86TargetInfo();
+            LLVM.LLVMInitializeX86Target();
+            LLVM.LLVMInitializeX86TargetMC();
+            LLVM.LLVMInitializeX86AsmParser();
+            LLVM.LLVMInitializeX86AsmPrinter();
+
+            raii CString moduleName = new CString("nativesharp.sh03.minimal");
+            raii CString triple = new CString("x86_64-pc-windows-msvc");
+            raii CString empty = new CString("");
+            raii CString functionName = new CString("mainCRTStartup");
+            raii CString exitName = new CString("ExitProcess");
+            raii CString blockName = new CString("entry");
+            raii CString passes = new CString("verify");
+            raii CString output = new CString(arguments[1]);
+
+            void* context = LLVM.LLVMContextCreate();
+            if (context == null) { return 4; }
+            void* module = LLVM.LLVMModuleCreateWithNameInContext(moduleName.Pointer(), context);
+            void* builder = null;
+            void* targetMachine = null;
+            void* targetData = null;
+            if (module == null)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 5;
+            }
+            LLVM.LLVMSetTarget(module, triple.Pointer());
+
+            void* voidType = LLVM.LLVMVoidTypeInContext(context);
+            void* i32 = LLVM.LLVMInt32TypeInContext(context);
+            void* functionType = LLVM.LLVMFunctionType(voidType, null, 0u, 0);
+            void* function = LLVM.LLVMAddFunction(module, functionName.Pointer(), functionType);
+            void* exitParameter = i32;
+            void* exitType = LLVM.LLVMFunctionType(voidType, &exitParameter, 1u, 0);
+            void* exitFunction = LLVM.LLVMAddFunction(module, exitName.Pointer(), exitType);
+            void* block = LLVM.LLVMAppendBasicBlockInContext(
+                context, function, blockName.Pointer());
+            builder = LLVM.LLVMCreateBuilderInContext(context);
+            if (voidType == null || i32 == null || functionType == null || function == null ||
+                exitType == null || exitFunction == null || block == null || builder == null)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 6;
+            }
+            LLVM.LLVMPositionBuilderAtEnd(builder, block);
+            void* answer = LLVM.LLVMConstInt(i32, 42UL, 0);
+            void* exitArgument = answer;
+            if (answer == null ||
+                LLVM.LLVMBuildCall2(
+                    builder, exitType, exitFunction, &exitArgument, 1u, empty.Pointer()) == null ||
+                LLVM.LLVMBuildUnreachable(builder) == null)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 7;
+            }
+
+            byte* verifyMessage = null;
+            if (LLVM.LLVMVerifyModule(
+                    module, LLVMVerifierFailureAction.ReturnStatus, &verifyMessage) != 0)
+            {
+                if (verifyMessage != null) { LLVM.LLVMDisposeMessage(verifyMessage); }
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 8;
+            }
+            if (verifyMessage != null) { LLVM.LLVMDisposeMessage(verifyMessage); }
+
+            void* target = null;
+            byte* targetError = null;
+            if (LLVM.LLVMGetTargetFromTriple(triple.Pointer(), &target, &targetError) != 0 ||
+                target == null)
+            {
+                if (targetError != null) { LLVM.LLVMDisposeMessage(targetError); }
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 9;
+            }
+            targetMachine = LLVM.LLVMCreateTargetMachine(
+                target,
+                triple.Pointer(),
+                empty.Pointer(),
+                empty.Pointer(),
+                LLVMCodeGenOptLevel.None,
+                LLVMRelocMode.Static,
+                LLVMCodeModel.Default);
+            if (targetMachine == null)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 10;
+            }
+            targetData = LLVM.LLVMCreateTargetDataLayout(targetMachine);
+            if (targetData == null)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 11;
+            }
+            LLVM.LLVMSetModuleDataLayout(module, targetData);
+
+            void* passOptions = LLVM.LLVMCreatePassBuilderOptions();
+            if (passOptions == null)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 12;
+            }
+            LLVM.LLVMPassBuilderOptionsSetVerifyEach(passOptions, 1);
+            void* passError = LLVM.LLVMRunPasses(
+                module, passes.Pointer(), targetMachine, passOptions);
+            LLVM.LLVMDisposePassBuilderOptions(passOptions);
+            if (passError != null)
+            {
+                byte* passMessage = LLVM.LLVMGetErrorMessage(passError);
+                if (passMessage != null) { LLVM.LLVMDisposeErrorMessage(passMessage); }
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 13;
+            }
+
+            if (LLVM.LLVMDebugMetadataVersion() == 0u)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 14;
+            }
+            void* debugBuilder = LLVM.LLVMCreateDIBuilder(module);
+            if (debugBuilder == null)
+            {
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 15;
+            }
+            LLVM.LLVMDIBuilderFinalize(debugBuilder);
+            LLVM.LLVMDisposeDIBuilder(debugBuilder);
+
+            byte* emitError = null;
+            int emitFailed = LLVM.LLVMTargetMachineEmitToFile(
+                targetMachine, module, output.Pointer(), LLVMCodeGenFileType.Object, &emitError);
+            if (emitFailed != 0)
+            {
+                if (emitError != null) { LLVM.LLVMDisposeMessage(emitError); }
+                Dispose(context, module, builder, targetMachine, targetData);
+                return 16;
+            }
+            if (emitError != null) { LLVM.LLVMDisposeMessage(emitError); }
+            Dispose(context, module, builder, targetMachine, targetData);
+
+            Console.WriteLine("SH03 LLVM 23 object emitted");
+            return 42;
+        }
+    }
+}

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import nscbuilder
-from selfhost.bootstrap import clean_selfhost, verify_environment
+from selfhost.bootstrap import clean_selfhost, verify_environment, verify_llvm_c_contract
 
 
 TEST_TEMP_ROOT = ROOT / "_nscbuilder" / "temp" / "selfhost-unit-tests"
@@ -181,6 +181,42 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(report["run_id"], "fixture-run")
         self.assertEqual(report["inputs"]["operation"], "baseline")
         self.assertEqual(report["problems"], [])
+
+    def test_llvm_c_contract_freezes_inventory_and_binding_sources(self) -> None:
+        contract = json.loads(
+            (ROOT / "selfhost/contracts/llvm-c-api.contract.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(contract["schema"], "nativesharp-llvm-c-api-contract")
+        self.assertEqual(contract["supported_llvm_major"], 23)
+        self.assertEqual(len(contract["nsc0_import_symbols"]), 219)
+        self.assertEqual(len(contract["bootstrap_symbols"]), 42)
+        signature_source = ROOT / contract["signature_source"]
+        enum_source = ROOT / contract["enum_source"]
+        self.assertEqual(
+            verify_llvm_c_contract.declared_binding_symbols(signature_source),
+            contract["bootstrap_symbols"],
+        )
+        self.assertEqual(
+            verify_llvm_c_contract.digest(signature_source),
+            contract["signature_source_sha256"],
+        )
+        self.assertEqual(
+            verify_llvm_c_contract.digest(enum_source),
+            contract["enum_source_sha256"],
+        )
+
+    def test_runtime_bootstrap_contract_names_external_artifacts(self) -> None:
+        contract = json.loads(
+            (ROOT / "selfhost/contracts/runtime-bootstrap.contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(contract["schema"], "nativesharp-runtime-bootstrap-contract")
+        self.assertEqual(contract["runtime_abi"], "1.0")
+        self.assertEqual(contract["runtime_symbol_set"], 2)
+        self.assertEqual(len(contract["required_symbols"]), 13)
+        self.assertTrue(contract["runtime_library"].endswith(".lib"))
+        self.assertTrue(contract["runtime_abi_contract"].endswith(".abi"))
 
 
 if __name__ == "__main__":

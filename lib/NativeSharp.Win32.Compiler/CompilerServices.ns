@@ -1,0 +1,49 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Diagnostics;
+using NativeSharp.Core.IO;
+
+namespace NativeSharp.Win32.Compiler
+{
+    // Frontera de servicios del compilador. El frontend no llama Win32 ni operaciones core
+    // directamente: filesystem, procesos y reloj quedan detrás de esta API auditable.
+    public class CompilerFileSystem
+    {
+        public static bool Exists(string path) { return File.Exists(path); }
+        public static long Size(string path) { return File.GetSize(path); }
+        public static byte[] ReadAllBytes(string path) { return File.ReadAllBytes(path); }
+        public static bool WriteAllBytes(string path, byte[] data, int count)
+        {
+            return File.WriteAllBytes(path, data, count);
+        }
+        public static void Delete(string path) { File.Delete(path); }
+        public static string FullPath(string path) { return Path.GetFullPath(path); }
+    }
+
+    public class CompilerProcess
+    {
+        public static int Run(string executable, string commandLine, string outputPath)
+        {
+            return Process.Run(executable, commandLine, outputPath);
+        }
+    }
+
+    public class CompilerClock
+    {
+        private owned Stopwatch watch_;
+
+        public CompilerClock()
+        {
+            watch_ = Stopwatch.StartNew();
+        }
+
+        public double ElapsedMilliseconds()
+        {
+            return watch_.ElapsedMilliseconds();
+        }
+
+        public void Restart()
+        {
+            watch_.Restart();
+        }
+    }
+}

@@ -18,6 +18,9 @@ execute_process(
         --source-root "${SOURCE_ROOT}/selfhost/nsc"
         --source-root "${positive_root}"
         --source-root "${SOURCE_ROOT}/selfhost/tests/host"
+        --source-root "${SOURCE_ROOT}/selfhost/tests/llvm"
+        --source-root "${SOURCE_ROOT}/lib/NativeSharp.LLVM.C"
+        --source-root "${SOURCE_ROOT}/lib/NativeSharp.Win32.Compiler"
         --quiet
     RESULT_VARIABLE profile_result
     OUTPUT_VARIABLE profile_stdout

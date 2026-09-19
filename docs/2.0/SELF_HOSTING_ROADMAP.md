@@ -327,6 +327,12 @@ Gate versionado: `selfhost/evidence/gates/SH02/gate.json`.
 **Gate SH03:** una aplicación NativeSharp usa el binding para emitir un `.obj`, lo enlaza con ambos
 linkers y ejecuta con el resultado esperado sin llamar a código del frontend C++.
 
+Expediente de cierre:
+`docs/2.0/self-hosting/tandas/TANDA-04-SH03-FRONTERAS-LLVM-RUNTIME-PLATAFORMA.md`.
+Contratos congelados: `selfhost/contracts/llvm-c-api.contract.json` y
+`selfhost/contracts/runtime-bootstrap.contract.json`.
+Gate versionado: `selfhost/evidence/gates/SH03/gate.json`.
+
 ### Fase 4 — esqueleto de `nsc-next` y capa Basic
 
 **Objetivo:** obtener un ejecutable NativeSharp instalable que todavía no compile, pero cuyo

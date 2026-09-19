@@ -3524,6 +3524,22 @@ ExitCode Driver::run(std::span<const std::string_view> arguments, std::ostream &
             output << "Windows runtime library verified: " << source.string() << '\n';
             return ExitCode::Success;
         }
+        if (action == "--verify-pe")
+        {
+            const std::filesystem::path source{std::string(args[1])};
+            linker::PeExecutableVerifier verifier;
+            if (!verifier.verify(source))
+            {
+                error << "nsc: error: PE verification failed: " << verifier.error() << '\n';
+                return ExitCode::CompilationError;
+            }
+            const linker::PeExecutableInfo& info = verifier.info();
+            output << "PE executable verified: " << source.string()
+                   << " (machine=0x" << std::hex << info.machine << std::dec
+                   << ", sections=" << info.sectionCount
+                   << ", imports=" << info.importedSymbols.size() << ")\n";
+            return ExitCode::Success;
+        }
         if (action == "--verify-toolchain-contract")
         {
             std::string contractError;
@@ -4042,6 +4058,7 @@ void Driver::printHelp(std::ostream &output)
            << "  nsc --verify-runtime-abi-contract <file.abi>\n"
            << "  nsc --write-windows-runtime-library <file.lib>\n"
            << "  nsc --verify-windows-runtime-library <file.lib>\n"
+           << "  nsc --verify-pe <file.exe>\n"
            << "  nsc --print-compatibility-policy\n"
            << "  nsc --write-compatibility-policy <file.policy>\n"
            << "  nsc --verify-compatibility-policy <file.policy>\n"

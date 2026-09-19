@@ -1,0 +1,9 @@
+{
+  "schema": "nativesharp-selfhost-llvm-c-contract-report",
+  "version": 1,
+  "status": "passed",
+  "llvm_major": 23,
+  "nsc0_import_count": 219,
+  "bootstrap_symbol_count": 42,
+  "failures": []
+}

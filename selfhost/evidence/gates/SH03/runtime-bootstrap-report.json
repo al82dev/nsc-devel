@@ -1,0 +1,11 @@
+{
+  "schema": "nativesharp-selfhost-runtime-bootstrap-report",
+  "version": 1,
+  "status": "passed",
+  "runtime_abi": "1.0",
+  "runtime_symbol_set": 2,
+  "required_symbol_count": 13,
+  "runtime_library_sha256": "4d7eeb11b49b388ca5cd51e76643378bfcab81d622075fce83e4946760379226",
+  "runtime_abi_sha256": "1f516f9a1cb585647250d5a6afa89e549796a28911c3a9d7cbd45d6e0ecb90f2",
+  "failures": []
+}

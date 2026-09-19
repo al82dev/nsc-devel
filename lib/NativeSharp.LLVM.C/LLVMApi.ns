@@ -1,0 +1,81 @@
+namespace NativeSharp.LLVM.C
+{
+    // Frontera C mínima ejecutable de SH03. Los handles de LLVM son punteros opacos; NativeSharp
+    // no conoce ni reproduce su layout. Las firmas y enums quedan congelados por
+    // llvm-c-api.contract.json y se amplían sólo junto con contrato y prueba.
+    public class LLVM
+    {
+        extern C from "LLVM-C.dll"
+        {
+            public void LLVMGetVersion(uint* major, uint* minor, uint* patch);
+
+            public void* LLVMContextCreate();
+            public void LLVMContextDispose(void* context);
+            public void* LLVMModuleCreateWithNameInContext(byte* moduleId, void* context);
+            public void LLVMDisposeModule(void* module);
+            public void LLVMSetTarget(void* module, byte* triple);
+
+            public void* LLVMVoidTypeInContext(void* context);
+            public void* LLVMInt32TypeInContext(void* context);
+            public void* LLVMFunctionType(
+                void* returnType, void** parameterTypes, uint parameterCount, int variadic);
+            public void* LLVMConstInt(void* integerType, ulong value, int signExtend);
+            public void* LLVMAddFunction(void* module, byte* name, void* functionType);
+            public void* LLVMAppendBasicBlockInContext(
+                void* context, void* function, byte* name);
+            public void* LLVMCreateBuilderInContext(void* context);
+            public void LLVMDisposeBuilder(void* builder);
+            public void LLVMPositionBuilderAtEnd(void* builder, void* block);
+            public void* LLVMBuildCall2(
+                void* builder,
+                void* functionType,
+                void* function,
+                void** arguments,
+                uint argumentCount,
+                byte* name);
+            public void* LLVMBuildRet(void* builder, void* value);
+            public void* LLVMBuildUnreachable(void* builder);
+            public int LLVMVerifyModule(
+                void* module, LLVMVerifierFailureAction action, byte** outMessage);
+            public void LLVMDisposeMessage(byte* message);
+
+            public void LLVMInitializeX86TargetInfo();
+            public void LLVMInitializeX86Target();
+            public void LLVMInitializeX86TargetMC();
+            public void LLVMInitializeX86AsmParser();
+            public void LLVMInitializeX86AsmPrinter();
+            public int LLVMGetTargetFromTriple(byte* triple, void** target, byte** errorMessage);
+            public void* LLVMCreateTargetMachine(
+                void* target,
+                byte* triple,
+                byte* cpu,
+                byte* features,
+                LLVMCodeGenOptLevel level,
+                LLVMRelocMode reloc,
+                LLVMCodeModel codeModel);
+            public void LLVMDisposeTargetMachine(void* targetMachine);
+            public void* LLVMCreateTargetDataLayout(void* targetMachine);
+            public void LLVMDisposeTargetData(void* targetData);
+            public void LLVMSetModuleDataLayout(void* module, void* targetData);
+            public int LLVMTargetMachineEmitToFile(
+                void* targetMachine,
+                void* module,
+                byte* filename,
+                LLVMCodeGenFileType fileType,
+                byte** errorMessage);
+
+            public void* LLVMCreatePassBuilderOptions();
+            public void LLVMPassBuilderOptionsSetVerifyEach(void* options, int verifyEach);
+            public void* LLVMRunPasses(
+                void* module, byte* passes, void* targetMachine, void* options);
+            public byte* LLVMGetErrorMessage(void* error);
+            public void LLVMDisposeErrorMessage(byte* errorMessage);
+            public void LLVMDisposePassBuilderOptions(void* options);
+
+            public uint LLVMDebugMetadataVersion();
+            public void* LLVMCreateDIBuilder(void* module);
+            public void LLVMDIBuilderFinalize(void* builder);
+            public void LLVMDisposeDIBuilder(void* builder);
+        }
+    }
+}

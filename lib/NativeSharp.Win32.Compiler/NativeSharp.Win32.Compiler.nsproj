@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpWin32Compiler</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+    <ProjectReference Include="../NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj" />
+  </ItemGroup>
+</Project>

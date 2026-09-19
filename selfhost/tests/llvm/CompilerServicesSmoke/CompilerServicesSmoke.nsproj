@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpSelfHostCompilerServicesSmoke</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.ns" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Core.Diagnostics/NativeSharp.Core.Diagnostics.nsproj" />
+    <ProjectReference Include="../../../../lib/NativeSharp.Win32.Compiler/NativeSharp.Win32.Compiler.nsproj" />
+  </ItemGroup>
+</Project>

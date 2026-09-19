@@ -1,0 +1,34 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.LLVM.C
+{
+    public class LLVMVersionPolicy
+    {
+        public const uint SupportedMajor = 23u;
+
+        public static bool Read(uint* major, uint* minor, uint* patch)
+        {
+            if (major == null || minor == null || patch == null) { return false; }
+            LLVM.LLVMGetVersion(major, minor, patch);
+            return true;
+        }
+
+        public static bool IsSupported(uint major)
+        {
+            return major == SupportedMajor;
+        }
+
+        public static owned string Diagnostic(uint major, uint minor, uint patch)
+        {
+            raii string majorText = String.ToString((int)major);
+            raii string minorText = String.ToString((int)minor);
+            raii string patchText = String.ToString((int)patch);
+            raii string first = String.Concat("NSH0301: unsupported loaded LLVM ", majorText);
+            raii string second = String.Concat(first, ".");
+            raii string third = String.Concat(second, minorText);
+            raii string fourth = String.Concat(third, ".");
+            raii string fifth = String.Concat(fourth, patchText);
+            return String.Concat(fifth, "; NativeSharp 2.0 self-hosting requires LLVM 23.x");
+        }
+    }
+}

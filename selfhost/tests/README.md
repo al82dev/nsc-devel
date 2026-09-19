@@ -9,6 +9,12 @@ usa vistas sin copia, colecciones, hashing, orden estable, IO binario, procesos 
 contadores; se ejecuta dos veces por linker y exige salida idéntica, retorno 42 y cero obligaciones
 de arena después de `Reset()`.
 
+`llvm/EmitMinimalObject` es la carga SH03: usa exclusivamente `NativeSharp.LLVM.C` para crear,
+verificar, optimizar y emitir un COFF x64 que llama `ExitProcess(42)`. `llvm/LinkerAdapterSmoke`
+enlaza ese objeto por response file con `lld-link` y NSLink, incluso bajo rutas con espacios.
+`llvm/CompilerServicesSmoke` certifica filesystem, proceso, reloj y archivo mapeado a través de
+`NativeSharp.Win32.Compiler`. Los tres proyectos se compilan O0 bajo el Bootstrap Profile.
+
 Las corridas generadas nunca se escriben aquí: viven bajo `selfhost/out` o
 `selfhost/evidence/runs`.
 
