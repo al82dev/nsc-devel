@@ -15,6 +15,11 @@ enlaza ese objeto por response file con `lld-link` y NSLink, incluso bajo rutas 
 `llvm/CompilerServicesSmoke` certifica filesystem, proceso, reloj y archivo mapeado a través de
 `NativeSharp.Win32.Compiler`. Los tres proyectos se compilan O0 bajo el Bootstrap Profile.
 
+El gate SH04 compila `selfhost/nsc/NativeSharp.Compiler.nsproj` en O0 y O2, ejecuta el self-test de
+Basic/Source/Diagnostics, verifica ambos PE y compara contra `nsc0` los diagnósticos de archivo
+ausente y opción desconocida. También exige resultados idénticos con rutas con espacios, distintos
+directorios de ejecución y finales CRLF, CR y LF.
+
 Las corridas generadas nunca se escriben aquí: viven bajo `selfhost/out` o
 `selfhost/evidence/runs`.
 

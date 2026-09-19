@@ -11,6 +11,8 @@ Este directorio contiene la documentación ejecutable del programa de self-hosti
 - `tandas/TANDA-04-SH03-FRONTERAS-LLVM-RUNTIME-PLATAFORMA.md` congela LLVM-C, Runtime ABI,
   servicios Win32 y adaptadores de linker, y demuestra un objeto y dos PE ejecutables sin frontend
   C++.
+- `tandas/TANDA-05-SH04-ESQUELETO-BASIC-SOURCE-DIAGNOSTICS.md` entrega el primer `nsc-next.exe`
+  escrito completamente en NativeSharp, con identidad, fuentes y diagnósticos diferenciales.
 - Los reportes grandes, manifiestos, logs y resultados JSON se conservan en el directorio de
   evidencia generado por la orquestación y se enlazan desde el expediente con su hash.
 

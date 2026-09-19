@@ -1,0 +1,19 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Compiler.Basic
+{
+    public class StableHash
+    {
+        public static ulong Text(string value)
+        {
+            ulong hash = 14695981039346656037UL;
+            int index = 0;
+            while (index < value.Length)
+            {
+                hash = (hash ^ (ulong)(byte)value[index]) * 1099511628211UL;
+                index = index + 1;
+            }
+            return hash;
+        }
+    }
+}

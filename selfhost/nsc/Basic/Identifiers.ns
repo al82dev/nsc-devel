@@ -1,0 +1,67 @@
+namespace NativeSharp.Compiler.Basic
+{
+    public readonly struct FileId
+    {
+        private readonly int value;
+
+        public FileId(int raw) { value = raw; }
+        public int Value() { return value; }
+        public bool IsValid() { return value > 0; }
+        public static FileId Invalid() { return new FileId(0); }
+        public static bool Equals(FileId left, FileId right) { return left.value == right.value; }
+    }
+
+    public readonly struct SourcePosition
+    {
+        private readonly FileId file;
+        private readonly int offset;
+
+        public SourcePosition(FileId sourceFile, int sourceOffset)
+        {
+            file = sourceFile;
+            offset = sourceOffset;
+        }
+
+        public FileId File() { return file; }
+        public int Offset() { return offset; }
+        public bool IsValid() { return file.IsValid() && offset >= 0; }
+    }
+
+    public readonly struct SourceRange
+    {
+        private readonly SourcePosition begin;
+        private readonly SourcePosition end;
+
+        public SourceRange(SourcePosition first, SourcePosition last)
+        {
+            begin = first;
+            end = last;
+        }
+
+        public SourcePosition Begin() { return begin; }
+        public SourcePosition End() { return end; }
+        public int Length() { return end.Offset() - begin.Offset(); }
+        public bool IsValid()
+        {
+            return begin.IsValid() && end.IsValid() &&
+                FileId.Equals(begin.File(), end.File()) && end.Offset() >= begin.Offset();
+        }
+    }
+
+    public readonly struct CompilerResult
+    {
+        private readonly bool succeeded;
+        private readonly int exitCode;
+
+        public CompilerResult(bool success, int code)
+        {
+            succeeded = success;
+            exitCode = code;
+        }
+
+        public bool Succeeded() { return succeeded; }
+        public int ExitCode() { return exitCode; }
+        public static CompilerResult Success() { return new CompilerResult(true, 0); }
+        public static CompilerResult Failure(int code) { return new CompilerResult(false, code); }
+    }
+}

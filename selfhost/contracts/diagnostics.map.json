@@ -1,0 +1,21 @@
+{
+  "schema": "nativesharp-diagnostics-map",
+  "version": 1,
+  "producer": "nsc-next/SH04",
+  "diagnostics": [
+    {
+      "code": "NSC0001",
+      "meaning": "source file cannot be opened",
+      "exit_code": 1,
+      "nsc0_template": "nsc: error: cannot open source file '{argument}'",
+      "structured_argument": "normalized absolute path"
+    },
+    {
+      "code": "NSC0002",
+      "meaning": "unknown command-line option",
+      "exit_code": 2,
+      "nsc0_template": "nsc: error: unknown option '{argument}'",
+      "structured_argument": "option spelling"
+    }
+  ]
+}

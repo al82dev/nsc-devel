@@ -1,0 +1,34 @@
+{
+  "binary_sha256": {
+    "O0": "6f3e3c87076758461f104bfc9de8088dd3d5e173f795f29a0d2e9e2c25a5f137",
+    "O2": "74c5766f6622cc11d93e7fe6c3e4cf6669397e30cb070850bdaa452cde0682aa"
+  },
+  "cwd_independent": true,
+  "diagnostics": [
+    "NSC0001",
+    "NSC0002"
+  ],
+  "identity": "nsc-next 2.0.0-bootstrap.sh04",
+  "line_endings": [
+    "CRLF",
+    "CR",
+    "LF"
+  ],
+  "nsc0_differential_cases": 2,
+  "optimizations": [
+    "O0",
+    "O2"
+  ],
+  "schema": "nativesharp-selfhost-sh04-report",
+  "source_cases": 2,
+  "source_info": {
+    "bytes": 19,
+    "fnv1a64": "10519248498540176672",
+    "lines": 4,
+    "path": "A:/nsc-devel/selfhost/out/tests-lld/selfhost-nsc-next-skeleton/differential/path with spaces/mixed endings.ns",
+    "schema": "nativesharp-source-info",
+    "version": 1
+  },
+  "status": "passed",
+  "version": 1
+}

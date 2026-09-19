@@ -1,0 +1,57 @@
+using NativeSharp.Core;
+
+namespace NativeSharp.Compiler.Basic
+{
+    public readonly struct ArenaHandle
+    {
+        private readonly byte* address;
+        private readonly int generation;
+        private readonly int size;
+
+        public ArenaHandle(byte* data, int epoch, int byteCount)
+        {
+            address = data;
+            generation = epoch;
+            size = byteCount;
+        }
+
+        public byte* Address() { return address; }
+        public int Generation() { return generation; }
+        public int Size() { return size; }
+        public bool IsEmpty() { return address == null || size <= 0; }
+    }
+
+    public class GenerationArena
+    {
+        private owned ArenaAllocator storage;
+        private int generation;
+
+        public GenerationArena(int blockSize)
+        {
+            storage = new ArenaAllocator(blockSize);
+            generation = 1;
+        }
+
+        public ArenaHandle Allocate(int bytes)
+        {
+            byte* address = storage.Allocate(bytes);
+            return new ArenaHandle(address, generation, bytes);
+        }
+
+        public byte* Resolve(ArenaHandle handle)
+        {
+            if (handle.IsEmpty() || handle.Generation() != generation) { return null; }
+            return handle.Address();
+        }
+
+        public void Reset()
+        {
+            storage.Reset();
+            generation = generation + 1;
+            if (generation <= 0) { generation = 1; }
+        }
+
+        public int Generation() { return generation; }
+        public long BytesUsed() { return storage.BytesUsed(); }
+    }
+}

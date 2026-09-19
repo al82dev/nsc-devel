@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup><Name>NativeSharpCompilerNext</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Basic/**/*.ns" />
+    <Compile Include="Source/**/*.ns" />
+    <Compile Include="Diagnostics/**/*.ns" />
+    <Compile Include="Driver/**/*.ns" />
+    <ProjectReference Include="../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" />
+    <ProjectReference Include="../../lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj" />
+    <ProjectReference Include="../../lib/NativeSharp.Core.IO/NativeSharp.Core.IO.nsproj" />
+  </ItemGroup>
+</Project>

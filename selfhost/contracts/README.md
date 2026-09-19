@@ -8,3 +8,7 @@
 Una ampliación de cualquiera de estas fronteras exige cambiar el contrato, su fuente, su prueba y
 el expediente de la tanda en el mismo commit. Los artefactos generados viven en `selfhost/out`; los
 contratos son entradas versionadas.
+
+`diagnostics.map.json` congela desde SH04 la identidad y el código de salida de cada diagnóstico
+portado. El texto humano se compara byte a byte contra `nsc0`; la salida estructurada conserva el
+código y normaliza sólo los campos que el contrato declara no semánticos.

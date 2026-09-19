@@ -1,0 +1,102 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+using NativeSharp.Core.IO;
+using NativeSharp.Compiler.Basic;
+
+namespace NativeSharp.Compiler.Source
+{
+    public class DiagnosticPath
+    {
+        public static owned string Normalize(string path)
+        {
+            string full = Path.GetFullPath(path);
+            if (full.Length == 0) { return String.Replace(path, '\\', '/'); }
+            return String.Replace(full, '\\', '/');
+        }
+    }
+
+    public class SourceBuffer
+    {
+        private FileId id;
+        private owned string path;
+        private owned string text;
+        private owned int[] lineStarts;
+
+        private static owned string NormalizeLineEndings(string value)
+        {
+            raii StringBuilder output = new StringBuilder(value.Length);
+            int index = 0;
+            while (index < value.Length)
+            {
+                char current = value[index];
+                if (current == '\r')
+                {
+                    if (index + 1 < value.Length && value[index + 1] == '\n')
+                    {
+                        index = index + 1;
+                    }
+                    output.Append('\n');
+                }
+                else
+                {
+                    output.Append(current);
+                }
+                index = index + 1;
+            }
+            return output.ToOwnedString();
+        }
+
+        private static int[] BuildLineStarts(string value)
+        {
+            raii List<int> starts = new List<int>();
+            starts.Add(0);
+            int index = 0;
+            while (index < value.Length)
+            {
+                if (value[index] == '\n' && index + 1 <= value.Length)
+                {
+                    starts.Add(index + 1);
+                }
+                index = index + 1;
+            }
+            return starts.ToArray();
+        }
+
+        public SourceBuffer(FileId file, string sourcePath, string sourceText)
+        {
+            id = file;
+            path = DiagnosticPath.Normalize(sourcePath);
+            text = NormalizeLineEndings(sourceText);
+            lineStarts = BuildLineStarts(text);
+        }
+
+        public static owned SourceBuffer Load(FileId file, string sourcePath)
+        {
+            string contents = File.ReadAllText(sourcePath);
+            return new SourceBuffer(file, sourcePath, contents);
+        }
+
+        public FileId Id() { return id; }
+        public string Path() { return path; }
+        public string Text() { return text; }
+        public int Length() { return text.Length; }
+        public int LineCount() { return lineStarts.Length; }
+        public ulong ContentHash() { return StableHash.Text(text); }
+
+        public void GetLineColumn(int sourceOffset, out int line, out int column)
+        {
+            int offset = sourceOffset;
+            if (offset < 0) { offset = 0; }
+            if (offset > text.Length) { offset = text.Length; }
+            int found = 0;
+            int index = 1;
+            while (index < lineStarts.Length && lineStarts[index] <= offset)
+            {
+                found = index;
+                index = index + 1;
+            }
+            line = found + 1;
+            column = offset - lineStarts[found] + 1;
+        }
+    }
+}

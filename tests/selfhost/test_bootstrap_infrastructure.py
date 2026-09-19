@@ -14,7 +14,12 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import nscbuilder
-from selfhost.bootstrap import clean_selfhost, verify_environment, verify_llvm_c_contract
+from selfhost.bootstrap import (
+    clean_selfhost,
+    verify_environment,
+    verify_llvm_c_contract,
+    verify_nsc_next_skeleton,
+)
 
 
 TEST_TEMP_ROOT = ROOT / "_nscbuilder" / "temp" / "selfhost-unit-tests"
@@ -217,6 +222,25 @@ class BootstrapInfrastructureTests(unittest.TestCase):
         self.assertEqual(len(contract["required_symbols"]), 13)
         self.assertTrue(contract["runtime_library"].endswith(".lib"))
         self.assertTrue(contract["runtime_abi_contract"].endswith(".abi"))
+
+    def test_sh04_diagnostics_map_freezes_codes_and_exit_codes(self) -> None:
+        contract = verify_nsc_next_skeleton.load_contract(
+            ROOT / "selfhost/contracts/diagnostics.map.json"
+        )
+        self.assertEqual(
+            [item["code"] for item in contract["diagnostics"]],
+            ["NSC0001", "NSC0002"],
+        )
+        self.assertEqual(
+            [item["exit_code"] for item in contract["diagnostics"]],
+            [1, 2],
+        )
+
+    def test_sh04_stable_hash_matches_native_implementation(self) -> None:
+        self.assertEqual(
+            verify_nsc_next_skeleton.fnv1a64("first\nsecond\nthird\n"),
+            10519248498540176672,
+        )
 
 
 if __name__ == "__main__":

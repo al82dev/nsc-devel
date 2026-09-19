@@ -1,0 +1,86 @@
+using NativeSharp.Core;
+using NativeSharp.Compiler.Source;
+
+namespace NativeSharp.Compiler.Diagnostics
+{
+    public enum DiagnosticSeverity
+    {
+        Error = 1,
+        Warning = 2,
+        Note = 3
+    }
+
+    public class Diagnostic
+    {
+        private owned string code;
+        private DiagnosticSeverity severity;
+        private owned string argument;
+        private int exitCode;
+
+        public Diagnostic(string stableCode, DiagnosticSeverity level, string value, int result)
+        {
+            code = String.Copy(stableCode);
+            severity = level;
+            argument = String.Copy(value);
+            exitCode = result;
+        }
+
+        public string Code() { return code; }
+        public DiagnosticSeverity Severity() { return severity; }
+        public string Argument() { return argument; }
+        public int ExitCode() { return exitCode; }
+    }
+
+    public class DiagnosticCatalog
+    {
+        public static owned Diagnostic MissingSource(string path)
+        {
+            return new Diagnostic("NSC0001", DiagnosticSeverity.Error, path, 1);
+        }
+
+        public static owned Diagnostic UnknownOption(string option)
+        {
+            return new Diagnostic("NSC0002", DiagnosticSeverity.Error, option, 2);
+        }
+    }
+
+    public class DiagnosticRenderer
+    {
+        private static owned string JsonEscape(string value)
+        {
+            raii string slash = String.Replace(value, "\\", "\\\\");
+            raii string quote = String.Replace(slash, "\"", "\\\"");
+            raii string carriage = String.Replace(quote, "\r", "\\r");
+            return String.Replace(carriage, "\n", "\\n");
+        }
+
+        public static owned string Human(Diagnostic diagnostic)
+        {
+            string prefix = "nsc: error: unknown diagnostic";
+            if (diagnostic.Code() == "NSC0001")
+            {
+                prefix = "nsc: error: cannot open source file '";
+            }
+            else if (diagnostic.Code() == "NSC0002")
+            {
+                prefix = "nsc: error: unknown option '";
+            }
+            raii string withArgument = String.Concat(prefix, diagnostic.Argument());
+            return String.Concat(withArgument, "'");
+        }
+
+        public static owned string Json(Diagnostic diagnostic)
+        {
+            raii string escaped = JsonEscape(diagnostic.Argument());
+            raii string first = String.Concat("{\"schema\":\"nativesharp-diagnostic\",\"version\":1,\"code\":\"", diagnostic.Code());
+            raii string second = String.Concat(first, "\",\"severity\":\"error\",\"argument\":\"");
+            raii string third = String.Concat(second, escaped);
+            return String.Concat(third, "\"}");
+        }
+
+        public static owned string NormalizedPath(string path)
+        {
+            return DiagnosticPath.Normalize(path);
+        }
+    }
+}

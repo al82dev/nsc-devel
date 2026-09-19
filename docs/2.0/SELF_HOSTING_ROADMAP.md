@@ -352,6 +352,11 @@ comportamiento operativo ya sea correcto.
 **Gate SH04:** `nsc-next` arranca, reporta identidad, lee fuentes y reproduce los diagnósticos
 básicos y códigos de salida acordados.
 
+Expediente de cierre:
+`docs/2.0/self-hosting/tandas/TANDA-05-SH04-ESQUELETO-BASIC-SOURCE-DIAGNOSTICS.md`.
+Contrato de diagnósticos: `selfhost/contracts/diagnostics.map.json`.
+Gate versionado: `selfhost/evidence/gates/SH04/gate.json`.
+
 ### Fase 5 — lexer, sintaxis y parser
 
 **Objetivo:** aceptar todo NativeSharp 2.0 y producir árboles canónicos sin semántica.

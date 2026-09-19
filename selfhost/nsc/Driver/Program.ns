@@ -1,0 +1,144 @@
+using NativeSharp.Core;
+using NativeSharp.Core.IO;
+using NativeSharp.Compiler.Basic;
+using NativeSharp.Compiler.Source;
+using NativeSharp.Compiler.Diagnostics;
+
+namespace NativeSharp.Compiler.Driver
+{
+    public class Program
+    {
+        private static void PrintVersion()
+        {
+            Console.WriteLine("nsc-next 2.0.0-bootstrap.sh04 (NativeSharp 2.0.0, self-host stage 1)");
+        }
+
+        private static void PrintHelp()
+        {
+            Console.WriteLine("NativeSharp self-hosted compiler bootstrap (SH04)");
+            Console.WriteLine("");
+            Console.WriteLine("Usage:");
+            Console.WriteLine("  nsc-next --version");
+            Console.WriteLine("  nsc-next --help");
+            Console.WriteLine("  nsc-next --read-source <file.ns>");
+            Console.WriteLine("  nsc-next --dump-source-info <file.ns>");
+            Console.WriteLine("  nsc-next [--diagnostic-format=json] <file.ns>");
+        }
+
+        private static int EmitDiagnostic(Diagnostic diagnostic, bool json)
+        {
+            if (json)
+            {
+                raii string rendered = DiagnosticRenderer.Json(diagnostic);
+                Console.ErrorWriteLine(rendered);
+            }
+            else
+            {
+                raii string rendered = DiagnosticRenderer.Human(diagnostic);
+                Console.ErrorWriteLine(rendered);
+            }
+            return diagnostic.ExitCode();
+        }
+
+        private static int ReadSource(string path, bool dump)
+        {
+            if (!File.Exists(path))
+            {
+                raii Diagnostic missing = DiagnosticCatalog.MissingSource(path);
+                return EmitDiagnostic(missing, false);
+            }
+            raii SourceBuffer source = SourceBuffer.Load(new FileId(1), path);
+            if (dump)
+            {
+                raii string length = String.ToString(source.Length());
+                raii string lines = String.ToString(source.LineCount());
+                raii string hash = String.ToString(source.ContentHash());
+                raii string first = String.Concat("{\"schema\":\"nativesharp-source-info\",\"version\":1,\"path\":\"", source.Path());
+                raii string second = String.Concat(first, "\",\"bytes\":");
+                raii string third = String.Concat(second, length);
+                raii string fourth = String.Concat(third, ",\"lines\":");
+                raii string fifth = String.Concat(fourth, lines);
+                raii string sixth = String.Concat(fifth, ",\"fnv1a64\":\"");
+                raii string seventh = String.Concat(sixth, hash);
+                raii string output = String.Concat(seventh, "\"}");
+                Console.WriteLine(output);
+            }
+            return 0;
+        }
+
+        private static int SelfTest()
+        {
+            FileId file = new FileId(7);
+            SourcePosition begin = new SourcePosition(file, 1);
+            SourcePosition end = new SourcePosition(file, 4);
+            SourceRange range = new SourceRange(begin, end);
+            if (!file.IsValid() || !range.IsValid() || range.Length() != 3) { return 10; }
+            if (StableHash.Text("native") != StableHash.Text("native")) { return 11; }
+            if (StableHash.Text("native") == StableHash.Text("sharp")) { return 12; }
+
+            raii GenerationArena arena = new GenerationArena(64);
+            ArenaHandle handle = arena.Allocate(16);
+            if (arena.Resolve(handle) == null || arena.BytesUsed() < 16) { return 13; }
+            arena.Reset();
+            if (arena.Resolve(handle) != null || arena.BytesUsed() != 0) { return 14; }
+
+            raii SourceBuffer source = new SourceBuffer(file, "fixture.ns", "a\r\nb\rc\n");
+            if (source.Text() != "a\nb\nc\n" || source.LineCount() != 4) { return 15; }
+            int line = 0;
+            int column = 0;
+            source.GetLineColumn(4, out line, out column);
+            if (line != 3 || column != 1) { return 16; }
+
+            raii Diagnostic unknown = DiagnosticCatalog.UnknownOption("--bad");
+            raii string rendered = DiagnosticRenderer.Human(unknown);
+            if (rendered != "nsc: error: unknown option '--bad'") { return 17; }
+            CompilerResult result = CompilerResult.Success();
+            if (!result.Succeeded() || result.ExitCode() != 0) { return 18; }
+            Console.WriteLine("SH04 Basic/Source/Diagnostics self-test passed");
+            return 42;
+        }
+
+        public static int Main()
+        {
+            int count = Environment.GetCommandLineArgCount();
+            string[] arguments = new string[count];
+            if (Environment.GetCommandLineArgs(arguments) != count) { return 3; }
+            if (count == 1)
+            {
+                PrintHelp();
+                return 0;
+            }
+
+            string command = arguments[1];
+            if (command == "--version") { PrintVersion(); return 0; }
+            if (command == "--help") { PrintHelp(); return 0; }
+            if (command == "--self-test-basic") { return SelfTest(); }
+            if (command == "--read-source" || command == "--dump-source-info")
+            {
+                if (count != 3)
+                {
+                    raii Diagnostic invalid = DiagnosticCatalog.UnknownOption(command);
+                    return EmitDiagnostic(invalid, false);
+                }
+                return ReadSource(arguments[2], command == "--dump-source-info");
+            }
+            if (command == "--diagnostic-format=json")
+            {
+                if (count != 3) { return 2; }
+                if (!File.Exists(arguments[2]))
+                {
+                    raii string normalized = DiagnosticRenderer.NormalizedPath(arguments[2]);
+                    raii Diagnostic missing = DiagnosticCatalog.MissingSource(normalized);
+                    return EmitDiagnostic(missing, true);
+                }
+                return ReadSource(arguments[2], false);
+            }
+            if (command.Length > 0 && command[0] == '-')
+            {
+                raii Diagnostic unknown = DiagnosticCatalog.UnknownOption(command);
+                return EmitDiagnostic(unknown, false);
+            }
+            return ReadSource(command, false);
+        }
+    }
+}
